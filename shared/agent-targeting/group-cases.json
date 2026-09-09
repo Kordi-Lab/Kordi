@@ -1,0 +1,690 @@
+{
+  "participants": [
+    {
+      "accountId": "acct_sender",
+      "displayName": "Sender Example",
+      "agentDisplayName": "Kordi"
+    },
+    {
+      "accountId": "acct_one",
+      "displayName": "Peer One",
+      "agentDisplayName": "Kordi"
+    },
+    {
+      "accountId": "acct_two",
+      "displayName": "Peer Two",
+      "agentDisplayName": "Kordi"
+    }
+  ],
+  "cases": [
+    {
+      "name": "bare alias belongs only to sender",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1
+      },
+      "expected": {
+        "ownerAccountId": "acct_sender",
+        "agentId": "cloud-agent:acct_sender"
+      }
+    },
+    {
+      "name": "legacy missing sender kind",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": null,
+        "text": "@Kordi check status",
+        "createdAtMs": 1
+      },
+      "expected": {
+        "ownerAccountId": "acct_sender",
+        "agentId": "cloud-agent:acct_sender"
+      }
+    },
+    {
+      "name": "first person alias",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@MyKordi check status",
+        "createdAtMs": 1
+      },
+      "expected": {
+        "ownerAccountId": "acct_sender",
+        "agentId": "cloud-agent:acct_sender"
+      }
+    },
+    {
+      "name": "scoped public handle",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@KordiPeerOne check status",
+        "createdAtMs": 1
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "legacy owner handle",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@PeerOnesKordi check status",
+        "createdAtMs": 1
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "explicit peer overrides bare alias",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "partial target is rejected",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": null
+    },
+    {
+      "name": "conflicting owner and default id",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "targetCloudAgentId": "cloud-agent:acct_two",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": null
+    },
+    {
+      "name": "nonparticipant target",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "targetCloudAgentId": "cloud-agent:acct_other",
+        "targetCloudAgentOwnerAccountId": "acct_other"
+      },
+      "expected": null
+    },
+    {
+      "name": "structured identity without top level target",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          }
+        ]
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "canonical desktop mention identity",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:cloud-agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          }
+        ]
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "structured identity disagrees with top level target",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_two",
+        "targetCloudAgentOwnerAccountId": "acct_two"
+      },
+      "expected": null
+    },
+    {
+      "name": "structured identity disagrees with agent id",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:acct_one",
+            "agentId": "cloud-agent:acct_two",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          }
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "invalid structured range cannot become generic alias",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 1,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          }
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "person mention does not execute an agent",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "person",
+            "targetIdentityId": "human:acct_one",
+            "agentId": null,
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          }
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "multiple different agent entities are ambiguous",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi @Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          },
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:acct_two",
+            "agentId": "cloud-agent:acct_two",
+            "humanId": "acct_two",
+            "startUtf16": 7,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi"
+          }
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "forwarded alias is display only",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "messageAction": {
+          "schemaVersion": 1,
+          "kind": "forward",
+          "source": {
+            "sourceSessionId": "session:source",
+            "sourceMessageId": "source",
+            "senderLabel": "Person",
+            "textPreview": "@Kordi",
+            "attachmentCount": 0
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "fork snapshot cannot trigger",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "forkSnapshot": true
+      },
+      "expected": null
+    },
+    {
+      "name": "ordinary message",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "Hello everyone",
+        "createdAtMs": 1
+      },
+      "expected": null
+    },
+    {
+      "name": "email is not a mention",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "hello@Kordi",
+        "createdAtMs": 1
+      },
+      "expected": null
+    },
+    {
+      "name": "ambiguous scoped name",
+      "participants": [
+        {
+          "accountId": "acct_sender",
+          "displayName": "Sender Example",
+          "agentDisplayName": "Kordi"
+        },
+        {
+          "accountId": "acct_one",
+          "displayName": "Peer One",
+          "agentDisplayName": "Kordi"
+        },
+        {
+          "accountId": "acct_two",
+          "displayName": "Peer-One",
+          "agentDisplayName": "Kordi"
+        }
+      ],
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@KordiPeerOne check status",
+        "createdAtMs": 1
+      },
+      "expected": null
+    },
+    {
+      "name": "unicode scoped owner",
+      "participants": [
+        {
+          "accountId": "acct_sender",
+          "displayName": "Sender Example",
+          "agentDisplayName": "Kordi"
+        },
+        {
+          "accountId": "acct_one",
+          "displayName": "M\u00e1rta Ruiz",
+          "agentDisplayName": "Kordi"
+        },
+        {
+          "accountId": "acct_two",
+          "displayName": "Peer Two",
+          "agentDisplayName": "Kordi"
+        }
+      ],
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@KordiM\u00e1rtaRuiz check status",
+        "createdAtMs": 1
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "custom explicit identity",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "targetCloudAgentId": "cloud_agent_research",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud_agent_research"
+      }
+    },
+    {
+      "name": "foreign host mention",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud-agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "sourceHostId": "other-host"
+          }
+        ]
+      },
+      "expected": null
+    },
+    {
+      "name": "legacy local id only belongs to sender",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "targetCloudAgentId": "cloud-local-agent",
+        "targetCloudAgentOwnerAccountId": "acct_sender"
+      },
+      "expected": {
+        "ownerAccountId": "acct_sender",
+        "agentId": "cloud-agent:acct_sender"
+      }
+    },
+    {
+      "name": "legacy local id cannot select another owner",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "targetCloudAgentId": "cloud-local-agent",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": null
+    },
+    {
+      "name": "legacy spaced first person alias",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@My Kordi check status",
+        "createdAtMs": 1
+      },
+      "expected": {
+        "ownerAccountId": "acct_sender",
+        "agentId": "cloud-agent:acct_sender"
+      }
+    },
+    {
+      "name": "person mention does not hide a separate sender alias",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@PeerOne @Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "PeerOne",
+            "targetKind": "person",
+            "targetIdentityId": "human:acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 8,
+            "displayText": "@PeerOne"
+          }
+        ]
+      },
+      "expected": {
+        "ownerAccountId": "acct_sender",
+        "agentId": "cloud-agent:acct_sender"
+      }
+    },
+    {
+      "name": "legacy owner identity with no agent id",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_one",
+            "agentId": null,
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "legacy owner identity and canonical agent id agree",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "legacy cloud owner identity",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud:acct_one",
+            "agentId": null,
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "legacy owner identity cannot change owners",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_two",
+            "agentId": null,
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": null
+    },
+    {
+      "name": "legacy default identity cannot become a custom agent",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_one",
+            "agentId": "cloud_agent_custom",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": null
+    }
+  ]
+}

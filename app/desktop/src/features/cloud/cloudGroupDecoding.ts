@@ -28,6 +28,7 @@ export function cloudGroupMessageRuntimeFields(candidate: Record<string, unknown
   messageKind?: string | null;
   voiceMessage?: (MessageVoiceDraft & { mediaId?: string | null }) | null;
   structuredContent?: Record<string, unknown> | null;
+  forkSnapshot?: boolean;
 } {
   const structuredContent = candidate.structuredContent;
   const voice = candidate.voiceMessage && typeof candidate.voiceMessage === 'object' && !Array.isArray(candidate.voiceMessage)
@@ -53,6 +54,7 @@ export function cloudGroupMessageRuntimeFields(candidate: Record<string, unknown
     localPath: cleanText(voice.localPath) || null,
   } : null;
   return {
+    ...(candidate.forkSnapshot === true ? { forkSnapshot: true } : {}),
     agentRuntimeRoute: runtimeRoute(candidate.agentRuntimeRoute),
     messageKind: cleanText(candidate.messageKind) || null,
     voiceMessage,

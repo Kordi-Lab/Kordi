@@ -15,9 +15,7 @@ import { readKordiAppModelImplementationSource } from './helpers/appModelSource'
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
 const cloudDirectAgentFallbackSource = () => readFileSync(new URL('../src/features/cloud/useCloudDirectAgentFallback.ts', import.meta.url), 'utf8');
 const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
-const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 const cloudGroupAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
-const cloudGroupAgentPolicySource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentPolicy.ts', import.meta.url), 'utf8');
 const cloudGroupAgentPublicationSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentPublication.ts', import.meta.url), 'utf8');
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
@@ -463,20 +461,6 @@ test('cloud group terminal hosted-agent responses clear timeout placeholders and
   assert.match(stateSource, /cloud-group-agent-unavailable-timeout:/);
   assert.match(agentSource, /sender: presentation\.displayName/);
   assert.doesNotMatch(agentSource, /sender:\s*'My Kordi'/);
-});
-
-test('cloud group hosted-agent metadata targets the owner runtime even when text is not My Kordi', () => {
-  const stateSource = cloudGroupAgentPolicySource();
-  const agentSource = `${cloudGroupAgentControlSource()}\n${cloudGroupAgentExecutionSource()}`;
-  assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
-  assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
-  assert.match(stateSource, /targetCloudAgentOwnerAccountId === account\.accountId/);
-  assert.match(stateSource, /if \(targetCloudAgentId \|\| targetCloudAgentOwnerAccountId\) \{\s*return targetsOwnedCloudAgent;/);
-  assert.match(stateSource, /targetCloudAgentId\.startsWith\('cloud_agent_'\)/);
-  assert.match(stateSource, /targetsOwnedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
-  assert.match(agentSource, /policy\.messageTargetsLocalAgent\([\s\S]*message,[\s\S]*account,[\s\S]*envelope\.participants/);
-  assert.doesNotMatch(cloudGroupAgentControlSource(), /\|\|\s*senderIsAgent/);
-  assert.match(agentSource, /targetCloudAgentId: message\.targetCloudAgentId/);
 });
 
 test('cloud group no-provider catch broadcasts a failed agent response to requesters', () => {

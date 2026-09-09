@@ -1,3 +1,4 @@
+import { cloudGroupMessageWithAgentTarget } from './cloudGroupAgentTarget';
 import {
   beginChatPerformanceSpan,
   finishChatPerformanceSpan,
@@ -13,6 +14,12 @@ export type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.
 export function applyCloudGroupAgentControl(
   input: ApplyCloudGroupAgentControlInput,
 ): void {
+  if (input.context.envelope.message) {
+    input = { ...input, context: { ...input.context, envelope: {
+      ...input.context.envelope,
+      message: cloudGroupMessageWithAgentTarget(input.context.envelope.message, input.context.envelope.participants),
+    } } };
+  }
   const {
     context,
     setCanonicalState,

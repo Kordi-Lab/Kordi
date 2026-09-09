@@ -191,7 +191,7 @@ test('forwarded group mentions never target a local agent', () => {
     text: '@MyKordi test',
     createdAtMs: Date.now(),
     messageAction: { ...forwardedAction, kind: 'quote' },
-  }, account), true);
+  }, account, [{ accountId: account.accountId, displayName: account.displayName!, avatarUrl: null, role: 'person' }]), true);
 });
 
 test('direct Cloud hosted shared-agent requests and responses keep the shared agent display name', () => {

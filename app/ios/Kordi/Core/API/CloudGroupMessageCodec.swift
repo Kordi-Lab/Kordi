@@ -65,10 +65,11 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let requestId: String?
     let attachments: [CloudMessageAttachment]?
     let mentions: [MessageMention]?
+    let forkSnapshot: Bool?
     let messageAction: MessageActionMetadata?
-    let targetCloudAgentId: String?
+    var targetCloudAgentId: String?
     let targetCloudAgentName: String?
-    let targetCloudAgentOwnerAccountId: String?
+    var targetCloudAgentOwnerAccountId: String?
     let targetCloudAgentOwnerName: String?
     let agentRuntimeRoute: CloudModelRouting?
     let messageKind: String?
@@ -90,6 +91,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         requestId: String?,
         attachments: [CloudMessageAttachment]? = nil,
         mentions: [MessageMention]? = nil,
+        forkSnapshot: Bool? = nil,
         messageAction: MessageActionMetadata? = nil,
         targetCloudAgentId: String? = nil,
         targetCloudAgentName: String? = nil,
@@ -118,6 +120,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         self.requestId = requestId
         self.attachments = attachments
         self.mentions = mentions
+        self.forkSnapshot = forkSnapshot
         self.messageAction = messageAction
         self.targetCloudAgentId = targetCloudAgentId
         self.targetCloudAgentName = targetCloudAgentName
@@ -239,6 +242,11 @@ enum CloudGroupMessageCodec {
     }()
 
     static func encode(_ envelope: CloudGroupControlEnvelope) throws -> String {
+        var message = envelope.message
+        if let source = message, let target = GroupAgentTarget.resolve(source, participants: envelope.participants) {
+            message?.targetCloudAgentId = target.agentId
+            message?.targetCloudAgentOwnerAccountId = target.ownerAccountId
+        }
         let normalized = CloudGroupControlEnvelope(
             kind: envelope.kind,
             groupId: envelope.groupId,
@@ -251,7 +259,7 @@ enum CloudGroupMessageCodec {
             sessionTitleSyncOnly: envelope.sessionTitleSyncOnly,
             channelCreated: envelope.channelCreated,
             memberJoins: envelope.memberJoins,
-            message: envelope.message
+            message: message
         )
         return prefix + base64URL(try JSONEncoder().encode(normalized))
     }

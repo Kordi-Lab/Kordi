@@ -410,6 +410,8 @@ mod tests {
             actor: participants[0].clone(),
             participants,
             message: Some(CloudGroupMessage {
+                mentions: None,
+                fork_snapshot: None,
                 id: "msg_request".to_string(),
                 sender_account_id: "acct_requester".to_string(),
                 text: "@ResearchAgentsKordi ask my Kordi".to_string(),

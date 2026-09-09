@@ -25,7 +25,8 @@ import {
   cloudMessageActionAllowsAgentContext,
   cloudMessageActionAllowsAgentTrigger,
 } from './cloudAgentTriggerPolicy';
-import { cloudGroupAgentHandoffTargetsAccount } from './cloudGroupMentions';
+import { cloudGroupAgentHandoffTarget } from './cloudGroupMentions';
+import { cloudGroupHumanAgentTarget } from './cloudGroupAgentTarget';
 import type { CloudGroupControlEnvelope } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
@@ -263,6 +264,41 @@ export function cloudFallbackRunClaimsForMessages({
       );
     }
   }
+  // Canonical group delivery stores one row under a representative transport
+  // peer. That peer is not necessarily the owner of the mentioned agent.
+  const claimedGroupRequests = new Set<string>();
+  for (const { wire, envelope } of index.groupRows) {
+    const groupMessage = envelope.kind === 'group-message' ? envelope.message : null;
+    if (!groupMessage || wire.fromAccountId !== account.accountId
+      || groupMessage.senderAccountId !== account.accountId
+      || wire.deletedAt || groupMessage.forkSnapshot
+      || !cloudMessageActionAllowsAgentTrigger(groupMessage.messageAction)) continue;
+    if (recentSinceMs !== undefined && (!Number.isFinite(groupMessage.createdAtMs)
+      || groupMessage.createdAtMs < recentSinceMs)) continue;
+    const ownerAccountId = groupMessage.senderKind === 'agent'
+      ? cloudGroupAgentHandoffTarget(envelope)?.accountId
+      : cloudGroupHumanAgentTarget(groupMessage, envelope.participants)?.ownerAccountId;
+    // Self-agent fallback has its own admission path; observers cannot claim.
+    if (!ownerAccountId || ownerAccountId === account.accountId) continue;
+    const requestKey = `${envelope.groupId}\u0000${ownerAccountId}\u0000${groupMessage.id}`;
+    if (claimedGroupRequests.has(requestKey) || terminalGroupResponseKeys.has(requestKey)) continue;
+    claimedGroupRequests.add(requestKey);
+    claims.push({
+      requestMessageId: groupMessage.id,
+      sessionId: envelope.groupId,
+      ownerAccountId,
+      requesterAccountId: account.accountId,
+      prompt: cloudGroupFallbackRunPromptForMessage({
+        groupRows: index.groupRows,
+        groupId: envelope.groupId,
+        requestMessageId: groupMessage.id,
+        requestCreatedAtMs: groupMessage.createdAtMs,
+        requestText: groupMessage.text,
+        ownerAccountId,
+      }),
+      idempotencyKey: `cloud-agent-fallback-group:${envelope.groupId}:${groupMessage.id}:${ownerAccountId}`,
+    });
+  }
   const terminalDirectRequestIdsByPeerId = new Map<string, Set<string>>();
   const processingDirectRequestAtMsByPeerId = new Map<
     string,
@@ -357,69 +393,6 @@ export function cloudFallbackRunClaimsForMessages({
       ) continue;
       const groupEnvelope =
         groupRowByWireMessageId.get(message.messageId)?.envelope;
-      if (
-        groupEnvelope?.kind === 'group-message'
-        && groupEnvelope.message?.senderAccountId === account.accountId
-      ) {
-        const groupMessage = groupEnvelope.message;
-        if (
-          recentSinceMs !== undefined
-          && (
-            !Number.isFinite(groupMessage.createdAtMs)
-            || groupMessage.createdAtMs < recentSinceMs
-          )
-        ) continue;
-        if (!cloudMessageActionAllowsAgentTrigger(groupMessage.messageAction)) {
-          continue;
-        }
-        if (
-          groupMessage.senderKind === 'agent'
-          && !cloudGroupAgentHandoffTargetsAccount(
-            groupEnvelope,
-            ownerAccountId,
-          )
-        ) continue;
-        const groupRequestMessage = { ...message, body: groupMessage.text };
-        const targetsOwnerById = Boolean(
-          cleanText(groupMessage.targetCloudAgentId)
-          && cleanText(groupMessage.targetCloudAgentOwnerAccountId)
-            === ownerAccountId,
-        );
-        const hasExplicitTarget = Boolean(
-          cleanText(groupMessage.targetCloudAgentId)
-          || cleanText(groupMessage.targetCloudAgentOwnerAccountId),
-        );
-        if (
-          hasExplicitTarget
-            ? !targetsOwnerById
-            : !cloudMessageMentionsContactAgent(groupRequestMessage, contact)
-        ) {
-          continue;
-        }
-        const alreadyTerminal = terminalGroupResponseKeys.has(
-          `${groupEnvelope.groupId}\u0000${ownerAccountId}`
-          + `\u0000${groupMessage.id}`,
-        );
-        if (alreadyTerminal) continue;
-        claims.push({
-          requestMessageId: groupMessage.id,
-          sessionId: groupEnvelope.groupId,
-          ownerAccountId,
-          requesterAccountId: account.accountId,
-          prompt: cloudGroupFallbackRunPromptForMessage({
-            groupRows: index.groupRows,
-            groupId: groupEnvelope.groupId,
-            requestMessageId: groupMessage.id,
-            requestCreatedAtMs: groupMessage.createdAtMs,
-            requestText: groupMessage.text,
-            ownerAccountId,
-          }),
-          idempotencyKey:
-            `cloud-agent-fallback-group:${groupEnvelope.groupId}`
-            + `:${groupMessage.id}:${ownerAccountId}`,
-        });
-        continue;
-      }
       if (
         groupEnvelope
         || parseCloudAgentResponse(message.body)

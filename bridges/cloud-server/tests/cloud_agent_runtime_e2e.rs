@@ -407,3 +407,5 @@ mod subsessions;
 
 #[path = "cloud_agent_runtime_e2e/calendar.rs"]
 mod calendar;
+#[path = "cloud_agent_runtime_e2e/group_target_admission.rs"]
+mod group_target_admission;
