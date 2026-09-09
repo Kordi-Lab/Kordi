@@ -28,6 +28,7 @@ export function WorkspaceChatLists({
   if (model.chatChannel === 'contact') {
     return (
       <VirtualChatList
+        groupChannels
         rows={model.contactSidebarRows}
         activeSessionId={model.activeSidebarRowSessionId}
         scrollClassName="app-workspace-session-scroll min-h-0 flex-1"

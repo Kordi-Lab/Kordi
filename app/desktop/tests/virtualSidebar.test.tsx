@@ -1,100 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { JSDOM } from 'jsdom';
 import React, { act, useMemo, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import type { ChatSidebarRow } from '../src/pages/sidebar/VirtualChatList';
+import { installDom, flush } from './support/virtualSidebarHarness';
 import { estimatedChatSidebarRowSize } from '../src/pages/sidebar/chatSidebarRows';
 
 let VirtualChatList: typeof import('../src/pages/sidebar/VirtualChatList').VirtualChatList;
 let buildChatSidebarRows: typeof import('../src/pages/sidebar/VirtualChatList').buildChatSidebarRows;
 let root: Root | null = null;
-
-function installDom() {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
-  const target = globalThis as typeof globalThis & Record<string, unknown>;
-  target.window = dom.window;
-  target.document = dom.window.document;
-  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.window.navigator });
-  target.HTMLElement = dom.window.HTMLElement;
-  target.Element = dom.window.Element;
-  target.Node = dom.window.Node;
-  target.Event = dom.window.Event;
-  target.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
-  target.IS_REACT_ACT_ENVIRONMENT = true;
-  target.requestAnimationFrame = (callback: FrameRequestCallback) => setTimeout(() => callback(Date.now()), 0);
-  target.cancelAnimationFrame = (id: number) => clearTimeout(id);
-
-  Object.defineProperties(dom.window.HTMLElement.prototype, {
-    clientHeight: {
-      configurable: true,
-      get(this: HTMLElement) {
-        return Number.parseFloat(this.style.height) || 0;
-      },
-    },
-    clientWidth: { configurable: true, get: () => 320 },
-    offsetHeight: {
-      configurable: true,
-      get(this: HTMLElement) {
-        return Number.parseFloat(this.dataset.testRowHeight ?? '')
-          || Number.parseFloat(this.style.height)
-          || 48;
-      },
-    },
-    offsetWidth: { configurable: true, get: () => 320 },
-    scrollHeight: {
-      configurable: true,
-      get(this: HTMLElement) {
-        const size = this.querySelector<HTMLElement>('[data-virtual-chat-list-size]');
-        return Number.parseFloat(size?.style.height ?? '') || this.clientHeight;
-      },
-    },
-  });
-
-  dom.window.HTMLElement.prototype.scrollTo = function scrollTo(options?: ScrollToOptions | number, y?: number) {
-    this.scrollTop = typeof options === 'number'
-      ? (typeof y === 'number' ? y : options)
-      : Number(options?.top ?? this.scrollTop);
-    this.dispatchEvent(new dom.window.Event('scroll'));
-  };
-
-  class DeterministicResizeObserver {
-    readonly callback: ResizeObserverCallback;
-    readonly observed = new Set<Element>();
-
-    constructor(callback: ResizeObserverCallback) {
-      this.callback = callback;
-    }
-
-    observe(element: Element) {
-      this.observed.add(element);
-      queueMicrotask(() => {
-        if (!this.observed.has(element) || !element.isConnected) return;
-        const measured = element as HTMLElement;
-        this.callback([{
-          target: element,
-          borderBoxSize: [{ blockSize: measured.offsetHeight, inlineSize: measured.offsetWidth }],
-        } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-      });
-    }
-
-    unobserve(element: Element) { this.observed.delete(element); }
-
-    disconnect() { this.observed.clear(); }
-  }
-
-  target.ResizeObserver = DeterministicResizeObserver;
-  (dom.window as unknown as { ResizeObserver: typeof ResizeObserver }).ResizeObserver = DeterministicResizeObserver as unknown as typeof ResizeObserver;
-}
-
-async function flush() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
 
 test.before(async () => {
   installDom();

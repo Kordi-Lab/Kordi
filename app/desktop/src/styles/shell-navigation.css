@@ -314,8 +314,28 @@
   right: 0.25rem;
 }
 
+.app-workspace-session-scroll {
+  --app-channel-disclosure-duration: 200ms;
+  --app-channel-disclosure-ease: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
 .app-participant-space-disclosure-icon {
-  transition: transform var(--app-motion-fast) var(--app-motion-ease);
+  transition: transform var(--app-channel-disclosure-duration, 200ms) var(--app-channel-disclosure-ease, ease-out);
+}
+
+.app-participant-channel-reveal {
+  overflow: hidden;
+  overflow-anchor: none;
+  transition: height var(--app-channel-disclosure-duration) var(--app-channel-disclosure-ease);
+}
+
+[data-channel-keyboard-motion] .app-participant-channel-reveal,
+[data-channel-keyboard-motion] .app-participant-space-disclosure-icon {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-participant-channel-reveal { transition: none; }
 }
 
 .app-participant-space-menu-action {

@@ -178,6 +178,10 @@ function ParticipantSpaceRow({
     ? attachmentPreviewUrl(previewAttachment.attachment)
     : null;
   const selectPrimarySession = () => {
+    if (!isDirectHuman && isExpanded) {
+      model.setParticipantSpaceExpanded(space.id, false);
+      return;
+    }
     const primarySession = space.sessions[0];
     if (!primarySession) return;
     if (!isDirectHuman) model.setParticipantSpaceExpanded(space.id, true);
