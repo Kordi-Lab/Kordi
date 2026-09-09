@@ -64,6 +64,7 @@
 		639C6A91B6609A01103013FB /* CloudMessageStateProjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86F519E3E934E7F9675DA3B7 /* CloudMessageStateProjector.swift */; };
 		66218B84FEF69BF454A03DFD /* KordiNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA78321DA07764D220886E90 /* KordiNotificationCoordinator.swift */; };
 		688B8035C36DDCB0F8505288 /* AttachmentTransferTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21B553E883C637AF55134AE /* AttachmentTransferTests.swift */; };
+		6A5F299DCC6DA4EFD6082072 /* MessageDeletionParticles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A13A4DE8F94466641E566F8 /* MessageDeletionParticles.swift */; };
 		6F2D0803E1F21DA091A51FF8 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12ADFCB554A69C285C7F753 /* ComposerView.swift */; };
 		715CD4AE535A1B1B2B6D4973 /* CloudWireCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D60F97D3355040D5CEBF231 /* CloudWireCache.swift */; };
 		735940ACD507FDA270A98C8A /* SignupAvatarRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8174EC8BFB7A84E06048DB /* SignupAvatarRenderer.swift */; };
@@ -115,6 +116,7 @@
 		C6F07352981BFA43F316E7AA /* LocalMessageStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16C36C042F23DA97ABD30265 /* LocalMessageStoreTests.swift */; };
 		C70D585973E462F22DE1259A /* AgentSessionPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9191C934D4CD680DDA85704F /* AgentSessionPresentation.swift */; };
 		C8BD24AA4D691A02181E4FB4 /* CloudMessageCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23CAA0002D51BCCCF6B07B66 /* CloudMessageCodecTests.swift */; };
+		CA7AAFD93DE8D988CBFCDD2E /* MessageDeletionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */; };
 		CCB2300E90B26B2402BA8933 /* MainNavigationDestinations.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C7A5D910D9A8B4D8343F6 /* MainNavigationDestinations.swift */; };
 		CE3B28D7B1662C11FCB93086 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4021DE92BF82560F7905E214 /* ConversationView.swift */; };
 		D04921479041D102A8EFB537 /* SharedEmojiAnimationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 030EF9AB2B49807064976F35 /* SharedEmojiAnimationView.swift */; };
@@ -167,6 +169,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = FEC52B16CB2A21DB78546D16;
 			remoteInfo = KordiShareExtension;
+		};
+		CBC988BD2B36301970316512 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2B713D82C9E5176BF299CFD8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D5F4FA76E42E729EF0631448;
+			remoteInfo = Kordi;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -265,9 +274,11 @@
 		935EFE99E0807E1CF8BE8FA7 /* ComposerMentionMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMentionMenuTests.swift; sourceTree = "<group>"; };
 		947D36AE16CB8FC9349B6169 /* EmojiAnimationDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiAnimationDiskCache.swift; sourceTree = "<group>"; };
 		958064210641FA020E27EF19 /* ChatHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatHomeView.swift; sourceTree = "<group>"; };
+		95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDeletionUITests.swift; sourceTree = "<group>"; };
 		95CE270CEA87A8CE6D97F559 /* GroupSessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupSessionListView.swift; sourceTree = "<group>"; };
 		96042CF63F22D2ED8FFE8C1E /* DigestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestView.swift; sourceTree = "<group>"; };
 		984CB21DF1BA4C396217B6BC /* MainNavigationHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainNavigationHost.swift; sourceTree = "<group>"; };
+		9A13A4DE8F94466641E566F8 /* MessageDeletionParticles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDeletionParticles.swift; sourceTree = "<group>"; };
 		9D60F97D3355040D5CEBF231 /* CloudWireCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudWireCache.swift; sourceTree = "<group>"; };
 		9DCA28263C9542B2585C6820 /* ConversationReadPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationReadPresentationTests.swift; sourceTree = "<group>"; };
 		A020F6E80156312C56FA7D0F /* ConversationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRow.swift; sourceTree = "<group>"; };
@@ -292,6 +303,7 @@
 		C0216215122D9CFCEADED62A /* DigestImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestImportView.swift; sourceTree = "<group>"; };
 		C0A87BEB6341F1E394022C91 /* VoiceMessageRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageRecorder.swift; sourceTree = "<group>"; };
 		C2C10B9D09B7992549A6CE35 /* ExpressiveMediaPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpressiveMediaPicker.swift; sourceTree = "<group>"; };
+		C6AF7C0755E63E50264115EE /* KordiDeletionUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KordiDeletionUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C8934C41559CE560F7F8A6E4 /* ConversationOutgoingAvatars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationOutgoingAvatars.swift; sourceTree = "<group>"; };
 		C895B1E21D180A3B8DAC028C /* CloudPresencePublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudPresencePublisher.swift; sourceTree = "<group>"; };
 		C89A8FB63D5B1DFD7576809C /* MarkdownMessageContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMessageContent.swift; sourceTree = "<group>"; };
@@ -450,6 +462,7 @@
 				B05863F065BA138C9337DF7F /* MediaPreviewView.swift */,
 				DF5E40C4B38433BB725BE9EB /* MessageActionSheets.swift */,
 				5F7961C162F4B02B850937D4 /* MessageBubble.swift */,
+				9A13A4DE8F94466641E566F8 /* MessageDeletionParticles.swift */,
 				D362AF4BAC14A082A9A6A849 /* MessageLinkPreview.swift */,
 				AFC9BC36305D732953A99687 /* PhotoImageEditing.swift */,
 				F6A1B174CA85A5F4F5E0AC15 /* PhotoImageEditor.swift */,
@@ -460,6 +473,14 @@
 				E5E0E98754E4D3E74B787C6A /* VoiceMessageView.swift */,
 			);
 			path = Conversation;
+			sourceTree = "<group>";
+		};
+		542B5E1E83E1BD88FFFB837C /* KordiDeletionUITests */ = {
+			isa = PBXGroup;
+			children = (
+				95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */,
+			);
+			path = KordiDeletionUITests;
 			sourceTree = "<group>";
 		};
 		54C3759508995D1DC7BC4B9D /* Supporting */ = {
@@ -517,6 +538,7 @@
 			isa = PBXGroup;
 			children = (
 				C2C92D12ECE57C3C9CF3F00F /* Kordi */,
+				542B5E1E83E1BD88FFFB837C /* KordiDeletionUITests */,
 				8B5EA6D1AD264599870C0BEF /* KordiKeyboardUITests */,
 				1BFF2E6850CAEDE7718C890D /* KordiShareExtension */,
 				D259025D837BD67D0E7B9B7E /* KordiTests */,
@@ -625,6 +647,7 @@
 			isa = PBXGroup;
 			children = (
 				E89F1206EB556B444390594D /* Kordi.app */,
+				C6AF7C0755E63E50264115EE /* KordiDeletionUITests.xctest */,
 				DEC89F60CD61E0F5DC5C94D9 /* KordiKeyboardUITests.xctest */,
 				CF2ED6EF5EAC14BB658712DE /* KordiShareExtension.appex */,
 				758049F3F18473348374B2D9 /* KordiTests.xctest */,
@@ -711,6 +734,24 @@
 			productReference = 758049F3F18473348374B2D9 /* KordiTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		61A350220BDFF31B94A7D428 /* KordiDeletionUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3AEE0AFDF7CA287D99348272 /* Build configuration list for PBXNativeTarget "KordiDeletionUITests" */;
+			buildPhases = (
+				806BE250CF7DF7FC366A7641 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5E7AA0BF57D1770455700B67 /* PBXTargetDependency */,
+			);
+			name = KordiDeletionUITests;
+			packageProductDependencies = (
+			);
+			productName = KordiDeletionUITests;
+			productReference = C6AF7C0755E63E50264115EE /* KordiDeletionUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		79376369001A0366253E57BD /* KordiKeyboardUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 377E3428D6FA8EFFD8058437 /* Build configuration list for PBXNativeTarget "KordiKeyboardUITests" */;
@@ -780,6 +821,10 @@
 					31BA3E20115AC90B477CB0A8 = {
 						ProvisioningStyle = Automatic;
 					};
+					61A350220BDFF31B94A7D428 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = D5F4FA76E42E729EF0631448;
+					};
 					79376369001A0366253E57BD = {
 						ProvisioningStyle = Automatic;
 						TestTargetID = D5F4FA76E42E729EF0631448;
@@ -812,6 +857,7 @@
 				D5F4FA76E42E729EF0631448 /* Kordi */,
 				FEC52B16CB2A21DB78546D16 /* KordiShareExtension */,
 				31BA3E20115AC90B477CB0A8 /* KordiTests */,
+				61A350220BDFF31B94A7D428 /* KordiDeletionUITests */,
 				79376369001A0366253E57BD /* KordiKeyboardUITests */,
 			);
 		};
@@ -864,6 +910,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				88C1FE174B3F8BD66EB97D76 /* KeyboardBehaviorUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		806BE250CF7DF7FC366A7641 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CA7AAFD93DE8D988CBFCDD2E /* MessageDeletionUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -995,6 +1049,7 @@
 				288EF6D4D32F00F41E0754A5 /* MediaPreviewView.swift in Sources */,
 				25A57BAD54F45B4716B3079D /* MessageActionSheets.swift in Sources */,
 				9DA17B8588343C6733C7716B /* MessageBubble.swift in Sources */,
+				6A5F299DCC6DA4EFD6082072 /* MessageDeletionParticles.swift in Sources */,
 				801B1286BE27D9D500B36DE9 /* MessageLinkPreview.swift in Sources */,
 				A4C1F2E013C0B39D0DF3E875 /* MessageSyncStatusView.swift in Sources */,
 				9EBDED4D2D65304EE4A7A1C0 /* NewChatSheet.swift in Sources */,
@@ -1021,6 +1076,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		5E7AA0BF57D1770455700B67 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D5F4FA76E42E729EF0631448 /* Kordi */;
+			targetProxy = CBC988BD2B36301970316512 /* PBXContainerItemProxy */;
+		};
 		6CE8B51EC31C822E921BCAF5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = FEC52B16CB2A21DB78546D16 /* KordiShareExtension */;
@@ -1090,6 +1150,23 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		24DC4317EAF1C5E0206A88C1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.deletion-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
 			};
 			name = Release;
 		};
@@ -1246,6 +1323,23 @@
 			};
 			name = Debug;
 		};
+		5062E4AFC68F72FF962C4E16 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.deletion-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Debug;
+		};
 		63E45C4E1953883E8E6E47F4 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1290,6 +1384,23 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
+		};
+		75C75DEED609D3F38CDA577D /* Beta */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.deletion-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Beta;
 		};
 		9A4F699B1401FE13437B8D67 /* Beta */ = {
 			isa = XCBuildConfiguration;
@@ -1511,6 +1622,16 @@
 				ED4C52353CCB53F127082CF9 /* Beta */,
 				63E45C4E1953883E8E6E47F4 /* Debug */,
 				CC0A27FEA1BC4BF3BBC2D2C8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3AEE0AFDF7CA287D99348272 /* Build configuration list for PBXNativeTarget "KordiDeletionUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				75C75DEED609D3F38CDA577D /* Beta */,
+				5062E4AFC68F72FF962C4E16 /* Debug */,
+				24DC4317EAF1C5E0206A88C1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

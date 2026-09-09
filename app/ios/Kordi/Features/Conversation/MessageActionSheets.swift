@@ -720,6 +720,7 @@ struct MessageActionOverlay: View {
         .ignoresSafeArea()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Actions for message from \(message.authorName)")
+        .accessibilityIdentifier("message-actions-\(message.id)")
         .onAppear {
             guard ProcessInfo.processInfo.arguments.contains("--preview-expanded-reactions"),
                   !didSchedulePreviewExpansion else {
@@ -1027,13 +1028,22 @@ private struct MessageActionReadReceiptRow: View {
 
 struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
     let passthroughFrame: CGRect?
+    private let allowsInteraction: Bool
+    private let animatesRemoval: Bool
+    private let onDismissComplete: () -> Void
     private let content: (CGRect) -> Content
 
     init(
         passthroughFrame: CGRect?,
+        allowsInteraction: Bool = true,
+        animatesRemoval: Bool = true,
+        onDismissComplete: @escaping () -> Void = {},
         @ViewBuilder content: @escaping (CGRect) -> Content
     ) {
         self.passthroughFrame = passthroughFrame
+        self.allowsInteraction = allowsInteraction
+        self.animatesRemoval = animatesRemoval
+        self.onDismissComplete = onDismissComplete
         self.content = content
     }
 
@@ -1042,7 +1052,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+        let view = WindowOverlayAnchorView(frame: .zero)
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
         return view
@@ -1052,6 +1062,9 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         let passthroughFrame = self.passthroughFrame
         let content = self.content
         let coordinator = context.coordinator
+        coordinator.onDismissComplete = onDismissComplete
+        coordinator.allowsInteraction = allowsInteraction
+        coordinator.animatesRemoval = animatesRemoval
         let update = { [weak uiView, weak coordinator] in
             guard let uiView, let coordinator else { return }
             coordinator.install(
@@ -1060,15 +1073,16 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
                 content: content
             )
         }
-        if uiView.window == nil {
-            DispatchQueue.main.async(execute: update)
-        } else {
-            update()
-        }
+        (uiView as? WindowOverlayAnchorView)?.onWindowAttached = update
+        if uiView.window != nil { update() }
     }
 
     static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
-        coordinator.remove(animated: !UIAccessibility.isReduceMotionEnabled)
+        (uiView as? WindowOverlayAnchorView)?.onWindowAttached = nil
+        coordinator.remove(
+            animated: coordinator.animatesRemoval && !UIAccessibility.isReduceMotionEnabled,
+            completion: coordinator.onDismissComplete
+        )
     }
 
     @MainActor
@@ -1076,6 +1090,9 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         private let container = MessageActionWindowOverlayView()
         private let hostingController: UIHostingController<Content>
         private weak var window: UIWindow?
+        var onDismissComplete: () -> Void = {}
+        var allowsInteraction = true
+        var animatesRemoval = true
 
         init(rootView: Content) {
             hostingController = UIHostingController(rootView: rootView)
@@ -1091,6 +1108,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
             let usableFrame = anchor.convert(anchor.bounds, to: window)
             hostingController.rootView = content(usableFrame)
             container.passthroughFrame = passthroughFrame
+            container.isUserInteractionEnabled = allowsInteraction
 
             if container.superview === window {
                 container.frame = window.bounds
@@ -1102,7 +1120,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
             self.window = window
             container.frame = window.bounds
             container.alpha = 1
-            container.isUserInteractionEnabled = true
+            container.isUserInteractionEnabled = allowsInteraction
             container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             hostingController.view.frame = container.bounds
             hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -1110,9 +1128,10 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
             window.addSubview(container)
         }
 
-        func remove(animated: Bool) {
+        func remove(animated: Bool, completion: @escaping () -> Void = {}) {
             guard animated, container.superview != nil else {
                 detach()
+                completion()
                 return
             }
             container.isUserInteractionEnabled = false
@@ -1124,6 +1143,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
                 self.container.alpha = 0
             } completion: { _ in
                 self.detach()
+                completion()
             }
         }
 
@@ -1132,6 +1152,15 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
             container.removeFromSuperview()
             window = nil
         }
+    }
+}
+
+private final class WindowOverlayAnchorView: UIView {
+    var onWindowAttached: (() -> Void)?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { onWindowAttached?() }
     }
 }
 
