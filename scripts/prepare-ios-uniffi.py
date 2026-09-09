@@ -19,6 +19,8 @@ SOURCE_COMMIT = "598d0e3bd09b382db12e0ea0d117238763737c76"
 PROTOCOL_COMMIT = "f734574de339d94dd83f70fbe1723ba1cdc61c2f"
 PACKAGE_COMMIT = "7c161254ce7cd55debc48023f69a917076b12a26"
 BINARY_CHECKSUM = "0d3f2ce159a224c728f8b131068d53bbf9b13d968cda0edc68a6a2290f2651ed"
+# SHA-256 of the device C header from the checksum-pinned upstream archive.
+HEADER_CHECKSUM = "c77c745d4468518da6fd4caafc886574fb3d4faf4324bb454a4ccc5fff70bcba"
 NAME = "RustLiveKitUniFFI"
 LOCAL_TARGET = "KordiSourceBuilt/RustLiveKitUniFFI.xcframework"
 URL = "https://github.com/livekit/livekit-uniffi-xcframework/releases/download/0.0.6/RustLiveKitUniFFI.xcframework.zip"
@@ -129,8 +131,9 @@ def prepare(args):
          "--out-dir", str(generated)], cwd=source, env=host_env)
     compare_bindings((package / "Sources/LiveKitUniFFI/livekit_uniffi.swift").read_text(),
                      (generated / "livekit_uniffi.swift").read_text())
-    stock = packages / f"artifacts/livekit-uniffi-xcframework/{NAME}/{NAME}.xcframework/ios-arm64/{NAME}.framework"
-    require((stock / f"Headers/{NAME}.h").read_bytes() == (generated / f"{NAME}.h").read_bytes(),
+    # Xcode may prune the unused remote artifact after selecting the local target.
+    # Pin its qualified C header digest instead of depending on that cache entry.
+    require(hashlib.sha256((generated / f"{NAME}.h").read_bytes()).hexdigest() == HEADER_CHECKSUM,
             "C interface mismatch")
     framework = build / f"framework/{NAME}.framework"
     framework.mkdir(parents=True, exist_ok=True)
