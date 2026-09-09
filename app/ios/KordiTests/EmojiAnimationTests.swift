@@ -77,7 +77,7 @@ struct EmojiAnimationTests {
 
     @Test func repeatedEmojiSharePreparationAndFirstFrame() async throws {
         let source = EmojiFixtureSource(data: try fixture(), blocked: true)
-        let repository = EmojiAnimationRepository(disk: .init(directory: nil)) { _ in await source.load() }
+        let repository = EmojiAnimationRepository(disk: .init(directory: nil), sourceLoader: { _ in await source.load() })
         let first = await repository.phases(for: request())
         let second = await repository.phases(for: request())
         await source.waitForCalls(1)
@@ -102,7 +102,7 @@ struct EmojiAnimationTests {
 
     @Test func cancellingOneCopyDoesNotCancelAnotherCopy() async throws {
         let source = EmojiFixtureSource(data: try fixture(), blocked: true)
-        let repository = EmojiAnimationRepository(disk: .init(directory: nil)) { _ in await source.load() }
+        let repository = EmojiAnimationRepository(disk: .init(directory: nil), sourceLoader: { _ in await source.load() })
         let first = await repository.phases(for: request())
         let second = await repository.phases(for: request())
         let cancelledConsumer = Task { for await _ in first {} }
@@ -115,11 +115,66 @@ struct EmojiAnimationTests {
         #expect(await source.calls == 1)
     }
 
+    @Test(.timeLimit(.minutes(1)))
+    func lateSubscriberReceivesReadyFramesDuringPersistenceAfterMemoryEviction() async throws {
+        let source = EmojiFixtureSource(data: try fixture())
+        let writer = EmojiFixtureSource(data: Data(), blocked: true)
+        let repository = EmojiAnimationRepository(
+            disk: .init(directory: nil),
+            cacheWriter: { _, _, _ in _ = await writer.load() },
+            sourceLoader: { _ in await source.load() }
+        )
+        let first = await repository.phases(for: request())
+        await writer.waitForCalls(1)
+        await repository.discardMemoryCache()
+        let second = await repository.phases(for: request())
+        var iterator = second.makeAsyncIterator()
+        let phase = await iterator.next()
+        await writer.release()
+        guard case .ready(let replayed) = try #require(phase) else {
+            Issue.record("A late subscriber must receive the prepared frames without another fetch.")
+            return
+        }
+        #expect(try await ready(first) === replayed)
+        #expect(await source.calls == 1)
+    }
+
+    @Test func reappearingPresentationRetainsFramesAndRejectsStaleResults() throws {
+        let data = try fixture()
+        let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+        let frame = try #require(AnimatedImageDecoder.frame(
+            from: source, index: 0, maximumPixelSize: 24
+        ))
+        let animation = PreparedEmojiAnimation(frames: [frame], durations: [0.1])
+        var presentation = EmojiAnimationPresentation()
+        let firstLoad = presentation.begin(key: "joy", active: nil)
+        #expect(firstLoad)
+        presentation.apply(.firstFrame(frame), key: "joy")
+        let finishPreparation = presentation.begin(key: "joy", active: nil)
+        #expect(finishPreparation)
+        #expect(presentation.firstFrame === frame)
+        presentation.apply(.ready(animation), key: "joy")
+        let warmLoad = presentation.begin(key: "joy", active: nil)
+        #expect(!warmLoad)
+        #expect(presentation.prepared === animation)
+
+        let replacementLoad = presentation.begin(key: "wink", active: nil)
+        #expect(replacementLoad)
+        #expect(presentation.prepared == nil)
+        #expect(presentation.firstFrame == nil)
+        presentation.apply(.ready(animation), key: "joy")
+        #expect(presentation.prepared == nil)
+        let activeLoad = presentation.begin(key: "wink", active: animation)
+        #expect(!activeLoad)
+        #expect(presentation.prepared === animation)
+    }
+
     @Test func preparationConcurrencyIsBounded() async throws {
         let source = EmojiFixtureSource(data: try fixture(), blocked: true)
-        let repository = EmojiAnimationRepository(disk: .init(directory: nil), concurrency: 2) {
-            _ in await source.load()
-        }
+        let repository = EmojiAnimationRepository(
+            disk: .init(directory: nil), concurrency: 2,
+            sourceLoader: { _ in await source.load() }
+        )
         let streams = await [
             repository.phases(for: request("one")),
             repository.phases(for: request("two")),
@@ -137,9 +192,9 @@ struct EmojiAnimationTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let disk = EmojiAnimationDiskCache(directory: directory)
         let source = EmojiFixtureSource(data: try fixture())
-        let original = EmojiAnimationRepository(disk: disk) { _ in await source.load() }
+        let original = EmojiAnimationRepository(disk: disk, sourceLoader: { _ in await source.load() })
         let prepared = try await ready(await original.phases(for: request()))
-        let reopened = EmojiAnimationRepository(disk: disk) { _ in throw URLError(.notConnectedToInternet) }
+        let reopened = EmojiAnimationRepository(disk: disk, sourceLoader: { _ in throw URLError(.notConnectedToInternet) })
         let restored = try await ready(await reopened.phases(for: request()))
         #expect(restored.frames.count == prepared.frames.count)
         #expect(restored.durations == prepared.durations)
@@ -152,11 +207,11 @@ struct EmojiAnimationTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let disk = EmojiAnimationDiskCache(directory: directory)
         let source = EmojiFixtureSource(data: try fixture())
-        let repository = EmojiAnimationRepository(disk: disk) { _ in await source.load() }
+        let repository = EmojiAnimationRepository(disk: disk, sourceLoader: { _ in await source.load() })
         _ = try await ready(await repository.phases(for: request()))
         let manifest = directory.appendingPathComponent(request().cacheKey).appendingPathComponent("frames.plist")
         try Data("invalid".utf8).write(to: manifest)
-        let reopened = EmojiAnimationRepository(disk: disk) { _ in await source.load() }
+        let reopened = EmojiAnimationRepository(disk: disk, sourceLoader: { _ in await source.load() })
         #expect(try await ready(await reopened.phases(for: request())).frames.count == 3)
         #expect(await source.calls == 2)
     }
@@ -181,7 +236,7 @@ struct EmojiAnimationTests {
             directory: directory, maximumBytes: 64 * 1_024, maximumEntries: 1
         )
         let source = EmojiFixtureSource(data: try fixture())
-        let repository = EmojiAnimationRepository(disk: disk) { _ in await source.load() }
+        let repository = EmojiAnimationRepository(disk: disk, sourceLoader: { _ in await source.load() })
         _ = try await ready(await repository.phases(for: request("older")))
         _ = try await ready(await repository.phases(for: request("newer")))
         #expect(!FileManager.default.fileExists(
@@ -190,15 +245,16 @@ struct EmojiAnimationTests {
         #expect(FileManager.default.fileExists(
             atPath: directory.appendingPathComponent(request("newer").cacheKey).path
         ))
-        let reopened = EmojiAnimationRepository(disk: disk) { _ in await source.load() }
+        let reopened = EmojiAnimationRepository(disk: disk, sourceLoader: { _ in await source.load() })
         _ = try await ready(await reopened.phases(for: request("older")))
         #expect(await source.calls == 3)
     }
 
     @Test func failedLoadFinishesWithoutRemovingTheCallerFallback() async {
-        let repository = EmojiAnimationRepository(disk: .init(directory: nil)) { _ in
-            throw URLError(.notConnectedToInternet)
-        }
+        let repository = EmojiAnimationRepository(
+            disk: .init(directory: nil),
+            sourceLoader: { _ in throw URLError(.notConnectedToInternet) }
+        )
         var count = 0
         for await _ in await repository.phases(for: request()) { count += 1 }
         #expect(count == 0)

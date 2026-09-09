@@ -1,23 +1,50 @@
 import SwiftUI
 import UIKit
 
+struct EmojiAnimationPresentation {
+    private(set) var key: String?
+    private(set) var firstFrame: UIImage?
+    private(set) var prepared: PreparedEmojiAnimation?
+
+    mutating func begin(key: String, active: PreparedEmojiAnimation?) -> Bool {
+        if self.key != key {
+            self.key = key
+            firstFrame = nil
+            prepared = nil
+        }
+        if let active {
+            prepared = active
+            firstFrame = active.frames[0]
+        }
+        return prepared == nil
+    }
+
+    mutating func apply(_ phase: EmojiAnimationPhase, key: String) {
+        guard self.key == key else { return }
+        switch phase {
+        case .firstFrame(let frame): firstFrame = frame
+        case .ready(let animation):
+            prepared = animation
+            firstFrame = animation.frames[0]
+        }
+    }
+}
+
 struct SharedEmojiAnimationView: View {
     let request: EmojiAnimationRequest
     let fallback: String
     let size: CGFloat
     var initialImage: UIImage?
-    @State private var loadedKey: String?
-    @State private var firstFrame: UIImage?
-    @State private var prepared: PreparedEmojiAnimation?
+    @State private var presentation = EmojiAnimationPresentation()
     @State private var visible = true
 
     var body: some View {
         let active = EmojiPlaybackCoordinator.shared.animation(for: request.cacheKey)
-        let animation = active ?? (loadedKey == request.cacheKey ? prepared : nil)
+        let animation = active ?? (presentation.key == request.cacheKey ? presentation.prepared : nil)
         ZStack {
             if let animation {
                 PreparedEmojiImage(animation: animation, key: request.cacheKey, playing: visible)
-            } else if loadedKey == request.cacheKey, let firstFrame {
+            } else if presentation.key == request.cacheKey, let firstFrame = presentation.firstFrame {
                 Image(uiImage: firstFrame).resizable().scaledToFit()
             } else if let initialImage {
                 Image(uiImage: initialImage).resizable().scaledToFit()
@@ -29,18 +56,11 @@ struct SharedEmojiAnimationView: View {
         .clipped()
         .modifier(EmojiPlaybackVisibility(visible: $visible))
         .task(id: request.cacheKey) {
-            loadedKey = request.cacheKey
-            prepared = active
-            firstFrame = active?.frames.first
-            guard active == nil else { return }
+            guard !Task.isCancelled,
+                  presentation.begin(key: request.cacheKey, active: active) else { return }
             for await phase in await EmojiAnimationRepository.shared.phases(for: request) {
                 guard !Task.isCancelled else { return }
-                switch phase {
-                case .firstFrame(let frame):
-                    firstFrame = frame
-                case .ready(let animation):
-                    prepared = animation
-                }
+                presentation.apply(phase, key: request.cacheKey)
             }
         }
     }
@@ -176,6 +196,10 @@ final class EmojiPlaybackCoordinator: NSObject {
             self, selector: #selector(applicationWillResignActive),
             name: UIApplication.willResignActiveNotification, object: nil
         )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(discardMemoryCache),
+            name: UIApplication.didReceiveMemoryWarningNotification, object: nil
+        )
     }
 
     deinit {
@@ -208,6 +232,10 @@ final class EmojiPlaybackCoordinator: NSObject {
     @objc private func applicationWillResignActive() {
         applicationActive = false
         updateClock()
+    }
+
+    @objc private func discardMemoryCache() {
+        Task { await EmojiAnimationRepository.shared.discardMemoryCache() }
     }
 
     private func updateClock() {

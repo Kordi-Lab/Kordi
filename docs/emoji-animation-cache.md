@@ -5,6 +5,8 @@ includes the emoji identity, asset revision, target pixel size, animation mode,
 and source locations. Multiple views subscribe to one job for that key.
 Cancelling one subscriber does not cancel other subscribers; the final
 subscriber cancels preparation when it leaves.
+Jobs replay their latest phase to late subscribers, including while persistence
+is finishing after a memory-cache eviction.
 
 The repository publishes a first frame before preparing the complete animation.
 Noto displays its Unicode emoji immediately while a first frame is unavailable.
@@ -15,6 +17,8 @@ Preparation runs away from the main actor, with at most four jobs, including
 cache writes, active at a time. The decoded animation cache has a 32 MB budget
 and the first-frame cache a 4 MB budget. These are cache budgets, not a limit on frames
 retained by currently visible views.
+Disk writes and pruning are serialized. Memory warnings discard repository
+caches while visible playback entries retain the frames they need.
 
 The app's cache directory contains prepared PNG frames and their individual
 durations in versioned binary property lists, plus separate first-frame PNGs.

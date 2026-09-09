@@ -10,6 +10,9 @@ enum EmojiAnimationPhase: Sendable {
 /// Shares preparation, including cancellation, across all copies of an emoji.
 actor EmojiAnimationRepository {
     typealias SourceLoader = @Sendable (EmojiAnimationRequest.Source) async throws -> Data
+    typealias CacheWriter = @Sendable (
+        PreparedEmojiAnimation, EmojiAnimationRequest, EmojiAnimationDiskCache
+    ) async -> Void
     static let shared = EmojiAnimationRepository()
 
     private struct Job {
@@ -17,12 +20,14 @@ actor EmojiAnimationRepository {
         let generation: UUID
         var subscribers: [UUID: AsyncStream<EmojiAnimationPhase>.Continuation]
         var task: Task<Void, Never>?
+        var latestPhase: EmojiAnimationPhase?
     }
 
     private let animations = NSCache<NSString, PreparedEmojiAnimation>()
     private let firstFrames = NSCache<NSString, UIImage>()
     private let disk: EmojiAnimationDiskCache
     private let sourceLoader: SourceLoader
+    private let cacheWriter: CacheWriter
     private let concurrency: Int
     private var jobs: [String: Job] = [:]
     private var pending: [String] = []
@@ -31,6 +36,7 @@ actor EmojiAnimationRepository {
     init(
         disk: EmojiAnimationDiskCache = .standard,
         concurrency: Int = 4,
+        cacheWriter: CacheWriter? = nil,
         sourceLoader: @escaping SourceLoader = { source in
             try await EmojiAnimationRepository.loadSource(source)
         }
@@ -38,6 +44,9 @@ actor EmojiAnimationRepository {
         self.disk = disk
         self.concurrency = max(1, concurrency)
         self.sourceLoader = sourceLoader
+        self.cacheWriter = cacheWriter ?? { animation, request, disk in
+            await EmojiAnimationCacheWriter.shared.store(animation, for: request, in: disk)
+        }
         animations.totalCostLimit = 32 * 1_024 * 1_024
         animations.countLimit = 192
         firstFrames.totalCostLimit = 4 * 1_024 * 1_024
@@ -63,6 +72,7 @@ actor EmojiAnimationRepository {
             pending.append(key)
         }
         jobs[key]?.subscribers[subscriber] = continuation
+        if let phase = jobs[key]?.latestPhase { continuation.yield(phase) }
         let generation = jobs[key]!.generation
         continuation.onTermination = { [weak self] termination in
             if case .cancelled = termination {
@@ -71,6 +81,11 @@ actor EmojiAnimationRepository {
         }
         startPendingJobs()
         return stream
+    }
+
+    func discardMemoryCache() {
+        animations.removeAllObjects()
+        firstFrames.removeAllObjects()
     }
 
     private func unsubscribe(key: String, generation: UUID, subscriber: UUID) {
@@ -92,11 +107,12 @@ actor EmojiAnimationRepository {
             let generation = job.generation
             let disk = self.disk
             let loader = sourceLoader
+            let writer = cacheWriter
             let repository = self
             // A bounded, shared job must outlive any one view and perform ImageIO
             // and disk work away from both the main actor and the repository.
             jobs[key]?.task = Task.detached(priority: .userInitiated) {
-                await Self.prepare(request, disk: disk, loader: loader) { phase in
+                await Self.prepare(request, disk: disk, loader: loader, writer: writer) { phase in
                     await repository.publish(phase, request: request, generation: generation)
                 }
                 await repository.finish(key: key, generation: generation)
@@ -110,6 +126,7 @@ actor EmojiAnimationRepository {
         generation: UUID
     ) {
         guard let job = jobs[request.cacheKey], job.generation == generation else { return }
+        jobs[request.cacheKey]?.latestPhase = phase
         switch phase {
         case .firstFrame(let frame):
             rememberFirstFrame(frame, key: request.previewKey)
@@ -138,6 +155,7 @@ actor EmojiAnimationRepository {
         _ request: EmojiAnimationRequest,
         disk: EmojiAnimationDiskCache,
         loader: SourceLoader,
+        writer: CacheWriter,
         publish: @Sendable (EmojiAnimationPhase) async -> Void
     ) async {
         guard (1...512).contains(request.pixelSize), !Task.isCancelled else { return }
@@ -180,7 +198,7 @@ actor EmojiAnimationRepository {
             await publish(.ready(animation))
             // Publish before encoding PNG frames, so persistence never delays
             // the first presentation. The concurrency limit also bounds writers.
-            disk.store(animation, for: request)
+            await writer(animation, request, disk)
             return
         }
     }
@@ -206,5 +224,18 @@ actor EmojiAnimationRepository {
             throw URLError(.badServerResponse)
         }
         return data
+    }
+}
+
+/// Serializes cache mutation and pruning while preparation remains concurrent.
+private actor EmojiAnimationCacheWriter {
+    static let shared = EmojiAnimationCacheWriter()
+
+    func store(
+        _ animation: PreparedEmojiAnimation,
+        for request: EmojiAnimationRequest,
+        in disk: EmojiAnimationDiskCache
+    ) {
+        disk.store(animation, for: request)
     }
 }
