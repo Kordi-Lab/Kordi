@@ -3,8 +3,8 @@ import { Split } from 'lucide-react';
 
 import { shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
-import { collectConversationImageAttachments } from '@/features/chat/attachmentMediaGallery';
-import { transcriptTimeSeparatorLabels } from '@/features/chat/transcriptTimestamps';
+import { collectConversationImageAttachments, shouldPreviewAttachmentInline } from '@/features/chat/attachmentMediaGallery';
+import { createTranscriptTimeSeparatorCache } from '@/features/chat/transcriptTimestamps';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { MessageBubble } from '@/kordi-app/components';
@@ -151,9 +151,10 @@ export function useChatTranscriptViewport({
   }, [onLoadOlderMessages]);
   const handleLoadOlderMessages = useCallback(() => loadOlderMessagesRef.current?.(), []);
   const canLoadOlderMessages = Boolean(onLoadOlderMessages);
+  const timeSeparatorCache = useMemo(() => createTranscriptTimeSeparatorCache(), []);
   const timeSeparators = useMemo(
-    () => transcriptTimeSeparatorLabels(transcriptMessages),
-    [transcriptMessages],
+    () => timeSeparatorCache(transcriptMessages),
+    [timeSeparatorCache, transcriptMessages],
   );
   const imageGallery = useMemo(
     () => collectConversationImageAttachments(transcriptMessages),
@@ -211,7 +212,7 @@ export function useChatTranscriptViewport({
             />
           ) : <MessageBubble
             msg={msg}
-            imageGallery={imageGallery}
+            imageGallery={msg.attachments?.some(shouldPreviewAttachmentInline) ? imageGallery : undefined}
             onOpenSource={onOpenSource}
             onOpenArtifact={onOpenArtifact}
             onOpenAuthSettings={onOpenAuthSettings}

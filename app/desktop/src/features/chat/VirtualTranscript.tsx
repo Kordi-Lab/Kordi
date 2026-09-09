@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -6,6 +7,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
+  type ReactNode,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -43,6 +45,17 @@ import type {
 
 export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
 export type { VirtualTranscriptProps } from './virtualTranscriptTypes';
+
+function TranscriptItemContent<Item>({ item, index, renderItem }: {
+  item: Item;
+  index: number;
+  renderItem: (item: Item, index: number) => ReactNode;
+}) {
+  return renderItem(item, index);
+}
+
+// Geometry and scroll updates move the row shell without rebuilding its content.
+const MemoizedTranscriptItemContent = memo(TranscriptItemContent) as typeof TranscriptItemContent;
 
 export function VirtualTranscript<Item>({
   items,
@@ -581,7 +594,7 @@ export function VirtualTranscript<Item>({
                       : ''
                   }`}
                 >
-                  {renderItem(item, virtualItem.index)}
+                  <MemoizedTranscriptItemContent item={item} index={virtualItem.index} renderItem={renderItem} />
                 </div>
               );
             })}

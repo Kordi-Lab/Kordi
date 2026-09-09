@@ -7,6 +7,7 @@ export type ChatPerformanceSpanName =
   | 'canonical-page-ipc'
   | 'session-click-to-first-message'
   | 'transcript-virtual-render'
+  | 'message-bubble-render'
   | 'sidebar-virtual-render'
   | 'cloud-send-to-optimistic'
   | 'cloud-send-queue-wait'

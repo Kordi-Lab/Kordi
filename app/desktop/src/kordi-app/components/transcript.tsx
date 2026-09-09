@@ -1,3 +1,4 @@
+import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
 import { Button } from '@/components/ui/button';
 import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
 import { messageDeliveryVisual,shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
@@ -20,7 +21,7 @@ import {
   SquareArrowOutUpRight,
   Undo2
 } from 'lucide-react';
-import { memo,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
+import { memo,useLayoutEffect,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
 import type {
   Contact,
   ContactRequest,
@@ -307,6 +308,10 @@ function MessageBubbleView({
   isGroupedWithNext?: boolean;
   densityMode?: TranscriptDensityMode;
 } & MessageSelectionProps) {
+  const renderSpan = beginChatPerformanceSpan('message-bubble-render');
+  useLayoutEffect(() => {
+    finishChatPerformanceSpan(renderSpan, { rowCount: 1 });
+  }, [renderSpan]);
   const [isEditExpanded, setIsEditExpanded] = useState(true);
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
