@@ -153,7 +153,7 @@ export function VirtualChatList({
   }, [renderPerformanceSpan, renderedVirtualRows.length, rows.length]);
   if (groupChannels) {
     return <VirtualParticipantSpaceList blocks={blocks} virtualizer={virtualizer}
-      scrollRef={internalScrollRef} activeSessionId={activeSessionId}
+      scrollRef={internalScrollRef} setScrollElement={setScrollElement} activeSessionId={activeSessionId}
       scrollClassName={scrollClassName} scrollStyle={scrollStyle} dataMode={dataMode}
       renderRow={renderRow} emptyState={emptyState}/>;
   }

@@ -1,6 +1,6 @@
 import {
-  useEffect, useLayoutEffect, useRef, useState,
-  type CSSProperties, type ReactNode, type RefObject,
+  useEffect, useLayoutEffect, useMemo, useRef, useState,
+  type CSSProperties, type ReactNode, type RefObject, type RefCallback,
 } from 'react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -60,11 +60,12 @@ function ParticipantSpaceBlockView({ block, top, scrollTop, viewportHeight, rend
  * the channel content retains its identity, position and opacity.
  */
 export function VirtualParticipantSpaceList({
-  blocks, virtualizer, scrollRef, activeSessionId, scrollClassName, scrollStyle, dataMode, renderRow, emptyState,
+  blocks, virtualizer, scrollRef, setScrollElement, activeSessionId, scrollClassName, scrollStyle, dataMode, renderRow, emptyState,
 }: {
   blocks: ParticipantSpaceBlock[];
   virtualizer: Virtualizer<HTMLDivElement, Element>;
   scrollRef: RefObject<HTMLDivElement | null>;
+  setScrollElement: RefCallback<HTMLDivElement>;
   activeSessionId?: string | null;
   scrollClassName?: string;
   scrollStyle?: CSSProperties;
@@ -75,38 +76,55 @@ export function VirtualParticipantSpaceList({
   const scrolledSession = useRef<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const viewportHeight = virtualizer.scrollRect?.height || 600;
+  const totalSize = virtualizer.getTotalSize();
+  const activeBlockIndex = useMemo(() => blocks.findIndex(block => block.channels.some(
+    row => row.kind === 'session' && row.sessionId === activeSessionId,
+  )), [activeSessionId, blocks]);
+  const activeBlockSize = virtualizer.measurementsCache[activeBlockIndex]?.size;
+  const activeBlockStart = virtualizer.measurementsCache[activeBlockIndex]?.start;
   useLayoutEffect(() => {
     if (!activeSessionId) { scrolledSession.current = null; return; }
     if (scrolledSession.current === activeSessionId) return;
-    const blockIndex = blocks.findIndex(block => block.channels.some(
-      row => row.kind === 'session' && row.sessionId === activeSessionId,
-    ));
-    if (blockIndex < 0) return;
-    scrolledSession.current = activeSessionId;
+    const blockIndex = activeBlockIndex;
+    if (blockIndex < 0) { scrolledSession.current = null; return; }
     const block = blocks[blockIndex];
     const channelIndex = block.channels.findIndex(row => row.kind === 'session' && row.sessionId === activeSessionId);
-    const groupTop = virtualizer.measurementsCache[blockIndex]?.start ?? 0;
-    const channelTop = groupTop + HEADER_HEIGHT + channelIndex * CHANNEL_HEIGHT;
     const viewport = scrollRef.current;
     if (!viewport) return;
+    const groupElement = viewport.querySelector<HTMLElement>(`[data-participant-space-block][data-index="${blockIndex}"]`);
+    if (!groupElement) {
+      virtualizer.scrollToIndex(blockIndex, { align: 'auto' });
+      return;
+    }
+    const clip = groupElement.querySelector<HTMLElement>('.app-participant-channel-reveal');
+    // A newly selected group may still have its collapsed measurement. Keep
+    // the selection pending until the clip and scroll extent can reveal it.
+    if (clip && clip.offsetHeight + 1 < block.channels.length * CHANNEL_HEIGHT) return;
+    const groupTop = virtualizer.measurementsCache[blockIndex]?.start ?? 0;
+    const headerHeight = (groupElement.firstElementChild as HTMLElement | null)?.offsetHeight ?? HEADER_HEIGHT;
+    const channelTop = groupTop + headerHeight + channelIndex * CHANNEL_HEIGHT;
+    if (channelTop + CHANNEL_HEIGHT > totalSize + 1) return;
     if (channelTop < viewport.scrollTop) virtualizer.scrollToOffset(channelTop);
     else if (channelTop + CHANNEL_HEIGHT > viewport.scrollTop + viewportHeight) {
       virtualizer.scrollToOffset(channelTop + CHANNEL_HEIGHT - viewportHeight);
     }
-  }, [activeSessionId, blocks, scrollRef, viewportHeight, virtualizer]);
+    if (channelTop >= viewport.scrollTop - 1 && channelTop + CHANNEL_HEIGHT <= viewport.scrollTop + viewportHeight + 1) {
+      scrolledSession.current = activeSessionId;
+    }
+  }, [activeBlockIndex, activeBlockSize, activeBlockStart, activeSessionId, blocks, scrollRef, scrollTop, totalSize, viewportHeight, virtualizer]);
   const virtualRows = virtualizer.getVirtualItems();
   const visibleBlocks = virtualRows.length ? virtualRows : blocks.slice(0, 12).map((block, index) => ({
     index, key: block.header.key,
     start: blocks.slice(0, index).reduce((height, item) => height + HEADER_HEIGHT + item.channels.length * CHANNEL_HEIGHT, 0),
   }));
   return (
-    <ScrollArea ref={scrollRef} className={scrollClassName} style={scrollStyle}
+    <ScrollArea ref={setScrollElement} className={scrollClassName} style={scrollStyle}
       data-virtual-chat-list="true" data-chat-sidebar-mode={dataMode}
       onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
       onKeyDownCapture={event => { event.currentTarget.dataset.channelKeyboardMotion = 'true'; }}
       onPointerDownCapture={event => { delete event.currentTarget.dataset.channelKeyboardMotion; }}>
       {blocks.length ? (
-        <div className="relative w-full" data-virtual-chat-list-size="true" style={{ height: virtualizer.getTotalSize() }}>
+        <div className="relative w-full" data-virtual-chat-list-size="true" style={{ height: totalSize }}>
           {visibleBlocks.map(item => (
             <div key={item.key} ref={virtualizer.measureElement} data-index={item.index}
               data-participant-space-block="true" className="absolute left-0 top-0 w-full"
