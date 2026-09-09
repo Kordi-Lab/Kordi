@@ -267,6 +267,9 @@ struct ConversationView: View {
     @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
     @State private var messageActionFrame = CGRect.zero
+    @State private var messageActionPreviewFrame = CGRect.zero
+    @State private var messageActionAllowsTextSelection = true
+    @State private var messageActionViewportFrame = CGRect.zero
     @State private var messageActionAttachment: ChatAttachment?
     @State private var selectedMessageText: String?
     @State private var messageActionFeedback = 0
@@ -550,6 +553,7 @@ struct ConversationView: View {
                                                     proxy: proxy
                                                 )
                                             }
+                                            .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
                                         }
                                     }
 
@@ -1230,6 +1234,10 @@ struct ConversationView: View {
                     replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
                     isHighlighted: highlightedMessageID == message.id,
                     isActionPresented: messageActionMessage?.id == message.id,
+                    actionPlacement: messageActionMessage?.id == message.id && !messageActionPreviewFrame.isEmpty
+                        ? MessageActionBubblePlacement(sourceFrame: messageActionFrame, previewFrame: messageActionPreviewFrame)
+                        : nil,
+                    actionViewportFrame: viewportFrame,
                     isPinned: pinnedMessageIDs.contains(message.id),
                     selectionMode: !selectedMessageIDs.isEmpty,
                     isSelected: selectedMessageIDs.contains(message.id),
@@ -1269,7 +1277,8 @@ struct ConversationView: View {
                         presentMessageActions(
                             message,
                             attachment: attachment,
-                            frame: frame
+                            frame: frame,
+                            viewportFrame: viewportFrame
                         )
                     },
                     onSelectedTextChange: { selectedMessageText = $0 },
@@ -1388,14 +1397,21 @@ struct ConversationView: View {
             in: conversation
         )
         return WindowOverlayPresenter(
-            passthroughFrame: messageActionAttachment == nil && !message.text.isEmpty
-                ? messageActionFrame
+            passthroughFrame: messageActionAllowsTextSelection && messageActionAttachment == nil && !message.text.isEmpty
+                ? (messageActionPreviewFrame.isEmpty ? messageActionFrame : messageActionPreviewFrame)
                 : nil
         ) { usableFrame in
             MessageActionOverlay(
                 message: message,
                 sourceFrame: messageActionFrame,
-                usableFrame: usableFrame,
+                usableFrame: messageActionViewportFrame.isEmpty ? usableFrame : messageActionViewportFrame,
+                onPreviewFrameChange: { frame, allowsTextSelection in
+                    guard messageActionMessage?.id == message.id, !frame.isEmpty else { return }
+                    if messageActionPreviewFrame != frame { messageActionPreviewFrame = frame }
+                    if messageActionAllowsTextSelection != allowsTextSelection {
+                        messageActionAllowsTextSelection = allowsTextSelection
+                    }
+                },
                 ownAccountId: model.account?.accountId,
                 allowsConversationReply: conversation.kind.supportsQuotedReplies,
                 allowsThreadReply: scopedThreadRootMessageID == nil
@@ -1541,9 +1557,20 @@ struct ConversationView: View {
     private func presentMessageActions(
         _ message: ChatMessage,
         attachment: ChatAttachment?,
-        frame: CGRect
+        frame: CGRect,
+        viewportFrame: CGRect
     ) {
-        guard messageActionMessage?.id != message.id else { return }
+        guard !frame.isEmpty else { return }
+        if messageActionMessage?.id == message.id {
+            // Geometry updates for the active message must not restart presentation,
+            // dismiss the keyboard again, or replay the haptic.
+            if messageActionFrame != frame { messageActionFrame = frame }
+            if messageActionViewportFrame != viewportFrame { messageActionViewportFrame = viewportFrame }
+            return
+        }
+        messageActionPreviewFrame = frame
+        messageActionAllowsTextSelection = true
+        messageActionViewportFrame = viewportFrame
         visibleTimelineRowFrames.removeAll(keepingCapacity: true)
         messageActionFrame = frame
         let selectedAttachment = attachment
@@ -1565,7 +1592,7 @@ struct ConversationView: View {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
             messageActionMessage = nil
         }
-        messageActionFrame = .zero
+        // Retain the last geometry while the window overlay fades out.
         messageActionAttachment = nil
         selectedMessageText = nil
         visibleTimelineRowFrames.removeAll(keepingCapacity: true)

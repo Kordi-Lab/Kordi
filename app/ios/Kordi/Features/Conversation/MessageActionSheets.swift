@@ -398,6 +398,7 @@ struct PinnedMessageBar: View {
 }
 
 struct MessageActionOverlayLayout: Equatable {
+    let previewFrame: CGRect
     let reactionCenter: CGPoint
     let menuCenter: CGPoint
     let pickerCenter: CGPoint
@@ -414,62 +415,62 @@ struct MessageActionOverlayLayout: Equatable {
         showsReactions: Bool,
         reactionCount: Int,
         actionCount: Int,
-        forcedMenuIsBelow: Bool? = nil
+        forcedMenuIsBelow: Bool? = nil,
+        fixedPreviewFrame: CGRect? = nil
     ) -> Self {
         let margin: CGFloat = 12
         let reactionHeight: CGFloat = showsReactions ? 52 : 0
         let menuWidth = min(238, containerSize.width - margin * 2)
         let preferredMenuHeight = CGFloat(actionCount) * 44 + 10
-        let availableMenuHeightBelow = max(
-            0,
-            containerSize.height - sourceFrame.maxY - 8 - margin
+        // Reserve space for the whole presentation before positioning any surface.
+        // Moving/scaling the live bubble preserves selection and animated media.
+        let availableHeight = max(1, containerSize.height - margin * 2)
+        let gaps: CGFloat = showsReactions ? 16 : 8
+        let minimumPreviewHeight = min(sourceFrame.height, 80)
+        let menuHeight = min(
+            preferredMenuHeight,
+            max(44, availableHeight - reactionHeight - gaps - minimumPreviewHeight)
         )
-        let availableMenuHeightAbove = max(
-            0,
-            sourceFrame.minY - margin - reactionHeight - (showsReactions ? 16 : 8)
+        let previewHeight = max(1, availableHeight - reactionHeight - gaps - menuHeight)
+        let scale = min(1, previewHeight / max(1, sourceFrame.height),
+                        max(1, containerSize.width - margin * 2) / max(1, sourceFrame.width))
+        let previewSize = CGSize(width: sourceFrame.width * scale, height: sourceFrame.height * scale)
+        let below = containerSize.height - sourceFrame.maxY - margin
+        let above = sourceFrame.minY - margin - reactionHeight - gaps
+        let placeMenuBelow = forcedMenuIsBelow ?? (below >= preferredMenuHeight + 8 || below >= above)
+        let topReservation = placeMenuBelow
+            ? reactionHeight + (showsReactions ? 8 : 0)
+            : menuHeight + reactionHeight + gaps
+        let bottomReservation = placeMenuBelow ? menuHeight + 8 : 0
+        let previewTop = min(
+            max(sourceFrame.minY, margin + topReservation),
+            max(margin + topReservation, containerSize.height - margin - bottomReservation - previewSize.height)
         )
-        let placeMenuBelow = forcedMenuIsBelow ?? (
-            availableMenuHeightBelow >= preferredMenuHeight
-                || (availableMenuHeightAbove < preferredMenuHeight
-                    && availableMenuHeightBelow > availableMenuHeightAbove)
+        let previewFrame = fixedPreviewFrame ?? CGRect(
+            x: clamped(sourceFrame.midX, half: previewSize.width / 2,
+                       extent: containerSize.width, margin: margin) - previewSize.width / 2,
+            y: previewTop, width: previewSize.width, height: previewSize.height
         )
-        let availableMenuHeight = placeMenuBelow
-            ? availableMenuHeightBelow
-            : availableMenuHeightAbove
-        let menuHeight = min(preferredMenuHeight, max(44, availableMenuHeight))
         let reactionWidth = min(
             containerSize.width - margin * 2,
             CGFloat(max(1, reactionCount + 1)) * 46 + 12
         )
         let pickerWidth = min(360, containerSize.width - margin * 2)
         let preferredPickerHeight = min(520, max(320, containerSize.height * 0.62))
-        let reactionY = sourceFrame.minY - (showsReactions ? 8 : 0) - reactionHeight / 2
-        let reactionCenterY = placeMenuBelow
-            ? clamped(
-                reactionY,
-                half: reactionHeight / 2,
-                extent: containerSize.height,
-                margin: margin
-            )
-            : max(
-                margin + menuHeight + 8 + reactionHeight / 2,
-                reactionY
-            )
-        let pickerHeight = min(
-            preferredPickerHeight,
-            max(52, containerSize.height - margin * 2)
-        )
+        let reactionCenterY = previewFrame.minY - (showsReactions ? 8 : 0) - reactionHeight / 2
+        let pickerHeight = min(preferredPickerHeight, max(52, availableHeight))
         let pickerTop = min(
             max(margin, reactionCenterY - reactionHeight / 2),
             max(margin, containerSize.height - margin - pickerHeight)
         )
         let menuY = placeMenuBelow
-            ? sourceFrame.maxY + 8 + menuHeight / 2
-            : reactionY - reactionHeight / 2 - 8 - menuHeight / 2
+            ? previewFrame.maxY + 8 + menuHeight / 2
+            : previewFrame.minY - reactionHeight - gaps - menuHeight / 2
         return Self(
+            previewFrame: previewFrame,
             reactionCenter: CGPoint(
                 x: alignedCenter(
-                    sourceFrame: sourceFrame,
+                    sourceFrame: previewFrame,
                     width: reactionWidth,
                     containerWidth: containerSize.width,
                     margin: margin
@@ -478,7 +479,7 @@ struct MessageActionOverlayLayout: Equatable {
             ),
             menuCenter: CGPoint(
                 x: alignedCenter(
-                    sourceFrame: sourceFrame,
+                    sourceFrame: previewFrame,
                     width: menuWidth,
                     containerWidth: containerSize.width,
                     margin: margin
@@ -487,7 +488,7 @@ struct MessageActionOverlayLayout: Equatable {
             ),
             pickerCenter: CGPoint(
                 x: alignedCenter(
-                    sourceFrame: sourceFrame,
+                    sourceFrame: previewFrame,
                     width: pickerWidth,
                     containerWidth: containerSize.width,
                     margin: margin
@@ -528,12 +529,14 @@ struct MessageActionOverlayLayout: Equatable {
 struct MessageActionOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
+    @State private var hasPresented = false
     @State private var showsAllReactions = false
     @State private var isConfirmingDelete = false
     @State private var didSchedulePreviewExpansion = false
     let message: ChatMessage
     let sourceFrame: CGRect
     let usableFrame: CGRect
+    let onPreviewFrameChange: (CGRect, Bool) -> Void
     let ownAccountId: String?
     let allowsConversationReply: Bool
     let allowsThreadReply: Bool
@@ -631,10 +634,15 @@ struct MessageActionOverlay: View {
                 showsReactions: showsReactionSurface,
                 reactionCount: showsReactionSurface ? quickReactions.count : 0,
                 actionCount: actionCount,
-                forcedMenuIsBelow: regularLayout.menuIsBelow
+                forcedMenuIsBelow: regularLayout.menuIsBelow,
+                fixedPreviewFrame: regularLayout.previewFrame
+            )
+            let previewFrame = regularLayout.previewFrame.offsetBy(
+                dx: layoutOffset.width, dy: layoutOffset.height
             )
             ZStack {
-                dismissalBackdrop(cutout: localSourceFrame)
+                dismissalBackdrop(cutout: hasPresented ? previewFrame : localSourceFrame)
+                    .opacity(hasPresented ? 1 : 0)
 
                 if showsReactionSurface {
                     reactionSurface
@@ -661,7 +669,9 @@ struct MessageActionOverlay: View {
                             showsAllReactions ? layout.pickerCenter : layout.reactionCenter
                         )
                         .offset(layoutOffset)
-                        .transition(.scale(scale: 0.96).combined(with: .opacity))
+                        .scaleEffect(reduceMotion || hasPresented ? 1 : 0.96)
+                        .opacity(hasPresented ? 1 : 0)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.96).combined(with: .opacity))
                 }
 
                 if isConfirmingDelete || !showsAllReactions || !allowsReactions {
@@ -673,13 +683,39 @@ struct MessageActionOverlay: View {
                         )
                         .position(layout.menuCenter)
                         .offset(layoutOffset)
-                        .transition(.scale(scale: 0.96).combined(with: .opacity))
+                        .scaleEffect(reduceMotion || hasPresented ? 1 : 0.96)
+                        .opacity(hasPresented ? 1 : 0)
+                        .transition(reduceMotion ? .opacity : .scale(scale: 0.96).combined(with: .opacity))
                 }
             }
+            .animation(MessageActionMotion.animation(reduceMotion: reduceMotion), value: sourceFrame)
             .animation(
                 reduceMotion ? nil : .smooth(duration: 0.22),
                 value: isConfirmingDelete
             )
+            .onAppear {
+                withAnimation(MessageActionMotion.animation(reduceMotion: reduceMotion)) {
+                    hasPresented = true
+                    onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
+                        dx: layoutFrame.minX, dy: layoutFrame.minY
+                    ), !showsAllReactions)
+                }
+            }
+            .onChange(of: regularLayout.previewFrame) {
+                onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
+                    dx: layoutFrame.minX, dy: layoutFrame.minY
+                ), !showsAllReactions)
+            }
+            .onChange(of: showsAllReactions) {
+                onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
+                    dx: layoutFrame.minX, dy: layoutFrame.minY
+                ), !showsAllReactions)
+            }
+            .onChange(of: layoutFrame) {
+                onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
+                    dx: layoutFrame.minX, dy: layoutFrame.minY
+                ), !showsAllReactions)
+            }
         }
         .ignoresSafeArea()
         .accessibilityElement(children: .contain)
@@ -702,20 +738,26 @@ struct MessageActionOverlay: View {
     private func dismissalBackdrop(cutout: CGRect) -> some View {
         Button(action: onDismiss) {
             ZStack {
-                MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author)
+                MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author,
+                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil)
                     .fill(.ultraThinMaterial, style: FillStyle(eoFill: true))
-                MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author)
+                MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author,
+                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil)
                     .fill(.black.opacity(0.08), style: FillStyle(eoFill: true))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(
                 mediaAttachment == nil
-                    ? AnyShape(MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author))
+                    ? AnyShape(MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author,
+                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil))
                     : AnyShape(Rectangle()),
                 eoFill: mediaAttachment == nil
             )
         }
         .buttonStyle(.plain)
+        .transaction { transaction in
+            if reduceMotion { transaction.animation = nil }
+        }
         .accessibilityLabel("Close message actions")
     }
 
@@ -760,7 +802,7 @@ struct MessageActionOverlay: View {
                         )
                         .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MessageReactionButtonStyle())
                 .accessibilityLabel("React with \(item.accessibilityName)")
             }
             Button {
@@ -1105,12 +1147,63 @@ private final class MessageActionWindowOverlayView: UIView {
 }
 
 private struct MessageActionBackdrop: Shape {
-    let cutout: CGRect
+    var cutout: CGRect
     let sourceAuthor: MessageAuthor
+    let sourceWidth: CGFloat
+    let isMedia: Bool
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(cutout.minX, cutout.minY), AnimatablePair(cutout.width, cutout.height)) }
+        set {
+            cutout = CGRect(x: newValue.first.first, y: newValue.first.second,
+                            width: newValue.second.first, height: newValue.second.second)
+        }
+    }
 
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
-        path.addPath(MessageBubbleGeometry.shape(for: sourceAuthor).path(in: cutout))
+        let scale = max(0.001, cutout.width / max(1, sourceWidth))
+        let bounds = CGRect(x: 0, y: 0, width: cutout.width / scale, height: cutout.height / scale)
+        let outline = isMedia
+            ? RoundedRectangle(cornerRadius: 12, style: .continuous).path(in: bounds)
+            : MessageBubbleGeometry.shape(for: sourceAuthor).path(in: bounds)
+        path.addPath(outline.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+                                                       tx: cutout.minX, ty: cutout.minY)))
         return path
+    }
+}
+
+/// Shared by the live bubble and the window-hosted overlay.
+enum MessageActionMotion {
+    static func animation(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.22)
+    }
+}
+
+struct MessageActionBubblePlacement: Equatable {
+    let sourceFrame: CGRect
+    let previewFrame: CGRect
+
+    var scale: CGFloat { previewFrame.width / max(1, sourceFrame.width) }
+
+    func anchor(in frame: CGRect) -> UnitPoint {
+        UnitPoint(x: (sourceFrame.midX - frame.minX) / max(1, frame.width),
+                  y: (sourceFrame.midY - frame.minY) / max(1, frame.height))
+    }
+
+    var offset: CGSize {
+        CGSize(width: previewFrame.midX - sourceFrame.midX,
+               height: previewFrame.midY - sourceFrame.midY)
+    }
+}
+
+private struct MessageReactionButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 1.16 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.18), value: configuration.isPressed)
     }
 }

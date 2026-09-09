@@ -28,6 +28,8 @@ struct MessageBubble: View, Equatable {
     let replySourceMessage: ChatMessage?
     let isHighlighted: Bool
     let isActionPresented: Bool
+    var actionPlacement: MessageActionBubblePlacement? = nil
+    var actionViewportFrame: CGRect = .zero
     let isPinned: Bool
     let selectionMode: Bool
     let isSelected: Bool
@@ -81,6 +83,8 @@ struct MessageBubble: View, Equatable {
             && lhs.replySourceMessage == rhs.replySourceMessage
             && lhs.isHighlighted == rhs.isHighlighted
             && lhs.isActionPresented == rhs.isActionPresented
+            && lhs.actionPlacement == rhs.actionPlacement
+            && lhs.actionViewportFrame == rhs.actionViewportFrame
             && lhs.isPinned == rhs.isPinned
             && lhs.selectionMode == rhs.selectionMode
             && lhs.isSelected == rhs.isSelected
@@ -198,7 +202,7 @@ struct MessageBubble: View, Equatable {
                     .scaleEffect(
                         reduceMotion
                             ? 1
-                            : isActionPresented ? 1.016 : showsSelectionHighlight ? 1.018 : 1
+                            : showsSelectionHighlight && !isActionPresented ? 1.018 : 1
                     )
                     .animation(
                         reduceMotion ? nil : .snappy(duration: 0.24),
@@ -224,34 +228,55 @@ struct MessageBubble: View, Equatable {
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .onGeometryChange(for: CGRect.self) { [
-                        automaticallyPresentsActions,
-                        isActionPresented,
-                        isRequestingActionFrame
-                    ] proxy in
-                        automaticallyPresentsActions || isActionPresented
-                            || isRequestingActionFrame
-                            ? proxy.frame(in: .global)
-                            : .zero
-                    } action: { frame in
-                        if !frame.isEmpty, frame != actionFrame { actionFrame = frame }
-                        if isActionPresented, actionAttachment == nil, !frame.isEmpty {
-                            onOpenActions(frame, actionAttachment)
-                        }
-                        if isRequestingActionFrame, !frame.isEmpty {
-                            isRequestingActionFrame = false
-                            onOpenActions(frame, nil)
-                        }
-                        if automaticallyPresentsActions,
-                           !hasImageAttachments,
-                           !didAutomaticallyPresentActions,
-                           !frame.isEmpty {
-                            didAutomaticallyPresentActions = true
-                            Task { @MainActor in
-                                try? await Task.sleep(for: .milliseconds(500))
-                                onOpenActions(actionFrame, nil)
+                    .scaleEffect(actionPlacement?.scale ?? 1,
+                                 anchor: actionPlacement?.anchor(in: actionFrame) ?? .center)
+                    .offset(actionPlacement?.offset ?? .zero)
+                    .animation(
+                        reduceMotion ? nil : MessageActionMotion.animation(reduceMotion: false),
+                        value: actionPlacement
+                    )
+                    .background {
+                        // This sibling measures layout before presentation transforms.
+                        // Measuring the transformed content feeds its offset back into
+                        // the source anchor and leaves the blur opening misaligned.
+                        Color.clear
+                            .onGeometryChange(for: CGRect.self) { [
+                                automaticallyPresentsActions,
+                                isActionPresented,
+                                isRequestingActionFrame
+                            ] proxy in
+                                automaticallyPresentsActions || isActionPresented
+                                    || isRequestingActionFrame
+                                    ? proxy.frame(in: .global)
+                                    : .zero
+                            } action: { frame in
+                                let previousFrame = actionFrame
+                                if !frame.isEmpty, frame != actionFrame { actionFrame = frame }
+                                if isActionPresented, !frame.isEmpty {
+                                    if actionAttachment == nil {
+                                        onOpenActions(frame, nil)
+                                    } else if let placement = actionPlacement, !previousFrame.isEmpty {
+                                        onOpenActions(placement.sourceFrame.offsetBy(
+                                            dx: frame.minX - previousFrame.minX,
+                                            dy: frame.minY - previousFrame.minY
+                                        ), actionAttachment)
+                                    }
+                                }
+                                if isRequestingActionFrame, !frame.isEmpty {
+                                    isRequestingActionFrame = false
+                                    onOpenActions(frame, nil)
+                                }
+                                if automaticallyPresentsActions,
+                                   !hasImageAttachments,
+                                   !didAutomaticallyPresentActions,
+                                   !frame.isEmpty {
+                                    didAutomaticallyPresentActions = true
+                                    Task { @MainActor in
+                                        try? await Task.sleep(for: .milliseconds(500))
+                                        onOpenActions(actionFrame, nil)
+                                    }
+                                }
                             }
-                        }
                     }
                     .accessibilityAction(named: "Show message actions") {
                         guard !selectionMode, !hasImageAttachments else { return }
@@ -312,6 +337,10 @@ struct MessageBubble: View, Equatable {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .onChange(of: actionViewportFrame) {
+            guard isActionPresented, let actionPlacement else { return }
+            onOpenActions(actionPlacement.sourceFrame, actionAttachment)
+        }
         .onChange(of: isActionPresented) { wasPresented, isPresented in
             if wasPresented, !isPresented {
                 actionAttachment = nil

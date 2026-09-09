@@ -838,7 +838,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(bubbleSource.contains("isHighlighted || isSelected"))
         XCTAssertTrue(bubbleSource.contains("value: showsSelectionHighlight"))
         XCTAssertTrue(bubbleSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
-        XCTAssertTrue(overlaySource.contains("MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author)"))
+        XCTAssertTrue(overlaySource.contains("MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author,"))
         XCTAssertTrue(overlaySource.contains("readers: readReceiptReaders"))
         XCTAssertTrue(overlaySource.contains("readers.prefix(4)"))
         XCTAssertTrue(overlaySource.contains("size: avatarSize"))
@@ -1089,6 +1089,64 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(deleteConfirmation.menuIsBelow, bottom.menuIsBelow)
     }
 
+    func testActionPresentationFitsBubbleAndMenusWithoutOverlap() {
+        let cases: [(CGSize, CGRect)] = [
+            (CGSize(width: 390, height: 700), CGRect(x: 20, y: 12, width: 180, height: 70)),
+            (CGSize(width: 390, height: 700), CGRect(x: 20, y: -60, width: 300, height: 820)),
+            (CGSize(width: 390, height: 700), CGRect(x: 190, y: 650, width: 180, height: 70)),
+            (CGSize(width: 390, height: 280), CGRect(x: 20, y: -30, width: 300, height: 480)),
+            (CGSize(width: 720, height: 280), CGRect(x: 400, y: 200, width: 260, height: 200))
+        ]
+        for (container, source) in cases {
+            for showsReactions in [true, false] {
+                let layout = MessageActionOverlayLayout.make(
+                    sourceFrame: source, containerSize: container,
+                    showsReactions: showsReactions, reactionCount: 6, actionCount: 8
+                )
+                let menu = CGRect(x: layout.menuCenter.x - layout.menuWidth / 2,
+                                  y: layout.menuCenter.y - layout.menuHeight / 2,
+                                  width: layout.menuWidth, height: layout.menuHeight)
+                let reaction = CGRect(x: layout.reactionCenter.x - layout.reactionWidth / 2,
+                                      y: layout.reactionCenter.y - 26,
+                                      width: layout.reactionWidth, height: 52)
+                let usable = CGRect(origin: .zero, size: container).insetBy(dx: 11.99, dy: 11.99)
+                XCTAssertTrue(usable.contains(layout.previewFrame))
+                XCTAssertTrue(usable.contains(menu))
+                XCTAssertFalse(menu.intersects(layout.previewFrame))
+                if showsReactions {
+                    XCTAssertTrue(usable.contains(reaction))
+                    XCTAssertFalse(reaction.intersects(layout.previewFrame))
+                    XCTAssertFalse(reaction.intersects(menu))
+                }
+                XCTAssertGreaterThanOrEqual(layout.menuHeight, 44)
+                XCTAssertEqual(layout.previewFrame.width / source.width,
+                               layout.previewFrame.height / source.height, accuracy: 0.001)
+            }
+        }
+    }
+
+    func testDeleteConfirmationKeepsTheSelectedBubbleInPlace() {
+        let source = CGRect(x: 20, y: -60, width: 300, height: 820)
+        let size = CGSize(width: 390, height: 700)
+        let regular = MessageActionOverlayLayout.make(
+            sourceFrame: source, containerSize: size,
+            showsReactions: true, reactionCount: 6, actionCount: 8
+        )
+        let confirmation = MessageActionOverlayLayout.make(
+            sourceFrame: source, containerSize: size,
+            showsReactions: false, reactionCount: 0, actionCount: 2,
+            forcedMenuIsBelow: regular.menuIsBelow, fixedPreviewFrame: regular.previewFrame
+        )
+        XCTAssertEqual(confirmation.previewFrame, regular.previewFrame)
+        if regular.menuIsBelow {
+            XCTAssertGreaterThanOrEqual(confirmation.menuCenter.y - confirmation.menuHeight / 2,
+                                        regular.previewFrame.maxY + 8)
+        } else {
+            XCTAssertLessThanOrEqual(confirmation.menuCenter.y + confirmation.menuHeight / 2 + 8,
+                                     regular.previewFrame.minY)
+        }
+    }
+
     func testImageLongPressUsesTheFullMessageActionMenu() throws {
         let conversationDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -1130,7 +1188,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(collectionSource.contains("collapsedInteractionSurface"))
         XCTAssertTrue(bubbleSource.contains("!hasImageAttachments"))
         XCTAssertFalse(bubbleSource.contains("suppressesNextActionPresentation"))
-        XCTAssertTrue(bubbleSource.contains("isActionPresented, actionAttachment == nil"))
+        XCTAssertTrue(bubbleSource.contains("if actionAttachment == nil"))
         XCTAssertTrue(overlaySource.contains("actionButton(\"Review\""))
         XCTAssertTrue(overlaySource.contains("\"Download / Save to Files\""))
         XCTAssertTrue(overlaySource.contains("\"Add to \\(mediaKind.libraryName)\""))
