@@ -6,6 +6,7 @@ enum ChatChannel: Hashable {
 }
 
 struct ChatHomeView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let channel: ChatChannel
@@ -346,6 +347,7 @@ struct ChatHomeView: View {
             } else {
                 ForEach(contactRows) { row in
                     contactRow(row)
+                        .transition(.identity)
                 }
             }
         }
@@ -779,10 +781,12 @@ struct ChatHomeView: View {
 
     private func toggleGroupSpace(_ space: GroupSpaceSummary) {
         let willExpand = !expandedGroupSpaceIds.contains(space.id)
-        if willExpand {
-            expandedGroupSpaceIds.insert(space.id)
-        } else {
-            expandedGroupSpaceIds.remove(space.id)
+        withAnimation(reduceMotion ? nil : GroupChannelDisclosureMotion.animation) {
+            if willExpand {
+                expandedGroupSpaceIds.insert(space.id)
+            } else {
+                expandedGroupSpaceIds.remove(space.id)
+            }
         }
     }
 
@@ -807,6 +811,7 @@ struct ChatHomeView: View {
 }
 
 struct ArchivedChatsView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var model: AppModel
     let channel: ChatChannel
     private let onOpenConversation: ((ConversationSummary) -> Void)?
@@ -870,6 +875,7 @@ struct ArchivedChatsView: View {
         List {
             ForEach(rows) { row in
                 archivedRow(row)
+                    .transition(.identity)
             }
         }
         .listStyle(.plain)
@@ -1038,10 +1044,12 @@ struct ArchivedChatsView: View {
     }
 
     private func toggleGroupSpace(_ space: GroupSpaceSummary) {
-        if groupIsExpanded(space) {
-            expandedGroupSpaceIds.remove(space.id)
-        } else {
-            expandedGroupSpaceIds.insert(space.id)
+        withAnimation(reduceMotion ? nil : GroupChannelDisclosureMotion.animation) {
+            if groupIsExpanded(space) {
+                expandedGroupSpaceIds.remove(space.id)
+            } else {
+                expandedGroupSpaceIds.insert(space.id)
+            }
         }
     }
 

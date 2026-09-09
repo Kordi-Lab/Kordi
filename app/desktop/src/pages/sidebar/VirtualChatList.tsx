@@ -9,6 +9,8 @@ import {
   type RefObject,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { VirtualParticipantSpaceList } from './VirtualParticipantSpaceList';
+import { CHANNEL_HEIGHT, HEADER_HEIGHT, participantSpaceBlocks } from './participantSpaceLayout';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -49,6 +51,7 @@ const SessionRow = memo(function SessionRow({
 
 export function VirtualChatList({
   rows,
+  groupChannels = false,
   activeSessionId,
   scrollRef,
   scrollClassName,
@@ -58,6 +61,7 @@ export function VirtualChatList({
   emptyState,
 }: {
   rows: readonly ChatSidebarRow[];
+  groupChannels?: boolean;
   activeSessionId?: string | null;
   scrollRef?: RefObject<HTMLDivElement | null>;
   scrollClassName?: string;
@@ -76,16 +80,26 @@ export function VirtualChatList({
     internalScrollRef.current = node;
     if (scrollRef) scrollRef.current = node;
   }, [scrollRef]);
+  const blocks = useMemo(() => groupChannels ? participantSpaceBlocks(rows) : [], [groupChannels, rows]);
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: groupChannels ? blocks.length : rows.length,
     getScrollElement: () => internalScrollRef.current,
-    estimateSize: (index) => estimatedChatSidebarRowSize(rows[index]),
-    getItemKey: (index) => rows[index]?.key ?? `missing:${index}`,
-    overscan: rows.length <= 100 ? rows.length : 24,
+    estimateSize: (index) => groupChannels
+      ? HEADER_HEIGHT + blocks[index].channels.length * CHANNEL_HEIGHT
+      : estimatedChatSidebarRowSize(rows[index]),
+    getItemKey: (index) => (groupChannels ? blocks[index]?.header.key : rows[index]?.key) ?? `missing:${index}`,
+    overscan: groupChannels ? 4 : rows.length <= 100 ? rows.length : 24,
     useFlushSync: false,
-    directDomUpdates: true,
+    directDomUpdates: !groupChannels,
     directDomUpdatesMode: 'transform',
   });
+  useLayoutEffect(() => {
+    if (!groupChannels) return;
+    virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => (
+      item.end <= (instance.scrollOffset ?? 0)
+    );
+    return () => { virtualizer.shouldAdjustScrollPositionOnItemSizeChange = undefined; };
+  }, [groupChannels, virtualizer]);
   const activeRowIndex = useMemo(() => {
     const normalizedActiveId = activeSessionId?.trim();
     if (!normalizedActiveId) return -1;
@@ -93,6 +107,7 @@ export function VirtualChatList({
   }, [activeSessionId, rows]);
 
   useLayoutEffect(() => {
+    if (groupChannels) return;
     const normalizedActiveId = activeSessionId?.trim() || null;
     if (!normalizedActiveId) {
       scrolledActiveSessionIdRef.current = null;
@@ -104,7 +119,7 @@ export function VirtualChatList({
     ) return;
     scrolledActiveSessionIdRef.current = normalizedActiveId;
     virtualizer.scrollToIndex(activeRowIndex, { align: 'auto' });
-  }, [activeRowIndex, activeSessionId, virtualizer]);
+  }, [activeRowIndex, activeSessionId, groupChannels, virtualizer]);
 
   const virtualRows = virtualizer.getVirtualItems();
   const renderedVirtualRows = useMemo(() => {
@@ -136,6 +151,12 @@ export function VirtualChatList({
       visibleRowCount: renderedVirtualRows.length,
     });
   }, [renderPerformanceSpan, renderedVirtualRows.length, rows.length]);
+  if (groupChannels) {
+    return <VirtualParticipantSpaceList blocks={blocks} virtualizer={virtualizer}
+      scrollRef={internalScrollRef} activeSessionId={activeSessionId}
+      scrollClassName={scrollClassName} scrollStyle={scrollStyle} dataMode={dataMode}
+      renderRow={renderRow} emptyState={emptyState}/>;
+  }
   return (
     <ScrollArea
       ref={setScrollElement}

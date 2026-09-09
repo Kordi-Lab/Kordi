@@ -38,6 +38,10 @@ function installDom() {
     offsetHeight: {
       configurable: true,
       get(this: HTMLElement) {
+        if (this.dataset.participantSpaceBlock) {
+          const clip = this.querySelector<HTMLElement>('.app-participant-channel-reveal');
+          return 64 + Number.parseFloat(clip?.style.height || '0');
+        }
         return Number.parseFloat(this.dataset.testRowHeight ?? '')
           || Number.parseFloat(this.style.height)
           || 48;
@@ -325,4 +329,128 @@ test('ordinary session lists stay fully mounted while scrolling', async () => {
   await flush();
 
   assert.equal(host.querySelectorAll('[data-chat-sidebar-row]').length, rows.length);
+});
+
+
+function channelRows(count: number): ChatSidebarRow[] {
+  return buildChatSidebarRows({
+    spaces: [{ spaceId: 'group', expanded: true, rootSessionIds: Array.from({ length: count }, (_, index) => `channel-${index}`) }],
+    sessions: Array.from({ length: count }, (_, index) => ({ spaceId: 'group', sessionId: `channel-${index}` })),
+    collapsedForkParentIds: new Set(),
+    includeSpaceRows: true,
+  });
+}
+
+async function groupListHarness() {
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  const render = async (rows: ChatSidebarRow[], activeSessionId?: string) => {
+    await act(async () => root?.render(<VirtualChatList groupChannels rows={rows} activeSessionId={activeSessionId}
+      scrollStyle={{ height: 200 }} renderRow={row => <button>{row.key}</button>}/>));
+    await flush();
+  };
+  return { host, render };
+}
+
+test('group collapse retains inert channels and reversing reuses the same channel nodes', async () => {
+  const { host, render } = await groupListHarness();
+  const expanded = channelRows(3);
+  const collapsed = expanded.slice(0, 1);
+  await render(collapsed);
+  await render(expanded);
+  const channel = host.querySelector('[data-chat-sidebar-row="session:channel-0"]');
+  assert.ok(channel);
+  await render(collapsed);
+  const clip = host.querySelector<HTMLElement>('.app-participant-channel-reveal');
+  assert.equal(clip?.style.height, '0px');
+  assert.equal(clip?.getAttribute('aria-hidden'), 'true');
+  assert.ok(clip?.hasAttribute('inert'));
+  assert.equal(host.querySelector('[data-chat-sidebar-row="session:channel-0"]'), channel);
+  await render(expanded);
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 240)); });
+  assert.equal(host.querySelector('[data-chat-sidebar-row="session:channel-0"]'), channel);
+  assert.equal(clip?.style.height, '138px');
+  assert.equal(clip?.getAttribute('aria-hidden'), 'false');
+  await render(collapsed);
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 240)); });
+  assert.equal(host.querySelector('[data-chat-sidebar-row="session:channel-0"]'), null);
+});
+
+test('a large group keeps channels virtualized while scrolling inside one space', async () => {
+  const { host, render } = await groupListHarness();
+  const rows = channelRows(5_000);
+  await render(rows);
+  assert.ok(host.querySelectorAll('[data-chat-sidebar-row]').length < 30);
+  const viewport = host.querySelector<HTMLElement>('[data-virtual-chat-list]')!;
+  await act(async () => viewport.scrollTo({ top: 46_064 }));
+  await flush();
+  assert.ok(host.querySelector('[data-chat-sidebar-row="session:channel-1000"]'));
+  assert.equal(host.querySelector('[data-chat-sidebar-row="session:channel-0"]'), null);
+  assert.ok(host.querySelectorAll('[data-chat-sidebar-row]').length < 30);
+  await render(rows, 'channel-4900');
+  assert.ok(viewport.scrollTop > 200_000);
+  assert.ok(host.querySelector('[data-chat-sidebar-row="session:channel-4900"]'));
+  await act(async () => viewport.scrollTo({ top: 46_064 }));
+  await render([...rows], 'channel-4900');
+  assert.equal(viewport.scrollTop, 46_064);
+});
+
+test('reduced-motion collapse removes retained channels without waiting for the reveal', async () => {
+  const original = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+  Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: true }) });
+  try {
+    const { host, render } = await groupListHarness();
+    const rows = channelRows(3);
+    await render(rows);
+    await render(rows.slice(0, 1));
+    await flush();
+    assert.equal(host.querySelector('[data-chat-sidebar-row="session:channel-0"]'), null);
+  } finally {
+    if (original) Object.defineProperty(window, 'matchMedia', original);
+    else delete (window as Partial<Window>).matchMedia;
+  }
+});
+
+
+test('clicking the group header again folds even when its channel is active', async () => {
+  const { WorkspaceSidebar } = await import('../src/pages/WorkspaceSidebar');
+  const { buildParticipantSpaces } = await import('../src/features/chat/participantSpaces');
+  const { conversation, baseSidebarProps } = await import('./helpers/workspaceSidebarParticipantSpacesFixtures');
+  const chats = [conversation({
+    id: 'session:group:toggle', canonicalSessionId: 'session:group:toggle', name: 'general',
+    participants: ['Me', 'Maya', 'Leo'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:maya', name: 'Maya', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'maya' },
+      { id: 'human:leo', name: 'Leo', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'leo' },
+    ],
+  })];
+  const spaces = buildParticipantSpaces(chats);
+  const selections: string[] = [];
+  function Harness() {
+    const [activeConvId, setActiveConvId] = useState('');
+    return <WorkspaceSidebar {...baseSidebarProps({
+      chatConversations: chats, participantSpaces: spaces, contactParticipantSpaces: spaces,
+      activeConvId, onSelectChatSession: (id: string) => { selections.push(id); setActiveConvId(id); },
+    }) as never}/>;
+  }
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  await act(async () => root?.render(<Harness/>));
+  await flush();
+  const header = host.querySelector<HTMLButtonElement>('[data-testid="participant-space-row"]')!;
+  assert.equal(header.getAttribute('aria-expanded'), 'false');
+  await act(async () => header.click());
+  await flush();
+  assert.equal(header.getAttribute('aria-expanded'), 'true');
+  assert.equal(selections.length, 1);
+  await act(async () => header.click());
+  await flush();
+  assert.equal(header.getAttribute('aria-expanded'), 'false');
+  assert.equal(selections.length, 1, 'folding must not select or reopen the active channel');
+  await act(async () => header.click());
+  await flush();
+  assert.equal(header.getAttribute('aria-expanded'), 'true');
 });

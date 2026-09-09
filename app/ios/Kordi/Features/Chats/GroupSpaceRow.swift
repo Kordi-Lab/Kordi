@@ -67,7 +67,7 @@ struct GroupSpaceRow: View {
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                         .animation(
-                            accessibilityReduceMotion ? nil : .snappy(duration: 0.22),
+                            accessibilityReduceMotion ? nil : GroupChannelDisclosureMotion.animation,
                             value: isExpanded
                         )
                 }
@@ -184,4 +184,8 @@ struct GroupSessionRow: View {
         if title.isEmpty { return "# Untitled session" }
         return title.hasPrefix("#") ? title : "# \(title)"
     }
+}
+
+enum GroupChannelDisclosureMotion {
+    static let animation = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.2)
 }

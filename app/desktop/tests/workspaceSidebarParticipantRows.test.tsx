@@ -200,7 +200,7 @@ test('participant-space parent rows are not styled as the active session row', (
   );
 });
 
-test('participant-space parent row primary click selects a session while chevron toggles expansion', () => {
+test('participant-space parent row opens its latest session and supports folding on the next click', () => {
   const source = readFileSync(new URL('../src/pages/workspaceSidebar.contactRows.tsx', import.meta.url), 'utf8');
   const selectHelperStart = source.indexOf('const selectPrimarySession = () => {');
   assert.notEqual(selectHelperStart, -1, 'expected primary parent-row selection helper');
@@ -210,7 +210,7 @@ test('participant-space parent row primary click selects a session while chevron
   const renderStart = source.indexOf('function ParticipantSpaceRow({');
   const renderEnd = source.indexOf('export function ContactSidebarRow', renderStart);
   const renderer = source.slice(renderStart, renderEnd);
-  assert.match(renderer, /onClick=\{selectPrimarySession\}/, 'parent row button should select, not toggle');
+  assert.match(renderer, /onClick=\{selectPrimarySession\}/, 'parent row button uses the primary selection and disclosure handler');
   assert.match(renderer, /data-participant-space-toggle-button="true"[\s\S]*toggleSpace\(\)/, 'chevron remains the explicit expand-collapse control');
 });
 
