@@ -2235,10 +2235,13 @@ struct ConversationView: View {
                 .font(.headline)
                 .lineLimit(1)
 
-            if conversation.subsessionId != nil {
-                Text("Agent thread · Shared with chat members")
+            if let id = conversation.subsessionId {
+                let snapshot = model.subsessions[id]
+                let status = model.stoppingSubsessionIDs.contains(id) ? "Stopping…"
+                    : snapshot?.statusNotice ?? snapshot?.state.label ?? "Loading…"
+                Text("Shared thread · \(status)")
                     .font(.caption2)
-                    .foregroundStyle(KordiTheme.agentViolet)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             } else if conversation.kind == .agent, agentActivity == .replying {
                 HStack(spacing: 5) {

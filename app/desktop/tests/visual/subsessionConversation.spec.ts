@@ -163,7 +163,7 @@ test('Tasks shows authoritative Agent thread entries and frozen execution time, 
   });
   await expect(task).toContainText('Done · 3s · Mac runtime');
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  expect(await page.evaluate(() => (window as unknown as {fixtureNativeCommands:string[]}).fixtureNativeCommands)).toEqual([]);
+  expect(await page.evaluate(() => (window as unknown as {fixtureNativeCommands:string[]}).fixtureNativeCommands.filter(command => command !== 'desktop_chat_session_active_turn'))).toEqual([]);
 });
 
 test('private Ask Agent and shared Agent threads keep separate identities, avatars and drafts', async ({ page }) => {

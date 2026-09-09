@@ -1,9 +1,12 @@
 import { Bot, ChevronRight } from 'lucide-react';
 import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
 import { agentSubsessionStatusNotice } from '@/features/cloud/agentSubsessionTasks';
+import { useBackgroundSessionControl } from '@/features/chat/useBackgroundSessionControl';
+import { BackgroundSessionStopButton } from './backgroundSessionStopControl';
 
 import {
   normalizedRelatedAgentSessionStatus,
+  runStatusFromTurn,
   type RelatedAgentSession,
   type RelatedAgentSessionRunStatus,
 } from '@/features/chat/relatedAgentSessions';
@@ -45,18 +48,21 @@ export function RelatedAgentSessionLinks({
 function SubsessionLink({ session, agentName, status, onOpen }: {
   session: RelatedAgentSession; agentName?: string | null; status?: RelatedAgentSessionRunStatus; onOpen?: (id: string, isSubsession?: boolean) => void;
 }) {
-  const { snapshot, error } = useAgentSubsession(session.sessionId);
-  const resolved = snapshot ? normalizedRelatedAgentSessionStatus(snapshot.status) : status ?? normalizedRelatedAgentSessionStatus(session.status);
+  const { snapshot: shared, error, accountId } = useAgentSubsession(session.sessionId);
+  const control = useBackgroundSessionControl(session.sessionId, shared, accountId);
+  const snapshot = control.remoteSnapshot;
+  const localTurn = control.turn && (!snapshot?.startedAtMs || !control.turn.startedAtMs || snapshot.startedAtMs <= control.turn.startedAtMs) ? control.turn : null;
+  const resolved = localTurn ? runStatusFromTurn(localTurn) : snapshot ? normalizedRelatedAgentSessionStatus(snapshot.status) : status ?? normalizedRelatedAgentSessionStatus(session.status);
   const presentation = STATUS[resolved];
-  const notice = error ? 'Sync unavailable' : snapshot ? agentSubsessionStatusNotice(snapshot) : null;
-  return <button
+  const notice = control.stopping ? 'Stopping…' : localTurn ? null : error ? 'Sync unavailable' : snapshot ? agentSubsessionStatusNotice(snapshot) : null;
+  return <div className="flex items-center gap-1" data-related-agent-session-id={session.sessionId}>
+        <button
           key={session.sessionId}
           type="button"
           className="app-button-quiet group grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-1.5 py-1 text-left disabled:cursor-default disabled:opacity-60"
           onClick={() => onOpen?.(session.sessionId, true)}
           disabled={!onOpen}
           aria-label={`Open background agent session: ${session.title}`}
-          data-related-agent-session-id={session.sessionId}
         >
           <span className="row-span-2 grid h-5 w-5 place-items-center self-center text-[color:var(--app-sidebar-accent)]" aria-hidden="true">
             <Bot className="h-3.5 w-3.5" />
@@ -82,5 +88,7 @@ function SubsessionLink({ session, agentName, status, onOpen }: {
               {notice ?? presentation.label}
             </span>
           </span>
-        </button>;
+        </button>
+        <BackgroundSessionStopButton control={control} title={snapshot?.title ?? session.title} />
+      </div>;
 }

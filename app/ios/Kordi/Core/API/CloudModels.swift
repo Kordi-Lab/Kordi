@@ -823,8 +823,8 @@ struct CloudAgentSubsession: Codable, Hashable {
     let ownerDisplayName: String
     let agentDisplayName: String
     let title: String
-    let status: String
-    let version: Int64
+    var status: String
+    var version: Int64
     var messages: [Message]
     let updatedAt: String
     var activity: Activity? = nil
@@ -836,6 +836,9 @@ struct CloudAgentSubsession: Codable, Hashable {
     var agentAvatarUrl: String? = nil
 
     var state: BackgroundAgentSession.State { .init(wireValue: status) ?? .failed }
+    func canStop(accountId: String?) -> Bool {
+        accountId == ownerAccountId && state == .running
+    }
     var statusNotice: String? {
         if queued == true, !(status == "running" && startedAtMs != nil) { return "Queued next" }
         return status == "running" && live == false ? "Status unavailable" : nil

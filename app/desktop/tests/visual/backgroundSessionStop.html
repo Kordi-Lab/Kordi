@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/src/index.css"><title>Background task Stop fixture</title></head>
+<body class="kordi-app theme-light">
+<div id="root" style="padding:32px;max-width:720px;margin:40px auto;color:var(--utility-foreground)"></div>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {RelatedAgentSessionLinks} from '/src/kordi-app/components/relatedAgentSessionLinks.tsx';
+import {BackgroundSessionHeaderControl} from '/src/kordi-app/components/backgroundSessionStopControl.tsx';
+import {__setSessionBackendForTests} from '/src/features/cloud/session.ts';
+__setSessionBackendForTests({load:async()=>null,save:async()=>{},clear:async()=>{}});
+let turn={id:'fixture-turn',sessionId:'fixture-child',prompt:'',status:'tooling',message:'',assistantText:'',thinkingText:'',tools:[],completed:false,succeeded:false};
+window.__TAURI_INTERNALS__={invoke:async(command,args)=>{
+  if(command==='desktop_chat_session_active_turn') return turn.completed?null:{...turn};
+  if(command==='desktop_chat_turn_state') return {...turn};
+  if(command==='desktop_chat_cancel_turn' && args.turnId===turn.id) {
+    turn={...turn,status:'cancelling'};
+    setTimeout(()=>{turn={...turn,status:'cancelled',completed:true};},2000);
+    return {...turn};
+  }
+  throw Error('Unexpected fixture command');
+}};
+const el=React.createElement;
+createRoot(document.getElementById('root')).render(el(React.Fragment,null,
+  el('p',{style:{fontSize:12,marginBottom:24}},'Isolated UI fixture · No account or agent execution'),
+  el('div',{style:{padding:16,borderRadius:12,background:'var(--app-panel-bg)'}},'I started a review of the keyboard and focus behavior.'),
+  el(RelatedAgentSessionLinks,{sessions:[{sessionId:'fixture-child',title:'Review disappearing control',status:'running'}],agentName:'Kordi',onOpen:()=>document.getElementById('thread').scrollIntoView()}),
+  el('div',{id:'thread',style:{marginTop:48,display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid var(--app-divider)',paddingBottom:12}},
+    el('strong',null,'Agent thread · Review disappearing control'),
+    el(BackgroundSessionHeaderControl,{sessionId:'fixture-child',title:'Review disappearing control'})
+  )
+));
+</script>
+</body>
+</html>

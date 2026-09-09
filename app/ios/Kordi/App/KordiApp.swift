@@ -313,6 +313,8 @@ private struct RootView: View {
             NavigationStack {
                 ContactsView()
             }
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-background-stop") {
+            AgentSubsessionStopPreviewView()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-appearance") {
             AppearanceSettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {

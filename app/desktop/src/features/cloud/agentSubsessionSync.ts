@@ -1,7 +1,7 @@
 import { CloudAuthClient, CloudAuthError } from './authClient';
 import { loadSession } from './session';
 import { fetchDesktopSubsessionSnapshot } from '@/lib/desktopBackgroundSessions';
-import { renewDesktopChatExecutionLease } from '@/lib/desktop';
+import { cancelDesktopChatTurn, renewDesktopChatExecutionLease } from '@/lib/desktop';
 import { relatedAgentSessionsFromTools, normalizedRelatedAgentSessionStatus } from '@/features/chat/relatedAgentSessions';
 import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
 
@@ -32,15 +32,26 @@ export async function publishModelSubsession(id: string): Promise<void> {
         if (afterRead?.accountId !== account.accountId) throw new Error('Account changed.');
         try {
           if (version == null) {
-            version = await client.getAgentSubsession(current.token, id).then((record) => record.version).catch((error) => {
-              if (error instanceof CloudAuthError && error.status === 404) return 0;
+            const record = await client.getAgentSubsession(current.token, id).catch((error) => {
+              if (error instanceof CloudAuthError && error.status === 404) return null;
               throw error;
             });
+            if ((await loadSession())?.accountId !== account.accountId) throw new Error('Account changed.');
+            if (record?.status === 'stopped' && snapshot.turnId && snapshot.status === 'running') {
+              await cancelDesktopChatTurn(snapshot.turnId);
+              resolveFirst();
+              return;
+            }
+            version = record?.version ?? 0;
           }
           const sentAt=Date.now();
           const saved = await client.putAgentSubsession(current.token, snapshot, version);
           version = saved.version;
           resolveFirst();
+          if (saved.status === 'stopped' && snapshot.turnId && snapshot.status === 'running') {
+            await cancelDesktopChatTurn(snapshot.turnId);
+            return;
+          }
           if (saved.hasFollowupExecution) return;
           if (snapshot.turnId && snapshot.status==='running') await renewDesktopChatExecutionLease(snapshot.turnId,sentAt+30_000);
           if (snapshot.status !== 'running') return;

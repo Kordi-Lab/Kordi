@@ -18,9 +18,9 @@ export type RelatedAgentSession = {
 
 export type RelatedAgentSessionRunStatus = 'running' | 'done' | 'failed' | 'stopped';
 
-function runStatusFromTurn(turn: DesktopChatTurnSnapshot): RelatedAgentSessionRunStatus {
+export function runStatusFromTurn(turn: DesktopChatTurnSnapshot): RelatedAgentSessionRunStatus {
   const status = turn.status.trim().toLowerCase();
-  if (!turn.completed) return status === 'cancelling' ? 'stopped' : 'running';
+  if (!turn.completed) return 'running';
   if (status === 'cancelled' || status === 'canceled') return 'stopped';
   if (!turn.succeeded || turn.error?.trim() || ['failed', 'error', 'crashed'].includes(status)) return 'failed';
   return 'done';

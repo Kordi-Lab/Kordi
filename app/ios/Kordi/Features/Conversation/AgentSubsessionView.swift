@@ -32,17 +32,27 @@ struct AgentSubsessionView: View {
         Group {
             if let snapshot = model.subsessions[sessionId] {
                 ConversationView(conversation: snapshot.conversation, allowsCompanionPanel: false)
-                    .overlay(alignment: .top) {
-                        VStack(spacing: 4) {
-                            if snapshot.state == .failed {
-                                Label("Task failed", systemImage: "exclamationmark.circle.fill")
-                                    .foregroundStyle(.red)
-                                    .padding(8).background(.regularMaterial)
+                    .toolbar {
+                        if snapshot.canStop(accountId: model.account?.accountId) {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                AgentSubsessionStopButton(snapshot: snapshot)
+                                    .labelStyle(.iconOnly)
                             }
-                            if loadFailure != nil {
-                                Button("Connection interrupted. Try again") { retry += 1 }
-                                    .padding(8).background(.regularMaterial)
+                        }
+                    }
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if loadFailure != nil {
+                            HStack(spacing: 12) {
+                                Label("Connection interrupted", systemImage: "wifi.exclamationmark")
+                                    .foregroundStyle(.secondary)
+                                Spacer(minLength: 0)
+                                Button("Retry") { retry += 1 }
+                                    .frame(minHeight: 44)
                             }
+                            .font(.footnote)
+                            .padding(.horizontal, 16)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .background(Color(uiColor: .secondarySystemBackground))
                         }
                     }
             } else if let loadFailure {

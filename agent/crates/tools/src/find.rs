@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use kordi_core::error::{KordiError, KordiResult};
 use serde_json::{Value, json};
+use std::future::Future;
 use std::path::Path;
+use std::process::Output;
+use std::time::Duration;
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
@@ -11,6 +14,7 @@ use crate::{
 };
 
 const DEFAULT_LIMIT: usize = 1000;
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct FindTool;
 
@@ -50,7 +54,7 @@ impl Tool for FindTool {
         &self,
         params: Value,
         ctx: &ToolContext,
-        _cancel: CancellationToken,
+        cancel: CancellationToken,
     ) -> KordiResult<ToolResult> {
         let pattern = params
             .get("pattern")
@@ -76,18 +80,48 @@ impl Tool for FindTool {
             )));
         }
 
-        // Try fd first
-        match find_with_fd(pattern, &search_dir, limit).await {
-            Ok(results) => format_results(results, limit),
-            Err(_) => {
-                // Fall back to basic find command
-                match find_with_find_cmd(pattern, &search_dir, limit).await {
-                    Ok(results) => format_results(results, limit),
-                    Err(e) => Err(KordiError::Tool(format!("Find failed: {e}"))),
-                }
+        bounded_search(
+            search_files(pattern, &search_dir, limit),
+            cancel,
+            SEARCH_TIMEOUT,
+        )
+        .await
+    }
+}
+
+async fn search_files(pattern: &str, search_dir: &Path, limit: usize) -> KordiResult<ToolResult> {
+    // Try fd first. Cancellation and the deadline cover both attempts.
+    match find_with_fd(pattern, search_dir, limit).await {
+        Ok(results) => format_results(results, limit),
+        Err(_) => {
+            // Fall back to basic find command
+            match find_with_find_cmd(pattern, search_dir, limit).await {
+                Ok(results) => format_results(results, limit),
+                Err(e) => Err(KordiError::Tool(format!("Find failed: {e}"))),
             }
         }
     }
+}
+
+async fn bounded_search<T>(
+    search: impl Future<Output = KordiResult<T>>,
+    cancel: CancellationToken,
+    timeout: Duration,
+) -> KordiResult<T> {
+    tokio::select! {
+        biased;
+        _ = cancel.cancelled() => Err(KordiError::Aborted),
+        _ = tokio::time::sleep(timeout) => Err(KordiError::Tool(
+            "File search timed out. Retry in a narrower project directory.".into()
+        )),
+        result = search => result,
+    }
+}
+
+async fn search_output(command: &mut Command) -> std::io::Result<Output> {
+    // Dropping the search on cancellation, timeout, or runtime shutdown must
+    // also terminate its OS process instead of leaving it scanning in the background.
+    command.kill_on_drop(true).output().await
 }
 
 async fn find_with_fd(
@@ -95,16 +129,17 @@ async fn find_with_fd(
     dir: &Path,
     limit: usize,
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-    let output = Command::new("fd")
-        .arg("--glob")
-        .arg(pattern)
-        .arg("--max-results")
-        .arg(limit.to_string())
-        .arg("--type")
-        .arg("f")
-        .current_dir(dir)
-        .output()
-        .await?;
+    let output = search_output(
+        Command::new("fd")
+            .arg("--glob")
+            .arg(pattern)
+            .arg("--max-results")
+            .arg(limit.to_string())
+            .arg("--type")
+            .arg("f")
+            .current_dir(dir),
+    )
+    .await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -125,14 +160,15 @@ async fn find_with_find_cmd(
     dir: &Path,
     limit: usize,
 ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-    let output = Command::new("find")
-        .arg(dir)
-        .arg("-type")
-        .arg("f")
-        .arg("-name")
-        .arg(pattern)
-        .output()
-        .await?;
+    let output = search_output(
+        Command::new("find")
+            .arg(dir)
+            .arg("-type")
+            .arg("f")
+            .arg("-name")
+            .arg(pattern),
+    )
+    .await?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -161,3 +197,6 @@ fn format_results(results: Vec<String>, limit: usize) -> KordiResult<ToolResult>
         })),
     ))
 }
+
+#[cfg(all(test, unix))]
+mod tests;
