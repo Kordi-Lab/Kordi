@@ -16,15 +16,30 @@ final class ConversationTailScrollAnimator: NSObject {
     private var pendingReduceMotion = false
     private var generation = 0
     private var reduceMotion = false
+    private var positionedCompletion: (() -> Void)?
+    private var positioningDisplayLink: CADisplayLink?
+    private var previousGeometry: PositionedGeometry?
+
+    private struct PositionedGeometry: Equatable {
+        let contentSize: CGSize
+        let viewportSize: CGSize
+        let insets: UIEdgeInsets
+        let contentBounds: CGRect
+        let targetY: CGFloat
+    }
 
     var hasPendingRequest: Bool { pendingFromY != nil }
 
-    func request(in scrollView: UIScrollView, contentView: UIView? = nil, animated: Bool, reduceMotion: Bool) {
+    func request(in scrollView: UIScrollView, contentView: UIView? = nil, animated: Bool, reduceMotion: Bool, onPositioned: (() -> Void)? = nil) {
         attach(to: scrollView)
         self.contentView = contentView
         self.reduceMotion = reduceMotion
         pendingAnimated = pendingAnimated || animated
         pendingReduceMotion = reduceMotion
+        if let onPositioned {
+            positionedCompletion = onPositioned
+            previousGeometry = nil
+        }
         guard pendingFromY == nil else { return }
         pendingFromY = visibleOffset(in: scrollView)
         pendingContentOriginY = contentView?.convert(.zero, to: scrollView).y ?? 0
@@ -39,6 +54,7 @@ final class ConversationTailScrollAnimator: NSObject {
         generation &+= 1
         pendingFromY = nil
         pendingAnimated = false
+        finishPositioning()
         guard let scrollView else { return }
         let displayedY = visibleOffset(in: scrollView)
         scrollView.layer.removeAnimation(forKey: Self.animationKey)
@@ -94,6 +110,17 @@ final class ConversationTailScrollAnimator: NSObject {
         pendingAnimated = false
         let targetY = Self.targetOffset(in: scrollView)
         let running = scrollView.layer.animation(forKey: Self.animationKey) != nil
+        if positionedCompletion != nil {
+            // The inserted row remains hidden until the viewport and measured
+            // content agree. Never show its provisional pre-scroll position.
+            scrollView.layer.removeAnimation(forKey: Self.animationKey)
+            UIView.performWithoutAnimation {
+                scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+            }
+            previousGeometry = positionedGeometry(in: scrollView)
+            startPositioning()
+            return
+        }
         // The logical offset already equals the destination during an animation.
         // A delivery receipt or duplicate layout request must not snap to it.
         if abs(scrollView.contentOffset.y - targetY) < 0.5, running, !reduceMotion { return }
@@ -109,4 +136,55 @@ final class ConversationTailScrollAnimator: NSObject {
         animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
         scrollView.layer.add(animation, forKey: Self.animationKey)
     }
+
+    private func startPositioning() {
+        guard positioningDisplayLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(positionBeforeDisplay))
+        positioningDisplayLink = link
+        link.add(to: .main, forMode: .common)
+    }
+
+    @objc private func positionBeforeDisplay() {
+        guard let scrollView, positionedCompletion != nil else {
+            finishPositioning()
+            return
+        }
+        guard !scrollView.isDragging, !scrollView.isTracking else {
+            finishPositioning()
+            return
+        }
+        scrollView.superview?.layoutIfNeeded()
+        scrollView.layoutIfNeeded()
+        guard scrollView.bounds.height > 0, scrollView.contentSize.height > 0 else { return }
+        let targetY = Self.targetOffset(in: scrollView)
+        UIView.performWithoutAnimation {
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+        }
+        let geometry = positionedGeometry(in: scrollView)
+        if previousGeometry == geometry, abs(scrollView.contentOffset.y - targetY) < 0.5 {
+            finishPositioning()
+        } else {
+            previousGeometry = geometry
+        }
+    }
+
+    private func positionedGeometry(in scrollView: UIScrollView) -> PositionedGeometry {
+        PositionedGeometry(
+            contentSize: scrollView.contentSize,
+            viewportSize: scrollView.bounds.size,
+            insets: scrollView.adjustedContentInset,
+            contentBounds: contentView?.bounds ?? .zero,
+            targetY: Self.targetOffset(in: scrollView)
+        )
+    }
+
+    private func finishPositioning() {
+        positioningDisplayLink?.invalidate()
+        positioningDisplayLink = nil
+        previousGeometry = nil
+        let completion = positionedCompletion
+        positionedCompletion = nil
+        completion?()
+    }
+
 }

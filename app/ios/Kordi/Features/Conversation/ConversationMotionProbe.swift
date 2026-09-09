@@ -18,6 +18,11 @@ enum ConversationMotionProbeRegistry {
         guard let view = views[id]?.value, view.window === window else { return nil }
         guard let layer = view.layer.presentation(), let root = window.layer.presentation(),
               !layer.bounds.isEmpty else { return nil }
+        var ancestor: CALayer? = layer
+        while let current = ancestor {
+            if current.isHidden || current.opacity <= 0.01 { return nil }
+            ancestor = current.superlayer
+        }
         return layer.convert(layer.bounds, to: root)
     }
 }

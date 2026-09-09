@@ -569,10 +569,7 @@ struct ConversationView: View {
                                             #endif
                                             .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
                                             .modifier(OutgoingMessageEntrance(
-                                                shouldAnimate: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
-                                                onAnimationStarted: {
-                                                    stagedMessageIDs.removeAll { $0 == (message.clientMessageId ?? message.id) }
-                                                }
+                                                pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
                                             ))
                                         }
                                     }
@@ -594,7 +591,12 @@ struct ConversationView: View {
                                         scrollToBottomRequest: immediateBottomRequest,
                                         animateBottomScroll: animateBottomScroll,
                                         reduceMotion: reduceMotion,
-                                        exactRestoreRequest: $exactScrollRestoreRequest
+                                        exactRestoreRequest: $exactScrollRestoreRequest,
+                                        onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
+                                            stagedMessageIDs.removeAll { messageIDs.contains($0) }
+                                            isAtBottom = true
+                                            trackedMessageID = bottomAnchorID
+                                        }
                                     )
                                 )
                                 .frame(
@@ -3331,6 +3333,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let animateBottomScroll: Bool
     let reduceMotion: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
+    let onTailPositioned: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -3359,7 +3362,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         }
         if shouldScrollToBottom, restoreRequest == nil, let scrollView = enclosingScrollView(from: view) {
             coordinator.lastAttachedRequest = scrollToBottomRequest
-            coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion)
+            coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion, onPositioned: onTailPositioned)
         }
 
         DispatchQueue.main.async { [weak view] in
@@ -3400,7 +3403,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest,
                !coordinator.tailAnimator.hasPendingRequest,
                coordinator.lastAttachedRequest != scrollToBottomRequest {
-                coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion)
+                coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion, onPositioned: onTailPositioned)
             }
             if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest {
                 coordinator.lastAttachedRequest = scrollToBottomRequest
@@ -3874,26 +3877,16 @@ private struct ThreadNavigationButton: View {
     }
 }
 
-/// Only locally staged messages enter; hydration and delivery receipts never replay it.
+/// A send becomes visible only after its measured row and viewport are aligned.
 private struct OutgoingMessageEntrance: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let shouldAnimate: Bool
-    let onAnimationStarted: () -> Void
-    @State private var hasAppeared = false
+    let pendingPosition: Bool
 
     func body(content: Content) -> some View {
-        let entering = shouldAnimate && !hasAppeared
         content
-            .opacity(entering ? 0.72 : 1)
-            .onAppear {
-                guard shouldAnimate, !hasAppeared else {
-                    hasAppeared = true
-                    return
-                }
-                withAnimation(reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.15)) {
-                    hasAppeared = true
-                    onAnimationStarted()
-                }
-            }
+            .opacity(pendingPosition ? 0 : 1)
+            .allowsHitTesting(!pendingPosition)
+            .accessibilityHidden(pendingPosition)
+            .animation(reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.15), value: pendingPosition)
     }
 }

@@ -153,4 +153,20 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         XCTAssertEqual(ComposerTextViewLayout.resolvedHeight(isEmpty: true, measuredHeight: 160, lineHeight: 40, insets: 22), 62)
     }
 
+    func testInsertedMessageIsRevealedOnlyAfterMeasuredTailSettles() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let animator = ConversationTailScrollAnimator()
+        defer { animator.disconnect() }
+        var revealed = false
+        animator.request(in: scroll, animated: false, reduceMotion: false, onPositioned: { revealed = true })
+        scroll.contentSize.height = 1070
+        XCTAssertFalse(revealed)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(revealed)
+        XCTAssertEqual(scroll.contentOffset.y, 470, accuracy: 0.5)
+        XCTAssertNil(scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey))
+    }
+
 }
