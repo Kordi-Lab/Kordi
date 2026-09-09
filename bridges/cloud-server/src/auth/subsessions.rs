@@ -1,6 +1,7 @@
 //! Owner-published model execution records, authorized by the parent conversation.
 mod catalog;
 pub(crate) mod conversation;
+mod stop;
 use crate::{
     auth::routes::CloudSession, chat_sync::store::conversation_id_for_session, server::ServerState,
 };
@@ -43,6 +44,10 @@ pub fn routes() -> Router<Arc<ServerState>> {
     Router::new()
         .route("/v1/cloud/agent-subsessions", get(catalog::list))
         .route("/v1/cloud/agent-subsessions/:id", get(read).put(write))
+        .route(
+            "/v1/cloud/agent-subsessions/:id/stop",
+            axum::routing::post(stop::stop),
+        )
         .route(
             "/v1/cloud/agent-subsessions/:id/messages",
             axum::routing::post(conversation::send),
@@ -402,6 +407,9 @@ async fn write(
             ));
         }
         if title != request.title || status != request.status || stored_messages != messages {
+            if status == "stopped" && request.status != "stopped" {
+                return Err(error(StatusCode::CONFLICT, "subsession_is_terminal"));
+            }
             if status != "running" && request.status == "running" {
                 return Err(error(StatusCode::CONFLICT, "subsession_is_terminal"));
             }

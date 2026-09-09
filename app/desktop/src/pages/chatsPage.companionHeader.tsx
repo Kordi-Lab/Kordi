@@ -17,6 +17,7 @@ import {
   type CompanionSide,
 } from '@/pages/chatsPage.model';
 import { participantSpaceSessionRowTitle } from '@/pages/workspaceSidebar.chatHelpers';
+import { BackgroundSessionHeaderControl } from '@/kordi-app/components/backgroundSessionStopControl';
 
 type CompanionHeaderMenu = {
   actionsOpen: boolean;
@@ -127,6 +128,7 @@ export function CompanionHeader({
         aria-label="Side chat controls"
         data-side-chat-controls="true"
       >
+        {conversation.agentSubsessionId ? <BackgroundSessionHeaderControl key={conversation.agentSubsessionId} sessionId={conversation.agentSubsessionId} title={conversation.name} /> : null}
         <button
           ref={actionsTriggerRef}
           type="button"

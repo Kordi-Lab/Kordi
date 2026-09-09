@@ -382,6 +382,8 @@ mod artifacts;
 mod attachments;
 #[path = "cloud_agent_runtime_e2e/avatar_assets.rs"]
 mod avatar_assets;
+#[path = "cloud_agent_runtime_e2e/calendar.rs"]
+mod calendar;
 #[path = "cloud_agent_runtime_e2e/claims.rs"]
 mod claims;
 #[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
@@ -390,6 +392,8 @@ mod cloud_subsessions;
 mod execution_ownership;
 #[path = "cloud_agent_runtime_e2e/group_owner_admission.rs"]
 mod group_owner_admission;
+#[path = "cloud_agent_runtime_e2e/group_target_admission.rs"]
+mod group_target_admission;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
 mod provider_auth;
 #[path = "cloud_agent_runtime_e2e/runner.rs"]
@@ -402,10 +406,7 @@ mod scheduled_runs;
 mod shared_desktop_lease;
 #[path = "cloud_agent_runtime_e2e/subsession_follow.rs"]
 mod subsession_follow;
+#[path = "cloud_agent_runtime_e2e/subsession_stop.rs"]
+mod subsession_stop;
 #[path = "cloud_agent_runtime_e2e/subsessions.rs"]
 mod subsessions;
-
-#[path = "cloud_agent_runtime_e2e/calendar.rs"]
-mod calendar;
-#[path = "cloud_agent_runtime_e2e/group_target_admission.rs"]
-mod group_target_admission;
