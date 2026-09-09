@@ -1267,6 +1267,7 @@ private struct ChatCircularSwipeAction: Identifiable {
 }
 
 private struct ChatCircularSwipeActionsModifier: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let rowID: String
     @Binding var activeRowID: String?
     let leading: [ChatCircularSwipeAction]
@@ -1278,15 +1279,11 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
     private let actionDiameter: CGFloat = 44
     private let actionSpacing: CGFloat = 8
     private let edgePadding: CGFloat = 16
-    private let minimumActionScale: CGFloat = 0.3
-    private let revealStartOverlap: CGFloat = 10
-    private let revealEndDistance: CGFloat = 10
-    private let revealProgressResponse: CGFloat = 2.7
+    private let minimumActionScale: CGFloat = 0.85
 
     private var leadingWidth: CGFloat { actionWidth(for: leading) }
     private var trailingWidth: CGFloat { actionWidth(for: trailing) }
     private var displayedOffset: CGFloat {
-        guard activeRowID == rowID else { return 0 }
         let offset = restingOffset + dragOffset
         return swipeSession?.limitedOffset(offset, leadingWidth: leadingWidth, trailingWidth: trailingWidth)
             ?? min(leadingWidth, max(-trailingWidth, offset))
@@ -1294,16 +1291,10 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         ZStack {
-            if activeRowID == rowID {
-                HStack(spacing: 0) {
-                    if displayedOffset > 0 {
-                        actionButtons(leading, edge: .leading)
-                    }
-                    Spacer(minLength: 0)
-                    if displayedOffset < 0 {
-                        actionButtons(trailing, edge: .trailing)
-                    }
-                }
+            HStack(spacing: 0) {
+                if !leading.isEmpty { actionButtons(leading, edge: .leading) }
+                Spacer(minLength: 0)
+                if !trailing.isEmpty { actionButtons(trailing, edge: .trailing) }
             }
 
             content
@@ -1333,26 +1324,31 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
             }
         }
         .onChange(of: activeRowID) {
-            if activeRowID != rowID {
-                restingOffset = 0
-                dragOffset = 0
-                swipeSession = nil
+            if activeRowID != rowID, restingOffset != 0 || dragOffset != 0 {
+                withAnimation(ChatRowSwipeMotion.settlingAnimation(reduceMotion: reduceMotion)) {
+                    restingOffset = 0
+                    dragOffset = 0
+                    swipeSession = nil
+                }
             }
         }
     }
 
     private func updateSwipe(_ translation: CGFloat) {
-        if activeRowID != rowID {
-            activeRowID = rowID
-            restingOffset = 0
+        withTransaction(Transaction(animation: nil)) {
+            if activeRowID != rowID {
+                activeRowID = rowID
+                restingOffset = 0
+            }
+            if swipeSession == nil {
+                swipeSession = ChatRowSwipeSession(restingOffset: restingOffset, firstTranslation: translation)
+            }
+            dragOffset = translation
         }
-        if swipeSession == nil {
-            swipeSession = ChatRowSwipeSession(restingOffset: restingOffset, firstTranslation: translation)
-        }
-        dragOffset = translation
     }
 
     private func finishSwipe(_ projectedTranslation: CGFloat) {
+        guard activeRowID == rowID else { cancelSwipe(); return }
         let projectedOffset = swipeSession?.limitedOffset(
             restingOffset + projectedTranslation, leadingWidth: leadingWidth, trailingWidth: trailingWidth
         ) ?? 0
@@ -1364,7 +1360,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
         } else {
             destination = 0
         }
-        withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+        withAnimation(ChatRowSwipeMotion.settlingAnimation(reduceMotion: reduceMotion)) {
             dragOffset = 0
             swipeSession = nil
             restingOffset = destination
@@ -1373,9 +1369,11 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
     }
 
     private func cancelSwipe() {
-        dragOffset = 0
-        swipeSession = nil
-        if restingOffset == 0, activeRowID == rowID { activeRowID = nil }
+        withAnimation(ChatRowSwipeMotion.settlingAnimation(reduceMotion: reduceMotion)) {
+            dragOffset = 0
+            swipeSession = nil
+            if restingOffset == 0, activeRowID == rowID { activeRowID = nil }
+        }
     }
 
     private func actionWidth(for actions: [ChatCircularSwipeAction]) -> CGFloat {
@@ -1385,7 +1383,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
     }
 
     private func close() {
-        withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.9)) {
+        withAnimation(ChatRowSwipeMotion.settlingAnimation(reduceMotion: reduceMotion)) {
             restingOffset = 0
             dragOffset = 0
             swipeSession = nil
@@ -1421,9 +1419,9 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(action.label)
-                .scaleEffect(minimumActionScale + (1 - minimumActionScale) * progress)
+                .scaleEffect(reduceMotion ? 1 : minimumActionScale + (1 - minimumActionScale) * progress)
                 .opacity(progress)
-                .allowsHitTesting(progress > 0.9)
+                .allowsHitTesting(activeRowID == rowID && progress > 0.9)
             }
         }
         .padding(edge == .leading ? .leading : .trailing, edgePadding)
@@ -1438,11 +1436,11 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
         let distanceFromEdge = edge == .leading ? index : count - 1 - index
         let fullRevealDistance = edgePadding + actionDiameter
             + CGFloat(distanceFromEdge) * (actionDiameter + actionSpacing)
-        let linearProgress = (
-            abs(displayedOffset) - fullRevealDistance + revealStartOverlap
-        ) / max(1, revealStartOverlap + revealEndDistance)
-        let clampedProgress = min(1, max(0, linearProgress))
-        return 1 - pow(1 - clampedProgress, revealProgressResponse)
+        let offset = edge == .leading ? max(0, displayedOffset) : max(0, -displayedOffset)
+        return ChatRowSwipeMotion.actionProgress(
+            offset: offset, fullRevealDistance: fullRevealDistance,
+            edgePadding: edgePadding, diameter: actionDiameter
+        )
     }
 }
 

@@ -25,6 +25,20 @@ struct ChatRowSwipeSession {
     }
 }
 
+enum ChatRowSwipeMotion {
+    static func settlingAnimation(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.16) : .spring(duration: 0.6, bounce: 0)
+    }
+
+    static func actionProgress(
+        offset: CGFloat, fullRevealDistance: CGFloat, edgePadding: CGFloat, diameter: CGFloat
+    ) -> CGFloat {
+        let end = fullRevealDistance + edgePadding
+        let progress = min(1, max(0, (offset - (end - diameter)) / max(1, diameter)))
+        return progress * progress * (3 - 2 * progress)
+    }
+}
+
 @MainActor
 final class ChatRowPanCoordinator: NSObject, UIGestureRecognizerDelegate {
     func makeRecognizer() -> UIPanGestureRecognizer {

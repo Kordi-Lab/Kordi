@@ -61,6 +61,29 @@ final class ChatRowSwipeGestureTests: XCTestCase {
         }
     }
 
+    func testGradualRevealStillFullyExposesEveryActionAtRest() {
+        let diameter: CGFloat = 44
+        let padding: CGFloat = 16
+        for count in 1...4 {
+            let restingWidth = padding * 2 + CGFloat(count) * diameter + CGFloat(count - 1) * 8
+            for index in 0..<count {
+                let fullDistance = padding + diameter + CGFloat(index) * (diameter + 8)
+                let end = fullDistance + padding
+                let progress: (CGFloat) -> CGFloat = { offset in
+                    ChatRowSwipeMotion.actionProgress(
+                        offset: offset, fullRevealDistance: fullDistance,
+                        edgePadding: padding, diameter: diameter
+                    )
+                }
+                XCTAssertEqual(progress(0), 0)
+                XCTAssertEqual(progress(end - diameter), 0)
+                XCTAssertEqual(progress(end - diameter / 2), 0.5, accuracy: 0.001)
+                XCTAssertEqual(progress(restingWidth), 1)
+                XCTAssertLessThan(progress(end - diameter * 0.8), 0.2)
+            }
+        }
+    }
+
     @MainActor
     private final class SamplePan: UIPanGestureRecognizer {
         var sample: CGPoint = .zero
