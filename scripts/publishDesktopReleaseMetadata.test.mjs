@@ -232,6 +232,8 @@ test('application bundle contract preserves the production Gatekeeper and endpoi
     `plutil -extract CFBundleIdentifier raw -o - ${APP_CONTRACT_BUNDLE}/Contents/Info.plist`,
     `codesign --verify --deep --strict --verbose=2 ${APP_CONTRACT_BUNDLE}`,
     `spctl --assess --type execute --verbose=2 ${APP_CONTRACT_BUNDLE}`,
+    `codesign -d --entitlements :- ${APP_CONTRACT_BUNDLE}`,
+    `plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${APP_CONTRACT_BUNDLE}/Contents/Info.plist`,
     [
       'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
       PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,

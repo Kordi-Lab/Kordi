@@ -52,6 +52,8 @@ export { MACOS_NOTIFICATION_BUNDLE_MARKERS };
 export function contractRun(overrides = new Map(), calls = []) {
   const info = `${APP_CONTRACT_BUNDLE}/Contents/Info.plist`;
   const results = new Map([
+    [`codesign -d --entitlements :- ${APP_CONTRACT_BUNDLE}`, { status: 0, stdout: '<plist><dict><key>com.apple.security.personal-information.calendars</key><true/></dict></plist>', stderr: '' }],
+    [`plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${info}`, { status: 0, stdout: 'Read selected calendars.', stderr: '' }],
     [`plutil -extract CFBundleShortVersionString raw -o - ${info}`, {
       status: 0, stdout: `${VERSION}\n`, stderr: '',
     }],
@@ -163,6 +165,8 @@ export function artifactVerifierRun(releaseProfile, calls) {
     if (command === 'plutil' && args[1] === 'CFBundleIdentifier') {
       return { status: 0, stdout: 'io.kordi.cloud\n', stderr: '' };
     }
+    if (command === 'codesign' && args[0] === '-d') return { status: 0, stdout: '<plist><dict><key>com.apple.security.personal-information.calendars</key><true/></dict></plist>', stderr: '' };
+    if (command === 'plutil' && args[1] === 'NSCalendarsFullAccessUsageDescription') return { status: 0, stdout: 'Read selected calendars.', stderr: '' };
     if (command === 'codesign' && args[0] === '--verify') return { status: 0, stdout: '', stderr: '' };
     if (command === 'codesign' && args[0] === '--display') {
       return { status: 0, stdout: '', stderr: 'Signature=adhoc\nTeamIdentifier=not set\n' };
