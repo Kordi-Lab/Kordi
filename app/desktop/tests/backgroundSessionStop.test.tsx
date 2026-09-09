@@ -22,6 +22,14 @@ const initialTurn: DesktopChatTurnSnapshot = {
   assistantText: '', thinkingText: '', tools: [], completed: false, succeeded: false,
 };
 
+async function waitFor(predicate: () => boolean, message: string) {
+  const deadline = Date.now() + 5000;
+  while (!predicate() && Date.now() < deadline) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  }
+  assert(predicate(), message);
+}
+
 async function fixture(invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>, accountId?: string, content?: React.ReactNode) {
   const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'http://localhost', pretendToBeVisual: true });
   const replacements = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true };
@@ -29,6 +37,8 @@ async function fixture(invoke: (command: string, args?: Record<string, unknown>)
   for (const [key, value] of Object.entries(replacements)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   let activeReads = 0;
   Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: async (command: string, args?: Record<string, unknown>) => {
+    // Native IPC completes outside React's render/act queue.
+    await new Promise(resolve => setTimeout(resolve, 5));
     const result = await invoke(command, args);
     if (command === 'desktop_chat_session_active_turn') activeReads += 1;
     return result;
@@ -45,9 +55,7 @@ async function fixture(invoke: (command: string, args?: Record<string, unknown>)
   });
   // The first native call lazily imports the bridge, which can outlive act's
   // initial render. Wait for that real asynchronous boundary before asserting.
-  for (let attempt = 0; activeReads === 0 && attempt < 100; attempt += 1) {
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-  }
+  await waitFor(() => activeReads >= (content ? 1 : 2), 'Both controls must finish their native lookup');
   return {
     async render(content: React.ReactNode) { await act(async () => root.render(content)); },
     host, dom, get opens() { return opens; },
@@ -85,6 +93,7 @@ test('card and thread Stop target the actual child turn and show Stopped only af
     assert.equal(view.buttons().length, 2, 'Stop is visible on both surfaces');
     assert.equal(view.host.querySelectorAll('button button').length, 0, 'Stop is separate from Open');
     await act(async () => { view.buttons()[0].click(); });
+    await waitFor(() => cancelled.length === 1, 'Stop must reach the native cancellation command');
     assert.deepEqual(cancelled, ['actual-child-turn']);
     assert.equal(view.opens, 0);
     assert.equal(view.buttons()[0].disabled, true);
@@ -92,7 +101,7 @@ test('card and thread Stop target the actual child turn and show Stopped only af
     assert.equal(view.host.querySelector('[data-related-agent-session-status]')?.getAttribute('data-related-agent-session-status'), 'running');
     stored = { ...initialTurn, status: 'cancelled', completed: true };
     active = null;
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1600)); });
+    await waitFor(() => view.buttons().length === 0, 'Stop controls must settle after completion');
     assert.equal(view.buttons().length, 0);
     assert.match(view.host.textContent!, /Stopped/);
   } finally { await view.close(); }
@@ -111,9 +120,11 @@ test('failed Stop remains retryable and the thread header can cancel independent
   });
   try {
     await act(async () => { view.buttons()[1].click(); });
+    await waitFor(() => Boolean(view.host.querySelector('[role="alert"]')), 'A failed cancellation must become retryable');
     assert.match(view.host.querySelector('[role="alert"]')?.textContent ?? '', /Could not stop this task/);
     assert.equal(view.buttons()[1].disabled, false);
     await act(async () => { view.buttons()[1].click(); });
+    await waitFor(() => attempts === 2, 'Retry must invoke native cancellation again');
     assert.equal(attempts, 2);
     assert.equal(view.buttons()[1].disabled, true);
   } finally { await view.close(); }
@@ -129,6 +140,7 @@ test('remote status alone never offers a local Stop, and switching accounts clea
     assert.equal(view.buttons().length, 0);
     active = { ...initialTurn };
     await act(async () => { view.dom.window.dispatchEvent(new view.dom.window.Event(CLOUD_SESSION_CHANGED_EVENT)); });
+    await waitFor(() => view.buttons().length === 2, 'Account reset must load the current native execution');
     assert.equal(view.buttons().length, 2);
     active = null;
     await act(async () => { view.dom.window.dispatchEvent(new view.dom.window.Event(CLOUD_SESSION_CHANGED_EVENT)); });
@@ -156,10 +168,11 @@ test('an owner can stop a task in another window through the shared endpoint', a
   try {
     assert.equal(view.buttons().length, 2);
     await act(async () => { view.buttons()[0].click(); });
+    await waitFor(() => stops === 1, 'Remote Stop must reach the server');
     assert.equal(stops, 1);
     assert.equal(view.opens, 0);
     assert.match(view.host.textContent!, /Stopped/);
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1600)); });
+    await waitFor(() => view.buttons().length === 0, 'Stop controls must settle after completion');
     assert.equal(view.buttons().length, 0);
   } finally {
     await view.close();
@@ -188,6 +201,7 @@ test('Stop selects the newer remote execution instead of an old local turn', asy
   try {
     assert.equal(view.buttons().length, 1);
     await act(async () => view.buttons()[0].click());
+    await waitFor(() => remoteStops === 1 && view.buttons().length === 0, 'Remote Stop must settle');
     assert.equal(remoteStops, 1);
     assert.equal(view.buttons().length, 0);
   } finally {
@@ -212,9 +226,12 @@ test('switching tasks while Stop is pending leaves the new task stoppable', asyn
   try {
     await act(async () => view.buttons()[0].click());
     assert.equal(view.buttons()[0].disabled, true);
+    await waitFor(() => stopped.length === 1, 'The first cancellation must be in flight');
     await view.render(<StopControl sessionId="second-session" accountId="owner" />);
+    await waitFor(() => view.buttons()[0]?.disabled === false, 'The next task must become independently stoppable');
     assert.equal(view.buttons()[0].disabled, false);
     await act(async () => view.buttons()[0].click());
+    await waitFor(() => stopped.length === 2 && view.buttons().length === 0, 'The second cancellation must finish');
     assert.deepEqual(stopped, [initialTurn.id, second.id]);
     await act(async () => finishFirst({ ...initialTurn, completed: true, status: 'cancelled' }));
     assert.equal(view.buttons().length, 0, 'The old completion must not replace the new task state');
@@ -240,6 +257,7 @@ test('a shared local task cancels queued work before its native turn', async () 
   }, 'owner', <StopControl sessionId="child-session" shared={shared} accountId="owner" />);
   try {
     await act(async () => view.buttons()[0].click());
+    await waitFor(() => actions.length === 2 && view.buttons().length === 0, 'Both shared and native cancellation must finish');
     assert.deepEqual(actions, ['cancel-shared-queue', 'cancel-native-turn']);
     assert.equal(view.buttons().length, 0);
   } finally {
