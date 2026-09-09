@@ -255,7 +255,7 @@ function localAgentMentionKeys(account: CloudAccount, options: { allowFirstPerso
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
   const keys = new Set<string>();
-  if (agentName) keys.add(agentName);
+  if (agentName && (options.allowFirstPerson !== false || !['kordi', 'mykordi'].includes(agentName))) keys.add(agentName);
   if (options.allowFirstPerson !== false) {
     keys.add('kordi');
     keys.add('mykordi');

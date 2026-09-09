@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { resolvePreferredAgentMentionTarget, selectedComposerAgentMentionTarget } from '../src/features/chat/messageActions/cloudAgentMentionTarget';
+import { mentionForCollaborationTarget } from '../src/features/chat/messageMentions';
 import { resolveMentionedLocalAgentTarget } from '../src/features/chat/messageActions/mentions';
 import type { ComposerMentionOption } from '../src/kordi-app/components';
 import type { DesktopCollaborationState, DesktopChatState } from '../src/kordi-app/types';
@@ -40,6 +41,16 @@ test('renamed local agent mentions resolve to the immutable default Cloud agent 
   state.hosts[0].visiblePeers[0].displayName = 'BabyTREE';
   const sameNameRemote = await resolvePreferredAgentMentionTarget('@BabyTREE hi', { localAgent: { label: 'BabyTREE' } } as DesktopChatState, state, directPerson, [], undefined, false, true);
   assert.equal(sameNameRemote?.peer.humanId, 'acct-peer');
+  const group = { ...directPerson, directness: 'Group chat', participantSpaceId: 'group-space' };
+  for (const alias of ['@Kordi', '@My Kordi', '@MyKordi']) {
+    const own = await resolvePreferredAgentMentionTarget(`${alias} hi`, { localAgent: { label: 'Kordi' } } as DesktopChatState, state, group, [], undefined, false, true);
+    assert.equal(own?.peer.humanId, 'host-human-1', 'generic group aliases never choose a remote default agent');
+    const entity = mentionForCollaborationTarget(own, `${alias} hi`)[0];
+    assert.equal(entity.displayText, alias);
+    assert.equal(entity.lengthUtf16, alias.length);
+
+  }
+
 });
 
 test('composer selection preserves identity when agent display names are identical', () => {

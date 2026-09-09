@@ -6,6 +6,7 @@ mod delivery;
 mod envelopes;
 mod errors;
 mod group_mentions;
+mod group_target;
 pub(crate) mod identity;
 mod leases;
 mod prompt_history;
@@ -14,8 +15,7 @@ pub(crate) mod subsessions;
 
 pub use authorization::{
     claim_has_shared_cloud_agent_target, execution_agent_id, request_identity,
-    requester_can_target_owner, validate_agent_authored_group_handoff_claim,
-    validate_shared_cloud_agent_claim,
+    requester_can_target_owner, validate_group_agent_claim, validate_shared_cloud_agent_claim,
 };
 pub use claims::{
     claim_run, claim_run_for_desktop, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
@@ -110,6 +110,8 @@ mod tests {
                 },
             ],
             message: Some(super::CloudGroupMessage {
+                mentions: None,
+                fork_snapshot: None,
                 id: "msg:ui:request".to_string(),
                 sender_account_id: "acct_requester".to_string(),
                 text: "@OwnerKordi hello".to_string(),
@@ -252,6 +254,8 @@ mod tests {
                 },
             ],
             message: Some(super::CloudGroupMessage {
+                mentions: None,
+                fork_snapshot: None,
                 id: "msg:ui:request".to_string(),
                 sender_account_id: "acct_requester".to_string(),
                 text: "@ProjectDriver help".to_string(),

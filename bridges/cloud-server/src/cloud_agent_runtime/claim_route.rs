@@ -5,9 +5,8 @@ use std::sync::Arc;
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
     claim_has_shared_cloud_agent_target, claim_run, cloud_agent_response_is_processing_for_request,
-    error_response, requester_can_target_owner, run_error_response,
-    validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
-    ClaimRunRequest,
+    error_response, requester_can_target_owner, run_error_response, validate_group_agent_claim,
+    validate_shared_cloud_agent_claim, ClaimRunRequest,
 };
 use crate::server::ServerState;
 use axum::extract::State;
@@ -82,21 +81,20 @@ pub(super) async fn claim_cloud_agent_run(
             return run_error_response("request identity", "Could not resolve the request.", error)
         }
     }
-    let valid_agent_handoff =
-        match validate_agent_authored_group_handoff_claim(state.db_pool(), &input).await {
-            Ok(value) => value,
-            Err(error) => {
-                return run_error_response(
-                    "validate agent-authored handoff",
-                    "Could not validate Cloud agent run authorization.",
-                    error,
-                );
-            }
-        };
-    if !valid_agent_handoff {
+    let valid_group_target = match validate_group_agent_claim(state.db_pool(), &input).await {
+        Ok(value) => value,
+        Err(error) => {
+            return run_error_response(
+                "validate group target",
+                "Could not validate Cloud agent run authorization.",
+                error,
+            );
+        }
+    };
+    if !valid_group_target {
         return error_response(
             "agent_not_available",
-            "Agent-authored group request does not target this Kordi.",
+            "Group request does not target this Kordi.",
             StatusCode::FORBIDDEN,
         );
     }

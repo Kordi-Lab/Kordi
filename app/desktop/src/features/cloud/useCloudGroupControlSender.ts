@@ -1,3 +1,4 @@
+import { cloudGroupMessageWithAgentTarget } from './cloudGroupAgentTarget';
 import { useCallback } from 'react';
 import {
   beginChatPerformanceSpan,
@@ -151,7 +152,7 @@ export function useCloudGroupControlSender({
       const groupMessageAttachments = uploadedAttachments.length > 0
         ? uploadedAttachments
         : input.message?.attachments ?? [];
-      const message = input.message
+      const draftMessage = input.message
         ? {
             ...input.message,
             senderAccountId:
@@ -172,6 +173,7 @@ export function useCloudGroupControlSender({
             } : {}),
           }
         : null;
+      const message = draftMessage ? cloudGroupMessageWithAgentTarget(draftMessage, participants) : null;
       const envelope = encodeCloudGroupControl({
         kind: input.kind,
         groupId: input.groupId,

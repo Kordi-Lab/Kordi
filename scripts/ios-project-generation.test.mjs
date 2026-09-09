@@ -43,6 +43,7 @@ test('XcodeGen preserves committed iOS project and sharing configuration on repe
   t.after(() => rm(root, { recursive: true, force: true }));
   await cp(join(repoRoot, 'app/ios'), join(root, 'app/ios'), { recursive: true });
   await cp(join(repoRoot, 'shared/digest'), join(root, 'shared/digest'), { recursive: true });
+  await cp(join(repoRoot, 'shared/agent-targeting'), join(root, 'shared/agent-targeting'), { recursive: true });
   const generatedFiles = [
     'Kordi.xcodeproj/project.pbxproj',
     'Kordi/Supporting/Info.plist',

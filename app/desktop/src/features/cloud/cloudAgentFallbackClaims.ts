@@ -26,6 +26,7 @@ import {
   cloudMessageActionAllowsAgentTrigger,
 } from './cloudAgentTriggerPolicy';
 import { cloudGroupAgentHandoffTargetsAccount } from './cloudGroupMentions';
+import { cloudGroupHumanAgentTarget } from './cloudGroupAgentTarget';
 import type { CloudGroupControlEnvelope } from './cloudGroupMessages';
 import {
   buildCloudMessageIndex,
@@ -379,23 +380,8 @@ export function cloudFallbackRunClaimsForMessages({
             ownerAccountId,
           )
         ) continue;
-        const groupRequestMessage = { ...message, body: groupMessage.text };
-        const targetsOwnerById = Boolean(
-          cleanText(groupMessage.targetCloudAgentId)
-          && cleanText(groupMessage.targetCloudAgentOwnerAccountId)
-            === ownerAccountId,
-        );
-        const hasExplicitTarget = Boolean(
-          cleanText(groupMessage.targetCloudAgentId)
-          || cleanText(groupMessage.targetCloudAgentOwnerAccountId),
-        );
-        if (
-          hasExplicitTarget
-            ? !targetsOwnerById
-            : !cloudMessageMentionsContactAgent(groupRequestMessage, contact)
-        ) {
-          continue;
-        }
+        if (groupMessage.senderKind !== 'agent'
+          && cloudGroupHumanAgentTarget(groupMessage, groupEnvelope.participants)?.ownerAccountId !== ownerAccountId) continue;
         const alreadyTerminal = terminalGroupResponseKeys.has(
           `${groupEnvelope.groupId}\u0000${ownerAccountId}`
           + `\u0000${groupMessage.id}`,

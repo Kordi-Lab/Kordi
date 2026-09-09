@@ -2,7 +2,6 @@ import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type { CloudAccount } from './authClient';
 import {
   compactCloudAgentNativeContextMessages,
-  cloudMessageMentionsLocalAgent,
 } from './cloudAgentMessages';
 import { isCloudAgentProcessingPlaceholderText } from './cloudAgentRequestState';
 import {
@@ -17,13 +16,13 @@ import {
   cloudGroupAgentMentionDepth,
   cloudGroupMentionInstruction,
 } from './cloudGroupMentions';
-import { cloudAgentId, defaultCloudAgentId } from './cloudAgentIdentity';
+import { cloudAgentId } from './cloudAgentIdentity';
 import type {
   CloudGroupControlEnvelope,
   CloudGroupParticipant,
 } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
-import { cleanCloudText } from './cloudValue';
+import { cloudGroupHumanAgentTarget } from './cloudGroupAgentTarget';
 import type { MessageActionMetadata } from '@/kordi-app/types/message';
 
 export function cloudGroupAgentReplyThreadAction(
@@ -52,28 +51,7 @@ export function cloudGroupMessageTargetsLocalAgent(
       account.accountId,
     );
   }
-  const targetCloudAgentId = cleanCloudText(message.targetCloudAgentId);
-  const targetCloudAgentOwnerAccountId = cleanCloudText(
-    message.targetCloudAgentOwnerAccountId,
-  );
-  const targetsOwnedCloudAgent = Boolean(
-    (
-      targetCloudAgentId.startsWith('cloud_agent_')
-      || targetCloudAgentId === defaultCloudAgentId(account.accountId)
-    )
-    && targetCloudAgentOwnerAccountId === account.accountId,
-  );
-  if (targetCloudAgentId || targetCloudAgentOwnerAccountId) {
-    return targetsOwnedCloudAgent;
-  }
-  return targetsOwnedCloudAgent || cloudMessageMentionsLocalAgent(
-    message.text,
-    account,
-    {
-      allowFirstPerson:
-        message.senderAccountId === account.accountId,
-    },
-  );
+  return cloudGroupHumanAgentTarget(message, participants)?.ownerAccountId === account.accountId;
 }
 
 export function cloudGroupAgentContextMessageIds(groupRows: readonly IndexedCloudGroupRow[], groupId: string, requestId: string, ownerAccountId?: string): Set<string> {

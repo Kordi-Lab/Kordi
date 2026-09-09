@@ -39,6 +39,14 @@ pub(super) struct CloudGroupParticipant {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(super) struct CloudGroupMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) mentions: Option<Vec<serde_json::Value>>,
+    #[serde(
+        rename = "forkSnapshot",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) fork_snapshot: Option<bool>,
     pub(super) id: String,
     #[serde(rename = "senderAccountId")]
     pub(super) sender_account_id: String,
@@ -250,6 +258,8 @@ pub(super) fn cloud_group_response_body(
         actor: owner,
         participants: request_envelope.participants.clone(),
         message: Some(CloudGroupMessage {
+            mentions: None,
+            fork_snapshot: None,
             id: response_message_id.to_string(),
             sender_account_id: owner_account_id.to_string(),
             sender_agent_id: Some(sender_agent_id),

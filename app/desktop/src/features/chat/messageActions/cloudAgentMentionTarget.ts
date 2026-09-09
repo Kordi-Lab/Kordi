@@ -4,7 +4,7 @@ import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type { DesktopChatState, DesktopCollaborationState } from '@/kordi-app/types';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type { ResolvedMentionedCollaborationTarget } from './types';
-import { localAgentMentionLabels, resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh, resolveMentionedCollaborationTarget, resolveMentionedLocalAgentTarget, type MentionScopeConversation } from './mentions';
+import { conversationHasGroupMentionScope, localAgentMentionLabels, resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh, resolveMentionedCollaborationTarget, resolveMentionedLocalAgentTarget, type MentionScopeConversation } from './mentions';
 import { mentionTextStartsWithLabel } from './localAgentMentions';
 import { normalizeMentionLabel } from './mentionHandles';
 
@@ -22,9 +22,8 @@ export function selectedComposerAgentMentionTarget(
   ) ?? null;
   if (!host) return null;
   const peer = host.visiblePeers.find((candidate) => (
-    Boolean(option.agentId && candidate.agentId === option.agentId)
-    || Boolean(option.humanId && candidate.humanId === option.humanId)
-    || candidate.nodeId === option.nodeId
+    option.agentId ? candidate.agentId === option.agentId
+      : Boolean(option.humanId && candidate.humanId === option.humanId) || candidate.nodeId === option.nodeId
   )) ?? {
     nodeId: option.nodeId,
     displayName: option.label,
@@ -54,6 +53,14 @@ export async function resolvePreferredAgentMentionTarget(
   skip: boolean,
   canResolveLocal: boolean,
 ) {
+  if (!skip && conversationHasGroupMentionScope(conversation)
+    && /^\s*@(?:kordi|my\s*kordi)(?=$|[\s:;,.!?—-])/iu.test(text)) {
+    const alias = /^\s*@(?:kordi|my\s*kordi)(?=$|[\s:;,.!?—-])/iu.exec(text)![0].trim();
+    const local = canResolveLocal ? resolveMentionedLocalAgentTarget(
+      text.replace(alias, '@Kordi'), desktopChatState, collaborationState,
+    ) : null;
+    return local ? { ...local, label: alias.slice(1) } : null;
+  }
   const activeHost = collaborationState?.hosts.find((host) => host.id === collaborationState.activeHostId)
     ?? collaborationState?.hosts[0]
     ?? null;

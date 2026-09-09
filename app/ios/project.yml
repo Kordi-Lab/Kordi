@@ -220,6 +220,10 @@ targets:
           - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/live-photo.mp4
     sources:
       - path: KordiTests
+      - path: ../../shared/agent-targeting
+        type: folder
+        createIntermediateGroups: false
+        buildPhase: resources
     dependencies:
       - target: Kordi
     settings:

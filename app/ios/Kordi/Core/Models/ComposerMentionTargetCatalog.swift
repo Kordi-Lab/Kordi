@@ -201,6 +201,24 @@ enum ComposerMentionTargetCatalog {
         return equallySpecificMatches.count == 1 ? mostSpecificTarget : nil
     }
 
+    static func groupTarget(
+        in text: String, selectedTarget: ComposerMentionTarget?, targets: [ComposerMentionTarget],
+        senderAccountId: String, participants: [CloudGroupParticipant]
+    ) -> ComposerMentionTarget? {
+        let selected = resolvedTarget(in: text, selectedTarget: selectedTarget, targets: targets)
+        let message = CloudGroupMessagePayload(
+            id: "draft", senderAccountId: senderAccountId, text: text, createdAtMs: 0,
+            senderKind: "human", senderDisplayName: nil, deliveryState: nil, replyToMessageId: nil, requestId: nil,
+            mentions: mentions(in: text, selectedTarget: selected, targets: targets),
+            targetCloudAgentId: selected?.kind == .agent ? selected?.agentId : nil,
+            targetCloudAgentOwnerAccountId: selected?.kind == .agent ? selected?.accountId : nil
+        )
+        guard let target = GroupAgentTarget.resolve(message, participants: participants) else {
+            return selected?.kind == .person || selected?.kind == .all ? selected : nil
+        }
+        return targets.first { $0.kind == .agent && $0.accountId == target.ownerAccountId && $0.agentId == target.agentId }
+    }
+
     static func mentions(
         in text: String,
         selectedTarget: ComposerMentionTarget?,

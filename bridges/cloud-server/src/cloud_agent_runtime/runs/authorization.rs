@@ -6,6 +6,7 @@ use sqlx_postgres::PgPool;
 
 use super::envelopes::{cloud_group_request_envelope_for_run, direct_cloud_agent_target};
 use super::group_mentions::agent_handoff_target;
+use super::group_target::human_group_target;
 use super::{ClaimRunRequest, RunResult};
 
 /// Resolve transport aliases without changing the durable group request identity.
@@ -48,10 +49,7 @@ pub async fn requester_can_target_owner(
     Ok(row.is_some())
 }
 
-pub async fn validate_agent_authored_group_handoff_claim(
-    pool: &PgPool,
-    input: &ClaimRunRequest,
-) -> RunResult<bool> {
+pub async fn validate_group_agent_claim(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<bool> {
     let Some(envelope) =
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
             .await?
@@ -61,11 +59,27 @@ pub async fn validate_agent_authored_group_handoff_claim(
     let Some(message) = envelope.message.as_ref() else {
         return Ok(false);
     };
+    if message.fork_snapshot == Some(true)
+        || message.message_action.as_ref().is_some_and(|action| {
+            action.get("kind").and_then(serde_json::Value::as_str) == Some("forward")
+        })
+    {
+        return Ok(false);
+    }
     if message.sender_account_id.trim() != input.requester_account_id.trim() {
         return Ok(false);
     }
+    let members = crate::auth::routes::cloud_session_participants(pool, &input.session_id).await?;
+    if !members.iter().any(|id| id == input.owner_account_id.trim())
+        || !members
+            .iter()
+            .any(|id| id == input.requester_account_id.trim())
+    {
+        return Ok(false);
+    }
     if message.sender_kind.as_deref() != Some("agent") {
-        return Ok(true);
+        return Ok(human_group_target(message, &envelope.participants)
+            .is_some_and(|target| target.owner_account_id == input.owner_account_id.trim()));
     }
     Ok(agent_handoff_target(&envelope).is_some_and(|target| {
         target.participant.account_id.trim() == input.owner_account_id.trim()
@@ -87,47 +101,37 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
             .await?
     {
-        if let Some(message) = envelope.message {
-            if message
-                .target_cloud_agent_id
-                .as_deref()
-                .is_some_and(|id| !id.trim().is_empty())
-                || message
-                    .target_cloud_agent_owner_account_id
-                    .as_deref()
-                    .is_some_and(|id| !id.trim().is_empty())
-            {
-                let agent_id = message
-                    .target_cloud_agent_id
-                    .as_deref()
-                    .unwrap_or_default()
-                    .trim()
-                    .to_string();
-                let owner_account_id = message
-                    .target_cloud_agent_owner_account_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                    .unwrap_or(&input.owner_account_id)
-                    .to_string();
-                if is_default_kordi_target(
-                    &agent_id,
-                    &owner_account_id,
-                    &input.requester_account_id,
-                ) && owner_account_id == input.owner_account_id
+        if let Some(message) = envelope.message.as_ref() {
+            if message.sender_kind.as_deref() != Some("agent") {
+                return Ok(
+                    human_group_target(message, &envelope.participants).and_then(|target| {
+                        if target.agent_id == format!("cloud-agent:{}", input.owner_account_id)
+                            && target.owner_account_id == input.owner_account_id
+                        {
+                            return None;
+                        }
+                        Some(SharedCloudAgentTarget {
+                            owner_name: envelope
+                                .participants
+                                .iter()
+                                .find(|p| p.account_id == target.owner_account_id)
+                                .map(|p| p.display_name.clone()),
+                            agent_id: target.agent_id,
+                            owner_account_id: target.owner_account_id,
+                        })
+                    }),
+                );
+            }
+            if let Some(target) = agent_handoff_target(&envelope) {
+                if target.agent_id == format!("cloud-agent:{}", input.owner_account_id)
+                    && target.participant.account_id == input.owner_account_id
                 {
-                    // Only skip definition lookup after checking the selected owner.
                     return Ok(None);
                 }
                 return Ok(Some(SharedCloudAgentTarget {
-                    agent_id,
-                    owner_account_id,
-                    owner_name: message
-                        .target_cloud_agent_owner_name
-                        .as_deref()
-                        .map(str::trim)
-                        .filter(|value| !value.is_empty())
-                        .map(ToString::to_string),
+                    agent_id: target.agent_id,
+                    owner_account_id: target.participant.account_id,
+                    owner_name: Some(target.participant.display_name),
                 }));
             }
         }

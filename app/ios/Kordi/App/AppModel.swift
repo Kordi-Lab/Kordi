@@ -1643,6 +1643,11 @@ final class AppModel: ObservableObject {
             errorMessage = error
             return
         }
+        let mentionTarget = conversation.kind == .group
+            ? ComposerMentionTargetCatalog.groupTarget(
+                in: text, selectedTarget: mentionTarget, targets: mentionTargets(for: conversation),
+                senderAccountId: account.accountId, participants: hydratedGroupParticipants(conversation, account: account)
+            ) : mentionTarget
         let localId = retryMessage?.id ?? "ios_\(UUID().uuidString.lowercased())"
         let clientMessageId = retryMessage?.clientMessageId
             ?? CloudAPIClient.stableOperationUUID(localId)
@@ -1847,7 +1852,7 @@ final class AppModel: ObservableObject {
                 ))
                 outgoingAttachments.forEach { $0.discardOwnedFile() }
                 clearPendingSendMetadata(localId)
-                if mentionTarget?.kind == .agent {
+                if mentionTarget?.kind == .agent, messageAction?.kind != "forward" {
                     startAgentRunInBackground(
                         conversation: conversation,
                         requestMessageId: localId,
