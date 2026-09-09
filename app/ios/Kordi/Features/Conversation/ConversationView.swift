@@ -401,6 +401,9 @@ struct ConversationView: View {
         }
         let visibleStartIndex = timeline.count - visibleTimeline.count
         let messagesById = Dictionary(uniqueKeysWithValues: renderedMessages.map { ($0.id, $0) })
+        let stagedRequestIDs = Set(renderedMessages.filter {
+            $0.author == .me && stagedMessageIDs.contains($0.clientMessageId ?? $0.id)
+        }.map(\.id))
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
         let timelinePresentation = ConversationTimelinePresentation.make(
             messages: Array(timeline[presentationStartIndex..<timeline.endIndex]),
@@ -565,6 +568,7 @@ struct ConversationView: View {
                                             .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
                                             .modifier(OutgoingMessageEntrance(
                                                 pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
+                                                    || (message.author == .agent && message.requestMessageId.map(stagedRequestIDs.contains) == true)
                                             ))
                                         }
                                     }
@@ -595,6 +599,9 @@ struct ConversationView: View {
                                         onScrollGeometryChange: recordScrollGeometry,
                                         onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
                                             stagedMessageIDs.removeAll { messageIDs.contains($0) }
+                                            // A local send can position before the initial history load
+                                            // finishes. That path must also reveal the conversation.
+                                            hasRevealedInitialViewport = true
                                             isAtBottom = true
                                             trackedMessageID = bottomAnchorID
                                         }

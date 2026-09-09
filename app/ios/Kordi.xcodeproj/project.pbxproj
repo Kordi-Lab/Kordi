@@ -14,6 +14,7 @@
 		04C1E641012B45A98CFB6C0F /* CloudAPIClient+Digest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F86440397C4BCD851D59AE4 /* CloudAPIClient+Digest.swift */; };
 		0999F5B612F83B3E0878F47F /* KordiShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CF2ED6EF5EAC14BB658712DE /* KordiShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		09DEA8E88AEA560303FBB07B /* ShareExtensionAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F01AB264A8FBD300AF8A544 /* ShareExtensionAPI.swift */; };
+		0A6834A3DFA502989E88F67F /* ConversationAgentSendIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2736E8F637DA8000EEBB5D /* ConversationAgentSendIntegrationTests.swift */; };
 		0AE339A604A15C66AF7F3BFA /* CompanionChatPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D777A5F9528D93CB115E881 /* CompanionChatPanelTests.swift */; };
 		0B72A6AC80380063ABDC7755 /* AgentSessionPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8907D09B7736B6EBC799138 /* AgentSessionPresentationTests.swift */; };
 		0CCA0D9E4453616087A1C935 /* ShareExtensionSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E82504028486B67BF05F7A51 /* ShareExtensionSupportTests.swift */; };
@@ -339,6 +340,7 @@
 		E82504028486B67BF05F7A51 /* ShareExtensionSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionSupportTests.swift; sourceTree = "<group>"; };
 		E89F1206EB556B444390594D /* Kordi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kordi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB5C03F9FBEE0DC0D15F79B0 /* AgentSubsessionStopPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSubsessionStopPreview.swift; sourceTree = "<group>"; };
+		EC2736E8F637DA8000EEBB5D /* ConversationAgentSendIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationAgentSendIntegrationTests.swift; sourceTree = "<group>"; };
 		EC7028A6ADF145A7DE23EB58 /* digest */ = {isa = PBXFileReference; lastKnownFileType = folder; name = digest; path = ../../shared/digest; sourceTree = SOURCE_ROOT; };
 		EE9C2F4A6D2AEEB995AC122B /* ConversationMotionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMotionProbe.swift; sourceTree = "<group>"; };
 		EFB88FF6B392D071AA24EB46 /* ComposerMentionTargetCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMentionTargetCatalogTests.swift; sourceTree = "<group>"; };
@@ -607,6 +609,7 @@
 				8D777A5F9528D93CB115E881 /* CompanionChatPanelTests.swift */,
 				935EFE99E0807E1CF8BE8FA7 /* ComposerMentionMenuTests.swift */,
 				EFB88FF6B392D071AA24EB46 /* ComposerMentionTargetCatalogTests.swift */,
+				EC2736E8F637DA8000EEBB5D /* ConversationAgentSendIntegrationTests.swift */,
 				9DCA28263C9542B2585C6820 /* ConversationReadPresentationTests.swift */,
 				09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */,
 				6F8CE113A5D004E972C7441D /* ConversationSendQueueTests.swift */,
@@ -972,6 +975,7 @@
 				0AE339A604A15C66AF7F3BFA /* CompanionChatPanelTests.swift in Sources */,
 				237035D2841A8F001F917D78 /* ComposerMentionMenuTests.swift in Sources */,
 				ED22FF9AFFB08C5A52F41716 /* ComposerMentionTargetCatalogTests.swift in Sources */,
+				0A6834A3DFA502989E88F67F /* ConversationAgentSendIntegrationTests.swift in Sources */,
 				C43FBB268AD9D16808177E02 /* ConversationReadPresentationTests.swift in Sources */,
 				81A5A5B135938E1C332EB16D /* ConversationSendMotionIntegrationTests.swift in Sources */,
 				8CF43B6243E2D98104E0E4A5 /* ConversationSendQueueTests.swift in Sources */,

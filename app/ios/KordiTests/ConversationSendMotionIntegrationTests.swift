@@ -4,11 +4,11 @@ import XCTest
 @testable import Kordi
 
 @MainActor
-private final class SendMotionNavigation: ObservableObject {
+final class SendMotionNavigation: ObservableObject {
     @Published var path: [MainNavigationRoute] = []
 }
 
-private struct SendMotionHost: View {
+struct SendMotionHost: View {
     @ObservedObject var navigation: SendMotionNavigation
     let model: AppModel
     let calls: KordiCallCoordinator
