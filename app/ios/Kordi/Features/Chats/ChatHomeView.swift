@@ -1273,6 +1273,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
     let trailing: [ChatCircularSwipeAction]
     @State private var restingOffset: CGFloat = 0
     @State private var dragOffset: CGFloat = 0
+    @State private var swipeSession: ChatRowSwipeSession?
 
     private let actionDiameter: CGFloat = 44
     private let actionSpacing: CGFloat = 8
@@ -1286,7 +1287,9 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
     private var trailingWidth: CGFloat { actionWidth(for: trailing) }
     private var displayedOffset: CGFloat {
         guard activeRowID == rowID else { return 0 }
-        return min(leadingWidth, max(-trailingWidth, restingOffset + dragOffset))
+        let offset = restingOffset + dragOffset
+        return swipeSession?.limitedOffset(offset, leadingWidth: leadingWidth, trailingWidth: trailingWidth)
+            ?? min(leadingWidth, max(-trailingWidth, offset))
     }
 
     func body(content: Content) -> some View {
@@ -1330,8 +1333,10 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
             }
         }
         .onChange(of: activeRowID) {
-            if activeRowID != rowID, restingOffset != 0 {
+            if activeRowID != rowID {
                 restingOffset = 0
+                dragOffset = 0
+                swipeSession = nil
             }
         }
     }
@@ -1341,11 +1346,16 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
             activeRowID = rowID
             restingOffset = 0
         }
+        if swipeSession == nil {
+            swipeSession = ChatRowSwipeSession(restingOffset: restingOffset, firstTranslation: translation)
+        }
         dragOffset = translation
     }
 
     private func finishSwipe(_ projectedTranslation: CGFloat) {
-        let projectedOffset = restingOffset + projectedTranslation
+        let projectedOffset = swipeSession?.limitedOffset(
+            restingOffset + projectedTranslation, leadingWidth: leadingWidth, trailingWidth: trailingWidth
+        ) ?? 0
         let destination: CGFloat
         if projectedOffset > max(36, leadingWidth / 2), !leading.isEmpty {
             destination = leadingWidth
@@ -1356,6 +1366,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
         }
         withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
             dragOffset = 0
+            swipeSession = nil
             restingOffset = destination
             activeRowID = destination == 0 ? nil : rowID
         }
@@ -1363,6 +1374,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
 
     private func cancelSwipe() {
         dragOffset = 0
+        swipeSession = nil
         if restingOffset == 0, activeRowID == rowID { activeRowID = nil }
     }
 
@@ -1375,6 +1387,8 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
     private func close() {
         withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.9)) {
             restingOffset = 0
+            dragOffset = 0
+            swipeSession = nil
             activeRowID = nil
         }
     }

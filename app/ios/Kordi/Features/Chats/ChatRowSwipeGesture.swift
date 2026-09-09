@@ -9,6 +9,22 @@ enum ChatRowSwipeDirection {
     }
 }
 
+// A drag stays on the side it began on. Closing an open row must stop at
+// neutral; revealing the opposite actions requires lifting and dragging again.
+struct ChatRowSwipeSession {
+    private let leading: Bool
+
+    init?(restingOffset: CGFloat, firstTranslation: CGFloat) {
+        let direction = restingOffset == 0 ? firstTranslation : restingOffset
+        guard direction != 0 else { return nil }
+        leading = direction > 0
+    }
+
+    func limitedOffset(_ offset: CGFloat, leadingWidth: CGFloat, trailingWidth: CGFloat) -> CGFloat {
+        leading ? min(leadingWidth, max(0, offset)) : max(-trailingWidth, min(0, offset))
+    }
+}
+
 @MainActor
 final class ChatRowPanCoordinator: NSObject, UIGestureRecognizerDelegate {
     func makeRecognizer() -> UIPanGestureRecognizer {
