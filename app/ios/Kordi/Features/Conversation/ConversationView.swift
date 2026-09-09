@@ -210,6 +210,7 @@ struct ConversationView: View {
     @State private var isSending = false
     @State private var stagedMessageIDs: [String] = []
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
+    @State private var lastTimelineCount = 0
     @State private var isLoadingEarlier = false
     @State private var isAtBottom = false
     @State private var hasPositionedInitialTimeline = false
@@ -397,7 +398,12 @@ struct ConversationView: View {
         let showsTimeline = hasRevealedInitialViewport || usesCachedThreadTimeline
         let visibleTimeline = ConversationTimelineWindow.visibleMessages(
             in: timeline,
-            limit: visibleMessageLimit
+            limit: ConversationTimelineWindow.limitAfterAppending(
+                currentLimit: visibleMessageLimit,
+                oldCount: lastTimelineCount,
+                newCount: timeline.count,
+                isInitialViewportRevealed: hasRevealedInitialViewport
+            )
         )
         let visibleTimelineRows = visibleTimeline.enumerated().map { offset, message in
             ConversationTimelineRow(
@@ -580,6 +586,7 @@ struct ConversationView: View {
                                     ConversationScrollCommandBridge(
                                         scrollToBottomRequest: immediateBottomRequest,
                                         animateBottomScroll: animateBottomScroll,
+                                        reduceMotion: reduceMotion,
                                         exactRestoreRequest: $exactScrollRestoreRequest
                                     )
                                 )
@@ -652,10 +659,7 @@ struct ConversationView: View {
                             ) else { return }
                             isAtBottom = true
                             trackedMessageID = bottomAnchorID
-                            Task { @MainActor in
-                                await Task.yield()
-                                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-                            }
+                            scrollToBottom()
                         }
                             .opacity(showsTimeline ? 1 : 0)
                             .allowsHitTesting(showsTimeline)
@@ -805,7 +809,8 @@ struct ConversationView: View {
                 Text("Pinned messages stay visible above this session on synced Kordi devices.")
             }
             let observedTimeline = presentedTimeline
-            .onChange(of: timeline.count) { oldCount, newCount in
+            .onChange(of: timeline.count, initial: true) { oldCount, newCount in
+                lastTimelineCount = newCount
                 handleTimelineCountChange(oldCount: oldCount, newCount: newCount, proxy: proxy)
             }
             .onChange(of: pendingMentionCount) {
@@ -845,7 +850,7 @@ struct ConversationView: View {
                           shouldFollowLatestAfterInputSurfaceChange else { return }
                     isAtBottom = true
                     trackedMessageID = bottomAnchorID
-                    proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                    scrollToBottom()
                     shouldFollowLatestAfterInputSurfaceChange = false
                 }
             }
@@ -2522,7 +2527,6 @@ struct ConversationView: View {
         reply: MessageActionSource?,
         mention: ComposerMentionTarget?
     ) async {
-        scrollToBottom(animated: true)
         let plannedBatches = OutgoingAttachmentGroupingPlan.batches(
             for: attachments,
             photoGrouping: grouping
@@ -2541,6 +2545,7 @@ struct ConversationView: View {
                 onStaged: { messageID in
                     if let messageID {
                         stagedMessageIDs = Array((stagedMessageIDs + [messageID]).suffix(32))
+                        scrollToBottom(animated: true)
                     }
                     if index == batches.count - 1 { isSending = false }
                 }
@@ -3308,6 +3313,7 @@ private struct ConversationScrollRestoreRequest: Equatable {
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollToBottomRequest: Int
     let animateBottomScroll: Bool
+    let reduceMotion: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
 
     func makeCoordinator() -> Coordinator {
@@ -3331,6 +3337,14 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             context.coordinator.lastHandledRestoreRequestID == request.id ? nil : request
         }
         let coordinator = context.coordinator
+        if restoreRequest != nil {
+            coordinator.tailAnimator.cancel()
+            coordinator.lastAttachedRequest = coordinator.lastHandledRequest
+        }
+        if shouldScrollToBottom, restoreRequest == nil, let scrollView = enclosingScrollView(from: view) {
+            coordinator.lastAttachedRequest = scrollToBottomRequest
+            coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion)
+        }
 
         DispatchQueue.main.async { [weak view] in
             guard let view,
@@ -3339,6 +3353,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             if let restoreRequest {
                 guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
                 coordinator.lastHandledRestoreRequestID = restoreRequest.id
+                coordinator.tailAnimator.cancel()
                 scrollView.layer.removeAllAnimations()
                 let targetY = ConversationTimelineScrollBehavior.clampedContentOffsetY(
                     restoreRequest.contentOffsetY,
@@ -3364,31 +3379,15 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                 }
                 return
             }
-            guard shouldScrollToBottom else { return }
-            if !animateBottomScroll {
-                scrollView.layer.removeAllAnimations()
-                scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+            // The immediate path preserves the pre-layout presentation offset.
+            // A newly attached bridge may only find its scroll view on this turn.
+            if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest,
+               !coordinator.tailAnimator.hasPendingRequest,
+               coordinator.lastAttachedRequest != scrollToBottomRequest {
+                coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion)
             }
-            if scrollView.panGestureRecognizer.state != .possible {
-                scrollView.panGestureRecognizer.isEnabled = false
-                scrollView.panGestureRecognizer.isEnabled = true
-            }
-            let targetY = max(
-                -scrollView.adjustedContentInset.top,
-                scrollView.contentSize.height
-                    - scrollView.bounds.height
-                    + scrollView.adjustedContentInset.bottom
-            )
-            guard animateBottomScroll else {
-                scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
-                return
-            }
-            UIView.animate(
-                withDuration: 0.2,
-                delay: 0,
-                options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut]
-            ) {
-                scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: targetY)
+            if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest {
+                coordinator.lastAttachedRequest = scrollToBottomRequest
             }
         }
     }
@@ -3402,8 +3401,15 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         return nil
     }
 
+    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+        coordinator.tailAnimator.disconnect()
+    }
+
+    @MainActor
     final class Coordinator {
+        let tailAnimator = ConversationTailScrollAnimator()
         var lastHandledRequest = 0
+        var lastAttachedRequest = 0
         var lastHandledRestoreRequestID = 0
     }
 }
@@ -3863,13 +3869,12 @@ private struct OutgoingMessageEntrance: ViewModifier {
         let entering = shouldAnimate && !hasAppeared
         content
             .opacity(entering ? 0.72 : 1)
-            .offset(y: entering && !reduceMotion ? 9 : 0)
             .onAppear {
                 guard shouldAnimate, !hasAppeared else {
                     hasAppeared = true
                     return
                 }
-                withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.15)) {
+                withAnimation(reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.15)) {
                     hasAppeared = true
                     onAnimationStarted()
                 }
