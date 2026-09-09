@@ -47,10 +47,12 @@ private struct ConversationScrollAnchorPolicy: ViewModifier {
         if #available(iOS 18.0, *) {
             content
                 .defaultScrollAnchor(.bottom, for: .initialOffset)
+                // Preserve the visible bottom during keyboard and input-view resizing.
+                .defaultScrollAnchor(.bottom, for: .sizeChanges)
                 .defaultScrollAnchor(.bottom, for: .alignment)
         } else {
-            // Initial positioning is also handled explicitly by ScrollViewReader.
-            content
+            // iOS 17 combines initial positioning, resize anchoring, and alignment.
+            content.defaultScrollAnchor(.bottom)
         }
     }
 }
@@ -588,6 +590,11 @@ struct ConversationView: View {
                                 .scrollTargetLayout()
                                 .background(
                                     ConversationScrollCommandBridge(
+                                        preservesReadingPosition: hasRevealedInitialViewport
+                                            && stagedMessageIDs.isEmpty
+                                            && messageActionMessage == nil
+                                            && threadReturnMessageID == nil
+                                            && threadReturnScrollOffsetY == nil,
                                         scrollToBottomRequest: immediateBottomRequest,
                                         animateBottomScroll: animateBottomScroll,
                                         reduceMotion: reduceMotion,
@@ -614,6 +621,7 @@ struct ConversationView: View {
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy())
+                            .scrollDismissesKeyboard(.interactively)
                             .modifier(ConversationNativeScrollObserver(update: recordScrollGeometry))
                             .scrollDisabled(messageActionMessage != nil)
                             .simultaneousGesture(
@@ -652,25 +660,7 @@ struct ConversationView: View {
                             .animation(.snappy(duration: 0.2), value: pendingMentionCount)
                             .animation(.snappy(duration: 0.2), value: isAtBottom)
                         }
-                        .onChange(of: viewport.size) { previousViewportSize, currentViewportSize in
-                            let wasAtLatest = ConversationTimelineScrollBehavior.isFollowingLatest(
-                                isAtBottom: isAtBottom,
-                                trackedMessageID: trackedMessageID,
-                                bottomAnchorID: bottomAnchorID
-                            )
-                            guard ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
-                                hasRevealedInitialViewport: hasRevealedInitialViewport,
-                                wasAtLatest: wasAtLatest,
-                                isMessageActionPresented: messageActionMessage != nil,
-                                isNavigationReturnPending: threadReturnMessageID != nil
-                                    || threadReturnScrollOffsetY != nil,
-                                previousViewportSize: previousViewportSize,
-                                currentViewportSize: currentViewportSize
-                            ) else { return }
-                            isAtBottom = true
-                            trackedMessageID = bottomAnchorID
-                            scrollToBottom()
-                        }
+
                             .opacity(showsTimeline ? 1 : 0)
                             .allowsHitTesting(showsTimeline)
                             .accessibilityHidden(!showsTimeline)
@@ -3342,8 +3332,8 @@ private struct LatestMessageButton: View {
     }
 }
 
-/// Keeps keyboard dismissal on UIKit's native on-drag path. SwiftUI's
-/// identity-based scroll command can also be deferred while UIScrollView is
+/// Preserves visible history during input resizing and executes native scroll
+/// commands. SwiftUI's identity-based command can be deferred while UIScrollView is
 /// decelerating, so the button cancels momentum before moving to the true bottom.
 /// Thread returns use the same bridge to restore the exact prior content offset.
 private struct ConversationScrollRestoreRequest: Equatable {
@@ -3352,6 +3342,7 @@ private struct ConversationScrollRestoreRequest: Equatable {
 }
 
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
+    let preservesReadingPosition: Bool
     let scrollToBottomRequest: Int
     let animateBottomScroll: Bool
     let reduceMotion: Bool
@@ -3379,6 +3370,10 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             context.coordinator.lastHandledRestoreRequestID == request.id ? nil : request
         }
         let coordinator = context.coordinator
+        coordinator.preservesReadingPosition = preservesReadingPosition && exactRestoreRequest == nil
+        if shouldScrollToBottom || restoreRequest != nil {
+            coordinator.cancelViewportAdjustment()
+        }
         if restoreRequest != nil {
             coordinator.tailAnimator.cancel()
             coordinator.lastAttachedRequest = coordinator.lastHandledRequest
@@ -3391,7 +3386,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         DispatchQueue.main.async { [weak view] in
             guard let view,
                   let scrollView = enclosingScrollView(from: view) else { return }
-            scrollView.keyboardDismissMode = .onDrag
+            coordinator.observeViewport(of: scrollView)
             if let restoreRequest {
                 guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
                 coordinator.lastHandledRestoreRequestID = restoreRequest.id
@@ -3444,6 +3439,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+        coordinator.stopObservingViewport()
         coordinator.tailAnimator.disconnect()
     }
 
@@ -3453,6 +3449,99 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         var lastHandledRequest = 0
         var lastAttachedRequest = 0
         var lastHandledRestoreRequestID = 0
+        var preservesReadingPosition = false
+        private weak var observedScrollView: UIScrollView?
+        private var boundsObservation: NSKeyValueObservation?
+        private var keyboardObserver: NSObjectProtocol?
+        private var keyboardAnimationDeadline: CFTimeInterval = 0
+        private var keyboardResizeDeadline: CFTimeInterval = 0
+        private var keyboardWasAtLatest = false
+        private var keyboardAnimationOptions: UIView.AnimationOptions = []
+        private var pendingVisibleBottom: CGFloat?
+        private var resizeGeneration = 0
+
+        func observeViewport(of scrollView: UIScrollView) {
+            guard observedScrollView !== scrollView else { return }
+            stopObservingViewport()
+            observedScrollView = scrollView
+            keyboardObserver = NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillChangeFrameNotification, object: nil, queue: .main
+            ) { [weak self, weak scrollView] notification in
+                guard let self, let scrollView else { return }
+                let now = CACurrentMediaTime()
+                if now >= self.keyboardResizeDeadline {
+                    self.keyboardWasAtLatest = scrollView.bounds.maxY + 12
+                        >= scrollView.contentSize.height + scrollView.adjustedContentInset.bottom
+                }
+                let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0
+                let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
+                self.keyboardAnimationDeadline = now + duration
+                self.keyboardResizeDeadline = now + max(duration, 0.1) + 0.1
+                self.keyboardAnimationOptions = [.beginFromCurrentState, .allowUserInteraction,
+                    UIView.AnimationOptions(rawValue: curve << 16)]
+            }
+            // Observe the layer: UIKit does not publish every frame-driven bounds
+            // resize through UIView KVO. Content offset changes alone are ignored.
+            boundsObservation = scrollView.layer.observe(\.bounds, options: [.old, .new]) { [weak self, weak scrollView] _, change in
+                guard let self, let scrollView, let old = change.oldValue, let new = change.newValue,
+                      old.size.height != new.size.height else { return }
+                self.resizeGeneration &+= 1
+                let generation = self.resizeGeneration
+                guard self.preservesReadingPosition, old.height > 0,
+                      abs(old.width - new.width) < 1,
+                      !scrollView.isTracking, !scrollView.isDragging, !scrollView.isDecelerating else {
+                    self.pendingVisibleBottom = nil
+                    return
+                }
+                // Capture the reading position before the input surface changes.
+                // At latest, follow the content end; in history, keep the same
+                // visible bottom instead of covering those messages.
+                let bottom = self.pendingVisibleBottom ?? old.maxY
+                self.pendingVisibleBottom = bottom
+                DispatchQueue.main.async { [weak self, weak scrollView] in
+                    guard let self, let scrollView, self.resizeGeneration == generation,
+                          self.observedScrollView === scrollView else { return }
+                    self.pendingVisibleBottom = nil
+                    guard self.preservesReadingPosition,
+                          CACurrentMediaTime() < self.keyboardResizeDeadline,
+                          !scrollView.isTracking, !scrollView.isDragging, !scrollView.isDecelerating else { return }
+                    // SwiftUI can adjust the offset before publishing the resize,
+                    // then deliver the keyboard notification in the same layout.
+                    // Resolve follow intent here so we do not undo that adjustment.
+                    let keepLatest = self.keyboardWasAtLatest
+                    let targetY = ConversationTimelineScrollBehavior.clampedContentOffsetY(
+                        keepLatest
+                            ? scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom
+                            : bottom - scrollView.bounds.height,
+                        contentHeight: scrollView.contentSize.height,
+                        containerHeight: scrollView.bounds.height,
+                        topInset: scrollView.adjustedContentInset.top,
+                        bottomInset: scrollView.adjustedContentInset.bottom
+                    )
+                    let update = { scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: targetY) }
+                    let remaining = self.keyboardAnimationDeadline - CACurrentMediaTime()
+                    if remaining > 0 {
+                        UIView.animate(withDuration: remaining, delay: 0, options: self.keyboardAnimationOptions, animations: update)
+                    } else {
+                        UIView.performWithoutAnimation(update)
+                    }
+                }
+            }
+        }
+
+        func cancelViewportAdjustment() {
+            resizeGeneration &+= 1
+            pendingVisibleBottom = nil
+        }
+
+        func stopObservingViewport() {
+            cancelViewportAdjustment()
+            boundsObservation?.invalidate()
+            boundsObservation = nil
+            observedScrollView = nil
+            if let keyboardObserver { NotificationCenter.default.removeObserver(keyboardObserver) }
+            keyboardObserver = nil
+        }
     }
 }
 

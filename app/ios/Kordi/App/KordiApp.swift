@@ -462,6 +462,11 @@ struct MainTabView: View {
     }()
     @State private var path: [MainNavigationRoute] = []
 
+    init(hasTopAccessory: Bool = false, initialPath: [MainNavigationRoute] = []) {
+        self.hasTopAccessory = hasTopAccessory
+        _path = State(initialValue: initialPath)
+    }
+
     var body: some View {
         MainNavigationHost(path: $path) {
             Group {
