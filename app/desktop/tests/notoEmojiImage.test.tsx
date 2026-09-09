@@ -15,11 +15,16 @@ function setup() {
     pretendToBeVisual: true, url: 'https://desktop.kordi.test',
   });
   const pending = new Map<string, { resolve: (data: string) => void; reject: (error: Error) => void }>();
+  const requestListeners = new Map<string, Set<() => void>>();
   const calls: string[] = [];
   Object.defineProperty(dom.window, '__TAURI_INTERNALS__', {
     value: { invoke: (_command: string, args: { url: string }) => {
       calls.push(args.url);
-      return new Promise<string>((resolve, reject) => pending.set(args.url, { resolve, reject }));
+      return new Promise<string>((resolve, reject) => {
+        pending.set(args.url, { resolve, reject });
+        requestListeners.get(args.url)?.forEach(listener => listener());
+        requestListeners.delete(args.url);
+      });
     } }, configurable: true,
   });
   const replacements: Record<string, unknown> = {
@@ -36,9 +41,26 @@ function setup() {
   dom.window.document.head.append(style);
   const root = createRoot(dom.window.document.getElementById('root')!);
   clearRemoteAvatarImageCacheForTests();
+  async function waitForRequest(url: string) {
+    if (pending.has(url)) return;
+    await new Promise<void>((resolve, reject) => {
+      const listeners = requestListeners.get(url) ?? new Set<() => void>();
+      const listener = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      const timeout = setTimeout(() => {
+        listeners.delete(listener);
+        reject(new Error('Native request did not start: ' + url));
+      }, 10_000);
+      listeners.add(listener);
+      requestListeners.set(url, listeners);
+    });
+  }
   return {
-    dom, pending, calls, root,
+    dom, pending, calls, root, waitForRequest,
     async settle(url: string, fail = false) {
+      await waitForRequest(url);
       const request = pending.get(url);
       assert.ok(request, `Expected a pending request for ${url}`);
       await act(async () => { if (fail) request.reject(new Error('Offline')); else request.resolve(imageData); });
@@ -88,10 +110,13 @@ test('repeated Noto copies share requests and retain Unicode after asset failure
   const app = setup();
   try {
     await act(async () => app.root.render(<><NotoEmojiImage emoji={emoji} /><NotoEmojiImage emoji={emoji} /></>));
+    await app.waitForRequest(notoEmojiAssetUrl(emoji, 'webp'));
+    await app.waitForRequest(notoEmojiAssetUrl(emoji, 'png'));
     assert.equal(app.calls.filter(url => url === notoEmojiAssetUrl(emoji, 'webp')).length, 1);
     assert.equal(app.calls.filter(url => url === notoEmojiAssetUrl(emoji, 'png')).length, 1);
     await app.settle(notoEmojiAssetUrl(emoji, 'png'), true);
     await app.settle(notoEmojiAssetUrl(emoji, 'webp'), true);
+    await app.waitForRequest(notoEmojiAssetUrl(emoji, 'gif'));
     assert.equal(app.calls.filter(url => url === notoEmojiAssetUrl(emoji, 'gif')).length, 1);
     await app.settle(notoEmojiAssetUrl(emoji, 'gif'), true);
     for (const fallback of app.dom.window.document.querySelectorAll('.app-noto-fallback')) {

@@ -95,8 +95,9 @@ test('plain message content enhances catalogued Unicode with Noto Emoji CDN imag
 
   assert.equal(parts.filter((part) => part.type === 'notoEmoji').length, 1);
   assert.match(html, /fonts\.gstatic\.com\/s\/e\/notoemoji\/latest\/1f680\/512\.webp/);
-  assert.match(html, /data-loading="true"/);
-  assert.doesNotMatch(html, /🚀/);
+  assert.match(html, /class="app-noto-fallback"[^>]*>🚀<\/span>/);
+  assert.match(html, /class="app-noto-still"/);
+  assert.doesNotMatch(html, /data-loading="true"/);
 });
 
 test('plain message content emphasizes every textual mention alongside a structured target', () => {
