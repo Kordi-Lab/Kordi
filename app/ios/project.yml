@@ -236,6 +236,18 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
+  KordiDeletionUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: KordiDeletionUITests
+    dependencies:
+      - target: Kordi
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.beta.deletion-tests
+        TEST_TARGET_NAME: Kordi
   KordiKeyboardUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -274,9 +286,12 @@ schemes:
       config: Beta
     test:
       config: Beta
+      commandLineArguments:
+        "--preview-data": true
       gatherCoverageData: true
       targets:
         - KordiTests
+        - KordiDeletionUITests
     profile:
       config: Beta
     analyze:

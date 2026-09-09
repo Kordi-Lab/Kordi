@@ -113,3 +113,83 @@ async fn legacy_and_structured_group_requests_reject_unrelated_executors() {
         );
     }
 }
+
+#[tokio::test]
+async fn sender_group_alias_can_read_only_the_admitted_owners_calendar() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let owner = signup(&router, "group-calendar-owner", "Owner").await;
+    let peer = signup(&router, "group-calendar-peer", "Peer").await;
+    accept_contacts(&router, &owner, &peer).await;
+    let session = format!("session:group:{}", uuid::Uuid::new_v4());
+    let conversation = create_test_conversation(
+        &pool,
+        &owner.account_id,
+        &session,
+        ConversationKind::Group,
+        vec![peer.account_id.clone()],
+    )
+    .await;
+    let request = format!("request-{}", uuid::Uuid::new_v4());
+    let body = encode_test_cloud_group_envelope(json!({
+        "kind":"group-message", "groupId":session, "createdByAccountId":owner.account_id,
+        "actor":{"accountId":owner.account_id,"displayName":"Owner"},
+        "participants":[{"accountId":owner.account_id,"displayName":"Owner","agentDisplayName":"Kordi"},{"accountId":peer.account_id,"displayName":"Peer","agentDisplayName":"Kordi"}],
+        "message":{"id":request,"senderAccountId":owner.account_id,"senderKind":"human","text":"@Kordi what is on my calendar?","createdAtMs":1}
+    }));
+    insert_test_message(&pool, &owner.account_id, conversation, &body).await;
+    sqlx_core::query::query("INSERT INTO cloud_calendar_events(account_id,event_id,payload) VALUES($1,'saved',$2)")
+        .bind(&owner.account_id)
+        .bind(json!({"id":"saved","title":"Calendar integration fixture","startAt":"2026-09-09T12:00:00Z","sourceIds":[]}))
+        .execute(&pool).await.unwrap();
+    let wrong = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &owner.token,
+            claim_body_with_session(&peer, &owner, &request, &session),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), StatusCode::FORBIDDEN);
+    let admitted = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &owner.token,
+            claim_body_with_session(&owner, &owner, &request, &session),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(admitted.status(), StatusCode::OK);
+    let run = read_json(admitted).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let leased = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({"runnerId":"group-calendar-runner","canaryRunId":run}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(leased.status(), StatusCode::OK);
+    assert_eq!(read_json(leased).await["run"]["runId"], run);
+    let read = router.clone().oneshot(post_json_with_runner_token(&format!("/v1/cloud/agent-runs/{run}/context"), "runner-test-token", json!({"runnerId":"group-calendar-runner","tool":"read_calendar","arguments":{"shareInConversation":true}}))).await.unwrap();
+    assert_eq!(read.status(), StatusCode::OK);
+    assert_eq!(
+        read_json(read).await["events"][0]["title"],
+        "Calendar integration fixture"
+    );
+    let (count,): (i64,) = sqlx_core::query_as::query_as(
+        "SELECT count(*) FROM cloud_agent_fallback_runs WHERE request_message_id=$1",
+    )
+    .bind(&request)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
+}

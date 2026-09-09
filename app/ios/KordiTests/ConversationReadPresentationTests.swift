@@ -786,8 +786,6 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(conversationSource.contains("? \"Delete for everyone\""))
         XCTAssertTrue(conversationSource.contains(": \"Delete for me and \\(conversation.displayName)\""))
         XCTAssertFalse(conversationSource.contains("\"Delete this message?\""))
-        XCTAssertTrue(conversationSource.contains("activeDeleteParticle = particlePresentation"))
-        XCTAssertTrue(conversationSource.contains("try? await Task.sleep(for: .milliseconds(34))"))
         XCTAssertFalse(conversationSource.contains("value: visibleTimelineRows.map(\\.id)"))
         XCTAssertTrue(conversationSource.contains("editingMessage: editTarget"))
         XCTAssertTrue(composerSource.contains("editPreview(editingMessage)"))
@@ -795,40 +793,210 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(conversationSource.contains("MessageEditSheet("))
     }
 
-    func testMessageDeleteReflowMovesOnlyEarlierRowsByDeletedHeight() {
+    func testParticleSnapshotRemovesWallpaperWithoutRemovingMessagePixels() throws {
+        func image(_ pixels: [UInt8]) -> CGImage {
+            let provider = CGDataProvider(data: Data(pixels) as CFData)!
+            return CGImage(width: 4, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
+                           bytesPerRow: 16, space: CGColorSpaceCreateDeviceRGB(),
+                           bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+                               .union(.byteOrder32Big),
+                           provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        }
+        let background = image([10, 20, 30, 255, 40, 50, 60, 255, 70, 80, 90, 255, 100, 110, 120, 255])
+        let source = image([10, 20, 30, 255, 200, 30, 40, 255, 71, 81, 91, 255, 20, 180, 220, 255])
+        let masked = try XCTUnwrap(MessageDeleteSnapshotMask.image(source: source, background: background))
+        let data = try XCTUnwrap(masked.dataProvider?.data) as Data
+        XCTAssertEqual(Array(data[0..<4]), [0, 0, 0, 0])
+        XCTAssertEqual(Array(data[4..<8]), [200, 30, 40, 255])
+        XCTAssertEqual(Array(data[8..<12]), [0, 0, 0, 0])
+        XCTAssertEqual(Array(data[12..<16]), [20, 180, 220, 255])
+        XCTAssertNil(MessageDeleteSnapshotMask.image(source: background, background: background))
+    }
+
+    func testParticleReflowUsesActualSurvivorPositionsForBothScrollAnchors() {
+        func frame(_ y: CGFloat) -> CGRect { CGRect(x: 0, y: y, width: 390, height: 50) }
+        let before = ["above": frame(20), "deleted": frame(70), "below": frame(290)]
+        XCTAssertEqual(MessageDeleteReflow.offsets(
+            before: before, after: ["above": frame(20), "below": frame(70), "new": frame(120)]
+        ), ["below": 220])
+        XCTAssertEqual(MessageDeleteReflow.offsets(
+            before: before, after: ["above": frame(240), "below": frame(290)]
+        ), ["above": -220])
+        XCTAssertEqual(MessageDeleteReflow.offsets(
+            before: before, after: ["above": frame(57), "below": frame(282)]
+        ), ["above": -37, "below": 8])
+    }
+
+    func testDeletingLatestMessageDoesNotStartASecondScrollAnimation() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true, isAtBottom: true,
+            previousLatestMessageID: "deleted-photo", currentLatestMessageID: "previous-message",
+            isDeletingLatestMessage: true
+        ))
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true, isAtBottom: true,
+            previousLatestMessageID: "previous-message", currentLatestMessageID: "new-message",
+            isDeletingLatestMessage: false
+        ))
+    }
+
+    func testParticleCountIsBoundedForTextPhotosAndTallMessages() {
+        for (width, height) in [(12, 30), (280, 48), (348, 690), (402, 874), (430, 1800)] {
+            let grid = MessageDeleteParticleGeometry.grid(width: width, height: height)
+            XCTAssertLessThanOrEqual(grid.columns * grid.rows, 3_200)
+            XCTAssertGreaterThanOrEqual(grid.columns * grid.cellSize, width)
+            XCTAssertGreaterThanOrEqual(grid.rows * grid.cellSize, height)
+            XCTAssertGreaterThanOrEqual(grid.cellSize, 3)
+        }
+    }
+
+    func testParticlePipelineIsAvailableOnDevice() async {
+        let resources = await MessageDeleteParticleResources.prepared.value
+        XCTAssertNotNil(resources, "The normal deletion path must render particles, not silently fall back.")
+    }
+
+    @MainActor
+    func testOverlayInstallsWhenItsAnchorAttachesAfterInitialLayout() async {
+        let host = UIHostingController(rootView: WindowOverlayPresenter(
+            passthroughFrame: nil, allowsInteraction: false, animatesRemoval: false
+        ) { _ in Text("Particle overlay") })
+        host.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        host.view.layoutIfNeeded()
+        await Task.yield()
+        let window = UIWindow(frame: host.view.bounds)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        await Task.yield()
+        XCTAssertGreaterThan(window.subviews.count, 1, "The overlay must install even if the anchor was initially detached.")
+        XCTAssertEqual(window.subviews.last?.isUserInteractionEnabled, false)
+    }
+
+    @MainActor
+    func testParticleWindowDoesNotInterceptTouches() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let controller = UIViewController()
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let anchor = UIView(frame: window.bounds)
+        controller.view.addSubview(anchor)
+        let coordinator = WindowOverlayPresenter<Text>.Coordinator(rootView: Text("Particles"))
+        coordinator.allowsInteraction = false
+        coordinator.install(from: anchor, passthroughFrame: nil) { _ in Text("Particles") }
+        XCTAssertEqual(window.subviews.last?.isUserInteractionEnabled, false)
+        XCTAssertTrue(window.hitTest(CGPoint(x: 180, y: 400), with: nil) === anchor)
+        coordinator.remove(animated: false)
+    }
+
+    func testDeletionRetainsSourceWhenSyncRemovesItBeforeRequestReturns() throws {
+        let messages = agentQueueFixture()
+        let target = try XCTUnwrap(messages.dropFirst().first)
+        let deletion = MessageDeletionPresentation(message: target, messages: messages)
+        let synced = messages.filter { $0.id != target.id }
+        XCTAssertEqual(deletion.retainingMessage(in: synced).map(\.id), messages.map(\.id))
+        XCTAssertEqual(deletion.retainingMessage(in: messages).map(\.id), messages.map(\.id))
+    }
+
+    func testDeletionPreservesOrderWhenHistoryAndNewMessagesArrive() throws {
+        let messages = agentQueueFixture()
+        let target = try XCTUnwrap(messages.dropFirst().first)
+        let deletion = MessageDeletionPresentation(message: target, messages: messages)
+        let older = ChatMessage(
+            id: "older-page", conversationId: target.conversationId, author: .person,
+            authorName: "Sam", text: "Earlier", createdAt: .distantPast,
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: nil
+        )
+        let newer = ChatMessage(
+            id: "incoming-message", conversationId: target.conversationId, author: .person,
+            authorName: "Sam", text: "New", createdAt: .distantFuture,
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: nil
+        )
+        let synced = [older] + messages.filter { $0.id != target.id } + [newer]
         XCTAssertEqual(
-            MessageDeleteReflow.affectedIDs(
-                deleting: "third",
-                orderedIDs: ["first", "second", "third", "fourth"]
-            ),
-            ["first", "second"]
+            deletion.retainingMessage(in: synced).map(\.id),
+            ([older] + messages + [newer]).map(\.id)
         )
-        XCTAssertTrue(
-            MessageDeleteReflow.affectedIDs(
-                deleting: "missing",
-                orderedIDs: ["first", "second"]
-            ).isEmpty
-        )
+        let last = try XCTUnwrap(messages.last)
+        let lastDeletion = MessageDeletionPresentation(message: last, messages: messages)
         XCTAssertEqual(
-            MessageDeleteReflow.offset(isAffected: false, distance: 48, progress: 0),
-            0
+            lastDeletion.retainingMessage(in: Array(messages.dropLast()) + [newer]).map(\.id),
+            (messages + [newer]).map(\.id)
         )
+    }
+
+    @MainActor
+    func testMessageMenuDismissalCompletionRunsAfterOverlayIsDetached() async {
+        for animated in [false, true] {
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+            let controller = UIViewController()
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true }
+            let anchor = UIView(frame: window.bounds)
+            controller.view.addSubview(anchor)
+            let coordinator = WindowOverlayPresenter<Text>.Coordinator(rootView: Text("Delete"))
+            let originalSubviewCount = window.subviews.count
+            coordinator.install(from: anchor, passthroughFrame: nil) { _ in Text("Delete") }
+            XCTAssertEqual(window.subviews.count, originalSubviewCount + 1)
+            let dismissed = expectation(description: "Menu is detached before deletion begins")
+            coordinator.remove(animated: animated) {
+                XCTAssertEqual(window.subviews.count, originalSubviewCount)
+                dismissed.fulfill()
+            }
+            await fulfillment(of: [dismissed], timeout: 2)
+        }
+    }
+
+    @MainActor
+    func testConfirmedPreviewDeletionRetainsOnlyThePresentationUntilAnimation() async throws {
+        for forEveryone in [false, true] {
+            let model = AppModel(previewMode: true)
+            let conversation = try XCTUnwrap(model.conversations.first { $0.id == "person:acct_maya" })
+            let messages = model.messages(for: conversation)
+            let target = try XCTUnwrap(messages.first { $0.author == .me })
+            var presentation: MessageDeletionPresentation? = MessageDeletionPresentation(
+                message: target, messages: messages
+            )
+            let succeeded = await model.deleteMessage(target, forEveryone: forEveryone, in: conversation)
+            XCTAssertTrue(succeeded)
+            let current = model.messages(for: conversation)
+            XCTAssertFalse(current.contains { $0.id == target.id })
+            XCTAssertEqual(presentation?.retainingMessage(in: current).map(\.id), messages.map(\.id))
+            presentation = nil
+            XCTAssertEqual((presentation?.retainingMessage(in: current) ?? current).count, messages.count - 1)
+        }
+    }
+
+    func testDeletionRetainsOnlyMessageAndHandlesDeletedNeighbors() throws {
+        let messages = agentQueueFixture()
+        let target = try XCTUnwrap(messages.first)
+        let onlyMessage = MessageDeletionPresentation(message: target, messages: [target])
+        XCTAssertEqual(onlyMessage.retainingMessage(in: []).map(\.id), [target.id])
+        let deletion = MessageDeletionPresentation(message: messages[2], messages: messages)
+        let remaining = [messages[0], messages[5]]
         XCTAssertEqual(
-            MessageDeleteReflow.offset(isAffected: true, distance: 48, progress: 0),
-            -48
+            deletion.retainingMessage(in: remaining).map(\.id),
+            [messages[0].id, messages[2].id, messages[5].id]
         )
-        XCTAssertEqual(
-            MessageDeleteReflow.offset(isAffected: true, distance: 48, progress: 0.5),
-            -24
-        )
-        XCTAssertEqual(
-            MessageDeleteReflow.offset(isAffected: true, distance: 48, progress: 1),
-            0
-        )
-        XCTAssertEqual(
-            MessageDeleteReflow.offset(isAffected: true, distance: -48, progress: 0),
-            0
-        )
+    }
+
+    func testDeletionWaitsForConfirmationAndMenuDismissalInEitherOrder() throws {
+        let messages = agentQueueFixture()
+        let target = try XCTUnwrap(messages.first)
+        for confirmsFirst in [false, true] {
+            var deletion = MessageDeletionPresentation(message: target, messages: messages)
+            XCTAssertFalse(deletion.canAnimateRemoval)
+            deletion.isConfirmed = confirmsFirst
+            deletion.isMenuDismissed = !confirmsFirst
+            XCTAssertFalse(deletion.canAnimateRemoval)
+            deletion.isConfirmed = true
+            deletion.isMenuDismissed = true
+            XCTAssertTrue(deletion.canAnimateRemoval)
+            deletion.isSourceHidden = true
+            XCTAssertFalse(deletion.canAnimateRemoval)
+        }
     }
 
     func testMessageBubblesUseThemeAwareContrastForRepliesLinksAndMentions() throws {
@@ -926,7 +1094,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(conversationSource.contains("rememberViewport(in: messages)"))
         XCTAssertTrue(conversationSource.contains("proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)"))
         XCTAssertTrue(conversationSource.contains("isNavigationReturnPending: threadReturnMessageID != nil"))
-        XCTAssertTrue(conversationSource.contains("contentOffsetY: viewportFrame.minY - frame.minY"))
+        XCTAssertTrue(conversationSource.contains("contentOffsetY: scrollView.contentOffset.y"))
         XCTAssertTrue(conversationSource.contains("exactScrollRestoreRequest = ConversationScrollRestoreRequest("))
         XCTAssertTrue(conversationSource.contains("restoreThreadReturnPosition(using: proxy)"))
         XCTAssertTrue(conversationSource.contains("threadReturnMessageID != nil || threadReturnScrollOffsetY != nil"))

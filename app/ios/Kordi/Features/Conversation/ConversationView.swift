@@ -1,6 +1,5 @@
 import SwiftUI
 import QuickLook
-import MetalKit
 import UniformTypeIdentifiers
 import UIKit
 
@@ -15,15 +14,34 @@ private struct CameraPhotoReview: Identifiable {
     let image: UIImage
 }
 
-enum MessageDeleteReflow {
-    static func affectedIDs(deleting id: String, orderedIDs: [String]) -> Set<String> {
-        guard let index = orderedIDs.firstIndex(of: id) else { return [] }
-        return Set(orderedIDs[..<index])
+// Keep the source row in layout until both the server and the menu dismissal finish.
+// Sync can remove it before the delete request returns (including catalog rebuilding).
+struct MessageDeletionPresentation {
+    let message: ChatMessage
+    let precedingIDs: [String]
+    let followingIDs: [String]
+    var isConfirmed = false
+    var isMenuDismissed = false
+    var isSourceHidden = false
+
+    init(message: ChatMessage, messages: [ChatMessage]) {
+        self.message = message
+        let index = messages.firstIndex(where: { $0.id == message.id }) ?? messages.endIndex
+        precedingIDs = messages[..<index].map(\.id)
+        followingIDs = index < messages.endIndex ? messages[(index + 1)...].map(\.id) : []
     }
 
-    static func offset(isAffected: Bool, distance: CGFloat, progress: CGFloat) -> CGFloat {
-        guard isAffected else { return 0 }
-        return -max(0, distance) * (1 - min(max(progress, 0), 1))
+    var canAnimateRemoval: Bool { isConfirmed && isMenuDismissed && !isSourceHidden }
+
+    func retainingMessage(in messages: [ChatMessage]) -> [ChatMessage] {
+        guard !messages.contains(where: { $0.id == message.id }) else { return messages }
+        let indices = Dictionary(uniqueKeysWithValues: messages.enumerated().map { ($0.element.id, $0.offset) })
+        let insertionIndex = followingIDs.lazy.compactMap { indices[$0] }.first
+            ?? precedingIDs.reversed().lazy.compactMap { indices[$0].map { $0 + 1 } }.first
+            ?? 0
+        var result = messages
+        result.insert(message, at: insertionIndex)
+        return result
     }
 }
 
@@ -53,49 +71,6 @@ private struct ConversationScrollAnchorPolicy: ViewModifier {
         } else {
             // iOS 17 combines initial positioning, resize anchoring, and alignment.
             content.defaultScrollAnchor(.bottom)
-        }
-    }
-}
-
-private struct ConversationNativeScrollObserver: ViewModifier {
-    let update: (ConversationScrollGeometrySnapshot) -> Void
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.onScrollGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
-                ConversationScrollGeometrySnapshot(
-                    isAtLatest: geometry.contentOffset.y + geometry.containerSize.height + 12
-                        >= geometry.contentSize.height + geometry.contentInsets.bottom,
-                    contentOffsetY: geometry.contentOffset.y,
-                    isValid: geometry.containerSize.height > 0 && geometry.contentSize.height > 0
-                )
-            } action: { _, snapshot in
-                update(snapshot)
-            }
-        } else {
-            content
-        }
-    }
-}
-
-private struct ConversationLegacyScrollObserver: ViewModifier {
-    let viewportFrame: CGRect
-    let update: (ConversationScrollGeometrySnapshot) -> Void
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content
-        } else {
-            content.onGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
-                let frame = geometry.frame(in: .global)
-                return ConversationScrollGeometrySnapshot(
-                    isAtLatest: frame.height <= viewportFrame.height || frame.maxY <= viewportFrame.maxY + 12,
-                    contentOffsetY: viewportFrame.minY - frame.minY,
-                    isValid: frame.height > 0
-                )
-            } action: { snapshot in
-                update(snapshot)
-            }
         }
     }
 }
@@ -260,14 +235,12 @@ struct ConversationView: View {
     @State private var editTarget: ChatMessage?
     @State private var draftBeforeEditing = ""
     @State private var isEditingMessage = false
-    @State private var activeDeleteParticle: MessageDeleteParticlePresentation?
-    @State private var visibleTimelineRowFrames: [String: CGRect] = [:]
-    @State private var deleteReflowAffectedIDs = Set<String>()
-    @State private var deleteReflowDistance: CGFloat = 0
-    @State private var deleteReflowProgress: CGFloat = 1
-    @State private var deleteReflowIsActive = false
+    @State private var pendingMessageDeletion: MessageDeletionPresentation?
+    @State private var deleteCaptureFrames = MessageDeleteCaptureFrames()
+    @State private var activeDeleteSnapshots: [MessageDeleteSnapshot] = []
     @State private var deleteReflowID: UUID?
-    @State private var isDeletingMessage = false
+    @State private var deleteReflowBaseline: [String: CGRect] = [:]
+    @State private var deleteReflowOffsets: [String: CGFloat] = [:]
     @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
     @State private var messageActionFrame = CGRect.zero
@@ -352,7 +325,8 @@ struct ConversationView: View {
     }
 
     private var allMessages: [ChatMessage] {
-        ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+        let current = ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+        return pendingMessageDeletion?.retainingMessage(in: current) ?? current
     }
     private var threadProjection: MessageThreadProjection {
         MessageThreadProjection(messages: allMessages)
@@ -416,7 +390,9 @@ struct ConversationView: View {
         }
         let firstVisibleTimelineIdentity = visibleTimelineRows.first?.id
         let previewActionMessageID: String?
-        if ProcessInfo.processInfo.arguments.contains("--preview-message-delete") {
+        if model.isPreviewMode, ProcessInfo.processInfo.arguments.contains("--preview-message-delete-photo") {
+            previewActionMessageID = visibleTimeline.last(where: { $0.id == "preview-captioned-images-own" })?.id
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-message-delete") {
             previewActionMessageID = visibleTimeline.last(where: { $0.id == "m5" })?.id
         } else {
             previewActionMessageID = visibleTimeline.last(where: {
@@ -569,6 +545,23 @@ struct ConversationView: View {
                                                 }
                                             }
                                             #endif
+                                            .accessibilityElement(children: .contain)
+                                            .accessibilityIdentifier("message-\(message.id)")
+                                            .opacity(pendingMessageDeletion?.message.id == message.id
+                                                && pendingMessageDeletion?.isSourceHidden == true ? 0 : 1)
+                                            .allowsHitTesting(pendingMessageDeletion?.message.id != message.id)
+                                            .transition(.identity)
+                                            .offset(y: deleteReflowOffsets[row.id] ?? 0)
+                                            .background {
+                                                Color.clear.onGeometryChange(for: CGRect.self) { [
+                                                    tracksReflow = messageActionMessage != nil
+                                                        || pendingMessageDeletion != nil || !activeDeleteSnapshots.isEmpty
+                                                ] geometry in
+                                                    tracksReflow ? geometry.frame(in: .global) : .zero
+                                                } action: { frame in
+                                                    if !frame.isEmpty { deleteCaptureFrames.rows[row.id] = frame }
+                                                }
+                                            }
                                             .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
                                             .modifier(OutgoingMessageEntrance(
                                                 pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
@@ -599,6 +592,7 @@ struct ConversationView: View {
                                         animateBottomScroll: animateBottomScroll,
                                         reduceMotion: reduceMotion,
                                         exactRestoreRequest: $exactScrollRestoreRequest,
+                                        onScrollGeometryChange: recordScrollGeometry,
                                         onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
                                             stagedMessageIDs.removeAll { messageIDs.contains($0) }
                                             isAtBottom = true
@@ -615,14 +609,10 @@ struct ConversationView: View {
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
-                                .modifier(ConversationLegacyScrollObserver(
-                                    viewportFrame: viewport.frame(in: .global), update: recordScrollGeometry
-                                ))
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy())
                             .scrollDismissesKeyboard(.interactively)
-                            .modifier(ConversationNativeScrollObserver(update: recordScrollGeometry))
                             .scrollDisabled(messageActionMessage != nil)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
@@ -652,6 +642,13 @@ struct ConversationView: View {
                                     LatestMessageButton(count: newMessageCount) {
                                         scrollToBottom(animated: true)
                                     }
+                                    #if DEBUG
+                                    .background {
+                                        if ConversationMotionProbeRegistry.enabled {
+                                            ConversationMotionProbe(id: "latest-message-button")
+                                        }
+                                    }
+                                    #endif
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
                                 }
                             }
@@ -761,9 +758,46 @@ struct ConversationView: View {
                     .ignoresSafeArea(edges: .bottom)
             )
             .overlay {
-                if let activeDeleteParticle {
-                    WindowOverlayPresenter(passthroughFrame: nil) { _ in
-                        MessageDeleteParticleOverlay(presentation: activeDeleteParticle)
+                ForEach(activeDeleteSnapshots) { snapshot in
+                    WindowOverlayPresenter(passthroughFrame: nil, allowsInteraction: false, animatesRemoval: false) { _ in
+                        MessageDeleteParticleOverlay(
+                            snapshot: snapshot, reduceMotion: reduceMotion,
+                            onRemoveSource: {
+                                guard pendingMessageDeletion?.message.id == snapshot.messageID else { return false }
+                                deleteReflowID = snapshot.id
+                                deleteReflowBaseline = deleteCaptureFrames.rows
+                                var transaction = Transaction(animation: nil)
+                                transaction.disablesAnimations = true
+                                withTransaction(transaction) { pendingMessageDeletion = nil }
+                                return true
+                            },
+                            onInstallOffsets: {
+                                guard deleteReflowID == snapshot.id else { return false }
+                                let offsets = MessageDeleteReflow.offsets(
+                                    before: deleteReflowBaseline, after: deleteCaptureFrames.rows
+                                )
+                                var transaction = Transaction(animation: nil)
+                                transaction.disablesAnimations = true
+                                withTransaction(transaction) { deleteReflowOffsets = offsets }
+                                return true
+                            },
+                            onAnimate: { duration in
+                                guard deleteReflowID == snapshot.id else { return false }
+                                withAnimation(.timingCurve(0.77, 0, 0.175, 1, duration: duration)) {
+                                    deleteReflowOffsets.removeAll()
+                                }
+                                return true
+                            },
+                            onComplete: {
+                                activeDeleteSnapshots.removeAll { $0.id == snapshot.id }
+                                if deleteReflowID == snapshot.id {
+                                    deleteReflowID = nil
+                                    deleteReflowBaseline.removeAll()
+                                    deleteReflowOffsets.removeAll()
+                                }
+                                animateConfirmedMessageDeletion()
+                            }
+                        )
                     }
                 }
             }
@@ -794,6 +828,7 @@ struct ConversationView: View {
                 if ConversationMotionProbeRegistry.enabled {
                     ConversationMotionProbeRegistry.setDraft = { draft = $0 }
                     ConversationMotionProbeRegistry.send = { Task { await send() } }
+                    ConversationMotionProbeRegistry.goToLatest = { scrollToBottom(animated: true) }
                 }
             }
             #endif
@@ -837,6 +872,10 @@ struct ConversationView: View {
                     isAtBottom: isFollowingLatest,
                     previousLatestMessageID: previousLatestMessageID,
                     currentLatestMessageID: currentLatestMessageID,
+                    isDeletingLatestMessage: previousLatestMessage.map { previous in
+                        activeDeleteSnapshots.contains { $0.messageID == previous.id }
+                            && !timeline.contains { $0.id == previous.id }
+                    } ?? false,
                     isNavigationReturnPending: threadReturnMessageID != nil
                         || threadReturnScrollOffsetY != nil
                 ) {
@@ -951,6 +990,9 @@ struct ConversationView: View {
         .task(id: mentionTargetRefreshID) {
             await model.refreshMentionTargets(for: conversation)
         }
+        .task {
+            _ = await MessageDeleteParticleResources.prepared.value
+        }
         .onDisappear {
             voiceRecorder.cancel()
             if !showsCompanionPanel {
@@ -960,13 +1002,13 @@ struct ConversationView: View {
             callJoinTask?.cancel()
             callJoinTask = nil
             callCoordinator.cancelUnadmittedStart()
-            activeDeleteParticle = nil
-            visibleTimelineRowFrames.removeAll()
-            deleteReflowAffectedIDs.removeAll()
-            deleteReflowDistance = 0
-            deleteReflowProgress = 1
-            deleteReflowIsActive = false
+            pendingMessageDeletion = nil
+            activeDeleteSnapshots.removeAll()
             deleteReflowID = nil
+            deleteReflowBaseline.removeAll()
+            deleteReflowOffsets.removeAll()
+            deleteCaptureFrames.frames.removeAll()
+            deleteCaptureFrames.rows.removeAll()
             isReadPresentationVisible = false
             synchronizeReadPresentation()
             rememberViewport(in: messages)
@@ -1053,6 +1095,13 @@ struct ConversationView: View {
             synchronizeReadPresentation()
         }
         .onChange(of: scenePhase) { _, _ in
+            if scenePhase == .background {
+                activeDeleteSnapshots.removeAll()
+                deleteReflowID = nil
+                deleteReflowBaseline.removeAll()
+                deleteReflowOffsets.removeAll()
+                if pendingMessageDeletion?.isSourceHidden == true { pendingMessageDeletion = nil }
+            }
             if scenePhase != .active,
                [.recording, .paused].contains(voiceRecorder.phase) {
                 voiceRecorder.stop()
@@ -1223,10 +1272,6 @@ struct ConversationView: View {
         proxy: ScrollViewProxy
     ) -> some View {
         let message = row.message
-        let isAffectedByDeleteReflow = deleteReflowIsActive
-            && deleteReflowAffectedIDs.contains(row.id)
-        let currentDeleteReflowDistance = deleteReflowDistance
-        let currentDeleteReflowProgress = deleteReflowProgress
         let avatar = avatarIdentity(for: message)
         let backgroundSessions = message.backgroundAgentSessions.map {
             BackgroundAgentSessionPresentation(
@@ -1276,6 +1321,7 @@ struct ConversationView: View {
                     automaticallyPresentsActions: (
                         ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
                             || ProcessInfo.processInfo.arguments.contains("--preview-message-delete")
+                            || (model.isPreviewMode && ProcessInfo.processInfo.arguments.contains("--preview-message-delete-photo"))
                     )
                         && message.id == previewActionMessageID,
                     backgroundSessions: backgroundSessions,
@@ -1378,6 +1424,14 @@ struct ConversationView: View {
                 }
                 .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
                 .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                .onGeometryChange(for: CGRect.self) { [
+                    tracksCapture = messageActionMessage?.id == message.id
+                        || pendingMessageDeletion?.message.id == message.id
+                ] geometry in
+                    tracksCapture ? geometry.frame(in: .global) : .zero
+                } action: { frame in
+                    if !frame.isEmpty { deleteCaptureFrames.frames[message.id] = frame }
+                }
             }
         }
         .id(row.id)
@@ -1389,19 +1443,6 @@ struct ConversationView: View {
         .modifier(MentionPresentationModifier(isPending: isPendingMention, viewportFrame: viewportFrame) {
             Task { await model.markMentionPresented(message, in: conversation) }
         })
-        .offset(
-            y: MessageDeleteReflow.offset(
-                isAffected: isAffectedByDeleteReflow,
-                distance: currentDeleteReflowDistance,
-                progress: currentDeleteReflowProgress
-            )
-        )
-        .onGeometryChange(for: CGRect.self) { [isTracking = messageActionMessage != nil] geometry in
-            isTracking ? geometry.frame(in: .global) : .zero
-        } action: { frame in
-            guard !frame.isEmpty, visibleTimelineRowFrames[row.id] != frame else { return }
-            visibleTimelineRowFrames[row.id] = frame
-        }
     }
 
     private func handleTimelineCountChange(
@@ -1432,7 +1473,14 @@ struct ConversationView: View {
         return WindowOverlayPresenter(
             passthroughFrame: messageActionAllowsTextSelection && messageActionAttachment == nil && !message.text.isEmpty
                 ? (messageActionPreviewFrame.isEmpty ? messageActionFrame : messageActionPreviewFrame)
-                : nil
+                : nil,
+            onDismissComplete: {
+                Task { @MainActor in
+                    guard pendingMessageDeletion?.message.id == message.id else { return }
+                    pendingMessageDeletion?.isMenuDismissed = true
+                    animateConfirmedMessageDeletion()
+                }
+            }
         ) { usableFrame in
             MessageActionOverlay(
                 message: message,
@@ -1555,17 +1603,7 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onDelete: { forEveryone in
-                    prepareMessageDeleteReflow(deleting: message, in: timeline)
-                    let particlePresentation = MessageDeleteParticleCapture
-                        .capture(frame: messageActionFrame)?
-                        .prepared(reduceMotion: reduceMotion)
-                    activeDeleteParticle = particlePresentation
-                    dismissMessageActions()
-                    deleteMessage(
-                        message,
-                        forEveryone: forEveryone,
-                        particlePresentation: particlePresentation
-                    )
+                    deleteMessage(message, forEveryone: forEveryone)
                 },
                 onSaveSticker: { attachment in
                     dismissMessageActions()
@@ -1601,10 +1639,13 @@ struct ConversationView: View {
             if messageActionViewportFrame != viewportFrame { messageActionViewportFrame = viewportFrame }
             return
         }
+        if activeDeleteSnapshots.isEmpty, pendingMessageDeletion == nil {
+            deleteCaptureFrames.frames.removeAll(keepingCapacity: true)
+            deleteCaptureFrames.rows.removeAll(keepingCapacity: true)
+        }
         messageActionPreviewFrame = frame
         messageActionAllowsTextSelection = true
         messageActionViewportFrame = viewportFrame
-        visibleTimelineRowFrames.removeAll(keepingCapacity: true)
         messageActionFrame = frame
         let selectedAttachment = attachment
             ?? message.attachments.first(where: { $0.kind == .image })
@@ -1628,32 +1669,6 @@ struct ConversationView: View {
         // Retain the last geometry while the window overlay fades out.
         messageActionAttachment = nil
         selectedMessageText = nil
-        visibleTimelineRowFrames.removeAll(keepingCapacity: true)
-    }
-
-    private func prepareMessageDeleteReflow(
-        deleting message: ChatMessage,
-        in timeline: [ChatMessage]
-    ) {
-        let affectedIDs = MessageDeleteReflow.affectedIDs(
-            deleting: model.timelineIdentity(for: message),
-            orderedIDs: timeline.map(model.timelineIdentity(for:))
-        )
-        let targetID = model.timelineIdentity(for: message)
-        deleteReflowAffectedIDs = affectedIDs.intersection(visibleTimelineRowFrames.keys)
-        deleteReflowDistance = visibleTimelineRowFrames[targetID]?.height ?? messageActionFrame.height
-        deleteReflowProgress = 0
-        deleteReflowIsActive = false
-        deleteReflowID = deleteReflowAffectedIDs.isEmpty || deleteReflowDistance <= 0 ? nil : UUID()
-    }
-
-    private func clearMessageDeleteReflow(_ id: UUID?) {
-        guard deleteReflowID == id else { return }
-        deleteReflowAffectedIDs.removeAll(keepingCapacity: true)
-        deleteReflowDistance = 0
-        deleteReflowProgress = 1
-        deleteReflowIsActive = false
-        deleteReflowID = nil
     }
 
     private func navigateToMessage(
@@ -1790,66 +1805,44 @@ struct ConversationView: View {
         editTarget = nil
     }
 
-    private func deleteMessage(
-        _ target: ChatMessage,
-        forEveryone: Bool,
-        particlePresentation: MessageDeleteParticlePresentation?
-    ) {
-        guard !isDeletingMessage else { return }
-        isDeletingMessage = true
-        let reflowID = deleteReflowID
+    private func deleteMessage(_ target: ChatMessage, forEveryone: Bool) {
+        guard pendingMessageDeletion == nil else { return }
+        pendingMessageDeletion = MessageDeletionPresentation(message: target, messages: allMessages)
+        dismissMessageActions()
         Task {
-            if particlePresentation != nil {
-                // Commit the stationary snapshot before the model removes the source row.
-                try? await Task.sleep(for: .milliseconds(34))
-            }
-            let succeeded = await model.deleteMessage(
-                target,
-                forEveryone: forEveryone,
-                in: conversation
-            )
-            isDeletingMessage = false
-            if succeeded,
-               editTarget?.reactionTargetMessageId == target.reactionTargetMessageId {
-                cancelMessageEdit()
-            }
+            let succeeded = await model.deleteMessage(target, forEveryone: forEveryone, in: conversation)
+            guard pendingMessageDeletion?.message.id == target.id else { return }
             if succeeded {
-                let playingPresentation = particlePresentation?.startingNow()
-                if let particlePresentation,
-                   activeDeleteParticle?.id == particlePresentation.id,
-                   let playingPresentation {
-                    activeDeleteParticle = playingPresentation
+                if editTarget?.reactionTargetMessageId == target.reactionTargetMessageId {
+                    cancelMessageEdit()
                 }
-                if reduceMotion {
-                    clearMessageDeleteReflow(reflowID)
-                    try? await Task.sleep(for: .milliseconds(180))
-                } else {
-                    if let reflowID, deleteReflowID == reflowID {
-                        deleteReflowIsActive = true
-                    }
-                    await Task.yield()
-                    if let reflowID, deleteReflowID == reflowID {
-                        withAnimation(.timingCurve(0.77, 0, 0.175, 1, duration: 0.8)) {
-                            deleteReflowProgress = 1
-                        }
-                    }
-                    try? await Task.sleep(for: .milliseconds(800))
-                    clearMessageDeleteReflow(reflowID)
-                }
-                if let playingPresentation,
-                   activeDeleteParticle?.id == playingPresentation.id {
-                    activeDeleteParticle = nil
-                }
+                pendingMessageDeletion?.isConfirmed = true
+                animateConfirmedMessageDeletion()
             } else {
-                if let particlePresentation,
-                   activeDeleteParticle?.id == particlePresentation.id {
-                    activeDeleteParticle = nil
-                }
-                clearMessageDeleteReflow(reflowID)
-            }
-            if !succeeded {
+                // The authoritative row stays visible on failure; do not animate a deletion.
+                pendingMessageDeletion = nil
                 messageMutationError = model.errorMessage ?? "Could not delete this message."
             }
+        }
+    }
+
+    private func animateConfirmedMessageDeletion() {
+        guard deleteReflowID == nil,
+              let deletion = pendingMessageDeletion, deletion.canAnimateRemoval else { return }
+        guard scenePhase == .active else { pendingMessageDeletion = nil; return }
+        guard let frame = deleteCaptureFrames.frames[deletion.message.id],
+              let snapshot = MessageDeleteSnapshot.capture(messageID: deletion.message.id, frame: frame) else {
+            pendingMessageDeletion = nil
+            return
+        }
+        // Keep layout stationary while capturing the background behind the hidden row.
+        // The particle surface starts removal and reflow together once its transparent
+        // texture is ready. No wallpaper rectangle moves over neighboring messages.
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            activeDeleteSnapshots.append(snapshot)
+            pendingMessageDeletion?.isSourceHidden = true
         }
     }
 
@@ -2938,9 +2931,11 @@ enum ConversationTimelineScrollBehavior {
         isAtBottom: Bool,
         previousLatestMessageID: String?,
         currentLatestMessageID: String?,
+        isDeletingLatestMessage: Bool = false,
         isNavigationReturnPending: Bool = false
     ) -> Bool {
-        guard !isNavigationReturnPending,
+        guard !isDeletingLatestMessage,
+              !isNavigationReturnPending,
               hasPositionedInitialTimeline,
               isAtBottom,
               previousLatestMessageID != nil,
@@ -3341,12 +3336,15 @@ private struct ConversationScrollRestoreRequest: Equatable {
     let contentOffsetY: CGFloat
 }
 
+// Observe the same UIScrollView used by scroll commands. SwiftUI geometry
+// callbacks can leave read presentation stale after a UIKit-driven jump.
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let preservesReadingPosition: Bool
     let scrollToBottomRequest: Int
     let animateBottomScroll: Bool
     let reduceMotion: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
+    let onScrollGeometryChange: (ConversationScrollGeometrySnapshot) -> Void
     let onTailPositioned: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -3387,6 +3385,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             guard let view,
                   let scrollView = enclosingScrollView(from: view) else { return }
             coordinator.observeViewport(of: scrollView)
+            coordinator.observeGeometry(in: scrollView, update: onScrollGeometryChange)
             if let restoreRequest {
                 guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
                 coordinator.lastHandledRestoreRequestID = restoreRequest.id
@@ -3425,6 +3424,8 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             }
             if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest {
                 coordinator.lastAttachedRequest = scrollToBottomRequest
+                // A jump at the existing destination emits no offset change.
+                coordinator.scheduleGeometryUpdate()
             }
         }
     }
@@ -3439,8 +3440,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
-        coordinator.stopObservingViewport()
-        coordinator.tailAnimator.disconnect()
+        coordinator.disconnect()
     }
 
     @MainActor
@@ -3449,6 +3449,53 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         var lastHandledRequest = 0
         var lastAttachedRequest = 0
         var lastHandledRestoreRequestID = 0
+        private weak var geometryScrollView: UIScrollView?
+        private var geometryObservations: [NSKeyValueObservation] = []
+        private var geometryUpdate: ((ConversationScrollGeometrySnapshot) -> Void)?
+        private var isGeometryUpdateScheduled = false
+
+        func observeGeometry(
+            in scrollView: UIScrollView,
+            update: @escaping (ConversationScrollGeometrySnapshot) -> Void
+        ) {
+            geometryUpdate = update
+            if geometryScrollView !== scrollView {
+                geometryObservations = []
+                geometryScrollView = scrollView
+                geometryObservations = [
+                    scrollView.observe(\.contentOffset) { [weak self] _, _ in self?.scheduleGeometryUpdate() },
+                    scrollView.observe(\.contentSize) { [weak self] _, _ in self?.scheduleGeometryUpdate() },
+                    scrollView.observe(\.bounds) { [weak self] _, _ in self?.scheduleGeometryUpdate() },
+                    scrollView.observe(\.adjustedContentInset) { [weak self] _, _ in self?.scheduleGeometryUpdate() }
+                ]
+            }
+        }
+
+        func scheduleGeometryUpdate() {
+            guard !isGeometryUpdateScheduled else { return }
+            isGeometryUpdateScheduled = true
+            // Coalesce layout/offset changes and never mutate SwiftUI state
+            // synchronously from updateUIView or a UIKit layout callback.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isGeometryUpdateScheduled = false
+                guard let scrollView = self.geometryScrollView else { return }
+                self.geometryUpdate?(ConversationScrollGeometrySnapshot(
+                    isAtLatest: scrollView.contentOffset.y >= ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12,
+                    contentOffsetY: scrollView.contentOffset.y,
+                    isValid: scrollView.window != nil && scrollView.bounds.height > 0 && scrollView.contentSize.height > 0
+                ))
+            }
+        }
+
+        func disconnect() {
+            geometryObservations = []
+            geometryScrollView = nil
+            geometryUpdate = nil
+            stopObservingViewport()
+            tailAnimator.disconnect()
+        }
+
         var preservesReadingPosition = false
         private weak var observedScrollView: UIScrollView?
         private var boundsObservation: NSKeyValueObservation?
@@ -3640,316 +3687,6 @@ private struct EmptyConversation: View {
         case .agent: "Describe the outcome you want. Kordi Cloud or an available Mac handles the run."
         case .group: "Send the first message to this group from your iPhone."
         case .person: "Send the first message from your iPhone."
-        }
-    }
-}
-
-private struct MessageDeleteParticleCapture {
-    let image: UIImage
-    let frame: CGRect
-
-    @MainActor
-    static func capture(frame: CGRect) -> Self? {
-        guard !frame.isEmpty,
-              let window = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap(\.windows)
-                .first(where: \.isKeyWindow) else { return nil }
-        let clippedFrame = frame.intersection(window.bounds)
-        guard !clippedFrame.isEmpty else { return nil }
-        let format = UIGraphicsImageRendererFormat()
-        format.opaque = false
-        format.scale = 1
-        let renderer = UIGraphicsImageRenderer(
-            bounds: CGRect(origin: .zero, size: clippedFrame.size),
-            format: format
-        )
-        let image = renderer.image { rendererContext in
-            rendererContext.cgContext.translateBy(
-                x: -clippedFrame.minX,
-                y: -clippedFrame.minY
-            )
-            (window.rootViewController?.view.layer ?? window.layer).render(
-                in: rendererContext.cgContext
-            )
-        }
-        return Self(
-            image: image,
-            frame: clippedFrame
-        )
-    }
-
-    func prepared(reduceMotion: Bool) -> MessageDeleteParticlePresentation {
-        MessageDeleteParticlePresentation(
-            id: UUID(),
-            image: image,
-            frame: frame,
-            animationID: nil,
-            reduceMotion: reduceMotion
-        )
-    }
-
-}
-
-private struct MessageDeleteParticlePresentation: Identifiable {
-    let id: UUID
-    let image: UIImage
-    let frame: CGRect
-    let animationID: UUID?
-    let reduceMotion: Bool
-
-    func startingNow() -> Self {
-        Self(
-            id: id,
-            image: image,
-            frame: frame,
-            animationID: UUID(),
-            reduceMotion: reduceMotion
-        )
-    }
-}
-
-private struct MessageDeleteParticleOverlay: View {
-    let presentation: MessageDeleteParticlePresentation
-
-    var body: some View {
-        MessageDeleteParticleView(
-            image: presentation.image,
-            animationID: presentation.animationID,
-            reduceMotion: presentation.reduceMotion
-        )
-            .frame(width: presentation.frame.width, height: presentation.frame.height)
-            .position(x: presentation.frame.midX, y: presentation.frame.midY)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
-private struct MessageDeleteParticleView: UIViewRepresentable {
-    let image: UIImage
-    let animationID: UUID?
-    let reduceMotion: Bool
-
-    func makeUIView(context: Context) -> MessageDeleteParticleUIView {
-        MessageDeleteParticleUIView(
-            image: image,
-            animationID: animationID,
-            reduceMotion: reduceMotion
-        )
-    }
-
-    func updateUIView(_ view: MessageDeleteParticleUIView, context: Context) {
-        view.updateAnimation(id: animationID, reduceMotion: reduceMotion)
-    }
-}
-
-private final class MessageDeleteParticleUIView: MTKView, MTKViewDelegate {
-    private static let dissolveDuration: CFTimeInterval = 0.8
-    private static let reducedMotionDuration: CFTimeInterval = 0.18
-    private static let shaderLibrary: MTLLibrary? = {
-        guard let device = MTLCreateSystemDefaultDevice() else { return nil }
-        do {
-            return try device.makeLibrary(source: shaderSource, options: nil)
-        } catch {
-            print("[message-delete-particles] Shader compilation failed: \(error)")
-            return nil
-        }
-    }()
-    private static let shaderSource = """
-    #include <metal_stdlib>
-    using namespace metal;
-
-    struct ParticleVertex {
-        float4 position [[position]];
-        float2 textureCoordinate;
-        float alpha;
-    };
-
-    constant float2 particleQuad[6] = {
-        float2(0, 0), float2(1, 0), float2(0, 1),
-        float2(1, 0), float2(0, 1), float2(1, 1)
-    };
-
-    float randomValue(uint value) {
-        value ^= value >> 16;
-        value *= 0x7feb352du;
-        value ^= value >> 15;
-        value *= 0x846ca68bu;
-        value ^= value >> 16;
-        return float(value) / 4294967295.0;
-    }
-
-    vertex ParticleVertex messageDeleteParticleVertex(
-        uint vertexID [[vertex_id]],
-        uint particleID [[instance_id]],
-        constant float2 &size [[buffer(0)]],
-        constant float &elapsed [[buffer(1)]],
-        constant uint &columns [[buffer(2)]],
-        constant uint &rows [[buffer(3)]],
-        constant uint &usesReducedMotion [[buffer(4)]]
-    ) {
-        uint column = particleID % columns;
-        uint row = particleID / columns;
-        float2 corner = particleQuad[vertexID];
-        float randomA = randomValue(particleID * 3u + 1u);
-        float randomB = randomValue(particleID * 3u + 2u);
-        float randomC = randomValue(particleID * 3u + 3u);
-        bool reduceMotion = usesReducedMotion != 0;
-        float rowFraction = (float(row) + 0.5) / float(rows);
-        float activation = reduceMotion
-            ? 0.0
-            : clamp(rowFraction * 0.68 + (randomA - 0.5) * 0.14, 0.0, 0.76);
-        float activationTime = activation * 0.8;
-        float age = max(0.0, elapsed - activationTime);
-        float fadeDuration = reduceMotion ? 0.18 : max(0.12, 0.8 - activationTime);
-        float progress = smoothstep(0.0, fadeDuration, age);
-        float angle = randomB * 6.2831853;
-        float speed = 34.0 + randomC * 54.0;
-        float2 velocity = float2(cos(angle), sin(angle)) * speed;
-        float2 offset = reduceMotion
-            ? float2(0.0)
-            : velocity * age + float2(0.0, -65.0) * age * age;
-        float particleSize = reduceMotion ? 1.0 : 1.0 - progress * 0.58;
-        float2 center = float2(float(column) + 0.5, float(row) + 0.5) + offset;
-        float2 position = center + (corner - 0.5) * particleSize;
-
-        ParticleVertex result;
-        result.position = float4(
-            position.x / size.x * 2.0 - 1.0,
-            1.0 - position.y / size.y * 2.0,
-            0.0,
-            1.0
-        );
-        result.textureCoordinate = (float2(float(column), float(row)) + corner) / size;
-        result.alpha = 1.0 - progress;
-        return result;
-    }
-
-    fragment half4 messageDeleteParticleFragment(
-        ParticleVertex input [[stage_in]],
-        texture2d<half> snapshot [[texture(0)]]
-    ) {
-        constexpr sampler textureSampler(coord::normalized, address::clamp_to_edge, filter::linear);
-        return snapshot.sample(textureSampler, input.textureCoordinate) * half(input.alpha);
-    }
-    """
-    private var commandQueue: MTLCommandQueue?
-    private var pipelineState: MTLRenderPipelineState?
-    private var snapshotTexture: MTLTexture?
-    private var startTime: CFTimeInterval?
-    private var animationID: UUID?
-    private var reduceMotion = false
-    private var particleColumns: UInt32 = 1
-    private var particleRows: UInt32 = 1
-
-    init(image: UIImage, animationID: UUID?, reduceMotion: Bool) {
-        let device = MTLCreateSystemDefaultDevice()
-        super.init(frame: CGRect(origin: .zero, size: image.size), device: device)
-        isUserInteractionEnabled = false
-        backgroundColor = .clear
-        isOpaque = false
-        clearColor = MTLClearColorMake(0, 0, 0, 0)
-        colorPixelFormat = .bgra8Unorm
-        framebufferOnly = true
-        preferredFramesPerSecond = 60
-        enableSetNeedsDisplay = true
-        isPaused = true
-        delegate = self
-
-        guard let device,
-              let cgImage = image.cgImage,
-              let commandQueue = device.makeCommandQueue(),
-              let library = Self.shaderLibrary,
-              let vertex = library.makeFunction(name: "messageDeleteParticleVertex"),
-              let fragment = library.makeFunction(name: "messageDeleteParticleFragment") else {
-            isPaused = true
-            return
-        }
-
-        let descriptor = MTLRenderPipelineDescriptor()
-        descriptor.vertexFunction = vertex
-        descriptor.fragmentFunction = fragment
-        descriptor.colorAttachments[0].pixelFormat = colorPixelFormat
-        descriptor.colorAttachments[0].isBlendingEnabled = true
-        descriptor.colorAttachments[0].sourceRGBBlendFactor = .one
-        descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
-        descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
-        descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
-
-        self.commandQueue = commandQueue
-        self.pipelineState = try? device.makeRenderPipelineState(descriptor: descriptor)
-        self.snapshotTexture = try? MTKTextureLoader(device: device).newTexture(
-            cgImage: cgImage,
-            options: [.SRGB: false]
-        )
-        particleColumns = UInt32(cgImage.width)
-        particleRows = UInt32(cgImage.height)
-        self.animationID = animationID
-        self.reduceMotion = reduceMotion
-        isPaused = animationID == nil
-        if isPaused { setNeedsDisplay() }
-    }
-
-    @available(*, unavailable)
-    required init(coder: NSCoder) {
-        fatalError("MessageDeleteParticleUIView does not support initialization from a coder.")
-    }
-
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-
-    func updateAnimation(id: UUID?, reduceMotion: Bool) {
-        self.reduceMotion = reduceMotion
-        guard animationID != id else { return }
-        animationID = id
-        startTime = nil
-        isHidden = false
-        isPaused = id == nil
-        if isPaused { setNeedsDisplay() }
-    }
-
-    func draw(in view: MTKView) {
-        guard let commandQueue,
-              let pipelineState,
-              let snapshotTexture,
-              let descriptor = currentRenderPassDescriptor,
-              let drawable = currentDrawable,
-              let commandBuffer = commandQueue.makeCommandBuffer(),
-              let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
-            return
-        }
-
-        let duration = reduceMotion ? Self.reducedMotionDuration : Self.dissolveDuration
-        let now = CACurrentMediaTime()
-        let started = startTime ?? now
-        if animationID != nil { startTime = started }
-        var elapsed = Float(animationID == nil ? 0 : min(duration, now - started))
-        var size = SIMD2<Float>(Float(snapshotTexture.width), Float(snapshotTexture.height))
-        var columns = particleColumns
-        var rows = particleRows
-        var usesReducedMotion: UInt32 = reduceMotion ? 1 : 0
-
-        encoder.setRenderPipelineState(pipelineState)
-        encoder.setVertexBytes(&size, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
-        encoder.setVertexBytes(&elapsed, length: MemoryLayout<Float>.stride, index: 1)
-        encoder.setVertexBytes(&columns, length: MemoryLayout<UInt32>.stride, index: 2)
-        encoder.setVertexBytes(&rows, length: MemoryLayout<UInt32>.stride, index: 3)
-        encoder.setVertexBytes(&usesReducedMotion, length: MemoryLayout<UInt32>.stride, index: 4)
-        encoder.setFragmentTexture(snapshotTexture, index: 0)
-        encoder.drawPrimitives(
-            type: .triangle,
-            vertexStart: 0,
-            vertexCount: 6,
-            instanceCount: Int(columns * rows)
-        )
-        encoder.endEncoding()
-        commandBuffer.present(drawable)
-        commandBuffer.commit()
-
-        if animationID != nil, elapsed >= Float(duration) {
-            isPaused = true
-            isHidden = true
         }
     }
 }

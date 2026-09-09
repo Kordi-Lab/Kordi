@@ -61,6 +61,7 @@ pub fn tool_catalog() -> Vec<Value> {
         ),
         context_tool_schema(&kordi_tools::session_observation::SearchSessionsTool),
         context_tool_schema(&kordi_tools::session_observation::ReadSessionTool),
+        local_tool_schema(&kordi_tools::calendar::ReadCalendarTool),
         local_tool_schema(&WebSearchTool),
         local_tool_schema(&WebFetchTool),
         tool_schema(

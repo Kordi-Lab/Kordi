@@ -23,6 +23,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route("/v1/cloud/digest/items/:id/feedback", put(feedback))
         .route("/v1/cloud/digest/items/:id/task", post(task))
         .route("/v1/cloud/calendar/events", get(events))
+        .route("/v1/cloud/calendar/read", post(super::chat_calendar::route))
         .route(
             "/v1/cloud/calendar/series/preview",
             post(super::series_routes::preview),
