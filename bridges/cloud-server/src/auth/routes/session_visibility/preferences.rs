@@ -11,7 +11,7 @@ pub(super) async fn clear_session_pin(
     query(
         "UPDATE cloud_chat_conversation_members SET pinned_at = NULL \
          WHERE account_id = $1 AND conversation_id = $2 \
-           AND membership_state = 'active' AND pinned_at IS NOT NULL",
+           AND pinned_at IS NOT NULL",
     )
     .bind(account_id)
     .bind(conversation_id)
@@ -29,7 +29,6 @@ pub(super) async fn clear_session_preferences(
         "UPDATE cloud_chat_conversation_members \
          SET pinned_at = NULL, muted_until = NULL, marked_unread_at = NULL \
          WHERE account_id = $1 AND conversation_id = $2 \
-           AND membership_state = 'active' \
            AND (pinned_at IS NOT NULL OR muted_until IS NOT NULL \
                 OR marked_unread_at IS NOT NULL)",
     )

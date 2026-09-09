@@ -12,6 +12,267 @@ fn put_with_token(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
+async fn seed_stale_group(
+    pool: &sqlx_postgres::PgPool,
+    account_id: &str,
+    session_id: Option<&str>,
+    space_id: Option<&str>,
+    membership: &str,
+) -> uuid::Uuid {
+    let id = uuid::Uuid::now_v7();
+    query(
+        "INSERT INTO cloud_chat_conversations \
+         (conversation_id, kind, created_by_account_id, client_operation_id, \
+          creation_fingerprint, legacy_session_id, group_space_id) \
+         VALUES ($1, 'group', $2, $1, 'stale-group-test', $3, $4)",
+    )
+    .bind(id)
+    .bind(account_id)
+    .bind(session_id)
+    .bind(space_id)
+    .execute(pool)
+    .await
+    .unwrap();
+    query(
+        "INSERT INTO cloud_chat_conversation_members \
+         (conversation_id, account_id, membership_state, pinned_at, muted_until, marked_unread_at) \
+         VALUES ($1, $2, $3, NOW(), 'infinity'::timestamptz, NOW())",
+    )
+    .bind(id)
+    .bind(account_id)
+    .bind(membership)
+    .execute(pool)
+    .await
+    .unwrap();
+    id
+}
+
+#[tokio::test]
+async fn group_archive_includes_historical_members_without_changing_access() {
+    let Some(pool) = try_pool().await else { return };
+    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let (token, account_id) = signup_account(&router, "stale-group-owner").await;
+    let (other_token, other_id) = signup_account(&router, "stale-group-other").await;
+    let space_id = format!("space:{}", uuid::Uuid::now_v7());
+    let path = format!("/v1/cloud/group-spaces/{space_id}/hidden");
+    let mut session_ids = Vec::new();
+    for membership in ["active", "left", "removed"] {
+        let session_id = format!("session:group:{}", uuid::Uuid::now_v7());
+        seed_stale_group(
+            &pool,
+            &account_id,
+            Some(&session_id),
+            Some(&space_id),
+            membership,
+        )
+        .await;
+        session_ids.push(session_id);
+    }
+    // The same space may contain channels this account has never joined.
+    let other_session = format!("session:group:{}", uuid::Uuid::now_v7());
+    seed_stale_group(
+        &pool,
+        &other_id,
+        Some(&other_session),
+        Some(&space_id),
+        "active",
+    )
+    .await;
+    for _ in 0..2 {
+        let response = router
+            .clone()
+            .oneshot(put_with_token(&path, &token))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+    let visibility = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/sessions/visibility", &token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let hidden = visibility["hiddenSessionIds"].as_array().unwrap();
+    assert_eq!(hidden.len(), session_ids.len());
+    for session_id in &session_ids {
+        assert!(hidden.contains(&json!(session_id)));
+    }
+    let event_count: (i64,) = query_as(
+        "SELECT COUNT(*) FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND event_type = 'session.hidden'",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        event_count.0, 3,
+        "archive retries must not duplicate sync events"
+    );
+    let pins: (i64,) = query_as(
+        "SELECT COUNT(*) FROM cloud_chat_conversation_members \
+         WHERE account_id = $1 AND pinned_at IS NOT NULL",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(pins.0, 0);
+    let other_visibility = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                "/v1/cloud/sessions/visibility",
+                &other_token,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(other_visibility["hiddenSessionIds"], json!([]));
+
+    for session_id in &session_ids[1..] {
+        let response = router
+            .clone()
+            .oneshot(put_with_token(
+                &format!("/v1/cloud/sessions/{session_id}/muted"),
+                &token,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+    let restored = router
+        .clone()
+        .oneshot(delete_with_token(&path, &token))
+        .await
+        .unwrap();
+    assert_eq!(restored.status(), StatusCode::NO_CONTENT);
+    let historical: (i64,) = query_as(
+        "SELECT COUNT(*) FROM cloud_chat_conversation_members \
+         WHERE account_id = $1 AND membership_state IN ('left', 'removed')",
+    )
+    .bind(&account_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        historical.0, 2,
+        "restoring visibility must not rejoin the group"
+    );
+}
+
+#[tokio::test]
+async fn groups_without_catalog_metadata_can_be_archived_by_session_identity() {
+    let Some(pool) = try_pool().await else { return };
+    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let (token, account_id) = signup_account(&router, "legacy-group-owner").await;
+    let (other_token, _) = signup_account(&router, "legacy-group-outsider").await;
+    for membership in ["active", "left", "removed"] {
+        for prefix in ["session:group:", "group:group:"] {
+            let session_id = format!("{prefix}{}", uuid::Uuid::now_v7());
+            seed_stale_group(&pool, &account_id, Some(&session_id), None, membership).await;
+            let space_id = session_id.trim_start_matches("group:");
+            let path = format!("/v1/cloud/group-spaces/{space_id}/hidden");
+            let denied = router
+                .clone()
+                .oneshot(put_with_token(&path, &other_token))
+                .await
+                .unwrap();
+            assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+            let archived = router
+                .clone()
+                .oneshot(put_with_token(&path, &token))
+                .await
+                .unwrap();
+            assert_eq!(archived.status(), StatusCode::NO_CONTENT);
+            let visibility = read_json(
+                router
+                    .clone()
+                    .oneshot(get_with_token("/v1/cloud/sessions/visibility", &token))
+                    .await
+                    .unwrap(),
+            )
+            .await;
+            assert!(visibility["hiddenSessionIds"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(session_id)));
+            let restored = router
+                .clone()
+                .oneshot(delete_with_token(&path, &token))
+                .await
+                .unwrap();
+            assert_eq!(restored.status(), StatusCode::NO_CONTENT);
+        }
+    }
+    let id = seed_stale_group(&pool, &account_id, None, None, "removed").await;
+    let archived = router
+        .clone()
+        .oneshot(put_with_token(
+            &format!("/v1/cloud/group-spaces/{id}/hidden"),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(archived.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn historical_members_can_archive_restore_and_delete_their_own_sessions() {
+    let Some(pool) = try_pool().await else { return };
+    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let (token, account_id) = signup_account(&router, "historical-session-owner").await;
+    let (other_token, _) = signup_account(&router, "historical-session-outsider").await;
+    for membership in ["left", "removed"] {
+        let session_id = format!("session:group:{}", uuid::Uuid::now_v7());
+        let id = seed_stale_group(&pool, &account_id, Some(&session_id), None, membership).await;
+        let path = format!("/v1/cloud/sessions/{session_id}");
+        for request in [
+            put_with_token(&format!("{path}/hidden"), &other_token),
+            delete_with_token(&format!("{path}/hidden"), &other_token),
+            delete_with_token(&path, &other_token),
+        ] {
+            let response = router.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        }
+        for request in [
+            put_with_token(&format!("{path}/hidden"), &token),
+            delete_with_token(&format!("{path}/hidden"), &token),
+            delete_with_token(&path, &token),
+        ] {
+            let response = router.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        }
+        let visibility = read_json(
+            router
+                .clone()
+                .oneshot(get_with_token("/v1/cloud/sessions/visibility", &token))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(visibility["hiddenSessionIds"], json!([]));
+        assert!(visibility["deletedSessionIds"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(session_id)));
+        let preferences: (String, bool, bool, bool) = query_as(
+            "SELECT membership_state, pinned_at IS NOT NULL, muted_until IS NOT NULL, \
+                    marked_unread_at IS NOT NULL FROM cloud_chat_conversation_members \
+             WHERE conversation_id = $1 AND account_id = $2",
+        )
+        .bind(id)
+        .bind(&account_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(preferences, (membership.to_string(), false, false, false));
+    }
+}
+
 #[tokio::test]
 async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin() {
     let Some(pool) = try_pool().await else { return };

@@ -11,6 +11,29 @@ pub(super) use preferences::{
     unmark_cloud_session_unread, unmute_cloud_session, unpin_cloud_session, unpin_group_space,
 };
 
+// Visibility belongs to the account, including after leaving or being removed.
+// Keep the active-membership resolver for content access and group mutations.
+async fn conversation_id_for_visibility_in_transaction(
+    transaction: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    account_id: &str,
+    session_id: &str,
+) -> Result<Option<uuid::Uuid>, sqlx_core::Error> {
+    query_as(
+        "SELECT conversation.conversation_id \
+         FROM cloud_chat_conversations conversation \
+         JOIN cloud_chat_conversation_members member \
+           ON member.conversation_id = conversation.conversation_id \
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id = $3) \
+           AND member.account_id = $2",
+    )
+    .bind(session_id)
+    .bind(account_id)
+    .bind(uuid::Uuid::parse_str(session_id).ok())
+    .fetch_optional(&mut **transaction)
+    .await
+    .map(|row: Option<(uuid::Uuid,)>| row.map(|(conversation_id,)| conversation_id))
+}
+
 pub(super) async fn list_cloud_session_visibility(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -54,7 +77,7 @@ pub(super) async fn hide_cloud_session(
             );
         }
     };
-    let conversation_id = match conversation_id_for_session_in_transaction(
+    let conversation_id = match conversation_id_for_visibility_in_transaction(
         &mut transaction,
         &session.account_id,
         &session_id,
@@ -158,7 +181,7 @@ pub(super) async fn unhide_cloud_session(
             );
         }
     };
-    let conversation_id = match conversation_id_for_session_in_transaction(
+    let conversation_id = match conversation_id_for_visibility_in_transaction(
         &mut transaction,
         &session.account_id,
         &session_id,
@@ -245,7 +268,7 @@ pub(super) async fn delete_cloud_session(
             );
         }
     };
-    let conversation_id = match conversation_id_for_session_in_transaction(
+    let conversation_id = match conversation_id_for_visibility_in_transaction(
         &mut transaction,
         &session.account_id,
         &session_id,
