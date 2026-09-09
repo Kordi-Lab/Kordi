@@ -1,0 +1,11 @@
+# Reading the Kordi calendar in chat
+
+Ordinary desktop and cloud fallback chat expose the read-only `read_calendar` tool. It reads saved Kordi calendar events through the authenticated calendar store, preserving source visibility checks. It does not read external calendar services directly and does not promote chat arrangements or digest proposals into saved events.
+
+The tool accepts optional `startAt` and `endAt` RFC3339 bounds and an `offset`. Results contain at most 50 event summaries, an account timezone when configured, and `hasMore` / `nextOffset` for pagination. Timed events overlap the requested interval; all-day events retain calendar-date semantics. `status: empty` means no saved events match the window, whereas `status: ready` with an empty page means the offset is beyond the matching events. Retrieval failures never mean the calendar is empty.
+
+The host binds the account and conversation; model arguments cannot choose them. Desktop reads use the signed-in account and authenticated turn identity. Cloud reads use a live runner lease and the admitted run owner/requester. Requests addressed to another person's Agent cannot read that person's private calendar. Cloud execution subsessions cannot use this capability.
+
+A shared conversation additionally requires `shareInConversation: true`. The tool instructions permit this only when the owner explicitly asks to inspect or share their own calendar in that conversation. The server requires a current, visible, owner-authored human request and active membership. Mentions, agent handoffs, and another participant's requests do not grant access. Without disclosure permission, the Agent should direct the owner to a private chat. Responses omit source IDs, descriptions, links, and reminder metadata, and the Agent must summarize only the requested dates and details.
+
+Desktop calls `POST /v1/cloud/calendar/read`; cloud fallback dispatches through the run-authorized context endpoint. Both use the same calendar reader. Regression coverage lives in the tools calendar tests, desktop calendar runtime tests, cloud model-loop tests, and the calendar HTTP integration test. The HTTP test requires a fresh isolated PostgreSQL database containing synthetic fixtures only.

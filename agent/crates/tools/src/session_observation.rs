@@ -370,6 +370,7 @@ mod tests {
         let captured = Arc::new(Mutex::new(Vec::<crate::SearchSessionsRequest>::new()));
         let captured_clone = captured.clone();
         let runtime = SessionObservationRuntime {
+            calendar: None,
             search_sessions: Arc::new(move |request| {
                 captured_clone.lock().expect("captured").push(request);
                 Box::pin(async {
@@ -420,6 +421,7 @@ mod tests {
         let captured = Arc::new(Mutex::new(Vec::<crate::ReadSessionRequest>::new()));
         let captured_clone = captured.clone();
         let runtime = SessionObservationRuntime {
+            calendar: None,
             search_sessions: Arc::new(|_| Box::pin(async { unreachable!("not used") })),
             read_session: Arc::new(move |request| {
                 captured_clone.lock().expect("captured").push(request);

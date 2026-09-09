@@ -1,3 +1,4 @@
+pub(crate) mod chat_calendar;
 mod incremental;
 pub mod models;
 mod recurrence;

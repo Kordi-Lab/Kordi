@@ -1,3 +1,6 @@
+#[path = "calendar_runtime.rs"]
+mod calendar_runtime;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -160,10 +163,12 @@ pub(super) async fn prepare_desktop_session_for_send(
         None
     };
     runtime.set_session_prompt_context(local_session_context);
+    let calendar = calendar_runtime::build(runtime, context_session_id);
     runtime.set_session_observation_runtime(Some(
         super::session_observation::build_session_observation_runtime(
             context_session_id.map(str::to_string),
             directory.clone(),
+            calendar,
         ),
     ));
 

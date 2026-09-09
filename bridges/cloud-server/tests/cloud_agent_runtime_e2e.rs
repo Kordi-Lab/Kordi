@@ -404,3 +404,6 @@ mod shared_desktop_lease;
 mod subsession_follow;
 #[path = "cloud_agent_runtime_e2e/subsessions.rs"]
 mod subsessions;
+
+#[path = "cloud_agent_runtime_e2e/calendar.rs"]
+mod calendar;

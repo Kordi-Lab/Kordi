@@ -299,6 +299,7 @@ pub type ReadSessionFn = Arc<dyn Fn(ReadSessionRequest) -> ReadSessionFuture + S
 
 #[derive(Clone)]
 pub struct SessionObservationRuntime {
+    pub calendar: Option<crate::calendar::CalendarRuntime>,
     pub search_sessions: SearchSessionsFn,
     pub read_session: ReadSessionFn,
 }

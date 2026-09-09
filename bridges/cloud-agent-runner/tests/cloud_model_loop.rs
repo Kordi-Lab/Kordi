@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 struct RecordingClient {
     exports: Arc<Mutex<Vec<ArtifactExportInput>>>,
     spawns: Mutex<Vec<Value>>,
+    calendar: Option<Value>,
 }
 
 #[async_trait]
@@ -71,6 +72,12 @@ impl CloudAgentRunClient for RecordingClient {
         arguments: Value,
     ) -> Result<Value, RunnerClientError> {
         assert_eq!(run_id, run().run_id);
+        if tool == "read_calendar" {
+            return self
+                .calendar
+                .clone()
+                .ok_or_else(|| RunnerClientError::Request("Calendar unavailable".into()));
+        }
         assert_eq!(tool, "read_session");
         assert_eq!(arguments["mode"], "participants");
         Ok(json!({"directory": "Retrieved Group Participant"}))
@@ -454,3 +461,6 @@ async fn model_loop_exports_artifact_when_requested() {
     assert_eq!(exports[0].name, "report.md");
     assert_eq!(exports[0].sandbox_path, "report.md");
 }
+
+#[path = "cloud_model_loop/calendar.rs"]
+mod calendar;
