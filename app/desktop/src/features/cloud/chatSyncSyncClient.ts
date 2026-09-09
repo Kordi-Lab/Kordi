@@ -9,6 +9,8 @@ export class ChatSyncSyncClient {
   constructor(private readonly state: ChatSyncState) {}
 
   async syncCloudEvents(token: string, cursor: string, limit?: number): Promise<CloudSyncResponse> {
+    const accountId = this.state.activeAccountId;
+    await this.state.deletions.ready(accountId);
     const normalizedCursor = cursor.trim();
     if (!normalizedCursor || normalizedCursor === '0') {
       const bootstrap = await this.state.bootstrap(token);
@@ -63,13 +65,13 @@ export class ChatSyncSyncClient {
         : [];
     });
     conversations.forEach((conversation) => this.state.rememberConversation(conversation));
-    const messages = response.events.flatMap((event) => {
+    const messages = this.state.retainMessages(response.events.flatMap((event) => {
       const message = event.payload.message;
       return message && typeof message === 'object' && !Array.isArray(message)
         ? [message as ChatSyncMessage]
         : [];
-    });
-    messages.forEach((message) => this.state.messageById.set(message.id, message));
+    }), accountId);
+
     return {
       cursor: response.next_cursor,
       hasMore: response.has_more,
@@ -95,6 +97,7 @@ export class ChatSyncSyncClient {
     const accountId = viewerAccountId?.trim() || this.state.activeAccountId;
     if (!accountId) throw new Error('Cloud account identity is unavailable.');
     this.state.activeAccountId = accountId;
+    await this.state.deletions.ready(accountId);
     const conversation = await this.state.ensureConversation(token, {
       accountId,
       peerAccountId,
@@ -116,7 +119,8 @@ export class ChatSyncSyncClient {
       },
       'Could not load reliable message history.',
     );
-    const messages = response.messages
+    const retained = this.state.retainMessages(response.messages, accountId);
+    const messages = retained
       .map((message) => cloudMessageFromChatSync(message, conversation, accountId))
       .sort((left, right) => (
         Number(left.conversationSequence ?? 0) - Number(right.conversationSequence ?? 0)
@@ -125,7 +129,7 @@ export class ChatSyncSyncClient {
     return normalizeCloudMessageSnapshot({
       messages,
       peerReadAt: null,
-      chat: { conversation, messages: response.messages },
+      chat: { conversation, messages: retained },
     });
   }
 
@@ -139,6 +143,8 @@ export class ChatSyncSyncClient {
     nextBeforeSequence: number | null;
     hasMore: boolean;
   }> {
+    const accountId = this.state.activeAccountId;
+    await this.state.deletions.ready(accountId);
     const params = new URLSearchParams({ limit: String(Math.min(Math.max(limit, 1), 200)) });
     if (beforeSequence !== undefined) {
       if (!Number.isSafeInteger(beforeSequence) || beforeSequence <= 0) {
@@ -158,9 +164,9 @@ export class ChatSyncSyncClient {
       },
       'Could not backfill reliable message history.',
     );
-    response.messages.forEach((message) => this.state.messageById.set(message.id, message));
+    const messages = this.state.retainMessages(response.messages, accountId);
     return {
-      messages: response.messages,
+      messages,
       nextBeforeSequence: response.next_before_sequence,
       hasMore: response.has_more,
     };
@@ -175,7 +181,9 @@ export class ChatSyncSyncClient {
     if (response.protocol_version !== 2) {
       throw new Error('Unsupported reliable chat protocol version.');
     }
-    this.state.rememberBootstrap(response);
+    response.conversations.forEach((conversation) => this.state.rememberConversation(conversation));
+    await this.state.deletions.ready(this.state.activeAccountId);
+    response.latest_messages = this.state.retainMessages(response.latest_messages);
     return response;
   }
 
@@ -294,7 +302,7 @@ export class ChatSyncSyncClient {
       const messageId = event.entity_id?.trim();
       if (!messageId) return [];
       const previous = this.state.messageById.get(messageId);
-      this.state.messageById.delete(messageId);
+      this.state.removeMessage(messageId);
       return [{
         ...base,
         eventType: 'message.deleted',
@@ -320,6 +328,7 @@ export class ChatSyncSyncClient {
       const messageValue = event.payload.message;
       if (!messageValue || typeof messageValue !== 'object' || Array.isArray(messageValue)) return [];
       const message = messageValue as ChatSyncMessage;
+      if (this.state.retainMessages([message]).length === 0) return [];
       const messageEvent = {
         ...base,
         eventType: 'message.upsert',

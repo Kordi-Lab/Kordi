@@ -201,19 +201,26 @@ pub(super) fn load_message_refs(
     Ok(refs)
 }
 
-pub(super) fn apply(request: ChatSyncApplyRequest) -> Result<ChatSyncApplyResult, String> {
-    let mut conn = if let Some(active) =
-        crate::cloud_account_paths::cloud_account_storage_current()?
-    {
-        if active.account_id != request.account_id {
+pub(in crate::canonical_sessions) fn open_account_db(
+    account_id: &str,
+) -> Result<Connection, String> {
+    if account_id.is_empty() {
+        return Err("Chat sync account id is required".into());
+    }
+    if let Some(active) = crate::cloud_account_paths::cloud_account_storage_current()? {
+        if active.account_id != account_id {
             return Err("Chat sync belongs to a different signed-in account".into());
         }
         let storage = std::path::PathBuf::from(active.storage_root);
         let parent = storage.parent().ok_or("Invalid account storage root")?;
-        super::super::open_db_at_path(&parent.join(super::super::CANONICAL_SESSIONS_DB_FILENAME))?
+        super::super::open_db_at_path(&parent.join(super::super::CANONICAL_SESSIONS_DB_FILENAME))
     } else {
-        open_db()?
-    };
+        open_db()
+    }
+}
+
+pub(super) fn apply(request: ChatSyncApplyRequest) -> Result<ChatSyncApplyResult, String> {
+    let mut conn = open_account_db(request.account_id.trim())?;
     apply_on_connection(&mut conn, request)
 }
 

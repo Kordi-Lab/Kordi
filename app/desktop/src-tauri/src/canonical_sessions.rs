@@ -295,9 +295,10 @@ pub async fn desktop_canonical_existing_message_sources(
 #[tauri::command]
 pub async fn desktop_canonical_delete_cloud_message(
     cloud_message_id: String,
+    account_id: Option<String>,
 ) -> Result<Vec<String>, String> {
     run_canonical_blocking(move || {
-        commands::desktop_canonical_delete_cloud_message(&cloud_message_id)
+        commands::desktop_canonical_delete_cloud_message(&cloud_message_id, account_id.as_deref())
     })
     .await
 }
