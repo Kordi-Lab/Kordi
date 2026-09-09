@@ -21,10 +21,13 @@ function mentionTarget(mention: MessageMention, message: GroupMessage, participa
     ? identity.slice('agent:cloud-agent:'.length)
     : identity.startsWith('agent:') ? identity.slice('agent:'.length) : '';
   const agent = clean(mention.agentId) || identityAgent;
-  if (identity && (!identityAgent || identityAgent !== agent)) return null;
   const inferredOwner = agent.startsWith('cloud-agent:') ? agent.slice('cloud-agent:'.length)
-    : participants.find((p) => p.agentId === agent)?.accountId ?? '';
+    : participants.find((p) => p.agentId === agent || p.accountId === agent || `cloud:${p.accountId}` === agent)?.accountId ?? '';
   const owner = clean(mention.humanId) || clean(mention.nodeId) || inferredOwner;
+  const canonical = (id: string) => owner && (id === owner || id === `cloud:${owner}`)
+    ? `cloud-agent:${owner}` : id;
+  const canonicalAgent = canonical(agent);
+  if (identity && (!identityAgent || canonical(identityAgent) !== canonicalAgent)) return null;
   const start = mention.startUtf16;
   const length = mention.lengthUtf16;
   if (start != null || length != null) {
@@ -34,7 +37,7 @@ function mentionTarget(mention: MessageMention, message: GroupMessage, participa
   } else if (!mention.label || !tokens(message.text).some((token) => normalized(token) === normalized(mention.label))) {
     return null;
   }
-  return targetForIds(agent, owner, message.senderAccountId, participants);
+  return targetForIds(canonicalAgent, owner, message.senderAccountId, participants);
 }
 
 function tokens(text: string): string[] {

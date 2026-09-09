@@ -541,6 +541,150 @@
         "ownerAccountId": "acct_sender",
         "agentId": "cloud-agent:acct_sender"
       }
+    },
+    {
+      "name": "legacy owner identity with no agent id",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_one",
+            "agentId": null,
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "legacy owner identity and canonical agent id agree",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_one",
+            "agentId": "cloud-agent:acct_one",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "legacy cloud owner identity",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:cloud:acct_one",
+            "agentId": null,
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": {
+        "ownerAccountId": "acct_one",
+        "agentId": "cloud-agent:acct_one"
+      }
+    },
+    {
+      "name": "legacy owner identity cannot change owners",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_two",
+            "agentId": null,
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": null
+    },
+    {
+      "name": "legacy default identity cannot become a custom agent",
+      "message": {
+        "id": "request",
+        "senderAccountId": "acct_sender",
+        "senderKind": "human",
+        "text": "@Kordi check status",
+        "createdAtMs": 1,
+        "mentions": [
+          {
+            "label": "Kordi",
+            "targetKind": "agent",
+            "targetIdentityId": "agent:acct_one",
+            "agentId": "cloud_agent_custom",
+            "humanId": "acct_one",
+            "startUtf16": 0,
+            "lengthUtf16": 6,
+            "displayText": "@Kordi",
+            "nodeId": "acct_one",
+            "sourceHostId": "cloud"
+          }
+        ],
+        "targetCloudAgentId": "cloud-agent:acct_one",
+        "targetCloudAgentOwnerAccountId": "acct_one"
+      },
+      "expected": null
     }
   ]
 }

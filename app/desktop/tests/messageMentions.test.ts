@@ -86,3 +86,14 @@ test('group @all mentions use one scoped entity and reject plain or invalid scop
     targetIdentityId: 'group:session:group:triad',
   }]), undefined);
 });
+
+test('a Cloud agent selection without cached agentId writes the canonical default agent identity', () => {
+  const [mention] = mentionForCollaborationTarget({
+    host: { id: 'cloud' } as never,
+    peer: { nodeId: 'acct_peer', humanId: 'acct_peer', agentId: null } as never,
+    label: 'KordiPeer', displayLabel: "Peer's Kordi", targetKind: 'agent', requestText: 'test',
+  }, '@KordiPeer test');
+  assert.equal(mention.targetIdentityId, 'agent:cloud-agent:acct_peer');
+  assert.equal(mention.agentId, 'cloud-agent:acct_peer');
+  assert.equal(mention.humanId, 'acct_peer');
+});

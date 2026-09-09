@@ -42,10 +42,14 @@ struct GroupAgentTarget: Codable, Hashable {
             identityAgent = identity.hasPrefix("agent:") ? String(identity.dropFirst("agent:".count)) : ""
         }
         let agent = clean(mention.agentId).isEmpty ? identityAgent : clean(mention.agentId)
-        guard identity.isEmpty || (!identityAgent.isEmpty && identityAgent == agent) else { return nil }
         let inferredOwner = agent.hasPrefix("cloud-agent:") ? String(agent.dropFirst("cloud-agent:".count))
-            : participants.first(where: { $0.agentId == agent })?.accountId ?? ""
+            : participants.first(where: { $0.agentId == agent || $0.accountId == agent || "cloud:\($0.accountId)" == agent })?.accountId ?? ""
         let owner = [clean(mention.humanId), clean(mention.nodeId), inferredOwner].first(where: { !$0.isEmpty }) ?? ""
+        func canonical(_ id: String) -> String {
+            !owner.isEmpty && (id == owner || id == "cloud:\(owner)") ? "cloud-agent:\(owner)" : id
+        }
+        let canonicalAgent = canonical(agent)
+        guard identity.isEmpty || (!identityAgent.isEmpty && canonical(identityAgent) == canonicalAgent) else { return nil }
         if mention.startUtf16 != nil || mention.lengthUtf16 != nil {
             let source = message.text as NSString
             guard let start = mention.startUtf16, let length = mention.lengthUtf16,
@@ -55,7 +59,7 @@ struct GroupAgentTarget: Codable, Hashable {
         } else {
             guard !mention.label.isEmpty, tokens(message.text).contains(where: { normalized($0) == normalized(mention.label) }) else { return nil }
         }
-        return target(agent: agent, owner: owner, sender: message.senderAccountId, participants: participants)
+        return target(agent: canonicalAgent, owner: owner, sender: message.senderAccountId, participants: participants)
     }
 
     static func resolve(_ message: CloudGroupMessagePayload, participants: [CloudGroupParticipant]) -> Self? {

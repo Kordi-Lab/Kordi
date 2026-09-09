@@ -57,3 +57,13 @@ test('an agent handoff on a canonical group row claims only its target owner', (
   const claims = cloudFallbackRunClaimsForMessages({ account, contacts: [], messagesByPeer: { acct_transport: [request] } });
   assert.deepEqual(claims.map((c) => c.ownerAccountId), ['acct_target']);
 });
+
+test('a legacy owner-based mention on a canonical group row still claims the explicit default agent', () => {
+  const request = wire({ ...envelope, message: { ...envelope.message!, mentions: [{
+    label: 'KordiTarget', targetKind: 'agent', targetIdentityId: 'agent:acct_target',
+    agentId: null, humanId: 'acct_target', nodeId: 'acct_target', sourceHostId: 'cloud',
+    startUtf16: 0, lengthUtf16: '@KordiTarget'.length, displayText: '@KordiTarget',
+  }] } });
+  const claims = cloudFallbackRunClaimsForMessages({ account, contacts: [], messagesByPeer: { acct_transport: [request] } });
+  assert.deepEqual(claims.map((c) => c.ownerAccountId), ['acct_target']);
+});

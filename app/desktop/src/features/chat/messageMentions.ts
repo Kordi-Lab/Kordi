@@ -1,3 +1,4 @@
+import { defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
 import {
   compatibleSourceHostId,
   normalizeCollaborationTargetKind,
@@ -65,6 +66,11 @@ export function mentionForCollaborationTarget(
   text?: string,
 ): MessageMention[] {
   if (!target) return [];
+  if (target.targetKind === 'agent' && target.host.id === 'cloud' && !target.peer.agentId) {
+    target = { ...target, peer: { ...target.peer,
+      agentId: defaultCloudAgentId(target.peer.humanId || target.peer.nodeId),
+    } };
+  }
   const mention: MessageMention = {
     label: target.label,
     targetKind: target.targetKind,

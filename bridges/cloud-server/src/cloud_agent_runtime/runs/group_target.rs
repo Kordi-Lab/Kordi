@@ -105,15 +105,16 @@ fn mention_target(
     } else {
         text(mention, "agentId")
     };
-    if !identity.is_empty() && (identity_agent.is_empty() || identity_agent != agent) {
-        return None;
-    }
     let inferred_owner = agent
         .strip_prefix("cloud-agent:")
         .or_else(|| {
             participants
                 .iter()
-                .find(|p| p.agent_id.as_deref() == Some(agent))
+                .find(|p| {
+                    p.agent_id.as_deref() == Some(agent)
+                        || p.account_id == agent
+                        || format!("cloud:{}", p.account_id) == agent
+                })
                 .map(|p| p.account_id.as_str())
         })
         .unwrap_or_default();
@@ -125,6 +126,19 @@ fn mention_target(
     .into_iter()
     .find(|v| !v.is_empty())
     .unwrap_or_default();
+    let canonical = |id: &str| {
+        if !owner.is_empty() && (id == owner || id == format!("cloud:{owner}")) {
+            format!("cloud-agent:{owner}")
+        } else {
+            id.to_string()
+        }
+    };
+    let canonical_agent = canonical(agent);
+    if !identity.is_empty()
+        && (identity_agent.is_empty() || canonical(identity_agent) != canonical_agent)
+    {
+        return None;
+    }
     let start = mention.get("startUtf16").filter(|v| !v.is_null());
     let length = mention.get("lengthUtf16").filter(|v| !v.is_null());
     if start.is_some() || length.is_some() {
@@ -147,7 +161,12 @@ fn mention_target(
     {
         return None;
     }
-    target_for_ids(agent, owner, &message.sender_account_id, participants)
+    target_for_ids(
+        &canonical_agent,
+        owner,
+        &message.sender_account_id,
+        participants,
+    )
 }
 
 pub(super) fn human_group_target(
