@@ -172,14 +172,6 @@
   line-height: 1;
 }
 
-.app-noto-emoji[data-loading='true']::before {
-  width: 55%;
-  aspect-ratio: 1;
-  border-radius: 9999px;
-  background: color-mix(in oklab, currentColor 9%, transparent);
-  content: '';
-}
-
 .app-noto-emoji > img {
   position: absolute;
   inset: 0;
@@ -191,6 +183,22 @@
 
 .app-noto-emoji > img[data-ready='true'] {
   opacity: 1;
+}
+
+.app-noto-emoji > .app-noto-animation {
+  z-index: 1;
+}
+
+.app-noto-animation[data-ready='true'] ~ .app-noto-still {
+  opacity: 0;
+}
+
+.app-noto-emoji > img[data-ready='true'] ~ .app-noto-fallback {
+  visibility: hidden;
+}
+
+.app-noto-fallback {
+  line-height: 1;
 }
 
 .app-blob-emoji-category:hover,

@@ -324,44 +324,23 @@ struct BlobEmojiView: View {
     @Environment(\.displayScale) private var displayScale
     let emoji: BlobEmoji
     let size: CGFloat
-    @State private var image: UIImage?
 
     var body: some View {
         let animated = emoji.animated && !reduceMotion
-        let maximumPixelSize = size * displayScale
-        let displayedImage = BlobEmojiCatalog.cachedImage(
-            for: emoji,
-            animated: animated,
-            maximumPixelSize: animated ? maximumPixelSize : nil
-        ) ?? BlobEmojiCatalog.cachedImage(for: emoji, animated: false) ?? image
-        Group {
-            if let displayedImage {
-                if animated {
-                    AnimatedUIImage(image: displayedImage)
-                } else {
-                    Image(uiImage: displayedImage)
-                        .resizable()
-                }
-            } else {
-                Color.clear
-            }
-        }
-        .scaledToFit()
-        .frame(width: size, height: size)
-        .clipped()
-        .task(id: "\(emoji.id):\(reduceMotion):\(Int(maximumPixelSize.rounded(.up)))") {
-            image = nil
-            image = await BlobEmojiImageLoader.shared.image(
-                for: emoji,
-                animated: false
-            )
-            guard animated, !Task.isCancelled else { return }
-            image = await BlobEmojiImageLoader.shared.image(
-                for: emoji,
-                animated: true,
-                maximumPixelSize: maximumPixelSize
-            )
-        }
+        let sources = BlobEmojiCatalog.assetURL(for: emoji).map {
+            [EmojiAnimationRequest.Source(url: $0, mediaType: nil)]
+        } ?? []
+        SharedEmojiAnimationView(
+            request: EmojiAnimationRequest(
+                identifier: "blob:\(emoji.id)", revision: "bundled-v2",
+                pixelSize: min(512, max(1, Int((size * displayScale).rounded(.up)))),
+                animated: animated, sources: sources
+            ),
+            fallback: "",
+            size: size,
+            initialImage: BlobEmojiCatalog.cachedImage(for: emoji, animated: false)
+        )
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(emoji.accessibilityName)
     }
 }
@@ -428,7 +407,7 @@ enum AnimatedImageDecoder {
             : UIImage.animatedImage(with: frames, duration: max(duration, 0.1))
     }
 
-    private static func frame(
+    static func frame(
         from source: CGImageSource,
         index: Int,
         maximumPixelSize: CGFloat?
@@ -449,7 +428,7 @@ enum AnimatedImageDecoder {
         return CGImageSourceCreateImageAtIndex(source, index, nil).map(UIImage.init(cgImage:))
     }
 
-    private static func frameDuration(source: CGImageSource, index: Int) -> TimeInterval {
+    static func frameDuration(source: CGImageSource, index: Int) -> TimeInterval {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
               let animation = properties[kCGImagePropertyWebPDictionary] as? [CFString: Any]
                 ?? properties[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {

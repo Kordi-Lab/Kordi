@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import ImageIO
 import SwiftUI
@@ -26,13 +27,16 @@ enum NotoEmojiAssetFormat: String, Sendable {
 enum NotoEmojiCatalog {
     private static let cdnOrigin = "https://fonts.gstatic.com"
 
+    private static let catalogData: Data? = Bundle.main.url(
+        forResource: "catalog", withExtension: "json", subdirectory: "noto-emoji"
+    ).flatMap { try? Data(contentsOf: $0) }
+
+    static let assetRevision = catalogData.map {
+        SHA256.hash(data: $0).map { String(format: "%02x", $0) }.joined()
+    } ?? "noto-v1"
+
     static let all: [NotoEmoji] = {
-        guard let url = Bundle.main.url(
-            forResource: "catalog",
-            withExtension: "json",
-            subdirectory: "noto-emoji"
-        ),
-        let data = try? Data(contentsOf: url),
+        guard let data = catalogData,
         let payload = try? JSONDecoder().decode(Payload.self, from: data),
         payload.schema == 1 else { return [] }
         return payload.emoji.filter { validID($0.id) && !$0.value.isEmpty }
@@ -51,18 +55,6 @@ enum NotoEmojiCatalog {
     static func assetURL(for emoji: NotoEmoji, format: NotoEmojiAssetFormat) -> URL? {
         guard byID[emoji.id]?.value == emoji.value else { return nil }
         return URL(string: "\(cdnOrigin)/s/e/notoemoji/latest/\(emoji.id)/512.\(format.rawValue)")
-    }
-
-    static func cachedImage(
-        for emoji: NotoEmoji,
-        animated: Bool,
-        maximumPixelSize: CGFloat
-    ) -> UIImage? {
-        NotoEmojiImageCache.image(for: NotoEmojiImageCache.key(
-            for: emoji,
-            animated: animated,
-            maximumPixelSize: maximumPixelSize
-        ))
     }
 
     private static func validID(_ value: String) -> Bool {
@@ -199,9 +191,6 @@ struct NotoEmojiView: View {
     let emoji: NotoEmoji
     let size: CGFloat
     let animated: Bool
-    @State private var image: UIImage?
-    @State private var loadedKey: String?
-    @State private var failedKey: String?
 
     init(emoji: NotoEmoji, size: CGFloat, animated: Bool = true) {
         self.emoji = emoji
@@ -211,125 +200,22 @@ struct NotoEmojiView: View {
 
     var body: some View {
         let shouldAnimate = animated && !reduceMotion
-        let maximumPixelSize = size * displayScale
-        let loadKey = "\(emoji.id):\(shouldAnimate):\(Int(maximumPixelSize.rounded()))"
-        let cachedImage = NotoEmojiCatalog.cachedImage(
-            for: emoji,
-            animated: shouldAnimate,
-            maximumPixelSize: maximumPixelSize
-        )
-        Group {
-            if let displayedImage = loadedKey == loadKey ? image : cachedImage {
-                if shouldAnimate && (displayedImage.images?.count ?? 0) > 1 {
-                    AnimatedUIImage(image: displayedImage)
-                } else {
-                    Image(uiImage: displayedImage).resizable()
-                }
-            } else if failedKey == loadKey {
-                Text(verbatim: emoji.value)
-                    .font(.system(size: size * 0.78))
-            } else {
-                Circle()
-                    .fill(Color.secondary.opacity(0.08))
-                    .frame(width: size * 0.55, height: size * 0.55)
+        let formats: [NotoEmojiAssetFormat] = shouldAnimate ? [.webp, .gif] : [.png]
+        let sources = formats.compactMap { format in
+            NotoEmojiCatalog.assetURL(for: emoji, format: format).map {
+                EmojiAnimationRequest.Source(url: $0, mediaType: format.mediaType)
             }
         }
-        .scaledToFit()
-        .frame(width: size, height: size)
-        .clipped()
-        .task(id: loadKey) {
-            let loaded = await NotoEmojiImageLoader.shared.image(
-                for: emoji,
-                animated: shouldAnimate,
-                maximumPixelSize: maximumPixelSize
-            )
-            guard !Task.isCancelled else { return }
-            image = loaded
-            loadedKey = loaded == nil ? nil : loadKey
-            failedKey = loaded == nil ? loadKey : nil
-        }
+        SharedEmojiAnimationView(
+            request: EmojiAnimationRequest(
+                identifier: "noto:\(emoji.id)", revision: NotoEmojiCatalog.assetRevision,
+                pixelSize: min(512, max(1, Int((size * displayScale).rounded(.up)))),
+                animated: shouldAnimate, sources: sources
+            ),
+            fallback: emoji.value,
+            size: size
+        )
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(emoji.name)
-    }
-}
-
-private enum NotoEmojiImageCache {
-    private static let storage: NSCache<NSString, UIImage> = {
-        let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 192
-        cache.totalCostLimit = 32 * 1_024 * 1_024
-        return cache
-    }()
-
-    static func image(for key: NSString) -> UIImage? {
-        storage.object(forKey: key)
-    }
-
-    static func insert(_ image: UIImage, for key: NSString, cost: Int) {
-        storage.setObject(image, forKey: key, cost: cost)
-    }
-
-    static func key(
-        for emoji: NotoEmoji,
-        animated: Bool,
-        maximumPixelSize: CGFloat
-    ) -> NSString {
-        "\(emoji.id):\(animated):\(Int(maximumPixelSize.rounded()))" as NSString
-    }
-}
-
-private actor NotoEmojiImageLoader {
-    static let shared = NotoEmojiImageLoader()
-    private static let maximumBytes = 4 * 1_024 * 1_024
-
-    func image(
-        for emoji: NotoEmoji,
-        animated: Bool,
-        maximumPixelSize: CGFloat
-    ) async -> UIImage? {
-        let key = NotoEmojiImageCache.key(
-            for: emoji,
-            animated: animated,
-            maximumPixelSize: maximumPixelSize
-        )
-        if let cached = NotoEmojiImageCache.image(for: key) { return cached }
-
-        let formats: [NotoEmojiAssetFormat] = animated ? [.webp, .gif] : [.png]
-        for format in formats {
-            guard !Task.isCancelled,
-                  let url = NotoEmojiCatalog.assetURL(for: emoji, format: format),
-                  let image = await load(url: url, format: format, animated: animated, maximumPixelSize: maximumPixelSize) else {
-                continue
-            }
-            let cost = (image.images ?? [image]).reduce(0) { total, frame in
-                total + (frame.cgImage.map { $0.bytesPerRow * $0.height } ?? 0)
-            }
-            NotoEmojiImageCache.insert(image, for: key, cost: cost)
-            return image
-        }
-        return nil
-    }
-
-    private func load(
-        url: URL,
-        format: NotoEmojiAssetFormat,
-        animated: Bool,
-        maximumPixelSize: CGFloat
-    ) async -> UIImage? {
-        var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-        request.timeoutInterval = 15
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              data.count <= Self.maximumBytes,
-              let response = response as? HTTPURLResponse,
-              response.statusCode == 200,
-              response.url?.host == "fonts.gstatic.com",
-              response.mimeType == format.mediaType,
-              let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-            return nil
-        }
-        return AnimatedImageDecoder.image(
-            from: source,
-            animated: animated,
-            maximumPixelSize: maximumPixelSize
-        )
     }
 }

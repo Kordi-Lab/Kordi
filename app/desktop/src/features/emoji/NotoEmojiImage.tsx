@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import {
@@ -6,9 +6,63 @@ import {
   useRemoteImage,
 } from '@/kordi-app/components/remoteAvatarImage';
 import { cn } from '@/lib/utils';
-import { isEmojiImageReady, markEmojiImageReady } from './emojiImageReadiness';
+import { markEmojiImageReady } from './emojiImageReadiness';
 import { useNearEmojiViewport } from './emojiViewport';
 import { notoEmojiAssetUrl, type NotoEmoji } from './notoEmoji';
+
+function NotoFrame({ source, readinessKey, className, native, onError }: {
+  source: string | null;
+  readinessKey: string;
+  className: string;
+  native: boolean;
+  onError?: () => void;
+}) {
+  const [loadedSource, setLoadedSource] = useState<string | null>(null);
+  return (
+    <img
+      src={source ?? undefined}
+      className={className}
+      alt=""
+      data-ready={Boolean(source && loadedSource === source)}
+      loading={native ? 'eager' : 'lazy'}
+      decoding="async"
+      draggable={false}
+      onLoad={() => {
+        markEmojiImageReady(readinessKey);
+        setLoadedSource(source);
+      }}
+      onError={() => {
+        setLoadedSource(null);
+        onError?.();
+      }}
+    />
+  );
+}
+
+function NotoAnimation({ emoji, nearViewport, native }: {
+  emoji: NotoEmoji;
+  nearViewport: boolean;
+  native: boolean;
+}) {
+  const [failedWebp, setFailedWebp] = useState(false);
+  const webpUrl = notoEmojiAssetUrl(emoji, 'webp');
+  const webp = useRemoteImage(webpUrl, native && nearViewport);
+  const useGif = failedWebp || (native && webp.status === 'failed');
+  const gifUrl = notoEmojiAssetUrl(emoji, 'gif');
+  const gif = useRemoteImage(gifUrl, native && nearViewport && useGif);
+  const remoteUrl = useGif ? gifUrl : webpUrl;
+  const remote = useGif ? gif : webp;
+  const source = native ? (remote.status === 'ready' ? remote.dataUrl : null) : remoteUrl;
+  return (
+    <NotoFrame
+      source={source}
+      readinessKey={`noto:${remoteUrl}`}
+      className="app-noto-animation"
+      native={native}
+      onError={() => { if (!useGif) setFailedWebp(true); }}
+    />
+  );
+}
 
 export const NotoEmojiImage = memo(function NotoEmojiImage({
   emoji,
@@ -22,63 +76,25 @@ export const NotoEmojiImage = memo(function NotoEmojiImage({
   decorative?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
-  const imageRef = useRef<HTMLImageElement | null>(null);
-  const shouldAnimate = animated && !reduceMotion;
-  const requestKey = `${emoji.id}:${shouldAnimate}`;
-  const [failedWebpKey, setFailedWebpKey] = useState<string | null>(null);
-  const format = shouldAnimate ? (failedWebpKey === requestKey ? 'gif' : 'webp') : 'png';
-  const remoteUrl = notoEmojiAssetUrl(emoji, format);
-  const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl);
+  const imageRef = useRef<HTMLSpanElement | null>(null);
+  const stillUrl = notoEmojiAssetUrl(emoji, 'png');
+  const native = shouldLoadRemoteImageThroughNativeProxy(stillUrl);
   const nearViewport = useNearEmojiViewport(imageRef, native);
-  const remote = useRemoteImage(remoteUrl, native && nearViewport);
-  const source = native ? (remote.status === 'ready' ? remote.dataUrl : null) : remoteUrl;
-  const readinessKey = `noto:${remoteUrl}`;
-  const [loadedKey, setLoadedKey] = useState<string | null>(() => (
-    isEmojiImageReady(readinessKey) ? readinessKey : null
-  ));
-  const [failedSource, setFailedSource] = useState<string | null>(null);
-  const ready = Boolean(
-    source
-    && (loadedKey === readinessKey || isEmojiImageReady(readinessKey))
-    && source !== failedSource,
-  );
-  const failed = native
-    ? format !== 'webp' && remote.status === 'failed'
-    : Boolean(source && source === failedSource);
-
-  useEffect(() => {
-    if (format === 'webp' && native && remote.status === 'failed') {
-      setFailedWebpKey(requestKey);
-    }
-  }, [format, native, remote.status, requestKey]);
-
+  const still = useRemoteImage(stillUrl, native && nearViewport);
+  const stillSource = native ? (still.status === 'ready' ? still.dataUrl : null) : stillUrl;
   return (
     <span
+      ref={imageRef}
       className={cn('app-noto-emoji', className)}
       role={decorative ? undefined : 'img'}
       aria-label={decorative ? undefined : emoji.name}
       aria-hidden={decorative || undefined}
-      data-loading={(!ready && !failed) || undefined}
     >
-      {failed ? <span aria-hidden="true">{emoji.value}</span> : null}
-      <img
-        ref={imageRef}
-        src={source ?? undefined}
-        alt=""
-        data-ready={ready}
-        loading={native ? 'eager' : 'lazy'}
-        decoding="async"
-        draggable={false}
-        onLoad={() => {
-          markEmojiImageReady(readinessKey);
-          setLoadedKey(readinessKey);
-          setFailedSource(null);
-        }}
-        onError={() => {
-          if (format === 'webp') setFailedWebpKey(requestKey);
-          else setFailedSource(source);
-        }}
-      />
+      {animated && !reduceMotion ? (
+        <NotoAnimation key={emoji.id} emoji={emoji} native={native} nearViewport={nearViewport} />
+      ) : null}
+      <NotoFrame source={stillSource} readinessKey={`noto:${stillUrl}`} className="app-noto-still" native={native} />
+      <span className="app-noto-fallback" aria-hidden="true">{emoji.value}</span>
     </span>
   );
 });
