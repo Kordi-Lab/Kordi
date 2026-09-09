@@ -2536,6 +2536,12 @@ final class AppModel: ObservableObject {
            let clientMessageId = message.clientMessageId?.nonEmpty {
             return "client-message:\(message.conversationId):\(clientMessageId)"
         }
+        // Several agents can reply to one group request. Request identity is
+        // only a row identity in direct agent chats; group rows use their own
+        // durable message ID, independent of author names or transport copies.
+        if message.author == .agent, message.conversationId.hasPrefix("group:") {
+            return "group-message:\(message.conversationId):\(message.id)"
+        }
         guard message.author == .agent,
               let requestMessageId = message.requestMessageId?.nonEmpty else { return message.id }
         let presentationId = requestPresentationIds[requestMessageId] ?? requestMessageId
