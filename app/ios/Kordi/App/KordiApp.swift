@@ -140,6 +140,13 @@ struct KordiApp: App {
                     callCoordinator.configure(model: model)
                     notificationCoordinator.accountDidChange()
                     notificationCoordinator.synchronizeBadge()
+                    #if DEBUG
+                    if model.isPreviewMode,
+                       ProcessInfo.processInfo.arguments.contains("--preview-incoming-message") {
+                        do { try await Task.sleep(for: .seconds(3)) } catch { return }
+                        model.deliverPreviewIncomingMessage()
+                    }
+                    #endif
                 }
                 .onReceive(
                     NotificationCenter.default.publisher(for: .kordiDidRegisterForRemoteNotifications)
@@ -461,6 +468,11 @@ struct MainTabView: View {
         return .chats
     }()
     @State private var path: [MainNavigationRoute] = []
+
+    init(hasTopAccessory: Bool = false, initialPath: [MainNavigationRoute] = []) {
+        self.hasTopAccessory = hasTopAccessory
+        _path = State(initialValue: initialPath)
+    }
 
     var body: some View {
         MainNavigationHost(path: $path) {

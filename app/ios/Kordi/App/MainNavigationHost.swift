@@ -9,7 +9,7 @@ private final class MainTransitionNavigationController: UINavigationController {
 }
 
 @MainActor
-struct MainNavigationHost<Root: View, Destination: View>: UIViewControllerRepresentable {
+struct MainNavigationHost<Root: View, Destination: View>: View {
     @Binding var path: [MainNavigationRoute]
     let root: Root
     let destination: (MainNavigationRoute) -> Destination
@@ -23,6 +23,20 @@ struct MainNavigationHost<Root: View, Destination: View>: UIViewControllerRepres
         self.root = root()
         self.destination = destination
     }
+
+    var body: some View {
+        MainNavigationControllerHost(path: $path, root: root, destination: destination)
+            // The hosted screen owns keyboard avoidance. Resizing this outer
+            // container as well exposes its background ahead of the keyboard.
+            .ignoresSafeArea(.all, edges: .bottom)
+    }
+}
+
+@MainActor
+private struct MainNavigationControllerHost<Root: View, Destination: View>: UIViewControllerRepresentable {
+    @Binding var path: [MainNavigationRoute]
+    let root: Root
+    let destination: (MainNavigationRoute) -> Destination
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -43,14 +57,14 @@ struct MainNavigationHost<Root: View, Destination: View>: UIViewControllerRepres
 
     @MainActor
     final class Coordinator: NSObject, UINavigationControllerDelegate, UIGestureRecognizerDelegate {
-        var parent: MainNavigationHost
+        var parent: MainNavigationControllerHost
         let rootController: UIHostingController<Root>
         weak var controller: UINavigationController?
         private var routes: [MainNavigationRoute] = []
         private var destinations: [UIHostingController<Destination>] = []
         private var transitionPath: [MainNavigationRoute]?
 
-        init(_ parent: MainNavigationHost) {
+        init(_ parent: MainNavigationControllerHost) {
             self.parent = parent
             rootController = UIHostingController(rootView: parent.root)
         }

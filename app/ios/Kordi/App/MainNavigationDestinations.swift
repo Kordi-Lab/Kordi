@@ -10,6 +10,7 @@ enum MainNavigationRoute: Hashable {
 
 struct MainNavigationDestination: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.kordiChatTheme) private var chatTheme
     @Binding var path: [MainNavigationRoute]
     let route: MainNavigationRoute
     let selectedTab: MainTab
@@ -25,6 +26,14 @@ struct MainNavigationDestination: View {
                         .labelStyle(.iconOnly)
                     }
                 }
+        }
+        .background {
+            switch route {
+            case .conversation, .message:
+                KordiChatWallpaper(theme: chatTheme).ignoresSafeArea()
+            default:
+                Color.clear
+            }
         }
     }
 

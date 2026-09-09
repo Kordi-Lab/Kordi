@@ -188,8 +188,8 @@ struct MessageGestureRegistrationTests {
     #expect(container.contains("alignment: timeline.isEmpty ? .top : .bottom"))
     #expect(source.contains(".defaultScrollAnchor(.bottom, for: .initialOffset)"))
     #expect(source.contains(".defaultScrollAnchor(.bottom, for: .alignment)"))
-    #expect(!source.contains(".defaultScrollAnchor(.bottom)"))
-    #expect(!source.contains(".defaultScrollAnchor(.bottom, for: .sizeChanges)"))
+    #expect(source.contains("content.defaultScrollAnchor(.bottom)"))
+    #expect(source.contains(".defaultScrollAnchor(.bottom, for: .sizeChanges)"))
     let rowsStart = try #require(content.range(of: "ForEach(visibleTimelineRows)"))
     let rowWrapper = try #require(content.range(of: "VStack(spacing: 0)", range: rowsStart.upperBound..<content.endIndex))
     let unreadDivider = try #require(content.range(of: "if scopedThreadRootMessageID != nil, showsThreadUnreadDivider", range: rowsStart.upperBound..<content.endIndex))
@@ -1173,7 +1173,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
-    func testLocalOutgoingMessagesRequestTheBottomBeforeSending() throws {
+    func testLocalOutgoingMessagesPositionTheirStagedRows() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -1186,7 +1186,9 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
         let sender = source[start.lowerBound..<end.lowerBound]
 
-        XCTAssertTrue(sender.contains("scrollToBottom(animated: true)"))
+        XCTAssertTrue(sender.contains("onStaged:"))
+        XCTAssertTrue(sender.contains("stagedMessageIDs ="))
+        XCTAssertTrue(sender.contains("scrollToBottom()"))
     }
 
     func testConversationKeepsFollowingNewMessagesWhileAtLatest() {
@@ -1215,7 +1217,8 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
         let handler = source[start.lowerBound..<end.lowerBound]
 
-        XCTAssertTrue(handler.contains("scrollToBottom(animated: identityChanged)"))
+        XCTAssertTrue(handler.contains("scrollToBottom()"))
+        XCTAssertFalse(handler.contains("scrollToBottom(animated: identityChanged)"))
         XCTAssertTrue(source.contains("immediateBottomRequest &+= 1"))
         XCTAssertFalse(handler.contains("if !identityChanged"))
     }
@@ -1253,10 +1256,13 @@ final class KordiMarkdownParserTests: XCTestCase {
 
         XCTAssertTrue(lines.contains("                            \(animation)"))
         XCTAssertFalse(lines.contains("                        \(animation)"))
-        XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
-        XCTAssertFalse(source.contains(".scrollDismissesKeyboard("))
+        let timelineStart = try XCTUnwrap(source.range(of: "let timelineContent = VStack"))
+        let timelineEnd = try XCTUnwrap(source.range(of: "let presentedTimeline = timelineContent"))
+        // The composer belongs in the timeline stack. A separate thread pagination
+        // inset elsewhere in this file does not change that layout contract.
+        XCTAssertFalse(source[timelineStart.lowerBound..<timelineEnd.lowerBound].contains(".safeAreaInset(edge: .bottom"))
+        XCTAssertTrue(source.contains(".scrollDismissesKeyboard(.interactively)"))
         XCTAssertFalse(source.contains("keyboardAvoidanceHeight"))
-        XCTAssertTrue(source.contains("scrollView.keyboardDismissMode = .onDrag"))
         XCTAssertTrue(source.contains(".padding(.bottom, timelineVerticalInset)\n                                        .id(bottomAnchorID)"))
         XCTAssertTrue(source.contains("viewport.size.height - timelineVerticalInset"))
         XCTAssertTrue(source.contains(".padding(.top, timelineVerticalInset)"))
@@ -1266,7 +1272,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(source.contains("dismissKeyboard()\n                                    dismissComposerPickers()"))
 
         let composer = try XCTUnwrap(source.range(of: "                        ComposerView("))
-        let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count)"))
+        let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count,"))
         XCTAssertLessThan(composer.lowerBound, rootModifiers.lowerBound)
     }
 
