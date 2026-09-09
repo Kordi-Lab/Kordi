@@ -1306,7 +1306,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
             content
                 .background(Color(uiColor: .systemBackground))
                 .offset(x: displayedOffset)
-                .highPriorityGesture(horizontalDragGesture)
+                .simultaneousGesture(horizontalDragGesture)
                 .zIndex(1)
         }
         .clipped()
@@ -1321,7 +1321,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
                             .contentShape(Rectangle())
                             .frame(width: max(0, proxy.size.width - abs(restingOffset)))
                             .onTapGesture { close() }
-                            .highPriorityGesture(horizontalDragGesture)
+                            .simultaneousGesture(horizontalDragGesture)
                         if restingOffset < 0 {
                             Spacer(minLength: 0)
                         }

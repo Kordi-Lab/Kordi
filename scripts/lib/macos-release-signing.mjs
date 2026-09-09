@@ -39,6 +39,21 @@ export function assertProductionSigningIdentity(run) {
   return { signingIdentityAvailable: true };
 }
 
+export function assertMacCalendarAccess(run, appBundle) {
+  const entitlements = requireSuccessful(
+    run('codesign', ['-d', '--entitlements', ':-', appBundle]),
+    'Unable to inspect signed calendar entitlement',
+  );
+  if (!/<key>com\.apple\.security\.personal-information\.calendars<\/key>\s*<true\s*\/>/.test(entitlements.stdout ?? '')) {
+    throw new Error('Signed application is missing the enabled calendar entitlement');
+  }
+  const usage = requireSuccessful(
+    run('plutil', ['-extract', 'NSCalendarsFullAccessUsageDescription', 'raw', '-o', '-', `${appBundle}/Contents/Info.plist`]),
+    'Application is missing the calendar access usage description',
+  );
+  if (!usage.stdout?.trim()) throw new Error('Calendar access usage description must not be empty');
+}
+
 export function verifyMacAppSignature({ run, appBundle, profile }) {
   requireKnownProfile(profile);
 
@@ -53,6 +68,7 @@ export function verifyMacAppSignature({ run, appBundle, profile }) {
       'Gatekeeper assessment failed for the application bundle',
     );
 
+    assertMacCalendarAccess(run, appBundle);
     return {
       codesignVerified: true,
       gatekeeperVerified: true,

@@ -31,6 +31,8 @@ function fakeDependencies(overrides = {}) {
       ['security find-identity -v -p codesigning', success('  1) ABCDEF "Developer ID Application: Example (TEAMID)"\n     1 valid identities found')],
       [`codesign --verify --deep --strict --verbose=2 ${APP}`, success('')],
       [`spctl --assess --type execute --verbose=2 ${APP}`, success('')],
+      [`codesign -d --entitlements :- ${APP}`, success('<plist><dict><key>com.apple.security.personal-information.calendars</key><true/></dict></plist>')],
+      [`plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${APP}/Contents/Info.plist`, success('Read selected calendars.')],
     ]),
     ...(overrides.results ?? []),
   ]);

@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   RELEASE_PROFILES,
+  assertMacCalendarAccess,
   assertProductionSigningIdentity,
   verifyMacAppSignature,
 } from './lib/macos-release-signing.mjs';
@@ -15,7 +16,12 @@ function fail(stderr = 'command failed') {
   return { status: 1, stdout: '', stderr };
 }
 
-function fakeRun(results) {
+function fakeRun(overrides) {
+  const results = new Map([
+    [`codesign -d --entitlements :- ${APP}`, ok('<plist><dict><key>com.apple.security.personal-information.calendars</key><true/></dict></plist>')],
+    [`plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${APP}/Contents/Info.plist`, ok('Read selected calendars.')],
+    ...overrides,
+  ]);
   return (command, args = []) => results.get([command, ...args].join(' '))
     ?? fail(`unexpected command: ${[command, ...args].join(' ')}`);
 }
@@ -270,4 +276,21 @@ test('rejects an unknown release profile', () => {
     }),
     /production or adhoc-preview/i,
   );
+});
+
+
+test('calendar gate rejects signed bundles with absent or disabled calendar access', () => {
+  for (const xml of ['<plist><dict/></plist>', '<plist><dict><key>com.apple.security.personal-information.calendars</key><false/></dict></plist>']) {
+    assert.throws(() => assertMacCalendarAccess(fakeRun(new Map([
+      [`codesign -d --entitlements :- ${APP}`, ok(xml)],
+    ])), APP), /missing the enabled calendar entitlement/);
+  }
+});
+
+test('calendar gate rejects a missing or empty purpose string', () => {
+  for (const result of [fail('private detail'), ok('  ')]) {
+    assert.throws(() => assertMacCalendarAccess(fakeRun(new Map([
+      [`plutil -extract NSCalendarsFullAccessUsageDescription raw -o - ${APP}/Contents/Info.plist`, result],
+    ])), APP), /calendar access usage description|Calendar access usage description/);
+  }
 });
