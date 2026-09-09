@@ -242,5 +242,3 @@ test('ordinary session lists stay fully mounted while scrolling', async () => {
 
   assert.equal(host.querySelectorAll('[data-chat-sidebar-row]').length, rows.length);
 });
-
-
