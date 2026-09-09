@@ -73,6 +73,7 @@
 		798E25FC71EFE3AFBBD92A56 /* CloudAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1891761174EB0D425725600A /* CloudAPIClient.swift */; };
 		7DFA4853671269DDB4276A23 /* CompanionChatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57000316D6B453E1690DA350 /* CompanionChatPanel.swift */; };
 		801B1286BE27D9D500B36DE9 /* MessageLinkPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D362AF4BAC14A082A9A6A849 /* MessageLinkPreview.swift */; };
+		81A5A5B135938E1C332EB16D /* ConversationSendMotionIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */; };
 		85F8CFC2AC23D0C91408C596 /* AttachmentFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B308FF37FF8E42CB0F5166D6 /* AttachmentFileStore.swift */; };
 		88B8C4BC617FD7B9CE4EC7CC /* AgentModelSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E218169E718634BB75B216F1 /* AgentModelSheet.swift */; };
 		89AF5B2FC468A8F70E1699A7 /* AvatarIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB852A1AC3BAABE284AC4D5 /* AvatarIdentityTests.swift */; };
@@ -100,6 +101,7 @@
 		B5A4DEDE26C34B90346FAD9F /* ChatHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 958064210641FA020E27EF19 /* ChatHomeView.swift */; };
 		B5B5BB40648C816CA1BCFEF9 /* LivePhotoMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A6E730DE888A7B0CBC6C9F /* LivePhotoMedia.swift */; };
 		B6385E2469989CDAB5A71539 /* MainNavigationHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984CB21DF1BA4C396217B6BC /* MainNavigationHost.swift */; };
+		BAE153F27E5E1485C3D5424F /* ConversationMotionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE9C2F4A6D2AEEB995AC122B /* ConversationMotionProbe.swift */; };
 		BC01C5D7FB643F5F18C116FE /* blob-emoji in Resources */ = {isa = PBXBuildFile; fileRef = 3D5D26C1845AB19D9120CB8D /* blob-emoji */; };
 		BD168B3F6BE8A731506F7A3A /* ChatRowSwipeGesture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DECAF58B49CE2DE63185B4C /* ChatRowSwipeGesture.swift */; };
 		BE344377783EEB4A688EECBF /* ConversationRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A020F6E80156312C56FA7D0F /* ConversationRow.swift */; };
@@ -176,6 +178,7 @@
 /* Begin PBXFileReference section */
 		030EF9AB2B49807064976F35 /* SharedEmojiAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedEmojiAnimationView.swift; sourceTree = "<group>"; };
 		092A3B6DDEAE95871DABB253 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSendMotionIntegrationTests.swift; sourceTree = "<group>"; };
 		0B7E8E86F8830C031FE1EC87 /* GroupManagementSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupManagementSheet.swift; sourceTree = "<group>"; };
 		0DB3A982982A43712453EAFF /* BlobEmoji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlobEmoji.swift; sourceTree = "<group>"; };
 		0DE75382D6C8FA0FC7A711C7 /* ShareExtensionSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionSupport.swift; sourceTree = "<group>"; };
@@ -299,6 +302,7 @@
 		E82504028486B67BF05F7A51 /* ShareExtensionSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionSupportTests.swift; sourceTree = "<group>"; };
 		E89F1206EB556B444390594D /* Kordi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Kordi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		EC7028A6ADF145A7DE23EB58 /* digest */ = {isa = PBXFileReference; lastKnownFileType = folder; name = digest; path = ../../shared/digest; sourceTree = SOURCE_ROOT; };
+		EE9C2F4A6D2AEEB995AC122B /* ConversationMotionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMotionProbe.swift; sourceTree = "<group>"; };
 		EFB88FF6B392D071AA24EB46 /* ComposerMentionTargetCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMentionTargetCatalogTests.swift; sourceTree = "<group>"; };
 		EFCC37295C93ECDF39C84206 /* LivePhotoSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePhotoSurface.swift; sourceTree = "<group>"; };
 		F07103152F3015F0B24FEE45 /* CloudGroupMessageCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudGroupMessageCodec.swift; sourceTree = "<group>"; };
@@ -424,6 +428,7 @@
 				46FD8ADA8B828FDECB16AB83 /* ComposerMentionMenu.swift */,
 				F12ADFCB554A69C285C7F753 /* ComposerView.swift */,
 				8E3BB5862C5807A1AD1244A0 /* ConversationInitialLoadingView.swift */,
+				EE9C2F4A6D2AEEB995AC122B /* ConversationMotionProbe.swift */,
 				53F18B597C9FC8361CBBE668 /* ConversationTailScrollAnimator.swift */,
 				4021DE92BF82560F7905E214 /* ConversationView.swift */,
 				C2C10B9D09B7992549A6CE35 /* ExpressiveMediaPicker.swift */,
@@ -540,6 +545,7 @@
 				935EFE99E0807E1CF8BE8FA7 /* ComposerMentionMenuTests.swift */,
 				EFB88FF6B392D071AA24EB46 /* ComposerMentionTargetCatalogTests.swift */,
 				9DCA28263C9542B2585C6820 /* ConversationReadPresentationTests.swift */,
+				09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */,
 				6F8CE113A5D004E972C7441D /* ConversationSendQueueTests.swift */,
 				7D46ABEB72814B88129564B0 /* ConversationTailScrollAnimatorTests.swift */,
 				568EBC3F7D9760AAD86C912C /* DigestViewTests.swift */,
@@ -828,6 +834,7 @@
 				237035D2841A8F001F917D78 /* ComposerMentionMenuTests.swift in Sources */,
 				ED22FF9AFFB08C5A52F41716 /* ComposerMentionTargetCatalogTests.swift in Sources */,
 				C43FBB268AD9D16808177E02 /* ConversationReadPresentationTests.swift in Sources */,
+				81A5A5B135938E1C332EB16D /* ConversationSendMotionIntegrationTests.swift in Sources */,
 				8CF43B6243E2D98104E0E4A5 /* ConversationSendQueueTests.swift in Sources */,
 				01946512753EF805FD46F6D7 /* ConversationTailScrollAnimatorTests.swift in Sources */,
 				97FE7B56ED21F0CDBDC8AAEB /* DigestViewTests.swift in Sources */,
@@ -895,6 +902,7 @@
 				EB453D88857B3296BE127B94 /* ContactsView.swift in Sources */,
 				E209B4E4DD968CF6AD4028E2 /* Conversation.swift in Sources */,
 				F7D2FBC93887F75BCDF18D61 /* ConversationInitialLoadingView.swift in Sources */,
+				BAE153F27E5E1485C3D5424F /* ConversationMotionProbe.swift in Sources */,
 				BE344377783EEB4A688EECBF /* ConversationRow.swift in Sources */,
 				F0C8AE002742597539F4A674 /* ConversationSendQueue.swift in Sources */,
 				03D9C890E076B44B8E99EE89 /* ConversationTailScrollAnimator.swift in Sources */,

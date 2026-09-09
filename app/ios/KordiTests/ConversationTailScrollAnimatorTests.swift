@@ -147,4 +147,10 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         XCTAssertEqual(offsets.last ?? 0, 540, accuracy: 1)
     }
 
+    func testEmptyComposerUsesFinalHeightBeforeItsMeasurementCallback() {
+        XCTAssertEqual(ComposerTextViewLayout.resolvedHeight(isEmpty: true, measuredHeight: 160, lineHeight: 20, insets: 22), 44)
+        XCTAssertEqual(ComposerTextViewLayout.resolvedHeight(isEmpty: false, measuredHeight: 160, lineHeight: 20, insets: 22), 160)
+        XCTAssertEqual(ComposerTextViewLayout.resolvedHeight(isEmpty: true, measuredHeight: 160, lineHeight: 40, insets: 22), 62)
+    }
+
 }

@@ -88,6 +88,10 @@ enum ComposerDraftPaneLayout {
 enum ComposerTextViewLayout {
     static let maximumLines: CGFloat = 6
 
+    static func resolvedHeight(isEmpty: Bool, measuredHeight: CGFloat, lineHeight: CGFloat, insets: CGFloat) -> CGFloat {
+        isEmpty ? max(44, lineHeight + insets) : measuredHeight
+    }
+
     static func height(fittingHeight: CGFloat, lineHeight: CGFloat, insets: CGFloat) -> CGFloat {
         min(
             max(fittingHeight, max(44, lineHeight + insets)),
@@ -509,7 +513,7 @@ struct ComposerView: View {
                 ? "Message \(destinationName)"
                 : "Edit message"
         )
-        .frame(height: messageEditorHeight)
+        .frame(height: resolvedMessageEditorHeight)
         .padding(.horizontal, 8)
         .accessibilityLabel(editingMessage == nil ? "Message \(destinationName)" : "Edit message")
         .onChange(of: isFocused) { _, isFocused in
@@ -536,7 +540,17 @@ struct ComposerView: View {
     }
 
     private var messageFieldAnimation: Animation? {
-        reduceMotion ? nil : .smooth(duration: 0.18)
+        // The sent message and empty composer must share the same final layout.
+        reduceMotion || text.isEmpty ? nil : .smooth(duration: 0.18)
+    }
+
+    private var resolvedMessageEditorHeight: CGFloat {
+        ComposerTextViewLayout.resolvedHeight(
+            isEmpty: text.isEmpty,
+            measuredHeight: messageEditorHeight,
+            lineHeight: UIFont.preferredFont(forTextStyle: .body).lineHeight,
+            insets: 22
+        )
     }
 
     private var messageFieldCornerRadius: CGFloat {
@@ -545,7 +559,7 @@ struct ComposerView: View {
 
     private var messageFieldHeight: CGFloat {
         ComposerMessageFieldLayout.surfaceHeight(
-            editorHeight: messageEditorHeight,
+            editorHeight: resolvedMessageEditorHeight,
             controlHeight: composerControlHeight,
             verticalPadding: 3
         )
@@ -553,7 +567,7 @@ struct ComposerView: View {
 
     private var showsDraftPaneButton: Bool {
         editingMessage == nil && ComposerDraftPaneLayout.showsExpandButton(
-            editorHeight: messageEditorHeight,
+            editorHeight: resolvedMessageEditorHeight,
             threshold: draftPaneExpansionThreshold
         )
     }

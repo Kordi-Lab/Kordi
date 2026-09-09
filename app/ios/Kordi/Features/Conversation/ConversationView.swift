@@ -560,6 +560,13 @@ struct ConversationView: View {
                                                     proxy: proxy
                                                 )
                                             }
+                                            #if DEBUG
+                                            .background {
+                                                if ConversationMotionProbeRegistry.enabled {
+                                                    ConversationMotionProbe(id: row.id)
+                                                }
+                                            }
+                                            #endif
                                             .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
                                             .modifier(OutgoingMessageEntrance(
                                                 shouldAnimate: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
@@ -789,6 +796,14 @@ struct ConversationView: View {
                 reduceMotion ? nil : .easeOut(duration: 0.16),
                 value: voiceRecorder.phase == .recording && !voiceRecorder.isLocked
             )
+            #if DEBUG
+            .onAppear {
+                if ConversationMotionProbeRegistry.enabled {
+                    ConversationMotionProbeRegistry.setDraft = { draft = $0 }
+                    ConversationMotionProbeRegistry.send = { Task { await send() } }
+                }
+            }
+            #endif
             .sensoryFeedback(.selection, trigger: messageActionFeedback)
             .confirmationDialog(
                 "Pin this message?",
@@ -832,8 +847,9 @@ struct ConversationView: View {
                     isNavigationReturnPending: threadReturnMessageID != nil
                         || threadReturnScrollOffsetY != nil
                 ) {
-                    let identityChanged = previousLatestMessageID != currentLatestMessageID
-                    scrollToBottom(animated: identityChanged)
+                    // Insertion has already laid out the new row. A second scroll
+                    // animation would replay the old position after its first paint.
+                    scrollToBottom()
                 }
             }
             .onChange(of: isExpressivePickerPresented) { _, isPresented in
@@ -2545,7 +2561,7 @@ struct ConversationView: View {
                 onStaged: { messageID in
                     if let messageID {
                         stagedMessageIDs = Array((stagedMessageIDs + [messageID]).suffix(32))
-                        scrollToBottom(animated: true)
+                        scrollToBottom()
                     }
                     if index == batches.count - 1 { isSending = false }
                 }
