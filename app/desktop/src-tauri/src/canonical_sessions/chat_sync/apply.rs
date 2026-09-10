@@ -1,10 +1,9 @@
 use super::compaction::{compact_agent_response_snapshots, compact_startup_snapshots};
+use super::unread_policy::{chat_sync_unread_key, is_self_agent_reply};
 use super::*;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use std::collections::HashSet;
 
 const STARTUP_TAIL_PER_CONVERSATION: i64 = 64;
-const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -377,11 +376,11 @@ fn load_conversation_heads(
     let mut unread_statement = conn
         .prepare(
             "SELECT json_extract(snapshot_json, '$.id'),
-                    json_extract(snapshot_json, '$.content.blocks[0].text')
+                    json_extract(snapshot_json, '$.content.blocks[0].text'),
+                    COALESCE(json_extract(snapshot_json, '$.sender_account_id'), '')
              FROM chat_sync_messages
              WHERE account_id = ?1 AND conversation_id = ?2
                AND conversation_sequence > ?3
-               AND COALESCE(json_extract(snapshot_json, '$.sender_account_id'), '') <> ?1
                AND json_extract(snapshot_json, '$.deleted_at') IS NULL",
         )
         .map_err(|error| error.to_string())?;
@@ -407,12 +406,21 @@ fn load_conversation_heads(
         let unread_rows = unread_statement
             .query_map(
                 params![account_id, conversation_id, last_read_sequence],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
             )
             .map_err(|error| error.to_string())?;
         let mut unread_keys = HashSet::new();
         for row in unread_rows {
-            let (message_id, body) = row.map_err(|error| error.to_string())?;
+            let (message_id, body, sender) = row.map_err(|error| error.to_string())?;
+            if sender == account_id && !is_self_agent_reply(body.as_deref()) {
+                continue;
+            }
             if let Some(key) = chat_sync_unread_key(&message_id, body.as_deref()) {
                 unread_keys.insert(key);
             }
@@ -435,39 +443,6 @@ fn load_conversation_heads(
         });
     }
     Ok(heads)
-}
-
-fn chat_sync_unread_key(message_id: &str, body: Option<&str>) -> Option<String> {
-    let Some(encoded) = body.and_then(|value| value.strip_prefix(CLOUD_GROUP_PREFIX)) else {
-        return Some(message_id.to_string());
-    };
-    let Ok(decoded) = URL_SAFE_NO_PAD.decode(encoded) else {
-        return None;
-    };
-    let Ok(envelope) = serde_json::from_slice::<Value>(&decoded) else {
-        return None;
-    };
-    if envelope.get("kind").and_then(Value::as_str) != Some("group-message") {
-        return None;
-    }
-    let message = envelope.get("message").filter(|value| !value.is_null())?;
-    if message.get("senderKind").and_then(Value::as_str) == Some("agent")
-        && matches!(
-            message.get("deliveryState").and_then(Value::as_str),
-            Some("queued" | "processing")
-        )
-    {
-        return None;
-    }
-    Some(
-        message
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(message_id)
-            .to_string(),
-    )
 }
 
 pub(super) fn load_all_conversation_heads(

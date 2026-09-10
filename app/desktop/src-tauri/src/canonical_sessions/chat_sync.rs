@@ -122,6 +122,7 @@ mod message_reads;
 mod outbox;
 mod projection;
 pub mod unread;
+mod unread_policy;
 mod visibility;
 
 pub(super) use apply::open_account_db;

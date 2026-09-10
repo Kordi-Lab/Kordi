@@ -6,8 +6,9 @@ import { parseCloudAgentResponse } from './cloudAgentMessages';
 import { cloudDirectMessageDisplayText, cloudDirectMessageAction } from './cloudDirectMessages';
 import { cloudMessageAttachmentToMessageAttachment, cloudVoiceMessageToMessageVoice } from './cloudAttachments';
 import type { Conversation, Message } from '@/kordi-app/types';
+import { CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT } from '@/lib/desktopChatSync';
 
-export type ThreadAttention = { conversation_id: string; session_id: string; unread_count: number; thread_count: number; next_root_id: string | null; next_message_id: string | null };
+export type ThreadAttention = { conversation_id: string; session_id: string; unread_count: number; thread_unread_count?: number; thread_count: number; next_root_id: string | null; next_message_id: string | null };
 export type ThreadPage = { root: CloudMessage; messages: CloudMessage[]; firstUnreadMessageId: string | null; nextAfterSequence: number | null; isThread: boolean };
 const listeners = new Set<() => void>();
 let navigation: { sessionId: string; messageId?: string; nonce: number } | null = null;
@@ -24,10 +25,10 @@ export function useThreadAttention(accountId?: string | null) {
   const [state,setState]=useState<{accountId:string; values:Record<string,ThreadAttention>} | null>(null);
   useEffect(() => {
     if(!accountId)return;
-    let cancelled=false, running=false;
+    let cancelled=false, running=false, pending=false;
     const client=new CloudAuthClient();
     const refresh=async()=>{
-      if(running)return;
+      if(running){pending=true;return;}
       running=true;
       try {
         const session=await loadSession();
@@ -42,13 +43,14 @@ export function useThreadAttention(accountId?: string | null) {
         }
         if(!cancelled && (await loadSession())?.accountId===accountId)setState(current=>current?.accountId===accountId && JSON.stringify(current.values)===JSON.stringify(values)?current:{accountId,values});
       }catch{/* Keep confirmed counts during reconnect. Navigation exposes its own retry. */}
-      finally{running=false;}
+      finally{running=false;if(pending&&!cancelled){pending=false;void refresh();}}
     };
     void refresh();
     const timer=setInterval(()=>void refresh(),2000);
     const onRead=()=>void refresh();
     window.addEventListener('kordi-thread-read',onRead);
-    return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('kordi-thread-read',onRead);};
+    window.addEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT,onRead);
+    return()=>{cancelled=true;clearInterval(timer);window.removeEventListener('kordi-thread-read',onRead);window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT,onRead);};
   },[accountId]);
   return state && state.accountId===accountId?state.values:undefined;
 }

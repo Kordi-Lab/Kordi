@@ -1,3 +1,6 @@
+import { decorateCloudConversations } from '../src/app/viewModels/cloudConversationPresence';
+import { EMPTY_CLOUD_SESSION_ACTIVITY } from '../src/features/cloud/cloudSessionActivity';
+import { conversation as conversationFixture } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
@@ -63,7 +66,10 @@ async function mount(activeId = cloudCollaborationConversationId(peerId, 'person
       nativeHeadsBySessionId: { [sessionId]: { lastReadSequence: 0, unreadCount: 1 } },
       optimisticSessionIds: optimistic, projectedUnreadBySessionId: projected,
     });
-    return <SidebarUnreadBadge scope="direct" count={counts[sessionId]} />;
+    const decorated = decorateCloudConversations([conversationFixture({ id: sessionId, canonicalSessionId: sessionId, unread: counts[sessionId] })], EMPTY_CLOUD_SESSION_ACTIVITY, {
+      [sessionId]: { conversation_id: 'conversation-direct', session_id: sessionId, unread_count: 1, thread_count: 0, thread_unread_count: 0, next_root_id: null, next_message_id: null },
+    });
+    return <SidebarUnreadBadge scope="direct" count={decorated[0].unread} />;
   }
   const render = async (next: Partial<typeof props> = {}) => {
     props = { ...props, ...next };

@@ -1,3 +1,5 @@
+import { decorateCloudConversations } from '../src/app/viewModels/cloudConversationPresence';
+import { EMPTY_CLOUD_SESSION_ACTIVITY } from '../src/features/cloud/cloudSessionActivity';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
@@ -101,7 +103,10 @@ async function mount(options: { initialState?: CanonicalSessionState; presented?
     });
     const model = createCanonicalSessionReadModel(canonicalState);
     const view = model?.applyConversation(conversation({ id: sessionId, canonicalSessionId: sessionId, unread: 1 }), () => '');
-    return <SidebarUnreadBadge count={view?.unread} scope="test-session" />;
+    const decorated = decorateCloudConversations(view ? [view] : [], EMPTY_CLOUD_SESSION_ACTIVITY, {
+      [sessionId]: { conversation_id: 'conversation', session_id: sessionId, unread_count: 1, thread_count: 0, thread_unread_count: 0, next_root_id: null, next_message_id: null },
+    });
+    return <SidebarUnreadBadge count={decorated[0]?.unread} scope="test-session" />;
   }
   let props = { accountId: 'account:one', presented: options.presented ?? true };
   const render = async (next: Partial<typeof props> = {}) => {

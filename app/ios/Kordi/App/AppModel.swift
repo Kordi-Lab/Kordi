@@ -77,18 +77,6 @@ enum SessionVisibilitySnapshotPolicy {
     }
 }
 
-struct ConversationReadPresentation: Equatable {
-    let conversationID: String
-    let isPresented: Bool
-    let isAppForeground: Bool
-    let isAtLatest: Bool
-    var threadRootID: String? = nil
-
-    var canMarkRead: Bool {
-        isPresented && isAppForeground && isAtLatest
-    }
-}
-
 private struct CloudRealtimeConnectFrame: Encodable {
     let type = "connect"
     let protocolVersion = 2
@@ -1244,7 +1232,8 @@ final class AppModel: ObservableObject {
         isPresented: Bool,
         isAppForeground: Bool,
         isAtLatest: Bool,
-        threadRootID: String? = nil
+        threadRootID: String? = nil,
+        visibleMessageID: String? = nil
     ) {
         if isPresented {
             conversationReadPresentations[id] = ConversationReadPresentation(
@@ -1252,14 +1241,15 @@ final class AppModel: ObservableObject {
                 isPresented: true,
                 isAppForeground: isAppForeground,
                 isAtLatest: isAtLatest,
-                threadRootID: threadRootID
+                threadRootID: threadRootID,
+                visibleMessageID: visibleMessageID
             )
         } else {
             conversationReadPresentations[id] = nil
         }
 
         guard conversationReadPresentations.values.contains(where: {
-            $0.conversationID == conversationID && $0.threadRootID == nil && $0.canMarkRead
+            $0.conversationID == conversationID && $0.threadRootID == nil && presentationCanMarkRead($0)
         }), let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return
         }
@@ -1272,7 +1262,7 @@ final class AppModel: ObservableObject {
     func isThreadActivelyReadable(conversationID: String, rootID: String) -> Bool {
         guard let conversation = conversationForNotification(canonicalConversationID: conversationID) else { return false }
         return conversationReadPresentations.values.contains { presentation in
-            guard presentation.conversationID == conversation.id, presentation.canMarkRead, let root = presentation.threadRootID else { return false }
+            guard presentation.conversationID == conversation.id, presentationCanMarkRead(presentation), let root = presentation.threadRootID else { return false }
             return root == rootID || messagesByConversation[conversation.id]?.contains(where: { $0.id == root && $0.reactionTargetMessageId == rootID }) == true
         }
     }
@@ -1282,7 +1272,7 @@ final class AppModel: ObservableObject {
             canonicalConversationID: canonicalConversationID
         ) else { return false }
         return conversationReadPresentations.values.contains {
-            $0.conversationID == conversation.id && $0.threadRootID == nil && $0.canMarkRead
+            $0.conversationID == conversation.id && $0.threadRootID == nil && presentationCanMarkRead($0)
         }
     }
 
@@ -5977,7 +5967,7 @@ final class AppModel: ObservableObject {
     private func reconcileVisibleConversationReadState() async {
         let readableConversationIDs = Set(
             conversationReadPresentations.values
-                .filter { $0.canMarkRead && $0.threadRootID == nil }
+                .filter { presentationCanMarkRead($0) && $0.threadRootID == nil }
                 .map(\.conversationID)
         )
         guard !readableConversationIDs.isEmpty else { return }
@@ -5986,13 +5976,15 @@ final class AppModel: ObservableObject {
             readableConversationIDs.contains($0.id)
         }
         for conversation in readableConversations {
+            let readSequence = messagesByConversation[conversation.id]?.compactMap(\.conversationSequence).max()
             guard let latestIncomingMessageID =
                 await applyConversationReadLocally(conversation) else {
                 continue
             }
             scheduleConversationReadPersistence(
                 conversation,
-                latestIncomingMessageID: latestIncomingMessageID
+                latestIncomingMessageID: latestIncomingMessageID,
+                throughSequence: readSequence
             )
         }
     }
@@ -6035,20 +6027,6 @@ final class AppModel: ObservableObject {
             )
         }
         return latestIncomingMessageID
-    }
-
-    private func latestIncomingMessageID(
-        for conversation: ConversationSummary,
-        throughSequence: Int64? = nil
-    ) -> String? {
-        messagesByConversation[conversation.id]?
-            .last(where: { message in
-                guard message.author != .me else { return false }
-                return throughSequence.map { sequence in
-                    message.conversationSequence.map { $0 <= sequence } ?? false
-                } ?? true
-            })?
-            .id
     }
 
     private func updatePartialReadSummary(
@@ -6113,7 +6091,8 @@ final class AppModel: ObservableObject {
 
     private func scheduleConversationReadPersistence(
         _ conversation: ConversationSummary,
-        latestIncomingMessageID: String
+        latestIncomingMessageID: String,
+        throughSequence: Int64?
     ) {
         guard !previewMode,
               token != nil,
@@ -6128,7 +6107,7 @@ final class AppModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await persistConversationRead(conversation)
+                try await persistConversationRead(conversation, throughSequence: throughSequence)
                 if pendingVisibleReadMessageBySessionID[conversation.sessionId]
                     == latestIncomingMessageID {
                     pendingVisibleReadMessageBySessionID[conversation.sessionId] = nil
@@ -6826,7 +6805,7 @@ final class AppModel: ObservableObject {
               let index = conversations.firstIndex(where: { $0.id == "person:acct_maya" }) else { return }
         let conversation = conversations[index]
         let isReadingLatest = conversationReadPresentations.values.contains {
-            $0.conversationID == conversation.id && $0.threadRootID == nil && $0.canMarkRead
+            $0.conversationID == conversation.id && $0.threadRootID == nil && presentationCanMarkRead($0)
         }
         let message = ChatMessage(
             id: "preview-incoming-\(UUID().uuidString)", conversationId: conversation.id,

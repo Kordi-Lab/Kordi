@@ -208,6 +208,17 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
 
 @MainActor
 final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
+    func testVisibleReplyReadPresentationDoesNotCoverANewerUnseenReply() {
+        let visible = ConversationReadPresentation(conversationID: "conversation", isPresented: true,
+            isAppForeground: true, isAtLatest: true, visibleMessageID: "visible-reply")
+        XCTAssertTrue(visible.canMarkRead(latestMessageID: "visible-reply"))
+        XCTAssertFalse(visible.canMarkRead(latestMessageID: "newer-reply"))
+        XCTAssertFalse(visible.canMarkRead(latestMessageID: nil))
+        let background = ConversationReadPresentation(conversationID: "conversation", isPresented: true,
+            isAppForeground: false, isAtLatest: true, visibleMessageID: "visible-reply")
+        XCTAssertFalse(background.canMarkRead(latestMessageID: "visible-reply"))
+    }
+
     func testJumpToLatestClearsUnreadWithoutComposerInteraction() async throws {
         try await checkReadingLatest(useButton: true)
     }
@@ -220,6 +231,10 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
         try await checkReadingLatest(useButton: true, resumeAtLatest: true)
     }
 
+    func testVisibleAIReplyClearsUnreadWithoutReachingExactBottom() async throws {
+        try await checkReadingLatest(useButton: false, visibleAboveBottom: true)
+    }
+
     func testKeyboardAndTypingPreserveUnreadUntilJumpingToLatest() async throws {
         try await checkReadingLatest(useButton: true, opensKeyboard: true)
     }
@@ -227,7 +242,8 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
     private func checkReadingLatest(
         useButton: Bool,
         resumeAtLatest: Bool = false,
-        opensKeyboard: Bool = false
+        opensKeyboard: Bool = false,
+        visibleAboveBottom: Bool = false
     ) async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]
@@ -242,9 +258,12 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
         for other in model.conversations where other.id != conversation.id {
             model.hydrateCachedMessages(for: other)
         }
-        let messages = (0..<40).map { index in
-            ChatMessage(id: "latest-fixture-\(index)", conversationId: conversation.id,
-                author: .person, authorName: "Fixture peer", text: "Message \(index)",
+        let messages: [ChatMessage] = (0..<40).map { index in
+            let isAIReply = visibleAboveBottom && index == 39
+            let author: MessageAuthor = isAIReply ? .agent : .person
+            let text = isAIReply ? Array(repeating: "Visible AI reply line.", count: 8).joined(separator: "\n") : "Message \(index)"
+            return ChatMessage(id: "latest-fixture-\(index)", conversationId: conversation.id,
+                author: author, authorName: "Fixture peer", text: text,
                 createdAt: Date().addingTimeInterval(Double(index - 40)),
                 deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
         }
@@ -305,6 +324,17 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
             XCTAssertEqual(model.conversations.first { $0.id == conversation.id }?.unreadCount, initialUnreadCount,
                 "Keyboard focus and typing must not acknowledge unseen messages")
             XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window))
+        }
+        if visibleAboveBottom {
+            let target = ConversationTailScrollAnimator.targetOffset(in: scroll) - 60
+            scroll.setContentOffset(CGPoint(x: 0, y: target), animated: false)
+            for _ in 0..<100 {
+                if model.conversations.first(where: { $0.id == conversation.id })?.unreadCount == 0 { break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertEqual(model.conversations.first(where: { $0.id == conversation.id })?.unreadCount, 0)
+            XCTAssertLessThan(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll) - 12)
+            return
         }
         if useButton {
             let action = try XCTUnwrap(ConversationMotionProbeRegistry.goToLatest)
