@@ -51,12 +51,33 @@ async function mount(options: { initialState?: CanonicalSessionState; presented?
   }
   const localRequests: ReturnType<typeof deferred<CanonicalReadCursorDelta>>[] = [];
   const cloudRequests: ReturnType<typeof deferred<void>>[] = [];
+  const localRequestWaiters = new Set<() => void>();
   mockIPC((command) => {
     assert.equal(command, 'desktop_canonical_mark_session_read');
     const request = deferred<CanonicalReadCursorDelta>();
     localRequests.push(request);
+    for (const notify of localRequestWaiters) notify();
     return request.promise;
   });
+  const waitForLocalRequests = async (count: number) => {
+    if (localRequests.length >= count) return;
+    await act(async () => {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          localRequestWaiters.delete(notify);
+          reject(new Error(`Expected ${count} native read requests, received ${localRequests.length}`));
+        }, 5_000);
+        const notify = () => {
+          if (localRequests.length < count) return;
+          clearTimeout(timer);
+          localRequestWaiters.delete(notify);
+          resolve();
+        };
+        localRequestWaiters.add(notify);
+        notify();
+      });
+    });
+  };
   const markRead = async () => {
     const request = deferred<void>();
     cloudRequests.push(request);
@@ -88,8 +109,11 @@ async function mount(options: { initialState?: CanonicalSessionState; presented?
     await act(async () => { root.render(<Harness {...props} />); });
   };
   await render();
+  if (props.presented && state?.messages.length && !state.participants[0].lastReadMessageId) {
+    await waitForLocalRequests(1);
+  }
   return {
-    host, localRequests, cloudRequests, render,
+    host, localRequests, cloudRequests, render, waitForLocalRequests,
     state: () => state!,
     setState: async (next: CanonicalSessionState) => { await act(async () => { updateState(next); }); },
     async close() {
@@ -134,6 +158,7 @@ test('server acknowledgment alone does not invent a successful local read', asyn
     await act(async () => { h.localRequests[0].reject(new Error('Synthetic local failure')); });
     assert.equal(h.state().participants[0].lastReadMessageId, undefined);
     await h.setState({ ...h.state() });
+    await h.waitForLocalRequests(2);
     assert.equal(h.localRequests.length, 2, 'failed persistence can retry on the next reconciliation');
   } finally { await h.close(); }
 });
@@ -170,6 +195,7 @@ test('an older failed cloud read cannot invalidate a newer successful read', asy
   try {
     const current = h.state();
     await h.setState({ ...current, messages: [...current.messages, { ...current.messages[0], id: 'message:2', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2 }] });
+    await h.waitForLocalRequests(2);
     await act(async () => {
       h.localRequests[1].resolve(delta(2));
       h.cloudRequests[1].resolve();
@@ -189,6 +215,7 @@ test('an unfocused or scrolled-away transcript does not start a read', async () 
     assert.equal(h.cloudRequests.length, 0);
     assert.ok(h.host.querySelector('[data-unread-count="1"]'));
     await h.render({ presented: true });
+    await h.waitForLocalRequests(1);
     assert.equal(h.localRequests.length, 1);
     assert.equal(h.cloudRequests.length, 1);
   } finally { await h.close(); }
