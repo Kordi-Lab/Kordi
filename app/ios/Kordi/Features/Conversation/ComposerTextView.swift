@@ -361,4 +361,3 @@ struct ComposerTextView: UIViewRepresentable {
         }
     }
 }
-

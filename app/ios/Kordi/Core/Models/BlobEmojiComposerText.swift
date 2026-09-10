@@ -168,4 +168,3 @@ private struct BlobEmojiTokenMatch {
     let range: NSRange
     let emoji: BlobEmoji
 }
-
