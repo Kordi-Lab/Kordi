@@ -138,13 +138,9 @@ test('normal Cloud events request diff sync instead of full snapshots', () => {
   );
 });
 
-test('canonical Cloud sessions persist local and server read cursors together', () => {
+test('canonical Cloud sessions repair server read cursors even when local state is current', () => {
   const source = canonicalReadSource();
 
-  assert.match(
-    source,
-    /Promise\.all\(\[localRead, cloudRead\]\)/,
-  );
   assert.match(
     source,
     /markRead\(\[sessionId\]\)/,
