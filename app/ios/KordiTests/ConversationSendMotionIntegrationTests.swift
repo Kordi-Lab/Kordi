@@ -338,6 +338,11 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
             XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window))
         }
         if visibleAboveBottom {
+            // Materialize the tall final row before measuring its final offset.
+            // Lazy height estimates can otherwise put the first jump at the tail.
+            scroll.setContentOffset(CGPoint(x: 0, y: ConversationTailScrollAnimator.targetOffset(in: scroll) - 240), animated: false)
+            try await Task.sleep(for: .milliseconds(200))
+            XCTAssertEqual(model.conversations.first { $0.id == conversation.id }?.unreadCount, initialUnreadCount)
             let target = ConversationTailScrollAnimator.targetOffset(in: scroll) - 60
             scroll.setContentOffset(CGPoint(x: 0, y: target), animated: false)
             for _ in 0..<100 {

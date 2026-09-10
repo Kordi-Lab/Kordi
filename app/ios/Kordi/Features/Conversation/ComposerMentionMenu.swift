@@ -277,17 +277,31 @@ enum ComposerMentionText {
     static func applyHighlights(
         to textView: UITextView,
         rawText: String,
-        highlights: [Highlight]
+        highlights: [Highlight],
+        font: UIFont? = nil
     ) {
-        let selection = textView.selectedRange
-        applyHighlights(
-            to: textView.textStorage,
-            rawText: rawText,
-            highlights: highlights,
-            font: textView.font ?? .preferredFont(forTextStyle: .body)
-        )
-        textView.selectedRange = selection
-        BlobEmojiComposerText.resetTypingAttributes(of: textView)
+        let desired = NSMutableAttributedString(string: textView.textStorage.string)
+        let font = font ?? .preferredFont(forTextStyle: .body)
+        applyHighlights(to: desired, rawText: rawText, highlights: highlights, font: font)
+        var changes: [(NSAttributedString.Key, Any, NSRange)] = []
+        for key in [NSAttributedString.Key.font, .foregroundColor] {
+            desired.enumerateAttribute(key, in: NSRange(location: 0, length: desired.length)) { value, range, _ in
+                guard let value = value as? NSObject else { return }
+                textView.textStorage.enumerateAttribute(key, in: range) { current, subrange, _ in
+                    if !value.isEqual(current) { changes.append((key, value, subrange)) }
+                }
+            }
+        }
+        // Even assigning identical attributes invalidates native input state.
+        // Preserve selection and keyboard-owned attributes, and edit only deltas.
+        if !changes.isEmpty {
+            textView.textStorage.beginEditing()
+            for (key, value, range) in changes {
+                textView.textStorage.addAttribute(key, value: value, range: range)
+            }
+            textView.textStorage.endEditing()
+        }
+        BlobEmojiComposerText.resetTypingAttributes(of: textView, font: font)
     }
 
     private static func renderedHighlightRange(
