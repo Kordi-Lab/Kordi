@@ -565,6 +565,9 @@ struct ConversationView: View {
                                             .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
                                             .modifier(OutgoingMessageEntrance(
                                                 pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
+                                                    || (message.author == .agent && message.requestMessageId
+                                                        .flatMap { messagesById[$0] }
+                                                        .map { stagedMessageIDs.contains($0.clientMessageId ?? $0.id) } == true)
                                             ))
                                         }
                                     }
@@ -595,6 +598,9 @@ struct ConversationView: View {
                                         onScrollGeometryChange: recordScrollGeometry,
                                         onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
                                             stagedMessageIDs.removeAll { messageIDs.contains($0) }
+                                            // A local send can position before the initial history load
+                                            // finishes. That path must also reveal the conversation.
+                                            if !hasRevealedInitialViewport { hasRevealedInitialViewport = true }
                                             isAtBottom = true
                                             trackedMessageID = bottomAnchorID
                                         }

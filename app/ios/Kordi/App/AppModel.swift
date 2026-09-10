@@ -303,7 +303,7 @@ final class AppModel: ObservableObject {
     private var agentRequestPresentationIds: [String: String] = [:]
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
-    private let conversationSendQueue = ConversationSendQueue()
+    private let conversationSendQueue: ConversationSendQueue
     private var pendingAttachmentDraftsByMessageId: [String: [PendingAttachment]] = [:]
     private var videoCacheTasks: [String: Task<Void, Never>] = [:]
     private var pendingVoiceDraftsByMessageId: [String: PendingVoiceMessage] = [:]
@@ -322,6 +322,7 @@ final class AppModel: ObservableObject {
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
     private let previewMode: Bool
     private let previewLaunchFlow: Bool
+    private let previewHistoryLoadDelay: Duration
 
     var isPreviewMode: Bool { previewMode }
 
@@ -330,6 +331,7 @@ final class AppModel: ObservableObject {
         keychain: KeychainSessionStore = KeychainSessionStore(),
         shareCredentialStore: ShareExtensionCredentialStore = ShareExtensionCredentialStore(),
         cache: LocalMessageStore? = nil,
+        sendQueue: ConversationSendQueue? = nil,
         wireCache: CloudWireCache = CloudWireCache(),
         sessionRuntimeRouteStore: SessionRuntimeRouteStore = SessionRuntimeRouteStore(),
         previewMode: Bool = KordiPreviewModePersistence.resolve(
@@ -360,6 +362,7 @@ final class AppModel: ObservableObject {
                 || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
                 || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
         ),
+        previewHistoryLoadDelay: Duration? = nil,
         previewLaunchFlow: Bool = ProcessInfo.processInfo.environment["KORDI_PREVIEW_LAUNCH_FLOW"] == "1"
             && !ProcessInfo.processInfo.arguments.contains("--preview-launching")
     ) {
@@ -368,11 +371,14 @@ final class AppModel: ObservableObject {
         self.keychain = keychain
         self.shareCredentialStore = shareCredentialStore
         self.cache = cache ?? (try? LocalMessageStore())
+        self.conversationSendQueue = sendQueue ?? ConversationSendQueue()
         self.wireCache = wireCache
         self.sessionRuntimeRouteStore = sessionRuntimeRouteStore
         self.presencePublisher = CloudPresencePublisher(api: api)
         self.previewMode = previewMode
         self.previewLaunchFlow = previewLaunchFlow
+        self.previewHistoryLoadDelay = previewHistoryLoadDelay
+            ?? (ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") ? .seconds(2) : .zero)
         UserDefaults.standard.removeObject(forKey: "kordi.session-title-overrides")
         if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
             // Keep the initial phase so the network-free launch surface remains visible.
@@ -1340,11 +1346,11 @@ final class AppModel: ObservableObject {
         }
 
         if previewMode {
-            guard ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") else {
+            guard previewHistoryLoadDelay != .zero else {
                 return true
             }
             do {
-                try await Task.sleep(for: .seconds(2))
+                try await Task.sleep(for: previewHistoryLoadDelay)
             } catch {
                 return false
             }
