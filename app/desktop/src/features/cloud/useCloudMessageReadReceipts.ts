@@ -38,25 +38,13 @@ import type {
 import {
   loadSession,
 } from './session';
+import { rollbackReadInboundMessageIds } from './cloudReadTracking';
+import { useCloudDirectMessageReadReceipts } from './useCloudDirectMessageReadReceipts';
+
+export { rollbackReadInboundMessageIds } from './cloudReadTracking';
 
 type SyncCloudCollaborationDiff =
   CloudMessageSyncController['syncCloudCollaborationDiff'];
-
-export function rollbackReadInboundMessageIds(
-  current: Record<string, Set<string>>,
-  peerId: string,
-  messageIds: readonly string[],
-): Record<string, Set<string>> {
-  const existing = current[peerId];
-  if (!existing) return current;
-  const next = new Set(existing);
-  for (const messageId of messageIds) next.delete(messageId);
-  if (next.size === existing.size) return current;
-  const result = { ...current };
-  if (next.size > 0) result[peerId] = next;
-  else delete result[peerId];
-  return result;
-}
 
 export function useCloudMessageReadReceipts({
   account,
@@ -93,6 +81,11 @@ export function useCloudMessageReadReceipts({
     index: messageIndex,
     sync,
   } = messages;
+
+  useCloudDirectMessageReadReceipts({
+    account, activeConversationId, canMarkActiveConversationRead, client,
+    messageIndex, setMessagesByPeer, setReadInboundMessageIdsByPeer, sync,
+  });
 
   useEffect(() => {
     if (!account || !activeConversationId || !canMarkActiveConversationRead) {

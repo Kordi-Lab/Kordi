@@ -54,11 +54,17 @@ export function useCanonicalActiveSessionRead({
     SetStateAction<CanonicalSessionState | null>
   >;
 }) {
-  const persistedReadSignatureRef = useRef<string | null>(null);
+  const readRequestRef = useRef<{ signature: string } | null>(null);
+  const accountScopeRef = useRef<object | null>(null);
   const accountId = account?.accountId ?? '';
 
   useEffect(() => {
-    persistedReadSignatureRef.current = null;
+    const scope = {};
+    accountScopeRef.current = scope;
+    readRequestRef.current = null;
+    return () => {
+      accountScopeRef.current = null;
+    };
   }, [accountId]);
 
   useEffect(() => {
@@ -108,8 +114,15 @@ export function useCanonicalActiveSessionRead({
       ?? `${canonicalSession?.lastMessageAtMs ?? 0}:${canonicalSession?.updatedAtMs ?? 0}`;
     const signature =
       `${accountId}:${sessionId}:${readTarget}`;
-    if (persistedReadSignatureRef.current === signature) return;
-    persistedReadSignatureRef.current = signature;
+    if (readRequestRef.current?.signature === signature) return;
+    const request = { signature };
+    const accountScope = accountScopeRef.current;
+    readRequestRef.current = request;
+    const allowRetry = () => {
+      if (accountScopeRef.current === accountScope && readRequestRef.current === request) {
+        readRequestRef.current = null;
+      }
+    };
     const localRead = !latestMessage
       || selfParticipant?.lastReadMessageId === latestMessage.id
       ? Promise.resolve(null)
@@ -117,18 +130,21 @@ export function useCanonicalActiveSessionRead({
           sessionId,
           messageId: latestMessage.id,
         });
-    const cloudRead = markRead([sessionId]);
-    void Promise.all([localRead, cloudRead])
-      .then(([delta]) => {
-        if (delta) {
+    // Publish the durable local cursor without waiting for network read or
+    // preference acknowledgments. Navigation must not cancel an observed read.
+    void localRead
+      .then((delta) => {
+        if (delta && accountScopeRef.current === accountScope) {
           setCanonicalState?.((current) =>
-            mergeCanonicalReadCursorDelta(current, delta)
+            accountScopeRef.current === accountScope
+              ? mergeCanonicalReadCursorDelta(current, delta)
+              : current
           );
         }
       })
-      .catch(() => {
-        persistedReadSignatureRef.current = null;
-      });
+      .catch(allowRetry);
+    // Cloud repair still runs even when the local cursor is already current.
+    void markRead([sessionId]).catch(allowRetry);
   }, [
     accountId,
     activeConversationId,

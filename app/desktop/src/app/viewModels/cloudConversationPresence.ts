@@ -71,7 +71,15 @@ export function decorateCloudConversations(conversations: Conversation[], cloudS
     });
     return withCloudActivity.map(conversation => {
       const attention=threadAttention?.[conversation.canonicalSessionId??conversation.id];
-      return attention ? {...conversation,unread:attention.unread_count,threadAttention:attention,
-        collaborationUnreadByParentSessionId:{[conversation.canonicalSessionId??conversation.id]:attention.unread_count}} : conversation;
+      if (!attention) return conversation;
+      // Main-message counts already include local read/receive reconciliation.
+      // A periodic thread snapshot must not delay or reverse those updates.
+      if (attention.thread_count === 0 || attention.thread_unread_count === 0) {
+        return { ...conversation, threadAttention: attention };
+      }
+      // Unread discussions have independent read cursors; opening the main
+      // transcript must continue to surface that outstanding attention.
+      return {...conversation,unread:attention.unread_count,threadAttention:attention,
+        collaborationUnreadByParentSessionId:{[conversation.canonicalSessionId??conversation.id]:attention.unread_count}};
     });
 }

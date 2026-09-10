@@ -190,6 +190,8 @@ struct ConversationView: View {
     @State private var lastTimelineCount = 0
     @State private var isLoadingEarlier = false
     @State private var isAtBottom = false
+    @State private var latestVisibleMessageID: String?
+    @State private var initialReadAnchorPositioned = false
     @State private var hasPositionedInitialTimeline = false
     @State private var initialViewport = ConversationInitialViewport.latest
     @State private var hasPreparedInitialViewport = false
@@ -335,6 +337,10 @@ struct ConversationView: View {
         guard let scopedThreadRootMessageID else { return threadProjection.mainMessages }
         return threadProjection.thread(rootID: scopedThreadRootMessageID)?.messages ?? []
     }
+    private var initialReadPositionReady: Bool { initialViewport == .latest || initialReadAnchorPositioned }
+    private var isLatestMessageVisible: Bool {
+        messages.last.map { $0.id == latestVisibleMessageID } ?? false
+    }
     private var scopedThreadMessageAction: MessageActionMetadata? {
         guard let scopedThreadRootMessageID,
               let root = threadProjection.thread(rootID: scopedThreadRootMessageID)?.root else {
@@ -389,6 +395,7 @@ struct ConversationView: View {
             )
         }
         let firstVisibleTimelineIdentity = visibleTimelineRows.first?.id
+        let initialReadAnchorID = initialViewport.readAnchorID.map { timelineIdentity(for: $0, in: timeline) }
         let previewActionMessageID: String?
         if model.isPreviewMode, ProcessInfo.processInfo.arguments.contains("--preview-message-delete-photo") {
             previewActionMessageID = visibleTimeline.last(where: { $0.id == "preview-captioned-images-own" })?.id
@@ -547,6 +554,11 @@ struct ConversationView: View {
                                             #endif
                                             .accessibilityElement(children: .contain)
                                             .accessibilityIdentifier("message-\(message.id)")
+                                            .modifier(InitialReadAnchorModifier(messageID: message.id, isAnchor: !initialReadAnchorPositioned && hasRevealedInitialViewport && row.id == initialReadAnchorID) { initialReadAnchorPositioned = true })
+                                            .modifier(LatestMessageVisibilityModifier(messageID: message.id, isLatest: message.id == timeline.last?.id, isEnabled: initialReadPositionReady && hasRevealedInitialViewport && isReadPresentationVisible) { visible in
+                                                if visible { latestVisibleMessageID = message.id }
+                                                else if latestVisibleMessageID == message.id { latestVisibleMessageID = nil }
+                                            })
                                             .opacity(pendingMessageDeletion?.message.id == message.id
                                                 && pendingMessageDeletion?.isSourceHidden == true ? 0 : 1)
                                             .allowsHitTesting(pendingMessageDeletion?.message.id != message.id)
@@ -1094,9 +1106,10 @@ struct ConversationView: View {
                 do { try await Task.sleep(for: .seconds(2)) } catch { return }
             }
         }
-        .onChange(of: isAtBottom) { _, _ in
-            synchronizeReadPresentation()
-        }
+        .onChange(of: isAtBottom) { _, _ in synchronizeReadPresentation() }
+        .onChange(of: latestVisibleMessageID) { _, _ in synchronizeReadPresentation() }
+        .onChange(of: initialReadAnchorPositioned) { _, _ in synchronizeReadPresentation() }
+        .onChange(of: messages.last?.id) { _, _ in synchronizeReadPresentation() }
         .onChange(of: hasRevealedInitialViewport) { _, _ in
             synchronizeReadPresentation()
         }
@@ -2023,16 +2036,18 @@ struct ConversationView: View {
         model.updateConversationReadPresentation(
             id: readPresentationID,
             conversationID: conversation.id,
-            isPresented: isReadPresentationVisible && hasRevealedInitialViewport,
+            isPresented: isReadPresentationVisible && hasRevealedInitialViewport && initialReadPositionReady,
             isAppForeground: scenePhase == .active,
-            isAtLatest: isAtBottom,
-            threadRootID: scopedThreadRootMessageID
+            isAtLatest: isAtBottom || isLatestMessageVisible,
+            threadRootID: scopedThreadRootMessageID,
+            visibleMessageID: isAtBottom ? nil : latestVisibleMessageID
         )
     }
 
     private func recordScrollGeometry(_ snapshot: ConversationScrollGeometrySnapshot) {
         guard hasRevealedInitialViewport, isReadPresentationVisible, snapshot.isValid else { return }
         scrollPosition.contentOffsetY = snapshot.contentOffsetY
+        if snapshot.matchesInitialOffset(initialViewport) { initialReadAnchorPositioned = true }
         if isAtBottom != snapshot.isAtLatest { isAtBottom = snapshot.isAtLatest }
         if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID { trackedMessageID = nil }
     }
@@ -3235,28 +3250,6 @@ private struct EarlierMessagesLoader: View {
     }
 }
 
-private struct MentionPresentationModifier: ViewModifier {
-    let isPending: Bool
-    let viewportFrame: CGRect
-    let action: () -> Void
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.onScrollVisibilityChange(threshold: 0.5) { isVisible in
-                guard isPending, isVisible else { return }
-                action()
-            }
-        } else {
-            content.onGeometryChange(for: Bool.self) { [isPending, viewportFrame] geometry in
-                isPending && geometry.frame(in: .global).intersects(viewportFrame)
-            } action: { isVisible in
-                if isVisible { action() }
-            }
-        }
-    }
-}
-
 private struct MentionNavigationButton: View {
     let count: Int
     let isLoading: Bool
@@ -3492,6 +3485,8 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                 self.geometryUpdate?(ConversationScrollGeometrySnapshot(
                     isAtLatest: scrollView.contentOffset.y >= ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12,
                     contentOffsetY: scrollView.contentOffset.y,
+                    minimumOffsetY: -scrollView.adjustedContentInset.top,
+                    maximumOffsetY: ConversationTailScrollAnimator.targetOffset(in: scrollView),
                     isValid: scrollView.window != nil && scrollView.bounds.height > 0 && scrollView.contentSize.height > 0
                 ))
             }
@@ -3599,17 +3594,6 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             keyboardObserver = nil
         }
     }
-}
-
-// Pixel offsets are bookkeeping, not inputs to transcript rendering.
-final class ConversationScrollPosition {
-    var contentOffsetY: CGFloat?
-}
-
-private struct ConversationScrollGeometrySnapshot: Equatable {
-    let isAtLatest: Bool
-    let contentOffsetY: CGFloat
-    let isValid: Bool
 }
 
 private struct ConversationInitialFailureView: View {
