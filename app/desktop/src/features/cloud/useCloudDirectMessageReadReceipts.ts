@@ -35,6 +35,7 @@ function directReadTarget(account: CloudAccount, activeId: string, index: CloudM
 }
 
 type ReadRequest = { messageIds: ReadonlySet<string> };
+type ReadScope = { requests: Map<string, ReadRequest>; acknowledgedIds: Set<string> };
 
 export function useCloudDirectMessageReadReceipts({
   account, activeConversationId, canMarkActiveConversationRead, client,
@@ -49,10 +50,10 @@ export function useCloudDirectMessageReadReceipts({
   setReadInboundMessageIdsByPeer: Dispatch<SetStateAction<Record<string, Set<string>>>>;
   sync: () => Promise<void>;
 }) {
-  const scopeRef = useRef<Map<string, ReadRequest> | null>(null);
+  const scopeRef = useRef<ReadScope | null>(null);
   const accountId = account?.accountId;
   useEffect(() => {
-    scopeRef.current = new Map();
+    scopeRef.current = { requests: new Map(), acknowledgedIds: new Set() };
     return () => { scopeRef.current = null; };
   }, [accountId]);
 
@@ -62,10 +63,10 @@ export function useCloudDirectMessageReadReceipts({
     const target = directReadTarget(account, activeConversationId, messageIndex);
     if (!scope || !target) return;
     const { peerId, sessionId, messageIds } = target;
-    const pending = scope.get(sessionId);
+    const pending = scope.requests.get(sessionId);
     if (pending && messageIds.every(id => pending.messageIds.has(id))) return;
     const request = { messageIds: new Set(messageIds) };
-    scope.set(sessionId, request);
+    scope.requests.set(sessionId, request);
 
     // The transcript can show transport messages before canonical hydration.
     // Cover exactly those message IDs immediately, never the entire peer.
@@ -75,6 +76,7 @@ export function useCloudDirectMessageReadReceipts({
       if (!session?.token || session.accountId !== account.accountId) throw new Error('Cloud session is unavailable.');
       await client.markSessionMessagesRead(session.token, sessionId);
       if (scopeRef.current !== scope) return;
+      for (const messageId of messageIds) scope.acknowledgedIds.add(messageId);
       setReadInboundMessageIdsByPeer(current => scopeRef.current === scope
         ? addReadInboundMessageIds(current, peerId, messageIds)
         : current);
@@ -93,11 +95,12 @@ export function useCloudDirectMessageReadReceipts({
       void sync();
     }).catch(() => {
       if (scopeRef.current !== scope) return;
-      const currentRequest = scope.get(sessionId);
-      const failedIds = currentRequest && currentRequest !== request
-        ? messageIds.filter(id => !currentRequest.messageIds.has(id))
-        : messageIds;
-      if (currentRequest === request) scope.delete(sessionId);
+      const currentRequest = scope.requests.get(sessionId);
+      // Failure cannot undo an acknowledgment from any overlapping request,
+      // including an older request that completed after this one was started.
+      const failedIds = messageIds.filter(id => !scope.acknowledgedIds.has(id)
+        && (currentRequest === request || !currentRequest?.messageIds.has(id)));
+      if (currentRequest === request) scope.requests.delete(sessionId);
       if (failedIds.length === 0) return;
       setReadInboundMessageIdsByPeer(current => scopeRef.current === scope
         ? rollbackReadInboundMessageIds(current, peerId, failedIds)

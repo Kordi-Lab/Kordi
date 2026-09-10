@@ -222,3 +222,19 @@ for (const outcome of ['success', 'failure'] as const) {
     } finally { await h.close(); }
   });
 }
+
+test('a newer failed read preserves an older acknowledgment through stale transport replay', async () => {
+  const h = await mount();
+  try {
+    const newer = { ...incoming, messageId: 'direct-2', conversationSequence: 2 };
+    await h.render({ presented: true });
+    await h.update([incoming, newer]);
+    await h.render({ presented: false });
+    await act(async () => h.requests[0].resolve());
+    await act(async () => h.requests[1].reject());
+    assert.equal(h.ids()[peerId]?.has('direct-1'), true);
+    assert.equal(h.ids()[peerId]?.has('direct-2'), false);
+    await h.update([incoming, newer]);
+    assert.equal(h.host.querySelector('[data-unread-count]')?.getAttribute('data-unread-count'), '1');
+  } finally { await h.close(); }
+});
