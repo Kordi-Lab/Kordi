@@ -4,6 +4,37 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.2-beta.1] - 2026-09-10
+
+### Added
+
+- Added Stop controls for shared background tasks on macOS and iOS. ([#1482])
+- Let agents read the owner's saved Kordi calendar when disclosure is permitted.
+  ([#1481])
+
+### Changed
+
+- Smoothed group channel expansion and collapse on macOS and iOS. ([#1469])
+- Kept consecutive sends responsive with steadier message and avatar motion.
+  ([#1467])
+- Reused animated emoji across messages to avoid repeated loading. ([#1465])
+
+### Fixed
+
+- Preserved iPhone chat position during keyboard transitions, scrolling, and
+  horizontal row actions. ([#1460], [#1471])
+- Kept iPhone text selection, keyboard corrections, and composed input intact
+  during composer updates. ([#1490])
+- Updated unread badges promptly and cleared the latest-message button and
+  read state after viewing messages. ([#1474], [#1490])
+- Kept iOS reaction menus aligned with their messages and prevented overlapping
+  or stuttering message-deletion particles. ([#1462], [#1473])
+- Prevented blank first agent sends, premature Processing indicators, and gaps
+  between group agent replies on iOS. ([#1486], [#1488])
+- Corrected group agent targeting across macOS, iOS, and Cloud. ([#1480])
+- Kept deleted desktop messages removed after synchronization and restored
+  cleanup of stale group conversations. ([#1479], [#1483])
+
 ## [0.0.1] - 2026-09-08
 
 ### Added
@@ -439,7 +470,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...HEAD
+[0.0.2-beta.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...V0.0.2.beta1
 [0.0.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta19.3...V0.0.1
 [0.0.1-beta.19.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta18...V0.0.1.beta19.3
 [0.0.1-beta.18]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta17...V0.0.1.beta18
@@ -662,3 +694,19 @@ This release is the comparison baseline for beta.8. See the
 [#1449]: https://github.com/Kordi-Lab/Kordi/pull/1449
 [#1451]: https://github.com/Kordi-Lab/Kordi/pull/1451
 [#1454]: https://github.com/Kordi-Lab/Kordi/pull/1454
+[#1460]: https://github.com/Kordi-Lab/Kordi/pull/1460
+[#1462]: https://github.com/Kordi-Lab/Kordi/pull/1462
+[#1465]: https://github.com/Kordi-Lab/Kordi/pull/1465
+[#1467]: https://github.com/Kordi-Lab/Kordi/pull/1467
+[#1469]: https://github.com/Kordi-Lab/Kordi/pull/1469
+[#1471]: https://github.com/Kordi-Lab/Kordi/pull/1471
+[#1473]: https://github.com/Kordi-Lab/Kordi/pull/1473
+[#1474]: https://github.com/Kordi-Lab/Kordi/issues/1474
+[#1479]: https://github.com/Kordi-Lab/Kordi/pull/1479
+[#1480]: https://github.com/Kordi-Lab/Kordi/pull/1480
+[#1481]: https://github.com/Kordi-Lab/Kordi/pull/1481
+[#1482]: https://github.com/Kordi-Lab/Kordi/pull/1482
+[#1483]: https://github.com/Kordi-Lab/Kordi/pull/1483
+[#1486]: https://github.com/Kordi-Lab/Kordi/pull/1486
+[#1488]: https://github.com/Kordi-Lab/Kordi/pull/1488
+[#1490]: https://github.com/Kordi-Lab/Kordi/pull/1490
