@@ -192,7 +192,6 @@ struct ConversationView: View {
     @State private var isAtBottom = false
     @State private var latestVisibleMessageID: String?
     @State private var initialReadAnchorPositioned = false
-    @State private var isAtTop = false
     @State private var hasPositionedInitialTimeline = false
     @State private var initialViewport = ConversationInitialViewport.latest
     @State private var hasPreparedInitialViewport = false
@@ -555,8 +554,8 @@ struct ConversationView: View {
                                             #endif
                                             .accessibilityElement(children: .contain)
                                             .accessibilityIdentifier("message-\(message.id)")
-                                            .modifier(InitialReadAnchorModifier(isAnchor: hasRevealedInitialViewport && row.id == initialReadAnchorID, viewportFrame: viewport.frame(in: .global), isAtTop: isAtTop, isAtBottom: isAtBottom) { initialReadAnchorPositioned = true })
-                                            .modifier(LatestMessageVisibilityModifier(messageID: message.id, isLatest: message.id == timeline.last?.id, isEnabled: initialReadPositionReady && hasRevealedInitialViewport && isReadPresentationVisible, viewportFrame: viewport.frame(in: .global)) { visible in
+                                            .modifier(InitialReadAnchorModifier(messageID: message.id, isAnchor: !initialReadAnchorPositioned && hasRevealedInitialViewport && row.id == initialReadAnchorID) { initialReadAnchorPositioned = true })
+                                            .modifier(LatestMessageVisibilityModifier(messageID: message.id, isLatest: message.id == timeline.last?.id, isEnabled: initialReadPositionReady && hasRevealedInitialViewport && isReadPresentationVisible) { visible in
                                                 if visible { latestVisibleMessageID = message.id }
                                                 else if latestVisibleMessageID == message.id { latestVisibleMessageID = nil }
                                             })
@@ -2048,7 +2047,6 @@ struct ConversationView: View {
     private func recordScrollGeometry(_ snapshot: ConversationScrollGeometrySnapshot) {
         guard hasRevealedInitialViewport, isReadPresentationVisible, snapshot.isValid else { return }
         scrollPosition.contentOffsetY = snapshot.contentOffsetY
-        if isAtTop != snapshot.isAtTop { isAtTop = snapshot.isAtTop }
         if snapshot.matchesInitialOffset(initialViewport) { initialReadAnchorPositioned = true }
         if isAtBottom != snapshot.isAtLatest { isAtBottom = snapshot.isAtLatest }
         if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID { trackedMessageID = nil }

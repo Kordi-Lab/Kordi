@@ -276,6 +276,7 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
             latestMessageID: messages.last?.id, at: Date()
         )
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
         let navigation = SendMotionNavigation()
@@ -285,8 +286,10 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer {
+            window.endEditing(true)
             window.isHidden = true
             window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
             ConversationMotionProbeRegistry.enabled = false
             ConversationMotionProbeRegistry.views = [:]
             ConversationMotionProbeRegistry.setDraft = nil
@@ -317,9 +320,18 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
         }
         let composer = try XCTUnwrap(editor(in: controller.view))
         if opensKeyboard {
+            for cycle in 0..<4 {
+                composer.becomeFirstResponder()
+                ConversationMotionProbeRegistry.setDraft?("Draft while reading history \(cycle)")
+                try await Task.sleep(for: .milliseconds(350))
+                XCTAssertTrue(composer.isFirstResponder)
+                XCTAssertEqual(model.messages(for: conversation).map(\.id), messages.map(\.id),
+                    "Keyboard transitions must preserve the full loaded history")
+                composer.resignFirstResponder()
+                try await Task.sleep(for: .milliseconds(350))
+            }
             composer.becomeFirstResponder()
-            ConversationMotionProbeRegistry.setDraft?("Draft while reading history")
-            try await Task.sleep(for: .milliseconds(600))
+            try await Task.sleep(for: .milliseconds(350))
             XCTAssertTrue(composer.isFirstResponder)
             XCTAssertEqual(model.conversations.first { $0.id == conversation.id }?.unreadCount, initialUnreadCount,
                 "Keyboard focus and typing must not acknowledge unseen messages")
@@ -365,6 +377,13 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
             add(attachment)
         }
         composer.resignFirstResponder()
+        try await Task.sleep(for: .milliseconds(600))
+        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(model.messages(for: conversation).map(\.id), messages.map(\.id))
+        let firstFrame = try XCTUnwrap(ConversationMotionProbeRegistry.frame(for: messages[0].id, in: window))
+        XCTAssertTrue(firstFrame.intersects(scroll.convert(scroll.bounds, to: window)),
+            "The oldest loaded message must remain reachable after reading and keyboard transitions")
     }
 }
 
