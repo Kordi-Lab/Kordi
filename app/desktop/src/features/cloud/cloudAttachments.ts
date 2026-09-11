@@ -379,7 +379,7 @@ export async function uploadCloudFiles({
   client,
   files,
   storeAttachment = storeDesktopChatAttachment,
-  createPreviewDataUrl = createCompressedImagePreviewDataUrl,
+  createPreviewDataUrl = (blob) => createCompressedImagePreviewDataUrl(blob),
 }: {
   token: string;
   client: Pick<CloudAuthClient, 'uploadAttachment'>;

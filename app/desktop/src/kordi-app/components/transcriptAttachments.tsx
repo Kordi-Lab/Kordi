@@ -1,3 +1,4 @@
+import { TranscriptMediaBoundary } from './TranscriptMediaBoundary';
 import { LivePhotoIcon } from './livePhotoIcon';
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
@@ -165,7 +166,7 @@ function AttachmentImageCard({
         return;
       }
       if (!isAnimatedGif && !attachment.previewAttachmentId) {
-        const recoveredPreview = await recoverAttachmentPreviewOnce(attachment);
+        const recoveredPreview = await recoverAttachmentPreviewOnce(attachment, { signal: controller.signal });
         if (controller.signal.aborted) return;
         if (recoveredPreview) {
           setRecoveredPreviewUrl(recoveredPreview);
@@ -442,7 +443,7 @@ export function AttachmentPreview({
     <>
       <div className="flex flex-col gap-2">
         {previewImageAttachments.length > 0 ? (
-          <TranscriptImageGroup
+          <TranscriptMediaBoundary><TranscriptImageGroup
             groupId={imageGroupId}
             imageCount={previewImageAttachments.length}
             isExpanded={isImageGroupExpanded}
@@ -488,16 +489,15 @@ export function AttachmentPreview({
                 />
               );
             })}
-          </TranscriptImageGroup>
+          </TranscriptImageGroup></TranscriptMediaBoundary>
         ) : null}
         {videoAttachments.map((attachment, index) => (
-          <AttachmentVideoCard
-            key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
+          <TranscriptMediaBoundary key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}><AttachmentVideoCard
             attachment={attachment}
             deliveryStatus={resolvedImageDeliveryStatus}
             time={msg.time}
             onRetry={onRetryImage}
-          />
+          /></TranscriptMediaBoundary>
         ))}
         {downloadableAttachments.length > 0 ? (
           <div className="flex flex-col items-start gap-1.5">

@@ -172,3 +172,35 @@ entries and preservation of application diagnostics. Use
 objects and physical footprint: cleared timing records can become collectible
 before WebKit returns allocator pages to the OS, and a restarted production
 frontend is not an equal-uptime comparison with a long-lived development session.
+
+### Media eviction and idle release
+
+Recovered image thumbnails and generated video posters share the existing
+32 MiB estimated preview budget and 128-entry LRU instead of keeping another
+unbounded collection of data URLs. The estimate includes encoded strings and
+one decoded frame; it is not a hard WebKit process-memory limit. Video metadata
+keeps only bounded dimensions, never unleased blob URLs.
+
+A single expiry timer removes cached previews after 60 seconds without a cache
+access or active lease. Expiry does not depend on another cache read. Background
+browser throttling can delay the timer; size/count limits still apply when previews are acquired
+and expired entries are rejected on access. A visible card or open-preview
+transfer keeps its lease, and final release starts its idle interval. Account
+reset cancels pending recovery and prevents late results from restoring old data.
+Original-image recovery has two workers and shared request cancellation: leaving
+one card does not cancel another consumer, but leaving the last consumer does.
+
+Transcript media outside the viewport plus two screen heights on each side is
+unmounted, including its images, video buffers, and preview subscriptions. Hidden
+windows also suspend these media subtrees. The boundary keeps the measured space
+while inactive and reserves it during reloading, preserving reading geometry.
+Image decode helpers clear their temporary image sources and canvas buffers;
+video poster generation can be cancelled while waiting for metadata or frames.
+
+Run `pnpm --dir app/desktop exec playwright test -c playwright.media-retention.config.ts`
+for WebKit/Chromium checks of offscreen unload, preserved geometry, open-preview
+ownership, and hidden-window restoration. The fixture generates a small synthetic
+MP4 with `ffmpeg` in a temporary directory and removes it after the run. Unit tests
+cover proactive idle expiry, cache byte bounds, shared cancellation, and account
+reset races. These checks establish resource lifetime behavior; allocator and
+OS footprint convergence still requires a repeated-use native soak test.

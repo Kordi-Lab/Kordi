@@ -6,7 +6,6 @@ test('React development timing history accumulates without retention cleanup', a
   const count = await page.evaluate(() => performance.getEntriesByType('measure').length);
   // Engines emit different React scheduler tracks; retained history must still accumulate.
   expect(count).toBeGreaterThan(20);
-  console.log(`Unbounded synthetic timing records: ${count}`);
 });
 
 test('React timing cleanup releases backlog and later records while preserving app diagnostics', async ({ page }) => {

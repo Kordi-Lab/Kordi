@@ -1,3 +1,4 @@
+import { acquireCloudAttachmentPreviewLease, cachedCloudAttachmentPreviewResource, retainCloudAttachmentPreviewResource, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachmentPreviewCache';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { LoaderCircle, Maximize2, Play, RotateCcw } from 'lucide-react';
 
@@ -35,16 +36,22 @@ import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 
 type CachedVideoPresentation = {
-  posterUrl: string;
   widthPixels: number;
   heightPixels: number;
 };
 
 const videoPresentationCache = new Map<string, CachedVideoPresentation>();
 
-function cacheVideoPresentation(key: string, presentation: CachedVideoPresentation) {
+function cacheVideoPresentation(key: string, presentation: CachedVideoPresentation & { posterUrl: string }) {
   videoPresentationCache.delete(key);
-  videoPresentationCache.set(key, presentation);
+  videoPresentationCache.set(key, { widthPixels: presentation.widthPixels, heightPixels: presentation.heightPixels });
+  // Blob posters belong to the download cache and its active leases. Never keep
+  // an unleased copy of a blob URL in this metadata cache.
+  if (!presentation.posterUrl.startsWith('blob:')) {
+    const resource = retainCloudAttachmentPreviewResource(`video-poster:${key}`, presentation.posterUrl,
+      presentation.posterUrl.length * 2 + presentation.widthPixels * presentation.heightPixels * 4);
+    acquireCloudAttachmentPreviewLease(resource).release();
+  }
   while (videoPresentationCache.size > 128) {
     const oldest = videoPresentationCache.keys().next().value;
     if (typeof oldest !== 'string') break;
@@ -76,8 +83,8 @@ export function AttachmentVideoCard({
   const directPosterUrl = attachment.previewUrl?.startsWith('data:image/')
     ? attachment.previewUrl
     : null;
-  const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(
-    cachedPresentation?.posterUrl ?? null,
+  const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(() =>
+    cachedCloudAttachmentPreviewResource(`video-poster:${presentationCacheKey}`)?.previewUrl ?? null,
   );
   const [localPosterUrl, setLocalPosterUrl] = useState<string | null>(null);
   const [localVideoDimensions, setLocalVideoDimensions] = useState<{
@@ -92,6 +99,8 @@ export function AttachmentVideoCard({
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsTimer = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const posterLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
+  useEffect(() => () => { posterLeaseRef.current?.release(); posterLeaseRef.current = null; }, []);
   const downloadedLocalPath = useRef<string | null>(null);
   const playbackEnded = useRef(false);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
@@ -192,6 +201,7 @@ export function AttachmentVideoCard({
     if (directPosterUrl || remotePosterUrl || !attachmentId) return;
     const controller = new AbortController();
     let previewLease: Awaited<ReturnType<typeof loadVisibleCloudAttachmentPreview>> = null;
+    let published = false;
     void loadSession().then(async (session) => {
       if (!session?.token || controller.signal.aborted) return;
       const loaded = await loadVisibleCloudAttachmentPreview({
@@ -212,11 +222,14 @@ export function AttachmentVideoCard({
       previewLease = loaded;
       const dimensions = await imagePixelDimensionsFromUrl(loaded.previewUrl);
       if (controller.signal.aborted || !dimensions) return;
+      posterLeaseRef.current?.release();
+      posterLeaseRef.current = loaded;
+      published = true;
       rememberPresentation(loaded.previewUrl, dimensions, 'remote');
     });
     return () => {
       controller.abort();
-      previewLease?.release();
+      if (!published) previewLease?.release();
     };
   }, [
     attachment.kind,
@@ -233,7 +246,8 @@ export function AttachmentVideoCard({
   useEffect(() => {
     if (directPosterUrl || remotePosterUrl || localPosterUrl || !posterGenerationSource) return;
     let cancelled = false;
-    void videoPreviewFromSource(posterGenerationSource).then((preview) => {
+    const controller = new AbortController();
+    void videoPreviewFromSource(posterGenerationSource, controller.signal).then((preview) => {
       if (!cancelled && preview) {
         rememberPresentation(preview.previewUrl, {
           widthPixels: preview.widthPixels,
@@ -241,7 +255,7 @@ export function AttachmentVideoCard({
         }, 'local');
       }
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [
     directPosterUrl,
     localPosterUrl,
