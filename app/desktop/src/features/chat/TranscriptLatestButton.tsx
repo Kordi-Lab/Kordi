@@ -1,11 +1,17 @@
 import { ChevronDown } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-export function TranscriptNavigationControls({ children }: { children: ReactNode }) {
+export function TranscriptNavigationControls({ children, latest }: {
+  children: ReactNode;
+  latest?: { count: number; onClick: () => void };
+}) {
   return <div
     data-transcript-navigation-controls="true"
     className="absolute bottom-4 right-8 z-20 flex flex-col items-end gap-3"
-  >{children}</div>;
+  >
+    {children}
+    {latest ? <TranscriptLatestButton count={Math.max(0, Math.floor(latest.count))} onClick={latest.onClick} /> : null}
+  </div>;
 }
 
 export function TranscriptLatestButton({
