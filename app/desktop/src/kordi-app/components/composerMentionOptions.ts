@@ -19,31 +19,31 @@ export type MentionQuery = {
   normalized: string;
   raw: string;
   trailingWhitespace: boolean;
+  quote?: '"' | "'";
 };
 
 export function normalizeMentionSearch(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-function mentionQueryLooksLikeReference(raw: string) {
-  return /^(?:https?:\/\/|file:\/\/|~[\\/]|\.{1,2}[\\/]|[\\/]|[a-z]:[\\/])/i.test(raw)
-    || raw.includes('/')
-    || raw.includes('\\');
-}
-
 export function currentMentionQuery(text: string, cursor = text.length): MentionQuery | null {
   const end = Math.max(0, Math.min(cursor, text.length));
   const start = text.lastIndexOf('@', end - 1);
   if (start < 0) return null;
-  const raw = text.slice(start + 1, end);
+  const token = text.slice(start + 1, end);
+  const quote = token[0] === '"' || token[0] === "'" ? token[0] : undefined;
+  const raw = quote ? token.slice(1) : token;
   if (raw.length > 512 || /[\n\r]/.test(raw)) return null;
-  if (/\s/.test(raw) && !mentionQueryLooksLikeReference(raw)) return null;
+  // Whitespace completes an unquoted reference; subsequent prose must not
+  // reopen the popup. Quoted paths can still contain spaces.
+  if (quote ? raw.includes(quote) : /\s/.test(raw)) return null;
   return {
     start,
     end,
     normalized: normalizeMentionSearch(raw),
     raw,
     trailingWhitespace: /\s$/.test(raw),
+    ...(quote ? { quote } : {}),
   };
 }
 
@@ -107,13 +107,16 @@ export function insertComposerMention(
   item: ComposerMentionOption,
 ) {
   const prefix = text.slice(0, query.start);
-  const suffix = text.slice(query.end);
+  const rawSuffix = text.slice(query.end);
+  const suffix = query.quote && rawSuffix.startsWith(query.quote) ? rawSuffix.slice(1) : rawSuffix;
   const keepsSigil = item.targetKind !== 'reference' || item.keepMenuOpen;
-  const replacement = `${keepsSigil ? '@' : ''}${item.value}`;
+  const quotePath = item.targetKind === 'reference' && item.keepMenuOpen
+    && (Boolean(query.quote) || /\s/.test(item.value));
+  const replacement = quotePath ? `@"${item.value}"` : `${keepsSigil ? '@' : ''}${item.value}`;
   const separator = item.keepMenuOpen || !replacement || /^\s/.test(suffix) ? '' : ' ';
   return {
     value: `${prefix}${replacement}${separator}${suffix}`,
-    cursor: prefix.length + replacement.length + separator.length,
+    cursor: prefix.length + replacement.length + separator.length - (quotePath ? 1 : 0),
   };
 }
 

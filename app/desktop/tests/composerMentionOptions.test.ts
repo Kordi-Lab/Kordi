@@ -50,9 +50,37 @@ test('reference suggestions preserve URLs and wait for verified file matches', (
   assert.equal(url.referenceKind, 'url');
   assert.equal(insertComposerMention(urlText, urlQuery, url).value, 'Use https://example.com/reference ');
 
-  const pathQuery = currentMentionQuery('Review @./Design Files/brief.md');
+  const pathQuery = currentMentionQuery('Review @"./Design Files/brief.md');
   assert.equal(pathQuery?.raw, './Design Files/brief.md');
   assert.deepEqual(filterMentionTargets([], pathQuery), []);
+});
+
+test('space completes a reference and later prose does not reopen the popup', () => {
+  for (const path of ['~/project/', '~/project', './src/', 'https://example.com/page']) {
+    assert.ok(currentMentionQuery(`@${path}`));
+    assert.equal(currentMentionQuery(`@${path} `), null);
+    assert.equal(currentMentionQuery(`@${path} Read package.json and run pwd.`), null);
+  }
+  assert.equal(currentMentionQuery('@"~/My Project/" '), null);
+  assert.equal(currentMentionQuery('@~/project/ continue @src/')?.raw, 'src/');
+});
+
+test('folder names with spaces are quoted while keeping the caret inside the path', () => {
+  const text = 'Open @~/';
+  const query = currentMentionQuery(text);
+  assert.ok(query);
+  const folder = {
+    value: '~/My Project/', label: 'My Project/', targetKind: 'reference',
+    sourceHostId: 'local-files', nodeId: 'project', runtime: 'reference',
+    referenceKind: 'directory', keepMenuOpen: true,
+  } as ComposerMentionOption;
+  const insertion = insertComposerMention(text, query, folder);
+  assert.equal(insertion.value, 'Open @"~/My Project/"');
+  assert.equal(insertion.cursor, insertion.value.length - 1);
+  const nextQuery = currentMentionQuery(insertion.value, insertion.cursor);
+  assert.equal(nextQuery?.raw, '~/My Project/');
+  assert.ok(nextQuery);
+  assert.equal(insertComposerMention(insertion.value, nextQuery, { ...folder, value: '~/My Project/src/' }).value, 'Open @"~/My Project/src/"');
 });
 
 test('empty reference selection opens the native file picker action', () => {
