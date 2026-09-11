@@ -4,7 +4,7 @@ import {collapseAdjacentSessionConfigNotices} from '@/features/chat/sessionConfi
 import {buildReplyAttribution,shouldInferLatestHumanReplyTarget} from '@/features/chat/replyAttribution';
 import {transcriptMessageNavigationIds} from '@/features/chat/transcriptMessageIdentity';
 import { useMemo } from 'react';
-import { messagesWithThreadReplyCounts, projectMessageThreads, resolveThreadMessageId } from '@/features/chat/messageThreads';
+import { messagesWithThreadReplyCounts, projectMessageThreads, resolveThreadMessageId, type MessageThread } from '@/features/chat/messageThreads';
 import { threadHasUnread } from '@/features/chat/threadReadState';
 import type { useChatThreadSelection } from './useChatThreadSelection';
 
@@ -29,7 +29,7 @@ export function useThreadMessageSummaries(
   ), [projection.mainMessages, projection.threads, reads, conversationId, activeRootId, optimisticConversationId, optimisticRootId, optimisticReplyCount]);
 }
 
-export function useThreadTranscript(conversation:Conversation, activeTranscriptLiveTurn:DesktopChatTurnSnapshot|undefined, notificationMessage?:Message) {
+export function useThreadTranscript(conversation:Conversation, activeTranscriptLiveTurn:DesktopChatTurnSnapshot|undefined, notificationMessage?:Message, loadedThread?: MessageThread) {
   const transcriptMessages = useMemo(
     () => collapseAdjacentSessionConfigNotices(
       suppressLiveTurnEchoMessages(notificationMessage && !conversation.messages.some(message=>transcriptMessageNavigationIds(message).includes(notificationMessage.id!))
@@ -46,8 +46,8 @@ export function useThreadTranscript(conversation:Conversation, activeTranscriptL
   );
   const locatedLiveTurn = locatedTranscript.liveTurn ?? activeTranscriptLiveTurn;
   const threadProjection = useMemo(
-    () => projectMessageThreads(locatedTranscript.messages),
-    [locatedTranscript.messages],
+    () => projectMessageThreads(locatedTranscript.messages, loadedThread ? [loadedThread.root, ...loadedThread.replies] : []),
+    [locatedTranscript.messages, loadedThread],
   );
   return {threadProjection,locatedLiveTurn};
 }

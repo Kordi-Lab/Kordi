@@ -87,7 +87,7 @@ export function threadRootSource(message: Message, sessionId: string): MessageAc
   };
 }
 
-export function projectMessageThreads(messages: readonly Message[]) {
+export function projectMessageThreads(messages: readonly Message[], referenceMessages: readonly Message[] = []) {
   const roots = new Map<string, Message>();
   const primaryIdByAlias = new Map<string, string>();
   const replies = new Map<string, Message[]>();
@@ -96,7 +96,10 @@ export function projectMessageThreads(messages: readonly Message[]) {
   const appendingMessageIds = new Set<string>();
   const appendedMessageIds = new Set<string>();
 
-  messages.forEach((message) => {
+  // Fetched thread pages can supply roots outside the bounded main history.
+  // Index their references without inserting them into the main transcript;
+  // current local rows remain authoritative for overlapping aliases.
+  [...referenceMessages, ...messages].forEach((message) => {
     const id = messageId(message);
     if (!id) return;
     roots.set(id, message);

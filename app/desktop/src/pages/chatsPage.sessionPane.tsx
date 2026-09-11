@@ -1,4 +1,5 @@
 import {TranscriptLoadingSkeleton} from './chatsPage.loadingSkeleton';
+import { TranscriptNavigationControls } from '@/features/chat/TranscriptLatestButton';
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import type {
   Dispatch,
@@ -158,7 +159,6 @@ export function ChatSessionPane({
   const {
     messages,
     composer,
-    navigationAccessory,
     queuedMessages = [],
   } = viewport;
   const {
@@ -282,9 +282,9 @@ export function ChatSessionPane({
             compact={densityMode !== 'default'}
             placeholders={messages[0]?.loadingPlaceholders ?? []}
           />
+          <TranscriptNavigationControls>{viewport.navigationAccessory}</TranscriptNavigationControls>
         </div>
       ) : transcriptViewport}
-      {navigationAccessory}
       </div>
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <div className="px-5 pt-3">
