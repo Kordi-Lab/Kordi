@@ -141,18 +141,22 @@ fn session_bootstrap_options_maps_cli_values() {
 }
 
 #[test]
-fn local_openai_providers_default_to_no_tools_when_settings_do_not_opt_in() {
+fn local_and_remote_providers_expose_tools_unless_explicitly_disabled() {
+    assert_eq!(
+        resolve_tool_selection_for_runtime(&ToolSelectionPreference::None, None, "ollama"),
+        ToolSelection::None
+    );
     assert_eq!(
         resolve_tool_selection_for_runtime(
             &ToolSelectionPreference::UseSettings,
             None,
             "lm-studio",
         ),
-        ToolSelection::None
+        ToolSelection::All
     );
     assert_eq!(
         resolve_tool_selection_for_runtime(&ToolSelectionPreference::UseSettings, None, "ollama"),
-        ToolSelection::None
+        ToolSelection::All
     );
     assert_eq!(
         resolve_tool_selection_for_runtime(&ToolSelectionPreference::UseSettings, None, "openai"),

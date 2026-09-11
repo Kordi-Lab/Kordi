@@ -60,6 +60,7 @@ pub(super) async fn spawn_bash_process(
     command: &str,
     raw_output: bool,
     ctx: &ToolContext,
+    workdir: &std::path::Path,
     safety: BashSafetyContext<'_>,
 ) -> Result<SpawnedProcess, Box<ToolResult>> {
     match ctx.execution_policy {
@@ -68,8 +69,9 @@ pub(super) async fn spawn_bash_process(
             BashResultDetails::error(command, safety, None, None),
         ))),
         ExecutionPolicy::Yolo => {
-            let (process, output_optimization) =
+            let (mut process, output_optimization) =
                 optimized_or_raw_bash_command(command, raw_output, ctx).await;
+            process.current_dir(workdir);
             let child = spawn_process(process).map_err(|error| {
                 Box::new(structured_error_result(
                     format!("Failed to spawn bash: {error}"),
@@ -87,7 +89,7 @@ pub(super) async fn spawn_bash_process(
             })
         }
         ExecutionPolicy::Safety => {
-            let (sandboxed, backend) = match sandbox::prepare_bash_command(&ctx.cwd, command) {
+            let (sandboxed, backend) = match sandbox::prepare_bash_command(workdir, command) {
                 Ok(sandboxed) => sandboxed.into_parts(),
                 Err(error) => {
                     let details = error.details().clone();

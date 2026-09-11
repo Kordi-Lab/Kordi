@@ -155,17 +155,9 @@ pub(crate) fn resolve_tool_selection_for_runtime(
     settings_tools: Option<&[String]>,
     provider_name: &str,
 ) -> ToolSelection {
-    let selection = preference.resolve(settings_tools);
-    // LM Studio's OpenAI-compatible tool support injects tool definitions into the model prompt.
-    // Keep local providers lightweight by default; users can still opt into tools via settings or
-    // explicit CLI flags.
-    if matches!(preference, ToolSelectionPreference::UseSettings)
-        && settings_tools.is_none()
-        && login::is_local_openai_provider(provider_name)
-    {
-        return ToolSelection::None;
-    }
-    selection
+    // Tool availability is independent of where the model is hosted.
+    let _ = provider_name;
+    preference.resolve(settings_tools)
 }
 
 fn format_project_shared_sources_for_prompt(sources: &[ProjectSharedSource]) -> Option<String> {

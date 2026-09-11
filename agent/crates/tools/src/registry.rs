@@ -3,6 +3,8 @@ use crate::types::Tool;
 /// Get all built-in tools.
 pub fn builtin_tools() -> Vec<Box<dyn Tool>> {
     vec![
+        #[cfg(target_os = "macos")]
+        Box::new(crate::local_app::LocalAppTool),
         Box::new(crate::read::ReadTool),
         Box::new(crate::bash::BashTool),
         Box::new(crate::edit::EditTool),

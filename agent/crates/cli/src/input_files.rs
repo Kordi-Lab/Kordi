@@ -378,7 +378,7 @@ fn dedupe_preserve_order(items: Vec<String>) -> Vec<String> {
     out
 }
 
-fn is_at_reference_boundary(text: &str, at_pos: usize) -> bool {
+pub(crate) fn is_at_reference_boundary(text: &str, at_pos: usize) -> bool {
     if at_pos == 0 {
         return true;
     }
@@ -389,7 +389,7 @@ fn is_at_reference_boundary(text: &str, at_pos: usize) -> bool {
         .unwrap_or(true)
 }
 
-fn parse_at_reference(text: &str, at_pos: usize, cwd: &Path) -> Option<(usize, String)> {
+pub(crate) fn parse_at_reference(text: &str, at_pos: usize, cwd: &Path) -> Option<(usize, String)> {
     let rest = text.get(at_pos + 1..)?;
     let mut chars = rest.char_indices();
     let (_, first) = chars.next()?;
@@ -459,11 +459,8 @@ fn longest_existing_reference_prefix(rest: &str, cwd: &Path) -> Option<(usize, S
     None
 }
 
-fn resolve_reference_path(raw_path: &str, cwd: &Path) -> PathBuf {
+pub(crate) fn resolve_reference_path(raw_path: &str, cwd: &Path) -> PathBuf {
     let trimmed = raw_path.trim();
-    if let Some(expanded) = expand_home(trimmed) {
-        return expanded;
-    }
     if trimmed.starts_with("file://")
         && let Ok(url) = url::Url::parse(trimmed)
         && let Ok(path) = url.to_file_path()
@@ -471,20 +468,7 @@ fn resolve_reference_path(raw_path: &str, cwd: &Path) -> PathBuf {
         return path;
     }
 
-    let path = PathBuf::from(trimmed);
-    if path.is_absolute() {
-        path
-    } else {
-        cwd.join(path)
-    }
-}
-
-fn expand_home(path: &str) -> Option<PathBuf> {
-    if path == "~" {
-        return std::env::var_os("HOME").map(PathBuf::from);
-    }
-    let suffix = path.strip_prefix("~/")?;
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(suffix))
+    kordi_core::local_paths::resolve_local_path(cwd, trimmed)
 }
 
 fn display_path_for_prompt(path: &Path, cwd: &Path) -> String {
