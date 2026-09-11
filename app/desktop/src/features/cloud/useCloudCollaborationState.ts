@@ -324,7 +324,7 @@ export function useCloudCollaborationState({
       archiveDefinition: archiveCloudAgentDefinition,
     },
     refreshCloudMessages,
-    syncCloudCollaborationDiff,
+    syncCloudCollaborationDiff, setRealtimeConnected,
     claimFreshCloudGroupFallback,
     mergeMessage,
     editMessage: editCloudMessage, deleteMessage: deleteCloudMessage,
@@ -400,7 +400,7 @@ export function useCloudCollaborationState({
     account,
     client,
     mergeMessage,
-    syncCloudCollaborationDiff,
+    syncCloudCollaborationDiff, setRealtimeConnected,
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
