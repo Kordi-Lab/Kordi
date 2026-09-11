@@ -492,8 +492,8 @@ struct ConversationView: View {
                         }
                     )
                 }
-                ZStack {
-                        GeometryReader { viewport in
+                GeometryReader { viewport in
+                    ZStack {
                             ZStack(alignment: .bottomTrailing) {
                             // History pages retain their data, not every offscreen message view.
                             ScrollView {
@@ -699,7 +699,6 @@ struct ConversationView: View {
                                 animates: didPresentInitialLoading, reduceMotion: reduceMotion))
                             .allowsHitTesting(showsTimeline)
                             .accessibilityHidden(!showsTimeline)
-                        }
                         if !showsTimeline, initialLoadFailed {
                             ConversationInitialFailureView {
                                 initialLoadFailed = false
@@ -711,6 +710,9 @@ struct ConversationView: View {
                                 kind: conversation.kind, reduceMotion: reduceMotion)
                         }
                     }
+                    .clipShape(ConversationViewportClip(topInset: viewport.safeAreaInsets.top))
+                    .contentShape(ConversationViewportClip(topInset: viewport.safeAreaInsets.top))
+                }
 
                 if selectedMessageIDs.isEmpty {
                     if !isWaitingForLinkedBackgroundSession {
@@ -986,6 +988,7 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .tint(chatTheme.accent)
         .toolbarBackground(.regularMaterial, for: .navigationBar)
+        .toolbarBackground(showsNavigationChrome ? .visible : .automatic, for: .navigationBar)
         .toolbar(navigationBarVisibility, for: .navigationBar)
         .toolbar {
             if showsNavigationChrome, messageActionMessage == nil {

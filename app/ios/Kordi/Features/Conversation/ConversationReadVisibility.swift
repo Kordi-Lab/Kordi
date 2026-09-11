@@ -1,6 +1,18 @@
 import SwiftUI
 import UIKit
 
+/// A scroll view may extend underneath navigation chrome. Its transcript and
+/// loading layer must still paint and accept touches only inside the safe viewport.
+struct ConversationViewportClip: Shape {
+    let topInset: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let inset = min(rect.height, max(0, topInset))
+        return Path(CGRect(x: rect.minX, y: rect.minY + inset,
+                           width: rect.width, height: rect.height - inset))
+    }
+}
+
 struct MentionPresentationModifier: ViewModifier {
     let isPending: Bool
     let viewportFrame: CGRect
