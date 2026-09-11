@@ -27,6 +27,7 @@ const MAX_MESSAGE_CONTENT_BYTES: usize = 256 * 1024;
 const MAX_ATTACHMENTS_PER_MESSAGE: usize = 32;
 const MAX_IMAGE_PIXEL_DIMENSION: u64 = 100_000;
 
+mod attachment_actions;
 mod group_envelope;
 mod http;
 mod message_mutations;
@@ -73,6 +74,7 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             get(history).post(send_message),
         )
         .merge(message_mutations::routes())
+        .merge(attachment_actions::routes())
         .route("/v2/chat/attention", get(thread_reads::attention))
         .route(
             "/v2/chat/conversations/:conversation_id/threads/:message_id",
@@ -164,6 +166,16 @@ async fn send_message(
     .await
     {
         Ok(outcome) => {
+            let message = match store::message_for_viewer(
+                state.db_pool(),
+                &session.account_id,
+                outcome.value.clone(),
+            )
+            .await
+            {
+                Ok(message) => message,
+                Err(error) => return store_error("project message", error),
+            };
             if let Some(notifications) = state.notifications() {
                 notifications
                     .send_message_attention(state.db_pool(), &outcome.value)
@@ -175,9 +187,7 @@ async fn send_message(
                 } else {
                     StatusCode::OK
                 },
-                Json(MessageResponse {
-                    message: outcome.value,
-                }),
+                Json(MessageResponse { message }),
             )
                 .into_response()
         }

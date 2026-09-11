@@ -235,6 +235,7 @@ pub async fn history(
             reactions.remove(&message_id).unwrap_or_default(),
         ));
     }
+    attachment_actions::hydrate(&mut transaction, Some(account_id), &mut messages).await?;
     let next_before_sequence = if has_more {
         messages.last().map(|message| message.conversation_sequence)
     } else {
@@ -312,6 +313,7 @@ pub async fn sync_batch(
         encoded_bytes += event_bytes;
         events.push(event);
     }
+    attachment_actions::project_events(pool, account_id, &mut events).await?;
     let next_stream_seq = events
         .last()
         .map(|event| event.stream_seq)
@@ -459,7 +461,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .push(attachment_id);
     }
     let mut reactions_by_message = reactions_by_message(&mut transaction, &message_ids).await?;
-    let latest_messages = latest_rows
+    let mut latest_messages: Vec<MessageSnapshot> = latest_rows
         .into_iter()
         .map(|row| {
             let message_id = row.0;
@@ -472,6 +474,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             )
         })
         .collect();
+    attachment_actions::hydrate(&mut transaction, Some(account_id), &mut latest_messages).await?;
     let server_time = Utc::now();
     let session_visibility = super::super::visibility::load(&mut transaction, account_id).await?;
     transaction.commit().await?;

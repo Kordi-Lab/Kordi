@@ -443,6 +443,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "recover historical channel names without exposing private titles",
         sql: include_str!("../../migrations/0090_preserve_group_channel_names.sql"),
     },
+    EmbeddedMigration {
+        version: 91,
+        description: "add independently scoped attachment reactions and private visibility",
+        sql: include_str!("../../migrations/0091_chat_attachment_actions.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

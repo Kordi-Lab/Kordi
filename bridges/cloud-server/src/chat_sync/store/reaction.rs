@@ -104,6 +104,7 @@ pub async fn set_reaction(
             .await?;
         }
     }
+    let message = attachment_actions::for_viewer(&mut transaction, account_id, message).await?;
     transaction.commit().await?;
     Ok(message)
 }

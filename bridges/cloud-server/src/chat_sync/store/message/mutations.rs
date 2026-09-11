@@ -109,7 +109,10 @@ pub async fn edit_message(
         return Err(StoreError::Forbidden);
     }
     if current.version != request.expected_version {
-        return Err(StoreError::MessageVersionConflict(Box::new(current)));
+        let visible =
+            super::super::attachment_actions::for_viewer(&mut transaction, account_id, current)
+                .await?;
+        return Err(StoreError::MessageVersionConflict(Box::new(visible)));
     }
     if request.text.trim().is_empty() && current.attachment_ids.is_empty() {
         return Err(StoreError::InvalidInput("message text cannot be empty"));
@@ -124,6 +127,9 @@ pub async fn edit_message(
         return Err(StoreError::InvalidInput("message content is too large"));
     }
     if content == current.content {
+        let current =
+            super::super::attachment_actions::for_viewer(&mut transaction, account_id, current)
+                .await?;
         transaction.commit().await?;
         return Ok(current);
     }
@@ -138,6 +144,8 @@ pub async fn edit_message(
     .await?;
     let message = load_message(&mut transaction, message_id).await?;
     fanout_message_sync_event(&mut transaction, "message.updated", &message).await?;
+    let message =
+        super::super::attachment_actions::for_viewer(&mut transaction, account_id, message).await?;
     transaction.commit().await?;
     Ok(message)
 }

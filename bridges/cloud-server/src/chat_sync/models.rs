@@ -84,6 +84,15 @@ pub struct MessageSnapshot {
     pub deleted_at: Option<DateTime<Utc>>,
     #[serde(default)]
     pub reactions: Vec<ReactionSnapshot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachment_reactions: Vec<AttachmentReactionSnapshot>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AttachmentReactionSnapshot {
+    pub attachment_id: String,
+    pub reaction: String,
+    pub account_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
