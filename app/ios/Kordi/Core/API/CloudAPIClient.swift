@@ -2061,7 +2061,7 @@ actor CloudAPIClient {
         }
     }
 
-    private func legacyMessage(
+    func legacyMessage(
         from message: CloudChatMessage,
         conversation: CloudChatConversation,
         viewerAccountId: String
@@ -2087,13 +2087,15 @@ actor CloudAPIClient {
             : conversation.members.contains {
                 $0.accountId == viewerAccountId && $0.lastReadSequence >= message.conversationSequence
             }
+        let history = message.kind.hasPrefix("canonical-history-") ? message.content.canonicalHistory : nil
+        let createdAt = history?.originalCreatedAt ?? message.createdAt
         return CloudMessageDTO(
             messageId: message.id,
             clientMessageId: message.clientMessageId,
             fromAccountId: message.senderAccountId,
             toAccountId: outgoing ? peerAccountId : viewerAccountId,
             body: message.deletedAt == nil ? message.content.body : "",
-            createdAt: message.createdAt,
+            createdAt: createdAt,
             editedAt: message.editedAt,
             deliveredAt: delivered ? message.createdAt : nil,
             readAt: read ? message.createdAt : nil,
@@ -2108,7 +2110,8 @@ actor CloudAPIClient {
             version: message.version,
             reactions: (message.reactions ?? []).map {
                 MessageReaction(value: $0.reaction, accountIds: $0.accountIds)
-            }
+            },
+            canonicalHistoryLocalMessageId: history?.localMessageId
         )
     }
 

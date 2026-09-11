@@ -57,6 +57,7 @@ import {
   loadCanonicalRecoveryMessages,
   loadRemoteRecoveryMessages,
 } from './cloudSelfAgentRecoveryMessages';
+import { indexRemoteSelfAgentOperations } from './cloudSelfAgentRemoteIdentity';
 
 const CLOUD_SELF_AGENT_RECONCILE_RETRY_MS = 30_000;
 
@@ -197,8 +198,16 @@ export function useCloudSelfAgentForwardSync({
         if (!session?.token || cancelledRef.current) return;
         const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
 
-        const pendingRecoverySessionIds =
-          loadCloudSelfAgentRecoverySessionIds(account.accountId);
+        const syncedSessionIds = cloudSyncedLocalAgentSessionIds(latestState);
+        const activeSessionIds = new Set(latestState.sessions
+          .filter((item) => item.status === 'active' && syncedSessionIds.has(item.id))
+          .map((item) => item.id));
+        // An interrupted upload can outlive its session. Do not let obsolete
+        // recovery intent abort synchronization for the remaining active chats.
+        const pendingRecoverySessionIds = new Set(
+          [...loadCloudSelfAgentRecoverySessionIds(account.accountId)]
+            .filter((id) => activeSessionIds.has(id)),
+        );
         const identitySyncedSessionIds = cloudAgentIdentitySyncedSessionIds(
           latestState,
           initialLedger,
@@ -275,20 +284,15 @@ export function useCloudSelfAgentForwardSync({
           saveCloudSelfAgentSyncLedger(account.accountId, identityResult.ledger);
         }
         const identityLedger = identityResult.ledger;
-        const remoteRecoveryMessageIds = new Set(
-          remoteRecoveryMessages.map((message) => message.id),
-        );
         const recoveryState = {
           ...latestState,
           messages: [
             ...latestState.messages.filter((message) => (
               !recoverySessionIds.has(message.sessionId)
             )),
-            ...canonicalRecoveryMessages.filter((message) => !(
-              message.sourceTransport === 'cloud-self-agent'
-              && message.sourceEventId
-              && remoteRecoveryMessageIds.has(message.sourceEventId)
-            )),
+            // Keep matched requests as parent anchors for missing responses.
+            // Their durable remote identities are reconciled below.
+            ...canonicalRecoveryMessages,
           ],
         };
         const historySessionIds = new Set([
@@ -303,12 +307,6 @@ export function useCloudSelfAgentForwardSync({
           ...await loadChatSyncMessageRefs(account.accountId, relevantConversationIds),
           ...remoteRecoveryMessages,
         ];
-        const remoteMessageByClientId = new Map(
-          remoteMessages.map((message) => [
-            message.client_message_id,
-            message,
-          ]),
-        );
         let ledger = identityLedger;
         let forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
           account.accountId,
@@ -344,6 +342,13 @@ export function useCloudSelfAgentForwardSync({
             recoverSessionIds: recoverySessionIds,
           },
         );
+        const remoteMessageByClientId = indexRemoteSelfAgentOperations({
+          state: recoveryState,
+          operations: allRecoveryOperations,
+          conversations: [...localConversations, ...createdConversations],
+          messages: remoteMessages,
+          ledger,
+        });
         let ledgerChanged = false;
         ledger = { ...ledger };
         for (const operation of allRecoveryOperations) {
@@ -379,6 +384,7 @@ export function useCloudSelfAgentForwardSync({
           const executionLedger = { ...ledger };
           for (const operation of operations) {
             if (!recoverySessionIds.has(operation.sessionId)) continue;
+            if (remoteMessageByClientId.has(cloudSelfAgentOperationClientMessageId(operation))) continue;
             delete executionLedger[operation.localMessageId];
             if (operation.role === 'user') {
               delete executionLedger[
