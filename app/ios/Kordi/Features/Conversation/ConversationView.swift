@@ -61,18 +61,18 @@ enum ConversationThreadLoadPolicy {
 }
 
 private struct ConversationScrollAnchorPolicy: ViewModifier {
-    let startsAtLatest: Bool
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
-                // A restored offset must not compete with SwiftUI's initial tail anchor.
-                .defaultScrollAnchor(startsAtLatest ? .bottom : .top, for: .initialOffset)
+                // Explicit positioning owns the initial viewport. A lazy stack's
+                // estimated bottom anchor can leave newly hydrated history blank.
+                .defaultScrollAnchor(.top, for: .initialOffset)
                 // Preserve the visible bottom during keyboard and input-view resizing.
                 .defaultScrollAnchor(.bottom, for: .sizeChanges)
                 .defaultScrollAnchor(.bottom, for: .alignment)
         } else {
-            // iOS 17 combines initial positioning, resize anchoring, and alignment.
-            content.defaultScrollAnchor(startsAtLatest ? .bottom : .top)
+            // Native scroll commands also position the initial viewport on iOS 17.
+            content.defaultScrollAnchor(.top)
         }
     }
 }
@@ -197,6 +197,9 @@ struct ConversationView: View {
     @State private var hasPositionedInitialTimeline = false
     @State private var initialViewport = ConversationInitialViewport.latest
     @State private var hasPreparedInitialViewport = false
+    @State private var hasLaidOutInitialTimeline = false
+    @State private var didFinishInitialHistoryLoad = false
+    @State private var didPresentInitialLoading = false
     @State private var hasRevealedInitialViewport = false
     @State private var initialLoadFailed = false
     @State private var trackedMessageID: String?
@@ -338,6 +341,10 @@ struct ConversationView: View {
     private var messages: [ChatMessage] {
         guard let scopedThreadRootMessageID else { return threadProjection.mainMessages }
         return threadProjection.thread(rootID: scopedThreadRootMessageID)?.messages ?? []
+    }
+    private var isWaitingForInitialHistory: Bool {
+        hasPreparedInitialViewport && isReadPresentationVisible && messages.isEmpty
+            && !didFinishInitialHistoryLoad && !hasRevealedInitialViewport && !initialLoadFailed
     }
     private var initialReadPositionReady: Bool { initialViewport == .latest || initialReadAnchorPositioned }
     private var isLatestMessageVisible: Bool {
@@ -485,8 +492,7 @@ struct ConversationView: View {
                         }
                     )
                 }
-                if hasPreparedInitialViewport || usesCachedThreadTimeline {
-                    ZStack {
+                ZStack {
                         GeometryReader { viewport in
                             ZStack(alignment: .bottomTrailing) {
                             // History pages retain their data, not every offscreen message view.
@@ -633,7 +639,16 @@ struct ConversationView: View {
                                 .padding(.top, timelineVerticalInset)
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
-                            .modifier(ConversationScrollAnchorPolicy(startsAtLatest: initialViewport == .latest))
+                            .modifier(ConversationScrollAnchorPolicy())
+                            .onGeometryChange(for: Bool.self) { [prepared = hasPreparedInitialViewport] geometry in
+                                prepared && geometry.size.width > 0 && geometry.size.height > 0
+                            } action: { ready in
+                                if ready { hasLaidOutInitialTimeline = true }
+                            }
+                            .task(id: hasLaidOutInitialTimeline && (!timeline.isEmpty || didFinishInitialHistoryLoad)) {
+                                guard hasLaidOutInitialTimeline, !timeline.isEmpty || didFinishInitialHistoryLoad else { return }
+                                await positionAndRevealInitialViewport(using: proxy)
+                            }
                             .scrollDismissesKeyboard(.interactively)
                             .scrollDisabled(messageActionMessage != nil)
                             .simultaneousGesture(
@@ -680,26 +695,22 @@ struct ConversationView: View {
                             .animation(.snappy(duration: 0.2), value: isAtBottom)
                         }
 
-                            .opacity(showsTimeline ? 1 : 0)
+                            .modifier(ConversationInitialContentReveal(isReady: showsTimeline,
+                                animates: didPresentInitialLoading, reduceMotion: reduceMotion))
                             .allowsHitTesting(showsTimeline)
                             .accessibilityHidden(!showsTimeline)
                         }
-                        if !showsTimeline {
-                            if initialLoadFailed {
-                                ConversationInitialFailureView {
-                                    initialLoadFailed = false
-                                    Task {
-                                        await loadAndRevealInitialConversation(using: proxy)
-                                    }
-                                }
-                            } else {
-                                ConversationInitialLoadingView(messages: visibleTimeline)
+                        if !showsTimeline, initialLoadFailed {
+                            ConversationInitialFailureView {
+                                initialLoadFailed = false
+                                Task { await loadAndRevealInitialConversation(using: proxy) }
                             }
                         }
+                        if didPresentInitialLoading, !initialLoadFailed {
+                            ConversationInitialLoadingOverlay(isReady: showsTimeline,
+                                kind: conversation.kind, reduceMotion: reduceMotion)
+                        }
                     }
-                } else {
-                    ConversationInitialLoadingView(messages: visibleTimeline)
-                }
 
                 if selectedMessageIDs.isEmpty {
                     if !isWaitingForLinkedBackgroundSession {
@@ -956,6 +967,14 @@ struct ConversationView: View {
             .onAppear {
                 restoreThreadReturnPosition(using: proxy)
             }
+            .task(id: isWaitingForInitialHistory) {
+                guard isWaitingForInitialHistory else { return }
+                do { try await Task.sleep(for: ConversationOpeningMotion.loadingIndicatorDelay) } catch { return }
+                // GeometryReader can retain an older empty timeline during layout.
+                // Consult the live model before showing a delayed loading indicator.
+                guard isWaitingForInitialHistory else { return }
+                didPresentInitialLoading = true
+            }
             .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
                 guard !Task.isCancelled else { return }
@@ -1016,6 +1035,7 @@ struct ConversationView: View {
             _ = await MessageDeleteParticleResources.prepared.value
         }
         .onDisappear {
+            scrollPosition.cancelInitialPositioning()
             voiceRecorder.cancel()
             if !showsCompanionPanel {
                 attachments.forEach { $0.discardOwnedFile() }
@@ -1944,7 +1964,11 @@ struct ConversationView: View {
 
     @MainActor
     private func positionAndRevealInitialViewport(using proxy: ScrollViewProxy) async {
-        guard hasPreparedInitialViewport, !hasPositionedInitialTimeline else { return }
+        guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, !hasPositionedInitialTimeline,
+              !messages.isEmpty || didFinishInitialHistoryLoad,
+              !scrollPosition.isPositioningInitialTimeline else { return }
+        scrollPosition.isPositioningInitialTimeline = true
+        defer { scrollPosition.isPositioningInitialTimeline = false }
         await Task.yield()
         await Task.yield()
 
@@ -1963,15 +1987,9 @@ struct ConversationView: View {
         }
 
         if case let .anchored(anchor) = initialViewport {
-            var settledLayouts = 0
-            for _ in 0..<100 {
-                do { try await Task.sleep(for: .milliseconds(20)) } catch { return }
-                guard !hasPositionedInitialTimeline else { return }
-                settledLayouts = scrollPosition.restore(anchor) ? settledLayouts + 1 : 0
-                if settledLayouts >= 3 { break }
-            }
-            guard !Task.isCancelled else { return }
-            if settledLayouts < 3 {
+            let positioned = await scrollPosition.positionInitialViewport { scrollPosition.restore(anchor) }
+            guard !Task.isCancelled, isReadPresentationVisible, !hasPositionedInitialTimeline else { return }
+            if !positioned {
                 // A removed or unavailable row must not reveal an arbitrary offset.
                 initialViewport = .latest
                 trackedMessageID = bottomAnchorID
@@ -1989,6 +2007,7 @@ struct ConversationView: View {
             await Task.yield()
             guard !Task.isCancelled else { return }
         }
+        guard isReadPresentationVisible else { return }
         withTransaction(transaction) {
             hasPositionedInitialTimeline = true
             hasRevealedInitialViewport = true
@@ -2027,6 +2046,7 @@ struct ConversationView: View {
             return
         }
         initialLoadFailed = false
+        didFinishInitialHistoryLoad = true
         if initialMessageID == nil,
            !hasRevealedInitialViewport,
            case .resumed = viewportAtEntry,

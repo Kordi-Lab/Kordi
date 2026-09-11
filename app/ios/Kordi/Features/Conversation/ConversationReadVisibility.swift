@@ -99,8 +99,21 @@ final class ConversationScrollPosition {
     }
     private var rows: [String: WeakRow] = [:]
     private weak var scrollView: UIScrollView?
+    private var initialPositioner: ConversationInitialPositioner?
     var contentOffsetY: CGFloat?
+    var isPositioningInitialTimeline = false
     private(set) var readingAnchor: ConversationReadingAnchor?
+
+    func positionInitialViewport(using position: @escaping () -> Bool) async -> Bool {
+        let positioner = ConversationInitialPositioner(position: position)
+        initialPositioner = positioner
+        defer { if initialPositioner === positioner { initialPositioner = nil } }
+        return await positioner.waitUntilPositioned()
+    }
+
+    func cancelInitialPositioning() {
+        initialPositioner?.cancel()
+    }
 
     func attach(to scrollView: UIScrollView) {
         self.scrollView = scrollView
@@ -143,6 +156,52 @@ final class ConversationScrollPosition {
         guard abs(scrollView.contentOffset.y - target) > 1 else { return true }
         scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)
         return false
+    }
+}
+
+/// Position on display frames, with no timer-based quiet period. Cancellation
+/// belongs to the opening task so a dismissed chat cannot finish revealing later.
+@MainActor
+final class ConversationInitialPositioner: NSObject {
+    private let position: () -> Bool
+    private var displayLink: CADisplayLink?
+    private var completion: ((Bool) -> Void)?
+    private var deadline: CFTimeInterval = 0
+    private var stableFrames = 0
+
+    init(position: @escaping () -> Bool) {
+        self.position = position
+    }
+
+    func waitUntilPositioned() async -> Bool {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(returning: false); return }
+                completion = { continuation.resume(returning: $0) }
+                deadline = CACurrentMediaTime() + 2
+                let link = CADisplayLink(target: self, selector: #selector(beforeDisplay))
+                displayLink = link
+                link.add(to: .main, forMode: .common)
+            }
+        } onCancel: {
+            Task { @MainActor in self.finish(false) }
+        }
+    }
+
+    func cancel() { finish(false) }
+
+    @objc private func beforeDisplay() {
+        stableFrames = position() ? stableFrames + 1 : 0
+        if stableFrames >= 2 { finish(true) }
+        else if CACurrentMediaTime() >= deadline { finish(false) }
+    }
+
+    private func finish(_ positioned: Bool) {
+        displayLink?.invalidate()
+        displayLink = nil
+        let completion = completion
+        self.completion = nil
+        completion?(positioned)
     }
 }
 

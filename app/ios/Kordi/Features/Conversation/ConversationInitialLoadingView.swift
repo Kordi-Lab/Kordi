@@ -1,5 +1,77 @@
 import SwiftUI
 
+enum ConversationOpeningMotion {
+    static let loadingIndicatorDelay = Duration.milliseconds(150)
+
+    static func revealAnimation(wasLoading: Bool, reduceMotion: Bool) -> Animation? {
+        guard wasLoading else { return nil }
+        return .timingCurve(0.23, 1, 0.32, 1, duration: reduceMotion ? 0.15 : 0.2)
+    }
+}
+
+/// Own opacity locally so opening a transcript cannot animate its navigation
+/// chrome, composer, or layout. Cached entries reveal synchronously.
+struct ConversationInitialContentReveal: ViewModifier {
+    let isReady: Bool
+    let animates: Bool
+    let reduceMotion: Bool
+    @State private var opacity: Double
+
+    init(isReady: Bool, animates: Bool, reduceMotion: Bool) {
+        self.isReady = isReady
+        self.animates = animates
+        self.reduceMotion = reduceMotion
+        _opacity = State(initialValue: isReady ? 1 : 0)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(animates ? opacity : isReady ? 1 : 0)
+            .onChange(of: isReady, initial: true) { _, ready in
+                guard ready else { return }
+                withAnimation(ConversationOpeningMotion.revealAnimation(wasLoading: animates, reduceMotion: reduceMotion)) {
+                    opacity = 1
+                }
+            }
+    }
+}
+
+struct ConversationInitialLoadingOverlay: View {
+    let isReady: Bool
+    let kind: ConversationKind
+    let reduceMotion: Bool
+    @State private var opacity: Double
+    @State private var isRemoved: Bool
+
+    init(isReady: Bool, kind: ConversationKind, reduceMotion: Bool) {
+        self.isReady = isReady
+        self.kind = kind
+        self.reduceMotion = reduceMotion
+        _opacity = State(initialValue: isReady ? 0 : 1)
+        _isRemoved = State(initialValue: isReady)
+    }
+
+    var body: some View {
+        Group {
+            if !isRemoved {
+                ConversationInitialLoadingView(messages: [], kind: kind)
+                    .opacity(opacity)
+                    .onChange(of: isReady, initial: true) { _, ready in
+                        guard ready else { return }
+                        withAnimation(ConversationOpeningMotion.revealAnimation(wasLoading: true, reduceMotion: reduceMotion),
+                                      completionCriteria: .logicallyComplete) {
+                            opacity = 0
+                        } completion: {
+                            isRemoved = true
+                        }
+                    }
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 struct ConversationInitialPlaceholder: Identifiable, Equatable {
     enum Kind: Equatable {
         case message
@@ -33,6 +105,20 @@ struct ConversationInitialPlaceholder: Identifiable, Equatable {
 
 enum ConversationInitialPlaceholderCatalog {
     static let limit = 8
+
+    static func generic(kind: ConversationKind) -> [ConversationInitialPlaceholder] {
+        guard kind != .person else { return [] }
+        let widths: [ConversationInitialPlaceholder.Width] = [.medium, .long, .short, .long, .medium, .short, .long, .medium]
+        return widths.enumerated().map { index, width in
+            let author: MessageAuthor = index.isMultiple(of: 3) ? .me : kind == .agent ? .agent : .person
+            return ConversationInitialPlaceholder(
+                id: "loading-\(index)", author: author, kind: author == .agent ? .agent : .message,
+                lineCount: index.isMultiple(of: 2) ? 2 : 3, width: width,
+                presentation: ConversationMessagePresentation(showsTimestamp: false,
+                    groupedWithPrevious: false, groupedWithNext: false, showsAvatar: true, outgoingAvatarGroupID: nil)
+            )
+        }
+    }
 
     static func make(from messages: [ChatMessage]) -> [ConversationInitialPlaceholder] {
         guard !messages.isEmpty else { return [] }
@@ -82,8 +168,10 @@ struct ConversationInitialLoadingView: View {
 
     private let placeholders: [ConversationInitialPlaceholder]
 
-    init(messages: [ChatMessage]) {
-        placeholders = ConversationInitialPlaceholderCatalog.make(from: messages)
+    init(messages: [ChatMessage], kind: ConversationKind = .person) {
+        placeholders = messages.isEmpty
+            ? ConversationInitialPlaceholderCatalog.generic(kind: kind)
+            : ConversationInitialPlaceholderCatalog.make(from: messages)
     }
 
     var body: some View {
@@ -120,6 +208,13 @@ struct ConversationInitialLoadingView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #if DEBUG
+        .background {
+            if ConversationMotionProbeRegistry.enabled {
+                ConversationMotionProbe(id: "conversation-initial-loading")
+            }
+        }
+        #endif
         .accessibilityHidden(true)
     }
 }
