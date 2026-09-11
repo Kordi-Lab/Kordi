@@ -44,7 +44,9 @@ export async function loadRemoteRecoveryMessages(
   ]));
   const pages = await Promise.all([...sessionIds].map(async (sessionId) => {
     const conversation = conversationBySessionId.get(sessionId);
-    if (!conversation || conversation.latest_message_sequence === 0) return [];
+    if (!conversation) throw new Error('Recovery conversation is unavailable.');
+    // The local head can still be zero while the server already has history.
+    // Recovery must verify the server before deciding to publish old messages.
     const messages: ChatSyncMessage[] = [];
     let beforeSequence: number | undefined;
     let pageCount = 0;

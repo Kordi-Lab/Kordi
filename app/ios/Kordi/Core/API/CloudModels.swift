@@ -912,6 +912,7 @@ struct CloudExpressiveMediaMutationResponse: Codable, Hashable {
 }
 
 struct CloudMessageDTO: Codable, Hashable, Identifiable {
+    let canonicalHistoryLocalMessageId: String?
     let messageId: String
     let clientMessageId: String?
     let fromAccountId: String
@@ -953,7 +954,8 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         conversationId: String? = nil,
         conversationSequence: Int64? = nil,
         version: Int? = nil,
-        reactions: [MessageReaction] = []
+        reactions: [MessageReaction] = [],
+        canonicalHistoryLocalMessageId: String? = nil
     ) {
         self.messageId = messageId
         self.clientMessageId = clientMessageId
@@ -974,6 +976,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.conversationSequence = conversationSequence
         self.version = version
         self.reactions = reactions
+        self.canonicalHistoryLocalMessageId = canonicalHistoryLocalMessageId
     }
 
     enum CodingKeys: String, CodingKey {
@@ -981,6 +984,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         case messageKind = "kind"
         case voiceMessage
         case conversationId, conversationSequence, version, reactions
+        case canonicalHistoryLocalMessageId
     }
 
     init(from decoder: Decoder) throws {
@@ -1004,6 +1008,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
         version = try container.decodeIfPresent(Int.self, forKey: .version)
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+        canonicalHistoryLocalMessageId = try container.decodeIfPresent(String.self, forKey: .canonicalHistoryLocalMessageId)
     }
 }
 
@@ -1128,20 +1133,40 @@ struct CloudChatBlock: Codable, Hashable {
     }
 }
 
+struct CloudCanonicalHistory: Codable, Hashable {
+    let localMessageId: String
+    let originalCreatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case localMessageId = "local_message_id"
+        case originalCreatedAt = "original_created_at"
+    }
+
+    var validated: Self? {
+        let id = localMessageId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let timestamp = originalCreatedAt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty, parseCloudDate(timestamp) != .distantPast else { return nil }
+        return Self(localMessageId: id, originalCreatedAt: timestamp)
+    }
+}
+
 struct CloudChatContent: Codable, Hashable {
     let schema: Int
     let blocks: [CloudChatBlock]
     let legacyAttachments: [CloudMessageAttachment]
+    let canonicalHistory: CloudCanonicalHistory?
 
     init(body: String, attachments: [CloudMessageAttachment], voiceMessage: VoiceMessage? = nil) {
         schema = 1
         blocks = [CloudChatBlock(text: body)] + (voiceMessage.map { [CloudChatBlock(voiceMessage: $0)] } ?? [])
         legacyAttachments = voiceMessage == nil ? attachments : []
+        canonicalHistory = nil
     }
 
     enum CodingKeys: String, CodingKey {
         case schema, blocks
         case legacyAttachments = "legacy_attachments"
+        case canonicalHistory = "canonical_history"
     }
 
     init(from decoder: Decoder) throws {
@@ -1149,6 +1174,8 @@ struct CloudChatContent: Codable, Hashable {
         schema = try container.decode(Int.self, forKey: .schema)
         blocks = try container.decode([CloudChatBlock].self, forKey: .blocks)
         legacyAttachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .legacyAttachments) ?? []
+        // Older or malformed optional history metadata must not hide the message.
+        canonicalHistory = (try? container.decodeIfPresent(CloudCanonicalHistory.self, forKey: .canonicalHistory))?.validated
     }
 
     var body: String { blocks.compactMap(\.text).joined() }

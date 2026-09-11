@@ -120,7 +120,7 @@ function voiceMessageFromChatContent(content: unknown): CloudVoiceMessage | null
   return null;
 }
 
-function canonicalHistoryMetadata(content: unknown): {
+export function canonicalHistoryMetadata(content: unknown): {
   localMessageId: string;
   originalCreatedAt: string;
 } | null {

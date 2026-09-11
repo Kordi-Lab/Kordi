@@ -2,6 +2,7 @@ import Foundation
 
 struct CloudWireSnapshot: Codable {
     static let currentForkLineageVersion = 1
+    static let currentMessageProjectionVersion = 1
 
     let accountId: String
     let cursor: String
@@ -10,6 +11,7 @@ struct CloudWireSnapshot: Codable {
     let forkLineageVersion: Int?
     let savedAt: Date
     var visibility: CloudSessionVisibility? = nil
+    var messageProjectionVersion: Int? = nil
 }
 
 enum CloudSyncRecoveryPolicy {
@@ -45,6 +47,12 @@ actor CloudWireCache {
               let data = try? Data(contentsOf: url),
               let snapshot = try? decoder.decode(CloudWireSnapshot.self, from: data),
               snapshot.accountId == accountId else { return nil }
+        // Previous projections dropped history timestamps. Refetch affected
+        // snapshots instead of resuming their cursor with permanent wrong dates.
+        if snapshot.messageProjectionVersion != CloudWireSnapshot.currentMessageProjectionVersion,
+           snapshot.messagesByPeer.values.contains(where: { messages in
+               messages.contains { $0.messageKind?.hasPrefix("canonical-history-") == true }
+           }) { return nil }
         return snapshot
     }
 
@@ -65,7 +73,8 @@ actor CloudWireCache {
                 sessionForksById: sessionForksById,
                 forkLineageVersion: CloudWireSnapshot.currentForkLineageVersion,
                 savedAt: Date(),
-                visibility: visibility
+                visibility: visibility,
+                messageProjectionVersion: CloudWireSnapshot.currentMessageProjectionVersion
             )
             try encoder.encode(snapshot).write(to: url, options: .atomic)
         } catch {

@@ -829,3 +829,63 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertTrue(message.reactions.isEmpty)
     }
 }
+
+
+final class CanonicalHistoryProjectionTests: XCTestCase {
+    private func project(kind: String, history: Any?) async throws -> CloudMessageDTO {
+        var content: [String: Any] = ["schema": 1, "blocks": [["type": "text", "text": "Synthetic historical message"]]]
+        if let history { content["canonical_history"] = history }
+        let message: [String: Any] = [
+            "id": "message", "client_message_id": "upload", "conversation_id": "conversation",
+            "conversation_sequence": 8, "sender_account_id": "me", "kind": kind,
+            "content": content, "attachment_ids": [], "version": 1,
+            "created_at": "2026-09-11T07:30:00Z",
+        ]
+        let conversation: [String: Any] = [
+            "id": "conversation", "kind": "ai", "version": 1,
+            "created_by_account_id": "me", "legacy_session_id": "session:agent:history",
+            "latest_message_sequence": 8, "created_at": "2026-08-01T00:00:00Z",
+            "updated_at": "2026-09-11T07:30:00Z", "members": [],
+            "preferences": ["conversation_id": "conversation", "account_id": "me", "version": 1],
+        ]
+        let decoder = JSONDecoder()
+        let wire = try decoder.decode(CloudChatMessage.self, from: JSONSerialization.data(withJSONObject: message))
+        let chat = try decoder.decode(CloudChatConversation.self, from: JSONSerialization.data(withJSONObject: conversation))
+        return await CloudAPIClient().legacyMessage(from: wire, conversation: chat, viewerAccountId: "me")
+    }
+
+    func testImportedUserAndAgentMessagesKeepOriginalDateAndIdentity() async throws {
+        for kind in ["canonical-history-user", "canonical-history-agent"] {
+            let message = try await project(kind: kind, history: [
+                "local_message_id": " original-local-id ",
+                "original_created_at": "2026-08-01T12:00:00.123Z",
+            ])
+            XCTAssertEqual(message.createdAt, "2026-08-01T12:00:00.123Z")
+            XCTAssertEqual(message.canonicalHistoryLocalMessageId, "original-local-id")
+            XCTAssertEqual(message.messageId, "message")
+            XCTAssertEqual(message.conversationSequence, 8)
+            let restored = try JSONDecoder().decode(CloudMessageDTO.self, from: JSONEncoder().encode(message))
+            XCTAssertEqual(restored, message)
+        }
+    }
+
+    func testMalformedOrMissingHistoryFallsBackWithoutDroppingMessage() async throws {
+        let histories: [Any?] = [nil, "invalid", ["local_message_id": "local", "original_created_at": "invalid"],
+            ["local_message_id": " ", "original_created_at": "2026-08-01T00:00:00Z"],
+            ["local_message_id": 12, "original_created_at": "2026-08-01T00:00:00Z"]]
+        for history in histories {
+            let message = try await project(kind: "canonical-history-user", history: history)
+            XCTAssertEqual(message.createdAt, "2026-09-11T07:30:00Z")
+            XCTAssertNil(message.canonicalHistoryLocalMessageId)
+            XCTAssertEqual(message.body, "Synthetic historical message")
+        }
+    }
+
+    func testOrdinaryMessagesKeepTheirServerDate() async throws {
+        let message = try await project(kind: "text", history: [
+            "local_message_id": "local", "original_created_at": "2026-08-01T00:00:00Z",
+        ])
+        XCTAssertEqual(message.createdAt, "2026-09-11T07:30:00Z")
+        XCTAssertNil(message.canonicalHistoryLocalMessageId)
+    }
+}
