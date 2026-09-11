@@ -1,4 +1,12 @@
 import { ChevronDown } from 'lucide-react';
+import type { ReactNode } from 'react';
+
+export function TranscriptNavigationControls({ children }: { children: ReactNode }) {
+  return <div
+    data-transcript-navigation-controls="true"
+    className="absolute bottom-4 right-8 z-20 flex flex-col items-end gap-3"
+  >{children}</div>;
+}
 
 export function TranscriptLatestButton({
   count,
@@ -12,7 +20,7 @@ export function TranscriptLatestButton({
     <button
       type="button"
       onClick={onClick}
-      className="absolute bottom-4 right-8 z-20 grid h-11 w-11 place-items-center rounded-full text-[color:var(--utility-foreground)] outline-none transition-transform duration-200 ease-out hover:scale-105 focus-visible:ring-2 focus-visible:ring-[color:var(--app-chat-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-main-bg)] active:scale-95"
+      className="relative grid h-11 w-11 place-items-center rounded-full text-[color:var(--utility-foreground)] outline-none transition-transform duration-200 ease-out hover:scale-105 focus-visible:ring-2 focus-visible:ring-[color:var(--app-chat-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-main-bg)] active:scale-95"
       aria-label={count > 0
         ? `Go to latest message, ${count} new message${count === 1 ? '' : 's'}`
         : 'Go to latest message'}

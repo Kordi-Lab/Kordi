@@ -8,6 +8,9 @@ import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import { threadMessage, type ThreadPage } from '../src/features/cloud/threadAttention';
 import type { CloudMessage } from '../src/features/cloud/authClient';
 import { useUnreadThreadNavigation } from '../src/pages/useUnreadThreadNavigation';
+import { useActiveThread, useThreadTranscript } from '../src/pages/useThreadMessageSummaries';
+import { threadRootSource } from '../src/features/chat/messageThreads';
+import { threadMessageAction } from '../src/features/chat/messageActionMetadata';
 import type { Message } from '../src/kordi-app/types';
 import { conversation } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
@@ -43,12 +46,19 @@ test('an unread thread renders pending replies below history through server ackn
     id: 'pending', role: 'user', text: 'Pending reply', time: '12:01',
     timestampMs: Date.parse('2026-01-01T12:01:00Z'), deliveryState: 'sending',
   };
-  function Harness({ localReplies }: { localReplies: Message[] }) {
+  function Harness({ localReplies, rootOutsidePage = false }: { localReplies: Message[]; rootOutsidePage?: boolean }) {
     const [activeRoot, open] = useState<string | null>(null);
     const navigation = useUnreadThreadNavigation(chat, 'viewer', open, activeRoot);
-    const thread = navigation.merge({ root: threadRoot, replies: localReplies });
+    const currentConversation = { ...chat, messages: [
+      ...(rootOutsidePage ? [{ id: 'recent-main', role: 'person' as const, text: 'Recent main message', time: '12:01' }] : [threadRoot]),
+      ...localReplies.map(message => ({ ...message, messageAction: threadMessageAction(threadRootSource(threadRoot, chat.id)!) })),
+    ] };
+    const { threadProjection } = useThreadTranscript(currentConversation, undefined, undefined, navigation.page?.thread);
+    const localThread = useActiveThread(activeRoot, threadProjection, threadProjection.mainMessages);
+    const thread = navigation.merge(localThread) ?? navigation.page?.thread;
     return <>
       <button onClick={() => void navigation.load('unread')}>Open unread thread</button>
+      {threadProjection.mainMessages.map(message => <div key={message.id} data-main-message-id={message.id} />)}
       <output data-loaded={navigation.page !== null}>
         {thread?.replies.map(message => <div key={message.id} data-reply-id={message.id}>
           {message.id === navigation.page?.first ? <span>New replies</span> : null}
@@ -79,6 +89,15 @@ test('an unread thread renders pending replies below history through server ackn
     const confirmed = { ...pending, conversationSequence: 21, deliveryState: 'sent' as const };
     await act(async () => root.render(<Harness localReplies={[...history, confirmed, second]} />));
     assert.deepEqual(order(), ['first', 'unread', 'pending', 'pending-second']);
+
+    // The older root and confirmed replies need not be in the bounded local page.
+    // Pending bubbles must still render without another API response or poll.
+    const started = performance.now();
+    await act(async () => root.render(<Harness rootOutsidePage localReplies={[pending, second]} />));
+    assert.deepEqual(order(), ['first', 'unread', 'pending', 'pending-second']);
+    assert.equal(pageRequest.mock.callCount(), 1);
+    assert.deepEqual([...host.querySelectorAll<HTMLElement>('[data-main-message-id]')].map(row => row.dataset.mainMessageId), ['recent-main']);
+    t.diagnostic(`Pending replies rendered in ${Math.round(performance.now() - started)}ms without polling`);
   } finally {
     await act(async () => root.unmount());
     __setSessionBackendForTests(null);

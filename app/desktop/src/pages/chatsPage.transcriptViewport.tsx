@@ -77,6 +77,7 @@ export function useChatTranscriptViewport({
     scrollRef,
     scrollClassName,
     unreadCount = 0,
+    navigationAccessory,
     onTranscriptScroll,
     hasOlderMessages = false,
     onLoadOlderMessages,
@@ -176,6 +177,7 @@ export function useChatTranscriptViewport({
       scrollRef={scrollRef}
       scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}
       unreadCount={unreadCount}
+      navigationAccessory={navigationAccessory}
       onScroll={() => onTranscriptScroll?.()}
       onTailChange={onTranscriptScroll}
       navigationRequest={navigationRequest}
@@ -348,5 +350,6 @@ export function useChatTranscriptViewport({
     timeSeparators,
     transcriptTailKey,
     unreadCount,
+    navigationAccessory,
   ]);
 }

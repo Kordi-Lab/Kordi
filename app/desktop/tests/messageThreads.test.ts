@@ -23,6 +23,37 @@ function message(id: string, text: string, action?: Message['messageAction']): M
   };
 }
 
+test('a remote thread root reveals a local pending reply outside the loaded history page', () => {
+  const root = message('remote-root', 'Older root');
+  const pending = {
+    ...message('pending-reply', 'Sending now', threadMessageAction(threadRootSource(root, 'session')!)),
+    deliveryState: 'sending' as const,
+  };
+  const recent = message('recent-main-message', 'Latest main message');
+  const projection = projectMessageThreads([recent, pending], [root]);
+  assert.deepEqual(projection.threads.get(root.id!)?.replies.map(reply => reply.id), ['pending-reply']);
+  assert.deepEqual(projection.mainMessages.map(row => row.id), ['recent-main-message']);
+});
+
+test('local thread roots take precedence over remote reference aliases', () => {
+  const remote = message('server-root', 'Older root text');
+  const local = { ...message('local-root', 'Updated root text'), reactionTargetMessageId: remote.id };
+  const pending = message('pending-reply', 'Sending now', threadMessageAction(threadRootSource(remote, 'session')!));
+  const projection = projectMessageThreads([local, pending], [remote]);
+  assert.equal(projection.threads.get(local.id!)?.root, local);
+  assert.deepEqual(projection.threads.get(local.id!)?.replies.map(reply => reply.id), ['pending-reply']);
+  assert.equal(projection.threads.has(remote.id!), false);
+});
+
+test('a local reply can resolve its parent from the remote thread page', () => {
+  const root = message('remote-root', 'Older root');
+  const parent = message('remote-reply', 'Earlier reply', threadMessageAction(threadRootSource(root, 'session')!));
+  const child = { ...message('new-reply', 'New response'), replyToMessageId: parent.id };
+  const projection = projectMessageThreads([child], [root, parent]);
+  assert.deepEqual(projection.threads.get(root.id!)?.replies.map(reply => reply.id), ['remote-reply', 'new-reply']);
+  assert.deepEqual(projection.mainMessages, []);
+});
+
 test('Agent turn roots render the existing discussion entry for owners and other members', () => {
   for (const role of ['owned-agent', 'external-agent'] as const) {
     const root: Message = { ...message('agent-root', ''), role, sender: 'Researcher', senderType: 'agent',
