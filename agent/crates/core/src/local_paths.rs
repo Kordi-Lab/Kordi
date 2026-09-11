@@ -43,7 +43,10 @@ mod tests {
                 Path::new("/home/test-owner/project")
             );
         }
-        assert_eq!(resolve_with_home(cwd, "~", home), home.unwrap());
+        assert_eq!(
+            resolve_with_home(cwd, "~", home),
+            Path::new("/home/test-owner")
+        );
         assert_eq!(
             resolve_with_home(cwd, "@./My Project/source.rs", home),
             cwd.join("./My Project/source.rs")
