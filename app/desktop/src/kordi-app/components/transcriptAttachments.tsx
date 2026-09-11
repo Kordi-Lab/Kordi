@@ -181,7 +181,7 @@ function AttachmentImageCard({
           previewAttachmentId: attachment.previewAttachmentId ?? null,
           name: attachment.name,
           kind: 'image',
-          mimeType: attachment.mimeType ?? null,
+          mimeType: attachment.mimeType ?? null, sizeBytes: attachment.sizeBytes, widthPixels: attachment.widthPixels, heightPixels: attachment.heightPixels,
         },
         signal: controller.signal,
       });

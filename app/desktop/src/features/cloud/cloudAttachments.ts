@@ -28,95 +28,21 @@ export { uploadComposerAttachments } from './cloudComposerAttachments';
 export { loadCloudAttachmentPreview } from './cloudAttachmentPreviewDownload';
 
 export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
-// Transcript virtualization mounts a viewport plus 12 rows of overscan on each side.
-// This bounds reusable idle cache entries. Active card and lightbox leases can keep
-// evicted Blob URLs alive beyond this count until those consumers release them.
-export const CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY = 128;
-
-type CloudAttachmentPreviewResource = {
-  previewUrl: string;
-  leaseCount: number;
-  cached: boolean;
-  revoked: boolean;
-};
-
-export type CloudAttachmentPreviewLease = {
-  previewUrl: string;
-  retain(): CloudAttachmentPreviewLease;
-  release(): void;
-};
-
-const cloudAttachmentPreviewUrlCache = new Map<string, CloudAttachmentPreviewResource>();
+import {
+  acquireCloudAttachmentPreviewLease,
+  cachedCloudAttachmentPreviewResource,
+  clearCloudAttachmentPreviewCache,
+  retainCloudAttachmentPreviewResource,
+  revokeCloudAttachmentPreviewUrl,
+  type CloudAttachmentPreviewLease,
+  type CloudAttachmentPreviewResource,
+} from './cloudAttachmentPreviewCache';
+export {
+  CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY,
+  CLOUD_ATTACHMENT_PREVIEW_CACHE_BYTES,
+  type CloudAttachmentPreviewLease,
+} from './cloudAttachmentPreviewCache';
 let cloudAttachmentPreviewLoaderEpoch = 0;
-
-function revokeCloudAttachmentPreviewUrl(previewUrl: string) {
-  if (previewUrl.startsWith('blob:')) URL.revokeObjectURL(previewUrl);
-}
-
-function revokeCloudAttachmentPreviewResource(resource: CloudAttachmentPreviewResource) {
-  if (resource.revoked) return;
-  resource.revoked = true;
-  revokeCloudAttachmentPreviewUrl(resource.previewUrl);
-}
-
-function revokeUnownedCloudAttachmentPreviewResource(resource: CloudAttachmentPreviewResource) {
-  if (!resource.cached && resource.leaseCount === 0) revokeCloudAttachmentPreviewResource(resource);
-}
-
-function cachedCloudAttachmentPreviewResource(cacheId: string) {
-  const resource = cloudAttachmentPreviewUrlCache.get(cacheId);
-  if (!resource || resource.revoked) return null;
-  cloudAttachmentPreviewUrlCache.delete(cacheId);
-  cloudAttachmentPreviewUrlCache.set(cacheId, resource);
-  return resource;
-}
-
-function retainCloudAttachmentPreviewResource(cacheId: string, previewUrl: string) {
-  const retainedResource = cachedCloudAttachmentPreviewResource(cacheId);
-  if (retainedResource) {
-    if (retainedResource.previewUrl !== previewUrl) revokeCloudAttachmentPreviewUrl(previewUrl);
-    return retainedResource;
-  }
-  const resource: CloudAttachmentPreviewResource = {
-    previewUrl,
-    leaseCount: 0,
-    cached: true,
-    revoked: false,
-  };
-  cloudAttachmentPreviewUrlCache.set(cacheId, resource);
-  if (cloudAttachmentPreviewUrlCache.size <= CLOUD_ATTACHMENT_PREVIEW_CACHE_CAPACITY) {
-    return resource;
-  }
-  const oldestCacheId = cloudAttachmentPreviewUrlCache.keys().next().value;
-  if (oldestCacheId !== undefined) {
-    const oldestResource = cloudAttachmentPreviewUrlCache.get(oldestCacheId);
-    cloudAttachmentPreviewUrlCache.delete(oldestCacheId);
-    if (oldestResource) {
-      oldestResource.cached = false;
-      revokeUnownedCloudAttachmentPreviewResource(oldestResource);
-    }
-  }
-  return resource;
-}
-
-function acquireCloudAttachmentPreviewLease(resource: CloudAttachmentPreviewResource): CloudAttachmentPreviewLease {
-  if (resource.revoked) throw abortError();
-  resource.leaseCount += 1;
-  let released = false;
-  return {
-    previewUrl: resource.previewUrl,
-    retain() {
-      if (released) throw new Error('Cannot retain a released attachment preview lease.');
-      return acquireCloudAttachmentPreviewLease(resource);
-    },
-    release() {
-      if (released) return;
-      released = true;
-      resource.leaseCount = Math.max(0, resource.leaseCount - 1);
-      revokeUnownedCloudAttachmentPreviewResource(resource);
-    },
-  };
-}
 
 type PreviewQueueTask<T> = {
   operation: (signal: AbortSignal) => Promise<T>;
@@ -268,29 +194,38 @@ export async function loadVisibleCloudAttachmentPreview(input: {
   const loaderEpoch = cloudAttachmentPreviewLoaderEpoch;
   const cached = cachedCloudAttachmentPreviewResource(cacheId);
   if (cached) return publishCloudAttachmentPreviewLease(cached, loaderEpoch, input.signal);
-  const resource = await visiblePreviewQueue.run(async (signal) => {
-    const cachedInsideQueue = cachedCloudAttachmentPreviewResource(cacheId);
-    if (cachedInsideQueue) return cachedInsideQueue;
-    const previewUrl = await loadCloudAttachmentPreview({ ...input, signal });
-    if (!previewUrl) return null;
-    if (signal.aborted) {
-      revokeCloudAttachmentPreviewUrl(previewUrl);
-      throw abortError();
-    }
-    return retainCloudAttachmentPreviewResource(cacheId, previewUrl);
-  }, input.signal);
-  if (!resource) return null;
-  return publishCloudAttachmentPreviewLease(resource, loaderEpoch, input.signal);
+  const producer = { lease: null as CloudAttachmentPreviewLease | null };
+  try {
+    const resource = await visiblePreviewQueue.run(async (signal) => {
+      let resource = cachedCloudAttachmentPreviewResource(cacheId);
+      if (!resource) {
+        let memoryCostBytes = 0;
+        const previewUrl = await loadCloudAttachmentPreview({
+          ...input, signal, onMemoryCost: (bytes) => { memoryCostBytes = bytes; },
+        });
+        if (!previewUrl) return null;
+        if (signal.aborted) {
+          revokeCloudAttachmentPreviewUrl(previewUrl);
+          throw abortError();
+        }
+        resource = retainCloudAttachmentPreviewResource(cacheId, previewUrl, memoryCostBytes);
+      }
+      // Protect results while queue completion hands them to the consumer,
+      // including simultaneous previews larger than the reusable budget.
+      producer.lease = acquireCloudAttachmentPreviewLease(resource);
+      return resource;
+    }, input.signal);
+    if (!resource) return null;
+    return await publishCloudAttachmentPreviewLease(resource, loaderEpoch, input.signal);
+  } finally {
+    producer.lease?.release();
+  }
 }
 
 export function resetCloudAttachmentPreviewLoader() {
   cloudAttachmentPreviewLoaderEpoch += 1;
   visiblePreviewQueue.clear();
-  for (const resource of cloudAttachmentPreviewUrlCache.values()) {
-    resource.cached = false;
-    revokeUnownedCloudAttachmentPreviewResource(resource);
-  }
-  cloudAttachmentPreviewUrlCache.clear();
+  clearCloudAttachmentPreviewCache();
 }
 
 export async function resolveCloudMessageAttachments({

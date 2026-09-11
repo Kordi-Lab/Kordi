@@ -1,76 +1,30 @@
 import { cloudMessageDeletions } from './cloudMessageDeletions';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { cloudSessionIdFromConversationId } from '@/features/collaboration/conversationIds';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
 import type { CloudAccount, CloudMessage } from './authClient';
 import {
-  buildCloudMessageIndex,
   type CloudMessageIndex,
 } from './cloudMessageIndex';
-import { compareCloudMessages } from './cloudMessageMerge';
+import { createCloudMessageIndexer } from './cloudMessageIndexer';
+import { canonicalRendererMessageIds, compactNativeCloudMessagesByPeer, NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER } from './cloudRendererRetention';
+import type { CanonicalSessionMessage } from '@/kordi-app/types';
+export { compactNativeCloudMessagesByPeer, NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER } from './cloudRendererRetention';
 import type { CloudCollaborationMessageStore } from './useCloudCollaborationStores';
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
 const EMPTY_SESSION_IDS: ReadonlySet<string> = new Set();
-export const NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER = 64;
-
-export function compactNativeCloudMessagesByPeer(
-  messagesByPeer: Record<string, CloudMessage[]>,
-  limit = NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER,
-  activeSessionId?: string | null,
-) {
-  let changed = false;
-  const compacted: Record<string, CloudMessage[]> = {};
-  for (const [peerId, messages] of Object.entries(messagesByPeer)) {
-    if (messages.length <= limit) {
-      compacted[peerId] = messages;
-      continue;
-    }
-    const ordered = [...messages].sort(compareCloudMessages);
-    const keptIds = new Set(
-      ordered.slice(-limit).map((message) => message.messageId),
-    );
-    const latestBySession = new Map<string, CloudMessage>();
-    const latestRouteBySession = new Map<string, CloudMessage>();
-    for (const message of ordered) {
-      const sessionKey = message.sessionId?.trim()
-        || message.conversationId?.trim()
-        || peerId;
-      if (activeSessionId && sessionKey === activeSessionId) {
-        keptIds.add(message.messageId);
-      }
-      latestBySession.set(sessionKey, message);
-      if (message.messageKind === 'agent-model-change') {
-        latestRouteBySession.set(sessionKey, message);
-      }
-      if (message.direction === 'outgoing' && !message.deliveredAt) {
-        keptIds.add(message.messageId);
-      }
-    }
-    for (const message of latestBySession.values()) keptIds.add(message.messageId);
-    for (const message of latestRouteBySession.values()) keptIds.add(message.messageId);
-    // ponytail: keep a 64-row peer tail plus session heads and pending rows;
-    // replace this compatibility window when every legacy hook reads SQLite.
-    const peerMessages = ordered.filter((message) => keptIds.has(message.messageId));
-    compacted[peerId] = peerMessages;
-    changed ||= peerMessages.length !== messages.length
-      || peerMessages.some((message, index) => message !== messages[index]);
-  }
-  return changed ? compacted : messagesByPeer;
-}
-
 type AccountMessageState = {
   accountId: string | null;
-  compacted: boolean;
-  fullMessagesByPeer: Record<string, CloudMessage[]>;
   messagesByPeer: Record<string, CloudMessage[]>;
 };
 
 export function useCloudCollaborationMessageStore(
   account: CloudAccount | null,
   activeConversationId?: string | null,
+  canonicalMessages?: readonly CanonicalSessionMessage[],
 ): CloudCollaborationMessageStore {
   const nativeShell = isNativeDesktopShell();
   const activeSessionId = activeConversationId
@@ -78,10 +32,11 @@ export function useCloudCollaborationMessageStore(
       ?? activeConversationId.trim()
     : null;
   const activeSessionIdRef = useRef(activeSessionId);
+  const requiredMessageIds = useMemo(() => canonicalRendererMessageIds(canonicalMessages), [canonicalMessages]);
+  const requiredMessageIdsRef = useRef(requiredMessageIds);
+  const liveAccountIdRef = useRef(account?.accountId ?? null);
   const [messageState, setMessageState] = useState<AccountMessageState>({
     accountId: null,
-    compacted: false,
-    fullMessagesByPeer: {},
     messagesByPeer: {},
   });
   const fullMessagesByPeerRef = useRef<Record<string, CloudMessage[]>>({});
@@ -102,34 +57,34 @@ export function useCloudCollaborationMessageStore(
     CloudCollaborationMessageStore['setValue']
   >((update) => {
     const accountId = account?.accountId ?? null;
+    if (liveAccountIdRef.current !== accountId) return;
     const current = fullMessagesAccountIdRef.current === accountId
       ? fullMessagesByPeerRef.current
       : {};
     const next = cloudMessageDeletions.filter(accountId, typeof update === 'function' ? update(current) : update);
     fullMessagesAccountIdRef.current = accountId;
-    fullMessagesByPeerRef.current = next;
     const rendererValue = nativeShell && rendererCompactedRef.current
       ? compactNativeCloudMessagesByPeer(
           next,
           NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER,
           activeSessionIdRef.current,
+          undefined, requiredMessageIdsRef.current,
         )
       : next;
+    fullMessagesByPeerRef.current = rendererValue;
     setMessageState((published) => (
       published.accountId === accountId
-      && published.fullMessagesByPeer === next
       && published.messagesByPeer === rendererValue
         ? published
         : {
             accountId,
-            compacted: nativeShell && rendererCompactedRef.current,
-            fullMessagesByPeer: next,
             messagesByPeer: rendererValue,
           }
     ));
   }, [account?.accountId, nativeShell]);
   const compactRendererValue = useCallback(() => {
     if (!nativeShell || rendererCompactedRef.current) return;
+    if (liveAccountIdRef.current !== (account?.accountId ?? null)) return;
     rendererCompactedRef.current = true;
     const accountId = account?.accountId ?? null;
     const rendererValue = compactNativeCloudMessagesByPeer(
@@ -138,22 +93,22 @@ export function useCloudCollaborationMessageStore(
         : {},
       NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER,
       activeSessionIdRef.current,
+      undefined, requiredMessageIdsRef.current,
     );
+    fullMessagesByPeerRef.current = rendererValue;
     setMessageState((current) => (
       current.accountId === accountId
       && current.messagesByPeer === rendererValue
         ? current
         : {
             accountId,
-            compacted: true,
-            fullMessagesByPeer: fullMessagesByPeerRef.current,
             messagesByPeer: rendererValue,
           }
     ));
   }, [account?.accountId, nativeShell]);
   const markRecoverySettled = useCallback((kind: 'group' | 'selfAgent') => {
     const accountId = account?.accountId ?? null;
-    if (!accountId) return;
+    if (!accountId || liveAccountIdRef.current !== accountId) return;
     const current = recoveryBarrierRef.current.accountId === accountId
       ? recoveryBarrierRef.current
       : { accountId, group: false, selfAgent: false };
@@ -199,9 +154,11 @@ export function useCloudCollaborationMessageStore(
     () => markRecoverySettled('selfAgent'),
     [markRecoverySettled],
   );
-  useEffect(() => {
+  useLayoutEffect(() => {
     activeSessionIdRef.current = activeSessionId;
-  }, [activeSessionId]);
+    liveAccountIdRef.current = account?.accountId ?? null;
+    requiredMessageIdsRef.current = requiredMessageIds;
+  }, [activeSessionId, account?.accountId, requiredMessageIds]);
   useEffect(() => {
     rendererCompactedRef.current = false;
     recoveryBarrierRef.current = {
@@ -218,25 +175,17 @@ export function useCloudCollaborationMessageStore(
   const belongsToCurrentAccount = Boolean(
     account?.accountId && messageState.accountId === account.accountId,
   );
-  const currentAccountMessagesByPeer = useMemo(() => {
-    if (!belongsToCurrentAccount) return EMPTY_CLOUD_MESSAGES_BY_PEER;
-    if (!nativeShell || !messageState.compacted) return messagesByPeer;
-    return compactNativeCloudMessagesByPeer(
-      messageState.fullMessagesByPeer,
-      NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER,
-      activeSessionId,
-    );
-  }, [activeSessionId, belongsToCurrentAccount, messageState, messagesByPeer, nativeShell]);
-  const fullCurrentAccountMessagesByPeer = belongsToCurrentAccount
-    ? messageState.fullMessagesByPeer
+  const currentAccountMessagesByPeer = belongsToCurrentAccount
+    ? messagesByPeer
     : EMPTY_CLOUD_MESSAGES_BY_PEER;
   const indexRef = useRef<CloudMessageIndex>(null!);
+  const indexMessages = useMemo(
+    () => createCloudMessageIndexer(account?.accountId),
+    [account?.accountId],
+  );
   const index = useMemo(
-    () => buildCloudMessageIndex(
-      account?.accountId ?? null,
-      currentAccountMessagesByPeer,
-    ),
-    [account?.accountId, currentAccountMessagesByPeer],
+    () => indexMessages(currentAccountMessagesByPeer),
+    [indexMessages, currentAccountMessagesByPeer],
   );
   useEffect(() => {
     indexRef.current = index;
@@ -265,7 +214,7 @@ export function useCloudCollaborationMessageStore(
     onSelfAgentRecoverySettled,
     pendingGroupProjectionSessionIds,
     currentAccountValue: currentAccountMessagesByPeer,
-    fullCurrentAccountValue: fullCurrentAccountMessagesByPeer,
+    fullCurrentAccountValue: currentAccountMessagesByPeer,
     belongsToCurrentAccount,
     index,
     indexRef,

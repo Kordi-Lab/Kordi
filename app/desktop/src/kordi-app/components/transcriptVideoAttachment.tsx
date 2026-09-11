@@ -202,12 +202,13 @@ export function AttachmentVideoCard({
           previewAttachmentId: attachment.previewAttachmentId ?? null,
           name: attachment.name,
           kind: attachment.kind,
-          mimeType: attachment.mimeType ?? null,
+          mimeType: attachment.mimeType ?? null, sizeBytes: attachment.sizeBytes, widthPixels: attachment.widthPixels, heightPixels: attachment.heightPixels,
         },
         signal: controller.signal,
       })
         .catch(() => null);
-      if (!loaded || controller.signal.aborted) return;
+      if (!loaded) return;
+      if (controller.signal.aborted) { loaded.release(); return; }
       previewLease = loaded;
       const dimensions = await imagePixelDimensionsFromUrl(loaded.previewUrl);
       if (controller.signal.aborted || !dimensions) return;
@@ -222,6 +223,7 @@ export function AttachmentVideoCard({
     attachment.mimeType,
     attachment.name,
     attachment.previewAttachmentId,
+    attachment.sizeBytes, attachment.widthPixels, attachment.heightPixels,
     attachmentId,
     directPosterUrl,
     rememberPresentation,

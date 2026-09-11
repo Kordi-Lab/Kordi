@@ -207,7 +207,7 @@ export function useCloudCollaborationState({
       defaultCloudGroupOutboxPersistence(accountId),
     )
     : null, [accountId]);
-  const messageStore = useCloudCollaborationMessageStore(account, activeConversationId);
+  const messageStore = useCloudCollaborationMessageStore(account, activeConversationId, canonicalSessionState?.messages);
   const stores = useCloudCollaborationStores({
     account,
     canonicalState: canonicalSessionState,

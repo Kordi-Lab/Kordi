@@ -102,7 +102,7 @@ export function useRecoveredCloudGroupReplay({
   });
   const bootstrapRef = useRef<{
     accountId: string;
-    value: Awaited<ReturnType<CloudAuthClient['bootstrapChatSync']>>;
+    value: Pick<Awaited<ReturnType<CloudAuthClient['bootstrapChatSync']>>, 'conversations'>;
   } | null>(null);
   const [remoteCatalogAccountId, setRemoteCatalogAccountId] = useState<string | null>(null);
   const [activePageKey, setActivePageKey] = useState<string | null>(null);
@@ -125,7 +125,7 @@ export function useRecoveredCloudGroupReplay({
         if (!cloudSession?.token || !active) return;
         const bootstrap = await client.bootstrapChatSync(cloudSession.token);
         if (!active) return;
-        bootstrapRef.current = { accountId, value: bootstrap };
+        bootstrapRef.current = { accountId, value: { conversations: bootstrap.conversations } };
         const groupConversations = bootstrap.conversations.filter(
           (conversation) => conversation.kind === 'group',
         );
