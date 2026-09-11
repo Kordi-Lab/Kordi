@@ -20,9 +20,6 @@ pub(crate) struct ExpandedInputFiles {
     pub warnings: Vec<String>,
 }
 
-mod workspace;
-pub(crate) use workspace::referenced_workspace;
-
 pub(crate) fn expand_at_file_references(text: &str, cwd: &Path) -> ExpandedInputFiles {
     let mut out = String::new();
     let mut warnings = Vec::new();
@@ -381,7 +378,7 @@ fn dedupe_preserve_order(items: Vec<String>) -> Vec<String> {
     out
 }
 
-fn is_at_reference_boundary(text: &str, at_pos: usize) -> bool {
+pub(crate) fn is_at_reference_boundary(text: &str, at_pos: usize) -> bool {
     if at_pos == 0 {
         return true;
     }
@@ -392,7 +389,7 @@ fn is_at_reference_boundary(text: &str, at_pos: usize) -> bool {
         .unwrap_or(true)
 }
 
-fn parse_at_reference(text: &str, at_pos: usize, cwd: &Path) -> Option<(usize, String)> {
+pub(crate) fn parse_at_reference(text: &str, at_pos: usize, cwd: &Path) -> Option<(usize, String)> {
     let rest = text.get(at_pos + 1..)?;
     let mut chars = rest.char_indices();
     let (_, first) = chars.next()?;

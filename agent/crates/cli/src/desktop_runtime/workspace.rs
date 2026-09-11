@@ -11,6 +11,10 @@ use super::{
     ensure_session_row_created, load_project_info,
 };
 
+#[path = "workspace_references.rs"]
+mod references;
+pub(super) use references::referenced_workspace;
+
 const WORKSPACE_ENTRY: &str = "desktop_execution_workspace";
 
 impl DesktopRuntimeSession {
@@ -47,7 +51,7 @@ impl DesktopRuntimeSession {
         let previous = self
             .saved_execution_workspace()?
             .unwrap_or_else(|| self.setup.tool_ctx.cwd.clone());
-        let selected = crate::input_files::referenced_workspace(prompt, &previous);
+        let selected = referenced_workspace(prompt, &previous);
         let workspace = selected.as_ref().unwrap_or(&previous);
         if !workspace.is_dir() {
             bail!(

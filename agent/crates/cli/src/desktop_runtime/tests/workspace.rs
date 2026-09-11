@@ -77,19 +77,18 @@ fn directory_selection_is_unambiguous_and_does_not_consume_people_or_files() -> 
     std::fs::create_dir_all(&second)?;
     std::fs::write(root.path().join("file.txt"), "fixture")?;
     assert_eq!(
-        crate::input_files::referenced_workspace("@Owner @\"./project one\" inspect", root.path()),
+        super::workspace::referenced_workspace("@Owner @\"./project one\" inspect", root.path()),
         Some(std::fs::canonicalize(&first)?)
     );
     assert!(
-        crate::input_files::referenced_workspace(
+        super::workspace::referenced_workspace(
             "compare @\"./project one\" @./project-two",
             root.path()
         )
         .is_none()
     );
     assert!(
-        crate::input_files::referenced_workspace("@Owner inspect @./file.txt", root.path())
-            .is_none()
+        super::workspace::referenced_workspace("@Owner inspect @./file.txt", root.path()).is_none()
     );
     Ok(())
 }
