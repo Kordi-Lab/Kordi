@@ -44,6 +44,13 @@ const account: CloudAccount = {
   passwordSet: true,
 };
 
+test('agent mention stripping preserves complete local resource references', () => {
+  for (const reference of ['@~/project', '@/tmp/project', '@./project', '@src/project', '@"~/My Project"', '@README.md']) {
+    assert.equal(promptTextForCloudAgentMention(`@Owner ${reference} inspect`), `${reference} inspect`);
+  }
+  assert.equal(promptTextForCloudAgentMention('@Owner inspect person@example.com'), 'inspect person@example.com');
+});
+
 test('cloud fallback status labels stay visually close to normal online turns', () => {
   assert.equal(cloudAgentFallbackStatusLabel('queued'), 'Requesting…');
   assert.equal(cloudAgentFallbackStatusLabel('leased'), 'Requesting…');

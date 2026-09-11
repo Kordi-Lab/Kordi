@@ -88,17 +88,14 @@ impl DesktopRuntimeSession {
         self.refresh_saved_agent_persona();
         self.freeze_identity_prompt()?;
         let execution_policy = self.turn_execution_policy()?;
+        let workspace = self.execution_workspace(&prompt, execution_policy)?;
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() && attachment_paths.is_empty() {
             bail!("Message cannot be empty");
         }
 
-        let expanded = expand_prompt_for_policy(
-            &prompt,
-            &attachment_paths,
-            &self.setup.tool_ctx.cwd,
-            execution_policy,
-        )?;
+        let expanded =
+            expand_prompt_for_policy(&prompt, &attachment_paths, &workspace, execution_policy)?;
         let prompt_text = expanded.text.trim().to_string();
         if prompt_text.is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
@@ -126,14 +123,10 @@ impl DesktopRuntimeSession {
         let attachment_context_text = if non_image_attachment_paths.is_empty() {
             String::new()
         } else {
-            expand_prompt_with_attachment_paths(
-                "",
-                &non_image_attachment_paths,
-                &self.setup.tool_ctx.cwd,
-            )
-            .text
-            .trim()
-            .to_string()
+            expand_prompt_with_attachment_paths("", &non_image_attachment_paths, &workspace)
+                .text
+                .trim()
+                .to_string()
         };
 
         ensure_session_row_created(&mut self.setup)?;
@@ -192,7 +185,8 @@ impl DesktopRuntimeSession {
         refresh_provider_runtime_fields(&mut self.setup);
 
         let scoped = self.has_shared_observation_scope()?;
-        let turn_config = build_turn_config(&mut self.setup, cancel, execution_policy, scoped)?;
+        let turn_config =
+            build_turn_config(&mut self.setup, cancel, execution_policy, scoped, workspace)?;
         let (turn_event_tx, turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
         let handle =
             tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
@@ -240,6 +234,7 @@ fn build_turn_config(
     cancel: tokio_util::sync::CancellationToken,
     execution_policy: kordi_tools::ExecutionPolicy,
     shared_scope: bool,
+    workspace: std::path::PathBuf,
 ) -> Result<TurnConfig> {
     let sibling_conn = if let Some(conn) = setup.sibling_conn.clone() {
         conn
@@ -259,7 +254,12 @@ fn build_turn_config(
     Ok(TurnConfig {
         conn: sibling_conn,
         session_id: setup.session_id.clone(),
-        system_prompt: setup.system_prompt.clone(),
+        system_prompt: super::workspace::environment_prompt(
+            &setup.system_prompt,
+            &workspace,
+            execution_policy,
+            setup.tool_ctx.session_observation.is_some(),
+        ),
         model: setup.model.clone(),
         provider: setup.provider.clone(),
         auth: setup.auth.clone(),
@@ -273,7 +273,7 @@ fn build_turn_config(
         },
         tool_registry,
         tool_ctx: kordi_tools::ToolContext {
-            cwd: setup.tool_ctx.cwd.clone(),
+            cwd: workspace,
             artifacts_dir: setup.tool_ctx.artifacts_dir.clone(),
             model: None,
             execution_policy,

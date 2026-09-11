@@ -9,6 +9,7 @@ mod diff;
 pub mod edit;
 pub mod find;
 pub mod grep;
+pub mod local_app;
 pub mod ls;
 pub mod metadata;
 pub(crate) mod path;

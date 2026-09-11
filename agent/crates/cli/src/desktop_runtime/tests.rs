@@ -5,6 +5,8 @@ use std::sync::Mutex;
 include!("tests/route_switch.rs");
 include!("tests/background_sessions.rs");
 include!("tests/persona.rs");
+include!("tests/workspace.rs");
+include!("tests/live_local_tools.rs");
 fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
     model_options::effective_thinking_for_model_with_auth(requested, model, None)
 }
@@ -13,44 +15,7 @@ fn request_thinking_for_model(thinking_level: &str, model: &Model) -> Option<Str
     model_options::request_thinking_for_model_with_auth(thinking_level, model, None)
 }
 
-fn env_lock() -> &'static Mutex<()> {
-    crate::login::auth_test_env_lock()
-}
-
-struct EnvVarGuard {
-    key: &'static str,
-    old: Option<std::ffi::OsString>,
-}
-
-impl EnvVarGuard {
-    fn set_value(key: &'static str, value: &str) -> Self {
-        let old = std::env::var_os(key);
-        unsafe { std::env::set_var(key, value) };
-        Self { key, old }
-    }
-
-    fn set_path(key: &'static str, value: &std::path::Path) -> Self {
-        let old = std::env::var_os(key);
-        unsafe { std::env::set_var(key, value) };
-        Self { key, old }
-    }
-
-    fn unset(key: &'static str) -> Self {
-        let old = std::env::var_os(key);
-        unsafe { std::env::remove_var(key) };
-        Self { key, old }
-    }
-}
-
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        if let Some(value) = &self.old {
-            unsafe { std::env::set_var(self.key, value) };
-        } else {
-            unsafe { std::env::remove_var(self.key) };
-        }
-    }
-}
+include!("tests/environment.rs");
 
 fn local_provider_settings(provider: &str, base_url: &str) -> Settings {
     Settings {

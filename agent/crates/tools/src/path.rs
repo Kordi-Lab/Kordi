@@ -6,13 +6,7 @@ use kordi_core::error::{KordiError, KordiResult};
 use crate::ToolContext;
 
 pub(crate) fn resolve_path(cwd: &Path, path_str: &str) -> PathBuf {
-    let path_str = path_str.strip_prefix('@').unwrap_or(path_str);
-    let path = Path::new(path_str);
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        cwd.join(path)
-    }
+    kordi_core::local_paths::resolve_local_path(cwd, path_str)
 }
 
 pub(crate) fn ensure_write_allowed(

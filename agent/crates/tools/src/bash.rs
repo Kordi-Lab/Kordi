@@ -1,3 +1,4 @@
+mod options;
 mod output;
 mod process;
 mod safety;
@@ -41,15 +42,7 @@ impl Tool for BashTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "command": { "type": "string", "description": "Bash command to execute" },
-                "timeout": { "type": "number", "description": "Timeout in seconds (optional, no default timeout)" },
-                "raw": { "type": "boolean", "description": "Bypass optional RTK output optimization and return raw command output (default: false)" }
-            },
-            "required": ["command"]
-        })
+        options::schema()
     }
 
     fn metadata(&self) -> ToolMetadata {
@@ -57,13 +50,15 @@ impl Tool for BashTool {
     }
 
     fn scheduling(&self, params: &Value, _ctx: &ToolContext) -> ToolScheduling {
-        let Some(command) = params.get("command").and_then(|value| value.as_str()) else {
-            return ToolScheduling::MutatingUnknown;
-        };
-
-        match classify_bash_command(command).disposition {
-            BashSafetyDisposition::Safe => ToolScheduling::ReadOnly,
-            BashSafetyDisposition::ApprovalRequired => ToolScheduling::MutatingUnknown,
+        match params
+            .get("command")
+            .and_then(Value::as_str)
+            .map(classify_bash_command)
+        {
+            Some(safety) if safety.disposition == BashSafetyDisposition::Safe => {
+                ToolScheduling::ReadOnly
+            }
+            _ => ToolScheduling::MutatingUnknown,
         }
     }
 
@@ -73,18 +68,13 @@ impl Tool for BashTool {
         ctx: &ToolContext,
         cancel: CancellationToken,
     ) -> KordiResult<ToolResult> {
+        let workdir = options::resolve(&params, ctx)?;
         let command = params
             .get("command")
             .and_then(|v| v.as_str())
             .ok_or_else(|| KordiError::Tool("Missing 'command' parameter".into()))?;
 
-        let timeout_raw = params.get("timeout").and_then(|v| v.as_f64());
-        if let Some(timeout) = timeout_raw
-            && (!timeout.is_finite() || timeout <= 0.0)
-        {
-            return Err(KordiError::Tool("bash timeout must be > 0".into()));
-        }
-        let timeout_secs = timeout_raw.map(std::time::Duration::from_secs_f64);
+        let timeout_secs = options::timeout(&params)?;
         let raw_output = params.get("raw").and_then(|v| v.as_bool()).unwrap_or(false);
 
         let safety = classify_bash_command(command);
@@ -110,7 +100,7 @@ impl Tool for BashTool {
             output_optimization,
             #[cfg(unix)]
             process_group_id,
-        } = match spawn_bash_process(command, raw_output, ctx, safety_context).await {
+        } = match spawn_bash_process(command, raw_output, ctx, &workdir, safety_context).await {
             Ok(process) => process,
             Err(result) => return Ok(*result),
         };
@@ -272,19 +262,22 @@ impl Tool for BashTool {
 
         let stored_output = store_bash_output(&output, &ctx.artifacts_dir);
 
+        let mut details = build_details(BashResultDetails {
+            command,
+            exit_code,
+            cancelled,
+            timed_out,
+            truncated: stored_output.truncated,
+            safety: safety_context,
+            sandbox_backend,
+            sandbox_failure: sandbox_failure.as_ref(),
+            output_optimization,
+        });
+        details["executionLocation"] = json!("local");
+        details["workingDirectory"] = json!(workdir);
         Ok(text_result_with(
             stored_output.output,
-            Some(build_details(BashResultDetails {
-                command,
-                exit_code,
-                cancelled,
-                timed_out,
-                truncated: stored_output.truncated,
-                safety: safety_context,
-                sandbox_backend,
-                sandbox_failure: sandbox_failure.as_ref(),
-                output_optimization,
-            })),
+            Some(details),
             cancelled || exit_code.map(|c| c != 0).unwrap_or(true),
             stored_output.artifact_path,
         ))
@@ -372,6 +365,8 @@ mod tests {
             })),
         }
     }
+
+    include!("bash/workdir_tests.rs");
 
     #[tokio::test]
     async fn bash_collects_stdout_and_stderr_without_deadlock() {
