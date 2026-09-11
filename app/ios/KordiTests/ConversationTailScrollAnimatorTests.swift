@@ -30,6 +30,30 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(20))
     }
 
+    func testStableIntermediateGeometryCannotRevealDuringKeyboardTransition() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer {
+            animator.disconnect()
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        await settle()
+        var revealed = false
+        // Keep the transition active while several identical frames are sampled.
+        animator.keyboardWillAnimate(until: CACurrentMediaTime() + 30)
+        animator.request(in: scroll, animated: false, reduceMotion: false) { revealed = true }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(revealed, "Stable bounds alone do not mean the keyboard has finished moving")
+        animator.keyboardWillAnimate(until: CACurrentMediaTime())
+        for _ in 0..<50 {
+            if revealed { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(revealed, "The row should reveal once the transition and geometry have settled")
+    }
+
     func testSendCommitsMeasuredTailAndUsesOnePresentationAnimation() async throws {
         let scroll = scrollView()
         let window = try mount(scroll)

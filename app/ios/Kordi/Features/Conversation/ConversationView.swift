@@ -3529,6 +3529,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                 let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0
                 let curve = notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 0
                 self.keyboardAnimationDeadline = now + duration
+                self.tailAnimator.keyboardWillAnimate(until: self.keyboardAnimationDeadline)
                 self.keyboardResizeDeadline = now + max(duration, 0.1) + 0.1
                 self.keyboardAnimationOptions = [.beginFromCurrentState, .allowUserInteraction,
                     UIView.AnimationOptions(rawValue: curve << 16)]

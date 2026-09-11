@@ -127,7 +127,12 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         var positions: [CGFloat] = []
         var composerGaps: [CGFloat] = []
         var bubbleFrames: [CGRect] = []
-        for _ in 0..<45 {
+        // Bound readiness separately from measurement. A cold debug simulator
+        // may spend time in layout before it can produce the first visible frame.
+        // Keep observing for 450 ms after reveal so the spatial checks never
+        // pass with only the last couple of frames of a keyboard transition.
+        let revealDeadline = sendTime + 5
+        while CACurrentMediaTime() < (firstVisibleTime.map { $0 + 0.45 } ?? revealDeadline) {
             try await Task.sleep(for: .milliseconds(10))
             if let last = model.messages(for: conversation).last, last.text == draft,
                let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: last), in: window) {

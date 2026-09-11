@@ -19,6 +19,7 @@ final class ConversationTailScrollAnimator: NSObject {
     private var positionedCompletion: (() -> Void)?
     private var positioningDisplayLink: CADisplayLink?
     private var previousGeometry: PositionedGeometry?
+    private var keyboardAnimationDeadline: CFTimeInterval = 0
 
     private struct PositionedGeometry: Equatable {
         let contentSize: CGSize
@@ -31,6 +32,11 @@ final class ConversationTailScrollAnimator: NSObject {
     }
 
     var hasPendingRequest: Bool { pendingFromY != nil }
+
+    func keyboardWillAnimate(until deadline: CFTimeInterval) {
+        keyboardAnimationDeadline = deadline
+        previousGeometry = nil
+    }
 
     func request(in scrollView: UIScrollView, contentView: UIView? = nil, animated: Bool, reduceMotion: Bool, onPositioned: (() -> Void)? = nil) {
         attach(to: scrollView)
@@ -65,6 +71,7 @@ final class ConversationTailScrollAnimator: NSObject {
 
     func disconnect() {
         cancel()
+        keyboardAnimationDeadline = 0
         scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(userDidPan))
         sizeObservation = nil
         scrollView = nil
@@ -81,7 +88,10 @@ final class ConversationTailScrollAnimator: NSObject {
 
     private func attach(to scrollView: UIScrollView) {
         guard self.scrollView !== scrollView else { return }
+        // The keyboard notification may precede the first scroll request.
+        let pendingKeyboardDeadline = keyboardAnimationDeadline
         disconnect()
+        keyboardAnimationDeadline = pendingKeyboardDeadline
         self.scrollView = scrollView
         scrollView.panGestureRecognizer.addTarget(self, action: #selector(userDidPan))
         sizeObservation = scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] view, change in
@@ -161,6 +171,12 @@ final class ConversationTailScrollAnimator: NSObject {
         let targetY = Self.targetOffset(in: scrollView)
         UIView.performWithoutAnimation {
             scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+        }
+        // Presentation geometry can repeat between frames while the keyboard
+        // animation is still active. Do not reveal from an intermediate pause.
+        guard CACurrentMediaTime() >= keyboardAnimationDeadline else {
+            previousGeometry = nil
+            return
         }
         let geometry = positionedGeometry(in: scrollView)
         if previousGeometry == geometry, abs(scrollView.contentOffset.y - targetY) < 0.5 {
