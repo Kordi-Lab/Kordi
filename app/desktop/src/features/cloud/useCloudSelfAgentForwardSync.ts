@@ -198,8 +198,16 @@ export function useCloudSelfAgentForwardSync({
         if (!session?.token || cancelledRef.current) return;
         const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
 
-        const pendingRecoverySessionIds =
-          loadCloudSelfAgentRecoverySessionIds(account.accountId);
+        const syncedSessionIds = cloudSyncedLocalAgentSessionIds(latestState);
+        const activeSessionIds = new Set(latestState.sessions
+          .filter((item) => item.status === 'active' && syncedSessionIds.has(item.id))
+          .map((item) => item.id));
+        // An interrupted upload can outlive its session. Do not let obsolete
+        // recovery intent abort synchronization for the remaining active chats.
+        const pendingRecoverySessionIds = new Set(
+          [...loadCloudSelfAgentRecoverySessionIds(account.accountId)]
+            .filter((id) => activeSessionIds.has(id)),
+        );
         const identitySyncedSessionIds = cloudAgentIdentitySyncedSessionIds(
           latestState,
           initialLedger,

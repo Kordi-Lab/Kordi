@@ -8,7 +8,7 @@ import type { CloudAccount, CloudAuthClient, ChatSyncConversation, ChatSyncMessa
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import { useCloudSelfAgentForwardSync } from '../src/features/cloud/useCloudSelfAgentForwardSync';
-import { loadCloudSelfAgentRecoverySessionIds, loadCloudSelfAgentSyncLedger } from '../src/features/cloud/cloudSelfAgentForwardSync';
+import { loadCloudSelfAgentRecoverySessionIds, loadCloudSelfAgentSyncLedger, saveCloudSelfAgentRecoverySessionIds } from '../src/features/cloud/cloudSelfAgentForwardSync';
 import { parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { chatTextContent } from '../src/features/cloud/chatSyncMapping';
 
@@ -30,25 +30,34 @@ const remoteRequest = {
 } as ChatSyncMessage;
 
 async function runSync({
-  localMessages, remoteMessages, failRead = false, passes = 1,
+  localMessages, remoteMessages, failRead = false, passes = 1, pendingRecovery,
 }: {
   localMessages: CanonicalSessionMessage[];
   remoteMessages: ChatSyncMessage[];
   failRead?: boolean;
   passes?: number;
+  pendingRecovery?: 'removed' | 'archived';
 }) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   const globals = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(globals)) Object.defineProperty(globalThis, key, { value, configurable: true });
   const state = {
-    sessions: [{ id: sessionId, kind: 'self-agent', status: 'active', title: 'Synthetic history' }],
+    sessions: [
+      { id: sessionId, kind: 'self-agent', status: 'active', title: 'Synthetic history' },
+      ...(pendingRecovery === 'archived' ? [{
+        id: 'session:agent:obsolete', kind: 'self-agent', status: 'archived', title: 'Archived history',
+      }] : []),
+    ],
     identities: [], participants: [], profile: { id: 'synthetic' }, messages: localMessages,
   } as unknown as CanonicalSessionState;
   const sent: Array<{ body: string; options: unknown }> = [];
   const errors: unknown[] = [];
   let reads = 0;
   let finish!: () => void;
+  if (pendingRecovery) {
+    saveCloudSelfAgentRecoverySessionIds('me', new Set(['session:agent:obsolete']));
+  }
   __setSessionBackendForTests({
     load: async () => ({ token: 'synthetic', accountId: 'me', expiresAt: '2099-01-01T00:00:00Z' }),
     save: async () => {}, clear: async () => {},
@@ -162,3 +171,14 @@ test('an authoritative empty history still recovers the missing local request', 
   assert.equal(result.sent[0].body, request.contentText);
   assert.equal(result.pending.size, 0);
 });
+
+for (const pendingRecovery of ['removed', 'archived'] as const) {
+  test(`unfinished recovery for ${pendingRecovery} sessions cannot block an active session`, async () => {
+    const result = await runSync({ localMessages: [request], remoteMessages: [], pendingRecovery });
+    assert.deepEqual(result.errors, []);
+    assert.equal(result.reads, 1);
+    assert.equal(result.sent.length, 1);
+    assert.equal(result.sent[0].body, request.contentText);
+    assert.equal(result.pending.size, 0);
+  });
+}
