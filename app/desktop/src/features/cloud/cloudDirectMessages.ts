@@ -67,7 +67,9 @@ export function parseCloudDirectMessageEnvelope(body: string): CloudDirectMessag
 }
 
 export function cloudDirectMessageDisplayText(body: string): string {
-  return parseCloudDirectMessageEnvelope(body)?.text ?? body;
+  const envelope = parseCloudDirectMessageEnvelope(body);
+  if (envelope) return envelope.text;
+  return body.startsWith(CLOUD_DIRECT_MESSAGE_PREFIX) ? 'Unable to display this message.' : body;
 }
 
 export function cloudDirectMessageAction(body: string): MessageActionMetadata | null {

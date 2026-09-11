@@ -18,12 +18,12 @@ import {
   createCanonicalStore,
   failCanonicalSessionHydration,
   mergeCanonicalCatalog,
-  mergeCanonicalMessagePage,
+  mergeCanonicalMessagePage, compareCanonicalMessages,
   retainCanonicalSessionPages,
   type CanonicalStore,
 } from '@/features/canonical/canonicalStore';
 import type {
-  CanonicalMessagePage,
+  CanonicalMessagePage, CanonicalTimelineCursor,
   CanonicalSessionState,
   DesktopCollaborationState,
 } from '@/kordi-app/types';
@@ -170,6 +170,7 @@ export function useKordiCanonicalSessionStore({
     sessionId: string,
     options: {
       beforeSequenceNum?: number | null;
+      beforeTimeline?: CanonicalTimelineCursor | null;
       force?: boolean;
     } = {},
   ) => {
@@ -183,8 +184,13 @@ export function useKordiCanonicalSessionStore({
     );
     const retained = new Set(recentPageSessionIdsRef.current);
     const beforeSequenceNum = options.beforeSequenceNum ?? null;
+    const beforeTimeline = options.beforeTimeline ? {
+      id: options.beforeTimeline.id, createdAtMs: options.beforeTimeline.createdAtMs,
+      sequenceNum: options.beforeTimeline.sequenceNum,
+    } : null;
+    const isLatestPage = beforeTimeline === null && beforeSequenceNum === null;
     const flightKey =
-      `${normalizedSessionId}:${beforeSequenceNum ?? 'latest'}`;
+      JSON.stringify([normalizedSessionId, beforeTimeline, beforeSequenceNum]);
     const existingFlight = pageFlightsRef.current.get(flightKey);
     if (existingFlight) return existingFlight;
     const currentStore = storeRef.current;
@@ -192,7 +198,7 @@ export function useKordiCanonicalSessionStore({
       currentStore.hydrationBySessionId[normalizedSessionId]
       ?? 'cold';
     if (
-      beforeSequenceNum === null
+      isLatestPage
       && hydration === 'ready'
       && !options.force
     ) {
@@ -200,7 +206,7 @@ export function useKordiCanonicalSessionStore({
       return Promise.resolve(null);
     }
 
-    if (beforeSequenceNum === null) {
+    if (isLatestPage && hydration !== 'ready') {
       updateStore((current) => retainCanonicalSessionPages(
         beginCanonicalSessionHydration(current, normalizedSessionId),
         retained,
@@ -210,17 +216,18 @@ export function useKordiCanonicalSessionStore({
       normalizedSessionId,
       beforeSequenceNum,
       CANONICAL_MESSAGE_PAGE_SIZE,
+      beforeTimeline || beforeSequenceNum === null ? { before: beforeTimeline } : undefined,
     )
       .then((page) => {
         if (!page) return null;
         updateStore((current) => retainCanonicalSessionPages(
-          mergeCanonicalMessagePage(current, page),
+          mergeCanonicalMessagePage(current, { ...page, replaceWindow: hydration !== 'ready' && isLatestPage }),
           new Set(recentPageSessionIdsRef.current),
         ));
         return page;
       })
       .catch((error) => {
-        if (beforeSequenceNum === null) {
+        if (isLatestPage && hydration !== 'ready') {
           updateStore((current) => retainCanonicalSessionPages(
             failCanonicalSessionHydration(current, normalizedSessionId),
             new Set(recentPageSessionIdsRef.current),
@@ -247,11 +254,11 @@ export function useKordiCanonicalSessionStore({
     let pageCount = 0;
     while (
       page?.hasOlder
-      && page.oldestSequenceNum !== null
+      && page.messages.length > 0
       && pageCount < 10_000
     ) {
       page = await hydrateSessionPage(normalizedSessionId, {
-        beforeSequenceNum: page.oldestSequenceNum,
+        beforeTimeline: page.messages[0],
         force: true,
       });
       pageCount += 1;
@@ -268,20 +275,16 @@ export function useKordiCanonicalSessionStore({
     if (!currentStore.hasOlderBySessionId[normalizedSessionId]) return;
     const currentMessages =
       currentStore.messagesBySessionId[normalizedSessionId] ?? [];
-    const oldestSequenceNum = currentMessages.reduce<number | null>(
-      (oldest, message) => (
-        oldest === null || message.sequenceNum < oldest
-          ? message.sequenceNum
-          : oldest
-      ),
+    const oldest = currentMessages.reduce<CanonicalTimelineCursor | null>(
+      (previous, message) => !previous || compareCanonicalMessages(message, previous) < 0 ? message : previous,
       null,
     );
-    if (oldestSequenceNum === null) {
+    if (!oldest) {
       await hydrateSessionPage(normalizedSessionId, { force: true });
       return;
     }
     await hydrateSessionPage(normalizedSessionId, {
-      beforeSequenceNum: oldestSequenceNum,
+      beforeTimeline: oldest,
       force: true,
     });
   }, [hydrateSessionPage]);
@@ -367,6 +370,7 @@ export function useKordiCanonicalPageHydration({
     sessionId: string,
     options?: {
       beforeSequenceNum?: number | null;
+      beforeTimeline?: CanonicalTimelineCursor | null;
       force?: boolean;
     },
   ) => Promise<CanonicalMessagePage | null>;

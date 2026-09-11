@@ -113,3 +113,27 @@ test('upward wheel input suspends tail following before a scroll event arrives',
   assert.equal(tailChanges.at(-1), false);
   assert.equal(viewport.scrollTop, before, 'wheel handling must not replace native scrolling with a synthetic animation');
 });
+
+
+test('prepend preserves the reading point inside a message when its date badge disappears', async () => {
+  const initial = rows('dated', 100, 100, 50);
+  initial[0] = { ...initial[0], height: 82, dateHeight: 32 };
+  const view = await render(transcript({ items: initial }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]')!;
+  await act(async () => viewport.scrollTo({ top: 40 }));
+  const bodyScreenTop = 32 - viewport.scrollTop;
+  const changed = [{ ...initial[0], height: 50, dateHeight: 0 }, ...initial.slice(1)];
+  await view.rerender(transcript({ items: [...rows('dated', 50, 50, 50), ...changed] }));
+  const anchor = view.host.querySelector<HTMLElement>('[data-message-id="dated100"]')!.closest<HTMLElement>('[data-transcript-window-item]')!;
+  await act(async () => { triggerObservedResize?.(anchor); });
+  await flush();
+  assert.equal(virtualRowStart(anchor) - viewport.scrollTop, bodyScreenTop, 'the body, not just its outer row, retains its reading position');
+  const settled = viewport.scrollTop;
+  await act(async () => { triggerObservedResize?.(anchor); triggerObservedResize?.(anchor); });
+  await flush();
+  assert.equal(viewport.scrollTop, settled, 'repeated measurements must not repeat the date compensation');
+  await act(async () => viewport.scrollTo({ top: viewport.scrollTop - 20 }));
+  const moved = visibleAnchor(view.host, viewport);
+  await resizeRow(view.host, 'dated99', 100);
+  assertAnchor(view.host, viewport, moved);
+});

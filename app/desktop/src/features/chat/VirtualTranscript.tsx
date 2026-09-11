@@ -1,3 +1,4 @@
+import { createTranscriptContentMeasure } from './transcriptContentMeasure';
 import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
 import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
 import {
@@ -114,7 +115,14 @@ export function VirtualTranscript<Item>({
     return `${sessionKey.length}:${sessionKey}:${typeof itemKey}:${String(itemKey)}`;
   }, [getItemKey, items, sessionKey]);
 
+  const contentMeasureRef = useRef<ReturnType<typeof createTranscriptContentMeasure> | null>(null);
+  contentMeasureRef.current ??= createTranscriptContentMeasure(() => (
+    !mountedRef.current || tailAlignmentActiveRef.current || viewportWasAtTailRef.current
+      || stableDisclosureAnchorRef.current !== null
+  ));
+
   const virtualizer = useVirtualizer({
+    measureElement: contentMeasureRef.current,
     count: items.length,
     getScrollElement: () => internalScrollRef.current,
     estimateSize: (index) => {

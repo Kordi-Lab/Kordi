@@ -119,3 +119,30 @@ anchors, early prefetch, short-page wheel input, and tail-follow cancellation.
 The isolated 74-to-300-pixel visible-row resize previously moved scrollTop from
 1,000 to 1,226; it now remains at 1,000. Above-viewport growth still applies the
 necessary compensation to preserve the reading anchor.
+
+
+### History ordering and reading-position regression coverage
+
+Interactive canonical history uses a bounded display-order page and a composite
+`createdAtMs / sequenceNum / id` cursor. Synchronization, unread accounting, and
+background recovery retain their existing sequence semantics. This keeps old
+membership notices, whose local insertion sequence may be newer than their event
+time, out of newer transcript pages. The composite cursor also handles tied
+sequences and deletion of a pagination boundary row without skipping history.
+Catalog refreshes must not inject notices older than the loaded display window.
+
+Time separators compare adjacent timestamped messages. Prepending history may
+change the old first separator, but must not re-phase later separators. A reading
+anchor preserves the content offset when its date badge changes; above-viewport
+row resizing remains the virtualizer's responsibility. Exact measured/estimated
+height matches are cached too, so changing metadata cannot silently replace a
+previously displayed row's height estimate.
+
+Regression coverage includes synthetic late-replayed membership events, tied
+cursors, deleted boundary rows, legacy encoded group messages, and continuous
+scrolling through variable-height prepends. Run the isolated real-browser fixture
+with `pnpm --dir app/desktop exec playwright test -c playwright.history.config.ts`.
+Set `KORDI_HISTORY_TEST_PORT` to an unused loopback port for concurrent tasks.
+The WebKit and Chromium cases require less than one CSS pixel of final content
+anchor drift after two pages and delayed media growth. They use generated text
+and no account data; they do not replace testing a long-running native session.

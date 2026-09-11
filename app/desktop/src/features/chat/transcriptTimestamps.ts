@@ -22,14 +22,9 @@ function canAnchorTranscriptTime(message: Message) {
     && message.role !== 'edit';
 }
 
-function isTranscriptEvent(message: Message) {
-  return message.role === 'system' || Boolean(message.callActivity);
-}
-
 type SeparatorInput = {
   timestampMs: number | null | undefined;
   canAnchor: boolean;
-  isEvent: boolean;
 };
 
 type SeparatorAnchor = { timestampMs: number; calendarDay: string } | null;
@@ -54,8 +49,7 @@ export function createTranscriptTimeSeparatorCache() {
         const message = messages[start];
         const previous = inputs[start];
         if (!Object.is(previous.timestampMs, message.timestampMs)
-          || previous.canAnchor !== canAnchorTranscriptTime(message)
-          || previous.isEvent !== isTranscriptEvent(message)) break;
+          || previous.canAnchor !== canAnchorTranscriptTime(message)) break;
         start += 1;
       }
       if (start === messages.length && start === inputs.length) return labels;
@@ -68,15 +62,16 @@ export function createTranscriptTimeSeparatorCache() {
     for (let index = start; index < messages.length; index += 1) {
       const message = messages[index];
       const timestampMs = message.timestampMs;
-      const input = { timestampMs, canAnchor: canAnchorTranscriptTime(message), isEvent: isTranscriptEvent(message) };
+      const input = { timestampMs, canAnchor: canAnchorTranscriptTime(message) };
       nextInputs.push(input);
       let label: string | null = null;
       if (input.canAnchor && usableTimestamp(timestampMs) && (!anchor || timestampMs >= anchor.timestampMs)) {
         const calendarDay = formatDesktopDate(timestampMs, { timeZone: options.timeZone });
-        if (input.isEvent || !anchor || calendarDay !== anchor.calendarDay || timestampMs - anchor.timestampMs >= gapMs) {
+        if (!anchor || calendarDay !== anchor.calendarDay || timestampMs - anchor.timestampMs >= gapMs) {
           label = formatDesktopTranscriptTimeLabel(timestampMs, { ...options, now });
-          anchor = { timestampMs, calendarDay };
         }
+        // Compare adjacent messages, so prepending history cannot re-phase later labels.
+        anchor = { timestampMs, calendarDay };
       }
       nextLabels.push(label);
       nextAnchors.push(anchor);

@@ -46,6 +46,15 @@ pub struct CanonicalSessionSummary {
     pub context_snapshot_count: i64,
 }
 
+/// A stable display-order cursor, independent of cloud synchronization sequences.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalTimelineCursor {
+    pub created_at_ms: i64,
+    pub sequence_num: i64,
+    pub id: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CanonicalMessagePage {

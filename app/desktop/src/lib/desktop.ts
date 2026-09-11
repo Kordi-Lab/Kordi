@@ -15,7 +15,7 @@ AppendCanonicalMessageRequest,
 CanonicalGroupMembershipDelta,
 CanonicalIdentity,
 CanonicalMessageDeliveryDelta,
-CanonicalMessagePage,
+CanonicalMessagePage, CanonicalTimelineCursor,
 CanonicalProfileIdentityDelta,
 CanonicalReadCursorDelta,
 CanonicalSessionCatalog,
@@ -732,6 +732,7 @@ export async function fetchCanonicalSessionMessages(
   sessionId: string,
   beforeSequenceNum: number | null = null,
   limit = 100,
+  timeline?: { before?: CanonicalTimelineCursor | null },
 ) {
   if (!isNativeDesktopShell()) return null;
   const performanceSpan = beginChatPerformanceSpan('canonical-page-ipc');
@@ -740,12 +741,13 @@ export async function fetchCanonicalSessionMessages(
       sessionId,
       beforeSequenceNum,
       limit,
+      ...(timeline ? { timelineOrder: true, beforeTimeline: timeline.before ?? null } : {}),
     });
     finishChatPerformanceSpan(performanceSpan, () => ({
       messageCount: page.messages.length,
       payloadBytes: chatPerformancePayloadBytes(page),
     }));
-    return page;
+    return timeline ? { ...page, timelineOrder: true } : page;
   } catch (error) {
     finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
     throw error;

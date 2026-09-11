@@ -1,5 +1,6 @@
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { cloudAgentFallbackErrorNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
 import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
@@ -154,14 +155,15 @@ export function canonicalMessageRole(
   identity?: CanonicalIdentity,
   profileHumanIdentityId?: string | null,
 ): Message['role'] {
+  const senderRole = message.senderRole;
   if (message.messageKind === 'agent-model-change') return 'system';
-  if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(message.senderRole)) {
+  if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(senderRole)) {
     if (
-      message.senderRole === 'external-agent'
+      senderRole === 'external-agent'
       && identity?.kind === 'agent'
       && identity.ownerIdentityId === profileHumanIdentityId?.trim()
     ) return 'owned-agent';
-    return message.senderRole as Message['role'];
+    return senderRole as Message['role'];
   }
   if (identity?.kind === 'agent') return identity.source === 'local' ? 'owned-agent' : 'external-agent';
   return 'person';
@@ -316,7 +318,9 @@ export function mapCanonicalMessage(
   context: MapCanonicalMessageContext = {},
 ): Message | null {
   if (isPlaceholderSessionTitleNotice(message) || isSynchronizationOnlyCloudGroupTitleNotice(message) || isInternalCloudAgentControlMessage(message)) return null;
-  const content = contentRecord(message.content);
+  const contentText = message.contentText;
+  const directEnvelope = parseCloudDirectMessageEnvelope(contentText);
+  const content: Record<string, unknown> = { ...(directEnvelope ?? {}), ...contentRecord(message.content) };
   const sourceTransport = message.sourceTransport?.trim() ?? '';
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
@@ -327,7 +331,7 @@ export function mapCanonicalMessage(
     ? 'queued'
     : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
-  const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
+  const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
@@ -405,7 +409,7 @@ export function mapCanonicalMessage(
     return name === 'task_operator' || name === 'update_plan';
   });
   const visibleTools = role === 'owned-agent' || (role === 'external-agent' && hasSharedModelTaskTools) ? tools : [];
-  const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
+  const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(cloudDirectMessageDisplayText(contentText)), content);
   const mentions = canonicalMentions(content.mentions);
   const rawDisplayText = !isOwnMessage && role === 'person'
     ? rewriteLeadingFirstPersonAgentMention(

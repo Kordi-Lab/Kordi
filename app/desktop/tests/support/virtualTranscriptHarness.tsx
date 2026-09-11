@@ -2,7 +2,7 @@ import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
-type Row = { id: string; height: number; aliases?: string[] };
+type Row = { id: string; height: number; aliases?: string[]; dateHeight?: number };
 
 let VirtualTranscript: typeof import('../../src/features/chat/VirtualTranscript').VirtualTranscript;
 let root: Root | null = null;
@@ -174,7 +174,10 @@ export function transcript(props: {
       sessionKey={sessionKey}
       getItemKey={(item) => item.id}
       renderItem={(item) => (
-        <div data-message-id={item.id} data-test-row-height={item.height}>{item.id}</div>
+        <div data-message-id={item.id} data-test-row-height={item.height}>
+          {item.dateHeight ? <div data-transcript-time-separator data-test-row-height={item.dateHeight}>Synthetic date</div> : null}
+          {item.id}
+        </div>
       )}
       scrollStyle={{ height: 600 }}
       navigationRequest={navigationRequest}

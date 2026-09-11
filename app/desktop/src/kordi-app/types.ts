@@ -455,7 +455,11 @@ export type CanonicalSessionCatalog = Omit<CanonicalSessionState, 'messages' | '
   summaries: CanonicalSessionSummary[];
 };
 
+export type CanonicalTimelineCursor = Pick<CanonicalSessionMessage, 'id' | 'createdAtMs' | 'sequenceNum'>;
+
 export type CanonicalMessagePage = {
+  timelineOrder?: boolean;
+  replaceWindow?: boolean;
   sessionId: string;
   messages: CanonicalSessionMessage[];
   oldestSequenceNum: number | null;
