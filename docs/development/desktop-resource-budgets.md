@@ -146,3 +146,29 @@ Set `KORDI_HISTORY_TEST_PORT` to an unused loopback port for concurrent tasks.
 The WebKit and Chromium cases require less than one CSS pixel of final content
 anchor drift after two pages and delayed media growth. They use generated text
 and no account data; they do not replace testing a long-running native session.
+
+### Development timing history versus production memory
+
+React development Performance tracks write User Timing measures with serialized
+component-prop details. Clearing Kordi's own bounded diagnostic records does not
+clear those framework entries. Long-running development sessions therefore need
+a separate observer that releases React component/scheduler measures after
+observers consume them. Other application measures remain available. Set
+`VITE_KORDI_RETAIN_REACT_PERFORMANCE_HISTORY=1` only when deliberately retaining
+that history for profiling; normal production React builds do not emit it.
+
+The named-profile launcher accepts `--frontend production` to build and serve
+the production frontend instead of the Vite development server. Use this option
+for product memory measurements through the approved environment launcher. It
+preserves the selected account-storage profile, API guards, title, and disabled
+updater. The native binary is still a debug build, so label it as a production
+frontend preview rather than a release application. The generated command builds
+before serving; rebuild/relaunch to test subsequent source changes.
+
+Run `pnpm --dir app/desktop exec playwright test -c playwright.memory.config.ts`
+for real WebKit/Chromium coverage of timing-history cleanup, including preexisting
+entries and preservation of application diagnostics. Use
+`KORDI_HISTORY_TEST_PORT` to choose an unused local port. Compare both allocated
+objects and physical footprint: cleared timing records can become collectible
+before WebKit returns allocator pages to the OS, and a restarted production
+frontend is not an equal-uptime comparison with a long-lived development session.

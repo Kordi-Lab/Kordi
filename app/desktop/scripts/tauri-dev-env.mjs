@@ -33,7 +33,8 @@ export function resolveDesktopDevUrl({ host, port, path = '' }) {
   return new URL(previewPath, `${origin}/`).toString();
 }
 
-export function buildBeforeDevCommand({ title, host, port, env = process.env }) {
+export function buildBeforeDevCommand({ title, host, port, frontendMode = 'development', env = process.env }) {
+  if (!['development', 'production'].includes(frontendMode)) throw new Error('Frontend mode must be development or production.');
   const cloudApiBase = resolveCloudDevApiBase(env);
   const devProfile = resolveCloudDevProfile(env);
   const assignments = [
@@ -47,5 +48,9 @@ export function buildBeforeDevCommand({ title, host, port, env = process.env }) 
     );
   }
 
+  if (frontendMode === 'production') {
+    const prefix = `${assignments.join(' ')} NODE_ENV=production`;
+    return `${prefix} npm run build && ${prefix} npm run preview -- --host ${shellQuote(host)} --port ${Number(port)} --strictPort`;
+  }
   return `${assignments.join(' ')} npm run dev:web -- --host ${host} --port ${port} --strictPort`;
 }

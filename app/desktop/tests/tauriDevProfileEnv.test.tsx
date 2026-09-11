@@ -132,3 +132,14 @@ test('named development profiles render a visible in-window instance label', () 
   assert.match(appShellFrameSource, /Preview · \{instanceLabel\}/);
   assert.match(appShellFrameSource, /aria-label=\{`Preview instance: \$\{instanceLabel\}`\}/);
 });
+
+test('production frontend preview builds before serving and preserves operator authorization', () => {
+  const env = { VITE_KORDI_CLOUD_API_BASE: 'https://kordi.ai', VITE_KORDI_DEV_PROFILE: 'operator', VITE_KORDI_PRODUCTION_DEBUG_ACK: '1' };
+  const command = buildBeforeDevCommand({ title: 'Memory test', host: '127.0.0.1', port: 62359, frontendMode: 'production', env });
+  assert.match(command, /npm run build &&/);
+  assert.match(command, /npm run preview -- --host '127\.0\.0\.1' --port 62359 --strictPort/);
+  assert.doesNotMatch(command, /dev:web/);
+  assert.equal(command.split("VITE_KORDI_DEV_PROFILE='operator'").length - 1, 2);
+  assert.throws(() => buildBeforeDevCommand({ title: 'Test', host: '127.0.0.1', port: 62359, frontendMode: 'production', env: { ...env, VITE_KORDI_PRODUCTION_DEBUG_ACK: '' } }));
+  assert.throws(() => buildBeforeDevCommand({ title: 'Test', host: '127.0.0.1', port: 62359, frontendMode: 'invalid', env }));
+});
