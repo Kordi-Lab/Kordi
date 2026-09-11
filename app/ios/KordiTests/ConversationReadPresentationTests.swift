@@ -1719,28 +1719,76 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertNil(UserDefaults.standard.object(forKey: key))
     }
 
-    func testVisibleAndLegacyMentionsAdvanceUnreadState() throws {
-        let iosDirectory = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Kordi")
-        let viewSource = try String(
-            contentsOf: iosDirectory
-                .appendingPathComponent("Features/Conversation/ConversationView.swift"),
-            encoding: .utf8
-        )
-        let modelSource = try String(
-            contentsOf: iosDirectory.appendingPathComponent("App/AppModel.swift"),
-            encoding: .utf8
-        )
+    @MainActor
+    func testPresentedMentionsAdvanceOnlyThroughTheirSequenceAndPersist() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "mention-read", kind: .group, peerAccountId: accountID,
+            agentId: nil, ownerDisplayName: nil, displayName: "Mentions", lastMessage: "Later message",
+            lastActivityAt: Date(), unreadCount: 3, avatarSource: nil, agentActivity: nil,
+            sessionId: "session:group:mention-read", unreadMentionCount: 2)
+        let mention = MessageMention(label: "Me", targetKind: "person", targetIdentityId: "human:\(accountID)")
+        func message(_ id: String, sequence: Int64, author: MessageAuthor = .person, mentioned: Bool) -> ChatMessage {
+            ChatMessage(id: id, conversationId: conversation.id, conversationSequence: sequence,
+                author: author, authorName: "Sender", text: "Synthetic message", createdAt: Date(),
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: nil,
+                mentions: mentioned ? [mention] : [])
+        }
+        let first = message("first", sequence: 5, mentioned: true)
+        let second = message("second", sequence: 8, mentioned: true)
+        _ = await model.restoreConversationIfNeeded(conversation)
+        store.saveMessages([first, second,
+            message("later", sequence: 9, mentioned: false),
+            message("own", sequence: 10, author: .me, mentioned: false)],
+            conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        model.hydrateCachedMessages(for: conversation)
 
-        XCTAssertTrue(viewSource.contains("onScrollVisibilityChange(threshold: 0.5)"))
-        XCTAssertTrue(viewSource.contains("isPendingMention: pendingMentionMessageIDs.contains(message.id)"))
-        XCTAssertTrue(modelSource.contains("throughSequence: message.conversationSequence"))
-        XCTAssertTrue(modelSource.contains("let lastReadSequence = max("))
-        XCTAssertTrue(modelSource.contains("$0 > lastReadSequence"))
-        XCTAssertFalse(modelSource.contains("guard pendingMentionCount(for: conversation) == 0"))
-        XCTAssertFalse(modelSource.contains("&& pendingMentionCount(for: $0) == 0"))
+        await model.markMentionPresented(first, in: conversation)
+        var current = try XCTUnwrap(model.conversations.first { $0.id == conversation.id })
+        XCTAssertEqual(current.lastReadSequence, 5)
+        XCTAssertEqual(current.unreadCount, 2)
+        XCTAssertEqual(model.pendingMentionMessages(for: current).map(\.id), [second.id])
+
+        await model.markMentionPresented(second, in: conversation)
+        await model.markMentionPresented(first, in: conversation)
+        current = try XCTUnwrap(model.conversations.first { $0.id == conversation.id })
+        XCTAssertEqual(current.lastReadSequence, 8, "An older visibility callback cannot regress the cursor")
+        XCTAssertEqual(current.unreadCount, 1, "The later incoming message must remain unread")
+        XCTAssertEqual(current.unreadMentionCount, 0)
+        let cached = try XCTUnwrap(store.loadConversations(accountId: accountID).first { $0.id == conversation.id })
+        XCTAssertEqual(cached.lastReadSequence, 8)
+        XCTAssertEqual(cached.unreadCount, 1)
+        XCTAssertEqual(cached.unreadMentionCount, 0)
+    }
+
+    @MainActor
+    func testPresentedLegacyMentionClearsSummaryWithoutRegressingCursor() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "legacy-mention-read", kind: .person, peerAccountId: "peer",
+            agentId: nil, ownerDisplayName: nil, displayName: "Legacy chat", lastMessage: "Mention",
+            lastActivityAt: Date(), unreadCount: 1, avatarSource: nil, agentActivity: nil,
+            sessionId: "legacy-session", unreadMentionCount: 1, lastReadSequence: 7)
+        let message = ChatMessage(id: "legacy", conversationId: conversation.id, author: .person,
+            authorName: "Sender", text: "Legacy mention", createdAt: Date(), deliveryState: .delivered,
+            errorMessage: nil, requestMessageId: nil, mentions: [
+                MessageMention(label: "Me", targetKind: "person", targetIdentityId: "human:\(accountID)")
+            ])
+        _ = await model.restoreConversationIfNeeded(conversation)
+        store.saveMessages([message], conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        model.hydrateCachedMessages(for: conversation)
+        XCTAssertEqual(model.pendingMentionMessages(for: conversation).map(\.id), [message.id])
+
+        await model.markMentionPresented(message, in: conversation)
+        let current = try XCTUnwrap(model.conversations.first { $0.id == conversation.id })
+        XCTAssertEqual(current.unreadCount, 0)
+        XCTAssertEqual(current.unreadMentionCount, 0)
+        XCTAssertEqual(current.lastReadSequence, 7)
+        let cached = try XCTUnwrap(store.loadConversations(accountId: accountID).first { $0.id == conversation.id })
+        XCTAssertEqual(cached.unreadCount, 0)
+        XCTAssertEqual(cached.lastReadSequence, 7)
     }
 
     @MainActor
