@@ -2,8 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { CloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
 import { threadMessage, useThreadNavigation } from '@/features/cloud/threadAttention';
-import type { Conversation, Message } from '@/kordi-app/types';
+import type { Conversation } from '@/kordi-app/types';
 import type { MessageThread } from '@/features/chat/messageThreads';
+import { mergeThreadReplies } from '@/features/chat/threadReplies';
 
 type LoadedThread = {
   scope: string;
@@ -13,14 +14,6 @@ type LoadedThread = {
   next: number | null;
   isThread: boolean;
 };
-
-function mergeReplies(previous: Message[], incoming: Message[]) {
-  const messages = new Map<string, Message>();
-  for (const message of [...previous, ...incoming]) {
-    messages.set(message.reactionTargetMessageId ?? message.id!, message);
-  }
-  return [...messages.values()].sort((a, b) => (a.conversationSequence ?? 0) - (b.conversationSequence ?? 0));
-}
 
 export function useUnreadThreadNavigation(
   conversation: Conversation,
@@ -58,7 +51,7 @@ export function useUnreadThreadNavigation(
         thread: {
           root,
           replies: after !== undefined && current?.scope === scope && current.thread.root.id === root.id
-            ? mergeReplies(current.thread.replies, replies) : replies,
+            ? mergeThreadReplies(current.thread.replies, replies) : replies,
         },
         first: after !== undefined ? current?.first ?? null : page.firstUnreadMessageId,
         target: after !== undefined ? replies[0]?.id ?? null : page.firstUnreadMessageId ?? (page.isThread ? target : null),
@@ -104,7 +97,7 @@ export function useUnreadThreadNavigation(
           const replies = incoming.messages.map(message => threadMessage(message, conversation, accountId));
           setResult(previous => previous?.scope === scope && previous.thread.root.id === activeRootId ? {
             ...previous,
-            thread: { ...previous.thread, replies: mergeReplies(previous.thread.replies, replies) },
+            thread: { ...previous.thread, replies: mergeThreadReplies(previous.thread.replies, replies) },
             next: incoming.nextAfterSequence,
           } : previous);
         } catch { /* Preserve the open thread during reconnect. */ }
@@ -117,7 +110,7 @@ export function useUnreadThreadNavigation(
   const merge = (thread: MessageThread | null): MessageThread | null => {
     if (!page?.isThread || !thread || (thread.root.reactionTargetMessageId ?? thread.root.id)
       !== (page.thread.root.reactionTargetMessageId ?? page.thread.root.id)) return thread;
-    return { root: thread.root, replies: mergeReplies(page.thread.replies, thread.replies) };
+    return { root: thread.root, replies: mergeThreadReplies(page.thread.replies, thread.replies) };
   };
   return {
     page, load, merge,
