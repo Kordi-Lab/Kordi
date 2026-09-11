@@ -124,6 +124,9 @@ test('older canonical transcript pages use the oldest loaded sequence cursor', (
   assert.match(loader, /beforeSequenceNum: oldestSequenceNum/);
   assert.match(
     appModelSource(),
-    /canonicalHasOlderBySessionId:\s*(?:canonical\.)?canonicalStore\.hasOlderBySessionId/,
+    /\.\.\.canonical\.canonicalStore\.hasOlderBySessionId,\s*\.\.\.cloud\.directHistory\.hasOlderBySessionId/,
   );
+  assert.match(appModelSource(), /canonicalHasOlderBySessionId:\s*historyHasOlder/);
+  assert.match(appModelSource(), /const loadCanonicalOlder = canonical\.loadOlderCanonicalSessionMessages/);
+  assert.match(appModelSource(), /:\s*loadCanonicalOlder\(sessionId\)/);
 });

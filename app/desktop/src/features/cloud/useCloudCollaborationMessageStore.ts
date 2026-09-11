@@ -13,6 +13,8 @@ import { canonicalRendererMessageIds, compactNativeCloudMessagesByPeer, NATIVE_R
 import type { CanonicalSessionMessage } from '@/kordi-app/types';
 export { compactNativeCloudMessagesByPeer, NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER } from './cloudRendererRetention';
 import type { CloudCollaborationMessageStore } from './useCloudCollaborationStores';
+import type { CloudDirectHistoryPage } from './useCloudDirectHistory';
+import { mergeCloudMessagesByPeerSnapshot } from './cloudMessageSyncState';
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
 const EMPTY_SESSION_IDS: ReadonlySet<string> = new Set();
@@ -25,6 +27,7 @@ export function useCloudCollaborationMessageStore(
   account: CloudAccount | null,
   activeConversationId?: string | null,
   canonicalMessages?: readonly CanonicalSessionMessage[],
+  directHistory?: CloudDirectHistoryPage | null,
 ): CloudCollaborationMessageStore {
   const nativeShell = isNativeDesktopShell();
   const activeSessionId = activeConversationId
@@ -32,7 +35,11 @@ export function useCloudCollaborationMessageStore(
       ?? activeConversationId.trim()
     : null;
   const activeSessionIdRef = useRef(activeSessionId);
-  const requiredMessageIds = useMemo(() => canonicalRendererMessageIds(canonicalMessages), [canonicalMessages]);
+  const requiredMessageIds = useMemo(() => {
+    const ids = canonicalRendererMessageIds(canonicalMessages);
+    for (const rows of Object.values(directHistory?.messagesByPeer ?? {})) for (const row of rows) ids.add(row.messageId);
+    return ids;
+  }, [canonicalMessages, directHistory?.messagesByPeer]);
   const requiredMessageIdsRef = useRef(requiredMessageIds);
   const liveAccountIdRef = useRef(account?.accountId ?? null);
   const [messageState, setMessageState] = useState<AccountMessageState>({
@@ -175,9 +182,12 @@ export function useCloudCollaborationMessageStore(
   const belongsToCurrentAccount = Boolean(
     account?.accountId && messageState.accountId === account.accountId,
   );
-  const currentAccountMessagesByPeer = belongsToCurrentAccount
-    ? messagesByPeer
-    : EMPTY_CLOUD_MESSAGES_BY_PEER;
+  const currentAccountMessagesByPeer = useMemo(() => {
+    if (!belongsToCurrentAccount) return EMPTY_CLOUD_MESSAGES_BY_PEER;
+    return directHistory ? mergeCloudMessagesByPeerSnapshot(
+      directHistory.messagesByPeer, messagesByPeer, cloudMessageDeletions.ids(account?.accountId ?? null),
+    ) : messagesByPeer;
+  }, [account?.accountId, belongsToCurrentAccount, directHistory, messagesByPeer]);
   const indexRef = useRef<CloudMessageIndex>(null!);
   const indexMessages = useMemo(
     () => createCloudMessageIndexer(account?.accountId),

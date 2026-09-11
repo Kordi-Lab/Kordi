@@ -26,6 +26,14 @@ explicit floor if they alone exceed the aggregate budget. Eviction never deletes
 durable messages or pending operations. Canonical transcript pages remain loaded
 through the existing native cursor API.
 
+Direct-person chats do not require canonical transcript rows. Their selected
+conversation loads a 50-message page from complete local chat-sync history, with
+the server's before-sequence cursor as a fallback for incomplete or gapped local
+coverage. Older pages load on demand into an active-only overlay, which is
+released when selecting another chat. This prevents a fresh profile from showing
+only its startup conversation preview while keeping inactive history out of the
+renderer backing store.
+
 Payload accounting estimates strings, arrays, objects, and primitive values. It
 does not claim to measure JavaScriptCore's exact heap representation. Estimates
 are cached with weak keys so the accounting itself cannot retain evicted rows.

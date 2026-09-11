@@ -73,7 +73,7 @@ import {
   useCloudCollaborationStores,
 } from './useCloudCollaborationStores';
 import { useCloudCollaborationMessageStore } from './useCloudCollaborationMessageStore';
-import { cloudRecoveryMessagesReady } from './cloudMessageSyncState';
+import { cloudRecoveryMessagesReady } from './cloudMessageSyncState'; import { useCloudDirectHistory } from './useCloudDirectHistory';
 import {
   useCloudCollaborationTransport,
 } from './useCloudCollaborationTransport';
@@ -207,7 +207,7 @@ export function useCloudCollaborationState({
       defaultCloudGroupOutboxPersistence(accountId),
     )
     : null, [accountId]);
-  const messageStore = useCloudCollaborationMessageStore(account, activeConversationId, canonicalSessionState?.messages);
+  const directHistory = useCloudDirectHistory(account, activeConversationId, client); const messageStore = useCloudCollaborationMessageStore(account, activeConversationId, canonicalSessionState?.messages, directHistory.page);
   const stores = useCloudCollaborationStores({
     account,
     canonicalState: canonicalSessionState,
@@ -639,7 +639,7 @@ export function useCloudCollaborationState({
   ), [account?.accountId, cloudMessageIndex.allMessages]);
   const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudMessages(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
   return {
-    cloudAgentRuntimeRouteMessages,
+    cloudAgentRuntimeRouteMessages, directHistory,
     cloudCollaborationState,
     setCloudCollaborationState,
     mergedCollaborationState: cloudCollaborationState,
