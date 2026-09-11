@@ -61,16 +61,18 @@ enum ConversationThreadLoadPolicy {
 }
 
 private struct ConversationScrollAnchorPolicy: ViewModifier {
+    let startsAtLatest: Bool
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
-                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                // A restored offset must not compete with SwiftUI's initial tail anchor.
+                .defaultScrollAnchor(startsAtLatest ? .bottom : .top, for: .initialOffset)
                 // Preserve the visible bottom during keyboard and input-view resizing.
                 .defaultScrollAnchor(.bottom, for: .sizeChanges)
                 .defaultScrollAnchor(.bottom, for: .alignment)
         } else {
             // iOS 17 combines initial positioning, resize anchoring, and alignment.
-            content.defaultScrollAnchor(.bottom)
+            content.defaultScrollAnchor(startsAtLatest ? .bottom : .top)
         }
     }
 }
@@ -629,7 +631,7 @@ struct ConversationView: View {
                                 .padding(.top, timelineVerticalInset)
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
-                            .modifier(ConversationScrollAnchorPolicy())
+                            .modifier(ConversationScrollAnchorPolicy(startsAtLatest: initialViewport == .latest))
                             .scrollDismissesKeyboard(.interactively)
                             .scrollDisabled(messageActionMessage != nil)
                             .simultaneousGesture(

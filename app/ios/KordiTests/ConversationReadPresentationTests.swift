@@ -232,6 +232,7 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
             throw HistoryNavigationWaitError.incompleteTransition
         }
         _ = try await waitForStack(count: 1)
+        var expectedRestoredOffset: CGFloat?
         for entry in 0..<5 {
             navigation.path = [.conversation(conversation)]
             let destination = try await waitForStack(count: 2)
@@ -278,15 +279,33 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                 return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
             }
             let scroll = try XCTUnwrap(scrollView(in: destination.view))
+            if let expectedRestoredOffset {
+                XCTAssertEqual(scroll.contentOffset.y, expectedRestoredOffset, accuracy: 1,
+                               "Re-entry must restore the saved history offset instead of the tail")
+            } else {
+                XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1)
+            }
             let targetOffset = max(0, scroll.contentSize.height - scroll.bounds.height) * 0.5
             scroll.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: false)
             try await Task.sleep(for: .milliseconds(300))
+            XCTAssertLessThan(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll) - 12,
+                              "Reading history must not be pulled back to the tail")
+            let leavingAt = Date()
             navigation.path = []
             _ = try await waitForStack(count: 1)
-            XCTAssertNotNil(model.conversationViewportMemory.resumedPosition(
-                for: "\(accountID):\(conversation.id):conversation", latestMessageID: messages.last?.id,
-                availableMessageIDs: Set(messages.map(\.id)), now: Date()
-            ), "Entry \(entry), offset \(scroll.contentOffset.y), target \(targetOffset), content \(scroll.contentSize.height), viewport \(scroll.bounds.height)")
+            var savedPosition: ConversationViewportSnapshot?
+            // UIKit can finish its pop before SwiftUI delivers onDisappear.
+            // Wait for this visit's save, rather than accepting an older snapshot.
+            for _ in 0..<100 {
+                let snapshot = model.conversationViewportMemory.resumedPosition(
+                    for: "\(accountID):\(conversation.id):conversation", latestMessageID: messages.last?.id,
+                    availableMessageIDs: Set(messages.map(\.id)), now: Date()
+                )
+                if let snapshot, snapshot.leftAt >= leavingAt { savedPosition = snapshot; break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertNotNil(savedPosition, "Entry \(entry) must save the inspected viewport")
+            expectedRestoredOffset = savedPosition?.contentOffsetY
         }
     }
 }

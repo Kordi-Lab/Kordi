@@ -182,13 +182,11 @@ struct MessageGestureRegistrationTests {
     #expect(content.contains(".id(bottomAnchorID)"))
     // A command bridge in a lazy row would disappear when that row scrolls away.
     #expect(!content.contains("ConversationScrollCommandBridge("))
-    let scrollEnd = try #require(source.range(of: ".modifier(ConversationScrollAnchorPolicy())", range: end.upperBound..<source.endIndex))
+    let scrollEnd = try #require(source.range(of: ".modifier(ConversationScrollAnchorPolicy(", range: end.upperBound..<source.endIndex))
     let container = source[end.upperBound..<scrollEnd.lowerBound]
     #expect(container.contains("ConversationScrollCommandBridge("))
     #expect(container.contains("alignment: timeline.isEmpty ? .top : .bottom"))
-    #expect(source.contains(".defaultScrollAnchor(.bottom, for: .initialOffset)"))
     #expect(source.contains(".defaultScrollAnchor(.bottom, for: .alignment)"))
-    #expect(source.contains("content.defaultScrollAnchor(.bottom)"))
     #expect(source.contains(".defaultScrollAnchor(.bottom, for: .sizeChanges)"))
     let rowsStart = try #require(content.range(of: "ForEach(visibleTimelineRows)"))
     let rowWrapper = try #require(content.range(of: "VStack(spacing: 0)", range: rowsStart.upperBound..<content.endIndex))
