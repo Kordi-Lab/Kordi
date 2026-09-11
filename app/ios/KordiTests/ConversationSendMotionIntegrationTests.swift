@@ -414,6 +414,14 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
 @MainActor
 final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
     func testLongMessageCannotDrawIntoHeaderWhileScrolling() async throws {
+        try await checkHeaderBoundary(transparentNavigation: true)
+    }
+
+    func testVisibleNavigationDoesNotClipMessagesBelowHeader() async throws {
+        try await checkHeaderBoundary(transparentNavigation: false)
+    }
+
+    private func checkHeaderBoundary(transparentNavigation: Bool) async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]
         let store = try LocalMessageStore(inMemory: true)
@@ -469,7 +477,11 @@ final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
             view.subviews.forEach(rememberNavigation)
         }
         rememberNavigation(controller.view)
-        func capture(hidingNavigation: Bool = true) -> UIImage {
+        let navigationContent = navigationAppearances.flatMap { entry in
+            entry.0.subviews.map { ($0, $0.alpha) }
+        }
+        let reservedTopInset = scroll.adjustedContentInset.top
+        func capture(transparentNavigation: Bool = true) -> UIImage {
             // Exercise the failure condition independently of UIKit's automatic
             // material visibility. Transcript clipping must protect transparent bars too.
             func clearNavigationMaterial(_ view: UIView) {
@@ -479,16 +491,17 @@ final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
                     bar.standardAppearance = appearance
                     bar.scrollEdgeAppearance = appearance
                     bar.compactAppearance = appearance
-                    // Keep its safe-area reservation while exposing any transcript
-                    // pixels that would otherwise be covered by navigation material.
-                    bar.alpha = 0
+                    // Preserve the visible bar and its safe-area reservation.
+                    // Hiding the bar changes layout and misses double-inset bugs.
                     bar.layoutIfNeeded()
+                    bar.subviews.forEach { $0.alpha = 0 }
                 }
                 view.subviews.forEach(clearNavigationMaterial)
             }
-            if hidingNavigation {
+            if transparentNavigation {
                 clearNavigationMaterial(controller.view)
             } else {
+                for (view, alpha) in navigationContent { view.alpha = alpha }
                 for (bar, standard, edge, compact, alpha) in navigationAppearances {
                     bar.standardAppearance = standard
                     bar.scrollEdgeAppearance = edge
@@ -497,12 +510,14 @@ final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
                     bar.layoutIfNeeded()
                 }
             }
+            XCTAssertEqual(scroll.adjustedContentInset.top, reservedTopInset, accuracy: 1,
+                "Removing navigation paint must preserve the real transcript layout")
             let format = UIGraphicsImageRendererFormat(); format.scale = 1
             return UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
                 window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
             }
         }
-        func darkPixels(_ image: UIImage) throws -> Int {
+        func darkPixels(_ image: UIImage, belowHeader: Bool = false) throws -> Int {
             let cg = try XCTUnwrap(image.cgImage)
             var bytes = [UInt8](repeating: 0, count: cg.width * cg.height * 4)
             let context = try XCTUnwrap(CGContext(data: &bytes, width: cg.width, height: cg.height,
@@ -510,8 +525,9 @@ final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
             context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
             var count = 0
-            let headerBottom = scroll.convert(scroll.bounds, to: window).minY + scroll.adjustedContentInset.top
-            for y in 4..<max(5, Int(headerBottom) - 4) {
+            let headerBottom = navigationAppearances.filter { $0.4 > 0 }.map { $0.0.convert($0.0.bounds, to: window).maxY }.max() ?? 0
+            let rows = belowHeader ? (Int(headerBottom) + 4)..<(Int(headerBottom) + 60) : 4..<max(5, Int(headerBottom) - 4)
+            for y in rows {
                 for x in 90..<(cg.width - 90) {
                     let i = (y * cg.width + x) * 4
                     if bytes[i] < 100 && bytes[i + 1] < 100 && bytes[i + 2] < 100 { count += 1 }
@@ -521,12 +537,14 @@ final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
         }
         scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
         try await Task.sleep(for: .milliseconds(400))
-        let baseline = try darkPixels(capture())
+        let baseline = try darkPixels(capture(transparentNavigation: transparentNavigation))
         for offset in [200.0, 245.0, 290.0] {
             scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
             try await Task.sleep(for: .milliseconds(250))
-            let image = capture()
+            let image = capture(transparentNavigation: transparentNavigation)
             let dark = try darkPixels(image)
+            XCTAssertGreaterThan(try darkPixels(image, belowHeader: true), 100,
+                "The scrolled message must remain visible immediately below the header")
             let attachment = XCTAttachment(image: image)
             attachment.name = "Synthetic long message at header, offset \(offset)"
             attachment.lifetime = .keepAlways
@@ -534,7 +552,7 @@ final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
             XCTAssertLessThanOrEqual(dark, baseline + 12,
                 "Message glyphs must not paint into the navigation or status area while scrolling")
         }
-        let restoredHeader = XCTAttachment(image: capture(hidingNavigation: false))
+        let restoredHeader = XCTAttachment(image: capture(transparentNavigation: false))
         restoredHeader.name = "Synthetic long message with protected navigation header"
         restoredHeader.lifetime = .keepAlways
         add(restoredHeader)

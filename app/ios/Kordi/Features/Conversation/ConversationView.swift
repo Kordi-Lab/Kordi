@@ -710,9 +710,12 @@ struct ConversationView: View {
                                 kind: conversation.kind, reduceMotion: reduceMotion)
                         }
                     }
-                    .clipShape(ConversationViewportClip(topInset: viewport.safeAreaInsets.top))
-                    .contentShape(ConversationViewportClip(topInset: viewport.safeAreaInsets.top))
                 }
+                // This viewport already starts below navigation chrome. Its native
+                // scroll view can extend above it; clip to these bounds without
+                // applying the inherited safe-area inset a second time.
+                .clipped()
+                .contentShape(Rectangle())
 
                 if selectedMessageIDs.isEmpty {
                     if !isWaitingForLinkedBackgroundSession {
