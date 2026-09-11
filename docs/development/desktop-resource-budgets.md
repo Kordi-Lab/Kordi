@@ -90,3 +90,32 @@ Installed-release validation should repeat chat switches, history paging, media
 viewing, edits to older loaded messages, and incoming messages while hidden.
 Compare heap snapshots after returning to the same screen, and verify unread
 counts and pending sends before drawing conclusions about memory leaks.
+
+## History scrolling
+
+While reading history, size corrections apply only to rows completely above the
+viewport. The first visible row keeps its offset even when it is partially
+visible or its media loads later. Changes inside or below the visible area can
+relayout following content without scrolling the reader. Following the latest
+message retains its separate bottom-alignment policy.
+
+The virtualizer owns the message-key anchor used when an older page is prepended.
+Upward wheel input cancels tail following before the native scroll event arrives.
+Normal scrolling keeps native wheel behavior; no whole-list transition is added
+for history insertion.
+
+Older pages are requested within two viewport heights of the top, with the
+existing single-flight and repeated-request guards. Initial alignment to the
+latest message does not trigger history backfill. An upward wheel can still
+request a page when the current transcript is too short to scroll.
+
+Initial row estimates account for text wrapping, wide glyphs, line breaks,
+attachment dimensions, collapsed media groups, and time separators. These are
+bounded-cost estimates, not replacements for actual measured geometry.
+
+Regression tests cover continued scrolling during page loading, variable-height
+prepends, delayed media measurement above and inside the viewport, partial-row
+anchors, early prefetch, short-page wheel input, and tail-follow cancellation.
+The isolated 74-to-300-pixel visible-row resize previously moved scrollTop from
+1,000 to 1,226; it now remains at 1,000. Above-viewport growth still applies the
+necessary compensation to preserve the reading anchor.

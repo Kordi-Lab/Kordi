@@ -9,6 +9,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
+  type WheelEvent as ReactWheelEvent,
   type ReactNode,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -16,7 +17,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
-  TRANSCRIPT_WINDOW_OVERSCAN,
+  TRANSCRIPT_WINDOW_OVERSCAN, shouldPrefetchTranscriptHistory,
 } from '@/features/chat/transcriptWindowing';
 import { transcriptLayoutMaxScrollTop, preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
 import { hasActiveTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
@@ -41,7 +42,7 @@ import {
 } from './transcriptStableDisclosure';
 import { TranscriptLatestButton } from './TranscriptLatestButton';
 import type {
-  StableDisclosureAnchor,
+  StableDisclosureAnchor, AlignedTranscriptSession,
   VirtualTranscriptProps,
 } from './virtualTranscriptTypes';
 
@@ -92,15 +93,7 @@ export function VirtualTranscript<Item>({
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
   const olderLoadGenerationRef = useRef(0);
   const mountedRef = useRef(true);
-  const alignedSessionRef = useRef<{
-    sessionKey: string;
-    itemCount: number;
-    lastItemKey: string;
-    tailKey: string;
-    totalSize: number;
-    viewportSize: number;
-    scrollTop: number;
-  } | null>(null);
+  const alignedSessionRef = useRef<AlignedTranscriptSession | null>(null);
   const viewportWasAtTailRef = useRef(true);
   const tailAlignmentActiveRef = useRef(false);
   const tailAlignmentTargetRef = useRef<number | null>(null);
@@ -164,7 +157,7 @@ export function VirtualTranscript<Item>({
     if (node) node.style.height = `${totalSize}px`;
   }, [totalSize, virtualizer]);
 
-  const { cancelTailLiftAnimation, cancelTailAlignment, scheduleTailAlignment } = useTranscriptTailAlignment({
+  const { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment } = useTranscriptTailAlignment({
     internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
     tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange,
   });
@@ -262,6 +255,7 @@ export function VirtualTranscript<Item>({
   }, [onLoadOlder, pagingEnabled, sessionKey]);
 
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    if (alignedSessionRef.current?.sessionKey !== sessionKey) return;
     const element = event.currentTarget;
     const distanceFromTail = transcriptLayoutMaxScrollTop(element) - element.scrollTop;
     const isAtTail = distanceFromTail <= Math.max(4, gap);
@@ -277,9 +271,15 @@ export function VirtualTranscript<Item>({
       cancelTailAlignment();
     }
     onScroll?.(event);
-    if (element.scrollTop > Math.max(160, element.clientHeight * 0.25)) return;
+    if (isAtTail || tailAlignmentActiveRef.current || !shouldPrefetchTranscriptHistory(element.scrollTop, element.clientHeight)) return;
     void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
   }, [cancelTailAlignment, gap, items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
+
+  const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
+    handleUserWheel(event);
+    const element = event.currentTarget;
+    if (event.deltaY < 0 && shouldPrefetchTranscriptHistory(element.scrollTop, element.clientHeight)) void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
+  }, [handleUserWheel, items.length, oldestItemKey, requestOlder, sessionKey]);
 
   const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     const target = event.target;
@@ -451,7 +451,6 @@ export function VirtualTranscript<Item>({
       tailKey: normalizedTailKey,
       totalSize,
       viewportSize,
-      scrollTop: internalScrollRef.current?.scrollTop ?? 0,
     };
   }, [animateLatestAppend, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
@@ -531,7 +530,7 @@ export function VirtualTranscript<Item>({
         style={scrollStyle}
         onScroll={handleScroll}
         onClickCapture={handleClickCapture}
-        onWheelCapture={cancelTailAlignment}
+        onWheelCapture={handleWheel}
         {...selectionViewportProps}
         onTouchStartCapture={cancelTailAlignment}
         data-virtual-transcript-scroll="true"
