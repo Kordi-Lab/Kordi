@@ -108,7 +108,8 @@ enum CloudMessageStateProjector {
                     conversationId: message.conversationId,
                     conversationSequence: message.conversationSequence,
                     version: message.version,
-                    reactions: message.reactions
+                    reactions: message.reactions,
+                    canonicalHistoryLocalMessageId: message.canonicalHistoryLocalMessageId
                 )
             }
         }

@@ -67,4 +67,24 @@ final class CloudWireCacheTests: XCTestCase {
             hasHydratedForkLineage: true
         ))
     }
+    func testOldHistoryProjectionIsRefetchedButCurrentProjectionCanResume() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let message = CloudMessageDTO(messageId: "history", fromAccountId: "me", toAccountId: "me",
+            body: "Synthetic history", createdAt: "2026-08-01T00:00:00Z", deliveredAt: nil,
+            readAt: nil, direction: "outgoing", sessionId: "session", messageKind: "canonical-history-user",
+            canonicalHistoryLocalMessageId: "local")
+        let old = CloudWireSnapshot(accountId: "me", cursor: "old", messagesByPeer: ["me": [message]],
+            sessionForksById: [:], forkLineageVersion: CloudWireSnapshot.currentForkLineageVersion, savedAt: Date())
+        try JSONEncoder().encode(old).write(to: directory.appendingPathComponent("messages-me.json"))
+        let cache = CloudWireCache(directory: directory)
+        let outdated = await cache.load(accountId: "me")
+        XCTAssertNil(outdated)
+        await cache.save(accountId: "me", cursor: "current", messagesByPeer: ["me": [message]])
+        let current = await cache.load(accountId: "me")
+        XCTAssertEqual(current?.cursor, "current")
+        XCTAssertEqual(current?.messagesByPeer["me"]?.first?.canonicalHistoryLocalMessageId, "local")
+    }
+
 }
