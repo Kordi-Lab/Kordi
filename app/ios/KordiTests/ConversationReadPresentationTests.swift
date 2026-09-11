@@ -177,6 +177,14 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
     }
 
     func testCachedAgentHistoryRendersAfterRepeatedEntry() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        defer {
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
         let store = try LocalMessageStore(inMemory: true)
         let model = AppModel(cache: store, previewMode: true)
         let accountID = try XCTUnwrap(model.account?.accountId)
@@ -192,7 +200,7 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                 author: index.isMultiple(of: 2) ? .me : .agent, authorName: "Tester",
                 text: index.isMultiple(of: 2) ? "Request \(index)" : "## Completed report \(index)\n\n" + String(repeating: "This paragraph describes the completed analysis and its supporting details.\n\n", count: 25),
                 createdAt: Date(timeIntervalSince1970: Double(1_000 + index)),
-                deliveryState: .read, errorMessage: nil, requestMessageId: nil
+                cloudMessageVersion: 1, deliveryState: .read, errorMessage: nil, requestMessageId: nil
             )
         }
         if let fixturePath = ProcessInfo.processInfo.environment["KORDI_VIEWPORT_FIXTURE"] {
@@ -232,7 +240,13 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
             throw HistoryNavigationWaitError.incompleteTransition
         }
         _ = try await waitForStack(count: 1)
-        var expectedRestoredOffset: CGFloat?
+        var expectedAnchor: (id: String, top: CGFloat)?
+        func rowTop(_ id: String, in scroll: UIScrollView) -> CGFloat? {
+            guard let view = ConversationMotionProbeRegistry.views[id]?.value,
+                  view.window === window else { return nil }
+            return view.convert(view.bounds, to: scroll).minY
+                - scroll.bounds.minY - scroll.adjustedContentInset.top
+        }
         for entry in 0..<5 {
             navigation.path = [.conversation(conversation)]
             let destination = try await waitForStack(count: 2)
@@ -279,9 +293,10 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                 return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
             }
             let scroll = try XCTUnwrap(scrollView(in: destination.view))
-            if let expectedRestoredOffset {
-                XCTAssertEqual(scroll.contentOffset.y, expectedRestoredOffset, accuracy: 1,
-                               "Re-entry must restore the saved history offset instead of the tail")
+            if let expectedAnchor {
+                let top = try XCTUnwrap(rowTop(expectedAnchor.id, in: scroll), "The same message must be materialized on return")
+                XCTAssertEqual(top, expectedAnchor.top, accuracy: 2,
+                               "Re-entry must restore the same message at the same viewport position")
             } else {
                 XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1)
             }
@@ -290,6 +305,16 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(300))
             XCTAssertLessThan(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll) - 12,
                               "Reading history must not be pulled back to the tail")
+            let viewport = scroll.bounds.inset(by: scroll.adjustedContentInset)
+            let visibleRows = messages.compactMap { message -> (id: String, top: CGFloat)? in
+                let id = model.timelineIdentity(for: message)
+                guard let view = ConversationMotionProbeRegistry.views[id]?.value,
+                      view.window === window,
+                      view.convert(view.bounds, to: scroll).intersects(viewport),
+                      let top = rowTop(id, in: scroll) else { return nil }
+                return (id, top)
+            }
+            expectedAnchor = try XCTUnwrap(visibleRows.min { $0.top < $1.top })
             let leavingAt = Date()
             navigation.path = []
             _ = try await waitForStack(count: 1)
@@ -305,8 +330,76 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                 try await Task.sleep(for: .milliseconds(20))
             }
             XCTAssertNotNil(savedPosition, "Entry \(entry) must save the inspected viewport")
-            expectedRestoredOffset = savedPosition?.contentOffsetY
+            // An older message can reflow while this conversation is closed.
+            // The latest ID is unchanged, so quick return must retain the read message.
+            if entry == 1 {
+                let edited = await model.editMessage(messages[0],
+                    text: String(repeating: "Expanded older message with additional details.\n", count: 35),
+                    in: conversation)
+                XCTAssertTrue(edited)
+            }
         }
+    }
+}
+
+@MainActor
+final class ConversationReadingAnchorTests: XCTestCase {
+    func testRestoresSamePartOfTallMessageAfterEarlierContentReflows() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scroll = UIScrollView(frame: window.bounds)
+        window.addSubview(scroll)
+        scroll.contentSize = CGSize(width: 390, height: 5000)
+        scroll.contentInset = UIEdgeInsets(top: 44, left: 0, bottom: 34, right: 0)
+        let row = UIView(frame: CGRect(x: 0, y: 1200, width: 390, height: 1500))
+        scroll.addSubview(row)
+        scroll.contentOffset.y = 1700
+        let position = ConversationScrollPosition()
+        position.attach(to: scroll)
+        position.register(row, messageID: "long-report")
+        position.captureReadingAnchor()
+        let anchor = try XCTUnwrap(position.readingAnchor)
+        XCTAssertEqual(anchor.messageID, "long-report")
+        XCTAssertEqual(anchor.offsetFromViewportTop, -544)
+
+        // Changed measurements before this row invalidate the old absolute offset.
+        row.frame.origin.y += 650
+        scroll.contentSize.height += 650
+        XCTAssertFalse(position.restore(anchor))
+        XCTAssertEqual(scroll.contentOffset.y, 2350, accuracy: 1)
+        XCTAssertTrue(position.restore(anchor))
+        position.captureReadingAnchor()
+        XCTAssertEqual(position.readingAnchor, anchor)
+    }
+
+    func testDetachedRowsCannotReplaceVisibleAnchor() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scroll = UIScrollView(frame: window.bounds)
+        window.addSubview(scroll)
+        scroll.contentSize = CGSize(width: 390, height: 3000)
+        let visible = UIView(frame: CGRect(x: 0, y: 500, width: 390, height: 300))
+        let detached = UIView(frame: CGRect(x: 0, y: 450, width: 390, height: 400))
+        scroll.addSubview(visible)
+        scroll.contentOffset.y = 550
+        let position = ConversationScrollPosition()
+        position.attach(to: scroll)
+        position.register(visible, messageID: "visible")
+        position.register(detached, messageID: "detached")
+        position.captureReadingAnchor()
+        let anchor = try XCTUnwrap(position.readingAnchor)
+        XCTAssertEqual(anchor.messageID, "visible")
+        visible.removeFromSuperview()
+        XCTAssertFalse(position.restore(anchor))
+        position.captureReadingAnchor()
+        XCTAssertNil(position.readingAnchor)
+    }
+
+    func testMissingMessageDiscardsQuickReturnAnchor() {
+        let memory = ConversationViewportMemory()
+        let now = Date()
+        memory.remember(key: "test", messageID: "removed", latestMessageID: "latest",
+            readingAnchor: ConversationReadingAnchor(messageID: "removed", offsetFromViewportTop: -150), at: now)
+        XCTAssertNil(memory.resumedPosition(for: "test", latestMessageID: "latest",
+            availableMessageIDs: ["latest"], now: now.addingTimeInterval(1)))
     }
 }
 

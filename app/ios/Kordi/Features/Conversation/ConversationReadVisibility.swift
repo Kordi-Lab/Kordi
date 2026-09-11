@@ -83,9 +83,100 @@ extension AppModel {
 
 }
 
-// Pixel offsets are bookkeeping, not inputs to transcript rendering.
+/// Store a content anchor, not a distance from the beginning of a lazy timeline.
+/// Earlier rows can be measured differently on the next visit.
+struct ConversationReadingAnchor: Equatable {
+    let messageID: String
+    let offsetFromViewportTop: CGFloat
+}
+
+// Bookkeeping is deliberately not observable: scrolling must not invalidate rows.
+@MainActor
 final class ConversationScrollPosition {
+    private final class WeakRow {
+        weak var view: UIView?
+        init(_ view: UIView) { self.view = view }
+    }
+    private var rows: [String: WeakRow] = [:]
+    private weak var scrollView: UIScrollView?
     var contentOffsetY: CGFloat?
+    private(set) var readingAnchor: ConversationReadingAnchor?
+
+    func attach(to scrollView: UIScrollView) {
+        self.scrollView = scrollView
+    }
+
+    func register(_ view: UIView, messageID: String) {
+        rows[messageID] = WeakRow(view)
+    }
+
+    func unregister(_ view: UIView, messageID: String) {
+        if rows[messageID]?.view === view { rows[messageID] = nil }
+    }
+
+    func captureReadingAnchor() {
+        guard let scrollView, scrollView.window != nil else { return }
+        let viewport = scrollView.bounds.inset(by: scrollView.adjustedContentInset)
+        let candidates = rows.compactMap { id, row -> ConversationReadingAnchor? in
+            guard let view = row.view, view.window === scrollView.window,
+                  view.isDescendant(of: scrollView), view.bounds.height > 0 else { return nil }
+            let frame = view.convert(view.bounds, to: scrollView)
+            guard frame.intersection(viewport).height > 0 else { return nil }
+            return ConversationReadingAnchor(messageID: id, offsetFromViewportTop: frame.minY - viewport.minY)
+        }
+        readingAnchor = candidates.min { $0.offsetFromViewportTop < $1.offsetFromViewportTop }
+    }
+
+    /// Return true only when a subsequent layout already has the saved position.
+    /// The caller materializes the identity first, then waits for settled layout.
+    func restore(_ anchor: ConversationReadingAnchor) -> Bool {
+        guard let scrollView, scrollView.window != nil,
+              !scrollView.isTracking, !scrollView.isDragging,
+              let row = rows[anchor.messageID]?.view, row.window === scrollView.window,
+              row.isDescendant(of: scrollView), row.bounds.height > 0 else { return false }
+        let frame = row.convert(row.bounds, to: scrollView)
+        let target = ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            frame.minY - scrollView.adjustedContentInset.top - anchor.offsetFromViewportTop,
+            contentHeight: scrollView.contentSize.height, containerHeight: scrollView.bounds.height,
+            topInset: scrollView.adjustedContentInset.top, bottomInset: scrollView.adjustedContentInset.bottom
+        )
+        guard abs(scrollView.contentOffset.y - target) > 1 else { return true }
+        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)
+        return false
+    }
+}
+
+/// Weak row references allow capture after native layout without a geometry
+/// preference or a scroll observer on every message.
+struct ConversationReadingAnchorProbe: UIViewRepresentable {
+    let messageID: String
+    let position: ConversationScrollPosition
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func updateUIView(_ view: UIView, context: Context) {
+        if let previous = context.coordinator.messageID, previous != messageID {
+            position.unregister(view, messageID: previous)
+        }
+        context.coordinator.messageID = messageID
+        context.coordinator.position = position
+        position.register(view, messageID: messageID)
+    }
+
+    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+        if let id = coordinator.messageID { coordinator.position?.unregister(view, messageID: id) }
+    }
+
+    final class Coordinator {
+        var messageID: String?
+        weak var position: ConversationScrollPosition?
+    }
 }
 
 struct ConversationScrollGeometrySnapshot: Equatable {
@@ -94,11 +185,6 @@ struct ConversationScrollGeometrySnapshot: Equatable {
     let minimumOffsetY: CGFloat
     let maximumOffsetY: CGFloat
     let isValid: Bool
-    func matchesInitialOffset(_ viewport: ConversationInitialViewport) -> Bool {
-        guard case let .offset(offset) = viewport else { return false }
-        let target = min(maximumOffsetY, max(minimumOffsetY, offset))
-        return abs(contentOffsetY - target) <= 2
-    }
 }
 
 

@@ -547,6 +547,7 @@ struct ConversationView: View {
                                                     proxy: proxy
                                                 )
                                             }
+                                            .background(ConversationReadingAnchorProbe(messageID: message.id, position: scrollPosition))
                                             #if DEBUG
                                             .background {
                                                 if ConversationMotionProbeRegistry.enabled {
@@ -600,6 +601,7 @@ struct ConversationView: View {
                                 .scrollTargetLayout()
                                 .background(
                                     ConversationScrollCommandBridge(
+                                        scrollPosition: scrollPosition,
                                         preservesReadingPosition: hasRevealedInitialViewport
                                             && stagedMessageIDs.isEmpty
                                             && messageActionMessage == nil
@@ -1952,18 +1954,31 @@ struct ConversationView: View {
             switch initialViewport {
             case .latest:
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-            case let .offset(contentOffsetY):
-                nextScrollRestoreRequest &+= 1
-                exactScrollRestoreRequest = ConversationScrollRestoreRequest(
-                    id: nextScrollRestoreRequest,
-                    contentOffsetY: contentOffsetY
-                )
+            case let .anchored(anchor):
+                proxy.scrollTo(timelineIdentity(for: anchor.messageID, in: messages), anchor: .top)
             case let .resumed(messageID):
                 let targetIdentity = timelineIdentity(for: messageID, in: messages)
                 proxy.scrollTo(targetIdentity, anchor: .center)
             }
         }
 
+        if case let .anchored(anchor) = initialViewport {
+            var settledLayouts = 0
+            for _ in 0..<100 {
+                do { try await Task.sleep(for: .milliseconds(20)) } catch { return }
+                guard !hasPositionedInitialTimeline else { return }
+                settledLayouts = scrollPosition.restore(anchor) ? settledLayouts + 1 : 0
+                if settledLayouts >= 3 { break }
+            }
+            guard !Task.isCancelled else { return }
+            if settledLayouts < 3 {
+                // A removed or unavailable row must not reveal an arbitrary offset.
+                initialViewport = .latest
+                trackedMessageID = bottomAnchorID
+            } else {
+                initialReadAnchorPositioned = true
+            }
+        }
         await Task.yield()
         await Task.yield()
         guard !Task.isCancelled else { return }
@@ -2049,7 +2064,7 @@ struct ConversationView: View {
     private func recordScrollGeometry(_ snapshot: ConversationScrollGeometrySnapshot) {
         guard hasRevealedInitialViewport, isReadPresentationVisible, snapshot.isValid else { return }
         scrollPosition.contentOffsetY = snapshot.contentOffsetY
-        if snapshot.matchesInitialOffset(initialViewport) { initialReadAnchorPositioned = true }
+        scrollPosition.captureReadingAnchor()
         if isAtBottom != snapshot.isAtLatest { isAtBottom = snapshot.isAtLatest }
         if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID { trackedMessageID = nil }
     }
@@ -2071,12 +2086,14 @@ struct ConversationView: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            if initialMessageID == nil, let contentOffsetY = resumedPosition?.contentOffsetY {
-                visibleMessageLimit = resumedPosition?.visibleMessageLimit ?? ConversationTimelineWindow.initialLimit
-                trackedMessageID = nil
+            if initialMessageID == nil, let anchor = resumedPosition?.readingAnchor,
+               let resumeIndex = timeline.firstIndex(where: { $0.id == anchor.messageID }) {
+                visibleMessageLimit = max(resumedPosition?.visibleMessageLimit ?? ConversationTimelineWindow.initialLimit,
+                                          timeline.count - max(0, resumeIndex - 12))
+                trackedMessageID = model.timelineIdentity(for: timeline[resumeIndex])
                 isAtBottom = false
                 hasPositionedInitialTimeline = false
-                initialViewport = .offset(contentOffsetY: contentOffsetY)
+                initialViewport = .anchored(anchor)
             } else if let resumedMessageID,
                let resumeIndex = timeline.firstIndex(where: { $0.id == resumedMessageID }) {
                 let contextStartIndex = max(timeline.startIndex, resumeIndex - 12)
@@ -2100,16 +2117,12 @@ struct ConversationView: View {
 
     private func rememberViewport(in timeline: [ChatMessage], now: Date = Date()) {
         guard hasPreparedInitialViewport, hasRevealedInitialViewport else { return }
-        let visibleMessageID = isAtBottom
-            ? nil
-            : trackedMessageID.flatMap { candidate in
-                timeline.first(where: { model.timelineIdentity(for: $0) == candidate })?.id
-            }
+        let anchor = isAtBottom ? nil : scrollPosition.readingAnchor
         model.conversationViewportMemory.remember(
             key: viewportMemoryKey,
-            messageID: visibleMessageID,
+            messageID: anchor?.messageID,
             latestMessageID: timeline.last?.id,
-            contentOffsetY: isAtBottom ? nil : scrollPosition.contentOffsetY,
+            readingAnchor: anchor,
             visibleMessageLimit: visibleMessageLimit,
             at: now
         )
@@ -2870,7 +2883,7 @@ private struct ConversationCallBanner: View {
 enum ConversationInitialViewport: Equatable {
     case latest
     case resumed(messageID: String)
-    case offset(contentOffsetY: CGFloat)
+    case anchored(ConversationReadingAnchor)
 
     var scrollAnchor: UnitPoint {
         switch self {
@@ -2878,7 +2891,7 @@ enum ConversationInitialViewport: Equatable {
             .bottom
         case .resumed:
             .center
-        case .offset:
+        case .anchored:
             .top
         }
     }
@@ -2887,7 +2900,7 @@ enum ConversationInitialViewport: Equatable {
 struct ConversationViewportSnapshot: Equatable {
     let messageID: String?
     let latestMessageID: String?
-    let contentOffsetY: CGFloat?
+    let readingAnchor: ConversationReadingAnchor?
     let visibleMessageLimit: Int?
     let leftAt: Date
 }
@@ -2906,19 +2919,18 @@ final class ConversationViewportMemory {
         key: String,
         messageID: String?,
         latestMessageID: String?,
-        contentOffsetY: CGFloat? = nil,
+        readingAnchor: ConversationReadingAnchor? = nil,
         visibleMessageLimit: Int? = nil,
         at date: Date
     ) {
-        let offset = contentOffsetY?.isFinite == true ? contentOffsetY : nil
-        guard messageID != nil || offset != nil else {
+        guard messageID != nil else {
             snapshotsByKey[key] = nil
             return
         }
         snapshotsByKey[key] = ConversationViewportSnapshot(
             messageID: messageID,
             latestMessageID: latestMessageID,
-            contentOffsetY: offset,
+            readingAnchor: readingAnchor,
             visibleMessageLimit: visibleMessageLimit,
             leftAt: date
         )
@@ -2935,7 +2947,7 @@ final class ConversationViewportMemory {
         guard elapsed >= 0,
               elapsed < quickReturnInterval,
               snapshot.latestMessageID == latestMessageID,
-              snapshot.messageID.map(availableMessageIDs.contains) ?? (snapshot.contentOffsetY != nil) else {
+              snapshot.messageID.map(availableMessageIDs.contains) == true else {
             snapshotsByKey[key] = nil
             return nil
         }
@@ -3343,6 +3355,7 @@ private struct ConversationScrollRestoreRequest: Equatable {
 // Observe the same UIScrollView used by scroll commands. SwiftUI geometry
 // callbacks can leave read presentation stale after a UIKit-driven jump.
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
+    let scrollPosition: ConversationScrollPosition
     let preservesReadingPosition: Bool
     let scrollToBottomRequest: Int
     let animateBottomScroll: Bool
@@ -3388,6 +3401,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         DispatchQueue.main.async { [weak view] in
             guard let view,
                   let scrollView = enclosingScrollView(from: view) else { return }
+            scrollPosition.attach(to: scrollView)
             coordinator.observeViewport(of: scrollView)
             coordinator.observeGeometry(in: scrollView, update: onScrollGeometryChange)
             if let restoreRequest {
