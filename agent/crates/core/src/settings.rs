@@ -268,7 +268,7 @@ impl Settings {
         merge::merge_settings(global, project)
     }
 
-    /// Resolve the effective execution mode, defaulting to safety.
+    /// Resolve the effective execution mode, defaulting to YOLO for the owner.
     pub fn resolved_execution_mode(&self) -> ExecutionMode {
         self.execution_mode.unwrap_or_default()
     }

@@ -28,6 +28,7 @@ mod session_catalog;
 mod session_detail;
 mod transcript;
 mod turn_execution;
+mod workspace;
 
 #[cfg(test)]
 use attachments::attachment_metadata_from_path;
@@ -340,10 +341,6 @@ impl DesktopRuntimeSession {
 
     pub fn summary(&self) -> Result<DesktopChatSessionSummary> {
         build_summary_from_setup(&self.setup)
-    }
-
-    pub fn detail(&self) -> Result<DesktopChatSessionDetail> {
-        build_detail_from_setup(&self.setup)
     }
 
     pub fn agent_profile(&self) -> DesktopChatAgentProfile {

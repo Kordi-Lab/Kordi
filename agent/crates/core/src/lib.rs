@@ -13,6 +13,7 @@ pub mod agent_session_extensions;
 pub mod agent_session_runtime;
 pub mod config;
 pub mod error;
+pub mod local_paths;
 pub mod session;
 pub mod settings;
 mod settings_defaults;

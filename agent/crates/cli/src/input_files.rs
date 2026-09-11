@@ -20,6 +20,9 @@ pub(crate) struct ExpandedInputFiles {
     pub warnings: Vec<String>,
 }
 
+mod workspace;
+pub(crate) use workspace::referenced_workspace;
+
 pub(crate) fn expand_at_file_references(text: &str, cwd: &Path) -> ExpandedInputFiles {
     let mut out = String::new();
     let mut warnings = Vec::new();
@@ -459,11 +462,8 @@ fn longest_existing_reference_prefix(rest: &str, cwd: &Path) -> Option<(usize, S
     None
 }
 
-fn resolve_reference_path(raw_path: &str, cwd: &Path) -> PathBuf {
+pub(crate) fn resolve_reference_path(raw_path: &str, cwd: &Path) -> PathBuf {
     let trimmed = raw_path.trim();
-    if let Some(expanded) = expand_home(trimmed) {
-        return expanded;
-    }
     if trimmed.starts_with("file://")
         && let Ok(url) = url::Url::parse(trimmed)
         && let Ok(path) = url.to_file_path()
@@ -471,20 +471,7 @@ fn resolve_reference_path(raw_path: &str, cwd: &Path) -> PathBuf {
         return path;
     }
 
-    let path = PathBuf::from(trimmed);
-    if path.is_absolute() {
-        path
-    } else {
-        cwd.join(path)
-    }
-}
-
-fn expand_home(path: &str) -> Option<PathBuf> {
-    if path == "~" {
-        return std::env::var_os("HOME").map(PathBuf::from);
-    }
-    let suffix = path.strip_prefix("~/")?;
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(suffix))
+    kordi_core::local_paths::resolve_local_path(cwd, trimmed)
 }
 
 fn display_path_for_prompt(path: &Path, cwd: &Path) -> String {

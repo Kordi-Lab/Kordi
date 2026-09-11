@@ -315,7 +315,13 @@ export function cloudMessageMentionsNamedAgent(text: string, ownerOrAgentName: s
 }
 
 export function promptTextForCloudAgentMention(text: string): string {
-  const withoutMentions = text.replace(/@[\p{L}\p{N}._'-]+\s*/gu, '').trim();
+  // Match complete handles, never the prefix of a path or an email address.
+  const withoutMentions = text.replace(
+    /(^|[\s([{])@([\p{L}\p{N}._'-]+)(?=\s|$)/gu,
+    (match, prefix: string, handle: string) => (
+      handle.includes('.') || handle.startsWith("'") ? match : prefix
+    ),
+  ).trim();
   return withoutMentions || text.trim();
 }
 
