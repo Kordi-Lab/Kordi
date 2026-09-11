@@ -1200,6 +1200,26 @@ final class ConversationReadPresentationTests: XCTestCase {
         coordinator.remove(animated: false)
     }
 
+    func testAttachmentDeletionRetainsTheOriginalRowUntilParticleRemoval() throws {
+        var target = try XCTUnwrap(agentQueueFixture().first)
+        let first = ChatAttachment(attachmentId: "photo-one", name: "One.png", kind: .image,
+                                   mimeType: "image/png", sizeBytes: 1, previewURL: nil)
+        let second = ChatAttachment(attachmentId: "photo-two", name: "Two.png", kind: .image,
+                                    mimeType: "image/png", sizeBytes: 1, previewURL: nil)
+        target.attachments = [first, second]
+        target.text = "Original caption"
+        let deletion = MessageDeletionPresentation(message: target, messages: [target], attachmentID: first.id)
+        var authoritative = target
+        authoritative.attachments = [second]
+        authoritative.text = "Updated caption"
+        let retained = try XCTUnwrap(deletion.retainingMessage(in: [authoritative]).first)
+        XCTAssertEqual(retained.attachments.map(\.id), [first.id, second.id])
+        XCTAssertEqual(retained.text, "Original caption")
+        XCTAssertEqual(authoritative.attachments.map(\.id), [second.id])
+        XCTAssertEqual(authoritative.text, "Updated caption")
+        XCTAssertEqual(deletion.retainingMessage(in: []).map(\.id), [target.id])
+    }
+
     func testDeletionRetainsSourceWhenSyncRemovesItBeforeRequestReturns() throws {
         let messages = agentQueueFixture()
         let target = try XCTUnwrap(messages.dropFirst().first)
@@ -1423,6 +1443,9 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UITapGestureRecognizer()
         ))
+        XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
+            with: UILongPressGestureRecognizer()
+        ))
         XCTAssertEqual(MessageBubble.actionLongPressDuration, 0.5)
     }
 
@@ -1449,13 +1472,12 @@ final class ConversationReadPresentationTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(markdownSource.contains("SelectableMessageTextView("))
-        XCTAssertTrue(markdownSource.contains("textView.isSelectable = true"))
-        XCTAssertTrue(markdownSource.contains("textView.isScrollEnabled = false"))
         XCTAssertFalse(markdownSource.contains("textView.selectedRange = NSRange("))
         XCTAssertFalse(markdownSource.contains("textView.becomeFirstResponder()"))
+        XCTAssertTrue(markdownSource.contains("content.textSelection(.enabled)"))
+        XCTAssertTrue(markdownSource.contains("content.textSelection(.disabled)"))
+        XCTAssertFalse(markdownSource.contains("SelectableMessageTextView"))
         XCTAssertTrue(bubbleSource.contains("allowsTextSelection: isActionPresented"))
-        XCTAssertTrue(bubbleSource.contains("onSelectedTextChange: onSelectedTextChange"))
         XCTAssertTrue(bubbleSource.contains("isHighlighted || isSelected"))
         XCTAssertTrue(bubbleSource.contains("value: showsSelectionHighlight"))
         XCTAssertTrue(bubbleSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
@@ -1466,7 +1488,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("MessageDeliveryGlyph(state: .read"))
         XCTAssertFalse(overlaySource.contains("cornerSize: CGSize(width: 18, height: 18)"))
         XCTAssertTrue(overlaySource.contains("eoFill: true"))
-        XCTAssertTrue(overlaySource.contains("Button(action: onDismiss)"))
+        XCTAssertTrue(overlaySource.contains("performAction(onDismiss)"))
         XCTAssertTrue(overlaySource.contains("mediaAttachment == nil"))
         XCTAssertTrue(overlaySource.contains("AnyShape(Rectangle())"))
         XCTAssertTrue(overlaySource.contains("sourceFrame.offsetBy("))
@@ -1478,9 +1500,6 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains(".curveEaseOut"))
         XCTAssertFalse(overlaySource.contains("acceptsInput"))
         XCTAssertTrue(overlaySource.contains("actionButton(\"Select\""))
-        XCTAssertTrue(conversationSource.contains("@State private var selectedMessageText: String?"))
-        XCTAssertTrue(conversationSource.contains("selectedMessageText?.nonEmpty ?? message.text"))
-        XCTAssertTrue(conversationSource.contains("selectedMessageText = nil"))
         XCTAssertTrue(conversationSource.contains("toggleSelection(message.id)"))
         XCTAssertFalse(conversationSource.contains("messageActionAcceptsInput"))
         XCTAssertTrue(conversationSource.contains(".scrollDisabled(messageActionMessage != nil)"))
@@ -1632,6 +1651,53 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testSelectingFormattedTextDoesNotChangeItsLayout() {
+        let samples = [
+            "A short **bold** message with a [link](https://example.com).",
+            "# Blob heading\n\nKeep **bold** and :blob:blobwave: rendered.\n\n- A list item",
+            "# Notes\n\n- First item\n- Second **bold** item\n\n> A quoted passage.\n\n```swift\nlet value = 42\n```",
+            Array(repeating: "A long paragraph with **emphasis** and readable text.", count: 70).joined(separator: "\n\n"),
+            String(repeating: "A very long response. ", count: 2_000)
+        ]
+        for text in samples {
+            let host = UIHostingController(rootView: MarkdownMessageContent(text: text).frame(width: 290, alignment: .leading))
+            let proposal = CGSize(width: 290, height: CGFloat.greatestFiniteMagnitude)
+            let original = host.sizeThatFits(in: proposal)
+            host.rootView = MarkdownMessageContent(text: text, allowsTextSelection: true).frame(width: 290, alignment: .leading)
+            let selected = host.sizeThatFits(in: proposal)
+            host.rootView = MarkdownMessageContent(text: text).frame(width: 290, alignment: .leading)
+            let returned = host.sizeThatFits(in: proposal)
+            XCTAssertEqual(selected.width, original.width, accuracy: 0.5)
+            XCTAssertEqual(selected.height, original.height, accuracy: 0.5)
+            XCTAssertEqual(returned.height, original.height, accuracy: 0.5)
+        }
+    }
+
+    @MainActor
+    func testTallPreviewScrollKeepsItsOriginalSizeAndClampsMovement() {
+        let source = CGRect(x: 20, y: -800, width: 300, height: 1_600)
+        let layout = MessageActionOverlayLayout.make(
+            sourceFrame: source, containerSize: CGSize(width: 390, height: 700),
+            showsReactions: true, reactionCount: 6, actionCount: 8
+        )
+        XCTAssertEqual(layout.previewFrame.size, source.size)
+        XCTAssertLessThan(layout.previewFrame.minY, 0)
+        XCTAssertGreaterThan(layout.scrollLimit, 0)
+        XCTAssertTrue(layout.menuIsBelow)
+        let scroll = MessageActionPreviewScroll()
+        scroll.limit = layout.scrollLimit
+        scroll.drag(translation: 200)
+        XCTAssertEqual(scroll.offset, 200)
+        scroll.drag(translation: 10_000)
+        XCTAssertEqual(scroll.offset, layout.scrollLimit)
+        scroll.endDrag()
+        scroll.drag(translation: -10_000)
+        XCTAssertEqual(scroll.offset, 0)
+        scroll.reset()
+        XCTAssertEqual(scroll.limit, 0)
+    }
+
     func testActionOverlayStaysInsideTopAndBottomEdges() {
         let container = CGSize(width: 390, height: 700)
         let top = MessageActionOverlayLayout.make(
@@ -1731,12 +1797,14 @@ final class ConversationReadPresentationTests: XCTestCase {
                                       y: layout.reactionCenter.y - 26,
                                       width: layout.reactionWidth, height: 52)
                 let usable = CGRect(origin: .zero, size: container).insetBy(dx: 11.99, dy: 11.99)
-                XCTAssertTrue(usable.contains(layout.previewFrame))
+                XCTAssertEqual(layout.previewFrame.size, source.size)
+                XCTAssertTrue(usable.intersects(layout.previewFrame))
+                if layout.scrollLimit == 0 { XCTAssertTrue(usable.contains(layout.previewFrame)) }
                 XCTAssertTrue(usable.contains(menu))
                 XCTAssertFalse(menu.intersects(layout.previewFrame))
                 if showsReactions {
                     XCTAssertTrue(usable.contains(reaction))
-                    XCTAssertFalse(reaction.intersects(layout.previewFrame))
+                    if layout.scrollLimit == 0 { XCTAssertFalse(reaction.intersects(layout.previewFrame)) }
                     XCTAssertFalse(reaction.intersects(menu))
                 }
                 XCTAssertGreaterThanOrEqual(layout.menuHeight, 44)
@@ -1833,7 +1901,9 @@ final class ConversationReadPresentationTests: XCTestCase {
             .components(separatedBy: "private var usesBorderlessImageSurface")[0]
 
         XCTAssertTrue(messageSurface.contains("} else if usesDetachedImageGroup {"))
-        XCTAssertTrue(messageSurface.contains("imageCollection\n                bubbleSurface"))
+        XCTAssertTrue(messageSurface.contains("captionSurface"))
+        XCTAssertTrue(messageSurface.contains("message-image-"))
+        XCTAssertTrue(messageSurface.contains("message-caption-"))
         XCTAssertTrue(bubbleContents.contains("!usesDetachedImageGroup"))
     }
 

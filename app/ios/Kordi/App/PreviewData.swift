@@ -455,6 +455,83 @@ enum PreviewData {
     }
 
     private static func mayaConversation(now: Date, resurrected: Bool = false) -> [ChatMessage] {
+        let richText = "# Rendered message\n\n**Bold stays bold** and *italic stays italic*.\n\nA waving blob :blob:blobwave:\n\n- First formatted item\n- Second formatted item\n\n`let value = 42`\n\nRich message end marker."
+        if ProcessInfo.processInfo.arguments.contains("--preview-rich-message-actions") {
+            return [ChatMessage(id: "rich-menu", conversationId: "person:acct_maya", author: .person,
+                authorName: "Maya Chen", text: richText, createdAt: now.addingTimeInterval(-60),
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: nil,
+                reactionTargetMessageId: "rich-menu")]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--preview-menu-test-chat") {
+            let longText = (1...12).map { index in
+                "## Reading sample \(index)\n\nThis is a **long formatted message**. Open its menu, scroll the preview, and return to the conversation. The text should keep the same size and line breaks.\n\n- Reply and cancel.\n- Select and cancel.\n- Tap outside the menu to return."
+            }.joined(separator: "\n\n")
+            let plainText = (1...16).map {
+                "Paragraph \($0). This longer plain-text sample lets you compare wrapping and scrolling without Markdown. The preview should stay at its original reading size."
+            }.joined(separator: "\n\n")
+            let photos = previewChatAttachments()
+            return [
+                ChatMessage(id: "demo-long-plain", conversationId: "person:acct_maya", author: .me,
+                    authorName: "You", text: plainText, createdAt: now.addingTimeInterval(-300),
+                    deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+                ChatMessage(id: "demo-long-formatted", conversationId: "person:acct_maya", author: .person,
+                    authorName: "Maya Chen", text: longText + "\n\nEnd of the formatted sample. Photo and voice examples follow below.",
+                    createdAt: now.addingTimeInterval(-270), deliveryState: .delivered,
+                    errorMessage: nil, requestMessageId: nil, reactionTargetMessageId: "demo-long-formatted"),
+                ChatMessage(id: "demo-voice", conversationId: "person:acct_maya", author: .me,
+                    authorName: "You", text: "This is the sample voice transcript.", createdAt: now.addingTimeInterval(-240),
+                    deliveryState: .read, errorMessage: nil, requestMessageId: nil,
+                    messageKind: "voice", voiceMessage: VoiceMessage(mediaId: "preview-voice-message",
+                        mimeType: "audio/mp4", durationMs: 9_000,
+                        waveformSamples: [0.2, 0.5, 0.8, 0.4, 0.7, 0.3, 0.6, 0.9],
+                        transcript: "This transcript should appear only when you tap its transcript button, not when you hold the voice message.")),
+                ChatMessage(id: "demo-photo", conversationId: "person:acct_maya", author: .me,
+                    authorName: "You", text: "**Photo caption:** hold the image and this caption separately.",
+                    createdAt: now.addingTimeInterval(-180), cloudMessageVersion: 1,
+                    deliveryState: .read, errorMessage: nil, requestMessageId: nil,
+                    attachments: Array(photos.prefix(1)), reactionTargetMessageId: "demo-photo"),
+                ChatMessage(id: "demo-photo-group", conversationId: "person:acct_maya", author: .person,
+                    authorName: "Maya Chen", text: "A photo group with its own caption. Try holding the stack, then the caption.",
+                    createdAt: now.addingTimeInterval(-120), deliveryState: .delivered,
+                    errorMessage: nil, requestMessageId: nil, attachments: Array(photos.prefix(2)),
+                    reactionTargetMessageId: "demo-photo-group"),
+                ChatMessage(id: "demo-rich-emoji", conversationId: "person:acct_maya", author: .person,
+                    authorName: "Maya Chen", text: richText, createdAt: now.addingTimeInterval(-60),
+                    deliveryState: .delivered, errorMessage: nil, requestMessageId: nil,
+                    reactionTargetMessageId: "demo-rich-emoji")
+            ]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--preview-image-caption-actions") {
+            return [ChatMessage(
+                id: "image-caption", conversationId: "person:acct_maya", author: .me, authorName: "You",
+                text: "A caption with **bold text** stays independent of the image.",
+                createdAt: now.addingTimeInterval(-60), cloudMessageVersion: 1,
+                deliveryState: .read, errorMessage: nil, requestMessageId: nil,
+                attachments: ProcessInfo.processInfo.arguments.contains("--preview-image-caption-group")
+                    ? [previewChatAttachments()[0], previewChatAttachments()[2]]
+                    : Array(previewChatAttachments().prefix(1)),
+                reactionTargetMessageId: "image-caption-preview"
+            )]
+        }
+        if ProcessInfo.processInfo.arguments.contains("--preview-long-message-actions")
+            || ProcessInfo.processInfo.arguments.contains("--preview-formatted-message-actions") {
+            let isLong = ProcessInfo.processInfo.arguments.contains("--preview-long-message-actions")
+            let sections = isLong ? (1...8).map { index in
+                "## Section \(index)\n\nThis is a **formatted long message** with enough content to extend beyond the screen. Its font, line breaks and bubble width must stay unchanged when the action menu opens.\n\n- Keep the original reading size.\n- Scroll the preview to read earlier paragraphs."
+            }.joined(separator: "\n\n") : "**A bold update** with *emphasis*.\n\n- Keep this line intact."
+            return [
+                ChatMessage(id: "long-preview-neighbor", conversationId: "person:acct_maya",
+                    author: .me, authorName: "You", text: "Please review these notes.",
+                    createdAt: now.addingTimeInterval(-120), deliveryState: .read,
+                    errorMessage: nil, requestMessageId: nil),
+                ChatMessage(id: "m5", conversationId: "person:acct_maya",
+                    author: .person, authorName: "Maya Chen",
+                    text: sections + "\n\nLong message end marker.",
+                    createdAt: now.addingTimeInterval(-60), deliveryState: .delivered,
+                    errorMessage: nil, requestMessageId: nil,
+                    reactionTargetMessageId: "long-preview-message")
+            ]
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-bubble-width") {
             return bubbleWidthRiskConversation(now: now)
         }
@@ -557,6 +634,9 @@ enum PreviewData {
                 ))
             ),
         ])
+        if ProcessInfo.processInfo.arguments.contains("--preview-voice-message-actions") {
+            return messages.filter { $0.id == "m4-voice" || $0.id == "m5" }
+        }
         messages.append(contentsOf: previewMediaMessages(now: now))
         if resurrected {
             messages.append(ChatMessage(

@@ -144,6 +144,32 @@ struct SessionActivityCancellationTests {
 }
 
 final class CloudModelDecodingTests: XCTestCase {
+    func testAttachmentReactionsDecodeAndPersistWithoutBecomingMessageReactions() throws {
+        let json = #"""
+        {"id":"m","client_message_id":"c","conversation_id":"s","conversation_sequence":1,
+         "sender_account_id":"owner","kind":"text","content":{"schema":1,"blocks":[{"type":"text","text":"Caption"}]},
+         "attachment_ids":["photo-a","photo-b"],"version":1,"created_at":"2026-09-11T10:00:00Z",
+         "reactions":[],"attachment_reactions":[{"attachment_id":"photo-b","reaction":"👍","account_ids":["owner"]}]}
+        """#
+        let wire = try JSONDecoder().decode(CloudChatMessage.self, from: Data(json.utf8))
+        XCTAssertEqual(wire.attachmentReactions?.first?.attachmentId, "photo-b")
+        XCTAssertTrue(wire.reactions?.isEmpty == true)
+        let scopes = ["photo-b": [MessageReaction(value: "👍", accountIds: ["owner"])]]
+        let message = ChatMessage(id: "m", conversationId: "s", author: .me, authorName: "You",
+            text: "Caption", createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .read, errorMessage: nil, requestMessageId: nil, attachmentReactions: scopes)
+        let restored = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(message))
+        XCTAssertEqual(restored.attachmentReactions, scopes)
+        XCTAssertTrue(restored.reactions.isEmpty)
+        let legacy = CloudMessageDTO(messageId: "m", fromAccountId: "owner", toAccountId: "peer",
+            body: "Caption", createdAt: "2026-09-11T10:00:00Z", deliveredAt: nil, readAt: nil,
+            direction: "outgoing", sessionId: "s", canonicalHistoryLocalMessageId: "local-original",
+            attachmentReactions: scopes)
+        let cached = try JSONDecoder().decode(CloudMessageDTO.self, from: JSONEncoder().encode(legacy))
+        XCTAssertEqual(cached.canonicalHistoryLocalMessageId, "local-original")
+        XCTAssertEqual(cached.attachmentReactions, scopes)
+    }
+
     func testThreadAttentionKeepsTotalAndThreadCountsDistinct() throws {
         let json = #"{"conversation_id":"c","session_id":"s","unread_count":7,"thread_unread_count":3,"thread_count":2,"next_root_id":"root","next_message_id":"reply"}"#
         let attention = try JSONDecoder().decode(CloudThreadAttention.self, from: Data(json.utf8))

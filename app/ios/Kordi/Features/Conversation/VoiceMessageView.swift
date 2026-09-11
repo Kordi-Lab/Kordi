@@ -573,6 +573,7 @@ private struct VoiceTrimControl: View {
 
 struct VoiceMessageBubbleContent: View {
     let voiceMessage: VoiceMessage
+    let isActionPresented: Bool
     let reservesDeliveryStatus: Bool
     let onPrepare: (VoiceMessage) async -> URL?
 
@@ -699,6 +700,7 @@ struct VoiceMessageBubbleContent: View {
                 }
             }
         }
+        .disabled(isActionPresented)
         .frame(width: showsTranscript ? 280 : Self.compactWidth(durationMs: voiceMessage.durationMs))
         .animation(.easeOut(duration: 0.16), value: showsTranscript)
         .accessibilityElement(children: .contain)

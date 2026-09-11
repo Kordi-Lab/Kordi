@@ -142,7 +142,7 @@ struct MessageGestureRegistrationTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"), encoding: .utf8)
         #expect(source.contains("shouldReceive touch: UITouch"))
-        #expect(source.contains("acceptsTouch(at: touch.location(in: targetView))"))
+        #expect(source.contains("acceptsTouch(at: touch.location(in: targetView), forTap:"))
         #expect(source.contains("acceptsTouch(at: gestureRecognizer.location(in: targetView))"))
         #expect(source.contains("longPressRecognizer.minimumPressDuration != parent.minimumPressDuration"))
         #expect(source.contains("tap.require(toFail: longPress)"))

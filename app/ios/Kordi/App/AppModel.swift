@@ -2205,6 +2205,82 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func toggleAttachmentReaction(
+        _ reaction: String, on attachment: ChatAttachment, message: ChatMessage, in conversation: ConversationSummary
+    ) async -> Bool {
+        let accountID = account?.accountId ?? "preview-self"
+        let expectedToken = token
+        let current = messagesByConversation[conversation.id]?.first { $0.id == message.id } ?? message
+        let wasActive = current.attachmentReactions[attachment.id]?.first { $0.value == reaction }?.includes(accountId: accountID) == true
+        updateAttachmentReaction(reaction, accountId: accountID, active: !wasActive,
+                                 messageId: message.id, attachmentId: attachment.id, conversationId: conversation.id)
+        if previewMode { return true }
+        do {
+            guard let token else { throw CloudAPIError(code: "signed_out", message: "Sign in to react.", statusCode: 401) }
+            let updated = try await api.setAttachmentReaction(
+                token: token, sessionId: conversation.sessionId,
+                messageId: message.reactionTargetMessageId ?? message.id, attachmentId: attachment.id,
+                reaction: reaction, active: !wasActive
+            )
+            guard self.token == expectedToken, account?.accountId == accountID else { return false }
+            mergeCloudMessage(updated, peerHint: conversation.peerAccountId)
+            return true
+        } catch {
+            guard self.token == expectedToken, account?.accountId == accountID else { return false }
+            updateAttachmentReaction(reaction, accountId: accountID, active: wasActive,
+                                     messageId: message.id, attachmentId: attachment.id, conversationId: conversation.id)
+            errorMessage = userFacing(error, fallback: "Could not update this photo's reaction.")
+            return false
+        }
+    }
+
+    private func updateAttachmentReaction(
+        _ reaction: String, accountId: String, active: Bool, messageId: String, attachmentId: String, conversationId: String
+    ) {
+        guard var messages = messagesByConversation[conversationId],
+              let index = messages.firstIndex(where: { $0.id == messageId }),
+              messages[index].attachments.contains(where: { $0.id == attachmentId }) else { return }
+        let updated = Self.updatingReaction(reaction, accountId: accountId, active: active,
+                                            in: messages[index].attachmentReactions[attachmentId] ?? [])
+        if updated.isEmpty { messages[index].attachmentReactions.removeValue(forKey: attachmentId) }
+        else { messages[index].attachmentReactions[attachmentId] = updated }
+        messagesByConversation[conversationId] = messages
+        cacheCurrentMessages(conversationId)
+    }
+
+    func deleteAttachment(
+        _ attachment: ChatAttachment, from message: ChatMessage, forEveryone: Bool, in conversation: ConversationSummary
+    ) async -> Bool {
+        if previewMode {
+            guard var messages = messagesByConversation[conversation.id],
+                  let index = messages.firstIndex(where: { $0.id == message.id }) else { return true }
+            messages[index].attachments.removeAll { $0.id == attachment.id }
+            messages[index].attachmentReactions.removeValue(forKey: attachment.id)
+            if messages[index].attachments.isEmpty && messages[index].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                messages.remove(at: index)
+            }
+            withAnimation(.easeOut(duration: 0.16)) { messagesByConversation[conversation.id] = messages }
+            return true
+        }
+        guard let token, let accountID = account?.accountId else { return false }
+        do {
+            let updated = try await api.deleteAttachment(token: token, sessionId: conversation.sessionId,
+                messageId: message.reactionTargetMessageId ?? message.id, attachmentId: attachment.id, forEveryone: forEveryone)
+            guard self.token == token, account?.accountId == accountID else { return false }
+            if let updated {
+                mergeCloudMessage(updated, peerHint: conversation.peerAccountId)
+                await refreshLoadedConversationProjections()
+            } else {
+                removeCloudMessage(message.reactionTargetMessageId ?? message.id)
+            }
+            return true
+        } catch {
+            guard self.token == token, account?.accountId == accountID else { return false }
+            errorMessage = userFacing(error, fallback: "Could not delete this photo.")
+            return false
+        }
+    }
+
     func editMessage(
         _ message: ChatMessage,
         text: String,
@@ -2526,7 +2602,8 @@ final class AppModel: ObservableObject {
                     messageKind: message.messageKind,
                     agentExecution: message.agentExecution,
                     backgroundAgentSessions: message.backgroundAgentSessions,
-                    reactions: message.reactions
+                    reactions: message.reactions,
+                    attachmentReactions: message.attachmentReactions
                 )
             }
             messagesByConversation[conversation.id] = mergePartialProjection(
@@ -5411,7 +5488,8 @@ final class AppModel: ObservableObject {
                 updatedAtMs: parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
             ),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
-            reactions: message.reactions
+            reactions: message.reactions,
+            attachmentReactions: message.attachmentReactions
         )
     }
 
@@ -5456,7 +5534,8 @@ final class AppModel: ObservableObject {
                     reactionTargetMessageId: wire.messageId,
                     messageKind: wire.messageKind,
                     voiceMessage: wire.voiceMessage,
-                    reactions: wire.reactions
+                    reactions: wire.reactions,
+                    attachmentReactions: wire.attachmentReactions
                 )
                 continue
             }
@@ -5589,7 +5668,8 @@ final class AppModel: ObservableObject {
                 backgroundAgentSessions: BackgroundAgentSession.fromTaskOperatorTools(
                     payload.structuredContent?.tools ?? []
                 ),
-                reactions: Self.mergedReactions(rows.map { $0.0.reactions })
+                reactions: Self.mergedReactions(rows.map { $0.0.reactions }),
+                attachmentReactions: wire.attachmentReactions
             )
         }
         let readAgentRequestIds = CloudGroupAgentLifecycleProjector.readRequestIds(
@@ -5628,7 +5708,8 @@ final class AppModel: ObservableObject {
                 requestMessageId: nil,
                 reactionTargetMessageId: wire.messageId,
                 messageKind: wire.messageKind,
-                reactions: wire.reactions
+                reactions: wire.reactions,
+                attachmentReactions: wire.attachmentReactions
             )
         }
         for message in chatMessages + callMessages
@@ -6533,7 +6614,8 @@ final class AppModel: ObservableObject {
                     conversationSequence: message.conversationSequence,
                     version: message.version,
                     reactions: message.reactions,
-                    canonicalHistoryLocalMessageId: message.canonicalHistoryLocalMessageId
+                    canonicalHistoryLocalMessageId: message.canonicalHistoryLocalMessageId,
+                    attachmentReactions: message.attachmentReactions
                 )
                 changed = true
             }

@@ -1164,6 +1164,51 @@ actor CloudAPIClient {
         )
     }
 
+    func setAttachmentReaction(
+        token: String, sessionId: String, messageId: String, attachmentId: String,
+        reaction: String, active: Bool
+    ) async throws -> CloudMessageDTO {
+        let accountId = try requireActiveAccountId()
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(code: "chat_conversation_missing", message: "This conversation is unavailable.", statusCode: 404)
+        }
+        let response: ChatMessageResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages/\(escapedPath(messageId))/attachments/\(escapedPath(attachmentId))/reactions",
+            method: active ? "PUT" : "DELETE", token: token,
+            body: ChatUpdateReactionRequest(reaction: reaction),
+            fallback: "Could not update this photo's reaction."
+        )
+        guard activeAccountId == accountId else { throw CancellationError() }
+        chatMessagesById[response.message.id] = response.message
+        return legacyMessage(from: response.message, conversation: conversation, viewerAccountId: accountId)
+    }
+
+    func deleteAttachment(
+        token: String, sessionId: String, messageId: String, attachmentId: String, forEveryone: Bool
+    ) async throws -> CloudMessageDTO? {
+        let accountId = try requireActiveAccountId()
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(code: "chat_conversation_missing", message: "This conversation is unavailable.", statusCode: 404)
+        }
+        // A dedicated route prevents an older server from applying this request
+        // to the whole message or silently treating it as a message reaction.
+        let response: ChatAttachmentMutationResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages/\(escapedPath(messageId))/attachments/\(escapedPath(attachmentId))",
+            method: "DELETE", token: token,
+            query: [URLQueryItem(name: "for_everyone", value: forEveryone ? "true" : "false")],
+            fallback: "Could not delete this photo."
+        )
+        guard activeAccountId == accountId else { throw CancellationError() }
+        guard let message = response.message else {
+            chatMessagesById.removeValue(forKey: messageId)
+            return nil
+        }
+        chatMessagesById[message.id] = message
+        return legacyMessage(from: message, conversation: conversation, viewerAccountId: accountId)
+    }
+
     func editMessage(
         token: String,
         sessionId: String,
@@ -2148,7 +2193,9 @@ actor CloudAPIClient {
             reactions: (message.reactions ?? []).map {
                 MessageReaction(value: $0.reaction, accountIds: $0.accountIds)
             },
-            canonicalHistoryLocalMessageId: history?.localMessageId
+            canonicalHistoryLocalMessageId: history?.localMessageId,
+            attachmentReactions: Dictionary(grouping: message.attachmentReactions ?? [], by: \.attachmentId)
+                .mapValues { values in values.map { MessageReaction(value: $0.reaction, accountIds: $0.accountIds) } }
         )
     }
 
@@ -2814,6 +2861,7 @@ private struct ServerError: Decodable {
 
 private struct ChatConversationResponse: Decodable { let conversation: CloudChatConversation }
 private struct ChatMessageResponse: Decodable { let message: CloudChatMessage }
+private struct ChatAttachmentMutationResponse: Decodable { let message: CloudChatMessage? }
 private struct ChatPreferencesResponse: Decodable { let preferences: CloudChatPreferences }
 private struct ChatCursorResponse: Decodable { let cursor: CloudChatCursor }
 
