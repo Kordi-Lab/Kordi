@@ -1,6 +1,21 @@
 import type { Message } from '@/kordi-app/types';
 import type { CloudThreadRead } from '@/features/cloud/chatSyncTypes';
 import type { MessageThread } from './messageThreads';
+import { transcriptMessageNavigationIds } from './transcriptMessageIdentity';
+
+export function threadUnreadMarkerMessageId(
+  thread: MessageThread,
+  initialMessageId: string | null | undefined,
+  reads: Record<string, number> | null | undefined,
+): string | null {
+  if (!initialMessageId) return null;
+  const key = threadReadKey(thread.root);
+  if (!key || !reads) return initialMessageId;
+  const message = thread.replies.find(reply => transcriptMessageNavigationIds(reply).includes(initialMessageId));
+  const sequence = message?.conversationSequence;
+  if (typeof sequence === 'number' && sequence > 0 && (reads[key] ?? 0) >= sequence) return null;
+  return initialMessageId;
+}
 
 export function threadReadKey(root: Message): string | null {
   const key = root.reactionTargetMessageId;

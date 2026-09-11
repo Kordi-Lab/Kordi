@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { act } from 'react';
+import { act, createElement } from 'react';
+import { ThreadShortcut } from '../src/features/chat/ThreadShortcut';
 import {
   cleanupVirtualTranscriptHarness,
   flush,
@@ -17,6 +18,33 @@ test.before(async () => {
 
 test.afterEach(async () => {
   await cleanupVirtualTranscriptHarness();
+});
+
+test('thread and latest navigation buttons share flow layout and remain independently usable', async () => {
+  let threadOpens = 0;
+  const view = await render(transcript({
+    items: rows('navigation-', 0, 100, 50),
+    navigationAccessory: createElement(ThreadShortcut, { count: 2, onClick: () => { threadOpens += 1; } }),
+  }));
+  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]')!;
+  await act(async () => viewport.scrollTo({ top: 1_000 }));
+  await flush();
+  const controls = view.host.querySelector<HTMLElement>('[data-transcript-navigation-controls]')!;
+  const thread = controls.querySelector<HTMLButtonElement>('[aria-label="Jump to next unread thread"]')!;
+  const latest = controls.querySelector<HTMLButtonElement>('[data-transcript-latest-button]')!;
+  assert.ok(thread && latest);
+  assert.ok(controls.classList.contains('flex-col'));
+  assert.ok(controls.classList.contains('gap-3'));
+  assert.equal(thread.parentElement?.parentElement, controls);
+  assert.equal(latest.parentElement, controls);
+  assert.equal(thread.parentElement?.classList.contains('absolute'), false);
+  assert.equal(latest.classList.contains('absolute'), false);
+  await act(async () => thread.click());
+  assert.equal(threadOpens, 1);
+  await act(async () => latest.click());
+  await flush();
+  assert.equal(controls.querySelector('[data-transcript-latest-button]'), null);
+  assert.ok(controls.contains(thread), 'Returning to latest must preserve the unread thread action');
 });
 
 test('a notice appended after one long reply does not pull a reader to the bottom', async () => {

@@ -163,6 +163,7 @@ export function transcript(props: {
   selectionMode?: boolean;
   onSelectAllMessages?: () => void;
   onCancelMessageSelection?: () => void;
+  navigationAccessory?: React.ReactNode;
 }) {
   const sessionKey = props.sessionKey ?? 'session:one';
   const navigationRequest = props.navigationRequest
@@ -191,6 +192,7 @@ export function transcript(props: {
       onCancelMessageSelection={props.onCancelMessageSelection}
       tailKey={props.tailKey}
       unreadCount={props.unreadCount}
+      navigationAccessory={props.navigationAccessory}
       onTailChange={props.onTailChange}
       animateLatestAppend={props.animateLatestAppend}
       tail={props.tailHeight ? (

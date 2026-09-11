@@ -1,7 +1,7 @@
 import {MessagesSquare,LoaderCircle} from 'lucide-react';
 export function ThreadShortcut({count,busy,onClick,error}:{count:number;busy?:boolean;onClick:()=>void;error?:string|null}) {
   if(!count&&!error)return null;
-  return <div className="absolute bottom-4 right-3 z-20 flex items-center gap-2">
+  return <div className="flex items-center gap-2">
     {error?<div role="alert" className="max-w-64 rounded-xl border border-[color:var(--app-divider)] bg-[color:var(--app-main-bg)] p-3 text-xs">{error}<button className="ml-2 underline" onClick={onClick}>Retry</button></div>:null}
     <button type="button" aria-label="Jump to next unread thread" title="Jump to next unread thread" disabled={busy} onClick={onClick}
       className="relative grid h-11 w-11 place-items-center rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-native-main-bg)] text-[color:var(--app-sidebar-accent)] shadow-md transition hover:brightness-110 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]">

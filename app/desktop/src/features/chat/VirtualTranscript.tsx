@@ -41,7 +41,7 @@ import {
   transcriptDisclosureDirection,
   type TranscriptDisclosureDirection,
 } from './transcriptStableDisclosure';
-import { TranscriptLatestButton } from './TranscriptLatestButton';
+import { TranscriptNavigationControls } from './TranscriptLatestButton';
 import type {
   StableDisclosureAnchor, AlignedTranscriptSession,
   VirtualTranscriptProps,
@@ -81,6 +81,7 @@ export function VirtualTranscript<Item>({
   tail,
   tailKey,
   unreadCount = 0,
+  navigationAccessory,
   animateLatestAppend = false,
   estimateSize,
   gap = 4, selectionMode = false, onSelectAllMessages, onCancelMessageSelection,
@@ -576,12 +577,11 @@ export function VirtualTranscript<Item>({
         {tail}
         <div data-virtual-transcript-end="true" aria-hidden="true" />
       </ScrollArea>
-      {!isAtTail && items.length > 0 ? (
-        <TranscriptLatestButton
-          count={Math.max(0, Math.floor(unreadCount))}
-          onClick={scrollToLatest}
-        />
-      ) : null}
+      <TranscriptNavigationControls
+        latest={!isAtTail && items.length > 0 ? { count: unreadCount, onClick: scrollToLatest } : undefined}
+      >
+        {navigationAccessory}
+      </TranscriptNavigationControls>
     </div>
   );
 }

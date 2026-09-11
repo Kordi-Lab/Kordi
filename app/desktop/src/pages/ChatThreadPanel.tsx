@@ -7,7 +7,7 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import type { MessageThread } from '@/features/chat/messageThreads';
-import {threadReadKey} from '@/features/chat/threadReadState';
+import {threadReadKey, threadUnreadMarkerMessageId} from '@/features/chat/threadReadState';
 import type { Conversation, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { CompactComposerModelMenu, ComposerMentionMenu, type ComposerMentionOption } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
@@ -231,7 +231,7 @@ export function ChatThreadPanel({
       </header>
       <ChatSessionPane
         presentation={{
-          firstUnreadMessageId,
+          firstUnreadMessageId: threadUnreadMarkerMessageId(thread, firstUnreadMessageId, readCursors),
           liveTurn,
           liveTurnSender,
           shouldRenderLiveTurn: Boolean(liveTurn && !liveTurn.completed),
