@@ -8,7 +8,8 @@ import { loadSession } from '@/features/cloud/session';
 import type { MessageAttachment } from '../types';
 
 const RECOVERY_RETRY_DELAY_MS = 30_000;
-const recoveryQueue = new CloudAttachmentPreviewQueue(2);
+let recoveryQueue: CloudAttachmentPreviewQueue | null = null;
+let stopResetSubscription: (() => void) | null = null;
 type RecoveryTask = { epoch: number; controller: AbortController; users: number; pending: boolean; promise: Promise<string | null> };
 const recoveryPromises = new Map<string, RecoveryTask>();
 const retryAfterByAttachmentId = new Map<string, { epoch: number; until: number }>();
@@ -43,13 +44,25 @@ type RecoveryDependencies = {
   signal?: AbortSignal;
 };
 
-const stopResetSubscription = subscribeCloudAttachmentPreviewReset(() => {
+// The full app has cyclic feature imports. Initialize only after module loading,
+// when a recovery is requested, rather than constructing a cross-chunk class at startup.
+function getRecoveryQueue() {
+  if (!recoveryQueue) {
+    recoveryQueue = new CloudAttachmentPreviewQueue(2);
+    stopResetSubscription = subscribeCloudAttachmentPreviewReset(() => {
+      for (const task of recoveryPromises.values()) task.controller.abort();
+      recoveryQueue?.clear();
+      recoveryPromises.clear();
+      retryAfterByAttachmentId.clear();
+    });
+  }
+  return recoveryQueue;
+}
+import.meta.hot?.dispose(() => {
+  stopResetSubscription?.();
   for (const task of recoveryPromises.values()) task.controller.abort();
-  recoveryQueue.clear();
-  recoveryPromises.clear();
-  retryAfterByAttachmentId.clear();
+  recoveryQueue?.clear();
 });
-import.meta.hot?.dispose(stopResetSubscription);
 
 export function clearAttachmentPreviewRecoveryStateForTests() { clearCloudAttachmentPreviewCache(); }
 
@@ -89,7 +102,7 @@ export async function recoverAttachmentPreviewOnce(attachment: MessageAttachment
   if (existing?.epoch === epoch && !existing.controller.signal.aborted) return subscribeRecovery(attachmentId, existing, dependencies.signal);
 
   const task: RecoveryTask = { epoch, controller: new AbortController(), users: 0, pending: true, promise: Promise.resolve(null) };
-  task.promise = recoveryQueue.run(async signal => {
+  task.promise = getRecoveryQueue().run(async signal => {
     const session = await (dependencies.loadCloudSession ?? loadSession)();
     if (!session?.token || signal.aborted) return null;
     const previewUrl = await (dependencies.recoverPreview ?? recoverCloudAttachmentPreview)({

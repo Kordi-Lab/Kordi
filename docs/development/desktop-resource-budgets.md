@@ -204,3 +204,14 @@ MP4 with `ffmpeg` in a temporary directory and removes it after the run. Unit te
 cover proactive idle expiry, cache byte bounds, shared cancellation, and account
 reset races. These checks establish resource lifetime behavior; allocator and
 OS footprint convergence still requires a repeated-use native soak test.
+
+### Complete production startup smoke test
+
+Media fixtures alone do not exercise the complete application import graph.
+Recovery queues and reset subscriptions initialize lazily on the first recovery
+request, avoiding a cross-chunk constructor call while cyclic features are still
+loading. Run `pnpm --dir app/desktop exec playwright test -c playwright.production.config.ts`
+to build the complete production frontend and assert that WebKit and Chromium
+render the login screen without uncaught module-initialization errors. The test
+uses a fresh browser context and stubs non-frontend requests; it never uses account
+sessions. Set `KORDI_PRODUCTION_TEST_PORT` to an unused loopback port if needed.
