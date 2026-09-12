@@ -23,6 +23,7 @@ export type AttachmentMediaWindowReadyPayload = {
 declare global {
   interface Window {
     __KORDI_ATTACHMENT_MEDIA_PAYLOAD__?: AttachmentMediaWindowPayload;
+    __KORDI_ATTACHMENT_MEDIA_NATIVE_MATERIAL__?: boolean;
   }
 }
 

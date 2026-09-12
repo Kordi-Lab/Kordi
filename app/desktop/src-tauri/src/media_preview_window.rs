@@ -33,8 +33,11 @@ pub(crate) async fn desktop_open_media_preview_window(
 
     let media_path = format!("index.html?mediaPreview=1&mediaPreviewRequest={request_id}");
     let serialized_payload = serde_json::to_string(&payload).map_err(|error| error.to_string())?;
-    let initialization_script =
-        format!("window.__KORDI_ATTACHMENT_MEDIA_PAYLOAD__ = {serialized_payload};");
+    let initialization_script = format!(
+        "window.__KORDI_ATTACHMENT_MEDIA_PAYLOAD__ = {serialized_payload};\
+         window.__KORDI_ATTACHMENT_MEDIA_NATIVE_MATERIAL__ = {};",
+        cfg!(target_os = "macos")
+    );
     let theme = match payload.get("theme").and_then(serde_json::Value::as_str) {
         Some("light") => Some(tauri::Theme::Light),
         Some("dark") => Some(tauri::Theme::Dark),

@@ -101,9 +101,13 @@ export default function AttachmentMediaWindow() {
   useLayoutEffect(() => {
     document.documentElement.classList.add('app-attachment-media-window-root');
     document.body.classList.add('app-attachment-media-window-root');
+    if (window.__KORDI_ATTACHMENT_MEDIA_NATIVE_MATERIAL__) {
+      document.documentElement.dataset.attachmentMediaNativeMaterial = 'true';
+    }
     return () => {
       document.documentElement.classList.remove('app-attachment-media-window-root');
       document.body.classList.remove('app-attachment-media-window-root');
+      delete document.documentElement.dataset.attachmentMediaNativeMaterial;
     };
   }, []);
 
