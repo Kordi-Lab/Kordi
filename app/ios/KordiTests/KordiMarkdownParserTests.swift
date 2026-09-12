@@ -180,7 +180,7 @@ struct MessageGestureRegistrationTests {
     let content = source[start.upperBound..<end.lowerBound]
 
     // Mount/eviction behavior is covered by ConversationTimelineVirtualizationTests.
-    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("ConversationTimelineStack {"))
+    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("ConversationTimelineStack("))
     #expect(content.contains(".onGeometryChange(for: Bool.self)"))
     #expect(content.contains("ForEach(visibleTimelineRows)"))
     #expect(content.contains(".id(bottomAnchorID)"))
@@ -1310,7 +1310,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         let positioning = source[start.lowerBound..<end.lowerBound]
 
         XCTAssertEqual(
-            positioning.components(separatedBy: "proxy.scrollTo(bottomAnchorID, anchor: .bottom)").count - 1,
+            positioning.components(separatedBy: "proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)").count - 1,
             2
         )
     }

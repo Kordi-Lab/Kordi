@@ -7,7 +7,8 @@ is verified by the app's regression targets rather than by changing this control
 ## Applied compatibility implementation
 
 `ConversationTimelineVirtualization.swift` selects an explicit viewport window on
-iOS 26 and keeps native `LazyVStack` on other supported versions. Lightweight row
+iOS 26 and for nested Agent subsessions on every supported version. Ordinary
+conversations on newer systems keep native `LazyVStack`. Lightweight row
 slots retain measured heights and scroll identities. Message content is created
 within the viewport plus one screen of overscan on either side, then released
 when it leaves that window. A 64-point retention margin prevents repeated
@@ -47,6 +48,22 @@ Validation of the integrated fix:
   Swift Testing case). The five gesture-registration cases also passed after
   updating legacy expectations: long presses cancel underlying control touches,
   while ordinary taps retain native forwarding.
+
+## Completed Agent subsession entry
+
+A subsequent customer report exposed a separate nested-navigation path on iOS 27.
+The synthetic regression reproduced a blank completed task despite two loaded
+messages. Initial positioning could be cancelled when GeometryReader replaced
+its measurement subtree. After that lifecycle gap was corrected, a stale lazy
+content-size estimate could still put the viewport below the actual last row.
+
+Positioning now runs on the stable page, waits for preparation, geometry and
+visibility independently, and requires the real last message to materialize.
+Nested Agent subsessions use measured viewport row slots on every OS version.
+The regression covers running and completed tasks, five entries into the same
+completed task, and an interrupted entry followed by reopening. A dedicated UI
+fixture verifies that the completed answer's end marker is actually hittable.
+No task data or server behavior is changed by this fix.
 
 ## Original framework control
 

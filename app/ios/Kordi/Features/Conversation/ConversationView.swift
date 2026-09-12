@@ -380,6 +380,11 @@ struct ConversationView: View {
             currentAccountID: model.account?.accountId ?? ""
         )
     }
+    // Nested task conversations can retain stale lazy height estimates even
+    // on iOS 27. Use measured row slots for these destinations as well.
+    private var usesExplicitTimelineLayout: Bool {
+        conversation.subsessionId != nil || ConversationTimelineVirtualization.usesCompatibilityLayout
+    }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14
 
@@ -509,7 +514,7 @@ struct ConversationView: View {
                             ZStack(alignment: .bottomTrailing) {
                             // History pages retain their data, not every offscreen message view.
                             ScrollView {
-                                ConversationTimelineStack {
+                                ConversationTimelineStack(usesCompatibilityLayout: usesExplicitTimelineLayout) {
                                     if timeline.isEmpty {
                                         EmptyConversation(
                                             conversation: conversation,
@@ -550,7 +555,8 @@ struct ConversationView: View {
                                                     || (!hasPositionedInitialTimeline && row.id == trackedMessageID)
                                                     || messageActionMessage?.id == message.id
                                                     || pendingMessageDeletion?.message.id == message.id
-                                                    || stagedMessageIDs.contains(message.clientMessageId ?? message.id)
+                                                    || stagedMessageIDs.contains(message.clientMessageId ?? message.id),
+                                                usesCompatibilityLayout: usesExplicitTimelineLayout
                                             ) {
                                                 VStack(spacing: 0) {
                                                     if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
@@ -666,14 +672,13 @@ struct ConversationView: View {
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy())
-                            .onGeometryChange(for: Bool.self) { [prepared = hasPreparedInitialViewport] geometry in
-                                prepared && geometry.size.width > 0 && geometry.size.height > 0
+                            // A pushed destination can lay out before onAppear
+                            // prepares its history. Geometry readiness must not
+                            // depend on the state captured by that first layout.
+                            .onGeometryChange(for: Bool.self) { geometry in
+                                geometry.size.width > 0 && geometry.size.height > 0
                             } action: { ready in
                                 if ready { hasLaidOutInitialTimeline = true }
-                            }
-                            .task(id: hasLaidOutInitialTimeline && (!timeline.isEmpty || didFinishInitialHistoryLoad)) {
-                                guard hasLaidOutInitialTimeline, !timeline.isEmpty || didFinishInitialHistoryLoad else { return }
-                                await positionAndRevealInitialViewport(using: proxy)
                             }
                             .scrollDismissesKeyboard(.interactively)
                             .simultaneousGesture(
@@ -1018,6 +1023,15 @@ struct ConversationView: View {
             observedTimeline
             .onAppear {
                 restoreThreadReturnPosition(using: proxy)
+            }
+            // GeometryReader may replace its measured subtree during a push.
+            // Keep positioning on the stable page so cancellation cannot leave
+            // a newly visible child waiting behind an abandoned attempt.
+            .task(id: hasPreparedInitialViewport && hasLaidOutInitialTimeline && isReadPresentationVisible
+                && (!timeline.isEmpty || didFinishInitialHistoryLoad)) {
+                guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, isReadPresentationVisible,
+                      !timeline.isEmpty || didFinishInitialHistoryLoad else { return }
+                await positionAndRevealInitialViewport(using: proxy)
             }
             .task(id: isWaitingForInitialHistory) {
                 guard isWaitingForInitialHistory else { return }
@@ -2094,7 +2108,8 @@ struct ConversationView: View {
 
     @MainActor
     private func positionAndRevealInitialViewport(using proxy: ScrollViewProxy) async {
-        guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, !hasPositionedInitialTimeline,
+        guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, isReadPresentationVisible,
+              !hasPositionedInitialTimeline,
               !messages.isEmpty || didFinishInitialHistoryLoad,
               !scrollPosition.isPositioningInitialTimeline else { return }
         scrollPosition.isPositioningInitialTimeline = true
@@ -2107,7 +2122,7 @@ struct ConversationView: View {
         withTransaction(transaction) {
             switch initialViewport {
             case .latest:
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)
             case let .anchored(anchor):
                 proxy.scrollTo(timelineIdentity(for: anchor.messageID, in: messages), anchor: .top)
             case let .resumed(messageID):
@@ -2132,12 +2147,12 @@ struct ConversationView: View {
         guard !Task.isCancelled else { return }
         if initialViewport == .latest {
             withTransaction(transaction) {
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)
             }
             // A proxy request can arrive before a lazy stack commits its final
             // offset. Verify native layout on display frames before first paint.
             let positioned = await scrollPosition.positionInitialViewport {
-                scrollPosition.positionAtLatest()
+                scrollPosition.positionAtLatest(requiredMessageID: messages.last?.id)
             }
             guard !Task.isCancelled, isReadPresentationVisible, !hasPositionedInitialTimeline else { return }
             guard positioned else { initialLoadFailed = true; return }

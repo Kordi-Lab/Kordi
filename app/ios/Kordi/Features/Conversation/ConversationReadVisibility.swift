@@ -168,11 +168,16 @@ final class ConversationScrollPosition {
         if let readingAnchor { lastVisibleReadingAnchor = readingAnchor }
     }
 
-    func positionAtLatest() -> Bool {
+    func positionAtLatest(requiredMessageID: String? = nil) -> Bool {
         guard let scrollView, scrollView.window != nil,
               !scrollView.isTracking, !scrollView.isDragging,
               scrollView.bounds.height > 0, scrollView.contentSize.height > 0 else { return false }
         scrollView.layoutIfNeeded()
+        if let requiredMessageID {
+            guard let row = rows[requiredMessageID]?.view,
+                  row.window === scrollView.window, row.isDescendant(of: scrollView),
+                  row.bounds.height > 0 else { return false }
+        }
         let target = ConversationTailScrollAnimator.targetOffset(in: scrollView)
         guard abs(scrollView.contentOffset.y - target) > 1 else { return true }
         scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)

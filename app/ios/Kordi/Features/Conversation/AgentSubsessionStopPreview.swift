@@ -18,7 +18,17 @@ struct AgentSubsessionStopPreviewView: View {
     @State private var selected: BackgroundAgentSession?
     @State private var previewDate = Date()
     private var snapshot: CloudAgentSubsession {
-        AgentSubsessionStopPreview.snapshot(accountId: model.account?.accountId ?? "acct_me", now: previewDate)
+        var value = AgentSubsessionStopPreview.snapshot(accountId: model.account?.accountId ?? "acct_me", now: previewDate)
+        if ProcessInfo.processInfo.arguments.contains("--preview-completed-subsession") {
+            value.status = "done"
+            value.live = false
+            value.messages[1] = .init(id: "preview-completed-answer", role: "assistant",
+                text: "# Completed report\n\n"
+                    + String(repeating: "The investigation covers findings, examples, and supporting evidence.\n\n", count: 40)
+                    + "Completed task end marker.",
+                timestampMs: value.messages[0].timestampMs + 5000, senderAgentId: value.agentId)
+        }
+        return value
     }
 
     var body: some View {
@@ -28,9 +38,10 @@ struct AgentSubsessionStopPreviewView: View {
                 Text("This sample task runs only in this preview. Tap Stop to try the control.")
                     .foregroundStyle(.secondary)
                 if let session = BackgroundAgentSession(wire: .init(sessionId: snapshot.sessionId,
-                    turnId: nil, title: snapshot.title, status: "running")) {
-                    BackgroundAgentSessionRow(presentation: .init(session: session, state: .running),
+                    turnId: nil, title: snapshot.title, status: snapshot.status)) {
+                    BackgroundAgentSessionRow(presentation: .init(session: session, state: snapshot.state),
                         agentName: snapshot.agentDisplayName, isEnabled: true) { selected = $0 }
+                        .accessibilityIdentifier("preview-subsession-open")
                 }
                 if model.subsessions[snapshot.sessionId]?.state == .stopped {
                     Button("Restart sample task") { model.installSubsessionStopPreview(snapshot, reset: true) }

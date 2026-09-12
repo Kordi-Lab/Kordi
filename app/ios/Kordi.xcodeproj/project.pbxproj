@@ -19,6 +19,7 @@
 		0B72A6AC80380063ABDC7755 /* AgentSessionPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8907D09B7736B6EBC799138 /* AgentSessionPresentationTests.swift */; };
 		0CCA0D9E4453616087A1C935 /* ShareExtensionSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E82504028486B67BF05F7A51 /* ShareExtensionSupportTests.swift */; };
 		0D697B51F119F58F2297E35F /* GroupSessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95CE270CEA87A8CE6D97F559 /* GroupSessionListView.swift */; };
+		0EBED06DFB5ED16D25504CE2 /* SubsessionConversationViewportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A54C66F5E7062E660286DF /* SubsessionConversationViewportTests.swift */; };
 		0FCC9220F6A589D7DEA8B2DD /* CloudModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5F1853F7027097BBC718478 /* CloudModels.swift */; };
 		126800B85342E36E4F5349FE /* ConversationTimelineVirtualizationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 328D64891C42264C1660455B /* ConversationTimelineVirtualizationTests.swift */; };
 		12A04863D661AF2255724438 /* IdentityAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 844BA3411A7748BF0EA7F6B3 /* IdentityAvatar.swift */; };
@@ -163,6 +164,7 @@
 		F72232A5E55E5DDBF7C08493 /* KordiAppEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B3BED33D4A29116EAD073A0 /* KordiAppEnvironmentTests.swift */; };
 		F7D2FBC93887F75BCDF18D61 /* ConversationInitialLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3BB5862C5807A1AD1244A0 /* ConversationInitialLoadingView.swift */; };
 		FD5B3FEC4C203C259378AB38 /* CloudOAuthCallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A9FFC456D58053BB00863A /* CloudOAuthCallbackTests.swift */; };
+		FF7230221C6B44664FFCDA6F /* SubsessionConversationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F93CA48DD086B4999869484F /* SubsessionConversationUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -311,6 +313,7 @@
 		9D60F97D3355040D5CEBF231 /* CloudWireCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudWireCache.swift; sourceTree = "<group>"; };
 		9DCA28263C9542B2585C6820 /* ConversationReadPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationReadPresentationTests.swift; sourceTree = "<group>"; };
 		A020F6E80156312C56FA7D0F /* ConversationRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationRow.swift; sourceTree = "<group>"; };
+		A0A54C66F5E7062E660286DF /* SubsessionConversationViewportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubsessionConversationViewportTests.swift; sourceTree = "<group>"; };
 		A21B553E883C637AF55134AE /* AttachmentTransferTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentTransferTests.swift; sourceTree = "<group>"; };
 		A65E789E3576D0F0275E8B65 /* ConversationSendQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSendQueue.swift; sourceTree = "<group>"; };
 		A8BE8ED2C03AEBF0EAA5F045 /* MediaCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaCacheTests.swift; sourceTree = "<group>"; };
@@ -369,6 +372,7 @@
 		F5F1853F7027097BBC718478 /* CloudModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudModels.swift; sourceTree = "<group>"; };
 		F6A1B174CA85A5F4F5E0AC15 /* PhotoImageEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoImageEditor.swift; sourceTree = "<group>"; };
 		F7F1BB7067E03988558968A0 /* CameraImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraImagePicker.swift; sourceTree = "<group>"; };
+		F93CA48DD086B4999869484F /* SubsessionConversationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubsessionConversationUITests.swift; sourceTree = "<group>"; };
 		FB201FE56A48A0CC09D85718 /* DigestMonthGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestMonthGrid.swift; sourceTree = "<group>"; };
 		FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiAppEnvironment.swift; sourceTree = "<group>"; };
 		FD490ECA738742A1C27BD23C /* ProviderAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthentication.swift; sourceTree = "<group>"; };
@@ -520,6 +524,7 @@
 			isa = PBXGroup;
 			children = (
 				95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */,
+				F93CA48DD086B4999869484F /* SubsessionConversationUITests.swift */,
 			);
 			path = KordiDeletionUITests;
 			sourceTree = "<group>";
@@ -654,6 +659,7 @@
 				5BAE23D56402398862849C56 /* ProviderAuthenticationTests.swift */,
 				B7C0162644ADAD950961A3EF /* SessionRuntimeRouteStoreTests.swift */,
 				E82504028486B67BF05F7A51 /* ShareExtensionSupportTests.swift */,
+				A0A54C66F5E7062E660286DF /* SubsessionConversationViewportTests.swift */,
 				466213B0B64F8844554C358D /* VoiceMessageTests.swift */,
 			);
 			path = KordiTests;
@@ -978,6 +984,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CA7AAFD93DE8D988CBFCDD2E /* MessageDeletionUITests.swift in Sources */,
+				FF7230221C6B44664FFCDA6F /* SubsessionConversationUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1025,6 +1032,7 @@
 				3D7A4357454B74FB0D27E7C0 /* ProviderAuthenticationTests.swift in Sources */,
 				ADAFE64FFE54941BDDDC6908 /* SessionRuntimeRouteStoreTests.swift in Sources */,
 				0CCA0D9E4453616087A1C935 /* ShareExtensionSupportTests.swift in Sources */,
+				0EBED06DFB5ED16D25504CE2 /* SubsessionConversationViewportTests.swift in Sources */,
 				24B04F393F9914AE090558CD /* VoiceMessageTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

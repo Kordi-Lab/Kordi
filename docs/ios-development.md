@@ -135,6 +135,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-group-management` | Group-management sheet |
 | `--preview-group-invite` | Group-management sheet opened to invitations |
 | `--preview-markdown` | Markdown-rich message transcript |
+| `--preview-completed-subsession` | Completed long-answer task; combine with `--preview-data --preview-background-stop` to test repeated child navigation |
 | `--preview-menu-test-chat` | Manual menu testing chat with long text, voice, photos and captions; combine with `--preview-data --preview-contact-chat` |
 | `--preview-voice-message-actions` | Compact voice fixture for hold-versus-transcript checks |
 | `--preview-rich-message-actions` | Markdown and blob-emoji fixture for checking rendered long-press previews |
