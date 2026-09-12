@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 import Testing
 @testable import Kordi
@@ -75,6 +76,118 @@ import Testing
 }
 
 final class CloudMessageStateProjectorTests: XCTestCase {
+    @MainActor
+    func testAuthoritativeRefreshDoesNotResurrectMissingPhotoRows() async throws {
+        for (cacheOnly, empty) in [(false, false), (true, false), (false, true), (true, true)] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let store = try LocalMessageStore(inMemory: true)
+            let model = AppModel(cache: store, wireCache: CloudWireCache(directory: directory), previewMode: true)
+            let account = try XCTUnwrap(model.account)
+            let conversation = ConversationSummary(id: "person:history-fixture", kind: .person,
+                peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil,
+                displayName: "History fixture", lastMessage: "", lastActivityAt: Date(), unreadCount: 0,
+                avatarSource: nil, agentActivity: .ready, sessionId: "history-fixture")
+            let live = wire(id: "live", from: account.accountId, to: "fixture-peer", body: "Live fixture",
+                sessionId: conversation.sessionId, conversationSequence: 41)
+            let stale = wire(id: "stale-photo", from: account.accountId, to: "fixture-peer", body: "Old photo fixture",
+                sessionId: conversation.sessionId, conversationSequence: 42)
+            if cacheOnly {
+                let cached = ChatMessage(id: "stale-photo", conversationId: conversation.id,
+                    author: .me, authorName: "Tester", text: "", createdAt: Date(), deliveryState: .read,
+                    errorMessage: nil, requestMessageId: nil,
+                    attachments: [ChatAttachment(attachmentId: "fixture-photo", name: "fixture.png", kind: .image,
+                        mimeType: "image/png", sizeBytes: 10, previewURL: nil)], reactionTargetMessageId: "stale-photo")
+                let pending = ChatMessage(id: "pending", conversationId: conversation.id, author: .me,
+                    authorName: "Tester", text: "Sending", createdAt: Date(), deliveryState: .sending,
+                    errorMessage: nil, requestMessageId: nil)
+                store.saveMessages([cached, pending], conversationId: conversation.id, accountId: account.accountId)
+                model.hydrateCachedMessages(for: conversation)
+            } else {
+                _ = await model.applyConversationHistoryPage(CloudConversationMessagePage(
+                    messages: [live, stale], nextBeforeSequence: nil, hasMore: false),
+                    to: conversation, account: account)
+            }
+            var publications: [Set<String>] = []
+            let observation = model.$messagesByConversation.dropFirst().sink { value in
+                publications.append(Set(value[conversation.id, default: []].map(\.id)))
+            }
+            _ = await model.applyConversationHistoryPage(CloudConversationMessagePage(
+                messages: empty ? [] : [live], nextBeforeSequence: nil, hasMore: false),
+                to: conversation, account: account)
+            let retained = Set(model.messages(for: conversation).map(\.id))
+            let expected: Set<String> = Set(empty ? [] : ["live"]).union(cacheOnly ? ["pending"] : [])
+            withExtendedLifetime(observation) {}
+            XCTAssertEqual(publications, [expected], "Hydration must publish one final timeline, with no intermediate removal/reinsertion")
+            XCTAssertEqual(retained, expected,
+                "An authoritative page must not merge an expired image back from the old rendered snapshot")
+            XCTAssertFalse(store.loadMessages(accountId: account.accountId, conversationId: conversation.id)
+                .contains { $0.id == "stale-photo" })
+        }
+    }
+
+    @MainActor
+    func testPruningSnapshotDoesNotRetireSendsAcknowledgedDuringRefresh() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let account = try XCTUnwrap(model.account)
+        let conversation = ConversationSummary(id: "person:sending-fixture", kind: .person,
+            peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil, displayName: "Fixture",
+            lastMessage: "", lastActivityAt: Date(), unreadCount: 0, avatarSource: nil,
+            agentActivity: .ready, sessionId: "sending-fixture")
+        let rows = [MessageDeliveryState.sending, .failed, .read].map { state in
+            ChatMessage(id: state.rawValue, conversationId: conversation.id, author: .me,
+                authorName: "Tester", text: "", createdAt: Date(), deliveryState: state,
+                errorMessage: nil, requestMessageId: nil)
+        }
+        store.saveMessages(rows, conversationId: conversation.id, accountId: account.accountId)
+        model.hydrateCachedMessages(for: conversation)
+        let known = model.knownHistoryMessageIDs(conversationID: conversation.id)
+        XCTAssertFalse(known.contains(MessageDeliveryState.sending.rawValue))
+        XCTAssertFalse(known.contains(MessageDeliveryState.failed.rawValue))
+        XCTAssertTrue(known.contains(MessageDeliveryState.read.rawValue))
+    }
+
+    func testRenderedCachePruningRespectsPageCoverageAndPendingMessages() {
+        func row(_ id: String, _ sequence: Int64?, state: MessageDeliveryState = .read, remote: Bool = true) -> ChatMessage {
+            ChatMessage(id: id, conversationId: "fixture", conversationSequence: sequence,
+                author: .me, authorName: "Tester", text: "", createdAt: Date(), deliveryState: state,
+                errorMessage: nil, requestMessageId: nil, reactionTargetMessageId: remote ? id : nil)
+        }
+        let live = wire(id: "live", from: "acct_me", to: "acct_peer", conversationSequence: 41)
+        let rows = [row("older", 40), row("live", 41), row("missing", 42), row("newer", 50),
+            row("unsequenced", nil), row("sending", 42, state: .sending),
+            row("failed", 42, state: .failed), row("local", nil, remote: false)]
+        let page = CloudConversationMessagePage(messages: [live], nextBeforeSequence: 41, hasMore: true)
+        XCTAssertEqual(AppModel.cachedMessageIDsMissingFromHistoryPage(rows, page: page, beforeSequence: 50), ["missing"])
+        XCTAssertEqual(AppModel.cachedMessageIDsMissingFromHistoryPage(rows,
+            page: CloudConversationMessagePage(messages: [live], nextBeforeSequence: nil, hasMore: true),
+            beforeSequence: nil), [])
+    }
+
+    @MainActor
+    func testHistoryResponseCannotRemoveMessagesThatArrivedAfterItsRequest() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let model = AppModel(cache: try LocalMessageStore(inMemory: true),
+            wireCache: CloudWireCache(directory: directory), previewMode: true)
+        let account = try XCTUnwrap(model.account)
+        let conversation = ConversationSummary(id: "person:race-fixture", kind: .person,
+            peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil, displayName: "Fixture",
+            lastMessage: "", lastActivityAt: Date(), unreadCount: 0, avatarSource: nil,
+            agentActivity: .ready, sessionId: "race-fixture")
+        let rows = ["live", "missing", "arrived-later"].enumerated().map { index, id in
+            wire(id: id, from: account.accountId, to: "fixture-peer", body: id,
+                sessionId: conversation.sessionId, conversationSequence: Int64(index + 1))
+        }
+        _ = await model.applyConversationHistoryPage(CloudConversationMessagePage(
+            messages: rows, nextBeforeSequence: nil, hasMore: false), to: conversation, account: account)
+        _ = await model.applyConversationHistoryPage(CloudConversationMessagePage(
+            messages: [rows[0]], nextBeforeSequence: nil, hasMore: false), to: conversation, account: account,
+            knownMessageIDs: ["live", "missing"])
+        XCTAssertEqual(Set(model.messages(for: conversation).map(\.id)), ["live", "arrived-later"])
+    }
+
     func testAuthoritativeHistoryPagePrunesOnlyMissingMessagesInItsWindow() {
         let sessionId = "session:group:one"
         let earlier = wire(

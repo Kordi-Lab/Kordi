@@ -3,6 +3,26 @@ import XCTest
 
 @MainActor
 final class LocalMessageStoreTests: XCTestCase {
+    func testIndividualMessageRecordsPreserveStableSendIdentity() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        func source(clientID: String) -> ChatMessage {
+            ChatMessage(id: "canonical-photo", clientMessageId: clientID,
+                conversationId: "group:fixture", conversationSequence: 4, author: .me,
+                authorName: "Tester", text: "", createdAt: Date(timeIntervalSince1970: 100),
+                cloudMessageVersion: 1, deliveryState: .read, errorMessage: nil, requestMessageId: nil,
+                reactionTargetMessageId: "canonical-photo")
+        }
+        for clientID in ["client-photo", "corrected-client-photo"] {
+            let sent = source(clientID: clientID)
+            store.saveMessages([sent], conversationId: sent.conversationId, accountId: "fixture-owner")
+            let restored = try XCTUnwrap(store.loadMessages(accountId: "fixture-owner", conversationId: sent.conversationId).first)
+            XCTAssertEqual(restored.clientMessageId, sent.clientMessageId)
+            XCTAssertEqual(AppModel.timelineIdentity(for: restored, requestPresentationIds: [:]),
+                AppModel.timelineIdentity(for: sent, requestPresentationIds: [:]),
+                "Loading older cached records must not change their row identity on refresh")
+        }
+    }
+
     func testConversationCacheKeepsLatestStickerPreview() throws {
         let store = try LocalMessageStore(inMemory: true)
         var source = conversation(id: "person:sticker", displayName: "Sticker chat")

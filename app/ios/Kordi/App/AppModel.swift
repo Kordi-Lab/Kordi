@@ -1350,13 +1350,14 @@ final class AppModel: ObservableObject {
         guard let token, let account else { return false }
         async let fetchedPin = try? api.sessionPin(token: token, sessionId: conversation.sessionId)
         do {
+            let knownMessageIDs = knownHistoryMessageIDs(conversationID: conversation.id)
             let page = try await api.conversationMessagePage(
                 token: token,
                 sessionId: conversation.sessionId
             )
             try Task.checkCancellation()
             guard self.token == token, self.account?.accountId == account.accountId else { return false }
-            _ = await applyConversationHistoryPage(page, to: conversation, account: account)
+            _ = await applyConversationHistoryPage(page, to: conversation, account: account, knownMessageIDs: knownMessageIDs)
             try Task.checkCancellation()
             guard self.token == token, self.account?.accountId == account.accountId else { return false }
             reconcilePendingAgentRequest(
@@ -1511,6 +1512,7 @@ final class AppModel: ObservableObject {
         do {
             while conversationsWithEarlierHistory.contains(conversation.id),
                   let beforeSequence = conversationHistoryBeforeSequence[conversation.id] {
+                let knownMessageIDs = knownHistoryMessageIDs(conversationID: conversation.id)
                 let page = try await api.conversationMessagePage(
                     token: token,
                     sessionId: conversation.sessionId,
@@ -1521,7 +1523,8 @@ final class AppModel: ObservableObject {
                     page,
                     to: conversation,
                     account: account,
-                    requestedBeforeSequence: beforeSequence
+                    requestedBeforeSequence: beforeSequence,
+                    knownMessageIDs: knownMessageIDs
                 )
                 if added > 0 || !page.hasMore { return }
             }
@@ -4971,21 +4974,27 @@ final class AppModel: ObservableObject {
         return MessageHistoryLoadResult(messagesByPeer: result, complete: complete)
     }
 
-    private func applyConversationHistoryPage(
+    func applyConversationHistoryPage(
         _ page: CloudConversationMessagePage,
         to conversation: ConversationSummary,
         account: CloudAccount,
-        requestedBeforeSequence: Int64? = nil
+        requestedBeforeSequence: Int64? = nil,
+        knownMessageIDs: Set<String>? = nil
     ) async -> Int {
         guard !Task.isCancelled, self.account?.accountId == account.accountId else { return 0 }
         let existing = messagesByConversation[conversation.id, default: []]
         let existingIDs = Set(existing.map(\.id))
-        removeCloudMessages(Self.cloudMessageIDsMissingFromHistoryPage(
+        var missingIDs = Self.cloudMessageIDsMissingFromHistoryPage(
             cloudMessagesByPeer.values.flatMap { $0 },
             page: page,
             sessionId: conversation.sessionId,
             beforeSequence: requestedBeforeSequence
-        ))
+        ).union(Self.cachedMessageIDsMissingFromHistoryPage(existing, page: page,
+            beforeSequence: requestedBeforeSequence))
+        if let knownMessageIDs { missingIDs.formIntersection(knownMessageIDs) }
+        // Publish one reconciled timeline after projection is ready. Removing
+        // rows before the await creates a visible intermediate scroll position.
+        removeCloudMessages(missingIDs, updateRenderedMessages: false)
         for message in page.messages { mergeCloudMessage(message, peerHint: nil) }
         let accumulatedWireMessages = conversation.kind == .group
             ? Self.groupWireMessages(
@@ -5010,8 +5019,12 @@ final class AppModel: ObservableObject {
             )
         }.value
         guard !Task.isCancelled, self.account?.accountId == account.accountId else { return 0 }
-        let merged = Self.mergePartialProjection(projection, preserving: existing)
-        if merged != existing {
+        let current = messagesByConversation[conversation.id, default: []]
+        let retained = current.filter {
+            !missingIDs.contains($0.id) && !missingIDs.contains($0.reactionTargetMessageId ?? "")
+        }
+        let merged = Self.mergePartialProjection(projection, preserving: retained)
+        if merged != current {
             messagesByConversation[conversation.id] = merged
             cacheCurrentMessages(conversation.id)
         }
@@ -5044,13 +5057,55 @@ final class AppModel: ObservableObject {
         return Set(existing.compactMap { message in
             guard !pageIDs.contains(message.messageId),
                   CloudMessageStateProjector.sessionKeys(for: message).contains(sessionId),
-                  let sequence = message.conversationSequence,
-                  lowerBound.map({ sequence >= $0 }) ?? true,
-                  beforeSequence.map({ sequence < $0 }) ?? true else {
+                  Self.historyPageCovers(sequence: message.conversationSequence,
+                    lowerBound: lowerBound, beforeSequence: beforeSequence, hasMore: page.hasMore) else {
                 return nil
             }
             return message.messageId
         })
+    }
+
+    func knownHistoryMessageIDs(conversationID: String) -> Set<String> {
+        var ids = Set(cloudMessagesByPeer.values.flatMap { $0.map(\.messageId) })
+        for message in messagesByConversation[conversationID, default: []]
+            where message.deliveryState != .sending && message.deliveryState != .failed {
+            // A local send may be acknowledged while the history request runs.
+            // Its earlier optimistic row is not an authoritative pruning candidate.
+            ids.insert(message.id)
+            if let wireID = message.reactionTargetMessageId { ids.insert(wireID) }
+        }
+        return ids
+    }
+
+    nonisolated private static func historyPageCovers(sequence: Int64?, lowerBound: Int64?,
+        beforeSequence: Int64?, hasMore: Bool) -> Bool {
+        guard let sequence else { return !hasMore && beforeSequence == nil }
+        return (lowerBound.map { sequence >= $0 } ?? true)
+            && (beforeSequence.map { sequence < $0 } ?? true)
+    }
+
+    nonisolated static func cachedMessageIDsMissingFromHistoryPage(_ existing: [ChatMessage],
+        page: CloudConversationMessagePage, beforeSequence: Int64?) -> Set<String> {
+        guard !page.hasMore || page.nextBeforeSequence != nil else { return [] }
+        let aliases = Set(page.messages.flatMap { message in
+            [message.messageId, message.clientMessageId,
+             CloudGroupMessageCodec.parse(message.body)?.message?.id].compactMap { $0 }
+        })
+        var missing: Set<String> = []
+        for message in existing {
+            guard message.deliveryState != .sending, message.deliveryState != .failed,
+                  !message.isSystemNotice,
+                  message.reactionTargetMessageId != nil || message.cloudMessageVersion != nil
+                    || message.conversationSequence != nil,
+                  historyPageCovers(sequence: message.conversationSequence,
+                    lowerBound: page.hasMore ? page.nextBeforeSequence : nil,
+                    beforeSequence: beforeSequence, hasMore: page.hasMore),
+                  ![message.id, message.clientMessageId, message.reactionTargetMessageId]
+                    .compactMap({ $0 }).contains(where: aliases.contains) else { continue }
+            missing.insert(message.id)
+            if let wireID = message.reactionTargetMessageId { missing.insert(wireID) }
+        }
+        return missing
     }
 
     nonisolated private static func projectHistoryMessages(
@@ -6293,7 +6348,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func removeCloudMessages(_ messageIds: Set<String>) {
+    private func removeCloudMessages(_ messageIds: Set<String>, updateRenderedMessages: Bool = true) {
         guard !messageIds.isEmpty else { return }
         cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
             messages.filter { !messageIds.contains($0.messageId) }
@@ -6302,6 +6357,7 @@ final class AppModel: ObservableObject {
         if let accountId = account?.accountId {
             cache?.deleteMessages(messageIds, accountId: accountId)
         }
+        guard updateRenderedMessages else { return }
         for conversationId in Array(messagesByConversation.keys) {
             guard let messages = messagesByConversation[conversationId] else { continue }
             let filtered = messages.filter {

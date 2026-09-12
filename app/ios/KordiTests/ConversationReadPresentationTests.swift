@@ -272,7 +272,21 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                             XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1,
                                 "The first visible frame must already be at latest")
                         }
-                        return (CACurrentMediaTime() - openingStarted) * 1000
+                        let firstVisibleTime = (CACurrentMediaTime() - openingStarted) * 1000
+                        // Keep observing after the first paint: a later correction
+                        // is visible as an unwanted scroll during chat re-entry.
+                        for _ in 0..<60 {
+                            try await Task.sleep(for: .milliseconds(10))
+                            if let anchorAtEntry {
+                                XCTAssertEqual(try XCTUnwrap(rowTop(anchorAtEntry.id, in: scroll)), anchorAtEntry.top, accuracy: 2,
+                                    "The restored message must stay fixed after the first visible frame")
+                            } else {
+                                XCTAssertEqual(scroll.layer.presentation()?.bounds.minY ?? scroll.contentOffset.y,
+                                    ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 2,
+                                    "Latest must stay fixed after the first visible frame")
+                            }
+                        }
+                        return firstVisibleTime
                     }
                 }
                 XCTFail("Cached history did not become visible")
