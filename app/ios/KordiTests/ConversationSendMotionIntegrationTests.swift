@@ -725,3 +725,139 @@ final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
         }
     }
 }
+
+@MainActor
+final class ConversationIncomingTailTests: XCTestCase {
+    func testGroupReplyStaysAtBottomWhileStreamingWithKeyboardOpen() async throws {
+        try await checkIncomingReply(readingHistory: false)
+    }
+
+    func testGroupReplyDoesNotPullTheReaderAwayFromHistory() async throws {
+        try await checkIncomingReply(readingHistory: true)
+    }
+
+    private func checkIncomingReply(readingHistory: Bool) async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let account = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "group:incoming-tail", kind: .group,
+            peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil,
+            displayName: "Incoming reply fixture", lastMessage: "Ready", lastActivityAt: Date(),
+            unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "incoming-tail")
+        let now = Date()
+        let seed = (0..<32).map { index in
+            ChatMessage(id: "incoming-seed-\(index)", conversationId: conversation.id,
+                author: index % 3 == 0 ? .me : .agent, authorName: "Fixture author",
+                text: String(repeating: "A synthetic history paragraph with several lines of context.\n\n", count: 1 + index % 8),
+                createdAt: now.addingTimeInterval(Double(index - 32) * 60),
+                deliveryState: .read, errorMessage: nil, requestMessageId: nil)
+        }
+        store.saveMessages(seed, conversationId: conversation.id, accountId: account, hasEarlier: false)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(navigation: navigation, model: model,
+            calls: KordiCallCoordinator(), notifications: KordiNotificationCoordinator()))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true; window.rootViewController = nil
+            previous?.makeKeyAndVisible()
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        navigation.path = [.conversation(conversation)]
+        let lastSeed = model.timelineIdentity(for: try XCTUnwrap(seed.last))
+        for _ in 0..<250 {
+            if ConversationMotionProbeRegistry.frame(for: lastSeed, in: window) != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        _ = try XCTUnwrap(ConversationMotionProbeRegistry.frame(for: lastSeed, in: window))
+        let row = try XCTUnwrap(ConversationMotionProbeRegistry.views[lastSeed]?.value)
+        var ancestor = row.superview
+        var timeline: UIScrollView?
+        while let view = ancestor {
+            if let scroll = view as? UIScrollView { timeline = scroll; break }
+            ancestor = view.superview
+        }
+        let scroll = try XCTUnwrap(timeline)
+        func editor(_ view: UIView) -> UITextView? {
+            if let text = view as? UITextView, text.isEditable { return text }
+            return view.subviews.lazy.compactMap(editor).first
+        }
+        let composer = try XCTUnwrap(editor(controller.view))
+        func presentedComposerFrame() -> CGRect {
+            if let layer = composer.layer.presentation(), let root = window.layer.presentation() {
+                return layer.convert(layer.bounds, to: root)
+            }
+            return composer.convert(composer.bounds, to: window)
+        }
+        composer.becomeFirstResponder()
+        var lastTop: CGFloat = 0
+        var stableFrames = 0
+        for _ in 0..<250 {
+            try await Task.sleep(for: .milliseconds(20))
+            let frame = presentedComposerFrame()
+            stableFrames = frame.maxY < window.bounds.maxY - 120 && abs(frame.minY - lastTop) < 0.1 ? stableFrames + 1 : 0
+            lastTop = frame.minY
+            if stableFrames >= 6 { break }
+        }
+        XCTAssertGreaterThanOrEqual(stableFrames, 6)
+        XCTAssertEqual(ConversationTailScrollAnimator.targetOffset(in: scroll) - scroll.contentOffset.y, 0, accuracy: 1,
+            "The fixture must begin at the native bottom after keyboard layout")
+        if readingHistory {
+            scroll.setContentOffset(CGPoint(x: 0, y: 100), animated: false)
+            try await Task.sleep(for: .milliseconds(400))
+        }
+        let historyOffset = scroll.contentOffset.y
+        let question = ChatMessage(id: "incoming-question", conversationId: conversation.id,
+            author: .me, authorName: "You", text: "Please check this example.", createdAt: now,
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+        model.upsertPreviewMessage(question)
+        try await Task.sleep(for: .milliseconds(300))
+        for phase in 0..<6 {
+            let reply = ChatMessage(id: "incoming-answer", conversationId: conversation.id,
+                author: .agent, authorName: "Fixture agent",
+                text: String(repeating: "A streamed response with supporting details.\n\n", count: phase == 5 ? 1 : phase * 4),
+                createdAt: now.addingTimeInterval(1), cloudMessageVersion: phase + 1, deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: question.id,
+                messageAction: MessageActionMetadata.quote(question.actionSource(sessionId: conversation.sessionId)),
+                agentExecution: AgentExecutionSnapshot(phase: phase >= 4 ? .complete : .usingTool,
+                    summary: "", steps: [], startedAtMs: 0, updatedAtMs: Double(phase), completed: phase >= 4))
+            model.upsertPreviewMessage(reply)
+            var gaps: [CGFloat] = []
+            for _ in 0..<40 {
+                try await Task.sleep(for: .milliseconds(10))
+                if !readingHistory,
+                   let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: reply), in: window),
+                   frame.minY < presentedComposerFrame().minY {
+                    gaps.append(presentedComposerFrame().minY - frame.maxY)
+                }
+            }
+            if readingHistory {
+                XCTAssertEqual(scroll.contentOffset.y, historyOffset, accuracy: 1,
+                    "An incoming reply must preserve the reader's history position")
+            } else {
+                let frame = try XCTUnwrap(ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: reply), in: window),
+                    "Reply phase \(phase) must render; distance from bottom: \(ConversationTailScrollAnimator.targetOffset(in: scroll) - scroll.contentOffset.y)")
+                let gap = presentedComposerFrame().minY - frame.maxY
+                let gapRange = (gaps.max() ?? 0) - (gaps.min() ?? 0)
+                XCTAssertLessThanOrEqual(gapRange, 2, "A visible incoming reply must not jump up and then down in phase \(phase)")
+                let tailDistance = ConversationTailScrollAnimator.targetOffset(in: scroll) - scroll.contentOffset.y
+                XCTAssertGreaterThanOrEqual(gap, 0, "The latest reply must stay above the composer")
+                XCTAssertLessThanOrEqual(gap, 45, "No blank space may remain below the latest reply")
+                XCTAssertEqual(tailDistance, 0, accuracy: 1, "Streaming must continue following the bottom")
+                XCTAssertNil(ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window),
+                    "A fully visible latest reply must not offer a further jump down")
+            }
+        }
+    }
+}

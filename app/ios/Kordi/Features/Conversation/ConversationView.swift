@@ -201,6 +201,7 @@ struct ConversationView: View {
     @State private var lastTimelineSnapshot = ConversationTimelineWindow.Snapshot(count: 0, latestMessageID: nil)
     @State private var isLoadingEarlier = false
     @State private var isAtBottom = false
+    @State private var latestMessageBottomVisible = false
     @State private var latestVisibleMessageID: String?
     @State private var initialReadAnchorPositioned = false
     @State private var hasPositionedInitialTimeline = false
@@ -639,8 +640,12 @@ struct ConversationView: View {
                                 .background(
                                     ConversationScrollCommandBridge(
                                         scrollPosition: scrollPosition,
+                                        latestMessageID: timeline.last?.id,
+                                        viewportFrame: viewport.frame(in: .global),
                                         isUserScrollEnabled: messageActionMessage == nil,
+                                        allowsContentFollowing: pendingMessageDeletion == nil && activeDeleteSnapshots.isEmpty,
                                         preservesReadingPosition: hasRevealedInitialViewport
+                                            && isReadPresentationVisible
                                             && stagedMessageIDs.isEmpty
                                             && messageActionMessage == nil
                                             && threadReturnMessageID == nil
@@ -706,7 +711,8 @@ struct ConversationView: View {
                                 }
                                 if ConversationTimelineScrollBehavior.shouldShowLatestButton(
                                     isAtBottom: isAtBottom,
-                                    messageCount: timeline.count
+                                    messageCount: timeline.count,
+                                    latestMessageBottomVisible: latestMessageBottomVisible
                                 ) {
                                     LatestMessageButton(count: newMessageCount) {
                                         scrollToBottom(animated: true)
@@ -952,7 +958,7 @@ struct ConversationView: View {
                     isAtBottom: isAtBottom,
                     trackedMessageID: trackedMessageID,
                     bottomAnchorID: bottomAnchorID
-                )
+                ) || scrollPosition.isMessageBottomVisible(previousLatestMessage?.id)
                 if !scrollPosition.isUserScrolling,
                    previousLatestMessageID != currentLatestMessageID
                     || ConversationTimelineScrollBehavior.hasContentChange(previousLatestMessage, currentLatestMessage),
@@ -968,16 +974,9 @@ struct ConversationView: View {
                     isNavigationReturnPending: threadReturnMessageID != nil
                         || threadReturnScrollOffsetY != nil
                 ) {
-                    // A native offset can reach an estimated tail before SwiftUI
-                    // has created the newly inserted row. Resolve its identity
-                    // before native positioning can release the staged entrance.
-                    if let currentLatestMessageID {
-                        var transaction = Transaction(animation: nil)
-                        transaction.disablesAnimations = true
-                        withTransaction(transaction) {
-                            proxy.scrollTo(currentLatestMessageID, anchor: .bottom)
-                        }
-                    }
+                    // Use one native content-bottom target. An identity scroll
+                    // can execute after native positioning and undo it by the
+                    // trailing sentinel/padding height, producing a second jump.
                     scrollToBottom()
                 }
             }
@@ -2242,6 +2241,9 @@ struct ConversationView: View {
     private func recordScrollGeometry(_ snapshot: ConversationScrollGeometrySnapshot) {
         guard hasRevealedInitialViewport, isReadPresentationVisible, snapshot.isValid else { return }
         scrollPosition.contentOffsetY = snapshot.contentOffsetY
+        if latestMessageBottomVisible != snapshot.latestMessageBottomVisible {
+            latestMessageBottomVisible = snapshot.latestMessageBottomVisible
+        }
         scrollPosition.captureReadingAnchor()
         if isAtBottom != snapshot.isAtLatest { isAtBottom = snapshot.isAtLatest }
         if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID { trackedMessageID = nil }
@@ -3180,9 +3182,10 @@ enum ConversationTimelineScrollBehavior {
 
     static func shouldShowLatestButton(
         isAtBottom: Bool,
-        messageCount: Int
+        messageCount: Int,
+        latestMessageBottomVisible: Bool = false
     ) -> Bool {
-        !isAtBottom && messageCount > 0
+        !isAtBottom && !latestMessageBottomVisible && messageCount > 0
     }
 
     static func isAtLatest(
@@ -3564,7 +3567,10 @@ private struct ConversationScrollRestoreRequest: Equatable {
 // callbacks can leave read presentation stale after a UIKit-driven jump.
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollPosition: ConversationScrollPosition
+    let latestMessageID: String?
+    let viewportFrame: CGRect
     let isUserScrollEnabled: Bool
+    let allowsContentFollowing: Bool
     let preservesReadingPosition: Bool
     let scrollToBottomRequest: Int
     let animateBottomScroll: Bool
@@ -3597,6 +3603,9 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         }
         let coordinator = context.coordinator
         coordinator.navigationVisibilityChanged = onNavigationVisibilityChange
+        coordinator.scrollPosition = scrollPosition
+        coordinator.latestMessageID = latestMessageID
+        scrollPosition.viewportFrameInWindow = viewportFrame
         scrollPosition.attachNavigationAnimator(coordinator.tailAnimator)
         coordinator.tailAnimator.onTransitionVisibilityChange = { [weak coordinator, weak scrollPosition] in
             guard let coordinator else { return }
@@ -3604,6 +3613,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             DispatchQueue.main.async { [weak coordinator] in coordinator?.navigationVisibilityChanged?() }
         }
         coordinator.preservesReadingPosition = preservesReadingPosition && exactRestoreRequest == nil
+        coordinator.contentResizeFollower.isEnabled = coordinator.preservesReadingPosition && isUserScrollEnabled && allowsContentFollowing
         coordinator.isUserScrollEnabled = isUserScrollEnabled
         if shouldScrollToBottom || restoreRequest != nil {
             coordinator.cancelViewportAdjustment()
@@ -3624,6 +3634,11 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             coordinator.updateUserScrolling(in: scrollView)
             coordinator.observeViewport(of: scrollView)
             coordinator.observeGeometry(in: scrollView, update: onScrollGeometryChange)
+            coordinator.contentResizeFollower.connect(to: scrollView, contentView: view) { [weak coordinator, weak scrollView, weak view] in
+                guard let coordinator, let scrollView, let view else { return }
+                coordinator.tailAnimator.request(in: scrollView, contentView: view,
+                    animated: false, reduceMotion: reduceMotion)
+            }
             if let restoreRequest {
                 guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
                 coordinator.lastHandledRestoreRequestID = restoreRequest.id
@@ -3688,6 +3703,9 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     @MainActor
     final class Coordinator {
         let tailAnimator = ConversationTailScrollAnimator()
+        let contentResizeFollower = ConversationContentResizeFollower()
+        weak var scrollPosition: ConversationScrollPosition?
+        var latestMessageID: String?
         var navigationVisibilityChanged: (() -> Void)?
         var isUserScrollEnabled = true
         private weak var lockedScrollView: UIScrollView?
@@ -3752,7 +3770,8 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                     contentOffsetY: scrollView.contentOffset.y,
                     minimumOffsetY: -scrollView.adjustedContentInset.top,
                     maximumOffsetY: ConversationTailScrollAnimator.targetOffset(in: scrollView),
-                    isValid: scrollView.window != nil && scrollView.bounds.height > 0 && scrollView.contentSize.height > 0
+                    isValid: scrollView.window != nil && scrollView.bounds.height > 0 && scrollView.contentSize.height > 0,
+                    latestMessageBottomVisible: self.scrollPosition?.isMessageBottomVisible(self.latestMessageID) ?? false
                 ))
             }
         }
@@ -3763,6 +3782,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             geometryScrollView = nil
             geometryUpdate = nil
             stopObservingViewport()
+            contentResizeFollower.disconnect()
             tailAnimator.disconnect()
             navigationVisibilityChanged = nil
         }

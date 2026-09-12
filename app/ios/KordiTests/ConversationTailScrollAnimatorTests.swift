@@ -38,6 +38,108 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         XCTFail("Native scrolling did not finish within the bounded settling interval")
     }
 
+    func testMessageBottomVisibilityRejectsContentClippedByTheComposer() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let row = UIView(frame: CGRect(x: 0, y: 850, width: 320, height: 200))
+        scroll.addSubview(row)
+        let position = ConversationScrollPosition()
+        position.attach(to: scroll)
+        position.register(row, messageID: "synthetic-tail")
+        XCTAssertFalse(position.isMessageBottomVisible("synthetic-tail"),
+            "Seeing most of a reply is not the same as seeing its end")
+        row.frame.origin.y = 700
+        XCTAssertTrue(position.isMessageBottomVisible("synthetic-tail"))
+        position.viewportFrameInWindow = CGRect(x: 0, y: 0, width: 320, height: 480)
+        XCTAssertFalse(position.isMessageBottomVisible("synthetic-tail"),
+            "The actual conversation viewport must exclude the composer")
+    }
+
+    func testLatestArrowDependsOnTheVisibleMessageBottom() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: false, messageCount: 20, latestMessageBottomVisible: true))
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldShowLatestButton(
+            isAtBottom: false, messageCount: 20, latestMessageBottomVisible: false))
+    }
+
+    func testContentGrowthFollowsThePreviouslyVisibleBottomOncePerLayout() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        let follower = ConversationContentResizeFollower()
+        defer { follower.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        var follows = 0
+        follower.isEnabled = true
+        follower.connect(to: scroll) {
+            follows += 1
+            scroll.contentOffset.y = ConversationTailScrollAnimator.targetOffset(in: scroll)
+        }
+        scroll.contentSize.height = 1200
+        scroll.contentSize.height = 1500
+        await settle()
+        XCTAssertEqual(follows, 1, "Several measurements must coalesce into one correction")
+        XCTAssertEqual(scroll.contentOffset.y, 900, accuracy: 1)
+        scroll.contentSize.height = 1200
+        await settle()
+        XCTAssertEqual(follows, 2, "Height corrections in either direction must keep the bottom aligned")
+        XCTAssertEqual(scroll.contentOffset.y, 600, accuracy: 1)
+    }
+
+    func testShortBottomAlignedContentDoesNotReceiveAnExtraCorrection() async throws {
+        let scroll = scrollView()
+        let content = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 200))
+        scroll.addSubview(content)
+        let window = try mount(scroll)
+        let follower = ConversationContentResizeFollower()
+        defer { follower.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        var follows = 0
+        follower.isEnabled = true
+        follower.connect(to: scroll, contentView: content) { follows += 1 }
+        scroll.contentSize.height = 1200
+        await settle()
+        XCTAssertEqual(follows, 0, "An undersized stack already handles its bottom-aligned origin")
+        scroll.contentOffset.y = ConversationTailScrollAnimator.targetOffset(in: scroll)
+        scroll.contentSize.height = 1500
+        content.frame.size.height = 800
+        await settle()
+        XCTAssertEqual(follows, 1, "Check final layout when a formerly short reply fills the viewport")
+    }
+
+    func testContentGrowthDoesNotFollowWhileReadingOlderMessages() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        scroll.contentOffset.y = 100
+        let follower = ConversationContentResizeFollower()
+        defer { follower.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        var follows = 0
+        follower.isEnabled = true
+        follower.connect(to: scroll) { follows += 1 }
+        scroll.contentSize.height = 1500
+        await settle()
+        XCTAssertEqual(follows, 0)
+        XCTAssertEqual(scroll.contentOffset.y, 100, accuracy: 1)
+    }
+
+    func testSuspendingContentFollowingCancelsPendingCorrection() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        let follower = ConversationContentResizeFollower()
+        defer { follower.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        var follows = 0
+        follower.isEnabled = true
+        follower.connect(to: scroll) { follows += 1 }
+        scroll.contentSize.height = 1500
+        follower.isEnabled = false
+        await settle()
+        XCTAssertEqual(follows, 0)
+        follower.isEnabled = true
+        scroll.contentOffset.y = 900
+        scroll.contentSize.height = 1800
+        follower.disconnect()
+        await settle()
+        XCTAssertEqual(follows, 0, "A departing conversation must not complete old work")
+    }
+
     func testStableIntermediateGeometryCannotRevealDuringKeyboardTransition() async throws {
         let scroll = scrollView()
         let window = try mount(scroll)

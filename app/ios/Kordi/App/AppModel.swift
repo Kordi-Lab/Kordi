@@ -6971,6 +6971,15 @@ final class AppModel: ObservableObject {
     }
 
     #if DEBUG
+    /// Synthetic transport updates for hosted viewport regression tests.
+    func upsertPreviewMessage(_ message: ChatMessage) {
+        guard previewMode else { return }
+        var messages = messagesByConversation[message.conversationId] ?? []
+        if let index = messages.firstIndex(where: { $0.id == message.id }) { messages[index] = message }
+        else { messages.append(message) }
+        messagesByConversation[message.conversationId] = messages
+    }
+
     func deliverPreviewIncomingMessage() {
         guard previewMode,
               let index = conversations.firstIndex(where: { $0.id == "person:acct_maya" }) else { return }

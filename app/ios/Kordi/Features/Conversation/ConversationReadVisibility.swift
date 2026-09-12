@@ -176,6 +176,19 @@ final class ConversationScrollPosition {
     }
     #endif
 
+    var viewportFrameInWindow: CGRect = .zero
+
+    func isMessageBottomVisible(_ messageID: String?) -> Bool {
+        guard let messageID, let row = rows[messageID]?.view,
+              let window = row.window, let scrollView, scrollView.window === window,
+              row.isDescendant(of: scrollView), row.bounds.height > 0 else { return false }
+        let frame = row.convert(row.bounds, to: window)
+        let viewport = viewportFrameInWindow.isEmpty
+            ? scrollView.convert(scrollView.bounds.inset(by: scrollView.adjustedContentInset), to: window)
+            : viewportFrameInWindow
+        return frame.intersects(viewport) && frame.maxY > viewport.minY && frame.maxY <= viewport.maxY + 1
+    }
+
     func positionAtLatest(requiredMessageID: String? = nil) -> Bool {
         guard let scrollView, scrollView.window != nil,
               !scrollView.isTracking, !scrollView.isDragging,
@@ -254,6 +267,78 @@ final class ConversationInitialPositioner: NSObject {
         let completion = completion
         self.completion = nil
         completion?(positioned)
+    }
+}
+
+/// Capture bottom affinity before content-size mutation. By the next SwiftUI
+/// update the viewport can already look scrolled away because the reply grew.
+@MainActor
+final class ConversationContentResizeFollower: NSObject {
+    var isEnabled = false {
+        didSet { if !isEnabled { cancelPendingFollow() } }
+    }
+    private weak var scrollView: UIScrollView?
+    private weak var contentView: UIView?
+    private var observation: NSKeyValueObservation?
+    private var onFollow: (() -> Void)?
+    private var wasAtLatest = false
+    private var followScheduled = false
+    private var generation = 0
+
+    func connect(to scrollView: UIScrollView, contentView: UIView? = nil, onFollow: @escaping () -> Void) {
+        self.contentView = contentView
+        self.onFollow = onFollow
+        guard self.scrollView !== scrollView else { return }
+        disconnect()
+        self.onFollow = onFollow
+        self.contentView = contentView
+        self.scrollView = scrollView
+        scrollView.panGestureRecognizer.addTarget(self, action: #selector(userDidPan))
+        observation = scrollView.observe(\.contentSize, options: [.old, .new, .prior]) { [weak self, weak scrollView] _, change in
+            MainActor.assumeIsolated {
+                guard let self, let scrollView, self.isEnabled else { return }
+                if change.isPrior {
+                    self.wasAtLatest = scrollView.contentOffset.y >= ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12
+                    return
+                }
+                guard let old = change.oldValue, let new = change.newValue,
+                      abs(new.height - old.height) > 0.5, self.wasAtLatest,
+                      !self.followScheduled else { return }
+                self.followScheduled = true
+                let generation = self.generation
+                DispatchQueue.main.async { [weak self, weak scrollView] in
+                    guard let self, let scrollView, self.generation == generation else { return }
+                    self.followScheduled = false
+                    guard self.isEnabled, scrollView.window != nil,
+                          !scrollView.isTracking, !scrollView.isDragging, !scrollView.isDecelerating else { return }
+                    let visibleHeight = scrollView.bounds.height - scrollView.adjustedContentInset.top - scrollView.adjustedContentInset.bottom
+                    let contentHeight = self.contentView?.bounds.height ?? scrollView.contentSize.height
+                    // Check after layout: short stacks align their own origin,
+                    // but a new reply can make previously short content overflow.
+                    guard contentHeight > visibleHeight + 1 else { return }
+                    self.onFollow?()
+                }
+            }
+        }
+    }
+
+    @objc private func userDidPan(_ gesture: UIPanGestureRecognizer) {
+        if gesture.state == .began { cancelPendingFollow() }
+    }
+
+    private func cancelPendingFollow() {
+        generation &+= 1
+        followScheduled = false
+        wasAtLatest = false
+    }
+
+    func disconnect() {
+        cancelPendingFollow()
+        observation = nil
+        scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(userDidPan))
+        scrollView = nil
+        contentView = nil
+        onFollow = nil
     }
 }
 
@@ -365,6 +450,7 @@ struct ConversationScrollGeometrySnapshot: Equatable {
     let minimumOffsetY: CGFloat
     let maximumOffsetY: CGFloat
     let isValid: Bool
+    var latestMessageBottomVisible: Bool = false
 }
 
 

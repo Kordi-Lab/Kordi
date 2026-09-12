@@ -23,8 +23,8 @@ accessibility content; mounted messages retain their normal controls and labels.
 Reading-anchor probes now request a coalesced capture when a row attaches or
 finishes layout, even if the scroll offset has not changed. Departure bookkeeping
 runs before teardown and can use the last displayed anchor after native views
-detach; removed messages are still rejected. New tail rows are materialized by
-identity before native positioning releases staged send animations.
+detach; removed messages are still rejected. New tail rows follow one native content-bottom target before staged send
+animations are revealed. Visible updates do not issue a second row-identity scroll.
 
 The unread regression now approaches its target in bounded steps. Previously, a
 jump computed from estimated content height could actually visit the bottom and
@@ -85,6 +85,31 @@ Synthetic regressions cover cold network loading, a response arriving after the
 navigation transition, very long content, late native insertion, zero-size initial
 bounds and reparenting. The production reproduction uses existing authorized
 content only; no production payload is copied into a fixture or this repository.
+
+## Incoming replies and the visible bottom
+
+Incoming group replies could lose bottom following as a placeholder grew, or move
+twice: a row-identity scroll aligned the bubble edge, then native positioning
+aligned the padded content edge. Depending on callback order, the later command
+could undo the correct position by the trailing sentinel and padding height.
+
+Incoming updates and staged sends now share the native content-bottom target.
+A native resize observer captures whether the reader was at latest before the
+content extent changes, coalesces layout corrections, and follows in either size
+direction. User scrolling, inactive pages and message-removal transitions cancel
+or suspend correction. Short bottom-aligned content keeps its native origin
+behavior instead of receiving an extra correction.
+
+The latest button also checks whether the last message's bottom is inside the
+actual conversation viewport. Seeing half a long reply remains sufficient for
+the existing read-visibility policy, but does not imply its bottom is visible.
+The composer area is excluded from the bottom-visibility check.
+
+The hosted regression inserts a quoted Agent placeholder in mixed-height group
+history, streams progressively longer replies, then replaces them with a shorter
+completion while the keyboard stays open. It checks frame-by-frame bottom spacing,
+actual native tail position, and absence of a redundant latest button. A separate
+history-reading case verifies that the same updates do not pull the reader away.
 
 ## Original framework control
 
