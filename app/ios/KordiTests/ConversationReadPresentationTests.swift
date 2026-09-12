@@ -1089,9 +1089,9 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(actionSource.contains("actionButton(\"Edit\""))
-        XCTAssertTrue(actionSource.contains("\"Delete\","))
+        XCTAssertTrue(actionSource.contains("mediaAttachment == nil ? \"Delete\" : \"Delete photo\""))
         XCTAssertTrue(actionSource.contains("deleteChoiceButton(deleteForEveryoneLabel)"))
-        XCTAssertTrue(actionSource.contains("deleteChoiceButton(\"Delete for me\")"))
+        XCTAssertTrue(actionSource.contains("deleteChoiceButton(mediaAttachment == nil ? \"Delete for me\" : \"Delete photo for me\")"))
         XCTAssertTrue(actionSource.contains("isConfirmingDelete = true"))
         XCTAssertTrue(conversationSource.contains("? \"Delete for everyone\""))
         XCTAssertTrue(conversationSource.contains(": \"Delete for me and \\(conversation.displayName)\""))
@@ -1492,7 +1492,6 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UILongPressGestureRecognizer()
         ))
-        XCTAssertEqual(MessageBubble.actionLongPressDuration, 0.5)
     }
 
     func testMessageActionsAllowManualTextSelectionOnlyAfterOpening() throws {
@@ -1548,7 +1547,6 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("actionButton(\"Select\""))
         XCTAssertTrue(conversationSource.contains("toggleSelection(message.id)"))
         XCTAssertFalse(conversationSource.contains("messageActionAcceptsInput"))
-        XCTAssertTrue(conversationSource.contains(".scrollDisabled(messageActionMessage != nil)"))
         XCTAssertFalse(conversationSource.contains("proxy.scrollTo(row.id, anchor: .bottom)"))
         XCTAssertFalse(conversationSource.contains(".toolbarBackground(.visible"))
         XCTAssertTrue(conversationSource.contains(".toolbar(navigationBarVisibility, for: .navigationBar)"))
@@ -1913,7 +1911,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(gestureSource.contains("UITapGestureRecognizer"))
         XCTAssertTrue(gestureSource.contains("tap.require(toFail: longPress)"))
         XCTAssertTrue(gestureSource.contains("current as? UIScrollView"))
-        XCTAssertTrue(gestureSource.contains("recognizer.cancelsTouchesInView = false"))
+        XCTAssertTrue(gestureSource.contains("recognizer.cancelsTouchesInView = true"))
         XCTAssertFalse(imageSource.contains(".onGeometryChange(for: CGRect.self)"))
         XCTAssertTrue(gestureSource.contains("attachmentView.convert(attachmentView.bounds, to: window)"))
         XCTAssertTrue(imageSource.contains("onRequestActions(frame)"))

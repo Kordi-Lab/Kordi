@@ -444,6 +444,15 @@ final class MessageDeletionUITests: XCTestCase {
                     .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.52)))
             }
         }
+        // Returning from a context menu must also restore normal keyboard layout.
+        let editor = app.textViews["Message Maya Chen"]
+        let editorTop = editor.frame.minY
+        let photoTop = photo.frame.minY
+        editor.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertEqual(photo.frame.minY, photoTop - (editorTop - editor.frame.minY), accuracy: 14,
+                       "Opening the keyboard after dismissal must preserve the visible history.")
+        capture("Keyboard preserves reading position after photo menus", app: app)
         app.terminate()
     }
 
