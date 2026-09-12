@@ -96,8 +96,8 @@ could undo the correct position by the trailing sentinel and padding height.
 Incoming updates and staged sends now share the native content-bottom target.
 A native resize observer captures whether the reader was at latest before the
 content extent changes, coalesces layout corrections, and follows in either size
-direction. User scrolling, inactive pages and message-removal transitions cancel
-or suspend correction. Short bottom-aligned content keeps its native origin
+direction. User scrolling, a later programmatic move into history, inactive pages and
+message-removal transitions cancel or suspend correction. Short bottom-aligned content keeps its native origin
 behavior instead of receiving an extra correction.
 
 The latest button also checks whether the last message's bottom is inside the

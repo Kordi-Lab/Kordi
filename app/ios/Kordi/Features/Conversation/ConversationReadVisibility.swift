@@ -280,6 +280,8 @@ final class ConversationContentResizeFollower: NSObject {
     private weak var scrollView: UIScrollView?
     private weak var contentView: UIView?
     private var observation: NSKeyValueObservation?
+    private var offsetObservation: NSKeyValueObservation?
+    private var isChangingContentSize = false
     private var onFollow: (() -> Void)?
     private var wasAtLatest = false
     private var followScheduled = false
@@ -298,9 +300,11 @@ final class ConversationContentResizeFollower: NSObject {
             MainActor.assumeIsolated {
                 guard let self, let scrollView, self.isEnabled else { return }
                 if change.isPrior {
+                    self.isChangingContentSize = true
                     self.wasAtLatest = scrollView.contentOffset.y >= ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12
                     return
                 }
+                self.isChangingContentSize = false
                 guard let old = change.oldValue, let new = change.newValue,
                       abs(new.height - old.height) > 0.5, self.wasAtLatest,
                       !self.followScheduled else { return }
@@ -320,6 +324,17 @@ final class ConversationContentResizeFollower: NSObject {
                 }
             }
         }
+        offsetObservation = scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self, weak scrollView] _, change in
+            MainActor.assumeIsolated {
+                guard let self, let scrollView, self.followScheduled, !self.isChangingContentSize,
+                      let old = change.oldValue, let new = change.newValue,
+                      new.y < old.y - 1,
+                      new.y < ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12 else { return }
+                // Quote and mention navigation have no pan gesture. A newer
+                // move into history takes precedence over a queued tail follow.
+                self.cancelPendingFollow()
+            }
+        }
     }
 
     @objc private func userDidPan(_ gesture: UIPanGestureRecognizer) {
@@ -330,11 +345,13 @@ final class ConversationContentResizeFollower: NSObject {
         generation &+= 1
         followScheduled = false
         wasAtLatest = false
+        isChangingContentSize = false
     }
 
     func disconnect() {
         cancelPendingFollow()
         observation = nil
+        offsetObservation = nil
         scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(userDidPan))
         scrollView = nil
         contentView = nil

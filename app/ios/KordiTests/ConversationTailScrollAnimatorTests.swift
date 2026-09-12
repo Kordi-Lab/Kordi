@@ -120,6 +120,23 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         XCTAssertEqual(scroll.contentOffset.y, 100, accuracy: 1)
     }
 
+    func testHistoryNavigationCancelsAQueuedContentCorrection() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        let follower = ConversationContentResizeFollower()
+        defer { follower.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        follower.isEnabled = true
+        follower.connect(to: scroll) {
+            scroll.contentOffset.y = ConversationTailScrollAnimator.targetOffset(in: scroll)
+        }
+        scroll.contentSize.height = 1500
+        // A quote/mention jump changes the offset without a pan gesture.
+        scroll.contentOffset.y = 100
+        await settle()
+        XCTAssertEqual(scroll.contentOffset.y, 100, accuracy: 1,
+            "A queued tail correction must not override a later history-navigation intent")
+    }
+
     func testSuspendingContentFollowingCancelsPendingCorrection() async throws {
         let scroll = scrollView()
         let window = try mount(scroll)

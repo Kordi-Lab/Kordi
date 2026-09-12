@@ -67,6 +67,7 @@ final class AttachmentReactionMutationQueueTests: XCTestCase {
         XCTAssertEqual(h.server[firstPhoto], false)
         XCTAssertEqual(h.displayed[firstPhoto], false)
         XCTAssertTrue(h.queue.pendingValues(in: h.scope).isEmpty)
+        XCTAssertFalse(h.queue.hasPendingMutations, "Completed writes must release the pending projection path")
     }
 
     func testFailedSupersededAddDoesNotRollbackRemoveOrShowAnObsoleteError() async throws {

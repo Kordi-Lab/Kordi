@@ -32,6 +32,8 @@ final class AttachmentReactionMutationQueue {
 
     private var entries: [Scope: Entry] = [:]
 
+    var hasPendingMutations: Bool { !entries.isEmpty }
+
     func pendingValues(in scope: Scope) -> [Target: Bool] {
         guard let entry = entries[scope] else { return [:] }
         return entry.pending.reduce(into: [:]) { $0[$1.target] = $1.active }

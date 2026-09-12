@@ -2242,7 +2242,8 @@ final class AppModel: ObservableObject {
     }
 
     private func applyingPendingAttachmentReactions(to messages: [ChatMessage]) -> [ChatMessage] {
-        guard let accountID = account?.accountId else { return messages }
+        guard attachmentReactionMutations.hasPendingMutations,
+              let accountID = account?.accountId else { return messages }
         return messages.map { original in
             let scope = AttachmentReactionMutationQueue.Scope(accountID: accountID, sessionToken: token,
                 conversationID: original.conversationId, messageID: original.id)
