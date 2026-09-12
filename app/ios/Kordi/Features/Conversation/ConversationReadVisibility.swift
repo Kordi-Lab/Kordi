@@ -99,9 +99,11 @@ final class ConversationScrollPosition {
     }
     private var rows: [String: WeakRow] = [:]
     private weak var scrollView: UIScrollView?
+    private weak var navigationAnimator: ConversationTailScrollAnimator?
     private var initialPositioner: ConversationInitialPositioner?
     var contentOffsetY: CGFloat?
     var isPositioningInitialTimeline = false
+    var isTransitionCovered = false
     private(set) var readingAnchor: ConversationReadingAnchor?
 
     func positionInitialViewport(using position: @escaping () -> Bool) async -> Bool {
@@ -113,6 +115,17 @@ final class ConversationScrollPosition {
 
     func cancelInitialPositioning() {
         initialPositioner?.cancel()
+    }
+
+    func attachNavigationAnimator(_ animator: ConversationTailScrollAnimator) { navigationAnimator = animator }
+    func cancelScrolling() {
+        navigationAnimator?.cancel()
+        isTransitionCovered = false
+    }
+
+    var isUserScrolling: Bool {
+        guard let scrollView else { return false }
+        return scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
     }
 
     func attach(to scrollView: UIScrollView) {

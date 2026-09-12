@@ -619,6 +619,7 @@ struct ConversationView: View {
                                         reduceMotion: reduceMotion,
                                         exactRestoreRequest: $exactScrollRestoreRequest,
                                         onScrollGeometryChange: recordScrollGeometry,
+                                        onNavigationVisibilityChange: synchronizeReadPresentation,
                                         onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
                                             stagedMessageIDs.removeAll { messageIDs.contains($0) }
                                             // A local send can position before the initial history load
@@ -907,7 +908,10 @@ struct ConversationView: View {
                     trackedMessageID: trackedMessageID,
                     bottomAnchorID: bottomAnchorID
                 )
-                if ConversationTimelineScrollBehavior.shouldFollowLatest(
+                if !scrollPosition.isUserScrolling,
+                   previousLatestMessageID != currentLatestMessageID
+                    || ConversationTimelineScrollBehavior.hasContentChange(previousLatestMessage, currentLatestMessage),
+                   ConversationTimelineScrollBehavior.shouldFollowLatest(
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
                     isAtBottom: isFollowingLatest,
                     previousLatestMessageID: previousLatestMessageID,
@@ -1044,6 +1048,7 @@ struct ConversationView: View {
         }
         .onDisappear {
             scrollPosition.cancelInitialPositioning()
+            scrollPosition.cancelScrolling()
             voiceRecorder.cancel()
             if !showsCompanionPanel {
                 attachments.forEach { $0.discardOwnedFile() }
@@ -2082,7 +2087,8 @@ struct ConversationView: View {
         model.updateConversationReadPresentation(
             id: readPresentationID,
             conversationID: conversation.id,
-            isPresented: isReadPresentationVisible && hasRevealedInitialViewport && initialReadPositionReady,
+            isPresented: isReadPresentationVisible && hasRevealedInitialViewport && initialReadPositionReady
+                && !scrollPosition.isTransitionCovered,
             isAppForeground: scenePhase == .active,
             isAtLatest: isAtBottom || isLatestMessageVisible,
             threadRootID: scopedThreadRootMessageID,
@@ -2993,6 +2999,22 @@ enum ConversationTimelineScrollBehavior {
         isAtBottom || trackedMessageID == bottomAnchorID
     }
 
+    /// Transport receipts and read counts do not move the transcript. Content
+    /// updates (including streamed text and changing cards) can still follow tail.
+    static func hasContentChange(_ previous: ChatMessage?, _ current: ChatMessage?) -> Bool {
+        guard let previous, let current else { return false }
+        if previous.text != current.text || previous.attachments != current.attachments
+            || previous.voiceMessage != current.voiceMessage || previous.messageKind != current.messageKind { return true }
+        if previous.messageAction != current.messageAction || previous.replyToMessageId != current.replyToMessageId
+            || previous.mentions != current.mentions || previous.reactions != current.reactions { return true }
+        if previous.agentExecution != current.agentExecution || previous.agentQueuePosition != current.agentQueuePosition
+            || previous.backgroundAgentSessions != current.backgroundAgentSessions { return true }
+        return previous.author != current.author || previous.authorName != current.authorName
+            || previous.senderOwnerName != current.senderOwnerName || previous.errorMessage != current.errorMessage
+            || (previous.editedAt != nil) != (current.editedAt != nil)
+            || (previous.deliveryState == .failed) != (current.deliveryState == .failed)
+    }
+
     static func shouldFollowLatest(
         hasPositionedInitialTimeline: Bool,
         isAtBottom: Bool,
@@ -3402,6 +3424,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let reduceMotion: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
     let onScrollGeometryChange: (ConversationScrollGeometrySnapshot) -> Void
+    let onNavigationVisibilityChange: () -> Void
     let onTailPositioned: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -3425,6 +3448,13 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             context.coordinator.lastHandledRestoreRequestID == request.id ? nil : request
         }
         let coordinator = context.coordinator
+        coordinator.navigationVisibilityChanged = onNavigationVisibilityChange
+        scrollPosition.attachNavigationAnimator(coordinator.tailAnimator)
+        coordinator.tailAnimator.onTransitionVisibilityChange = { [weak coordinator, weak scrollPosition] in
+            guard let coordinator else { return }
+            scrollPosition?.isTransitionCovered = coordinator.tailAnimator.isTransitionCoveringContent
+            DispatchQueue.main.async { [weak coordinator] in coordinator?.navigationVisibilityChanged?() }
+        }
         coordinator.preservesReadingPosition = preservesReadingPosition && exactRestoreRequest == nil
         if shouldScrollToBottom || restoreRequest != nil {
             coordinator.cancelViewportAdjustment()
@@ -3504,6 +3534,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     @MainActor
     final class Coordinator {
         let tailAnimator = ConversationTailScrollAnimator()
+        var navigationVisibilityChanged: (() -> Void)?
         var lastHandledRequest = 0
         var lastAttachedRequest = 0
         var lastHandledRestoreRequestID = 0
@@ -3554,6 +3585,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             geometryUpdate = nil
             stopObservingViewport()
             tailAnimator.disconnect()
+            navigationVisibilityChanged = nil
         }
 
         var preservesReadingPosition = false
