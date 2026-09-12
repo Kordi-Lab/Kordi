@@ -153,6 +153,17 @@ final class ConversationScrollPosition {
         readingAnchor = candidates.min { $0.offsetFromViewportTop < $1.offsetFromViewportTop }
     }
 
+    func positionAtLatest() -> Bool {
+        guard let scrollView, scrollView.window != nil,
+              !scrollView.isTracking, !scrollView.isDragging,
+              scrollView.bounds.height > 0, scrollView.contentSize.height > 0 else { return false }
+        scrollView.layoutIfNeeded()
+        let target = ConversationTailScrollAnimator.targetOffset(in: scrollView)
+        guard abs(scrollView.contentOffset.y - target) > 1 else { return true }
+        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)
+        return false
+    }
+
     /// Return true only when a subsequent layout already has the saved position.
     /// The caller materializes the identity first, then waits for settled layout.
     func restore(_ anchor: ConversationReadingAnchor) -> Bool {

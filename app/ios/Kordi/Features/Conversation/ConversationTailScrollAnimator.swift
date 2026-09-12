@@ -109,25 +109,6 @@ final class ConversationTailScrollAnimator: NSObject {
         keyboardAnimationDeadline = pendingKeyboardDeadline
         self.scrollView = scrollView
         scrollView.panGestureRecognizer.addTarget(self, action: #selector(userDidPan))
-        contentSizeObservation = scrollView.observe(\.contentSize, options: [.old, .new, .prior]) { [weak self, weak scrollView] _, change in
-            MainActor.assumeIsolated {
-                guard let self, let scrollView, self.isFadingJumpCover else { return }
-                if change.isPrior {
-                    // UIKit can clamp the offset inside the contentSize setter.
-                    // Capture the composited frame before either layout moves.
-                    if let window = scrollView.window, let cover = self.jumpCover {
-                        self.pendingResizeSnapshot = self.viewportSnapshot(in: window, viewport: cover.frame)
-                    }
-                } else {
-                    defer { self.pendingResizeSnapshot = nil }
-                    guard change.oldValue != change.newValue,
-                          let snapshot = self.pendingResizeSnapshot else { return }
-                    self.beginJumpCover(in: scrollView, snapshot: snapshot)
-                    self.nativePreviousGeometry = nil
-                }
-            }
-        }
-
     }
 
     @objc private func userDidPan(_ gesture: UIPanGestureRecognizer) {
@@ -240,8 +221,31 @@ final class ConversationTailScrollAnimator: NSObject {
         if previousCover == nil { onTransitionVisibilityChange?() }
     }
 
+    private func observeContentSizeDuringReveal(in scrollView: UIScrollView) {
+        guard contentSizeObservation == nil else { return }
+        contentSizeObservation = scrollView.observe(\.contentSize, options: [.old, .new, .prior]) { [weak self, weak scrollView] _, change in
+            MainActor.assumeIsolated {
+                guard let self, let scrollView, self.isFadingJumpCover else { return }
+                if change.isPrior {
+                    // UIKit can clamp the offset inside the contentSize setter.
+                    // Capture the composited frame before either layout moves.
+                    if let window = scrollView.window, let cover = self.jumpCover {
+                        self.pendingResizeSnapshot = self.viewportSnapshot(in: window, viewport: cover.frame)
+                    }
+                } else {
+                    defer { self.pendingResizeSnapshot = nil }
+                    guard change.oldValue != change.newValue,
+                          let snapshot = self.pendingResizeSnapshot else { return }
+                    self.beginJumpCover(in: scrollView, snapshot: snapshot)
+                    self.nativePreviousGeometry = nil
+                }
+            }
+        }
+    }
+
     private func revealJumpDestination() {
         guard let cover = jumpCover, !isFadingJumpCover else { return }
+        if let scrollView { observeContentSizeDuringReveal(in: scrollView) }
         isFadingJumpCover = true
         UIView.animate(withDuration: 0.18, delay: 0,
             options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
@@ -301,6 +305,7 @@ final class ConversationTailScrollAnimator: NSObject {
     }
 
     private func finishNativeAnimation() {
+        contentSizeObservation = nil
         nativeDisplayLink?.invalidate()
         nativeDisplayLink = nil
         nativePreviousGeometry = nil

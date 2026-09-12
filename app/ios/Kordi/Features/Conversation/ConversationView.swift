@@ -2018,8 +2018,13 @@ struct ConversationView: View {
             withTransaction(transaction) {
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
-            await Task.yield()
-            guard !Task.isCancelled else { return }
+            // A proxy request can arrive before a lazy stack commits its final
+            // offset. Verify native layout on display frames before first paint.
+            let positioned = await scrollPosition.positionInitialViewport {
+                scrollPosition.positionAtLatest()
+            }
+            guard !Task.isCancelled, isReadPresentationVisible, !hasPositionedInitialTimeline else { return }
+            guard positioned else { initialLoadFailed = true; return }
         }
         guard isReadPresentationVisible else { return }
         withTransaction(transaction) {
