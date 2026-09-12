@@ -592,6 +592,8 @@ final class ConversationReadingAnchorTests: XCTestCase {
         XCTAssertFalse(position.restore(anchor))
         position.captureReadingAnchor()
         XCTAssertNil(position.readingAnchor)
+        XCTAssertEqual(position.lastVisibleReadingAnchor, anchor,
+                       "Navigation teardown must retain the last displayed position for departure bookkeeping")
     }
 
     func testMissingMessageDiscardsQuickReturnAnchor() {

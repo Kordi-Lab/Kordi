@@ -509,7 +509,7 @@ struct ConversationView: View {
                             ZStack(alignment: .bottomTrailing) {
                             // History pages retain their data, not every offscreen message view.
                             ScrollView {
-                                LazyVStack(spacing: 0) {
+                                ConversationTimelineStack {
                                     if timeline.isEmpty {
                                         EmptyConversation(
                                             conversation: conversation,
@@ -544,65 +544,76 @@ struct ConversationView: View {
                                             let threadReplyCount = scopedThreadRootMessageID == nil
                                                 ? projection.replyCount(rootID: message.id)
                                                 : 0
-                                            VStack(spacing: 0) {
-                                                if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
-                                                    HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
-                                                        .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                            ConversationTimelineRowSlot(
+                                                viewportFrame: viewport.frame(in: .global),
+                                                isRetained: message.id == timeline.last?.id
+                                                    || (!hasPositionedInitialTimeline && row.id == trackedMessageID)
+                                                    || messageActionMessage?.id == message.id
+                                                    || pendingMessageDeletion?.message.id == message.id
+                                                    || stagedMessageIDs.contains(message.clientMessageId ?? message.id)
+                                            ) {
+                                                VStack(spacing: 0) {
+                                                    if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
+                                                        HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
+                                                            .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                                    }
+                                                    timelineMessageRow(
+                                                        row: row,
+                                                        presentation: presentation,
+                                                        timeline: timeline,
+                                                        messagesByID: messagesById,
+                                                        mentionTargets: mentionTargets,
+                                                        isPendingMention: pendingMentionMessageIDs.contains(message.id),
+                                                        pinnedMessageIDs: pinnedMessageIDs,
+                                                        previewActionMessageID: previewActionMessageID,
+                                                        threadReplyCount: threadReplyCount,
+                                                        threadHasUnread: threadReadCursors.map { thread?.hasUnread(cursors: $0) ?? false } ?? false,
+                                                        threadAgentState: thread?.agentState,
+                                                        viewportFrame: viewport.frame(in: .global),
+                                                        proxy: proxy
+                                                    )
                                                 }
-                                                timelineMessageRow(
-                                                    row: row,
-                                                    presentation: presentation,
-                                                    timeline: timeline,
-                                                    messagesByID: messagesById,
-                                                    mentionTargets: mentionTargets,
-                                                    isPendingMention: pendingMentionMessageIDs.contains(message.id),
-                                                    pinnedMessageIDs: pinnedMessageIDs,
-                                                    previewActionMessageID: previewActionMessageID,
-                                                    threadReplyCount: threadReplyCount,
-                                                    threadHasUnread: threadReadCursors.map { thread?.hasUnread(cursors: $0) ?? false } ?? false,
-                                                    threadAgentState: thread?.agentState,
-                                                    viewportFrame: viewport.frame(in: .global),
-                                                    proxy: proxy
-                                                )
-                                            }
-                                            .background(ConversationReadingAnchorProbe(messageID: message.id, position: scrollPosition))
-                                            #if DEBUG
-                                            .background {
-                                                if ConversationMotionProbeRegistry.enabled {
-                                                    ConversationMotionProbe(id: row.id)
+                                                .background(ConversationReadingAnchorProbe(messageID: message.id, position: scrollPosition))
+                                                #if DEBUG
+                                                .background {
+                                                    if ConversationMotionProbeRegistry.enabled {
+                                                        ConversationMotionProbe(id: row.id)
+                                                    }
                                                 }
+                                                #endif
+                                                .accessibilityElement(children: .contain)
+                                                .accessibilityIdentifier("message-\(message.id)")
+                                                .modifier(InitialReadAnchorModifier(messageID: message.id, isAnchor: !initialReadAnchorPositioned && hasRevealedInitialViewport && row.id == initialReadAnchorID) { initialReadAnchorPositioned = true })
+                                                .modifier(LatestMessageVisibilityModifier(messageID: message.id, isLatest: message.id == timeline.last?.id, isEnabled: initialReadPositionReady && hasRevealedInitialViewport && isReadPresentationVisible) { visible in
+                                                    if visible { latestVisibleMessageID = message.id }
+                                                    else if latestVisibleMessageID == message.id { latestVisibleMessageID = nil }
+                                                })
+                                                .opacity(pendingMessageDeletion?.message.id == message.id
+                                                    && pendingMessageDeletion?.attachmentID == nil
+                                                    && pendingMessageDeletion?.isSourceHidden == true ? 0 : 1)
+                                                .allowsHitTesting(pendingMessageDeletion?.message.id != message.id)
+                                                .transition(.identity)
+                                                .offset(y: deleteReflowOffsets[row.id] ?? 0)
+                                                .background {
+                                                    Color.clear.onGeometryChange(for: CGRect.self) { [
+                                                        tracksReflow = (messageActionMessage != nil && messageActionAttachment == nil)
+                                                            || pendingMessageDeletion != nil || !activeDeleteSnapshots.isEmpty
+                                                    ] geometry in
+                                                        tracksReflow ? geometry.frame(in: .global) : .zero
+                                                    } action: { frame in
+                                                        if !frame.isEmpty { deleteCaptureFrames.rows[row.id] = frame }
+                                                    }
+                                                }
+                                                .zIndex(messageActionMessage?.id == message.id && messageActionImage == nil ? 1 : 0)
+                                                .modifier(OutgoingMessageEntrance(
+                                                    pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
+                                                        || (message.author == .agent && message.requestMessageId
+                                                            .flatMap { messagesById[$0] }
+                                                            .map { stagedMessageIDs.contains($0.clientMessageId ?? $0.id) } == true)
+                                                ))
                                             }
-                                            #endif
-                                            .accessibilityElement(children: .contain)
-                                            .accessibilityIdentifier("message-\(message.id)")
-                                            .modifier(InitialReadAnchorModifier(messageID: message.id, isAnchor: !initialReadAnchorPositioned && hasRevealedInitialViewport && row.id == initialReadAnchorID) { initialReadAnchorPositioned = true })
-                                            .modifier(LatestMessageVisibilityModifier(messageID: message.id, isLatest: message.id == timeline.last?.id, isEnabled: initialReadPositionReady && hasRevealedInitialViewport && isReadPresentationVisible) { visible in
-                                                if visible { latestVisibleMessageID = message.id }
-                                                else if latestVisibleMessageID == message.id { latestVisibleMessageID = nil }
-                                            })
-                                            .opacity(pendingMessageDeletion?.message.id == message.id
-                                                && pendingMessageDeletion?.attachmentID == nil
-                                                && pendingMessageDeletion?.isSourceHidden == true ? 0 : 1)
-                                            .allowsHitTesting(pendingMessageDeletion?.message.id != message.id)
+                                            .id(row.id)
                                             .transition(.identity)
-                                            .offset(y: deleteReflowOffsets[row.id] ?? 0)
-                                            .background {
-                                                Color.clear.onGeometryChange(for: CGRect.self) { [
-                                                    tracksReflow = (messageActionMessage != nil && messageActionAttachment == nil)
-                                                        || pendingMessageDeletion != nil || !activeDeleteSnapshots.isEmpty
-                                                ] geometry in
-                                                    tracksReflow ? geometry.frame(in: .global) : .zero
-                                                } action: { frame in
-                                                    if !frame.isEmpty { deleteCaptureFrames.rows[row.id] = frame }
-                                                }
-                                            }
-                                            .zIndex(messageActionMessage?.id == message.id && messageActionImage == nil ? 1 : 0)
-                                            .modifier(OutgoingMessageEntrance(
-                                                pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
-                                                    || (message.author == .agent && message.requestMessageId
-                                                        .flatMap { messagesById[$0] }
-                                                        .map { stagedMessageIDs.contains($0.clientMessageId ?? $0.id) } == true)
-                                            ))
                                         }
                                     }
 
@@ -945,8 +956,16 @@ struct ConversationView: View {
                     isNavigationReturnPending: threadReturnMessageID != nil
                         || threadReturnScrollOffsetY != nil
                 ) {
-                    // Insertion has already laid out the new row. A second scroll
-                    // animation would replay the old position after its first paint.
+                    // A native offset can reach an estimated tail before SwiftUI
+                    // has created the newly inserted row. Resolve its identity
+                    // before native positioning can release the staged entrance.
+                    if let currentLatestMessageID {
+                        var transaction = Transaction(animation: nil)
+                        transaction.disablesAnimations = true
+                        withTransaction(transaction) {
+                            proxy.scrollTo(currentLatestMessageID, anchor: .bottom)
+                        }
+                    }
                     scrollToBottom()
                 }
             }
@@ -1069,6 +1088,7 @@ struct ConversationView: View {
             _ = await MessageDeleteParticleResources.prepared.value
         }
         .onDisappear {
+            rememberViewport(in: messages)
             scrollPosition.cancelInitialPositioning()
             scrollPosition.cancelScrolling()
             voiceRecorder.cancel()
@@ -1090,7 +1110,6 @@ struct ConversationView: View {
             deleteCaptureFrames.rows.removeAll()
             isReadPresentationVisible = false
             synchronizeReadPresentation()
-            rememberViewport(in: messages)
         }
         .onAppear {
             prepareInitialConversationForDisplay()
@@ -1530,7 +1549,6 @@ struct ConversationView: View {
                 }
             }
         }
-        .id(row.id)
         .modifier(MentionPresentationModifier(isPending: scopedThreadRootMessageID != nil && scenePhase == .active && message.author != .me, viewportFrame: viewportFrame) {
             guard let root = scopedThreadRootMessageID, let thread = threadProjection.thread(rootID: root),
                   let sequence = message.conversationSequence else { return }
@@ -2255,7 +2273,10 @@ struct ConversationView: View {
 
     private func rememberViewport(in timeline: [ChatMessage], now: Date = Date()) {
         guard hasPreparedInitialViewport, hasRevealedInitialViewport else { return }
-        let anchor = isAtBottom ? nil : scrollPosition.readingAnchor
+        let candidate = scrollPosition.readingAnchor ?? scrollPosition.lastVisibleReadingAnchor
+        let anchor = isAtBottom ? nil : candidate.flatMap { anchor in
+            timeline.contains(where: { $0.id == anchor.messageID }) ? anchor : nil
+        }
         model.conversationViewportMemory.remember(
             key: viewportMemoryKey,
             messageID: anchor?.messageID,

@@ -166,6 +166,11 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         }
         XCTAssertGreaterThan(positions.count, 5)
         XCTAssertNotNil(firstVisibleTime, "Every accepted send must become visible")
+        if rapid {
+            let first = try XCTUnwrap(model.messages(for: conversation).first { $0.text == "First message" })
+            XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: first), in: window),
+                            "A later send must not leave an earlier accepted message hidden")
+        }
         let maximumDownwardStep = zip(positions, positions.dropFirst()).map { $1 - $0 }.max() ?? 0
         print("Synthetic send motion count=\(count), positions=\(positions.map { Int($0.rounded()) }), maximumDownwardStep=\(maximumDownwardStep), firstVisibleMs=\(((firstVisibleTime ?? sendTime) - sendTime) * 1000)")
         if waitForKeyboard {
@@ -357,9 +362,15 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
             XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window))
         }
         if visibleAboveBottom {
-            // Materialize the tall final row before measuring its final offset.
-            // Lazy height estimates can otherwise put the first jump at the tail.
-            scroll.setContentOffset(CGPoint(x: 0, y: ConversationTailScrollAnimator.targetOffset(in: scroll) - 240), animated: false)
+            // Approach the tail in bounded steps so measuring unknown rows
+            // cannot turn an estimated far jump into a real visit to the bottom.
+            // The reply must still be offscreen when the visibility check starts.
+            for _ in 0..<100 {
+                let gap = ConversationTailScrollAnimator.targetOffset(in: scroll) - scroll.contentOffset.y
+                if gap <= 500 { break }
+                scroll.setContentOffset(CGPoint(x: 0, y: scroll.contentOffset.y + min(100, gap - 500)), animated: false)
+                try await Task.sleep(for: .milliseconds(40))
+            }
             try await Task.sleep(for: .milliseconds(200))
             XCTAssertEqual(model.conversations.first { $0.id == conversation.id }?.unreadCount, initialUnreadCount)
             let target = ConversationTailScrollAnimator.targetOffset(in: scroll) - 60

@@ -101,10 +101,14 @@ final class ConversationScrollPosition {
     private weak var scrollView: UIScrollView?
     private weak var navigationAnimator: ConversationTailScrollAnimator?
     private var initialPositioner: ConversationInitialPositioner?
+    private var isAnchorCaptureScheduled = false
     var contentOffsetY: CGFloat?
     var isPositioningInitialTimeline = false
     var isTransitionCovered = false
     private(set) var readingAnchor: ConversationReadingAnchor?
+    // Native rows can detach before SwiftUI delivers the conversation's exit.
+    // Keep the last displayed anchor separately from the current live geometry.
+    private(set) var lastVisibleReadingAnchor: ConversationReadingAnchor?
 
     func positionInitialViewport(using position: @escaping () -> Bool) async -> Bool {
         let positioner = ConversationInitialPositioner(position: position)
@@ -140,6 +144,16 @@ final class ConversationScrollPosition {
         if rows[messageID]?.view === view { rows[messageID] = nil }
     }
 
+    func scheduleReadingAnchorCapture() {
+        guard !isAnchorCaptureScheduled else { return }
+        isAnchorCaptureScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isAnchorCaptureScheduled = false
+            self.captureReadingAnchor()
+        }
+    }
+
     func captureReadingAnchor() {
         guard let scrollView, scrollView.window != nil else { return }
         let viewport = scrollView.bounds.inset(by: scrollView.adjustedContentInset)
@@ -151,6 +165,7 @@ final class ConversationScrollPosition {
             return ConversationReadingAnchor(messageID: id, offsetFromViewportTop: frame.minY - viewport.minY)
         }
         readingAnchor = candidates.min { $0.offsetFromViewportTop < $1.offsetFromViewportTop }
+        if let readingAnchor { lastVisibleReadingAnchor = readingAnchor }
     }
 
     func positionAtLatest() -> Bool {
@@ -235,25 +250,42 @@ struct ConversationReadingAnchorProbe: UIViewRepresentable {
     let messageID: String
     let position: ConversationScrollPosition
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
         view.isUserInteractionEnabled = false
         return view
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func updateUIView(_ view: UIView, context: Context) {
+    func updateUIView(_ view: ProbeView, context: Context) {
         if let previous = context.coordinator.messageID, previous != messageID {
             position.unregister(view, messageID: previous)
         }
         context.coordinator.messageID = messageID
         context.coordinator.position = position
+        view.position = position
         position.register(view, messageID: messageID)
+        position.scheduleReadingAnchorCapture()
     }
 
-    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+    static func dismantleUIView(_ view: ProbeView, coordinator: Coordinator) {
         if let id = coordinator.messageID { coordinator.position?.unregister(view, messageID: id) }
+        view.position = nil
+    }
+
+    final class ProbeView: UIView {
+        weak var position: ConversationScrollPosition?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil { position?.scheduleReadingAnchorCapture() }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if window != nil { position?.scheduleReadingAnchorCapture() }
+        }
     }
 
     final class Coordinator {

@@ -176,7 +176,8 @@ struct MessageGestureRegistrationTests {
     let end = try #require(source.range(of: ".scrollTargetLayout()", range: start.upperBound..<source.endIndex))
     let content = source[start.upperBound..<end.lowerBound]
 
-    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("LazyVStack(spacing: 0)"))
+    // Mount/eviction behavior is covered by ConversationTimelineVirtualizationTests.
+    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("ConversationTimelineStack {"))
     #expect(content.contains(".onGeometryChange(for: Bool.self)"))
     #expect(content.contains("ForEach(visibleTimelineRows)"))
     #expect(content.contains(".id(bottomAnchorID)"))
