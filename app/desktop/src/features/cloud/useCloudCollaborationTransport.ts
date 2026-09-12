@@ -91,7 +91,7 @@ export function useCloudCollaborationTransport({
       setSharedByOwner: stores.agents.setSharedByOwner,
     },
   });
-  const { refreshCloudMessages, syncCloudCollaborationDiff } =
+  const { refreshCloudMessages, syncCloudCollaborationDiff, setRealtimeConnected } =
     useCloudMessageSync({
       account,
       bootstrapPeerIds,
@@ -189,6 +189,7 @@ export function useCloudCollaborationTransport({
     catalog,
     refreshCloudMessages,
     syncCloudCollaborationDiff,
+    setRealtimeConnected,
     claimFreshCloudGroupFallback,
     ...directMessaging,
   };

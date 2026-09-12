@@ -1,4 +1,5 @@
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
+import { useCallback, useMemo } from 'react';
 import type { KordiAppActions } from '@/app/useKordiAppActions';
 import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
 import { useKordiCloudInitialSyncState } from '@/app/useKordiCloudInitialSyncState';
@@ -31,6 +32,15 @@ export function useKordiAppShellComposition({
     profile,
     cloudAgentActions,
   } = foundation;
+  const historyHasOlder = useMemo(() => ({
+    ...canonical.canonicalStore.hasOlderBySessionId, ...cloud.directHistory.hasOlderBySessionId,
+  }), [canonical.canonicalStore.hasOlderBySessionId, cloud.directHistory.hasOlderBySessionId]);
+  const loadCanonicalOlder = canonical.loadOlderCanonicalSessionMessages;
+  const loadOlderHistory = useCallback((sessionId: string) => (
+    sessionId in cloud.directHistory.hasOlderBySessionId
+      ? cloud.directHistory.loadOlderSessionMessages(sessionId)
+      : loadCanonicalOlder(sessionId)
+  ), [loadCanonicalOlder, cloud.directHistory]);
   const {
     conversations,
     directory,
@@ -280,9 +290,9 @@ export function useKordiAppShellComposition({
       handleRenameDesktopSession: sessions.handleRenameDesktopSession,
       chatTranscriptScrollRef: refs.chatTranscriptScrollRef,
       canonicalHasOlderBySessionId:
-        canonical.canonicalStore.hasOlderBySessionId,
+        historyHasOlder,
       loadOlderCanonicalSessionMessages:
-        canonical.loadOlderCanonicalSessionMessages,
+        loadOlderHistory,
       onProjectTranscriptScroll,
       onChatTranscriptScroll,
       activeSourcePreview: ui.settingsUi.activeSourcePreview,

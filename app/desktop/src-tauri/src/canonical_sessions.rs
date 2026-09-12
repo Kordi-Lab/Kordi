@@ -277,9 +277,17 @@ pub async fn desktop_canonical_session_messages(
     session_id: String,
     before_sequence_num: Option<i64>,
     limit: Option<i64>,
+    timeline_order: Option<bool>,
+    before_timeline: Option<CanonicalTimelineCursor>,
 ) -> Result<CanonicalMessagePage, String> {
     run_canonical_blocking(move || {
-        commands::desktop_canonical_session_messages(&session_id, before_sequence_num, limit)
+        commands::desktop_canonical_session_messages(
+            &session_id,
+            before_sequence_num,
+            limit,
+            timeline_order.unwrap_or(false),
+            before_timeline.as_ref(),
+        )
     })
     .await
 }

@@ -78,6 +78,13 @@ jobs:
       - name: Compare transient surfaces
         run: pnpm --dir app/desktop test:visual --project chromium
 
+      - name: Verify production desktop and media entrypoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          export KORDI_PRODUCTION_TEST_PORT="$(node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{process.stdout.write(String(s.address().port));s.close()})')"
+          pnpm --dir app/desktop exec playwright test -c playwright.production.config.ts --project chromium
+
   rust:
     name: Rust checks
     runs-on: [self-hosted, macOS, ARM64, kordi-ci]

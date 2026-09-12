@@ -59,6 +59,7 @@ export type UseCloudMessageSyncInput = {
 };
 
 export type CloudMessageSyncController = {
+  setRealtimeConnected: (connected: boolean) => void;
   refreshCloudMessages: () => Promise<void>;
   syncCloudCollaborationDiff: (
     options?: { settleInitialMessages?: boolean },

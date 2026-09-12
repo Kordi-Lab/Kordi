@@ -216,6 +216,17 @@ html.app-attachment-media-window-root[data-attachment-media-theme="light"] {
   -webkit-backdrop-filter: blur(34px) saturate(1.24);
 }
 
+/* macOS supplies the window material. A second full-window WebKit backdrop
+   creates a redundant compositing surface when the window resumes. */
+.app-attachment-media-window-root[data-attachment-media-native-material="true"] :is(
+  .app-attachment-image-lightbox,
+  .app-attachment-video-lightbox,
+  .app-attachment-media-window-status
+) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-attachment-image-lightbox {
     animation: none;

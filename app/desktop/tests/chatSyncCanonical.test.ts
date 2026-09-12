@@ -469,3 +469,14 @@ test('group control envelopes replace canonical membership and remove omitted re
   assert.deepEqual((membership.body as { member_account_ids: string[] }).member_account_ids.sort(), ['acct_a', 'acct_b']);
   assert.equal((membership.body as { replace: boolean }).replace, true);
 });
+
+
+test('group history decodes direct envelopes before persisting their display text', async () => {
+  const { encodeCloudDirectMessageEnvelope } = await import('../src/features/cloud/cloudDirectMessages');
+  const { parseCloudGroupControl } = await import('../src/features/cloud/cloudGroupMessages');
+  const body = encodeCloudDirectMessageEnvelope({ schemaVersion: 1, kind: 'message', text: 'Synthetic group message' });
+  const wire = cloudMessageFromChatSync({ ...message, content: { schema: 1, blocks: [{ type: 'text', text: body }] } },
+    { ...conversation, kind: 'group', legacy_session_id: 'session:group:timeline' }, 'acct_b');
+  const group = parseCloudGroupControl(wire.body);
+  assert.equal(group?.message?.text, 'Synthetic group message');
+});

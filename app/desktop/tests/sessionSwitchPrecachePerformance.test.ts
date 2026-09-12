@@ -112,7 +112,7 @@ test('canonical hydration status does not rebuild the complete session read mode
   assert.doesNotMatch(source, /canonicalStateFromStore\(store\), \[store\]/);
 });
 
-test('older canonical transcript pages use the oldest loaded sequence cursor', () => {
+test('older canonical transcript pages use the oldest loaded display-order cursor', () => {
   const source = canonicalStoreSource();
   const start = source.indexOf('const loadOlderSessionMessages = useCallback');
   const end = source.indexOf('\n\n  const refreshState', start);
@@ -120,10 +120,13 @@ test('older canonical transcript pages use the oldest loaded sequence cursor', (
   assert.notEqual(end, -1, 'expected catalog refresh after the older-page loader');
   const loader = source.slice(start, end);
 
-  assert.match(loader, /message\.sequenceNum < oldest/);
-  assert.match(loader, /beforeSequenceNum: oldestSequenceNum/);
+  assert.match(loader, /compareCanonicalMessages\(message, previous\) < 0/);
+  assert.match(loader, /beforeTimeline: oldest/);
   assert.match(
     appModelSource(),
-    /canonicalHasOlderBySessionId:\s*(?:canonical\.)?canonicalStore\.hasOlderBySessionId/,
+    /\.\.\.canonical\.canonicalStore\.hasOlderBySessionId,\s*\.\.\.cloud\.directHistory\.hasOlderBySessionId/,
   );
+  assert.match(appModelSource(), /canonicalHasOlderBySessionId:\s*historyHasOlder/);
+  assert.match(appModelSource(), /const loadCanonicalOlder = canonical\.loadOlderCanonicalSessionMessages/);
+  assert.match(appModelSource(), /:\s*loadCanonicalOlder\(sessionId\)/);
 });

@@ -81,7 +81,7 @@ test('native renderer compaction preserves an already bounded store by identity'
   assert.equal(compactNativeCloudMessagesByPeer(store), store);
 });
 
-test('native renderer compaction keeps the complete active session', () => {
+test('native renderer compaction preserves a small active session alongside recent peers', () => {
   const active = Array.from({ length: 12 }, (_, index) => message(index + 1, {
     messageId: `active-${index + 1}`,
     sessionId: 'session-active',

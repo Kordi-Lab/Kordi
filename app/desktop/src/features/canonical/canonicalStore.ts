@@ -29,10 +29,10 @@ export function createCanonicalStore(): CanonicalStore {
   };
 }
 
-function compareCanonicalMessages(left: CanonicalSessionMessage, right: CanonicalSessionMessage) {
-  return left.sequenceNum - right.sequenceNum
-    || left.createdAtMs - right.createdAtMs
-    || left.id.localeCompare(right.id);
+export function compareCanonicalMessages(left: Pick<CanonicalSessionMessage, 'createdAtMs' | 'sequenceNum' | 'id'>, right: Pick<CanonicalSessionMessage, 'createdAtMs' | 'sequenceNum' | 'id'>) {
+  return left.createdAtMs - right.createdAtMs
+    || left.sequenceNum - right.sequenceNum
+    || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
 }
 
 function mergeMessages(
@@ -116,7 +116,9 @@ export function mergeCanonicalCatalog(
     const previousMessages = store.messagesBySessionId[sessionId] ?? [];
     const latestMessage = summaryBySessionId.get(sessionId)?.latestMessage;
     messagesBySessionId[sessionId] = latestMessage
-      ? mergeMessages(previousMessages, [latestMessage])
+      ? (store.hydrationBySessionId[sessionId] === 'ready'
+        ? mergeReadyPageMessages(previousMessages, [latestMessage])
+        : mergeMessages(previousMessages, [latestMessage]))
       : previousMessages;
     hydrationBySessionId[sessionId] = store.hydrationBySessionId[sessionId] ?? 'cold';
     hasOlderBySessionId[sessionId] = Boolean(store.hasOlderBySessionId[sessionId])
@@ -176,7 +178,14 @@ export function mergeCanonicalMessagePage(store: CanonicalStore, page: Canonical
   const sessionId = page.sessionId.trim();
   if (!sessionId) return store;
   const existing = store.messagesBySessionId[sessionId] ?? [];
-  const messages = mergeMessages(existing, page.messages.filter((message) => message.sessionId === sessionId));
+  const incoming = page.messages.filter((message) => message.sessionId === sessionId);
+  const first = incoming[0];
+  // A catalog head or a recovery notice can predate the entire first page.
+  // Keep it out of the transcript until that chronological range is requested.
+  const retained = page.replaceWindow && first
+    ? existing.filter((message) => compareCanonicalMessages(message, first) >= 0)
+    : existing;
+  const messages = mergeMessages(retained, incoming);
   if (
     messages === existing
     && store.hydrationBySessionId[sessionId] === 'ready'

@@ -90,6 +90,7 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
              source_event_id TEXT
          );
          CREATE INDEX IF NOT EXISTS idx_session_messages_session_seq ON session_messages(session_id, sequence_num);
+         CREATE INDEX IF NOT EXISTS idx_session_messages_timeline ON session_messages(session_id, created_at_ms, sequence_num, id);
          CREATE UNIQUE INDEX IF NOT EXISTS idx_session_messages_source_event
              ON session_messages(source_transport, source_event_id)
              WHERE source_transport IS NOT NULL AND source_event_id IS NOT NULL;

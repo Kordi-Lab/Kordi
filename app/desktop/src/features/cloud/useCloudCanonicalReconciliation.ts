@@ -17,13 +17,12 @@ import {
   type CloudMessageIndex,
 } from './cloudMessageIndex';
 import {
-  cloudOptimisticallyReadSessionIds,
   cloudUnreadCountsBySessionId,
-  mergeNativeCloudUnreadCounts,
   patchCanonicalCloudUnreadCounts,
 } from './cloudUnreadReconciliation';
 import { cloudGroupReadCursorsBySessionId } from './cloudSelfAgentCanonicalSync';
 import { isNativeDesktopShell } from '@/lib/desktop';
+import { cloudOptimisticReadSequences, createNativeCloudUnreadProjection, type NativeUnreadHead } from './nativeCloudUnreadProjection';
 import {
   CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT,
   loadChatSyncUnreadCounts,
@@ -31,10 +30,7 @@ import {
 
 type NativeUnreadSnapshot = {
   accountId: string;
-  headsBySessionId: Record<string, {
-    lastReadSequence: number;
-    unreadCount: number;
-  }>;
+  headsBySessionId: Record<string, NativeUnreadHead>;
 };
 
 function unreadHeadsEqual(
@@ -45,6 +41,7 @@ function unreadHeadsEqual(
   return leftEntries.length === Object.keys(right).length
     && leftEntries.every(([sessionId, head]) => (
       right[sessionId]?.lastReadSequence === head.lastReadSequence
+      && right[sessionId]?.latestMessageSequence === head.latestMessageSequence
       && right[sessionId]?.unreadCount === head.unreadCount
     ));
 }
@@ -102,7 +99,7 @@ export function useCloudCanonicalReconciliation({
     return () => window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, refreshUnread);
   }, [nativeShell]);
   const projectedUnreadBySessionId = useMemo(() => {
-    if (!account || !fullMessagesByPeer) return null;
+    if (nativeShell || !account || !fullMessagesByPeer) return null;
     return cloudUnreadCountsBySessionId({
       accountId: account.accountId,
       messagesByPeer: fullMessagesByPeer,
@@ -114,14 +111,16 @@ export function useCloudCanonicalReconciliation({
     account,
     canonicalState,
     fullMessagesByPeer,
+    nativeShell,
     readInboundMessageIdsByPeer,
   ]);
-  const optimisticReadSessionIds = useMemo(() => (
-    cloudOptimisticallyReadSessionIds({
-      messagesByPeer: messageIndex.sourceMessagesByPeer,
-      readInboundMessageIdsByPeer,
-    })
+  const optimisticReadSequences = useMemo(() => (
+    cloudOptimisticReadSequences(messageIndex.sourceMessagesByPeer, readInboundMessageIdsByPeer)
   ), [messageIndex, readInboundMessageIdsByPeer]);
+  const projectNativeUnread = useMemo(
+    () => createNativeCloudUnreadProjection(account?.accountId),
+    [account?.accountId],
+  );
 
   useEffect(() => {
     if (!nativeShell || !account || !authoritative) {
@@ -134,6 +133,7 @@ export function useCloudCanonicalReconciliation({
         const headsBySessionId = Object.fromEntries(rows.map((row) => [
           row.sessionId,
           {
+            latestMessageSequence: Math.max(0, row.latestMessageSequence),
             lastReadSequence: Math.max(0, row.lastReadSequence),
             unreadCount: Math.max(0, row.unreadCount),
           },
@@ -159,18 +159,19 @@ export function useCloudCanonicalReconciliation({
   const unreadBySessionId = useMemo(() => {
     if (!nativeShell) return projectedUnreadBySessionId;
     if (!account || nativeUnreadSnapshot?.accountId !== account.accountId) return null;
-    return mergeNativeCloudUnreadCounts({
-      nativeHeadsBySessionId: nativeUnreadSnapshot.headsBySessionId,
+    return projectNativeUnread(
+      nativeUnreadSnapshot.accountId,
+      nativeUnreadSnapshot.headsBySessionId,
       locallyReadSessionIds,
-      optimisticSessionIds: optimisticReadSessionIds,
-      projectedUnreadBySessionId,
-    });
+      optimisticReadSequences,
+    );
   }, [
     account,
     locallyReadSessionIds,
     nativeShell,
     nativeUnreadSnapshot,
-    optimisticReadSessionIds,
+    optimisticReadSequences,
+    projectNativeUnread,
     projectedUnreadBySessionId,
   ]);
 

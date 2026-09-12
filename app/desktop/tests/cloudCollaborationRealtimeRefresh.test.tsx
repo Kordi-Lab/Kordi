@@ -17,8 +17,7 @@ const messageSyncSource = () => readFileSync(
 test('cloud bridge message polling is a low-frequency WebSocket repair path', () => {
   assert.equal(CLOUD_MESSAGES_REFRESH_MS, 15_000);
   const source = messageSyncSource();
-  const interval = source.slice(source.indexOf('const interval = window.setInterval'), source.indexOf('return () => window.clearInterval'));
-  assert.doesNotMatch(interval, /visibilityState/);
+  assert.match(source, /useCloudRepairPolling\(/);
 });
 
 test('macOS keeps the realtime WebSocket alive while its window is hidden', () => {

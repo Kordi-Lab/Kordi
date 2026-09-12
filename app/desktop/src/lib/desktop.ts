@@ -1,11 +1,11 @@
 import {
-beginChatPerformanceSpan,
-chatPerformancePayloadBytes,
-finishChatPerformanceSpan,
+  beginChatPerformanceSpan,
+  chatPerformancePayloadBytes,
+  finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
 import {
-desktopUpdaterController,
-type DesktopUpdaterState,
+  desktopUpdaterController,
+  type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
 import type {
 AddCanonicalGroupMembersRequest,
@@ -15,7 +15,6 @@ AppendCanonicalMessageRequest,
 CanonicalGroupMembershipDelta,
 CanonicalIdentity,
 CanonicalMessageDeliveryDelta,
-CanonicalMessagePage,
 CanonicalProfileIdentityDelta,
 CanonicalReadCursorDelta,
 CanonicalSessionCatalog,
@@ -42,7 +41,7 @@ UpdateCanonicalPresenceRequest,
 UpdateCanonicalSessionMetadataRequest,
 UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
-import { type DesktopChatContextMessage,type DesktopVisibleTaskRecord } from "./desktopChatContextTypes";
+import { type DesktopChatContextMessage, type DesktopVisibleTaskRecord } from "./desktopChatContextTypes";
 
 
 export function isNativeDesktopShell() {
@@ -728,29 +727,7 @@ export async function fetchCanonicalSessionCatalog() {
   }
 }
 
-export async function fetchCanonicalSessionMessages(
-  sessionId: string,
-  beforeSequenceNum: number | null = null,
-  limit = 100,
-) {
-  if (!isNativeDesktopShell()) return null;
-  const performanceSpan = beginChatPerformanceSpan('canonical-page-ipc');
-  try {
-    const page = await invokeDesktop<CanonicalMessagePage>('desktop_canonical_session_messages', {
-      sessionId,
-      beforeSequenceNum,
-      limit,
-    });
-    finishChatPerformanceSpan(performanceSpan, () => ({
-      messageCount: page.messages.length,
-      payloadBytes: chatPerformancePayloadBytes(page),
-    }));
-    return page;
-  } catch (error) {
-    finishChatPerformanceSpan(performanceSpan, { errorCount: 1 });
-    throw error;
-  }
-}
+export { fetchCanonicalSessionMessages } from './desktopCanonicalHistory';
 
 export async function upsertCanonicalIdentity(request: UpsertCanonicalIdentityRequest) {
   return invokeDesktop<CanonicalSessionState>('desktop_canonical_upsert_identity', { request });

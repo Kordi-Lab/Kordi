@@ -34,7 +34,7 @@ export async function uploadComposerAttachments({
   client,
   attachments,
   readAttachment = readDesktopChatAttachment,
-  createPreviewDataUrl = createCompressedImagePreviewDataUrl,
+  createPreviewDataUrl = (blob) => createCompressedImagePreviewDataUrl(blob),
   nativeUpload = uploadNativeCloudAttachment,
   useNativeUpload = isNativeAttachmentUploadAvailable(),
   persistAttachmentPath = persistCloudAttachmentPath,

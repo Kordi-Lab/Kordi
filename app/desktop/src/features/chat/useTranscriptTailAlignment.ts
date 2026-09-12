@@ -49,6 +49,17 @@ export function useTranscriptTailAlignment({
     onTailChange?.(true);
   }, [internalScrollRef, tailAlignmentTargetRef, viewportWasAtTailRef, setIsAtTail, onTailChange]);
 
+  const handleUserWheel = useCallback((event: { deltaY: number }) => {
+    cancelTailAlignment();
+    if (event.deltaY < 0) {
+      // Record reading intent before the browser delivers its scroll event;
+      // an intervening layout must not re-arm the four-frame tail correction.
+      viewportWasAtTailRef.current = false;
+      setIsAtTail(false);
+      onTailChange?.(false);
+    }
+  }, [cancelTailAlignment, onTailChange, setIsAtTail, viewportWasAtTailRef]);
+
   const scheduleTailAlignment = useCallback((revealFromIndex?: number) => {
     if (tailAlignmentFrameRef.current !== null) {
       window.cancelAnimationFrame(tailAlignmentFrameRef.current);
@@ -78,5 +89,5 @@ export function useTranscriptTailAlignment({
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
   }, [alignViewportToTail, gap, virtualizer, tailAlignmentActiveRef, tailLiftRowsRef, sizeContainerRef]);
 
-  return { cancelTailLiftAnimation, cancelTailAlignment, scheduleTailAlignment };
+  return { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment };
 }
