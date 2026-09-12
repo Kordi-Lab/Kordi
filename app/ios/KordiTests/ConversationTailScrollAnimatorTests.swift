@@ -30,7 +30,39 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(20))
     }
 
-    func testSendCommitsMeasuredTailAndUsesOnePresentationAnimation() async throws {
+    private func waitForAnimation(_ animator: ConversationTailScrollAnimator) async {
+        for _ in 0..<150 {
+            try? await Task.sleep(for: .milliseconds(10))
+            if !animator.isAnimating && !animator.hasPendingRequest { return }
+        }
+        XCTFail("Native scrolling did not finish within the bounded settling interval")
+    }
+
+    func testStableIntermediateGeometryCannotRevealDuringKeyboardTransition() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer {
+            animator.disconnect()
+            window.isHidden = true
+            window.rootViewController = nil
+        }
+        await settle()
+        var revealed = false
+        // Keep the transition active while several identical frames are sampled.
+        animator.keyboardWillAnimate(until: CACurrentMediaTime() + 30)
+        animator.request(in: scroll, animated: false, reduceMotion: false) { revealed = true }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(revealed, "Stable bounds alone do not mean the keyboard has finished moving")
+        animator.keyboardWillAnimate(until: CACurrentMediaTime())
+        for _ in 0..<50 {
+            if revealed { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertTrue(revealed, "The row should reveal once the transition and geometry have settled")
+    }
+
+    func testSendMovesTheNativeOffsetToTheMeasuredTail() async throws {
         let scroll = scrollView()
         let window = try mount(scroll)
         defer { window.isHidden = true; window.rootViewController = nil }
@@ -40,11 +72,10 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         scroll.contentSize.height = 1070
         animator.request(in: scroll, animated: false, reduceMotion: false)
         await settle()
-        XCTAssertEqual(scroll.contentOffset.y, 470)
-        let animation = scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey) as? CABasicAnimation
-        XCTAssertEqual(animation?.fromValue as? CGFloat, 400)
-        XCTAssertEqual(animation?.toValue as? CGFloat, 470)
-        XCTAssertEqual(scroll.layer.animationKeys(), [ConversationTailScrollAnimator.animationKey])
+        XCTAssertTrue(animator.isAnimating)
+        XCTAssertLessThan(scroll.contentOffset.y, 470)
+        await waitForAnimation(animator)
+        XCTAssertEqual(scroll.contentOffset.y, 470, accuracy: 1)
         animator.disconnect()
     }
 
@@ -57,13 +88,13 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         animator.request(in: scroll, animated: true, reduceMotion: false)
         scroll.contentSize.height += 70
         await settle()
-        let before = scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey) as? CABasicAnimation
+        let before = animator.visibleOffset(in: scroll)
         animator.request(in: scroll, animated: false, reduceMotion: false)
         await settle()
-        let after = scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey) as? CABasicAnimation
-        XCTAssertEqual(before?.fromValue as? CGFloat, after?.fromValue as? CGFloat)
-        XCTAssertEqual(before?.toValue as? CGFloat, after?.toValue as? CGFloat)
-        XCTAssertEqual(before?.beginTime, after?.beginTime)
+        XCTAssertGreaterThanOrEqual(animator.visibleOffset(in: scroll), before - 1)
+        XCTAssertTrue(animator.isAnimating)
+        await waitForAnimation(animator)
+        XCTAssertEqual(scroll.contentOffset.y, 470, accuracy: 1)
         animator.disconnect()
     }
 
@@ -78,10 +109,10 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         animator.request(in: scroll, contentView: content, animated: true, reduceMotion: false)
         content.frame = CGRect(x: 0, y: 380, width: 320, height: 220)
         await settle()
-        XCTAssertEqual(scroll.contentOffset.y, 0)
-        let animation = scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey) as? CABasicAnimation
-        XCTAssertEqual(animation?.fromValue as? CGFloat, -70)
-        XCTAssertEqual(animation?.toValue as? CGFloat, 0)
+        XCTAssertLessThan(scroll.contentOffset.y, 0)
+        XCTAssertGreaterThanOrEqual(scroll.contentOffset.y, -70)
+        await waitForAnimation(animator)
+        XCTAssertEqual(scroll.contentOffset.y, 0, accuracy: 1)
         animator.disconnect()
     }
 
@@ -92,13 +123,13 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         scroll.contentSize.height += 70
         await settle()
         XCTAssertEqual(scroll.contentOffset.y, 470)
-        XCTAssertNil(scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey))
+        XCTAssertFalse(animator.isAnimating)
         animator.request(in: scroll, animated: true, reduceMotion: false)
         animator.cancel()
         scroll.contentSize.height += 70
         await settle()
         XCTAssertEqual(scroll.contentOffset.y, 470)
-        XCTAssertNil(scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey))
+        XCTAssertFalse(animator.isAnimating)
         animator.disconnect()
     }
 
@@ -110,9 +141,198 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         scroll.contentInset.bottom = 20
         scroll.contentSize.height = 1100
         await settle()
-        XCTAssertEqual(scroll.contentOffset.y, 420)
+        await waitForAnimation(animator)
+        XCTAssertEqual(scroll.contentOffset.y, 420, accuracy: 1)
         animator.disconnect()
     }
+
+    func testLeavingTheConversationRemovesItsJumpCover() async throws {
+        let scroll = scrollView(contentHeight: 2_000)
+        scroll.contentOffset.y = 100
+        let content = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 2_000))
+        scroll.addSubview(content)
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        let position = ConversationScrollPosition()
+        position.attachNavigationAnimator(animator)
+        defer { animator.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        await settle()
+        animator.request(in: scroll, contentView: content, animated: true, reduceMotion: false)
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertTrue(animator.isTransitionCoveringContent)
+        position.cancelScrolling()
+        XCTAssertFalse(animator.isAnimating)
+        XCTAssertFalse(animator.isTransitionCoveringContent)
+        XCTAssertFalse(window.subviews.contains { $0.accessibilityIdentifier == "conversation-jump-cover" })
+    }
+
+    func testVirtualizedJumpRevealsOnlyAfterMeasuredDestinationSettles() async throws {
+        let scroll = scrollView(contentHeight: 2_000)
+        scroll.contentOffset.y = 100
+        let content = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 2_000))
+        scroll.addSubview(content)
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer { animator.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        var coverage: [Bool] = []
+        animator.onTransitionVisibilityChange = { [weak animator] in
+            coverage.append(animator?.isTransitionCoveringContent == true)
+        }
+        await settle()
+        animator.request(in: scroll, contentView: content, animated: true, reduceMotion: false)
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertTrue(animator.isTransitionCoveringContent)
+        await waitForAnimation(animator)
+        XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1)
+        XCTAssertFalse(animator.isTransitionCoveringContent)
+        XCTAssertEqual(coverage, [true, false])
+        scroll.contentOffset.y = 100
+        animator.request(in: scroll, contentView: content, animated: true, reduceMotion: true)
+        await settle()
+        XCTAssertFalse(animator.isTransitionCoveringContent)
+        XCTAssertFalse(animator.isAnimating)
+        XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1)
+    }
+
+    func testCancellingFreezesNativeScrollingAtTheCurrentPosition() async throws {
+        let scroll = scrollView(contentHeight: 2_000)
+        scroll.contentOffset.y = 100
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer { animator.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        await settle()
+        animator.request(in: scroll, animated: true, reduceMotion: false)
+        try await Task.sleep(for: .milliseconds(60))
+        let current = scroll.contentOffset.y
+        XCTAssertLessThan(current, ConversationTailScrollAnimator.targetOffset(in: scroll))
+        animator.cancel()
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertFalse(animator.isAnimating)
+        XCTAssertEqual(scroll.contentOffset.y, current, accuracy: 1)
+    }
+
+    func testAnimatedJumpDoesNotReportLatestBeforeItArrives() async throws {
+        let scroll = scrollView(contentHeight: 2_000)
+        scroll.contentOffset.y = 100
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer { animator.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        await settle()
+        animator.request(in: scroll, animated: true, reduceMotion: false)
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertGreaterThan(scroll.contentOffset.y, 100)
+        XCTAssertLessThan(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll) - 1,
+            "Read and latest-button state must follow the visible scroll, not jump to the endpoint before the animation")
+    }
+
+    func testRetargetUsesThePositionReachedWhileLayoutWasBusy() async throws {
+        let scroll = scrollView()
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer { animator.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        await settle()
+        animator.request(in: scroll, animated: true, reduceMotion: false)
+        scroll.contentSize.height += 4_000
+        try await Task.sleep(for: .milliseconds(40))
+        animator.request(in: scroll, animated: true, reduceMotion: false)
+        scroll.contentSize.height += 70
+        // The compositor continues the old animation while main-thread layout
+        // delays the queued retarget. It must not restart from the earlier sample.
+        simulateBusyLayout()
+        let reached = animator.visibleOffset(in: scroll)
+        await settle()
+        XCTAssertGreaterThanOrEqual(animator.visibleOffset(in: scroll), reached - 1,
+            "Retargeting must continue from the reached position")
+        await waitForAnimation(animator)
+        XCTAssertEqual(scroll.contentOffset.y, 4_470, accuracy: 1)
+    }
+
+    func testLateResizeCannotReverseVisibleDestinationDuringFade() async throws {
+        try await checkLateResize(delta: -80)
+    }
+
+    func testLateGrowthFollowsTheNewTailAfterFading() async throws {
+        try await checkLateResize(delta: 80)
+    }
+
+    func testCancellingRetargetedRevealRemovesItsCover() async throws {
+        try await checkLateResize(delta: -80, cancels: true)
+    }
+
+    private func checkLateResize(delta: CGFloat, cancels: Bool = false) async throws {
+        let scroll = scrollView(contentHeight: 2_000)
+        scroll.contentOffset.y = 100
+        scroll.contentInset.bottom = 17
+        let content = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 2_000))
+        let marker = UIView(frame: CGRect(x: 0, y: 1_700, width: 320, height: 40))
+        marker.backgroundColor = .systemBlue
+        content.addSubview(marker); scroll.addSubview(content)
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer { animator.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        await settle()
+        animator.request(in: scroll, contentView: content, animated: true, reduceMotion: false)
+        var fadingCover: UIView?
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(5))
+            if let cover = window.subviews.first(where: { $0.accessibilityIdentifier == "conversation-jump-cover" }),
+               let opacity = cover.layer.presentation()?.opacity, opacity > 0.2, opacity < 0.8 {
+                fadingCover = cover; break
+            }
+        }
+        let cover = try XCTUnwrap(fadingCover)
+        let visibleMarkerY = marker.convert(marker.bounds, to: window).minY
+        // Resize after destination pixels are visible. Both UIKit's own clamp
+        // and a follow request must remain behind a fresh, opaque snapshot.
+        content.frame.size.height += delta
+        scroll.contentSize.height += delta
+        animator.request(in: scroll, contentView: content, animated: false, reduceMotion: false)
+        let replacement = try XCTUnwrap(window.subviews.first {
+            $0.accessibilityIdentifier == "conversation-jump-cover"
+        })
+        XCTAssertFalse(replacement === cover)
+        XCTAssertNil(cover.superview)
+        XCTAssertEqual(replacement.alpha, 1)
+        XCTAssertEqual(scroll.contentInset.bottom, 17)
+        if cancels {
+            animator.cancel()
+            XCTAssertFalse(animator.isAnimating)
+            XCTAssertFalse(animator.isTransitionCoveringContent)
+            XCTAssertNil(replacement.superview)
+            let stoppedOffset = scroll.contentOffset.y
+            try await Task.sleep(for: .milliseconds(350))
+            XCTAssertEqual(scroll.contentOffset.y, stoppedOffset, accuracy: 1)
+            return
+        }
+        var previousVisibleY: CGFloat? = visibleMarkerY
+        var comparedFrames = 0
+        var sawCrossfade = false
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(5))
+            let opacity = replacement.layer.presentation()?.opacity ?? Float(replacement.alpha)
+            if replacement.superview != nil, opacity >= 0.99 {
+                previousVisibleY = nil
+                continue
+            }
+            sawCrossfade = sawCrossfade || (opacity > 0.01 && opacity < 0.99)
+            let y = marker.convert(marker.bounds, to: window).minY
+            if let previousVisibleY {
+                comparedFrames += 1
+                XCTAssertEqual(y, previousVisibleY, accuracy: 1,
+                    "The destination must remain stationary whenever it is visible through the cover")
+            }
+            previousVisibleY = y
+            if !animator.isAnimating, !animator.hasPendingRequest { break }
+        }
+        XCTAssertTrue(sawCrossfade)
+        XCTAssertGreaterThan(comparedFrames, 2)
+        XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1)
+        XCTAssertFalse(animator.isAnimating)
+        XCTAssertFalse(animator.isTransitionCoveringContent)
+        XCTAssertEqual(scroll.contentInset.bottom, 17, "Retargeting must preserve the original inset")
+    }
+
+    private func simulateBusyLayout() { Thread.sleep(forTimeInterval: 0.08) }
 
     func testRapidSendsMoveContinuouslyOnTheCompositedScrollLayer() async throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
@@ -130,7 +350,7 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         animator.request(in: scroll, animated: true, reduceMotion: false)
         scroll.contentSize.height += 70
         var offsets: [CGFloat] = []
-        for frame in 0..<35 {
+        for frame in 0..<120 {
             if frame == 5 {
                 animator.request(in: scroll, animated: true, reduceMotion: false)
                 scroll.contentSize.height += 70
@@ -138,6 +358,7 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
             if frame == 8 { animator.request(in: scroll, animated: false, reduceMotion: false) }
             try await Task.sleep(for: .milliseconds(10))
             offsets.append(animator.visibleOffset(in: scroll))
+            if frame > 8, !animator.isAnimating, !animator.hasPendingRequest { break }
         }
         XCTAssertTrue(offsets.contains { $0 > 400.5 && $0 < 539.5 }, "The transition must present intermediate frames")
         for (before, after) in zip(offsets, offsets.dropFirst()) {
@@ -166,7 +387,7 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertTrue(revealed)
         XCTAssertEqual(scroll.contentOffset.y, 470, accuracy: 0.5)
-        XCTAssertNil(scroll.layer.animation(forKey: ConversationTailScrollAnimator.animationKey))
+        XCTAssertFalse(animator.isAnimating)
     }
 
 }

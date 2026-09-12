@@ -274,7 +274,7 @@ struct ConversationBoundaryTests {
     #expect(!display.contains("model.threadReadCursors"))
 }
 
-@Test func conversationScrollBookkeepingPreservesOffsetsWithoutPublishingPixels() throws {
+@MainActor @Test func conversationScrollBookkeepingPreservesOffsetsWithoutPublishingPixels() throws {
     let position = ConversationScrollPosition()
     let samePosition = position
     #expect(position.contentOffsetY == nil)
@@ -293,7 +293,6 @@ struct ConversationBoundaryTests {
     #expect(source.contains("@State private var scrollPosition = ConversationScrollPosition()"))
     #expect(!source.contains("currentScrollOffsetY"))
     #expect(source.contains("if isAtBottom != snapshot.isAtLatest"))
-    #expect(source.contains("contentOffsetY: isAtBottom ? nil : scrollPosition.contentOffsetY"))
     #expect(source.contains("threadReturnScrollOffsetY = scrollPosition.contentOffsetY"))
     #expect(source.contains("linkedBackgroundSessionState == .running && messages.isEmpty"))
 }

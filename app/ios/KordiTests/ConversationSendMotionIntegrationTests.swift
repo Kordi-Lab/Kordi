@@ -118,7 +118,15 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         if rapid {
             ConversationMotionProbeRegistry.setDraft?("First message")
             ConversationMotionProbeRegistry.send?()
-            try await Task.sleep(for: .milliseconds(40))
+            // The composer rejects another send until the first one is staged.
+            // Wait for acceptance, not rendering or a guessed 40 ms delay, so
+            // this still exercises a second send during the first reveal.
+            for _ in 0..<200 {
+                if model.messages(for: conversation).contains(where: { $0.text == "First message" }) { break }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertTrue(model.messages(for: conversation).contains { $0.text == "First message" },
+                          "The first send must be accepted before issuing another composer action")
             ConversationMotionProbeRegistry.setDraft?(draft)
         }
         let sendTime = CACurrentMediaTime()
@@ -127,7 +135,12 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         var positions: [CGFloat] = []
         var composerGaps: [CGFloat] = []
         var bubbleFrames: [CGRect] = []
-        for _ in 0..<45 {
+        // Bound readiness separately from measurement. A cold debug simulator
+        // may spend time in layout before it can produce the first visible frame.
+        // Keep observing for 450 ms after reveal so the spatial checks never
+        // pass with only the last couple of frames of a keyboard transition.
+        let revealDeadline = sendTime + 5
+        while CACurrentMediaTime() < (firstVisibleTime.map { $0 + 0.45 } ?? revealDeadline) {
             try await Task.sleep(for: .milliseconds(10))
             if let last = model.messages(for: conversation).last, last.text == draft,
                let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: last), in: window) {
@@ -144,6 +157,12 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
                     composerGaps.append(editorLayer.convert(editorLayer.bounds, to: root).minY - frame.maxY)
                 }
             }
+        }
+        if firstVisibleTime == nil {
+            let current = model.messages(for: conversation)
+            let accepted = current.filter { $0.text == draft }
+            let row = accepted.last.flatMap { ConversationMotionProbeRegistry.views[model.timelineIdentity(for: $0)]?.value }
+            print("[SendReadiness] accepted=\(accepted.count) firstAccepted=\(current.filter { $0.text == "First message" }.count) latestMatches=\(current.last?.text == draft) composerMatches=\(composer.text == draft) composerEmpty=\(composer.text.isEmpty) rowExists=\(row != nil) rowAttached=\(row?.window != nil) rowAlpha=\(row?.alpha ?? -1)")
         }
         XCTAssertGreaterThan(positions.count, 5)
         XCTAssertNotNil(firstVisibleTime, "Every accepted send must become visible")
@@ -394,6 +413,225 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
 
 @MainActor
 final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
+    func testColdCachedEntryStaysAtLatestWhenOlderHistoryArrives() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, wireCache: CloudWireCache(directory: directory), previewMode: true)
+        let account = try XCTUnwrap(model.account)
+        let conversation = ConversationSummary(id: "person:cold-history", kind: .person,
+            peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil, displayName: "Cold history",
+            lastMessage: "Latest", lastActivityAt: Date(), unreadCount: 0, avatarSource: nil,
+            agentActivity: .ready, sessionId: "cold-history")
+        let messages = (0..<200).map { index in
+            ChatMessage(id: "cold-\(index)", clientMessageId: "client-\(index)",
+                conversationId: conversation.id, conversationSequence: Int64(index + 1),
+                author: .me, authorName: "You",
+                text: String(repeating: "Synthetic history line \(index).\n", count: 1 + index % 12),
+                createdAt: Date(timeIntervalSince1970: Double(index + 1_000)),
+                cloudMessageVersion: 1, deliveryState: .read, errorMessage: nil, requestMessageId: nil,
+                reactionTargetMessageId: "cold-\(index)")
+        }
+        store.saveMessages(Array(messages.suffix(64)), conversationId: conversation.id,
+            accountId: account.accountId, hasEarlier: true)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(navigation: navigation, model: model,
+            calls: KordiCallCoordinator(), notifications: KordiNotificationCoordinator()))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible()
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil; ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        navigation.path = [.conversation(conversation)]
+        let latestID = model.timelineIdentity(for: messages.last!)
+        var scroll: UIScrollView?
+        for _ in 0..<200 {
+            if let frame = ConversationMotionProbeRegistry.frame(for: latestID, in: window),
+               frame.intersects(window.bounds), let row = ConversationMotionProbeRegistry.views[latestID]?.value {
+                var ancestor = row.superview
+                while let value = ancestor, !(value is UIScrollView) { ancestor = value.superview }
+                scroll = ancestor as? UIScrollView
+                if let scroll, abs(scroll.contentOffset.y - ConversationTailScrollAnimator.targetOffset(in: scroll)) < 1 { break }
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let transcript = try XCTUnwrap(scroll)
+        let known = model.knownHistoryMessageIDs(conversationID: conversation.id)
+        let wires = messages.map { message in
+            CloudMessageDTO(messageId: message.id, clientMessageId: message.clientMessageId,
+                fromAccountId: account.accountId, toAccountId: "fixture-peer", body: message.text,
+                createdAt: message.createdAt.ISO8601Format(), deliveredAt: message.createdAt.ISO8601Format(),
+                readAt: message.createdAt.ISO8601Format(), direction: "outgoing", sessionId: conversation.sessionId,
+                conversationId: "canonical-cold-history", conversationSequence: message.conversationSequence, version: 1)
+        }
+        let hydration = Task { await model.applyConversationHistoryPage(CloudConversationMessagePage(
+            messages: wires, nextBeforeSequence: nil, hasMore: false), to: conversation,
+            account: account, knownMessageIDs: known) }
+        var largestGap: CGFloat = 0
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(10))
+            largestGap = max(largestGap, abs(ConversationTailScrollAnimator.targetOffset(in: transcript)
+                - (transcript.layer.presentation()?.bounds.minY ?? transcript.contentOffset.y)))
+        }
+        _ = await hydration.value
+        XCTAssertEqual(model.messages(for: conversation).count, 200)
+        XCTAssertLessThanOrEqual(largestGap, 2, "Prepending older history during cold entry must not pull the viewport away from latest")
+    }
+
+    func testLongMessageCannotDrawIntoHeaderWhileScrolling() async throws {
+        try await checkHeaderBoundary(transparentNavigation: true)
+    }
+
+    func testVisibleNavigationDoesNotClipMessagesBelowHeader() async throws {
+        try await checkHeaderBoundary(transparentNavigation: false)
+    }
+
+    private func checkHeaderBoundary(transparentNavigation: Bool) async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "group:header-boundary", kind: .group,
+            peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil,
+            displayName: "Notice", lastMessage: "Ready", lastActivityAt: Date(),
+            unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "header-boundary")
+        let messages = [
+            ChatMessage(id: "long-notice", conversationId: conversation.id, author: .person,
+                authorName: "Fixture sender", text: String(repeating: "MMMM MMMM MMMM MMMM MMMM MMMM\n", count: 80),
+                createdAt: Date(timeIntervalSince1970: 1000), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "notice-tail", conversationId: conversation.id, author: .me,
+                authorName: "Tester", text: "End of synthetic notice", createdAt: Date(timeIntervalSince1970: 1001),
+                deliveryState: .read, errorMessage: nil, requestMessageId: nil)
+        ]
+        store.saveMessages(messages, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.overrideUserInterfaceStyle = .light
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(navigation: navigation, model: model,
+            calls: KordiCallCoordinator(), notifications: KordiNotificationCoordinator())
+            .environment(\.kordiChatTheme, .ocean).preferredColorScheme(.light))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true; window.rootViewController = nil; previousWindow?.makeKeyAndVisible()
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        navigation.path = [.conversation(conversation)]
+        for _ in 0..<200 {
+            if ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: messages[1]), in: window) != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        func timelineScroll(_ view: UIView) -> UIScrollView? {
+            if let scroll = view as? UIScrollView, !(scroll is UITextView), scroll.contentSize.height > scroll.bounds.height + 100 { return scroll }
+            return view.subviews.lazy.compactMap(timelineScroll).first
+        }
+        let scroll = try XCTUnwrap(timelineScroll(controller.view))
+        XCTAssertGreaterThan(scroll.adjustedContentInset.top, 40)
+        var navigationAppearances: [(UINavigationBar, UINavigationBarAppearance, UINavigationBarAppearance?, UINavigationBarAppearance?, CGFloat)] = []
+        func rememberNavigation(_ view: UIView) {
+            if let bar = view as? UINavigationBar {
+                navigationAppearances.append((bar, bar.standardAppearance, bar.scrollEdgeAppearance, bar.compactAppearance, bar.alpha))
+            }
+            view.subviews.forEach(rememberNavigation)
+        }
+        rememberNavigation(controller.view)
+        let navigationContent = navigationAppearances.flatMap { entry in
+            entry.0.subviews.map { ($0, $0.alpha) }
+        }
+        let reservedTopInset = scroll.adjustedContentInset.top
+        func capture(transparentNavigation: Bool = true) -> UIImage {
+            // Exercise the failure condition independently of UIKit's automatic
+            // material visibility. Transcript clipping must protect transparent bars too.
+            func clearNavigationMaterial(_ view: UIView) {
+                if let bar = view as? UINavigationBar {
+                    let appearance = UINavigationBarAppearance()
+                    appearance.configureWithTransparentBackground()
+                    bar.standardAppearance = appearance
+                    bar.scrollEdgeAppearance = appearance
+                    bar.compactAppearance = appearance
+                    // Preserve the visible bar and its safe-area reservation.
+                    // Hiding the bar changes layout and misses double-inset bugs.
+                    bar.layoutIfNeeded()
+                    bar.subviews.forEach { $0.alpha = 0 }
+                }
+                view.subviews.forEach(clearNavigationMaterial)
+            }
+            if transparentNavigation {
+                clearNavigationMaterial(controller.view)
+            } else {
+                for (view, alpha) in navigationContent { view.alpha = alpha }
+                for (bar, standard, edge, compact, alpha) in navigationAppearances {
+                    bar.standardAppearance = standard
+                    bar.scrollEdgeAppearance = edge
+                    bar.compactAppearance = compact
+                    bar.alpha = alpha
+                    bar.layoutIfNeeded()
+                }
+            }
+            XCTAssertEqual(scroll.adjustedContentInset.top, reservedTopInset, accuracy: 1,
+                "Removing navigation paint must preserve the real transcript layout")
+            let format = UIGraphicsImageRendererFormat(); format.scale = 1
+            return UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+        }
+        func darkPixels(_ image: UIImage, belowHeader: Bool = false) throws -> Int {
+            let cg = try XCTUnwrap(image.cgImage)
+            var bytes = [UInt8](repeating: 0, count: cg.width * cg.height * 4)
+            let context = try XCTUnwrap(CGContext(data: &bytes, width: cg.width, height: cg.height,
+                bitsPerComponent: 8, bytesPerRow: cg.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+            var count = 0
+            let headerBottom = navigationAppearances.filter { $0.4 > 0 }.map { $0.0.convert($0.0.bounds, to: window).maxY }.max() ?? 0
+            let rows = belowHeader ? (Int(headerBottom) + 4)..<(Int(headerBottom) + 60) : 4..<max(5, Int(headerBottom) - 4)
+            for y in rows {
+                for x in 90..<(cg.width - 90) {
+                    let i = (y * cg.width + x) * 4
+                    if bytes[i] < 100 && bytes[i + 1] < 100 && bytes[i + 2] < 100 { count += 1 }
+                }
+            }
+            return count
+        }
+        scroll.setContentOffset(CGPoint(x: 0, y: -scroll.adjustedContentInset.top), animated: false)
+        try await Task.sleep(for: .milliseconds(400))
+        let baseline = try darkPixels(capture(transparentNavigation: transparentNavigation))
+        for offset in [200.0, 245.0, 290.0] {
+            scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+            try await Task.sleep(for: .milliseconds(250))
+            let image = capture(transparentNavigation: transparentNavigation)
+            let dark = try darkPixels(image)
+            XCTAssertGreaterThan(try darkPixels(image, belowHeader: true), 100,
+                "The scrolled message must remain visible immediately below the header")
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "Synthetic long message at header, offset \(offset)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTAssertLessThanOrEqual(dark, baseline + 12,
+                "Message glyphs must not paint into the navigation or status area while scrolling")
+        }
+        let restoredHeader = XCTAttachment(image: capture(transparentNavigation: false))
+        restoredHeader.name = "Synthetic long message with protected navigation header"
+        restoredHeader.lifetime = .keepAlways
+        add(restoredHeader)
+    }
+
     func testMixedHeightGroupHistoryFillsViewportWhileScrolling() async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]

@@ -105,6 +105,7 @@ final class CachedMessageRecord {
     @Attribute(.unique) var id: String
     var accountId: String = ""
     var messageId: String = ""
+    var clientMessageId: String?
     var conversationId: String
     var conversationSequence: Int64?
     var author: String
@@ -133,6 +134,7 @@ final class CachedMessageRecord {
         id = scopedCacheRecordID(accountId: accountId, entityId: message.id)
         self.accountId = accountId
         messageId = message.id
+        clientMessageId = message.clientMessageId
         conversationId = message.conversationId
         conversationSequence = message.conversationSequence
         author = message.author.rawValue
@@ -159,6 +161,7 @@ final class CachedMessageRecord {
     }
 
     func update(from message: ChatMessage) {
+        clientMessageId = message.clientMessageId
         conversationId = message.conversationId
         conversationSequence = message.conversationSequence
         author = message.author.rawValue
@@ -190,6 +193,7 @@ final class CachedMessageRecord {
               let state = MessageDeliveryState(rawValue: deliveryState) else { return nil }
         return ChatMessage(
             id: messageId,
+            clientMessageId: clientMessageId,
             conversationId: conversationId,
             conversationSequence: conversationSequence,
             author: author,

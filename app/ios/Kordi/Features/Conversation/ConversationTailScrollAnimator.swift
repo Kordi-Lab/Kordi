@@ -1,16 +1,14 @@
 import UIKit
 
-/// Keeps the model at the measured tail and animates only its presentation offset.
-/// Receipts do not restart movement; rapid sends retarget the visible position.
+/// Scroll native content directly. For a virtualized history jump, hold the
+/// current viewport until the destination is measured, then reveal it locally.
 @MainActor
 final class ConversationTailScrollAnimator: NSObject {
-    static let animationKey = "kordi.conversation.tail"
-    static let duration: TimeInterval = 0.2
 
     private weak var scrollView: UIScrollView?
-    private var sizeObservation: NSKeyValueObservation?
     private weak var contentView: UIView?
     private var pendingContentOriginY: CGFloat = 0
+    private var pendingOriginCompensation = false
     private var pendingFromY: CGFloat?
     private var pendingAnimated = false
     private var pendingReduceMotion = false
@@ -19,6 +17,21 @@ final class ConversationTailScrollAnimator: NSObject {
     private var positionedCompletion: (() -> Void)?
     private var positioningDisplayLink: CADisplayLink?
     private var previousGeometry: PositionedGeometry?
+    private var keyboardAnimationDeadline: CFTimeInterval = 0
+    private var nativeDisplayLink: CADisplayLink?
+    private var nativeTargetY: CGFloat = 0
+    private var nativeStartedAt: CFTimeInterval = 0
+    private var nativePreviousGeometry: PositionedGeometry?
+    private var jumpCover: UIView?
+    private var jumpImage: UIView?
+    private var isFadingJumpCover = false
+    private var contentSizeObservation: NSKeyValueObservation?
+    private var pendingResizeSnapshot: UIView?
+    private var settledJumpFrames = 0
+    var onTransitionVisibilityChange: (() -> Void)?
+    var isTransitionCoveringContent: Bool { jumpCover != nil }
+
+    var isAnimating: Bool { nativeDisplayLink != nil }
 
     private struct PositionedGeometry: Equatable {
         let contentSize: CGSize
@@ -31,6 +44,11 @@ final class ConversationTailScrollAnimator: NSObject {
     }
 
     var hasPendingRequest: Bool { pendingFromY != nil }
+
+    func keyboardWillAnimate(until deadline: CFTimeInterval) {
+        keyboardAnimationDeadline = deadline
+        previousGeometry = nil
+    }
 
     func request(in scrollView: UIScrollView, contentView: UIView? = nil, animated: Bool, reduceMotion: Bool, onPositioned: (() -> Void)? = nil) {
         attach(to: scrollView)
@@ -45,6 +63,9 @@ final class ConversationTailScrollAnimator: NSObject {
         guard pendingFromY == nil else { return }
         pendingFromY = visibleOffset(in: scrollView)
         pendingContentOriginY = contentView?.convert(.zero, to: scrollView).y ?? 0
+        pendingOriginCompensation = contentView.map {
+            $0.bounds.height <= scrollView.bounds.height - scrollView.adjustedContentInset.top - scrollView.adjustedContentInset.bottom
+        } ?? false
         let requestedGeneration = generation
         DispatchQueue.main.async { [weak self, weak scrollView] in
             guard let self, let scrollView, self.generation == requestedGeneration else { return }
@@ -57,16 +78,17 @@ final class ConversationTailScrollAnimator: NSObject {
         pendingFromY = nil
         pendingAnimated = false
         finishPositioning()
+        finishNativeAnimation()
         guard let scrollView else { return }
-        let displayedY = visibleOffset(in: scrollView)
-        scrollView.layer.removeAnimation(forKey: Self.animationKey)
-        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: displayedY), animated: false)
+        // Stop UIKit at its current position; never restore an older sampled frame.
+        scrollView.setContentOffset(scrollView.contentOffset, animated: false)
     }
 
     func disconnect() {
         cancel()
+        keyboardAnimationDeadline = 0
+        contentSizeObservation = nil
         scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(userDidPan))
-        sizeObservation = nil
         scrollView = nil
     }
 
@@ -75,22 +97,18 @@ final class ConversationTailScrollAnimator: NSObject {
     }
 
     static func targetOffset(in scrollView: UIScrollView) -> CGFloat {
-        max(-scrollView.adjustedContentInset.top,
+        return max(-scrollView.adjustedContentInset.top,
             scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
     }
 
     private func attach(to scrollView: UIScrollView) {
         guard self.scrollView !== scrollView else { return }
+        // The keyboard notification may precede the first scroll request.
+        let pendingKeyboardDeadline = keyboardAnimationDeadline
         disconnect()
+        keyboardAnimationDeadline = pendingKeyboardDeadline
         self.scrollView = scrollView
         scrollView.panGestureRecognizer.addTarget(self, action: #selector(userDidPan))
-        sizeObservation = scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] view, change in
-            guard change.oldValue != change.newValue else { return }
-            Task { @MainActor [weak self, weak view] in
-                guard let self, let view, view.layer.animation(forKey: Self.animationKey) != nil else { return }
-                self.request(in: view, contentView: self.contentView, animated: false, reduceMotion: self.reduceMotion)
-            }
-        }
     }
 
     @objc private func userDidPan(_ gesture: UIPanGestureRecognizer) {
@@ -99,23 +117,22 @@ final class ConversationTailScrollAnimator: NSObject {
 
     private func flush(in scrollView: UIScrollView) {
         guard pendingFromY != nil else { return }
-        scrollView.superview?.layoutIfNeeded()
-        scrollView.layoutIfNeeded()
+        if !isAnimating {
+            scrollView.superview?.layoutIfNeeded()
+            scrollView.layoutIfNeeded()
+        }
         guard let previousY = pendingFromY else { return }
-        // An undersized, bottom-aligned history moves within the viewport even
-        // when contentOffset stays zero. Include that measured origin change.
-        let currentContentOriginY = contentView?.convert(.zero, to: scrollView).y ?? 0
-        let fromY = previousY + currentContentOriginY - pendingContentOriginY
+        let originDelta = pendingOriginCompensation
+            ? (contentView?.convert(.zero, to: scrollView).y ?? 0) - pendingContentOriginY : 0
         let animated = pendingAnimated
         let reduceMotion = pendingReduceMotion
         pendingFromY = nil
         pendingAnimated = false
         let targetY = Self.targetOffset(in: scrollView)
-        let running = scrollView.layer.animation(forKey: Self.animationKey) != nil
+        let running = isAnimating
+
         if positionedCompletion != nil {
-            // The inserted row remains hidden until the viewport and measured
-            // content agree. Never show its provisional pre-scroll position.
-            scrollView.layer.removeAnimation(forKey: Self.animationKey)
+            finishNativeAnimation()
             UIView.performWithoutAnimation {
                 scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
             }
@@ -123,20 +140,182 @@ final class ConversationTailScrollAnimator: NSObject {
             startPositioning()
             return
         }
-        // The logical offset already equals the destination during an animation.
-        // A delivery receipt or duplicate layout request must not snap to it.
-        if abs(scrollView.contentOffset.y - targetY) < 0.5, running, !reduceMotion { return }
-        scrollView.layer.removeAnimation(forKey: Self.animationKey)
-        UIView.performWithoutAnimation {
+        // Duplicate state changes must not restart a navigation transition.
+        if running, abs(nativeTargetY - targetY) < 0.5, !reduceMotion { return }
+        let shouldAnimate = !reduceMotion && (animated || running)
+        if !shouldAnimate {
+            finishNativeAnimation()
             scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+            return
         }
-        guard !reduceMotion, (animated || running), abs(fromY - targetY) > 0.5 else { return }
-        let animation = CABasicAnimation(keyPath: "bounds.origin.y")
-        animation.fromValue = fromY
-        animation.toValue = targetY
-        animation.duration = Self.duration
-        animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
-        scrollView.layer.add(animation, forKey: Self.animationKey)
+        // Only an undersized bottom-aligned stack needs origin compensation.
+        // Reapplying a lazy long-history origin change can reverse a tail jump.
+        if !running, abs(originDelta) > 0.5 {
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: previousY + originDelta), animated: false)
+        }
+        guard abs(scrollView.contentOffset.y - targetY) > 0.5 else {
+            // A content-size clamp may already have reached the new target.
+            // Keep its replacement cover until measurement and reveal finish.
+            if jumpCover == nil { finishNativeAnimation() }
+            else { nativeTargetY = targetY }
+            return
+        }
+        if !running, let contentView, contentView.bounds.height > scrollView.bounds.height {
+            beginJumpCover(in: scrollView)
+        }
+        nativeTargetY = targetY
+        nativePreviousGeometry = nil
+        if nativeDisplayLink == nil {
+            nativeStartedAt = CACurrentMediaTime()
+            let link = CADisplayLink(target: self, selector: #selector(observeNativeAnimation))
+            nativeDisplayLink = link
+            link.add(to: .main, forMode: .common)
+        }
+        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: jumpCover == nil)
+    }
+
+    private func visibleViewport(in scroll: UIScrollView, window: UIWindow) -> CGRect {
+        if let presented = scroll.layer.presentation(), let root = window.layer.presentation() {
+            return presented.convert(presented.bounds, to: root)
+                .inset(by: scroll.adjustedContentInset).intersection(window.bounds)
+        }
+        return scroll.convert(scroll.bounds.inset(by: scroll.adjustedContentInset), to: window)
+            .intersection(window.bounds)
+    }
+
+    private func viewportSnapshot(in window: UIWindow, viewport: CGRect) -> UIView {
+        if let snapshot = window.resizableSnapshotView(from: viewport, afterScreenUpdates: false, withCapInsets: .zero) {
+            return snapshot
+        } else {
+            let format = UIGraphicsImageRendererFormat(); format.opaque = true
+            let bitmap = UIGraphicsImageRenderer(size: viewport.size, format: format).image { context in
+                UIColor.systemBackground.setFill(); context.cgContext.fill(CGRect(origin: .zero, size: viewport.size))
+                context.cgContext.translateBy(x: -viewport.minX, y: -viewport.minY)
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+            }
+            return UIImageView(image: bitmap)
+        }
+    }
+
+    private func beginJumpCover(in scroll: UIScrollView, snapshot: UIView? = nil) {
+        guard let window = scroll.window else { return }
+        let viewport = visibleViewport(in: scroll, window: window)
+        guard viewport.width > 0, viewport.height > 0 else { return }
+        let image = snapshot ?? viewportSnapshot(in: window, viewport: viewport)
+        let previousCover = jumpCover
+        let cover = UIView(frame: viewport)
+        // Old pixels must not activate a different message at the new position.
+        cover.isUserInteractionEnabled = true
+        cover.accessibilityElementsHidden = true
+        cover.accessibilityIdentifier = "conversation-jump-cover"
+        cover.clipsToBounds = true
+        image.frame = cover.bounds
+        cover.addSubview(image)
+        window.addSubview(cover)
+        jumpCover = cover; jumpImage = image
+        settledJumpFrames = 0; isFadingJumpCover = false
+        // Replace the partially faded cover atomically. Its completion belongs
+        // to the old view and must not finish this new measurement/reveal cycle.
+        previousCover?.layer.removeAllAnimations()
+        previousCover?.removeFromSuperview()
+        if previousCover == nil { onTransitionVisibilityChange?() }
+    }
+
+    private func observeContentSizeDuringReveal(in scrollView: UIScrollView) {
+        guard contentSizeObservation == nil else { return }
+        contentSizeObservation = scrollView.observe(\.contentSize, options: [.old, .new, .prior]) { [weak self, weak scrollView] _, change in
+            MainActor.assumeIsolated {
+                guard let self, let scrollView, self.isFadingJumpCover else { return }
+                if change.isPrior {
+                    // UIKit can clamp the offset inside the contentSize setter.
+                    // Capture the composited frame before either layout moves.
+                    if let window = scrollView.window, let cover = self.jumpCover {
+                        self.pendingResizeSnapshot = self.viewportSnapshot(in: window, viewport: cover.frame)
+                    }
+                } else {
+                    defer { self.pendingResizeSnapshot = nil }
+                    guard change.oldValue != change.newValue,
+                          let snapshot = self.pendingResizeSnapshot else { return }
+                    self.beginJumpCover(in: scrollView, snapshot: snapshot)
+                    self.nativePreviousGeometry = nil
+                }
+            }
+        }
+    }
+
+    private func revealJumpDestination() {
+        guard let cover = jumpCover, !isFadingJumpCover else { return }
+        if let scrollView { observeContentSizeDuringReveal(in: scrollView) }
+        isFadingJumpCover = true
+        UIView.animate(withDuration: 0.18, delay: 0,
+            options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
+            cover.alpha = 0
+            self.jumpImage?.transform = CGAffineTransform(translationX: 0, y: -12)
+        } completion: { [weak self, weak cover] _ in
+            guard let self, let cover, self.jumpCover === cover else { return }
+            self.finishNativeAnimation()
+        }
+    }
+
+    @objc private func observeNativeAnimation() {
+        guard let scrollView else { finishNativeAnimation(); return }
+        guard !scrollView.isTracking, !scrollView.isDragging else { cancel(); return }
+        let targetY = Self.targetOffset(in: scrollView)
+        // Bound settling if repeated lazy measurements keep changing the target.
+        if CACurrentMediaTime() - nativeStartedAt > 2 {
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+            finishNativeAnimation()
+            return
+        }
+        if let cover = jumpCover {
+            guard let window = scrollView.window else { finishNativeAnimation(); return }
+            cover.frame = visibleViewport(in: scrollView, window: window)
+            nativeTargetY = targetY
+            if abs(scrollView.contentOffset.y - targetY) > 0.5 {
+                scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+                nativePreviousGeometry = nil; settledJumpFrames = 0
+                return
+            }
+            guard CACurrentMediaTime() >= keyboardAnimationDeadline else {
+                nativePreviousGeometry = nil; settledJumpFrames = 0
+                return
+            }
+            let geometry = positionedGeometry(in: scrollView)
+            let stable = nativePreviousGeometry.map {
+                $0.contentSize == geometry.contentSize && $0.viewportSize == geometry.viewportSize
+                    && $0.insets == geometry.insets && $0.contentBounds == geometry.contentBounds
+                    && abs($0.targetY - geometry.targetY) < 0.5
+            } ?? false
+            settledJumpFrames = stable ? settledJumpFrames + 1 : 0
+            nativePreviousGeometry = geometry
+            if settledJumpFrames >= 4 { revealJumpDestination() }
+            return
+        }
+        if abs(nativeTargetY - targetY) > 0.5 {
+            request(in: scrollView, contentView: contentView, animated: true, reduceMotion: reduceMotion)
+            return
+        }
+        guard abs(scrollView.contentOffset.y - targetY) < 0.5 else {
+            nativePreviousGeometry = nil
+            return
+        }
+        let geometry = positionedGeometry(in: scrollView)
+        if nativePreviousGeometry == geometry { finishNativeAnimation() }
+        else { nativePreviousGeometry = geometry }
+    }
+
+    private func finishNativeAnimation() {
+        contentSizeObservation = nil
+        nativeDisplayLink?.invalidate()
+        nativeDisplayLink = nil
+        nativePreviousGeometry = nil
+        let wasCovered = jumpCover != nil
+        jumpCover?.layer.removeAllAnimations()
+        jumpCover?.removeFromSuperview()
+        jumpCover = nil; jumpImage = nil
+        pendingResizeSnapshot = nil
+        isFadingJumpCover = false; settledJumpFrames = 0
+        if wasCovered { onTransitionVisibilityChange?() }
     }
 
     private func startPositioning() {
@@ -161,6 +340,12 @@ final class ConversationTailScrollAnimator: NSObject {
         let targetY = Self.targetOffset(in: scrollView)
         UIView.performWithoutAnimation {
             scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+        }
+        // Presentation geometry can repeat between frames while the keyboard
+        // animation is still active. Do not reveal from an intermediate pause.
+        guard CACurrentMediaTime() >= keyboardAnimationDeadline else {
+            previousGeometry = nil
+            return
         }
         let geometry = positionedGeometry(in: scrollView)
         if previousGeometry == geometry, abs(scrollView.contentOffset.y - targetY) < 0.5 {

@@ -177,6 +177,15 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
     }
 
     func testCachedAgentHistoryRendersAfterRepeatedEntry() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        defer {
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
         let store = try LocalMessageStore(inMemory: true)
         let model = AppModel(cache: store, previewMode: true)
         let accountID = try XCTUnwrap(model.account?.accountId)
@@ -192,7 +201,7 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                 author: index.isMultiple(of: 2) ? .me : .agent, authorName: "Tester",
                 text: index.isMultiple(of: 2) ? "Request \(index)" : "## Completed report \(index)\n\n" + String(repeating: "This paragraph describes the completed analysis and its supporting details.\n\n", count: 25),
                 createdAt: Date(timeIntervalSince1970: Double(1_000 + index)),
-                deliveryState: .read, errorMessage: nil, requestMessageId: nil
+                cloudMessageVersion: 1, deliveryState: .read, errorMessage: nil, requestMessageId: nil
             )
         }
         if let fixturePath = ProcessInfo.processInfo.environment["KORDI_VIEWPORT_FIXTURE"] {
@@ -232,12 +241,65 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
             throw HistoryNavigationWaitError.incompleteTransition
         }
         _ = try await waitForStack(count: 1)
+        var expectedAnchor: (id: String, top: CGFloat)?
+        func rowTop(_ id: String, in scroll: UIScrollView) -> CGFloat? {
+            guard let view = ConversationMotionProbeRegistry.views[id]?.value,
+                  view.window === window else { return nil }
+            return view.convert(view.bounds, to: scroll).minY
+                - scroll.bounds.minY - scroll.adjustedContentInset.top
+        }
         for entry in 0..<5 {
+            let openingStarted = CACurrentMediaTime()
+            let anchorAtEntry = expectedAnchor
+            let firstContent = Task { @MainActor in
+                for _ in 0..<200 {
+                    try await Task.sleep(for: .milliseconds(10))
+                    if messages.contains(where: { message in
+                        guard let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: message), in: window) else { return false }
+                        let visible = frame.intersection(window.bounds.insetBy(dx: 0, dy: 100))
+                        return visible.width > 64 && visible.height > 10
+                    }) {
+                        let targetID = anchorAtEntry?.id ?? model.timelineIdentity(for: messages[messages.count - 1])
+                        let targetView = try XCTUnwrap(ConversationMotionProbeRegistry.views[targetID]?.value,
+                            "The first visible frame must contain the requested message")
+                        var ancestor = targetView.superview
+                        while let current = ancestor, !(current is UIScrollView) { ancestor = current.superview }
+                        let scroll = try XCTUnwrap(ancestor as? UIScrollView)
+                        if let anchorAtEntry {
+                            XCTAssertEqual(try XCTUnwrap(rowTop(anchorAtEntry.id, in: scroll)), anchorAtEntry.top, accuracy: 2,
+                                "The reading position must already be correct in the first visible frame")
+                        } else {
+                            XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1,
+                                "The first visible frame must already be at latest")
+                        }
+                        let firstVisibleTime = (CACurrentMediaTime() - openingStarted) * 1000
+                        // Keep observing after the first paint: a later correction
+                        // is visible as an unwanted scroll during chat re-entry.
+                        for _ in 0..<60 {
+                            try await Task.sleep(for: .milliseconds(10))
+                            if let anchorAtEntry {
+                                XCTAssertEqual(try XCTUnwrap(rowTop(anchorAtEntry.id, in: scroll)), anchorAtEntry.top, accuracy: 2,
+                                    "The restored message must stay fixed after the first visible frame")
+                            } else {
+                                XCTAssertEqual(scroll.layer.presentation()?.bounds.minY ?? scroll.contentOffset.y,
+                                    ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 2,
+                                    "Latest must stay fixed after the first visible frame")
+                            }
+                        }
+                        return firstVisibleTime
+                    }
+                }
+                XCTFail("Cached history did not become visible")
+                return -1.0
+            }
+            defer { firstContent.cancel() }
             navigation.path = [.conversation(conversation)]
             let destination = try await waitForStack(count: 2)
             try await Task.sleep(for: .milliseconds(300))
             controller.view.layoutIfNeeded()
             XCTAssertEqual(model.messages(for: conversation).count, messages.count)
+            XCTAssertNil(ConversationMotionProbeRegistry.views["conversation-initial-loading"],
+                         "Cached navigation must not construct a loading placeholder")
 
             let format = UIGraphicsImageRendererFormat()
             format.scale = 1
@@ -278,16 +340,264 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                 return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
             }
             let scroll = try XCTUnwrap(scrollView(in: destination.view))
+            if let expectedAnchor {
+                let top = try XCTUnwrap(rowTop(expectedAnchor.id, in: scroll), "The same message must be materialized on return")
+                XCTAssertEqual(top, expectedAnchor.top, accuracy: 2,
+                               "Re-entry must restore the same message at the same viewport position")
+            } else {
+                XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1)
+            }
+            let firstContentMilliseconds = try await firstContent.value
+            let timing = XCTAttachment(string: "Entry \(entry), first visible content: \(firstContentMilliseconds) ms")
+            timing.name = "Cached conversation opening timing"
+            timing.lifetime = .keepAlways
+            add(timing)
+            print("[ConversationOpening] entry=\(entry) first-content-ms=\(firstContentMilliseconds)")
             let targetOffset = max(0, scroll.contentSize.height - scroll.bounds.height) * 0.5
             scroll.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: false)
             try await Task.sleep(for: .milliseconds(300))
+            XCTAssertLessThan(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll) - 12,
+                              "Reading history must not be pulled back to the tail")
+            let viewport = scroll.bounds.inset(by: scroll.adjustedContentInset)
+            let visibleRows = messages.compactMap { message -> (id: String, top: CGFloat)? in
+                let id = model.timelineIdentity(for: message)
+                guard let view = ConversationMotionProbeRegistry.views[id]?.value,
+                      view.window === window,
+                      view.convert(view.bounds, to: scroll).intersects(viewport),
+                      let top = rowTop(id, in: scroll) else { return nil }
+                return (id, top)
+            }
+            expectedAnchor = try XCTUnwrap(visibleRows.min { $0.top < $1.top })
+            let leavingAt = Date()
             navigation.path = []
             _ = try await waitForStack(count: 1)
-            XCTAssertNotNil(model.conversationViewportMemory.resumedPosition(
-                for: "\(accountID):\(conversation.id):conversation", latestMessageID: messages.last?.id,
-                availableMessageIDs: Set(messages.map(\.id)), now: Date()
-            ), "Entry \(entry), offset \(scroll.contentOffset.y), target \(targetOffset), content \(scroll.contentSize.height), viewport \(scroll.bounds.height)")
+            var savedPosition: ConversationViewportSnapshot?
+            // UIKit can finish its pop before SwiftUI delivers onDisappear.
+            // Wait for this visit's save, rather than accepting an older snapshot.
+            for _ in 0..<100 {
+                let snapshot = model.conversationViewportMemory.resumedPosition(
+                    for: "\(accountID):\(conversation.id):conversation", latestMessageID: messages.last?.id,
+                    availableMessageIDs: Set(messages.map(\.id)), now: Date()
+                )
+                if let snapshot, snapshot.leftAt >= leavingAt { savedPosition = snapshot; break }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTAssertNotNil(savedPosition, "Entry \(entry) must save the inspected viewport")
+            // An older message can reflow while this conversation is closed.
+            // The latest ID is unchanged, so quick return must retain the read message.
+            if entry == 1 {
+                let edited = await model.editMessage(messages[0],
+                    text: String(repeating: "Expanded older message with additional details.\n", count: 35),
+                    in: conversation)
+                XCTAssertTrue(edited)
+            }
         }
+    }
+}
+
+@MainActor
+private final class OpeningRevealProbe: ObservableObject {
+    @Published var isReady = false
+    @Published var animates = false
+}
+
+private struct OpeningRevealProbeView: View {
+    @ObservedObject var state: OpeningRevealProbe
+    var body: some View {
+        Color.blue.frame(width: 160, height: 80)
+            .background(ConversationMotionProbe(id: "opening-policy-probe"))
+            .modifier(ConversationInitialContentReveal(isReady: state.isReady,
+                animates: state.animates, reduceMotion: false))
+    }
+}
+
+@MainActor
+final class ConversationOpeningMotionTests: XCTestCase {
+    func testLoadedMessagesCrossfadeFromSkeletonWithoutMoving() async throws {
+        try await checkLoadingReveal()
+    }
+
+    func testCancelledPositioningCannotCompleteAfterLeaving() async throws {
+        let positioner = ConversationInitialPositioner { false }
+        let task = Task { await positioner.waitUntilPositioned() }
+        await Task.yield()
+        task.cancel()
+        let positioned = await task.value
+        XCTAssertFalse(positioned)
+    }
+
+    func testDisappearingViewCancelsItsPositioningRequest() async throws {
+        let position = ConversationScrollPosition()
+        let task = Task { await position.positionInitialViewport { false } }
+        await Task.yield()
+        position.cancelInitialPositioning()
+        let positioned = await task.value
+        XCTAssertFalse(positioned)
+    }
+
+    func testLateLoadingPolicyCannotHideAlreadyVisibleContent() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        defer {
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let state = OpeningRevealProbe()
+        window.rootViewController = UIHostingController(rootView: OpeningRevealProbeView(state: state))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previousWindow?.makeKeyAndVisible() }
+        try await Task.sleep(for: .milliseconds(100))
+        state.isReady = true
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: "opening-policy-probe", in: window))
+        state.animates = true
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: "opening-policy-probe", in: window),
+                        "A delayed loading-policy update must not hide content after readiness")
+    }
+
+    private func checkLoadingReveal() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        defer {
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true, previewHistoryLoadDelay: .seconds(5))
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "agent-session:loading-motion", kind: .agent,
+            peerAccountId: accountID, agentId: "loading-agent", ownerDisplayName: "Tester",
+            displayName: "Loading transition", lastMessage: "", lastActivityAt: Date(), unreadCount: 0,
+            avatarSource: nil, agentActivity: .ready, sessionId: "loading-motion")
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let controller = UIHostingController(rootView:
+            MainTabView(initialPath: [.conversation(conversation)])
+                .environmentObject(model)
+                .environmentObject(KordiCallCoordinator())
+                .environmentObject(KordiNotificationCoordinator())
+        )
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil; previousWindow?.makeKeyAndVisible() }
+        controller.view.layoutIfNeeded()
+        func opacity(_ id: String) -> Float? {
+            guard let view = ConversationMotionProbeRegistry.views[id]?.value,
+                  view.window === window, !view.bounds.isEmpty,
+                  let layer = view.layer.presentation() else { return nil }
+            var value: Float = 1
+            var current: CALayer? = layer
+            while let layer = current {
+                if layer.isHidden { return 0 }
+                value *= layer.opacity
+                current = layer.superlayer
+            }
+            return value
+        }
+        for _ in 0..<150 {
+            if opacity("conversation-initial-loading") == 1 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(try XCTUnwrap(opacity("conversation-initial-loading")), 1, accuracy: 0.01)
+        try await Task.sleep(for: .milliseconds(350))
+        let message = ChatMessage(id: "loaded-report", conversationId: conversation.id, author: .agent,
+            authorName: "Test agent", text: "## Ready to read\n\nThe message stays in place while the loading placeholder fades away.",
+            createdAt: Date(), deliveryState: .read, errorMessage: nil, requestMessageId: nil)
+        store.saveMessages([message], conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        let rowID = model.timelineIdentity(for: message)
+        model.hydrateCachedMessages(for: conversation)
+        var loadingAlphas: [Float] = []
+        var messageAlphas: [Float] = []
+        var frames: [CGRect] = []
+        for _ in 0..<80 {
+            try await Task.sleep(for: .milliseconds(10))
+            if let alpha = opacity("conversation-initial-loading") { loadingAlphas.append(alpha) }
+            if let alpha = opacity(rowID), alpha > 0.01 {
+                messageAlphas.append(alpha)
+                if let frame = ConversationMotionProbeRegistry.frame(for: rowID, in: window) { frames.append(frame) }
+            }
+        }
+        XCTAssertTrue(loadingAlphas.contains { $0 > 0.01 && $0 < 0.99 }, "The placeholder must fade out, not disappear in one frame")
+        XCTAssertTrue(messageAlphas.contains { $0 > 0.01 && $0 < 0.99 }, "Loaded content must fade in")
+        XCTAssertEqual(try XCTUnwrap(messageAlphas.last), 1, accuracy: 0.01)
+        XCTAssertNil(ConversationMotionProbeRegistry.frame(for: "conversation-initial-loading", in: window))
+        let first = try XCTUnwrap(frames.first)
+        XCTAssertGreaterThan(frames.count, 5)
+        for frame in frames {
+            XCTAssertEqual(frame.minY, first.minY, accuracy: 2, "Revealing a message must not animate its reading position")
+            XCTAssertEqual(frame.width, first.width, accuracy: 2)
+        }
+    }
+}
+
+@MainActor
+final class ConversationReadingAnchorTests: XCTestCase {
+    func testRestoresSamePartOfTallMessageAfterEarlierContentReflows() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scroll = UIScrollView(frame: window.bounds)
+        window.addSubview(scroll)
+        scroll.contentSize = CGSize(width: 390, height: 5000)
+        scroll.contentInset = UIEdgeInsets(top: 44, left: 0, bottom: 34, right: 0)
+        let row = UIView(frame: CGRect(x: 0, y: 1200, width: 390, height: 1500))
+        scroll.addSubview(row)
+        scroll.contentOffset.y = 1700
+        let position = ConversationScrollPosition()
+        position.attach(to: scroll)
+        position.register(row, messageID: "long-report")
+        position.captureReadingAnchor()
+        let anchor = try XCTUnwrap(position.readingAnchor)
+        XCTAssertEqual(anchor.messageID, "long-report")
+        XCTAssertEqual(anchor.offsetFromViewportTop, -544)
+
+        // Changed measurements before this row invalidate the old absolute offset.
+        row.frame.origin.y += 650
+        scroll.contentSize.height += 650
+        XCTAssertFalse(position.restore(anchor))
+        XCTAssertEqual(scroll.contentOffset.y, 2350, accuracy: 1)
+        XCTAssertTrue(position.restore(anchor))
+        position.captureReadingAnchor()
+        XCTAssertEqual(position.readingAnchor, anchor)
+    }
+
+    func testDetachedRowsCannotReplaceVisibleAnchor() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let scroll = UIScrollView(frame: window.bounds)
+        window.addSubview(scroll)
+        scroll.contentSize = CGSize(width: 390, height: 3000)
+        let visible = UIView(frame: CGRect(x: 0, y: 500, width: 390, height: 300))
+        let detached = UIView(frame: CGRect(x: 0, y: 450, width: 390, height: 400))
+        scroll.addSubview(visible)
+        scroll.contentOffset.y = 550
+        let position = ConversationScrollPosition()
+        position.attach(to: scroll)
+        position.register(visible, messageID: "visible")
+        position.register(detached, messageID: "detached")
+        position.captureReadingAnchor()
+        let anchor = try XCTUnwrap(position.readingAnchor)
+        XCTAssertEqual(anchor.messageID, "visible")
+        visible.removeFromSuperview()
+        XCTAssertFalse(position.restore(anchor))
+        position.captureReadingAnchor()
+        XCTAssertNil(position.readingAnchor)
+    }
+
+    func testMissingMessageDiscardsQuickReturnAnchor() {
+        let memory = ConversationViewportMemory()
+        let now = Date()
+        memory.remember(key: "test", messageID: "removed", latestMessageID: "latest",
+            readingAnchor: ConversationReadingAnchor(messageID: "removed", offsetFromViewportTop: -150), at: now)
+        XCTAssertNil(memory.resumedPosition(for: "test", latestMessageID: "latest",
+            availableMessageIDs: ["latest"], now: now.addingTimeInterval(1)))
     }
 }
 
@@ -1700,28 +2010,76 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertNil(UserDefaults.standard.object(forKey: key))
     }
 
-    func testVisibleAndLegacyMentionsAdvanceUnreadState() throws {
-        let iosDirectory = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("Kordi")
-        let viewSource = try String(
-            contentsOf: iosDirectory
-                .appendingPathComponent("Features/Conversation/ConversationView.swift"),
-            encoding: .utf8
-        )
-        let modelSource = try String(
-            contentsOf: iosDirectory.appendingPathComponent("App/AppModel.swift"),
-            encoding: .utf8
-        )
+    @MainActor
+    func testPresentedMentionsAdvanceOnlyThroughTheirSequenceAndPersist() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "mention-read", kind: .group, peerAccountId: accountID,
+            agentId: nil, ownerDisplayName: nil, displayName: "Mentions", lastMessage: "Later message",
+            lastActivityAt: Date(), unreadCount: 3, avatarSource: nil, agentActivity: nil,
+            sessionId: "session:group:mention-read", unreadMentionCount: 2)
+        let mention = MessageMention(label: "Me", targetKind: "person", targetIdentityId: "human:\(accountID)")
+        func message(_ id: String, sequence: Int64, author: MessageAuthor = .person, mentioned: Bool) -> ChatMessage {
+            ChatMessage(id: id, conversationId: conversation.id, conversationSequence: sequence,
+                author: author, authorName: "Sender", text: "Synthetic message", createdAt: Date(),
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: nil,
+                mentions: mentioned ? [mention] : [])
+        }
+        let first = message("first", sequence: 5, mentioned: true)
+        let second = message("second", sequence: 8, mentioned: true)
+        _ = await model.restoreConversationIfNeeded(conversation)
+        store.saveMessages([first, second,
+            message("later", sequence: 9, mentioned: false),
+            message("own", sequence: 10, author: .me, mentioned: false)],
+            conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        model.hydrateCachedMessages(for: conversation)
 
-        XCTAssertTrue(viewSource.contains("onScrollVisibilityChange(threshold: 0.5)"))
-        XCTAssertTrue(viewSource.contains("isPendingMention: pendingMentionMessageIDs.contains(message.id)"))
-        XCTAssertTrue(modelSource.contains("throughSequence: message.conversationSequence"))
-        XCTAssertTrue(modelSource.contains("let lastReadSequence = max("))
-        XCTAssertTrue(modelSource.contains("$0 > lastReadSequence"))
-        XCTAssertFalse(modelSource.contains("guard pendingMentionCount(for: conversation) == 0"))
-        XCTAssertFalse(modelSource.contains("&& pendingMentionCount(for: $0) == 0"))
+        await model.markMentionPresented(first, in: conversation)
+        var current = try XCTUnwrap(model.conversations.first { $0.id == conversation.id })
+        XCTAssertEqual(current.lastReadSequence, 5)
+        XCTAssertEqual(current.unreadCount, 2)
+        XCTAssertEqual(model.pendingMentionMessages(for: current).map(\.id), [second.id])
+
+        await model.markMentionPresented(second, in: conversation)
+        await model.markMentionPresented(first, in: conversation)
+        current = try XCTUnwrap(model.conversations.first { $0.id == conversation.id })
+        XCTAssertEqual(current.lastReadSequence, 8, "An older visibility callback cannot regress the cursor")
+        XCTAssertEqual(current.unreadCount, 1, "The later incoming message must remain unread")
+        XCTAssertEqual(current.unreadMentionCount, 0)
+        let cached = try XCTUnwrap(store.loadConversations(accountId: accountID).first { $0.id == conversation.id })
+        XCTAssertEqual(cached.lastReadSequence, 8)
+        XCTAssertEqual(cached.unreadCount, 1)
+        XCTAssertEqual(cached.unreadMentionCount, 0)
+    }
+
+    @MainActor
+    func testPresentedLegacyMentionClearsSummaryWithoutRegressingCursor() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "legacy-mention-read", kind: .person, peerAccountId: "peer",
+            agentId: nil, ownerDisplayName: nil, displayName: "Legacy chat", lastMessage: "Mention",
+            lastActivityAt: Date(), unreadCount: 1, avatarSource: nil, agentActivity: nil,
+            sessionId: "legacy-session", unreadMentionCount: 1, lastReadSequence: 7)
+        let message = ChatMessage(id: "legacy", conversationId: conversation.id, author: .person,
+            authorName: "Sender", text: "Legacy mention", createdAt: Date(), deliveryState: .delivered,
+            errorMessage: nil, requestMessageId: nil, mentions: [
+                MessageMention(label: "Me", targetKind: "person", targetIdentityId: "human:\(accountID)")
+            ])
+        _ = await model.restoreConversationIfNeeded(conversation)
+        store.saveMessages([message], conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        model.hydrateCachedMessages(for: conversation)
+        XCTAssertEqual(model.pendingMentionMessages(for: conversation).map(\.id), [message.id])
+
+        await model.markMentionPresented(message, in: conversation)
+        let current = try XCTUnwrap(model.conversations.first { $0.id == conversation.id })
+        XCTAssertEqual(current.unreadCount, 0)
+        XCTAssertEqual(current.unreadMentionCount, 0)
+        XCTAssertEqual(current.lastReadSequence, 7)
+        let cached = try XCTUnwrap(store.loadConversations(accountId: accountID).first { $0.id == conversation.id })
+        XCTAssertEqual(cached.unreadCount, 0)
+        XCTAssertEqual(cached.lastReadSequence, 7)
     }
 
     @MainActor

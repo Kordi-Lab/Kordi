@@ -67,14 +67,47 @@ final class MediaCacheTests: XCTestCase {
         XCTAssertFalse(loadSource.contains("attachmentId.hasPrefix(\"pending:\")"))
     }
 
-    func testSuccessfulImageUploadCachesTheSentOriginalByCanonicalAttachment() throws {
-        let source = try sourceFile("Core/API/AttachmentFileStore.swift")
-        let cacheStart = try XCTUnwrap(source.range(of: "func cacheUploadedOriginals"))
-        let cacheSource = source[cacheStart.lowerBound...]
+    @MainActor
+    func testSuccessfulImageUploadCachesTheSentOriginalByCanonicalAttachment() async throws {
+        func png(size: CGFloat, color: UIColor) throws -> Data {
+            try XCTUnwrap(UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { context in
+                color.setFill()
+                context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+            }.pngData())
+        }
+        let original = try png(size: 64, color: .systemBlue)
+        let preview = try png(size: 8, color: .systemPink)
+        for fileBacked in [false, true] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let sourceURL = directory.appendingPathComponent("source.png")
+            try original.write(to: sourceURL)
+            let draft = PendingAttachment(id: "pending-image", name: "image.png", kind: .image,
+                mimeType: "image/png", data: fileBacked ? Data() : original,
+                fileURL: fileBacked ? sourceURL : nil, previewURL: nil)
+            let uploaded = CloudMessageAttachment(attachmentId: "uploaded-image", name: "image.png",
+                kind: "image", mimeType: "image/png", sizeBytes: Int64(original.count),
+                downloadUrl: nil, previewUrl: nil)
+            let cacheDirectory = directory.appendingPathComponent("cache")
+            let store = AttachmentFileStore(directory: cacheDirectory)
+            let previewURL = try await store.store(preview, attachment: uploaded.chatAttachment,
+                accountId: "sender", variant: .preview)
 
-        XCTAssertTrue(cacheSource.contains("zip(drafts, uploaded)"))
-        XCTAssertTrue(cacheSource.contains("attachment: result.chatAttachment"))
-        XCTAssertTrue(cacheSource.contains("variant: .original"))
+            await store.cacheUploadedOriginals(drafts: [draft], uploaded: [uploaded], accountId: "sender")
+
+            let reopened = AttachmentFileStore(directory: cacheDirectory)
+            let cachedOriginal = await reopened.cachedURL(for: uploaded.chatAttachment,
+                accountId: "sender", variant: .original)
+            let originalURL = try XCTUnwrap(cachedOriginal)
+            XCTAssertEqual(try Data(contentsOf: originalURL), original)
+            XCTAssertNotEqual(originalURL, previewURL)
+            XCTAssertEqual(try Data(contentsOf: previewURL), preview, "Caching the original must preserve the preview")
+            XCTAssertEqual(try Data(contentsOf: sourceURL), original, "Caching must not consume the source file")
+            let otherAccount = await reopened.cachedURL(for: uploaded.chatAttachment,
+                accountId: "other-account", variant: .original)
+            XCTAssertNil(otherAccount)
+        }
     }
 
     func testStaticStickerMessagesReuseTheExpressiveThumbnailCache() throws {

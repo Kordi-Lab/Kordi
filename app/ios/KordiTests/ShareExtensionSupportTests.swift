@@ -53,9 +53,16 @@ final class ShareExtensionSupportTests: XCTestCase {
     }
 
     func testShareCredentialRoundTripsInItsOwnKeychainService() throws {
+        #if targetEnvironment(simulator)
+        if let service = Bundle.main.object(forInfoDictionaryKey: "KordiShareCredentialService") as? String,
+           let group = Bundle.main.object(forInfoDictionaryKey: "KordiShareKeychainAccessGroup") as? String,
+           !service.isEmpty, group == service {
+            throw XCTSkip("Shared-Keychain integration requires a signed simulator host with an AppIdentifierPrefix.")
+        }
+        #endif
         let current = try KordiShareConfiguration.current()
         let configuration = KordiShareConfiguration(
-            baseURL: try XCTUnwrap(URL(string: "https://kordi.ai")),
+            baseURL: current.baseURL,
             appGroupIdentifier: current.appGroupIdentifier,
             credentialService: "ai.kordi.share-tests.\(UUID().uuidString)",
             credentialAccessGroup: current.credentialAccessGroup,
@@ -72,6 +79,26 @@ final class ShareExtensionSupportTests: XCTestCase {
         try store.save(credential)
 
         XCTAssertEqual(try store.load(), credential)
+        let replacement = ShareExtensionCredential(token: "replacement-token", accountID: "other-test-account", expiresAt: nil)
+        try store.save(replacement)
+        XCTAssertEqual(try store.load(), replacement)
+        try store.delete()
+        XCTAssertNil(try store.load())
+    }
+
+    func testShareConfigurationRejectsAnUnsignedAccessGroup() {
+        XCTAssertThrowsError(try KordiShareConfiguration.configured(infoDictionary: [
+            "KordiCloudBaseURL": "https://kordi.ai",
+            "KordiDistributionChannel": "production",
+            "KordiShareAppGroup": "group.ai.kordi.share",
+            "KordiShareCredentialService": "ai.kordi.share-session",
+            "KordiShareKeychainAccessGroup": "ai.kordi.share-session",
+            "KordiHostAppURLScheme": "kordi"
+        ]))
+    }
+
+    func testShareCredentialExpiryDoesNotRequireKeychainAccess() {
+        let credential = ShareExtensionCredential(token: "test-token", accountID: "acct_test", expiresAt: "2099-01-01T00:00:00Z")
         XCTAssertFalse(credential.isExpired)
         XCTAssertTrue(ShareExtensionCredential(
             token: "test-token",

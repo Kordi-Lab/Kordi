@@ -145,7 +145,11 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   );
   assert.match(
     conversation,
-    /onChange\(of: timeline\.count(?:,\s*initial:\s*true)?\)[\s\S]*oldCount == 0[\s\S]*newCount > 0[\s\S]*positionAndRevealInitialViewport/,
+    /onChange\(of: timelineSnapshot,\s*initial:\s*true\)[\s\S]*handleTimelineCountChange\(oldCount: previous\.count, newCount: current\.count/,
+  );
+  assert.match(
+    conversation,
+    /private func handleTimelineCountChange[\s\S]*oldCount == 0[\s\S]*newCount > 0[\s\S]*!hasRevealedInitialViewport[\s\S]*positionAndRevealInitialViewport/,
   );
   assert.match(
     conversation,
@@ -153,7 +157,15 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   );
   assert.match(
     conversation,
-    /if !showsTimeline \{[\s\S]*ConversationInitialFailureView[\s\S]*ConversationInitialLoadingView/,
+    /if !showsTimeline, initialLoadFailed \{[\s\S]*ConversationInitialFailureView/,
+  );
+  assert.match(
+    conversation,
+    /if didPresentInitialLoading, !initialLoadFailed[\s\S]*ConversationInitialLoadingOverlay\(isReady: showsTimeline/,
+  );
+  assert.match(
+    conversation,
+    /task\(id: isWaitingForInitialHistory\)[\s\S]*Task\.sleep\(for: ConversationOpeningMotion\.loadingIndicatorDelay\)[\s\S]*guard isWaitingForInitialHistory[\s\S]*didPresentInitialLoading = true/,
   );
   assert.match(
     conversation,
