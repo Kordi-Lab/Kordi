@@ -1,3 +1,5 @@
+import { isNativeDesktopShell } from '@/lib/desktop';
+import { persistCloudAttachmentPreviewDataUrl } from './cloudAttachmentLocalPathCache';
 import type { CloudAuthClient, CloudMessageAttachment } from './authClient';
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
@@ -46,6 +48,8 @@ export async function recoverCloudAttachmentPreview({
     sizeBytes: attachment.sizeBytes ?? blob.size,
   }, signal));
   if (signal?.aborted || !previewUrl) return null;
+  if (isNativeDesktopShell() && !signal?.aborted) await persistCloudAttachmentPreviewDataUrl(attachmentId, attachment.name, previewUrl);
+  if (signal?.aborted) return null;
   await client.updateAttachmentPreview(token, attachmentId, previewUrl);
   return previewUrl;
 }

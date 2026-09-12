@@ -1,5 +1,6 @@
+import { useTranscriptMediaActive } from './transcriptMediaActivity';
 import { acquireCloudAttachmentPreviewLease, cachedCloudAttachmentPreviewResource, retainCloudAttachmentPreviewResource, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachmentPreviewCache';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { LoaderCircle, Maximize2, Play, RotateCcw } from 'lucide-react';
 
 import {
@@ -70,7 +71,9 @@ export function AttachmentVideoCard({
   time?: string | null;
   onRetry?: () => void;
 }) {
+  const mediaActive = useTranscriptMediaActive();
   const attachmentId = attachment.attachmentId?.trim() ?? '';
+  const resourceId = attachment.previewAttachmentId?.trim() || attachmentId;
   const presentationCacheKey = attachmentId
     || attachment.localPath?.trim()
     || `${attachment.name}:${attachment.sizeBytes ?? ''}`;
@@ -84,7 +87,8 @@ export function AttachmentVideoCard({
     ? attachment.previewUrl
     : null;
   const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(() =>
-    cachedCloudAttachmentPreviewResource(`video-poster:${presentationCacheKey}`)?.previewUrl ?? null,
+    cachedCloudAttachmentPreviewResource(resourceId)?.previewUrl
+      ?? cachedCloudAttachmentPreviewResource(`video-poster:${presentationCacheKey}`)?.previewUrl ?? null,
   );
   const [localPosterUrl, setLocalPosterUrl] = useState<string | null>(null);
   const [localVideoDimensions, setLocalVideoDimensions] = useState<{
@@ -100,9 +104,23 @@ export function AttachmentVideoCard({
   const controlsTimer = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const posterLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
+  useLayoutEffect(() => {
+    if (!remotePosterUrl || posterLeaseRef.current) return;
+    const resource = cachedCloudAttachmentPreviewResource(resourceId);
+    if (resource?.previewUrl === remotePosterUrl) posterLeaseRef.current = acquireCloudAttachmentPreviewLease(resource);
+  }, [remotePosterUrl, resourceId]);
   useEffect(() => () => { posterLeaseRef.current?.release(); posterLeaseRef.current = null; }, []);
   const downloadedLocalPath = useRef<string | null>(null);
   const playbackEnded = useRef(false);
+  const resumeTime = useRef(0);
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    return () => {
+      resumeTime.current = playbackEnded.current ? 0 : video.currentTime;
+      video.pause(); video.removeAttribute('src'); video.load();
+    };
+  }, [mediaActive, playbackRequested]);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
   const posterUrl = directPosterUrl ?? remotePosterUrl ?? localPosterUrl;
   const declaredVideoDimensions = normalizedImagePixelDimensions(
@@ -198,7 +216,7 @@ export function AttachmentVideoCard({
   }, [directPosterUrl, rememberPresentation, videoDimensions]);
 
   useEffect(() => {
-    if (directPosterUrl || remotePosterUrl || !attachmentId) return;
+    if (!mediaActive || directPosterUrl || remotePosterUrl || !attachmentId) return;
     const controller = new AbortController();
     let previewLease: Awaited<ReturnType<typeof loadVisibleCloudAttachmentPreview>> = null;
     let published = false;
@@ -232,6 +250,7 @@ export function AttachmentVideoCard({
       if (!published) previewLease?.release();
     };
   }, [
+    mediaActive,
     attachment.kind,
     attachment.mimeType,
     attachment.name,
@@ -244,7 +263,7 @@ export function AttachmentVideoCard({
   ]);
 
   useEffect(() => {
-    if (directPosterUrl || remotePosterUrl || localPosterUrl || !posterGenerationSource) return;
+    if (!mediaActive || directPosterUrl || remotePosterUrl || localPosterUrl || !posterGenerationSource) return;
     let cancelled = false;
     const controller = new AbortController();
     void videoPreviewFromSource(posterGenerationSource, controller.signal).then((preview) => {
@@ -257,6 +276,7 @@ export function AttachmentVideoCard({
     });
     return () => { cancelled = true; controller.abort(); };
   }, [
+    mediaActive,
     directPosterUrl,
     localPosterUrl,
     posterGenerationSource,
@@ -314,13 +334,15 @@ export function AttachmentVideoCard({
     if (!source || !video) return;
     const wasPlaying = !video.paused;
     if (wasPlaying) video.pause();
+    const posterLease = posterLeaseRef.current?.retain();
     void openAttachmentMediaWindow({
       attachments: [attachment],
       selectedIndex: 0,
       initialPreviewUrl: posterUrl,
       initialMediaUrl: source,
       initialMediaTime: video.currentTime,
-    }).catch(() => {
+    }, { onClosed: () => posterLease?.release() }).catch(() => {
+      posterLease?.release();
       if (wasPlaying) void video.play().catch(() => undefined);
     });
   }, [attachment, posterUrl, source]);
@@ -370,7 +392,7 @@ export function AttachmentVideoCard({
         style={{ aspectRatio: `${displaySize.width} / ${displaySize.height}` }}
         onPointerMove={showControlsBriefly}
       >
-        {source && playbackRequested && !transferPending ? (
+        {source && playbackRequested && mediaActive && !transferPending ? (
           <>
             <video
               ref={videoRef}
@@ -384,6 +406,7 @@ export function AttachmentVideoCard({
               className="app-attachment-inline-video block h-full w-full object-contain"
               aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
               onLoadedMetadata={(event) => {
+                if (resumeTime.current > 0) event.currentTarget.currentTime = resumeTime.current;
                 const { videoWidth, videoHeight } = event.currentTarget;
                 if (videoWidth > 0 && videoHeight > 0) {
                   const dimensions = { widthPixels: videoWidth, heightPixels: videoHeight };
@@ -397,6 +420,7 @@ export function AttachmentVideoCard({
               onEnded={() => {
                 keepControlsVisible();
                 playbackEnded.current = true;
+                resumeTime.current = 0;
                 setPlaybackRequested(false);
                 if (downloadedLocalPath.current) {
                   setFailedSource(null);

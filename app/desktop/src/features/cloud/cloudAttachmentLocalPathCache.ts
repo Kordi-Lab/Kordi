@@ -93,7 +93,7 @@ export async function persistCloudAttachmentPreviewDataUrl(
     const blob = await response.blob();
     return await persistCloudAttachmentBytes(
       cloudAttachmentPreviewCacheId(attachmentId),
-      `${name}.preview.jpg`,
+      name,
       blob,
     );
   } catch {

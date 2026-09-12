@@ -190,16 +190,20 @@ reset cancels pending recovery and prevents late results from restoring old data
 Original-image recovery has two workers and shared request cancellation: leaving
 one card does not cancel another consumer, but leaving the last consumer does.
 
-Transcript media outside the viewport plus two screen heights on each side is
-unmounted, including its images, video buffers, and preview subscriptions. Hidden
-windows also suspend these media subtrees. The boundary keeps the measured space
-while inactive and reserves it during reloading, preserving reading geometry.
-Image decode helpers clear their temporary image sources and canvas buffers;
-video poster generation can be cancelled while waiting for metadata or frames.
+Media activity uses the viewport plus two screen heights, but static images,
+card state, and video posters remain mounted when activity changes or the window
+is hidden. Only video players and animation playback are suspended. GIFs use a
+bounded still-frame fallback when the source permits canvas capture. Transcript
+virtualization still removes distant message rows; warm previews initialize from
+the shared resource/local-path cache with known dimensions and skip a repeated
+loading tile or fade. Recovered thumbnails are also written to the native disk
+cache, so evicting a RAM entry does not force original-image recovery next time.
+Image decode helpers clear temporary image sources and canvas buffers; video
+poster generation can be cancelled while waiting for metadata or frames.
 
 Run `pnpm --dir app/desktop exec playwright test -c playwright.media-retention.config.ts`
-for WebKit/Chromium checks of offscreen unload, preserved geometry, open-preview
-ownership, and hidden-window restoration. The fixture generates a small synthetic
+for WebKit/Chromium checks of static image continuity, player suspension, retained
+geometry, open-preview ownership, and hidden-window restoration. The fixture generates a small synthetic
 MP4 with `ffmpeg` in a temporary directory and removes it after the run. Unit tests
 cover proactive idle expiry, cache byte bounds, shared cancellation, and account
 reset races. These checks establish resource lifetime behavior; allocator and
@@ -215,3 +219,21 @@ to build the complete production frontend and assert that WebKit and Chromium
 render the login screen without uncaught module-initialization errors. The test
 uses a fresh browser context and stubs non-frontend requests; it never uses account
 sessions. Set `KORDI_PRODUCTION_TEST_PORT` to an unused loopback port if needed.
+
+
+### Stable detached media presentation
+
+The preview window uses its payload theme from its first render and configures
+native appearance before creation. Its macOS material stays active instead of
+switching material states during focus. Image reveal waits for decoded pixels,
+layout, and completion of native theme setup. A payload injected at startup does
+not trigger a redundant ready/request/state round trip that could reset selection,
+zoom, or image ownership. The opener retains the preview lease until the media
+window closes, even if the originating chat row is unmounted or its cache evicts.
+
+The complete production startup suite also opens the actual media-preview entry
+with synthetic native IPC. It checks a light payload under a dark system theme,
+one reveal after theme setup and image decode, and no redundant payload replay.
+This supplements browser tests of static image DOM continuity and unit tests of
+warm-cache remounts without another download or loading tile. Native visual checks
+remain necessary for platform compositor behavior.

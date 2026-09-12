@@ -30,6 +30,7 @@ function Fixture() {
       <div style={{ height: 2400 }} />
       <div data-image-region><TranscriptMediaBoundary><LeasedImage open={lease => { borrowed.current?.release(); borrowed.current = lease; setPreview(lease.previewUrl); }} /></TranscriptMediaBoundary></div>
       <div data-real-image><AttachmentPreview msg={{ role: 'person', text: '', time: '12:00', attachments: [{ kind: 'image', name: 'Synthetic.svg', previewUrl: `data:image/svg+xml,${encodeURIComponent(svg)}`, widthPixels: 320, heightPixels: 200 }] }} /></div>
+      <div data-gif-region><AttachmentPreview msg={{ role: 'person', text: '', time: '12:00', attachments: [{ kind: 'image', name: 'Synthetic.gif', mimeType: 'image/gif', previewUrl: `${location.origin}/tests/visual/generated/media-retention.gif`, widthPixels: 320, heightPixels: 200 }] }} /></div>
       <div data-video-region><AttachmentPreview msg={{ role: 'person', text: '', time: '12:00', attachments: [{ kind: 'file', name: 'Synthetic.mp4', mimeType: 'video/mp4', previewUrl: `${location.origin}/tests/visual/generated/media-retention.mp4`, widthPixels: 320, heightPixels: 200 }] }} /></div>
       <div data-after-media style={{ height: 30 }}>After media</div>
       <div style={{ height: 3000 }} />

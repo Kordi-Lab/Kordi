@@ -1,6 +1,9 @@
+import { attachmentImageWasReady, attachmentImageReadyDimensions, markAttachmentImageReady, stillAttachmentFrame } from './attachmentImageReadiness';
+import { acquireCloudAttachmentPreviewLease, cachedCloudAttachmentPreviewResource } from '@/features/cloud/cloudAttachmentPreviewCache';
 import { TranscriptMediaBoundary } from './TranscriptMediaBoundary';
+import { useTranscriptMediaActive } from './transcriptMediaActivity';
 import { LivePhotoIcon } from './livePhotoIcon';
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
   attachmentMediaGalleryIndex,
   attachmentImageDisplaySize,
@@ -23,6 +26,7 @@ import {
 import { loadVisibleCloudAttachmentPreview, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachments';
 import {
   cloudAttachmentPreviewCacheId,
+  cachedCloudAttachmentLocalPath,
   loadCachedCloudAttachmentLocalPath,
 } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
@@ -83,6 +87,8 @@ function AttachmentImageCard({
     tone: AttachmentImageForegroundTone | null,
   ) => void;
 }) {
+  const mediaActive = useTranscriptMediaActive();
+  const [stillUrl, setStillUrl] = useState<string | null>(null);
   const attachmentId = recoverableAttachmentId(attachment);
   const isAnimatedGif = isAnimatedGifAttachment(attachment);
   const previewCacheId = attachmentId
@@ -91,9 +97,13 @@ function AttachmentImageCard({
         isAnimatedGif ? null : attachment.previewAttachmentId,
       )
     : null;
-  const [cachedLocalPath, setCachedLocalPath] = useState<string | null>(null);
+  const resourceId = isAnimatedGif ? attachmentId : attachment.previewAttachmentId?.trim() || attachmentId;
+  const readinessKey = resourceId ? `attachment:${resourceId}` : null;
+  const [cachedLocalPath, setCachedLocalPath] = useState<string | null>(() =>
+    (previewCacheId ? cachedCloudAttachmentLocalPath(previewCacheId) : null)
+      ?? (attachmentId && !attachment.previewAttachmentId ? cachedCloudAttachmentLocalPath(attachmentId) : null));
   const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => recoveredAttachmentPreviewUrl(attachmentId));
-  const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
+  const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(() => resourceId ? cachedCloudAttachmentPreviewResource(resourceId)?.previewUrl ?? null : null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<string[]>([]);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
   const previewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
@@ -103,15 +113,22 @@ function AttachmentImageCard({
   const usableDirectPreviewUrl = directPreviewUrl && !failedPreviewUrls.includes(directPreviewUrl) ? directPreviewUrl : null;
   const previewUrl = usableRecoveredPreviewUrl ?? usableRemotePreviewUrl ?? usableDirectPreviewUrl;
   const [loadedPreviewUrl, setLoadedPreviewUrl] = useState<string | null>(() => (
-    previewUrl?.startsWith('data:image/') ? previewUrl : null
+    previewUrl && (previewUrl.startsWith('data:image/') || attachmentImageWasReady(previewUrl) || attachmentImageWasReady(readinessKey)) ? previewUrl : null
   ));
-  const imageLoaded = Boolean(previewUrl && loadedPreviewUrl === previewUrl);
+  const imageLoaded = Boolean(previewUrl && (loadedPreviewUrl === previewUrl || attachmentImageWasReady(previewUrl) || attachmentImageWasReady(readinessKey)));
+  useLayoutEffect(() => {
+    if (!resourceId || !remotePreviewUrl || previewLeaseRef.current) return;
+    const resource = cachedCloudAttachmentPreviewResource(resourceId);
+    if (resource?.previewUrl === remotePreviewUrl) previewLeaseRef.current = acquireCloudAttachmentPreviewLease(resource);
+  }, [remotePreviewUrl, resourceId]);
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const isSticker = stickerMessage || attachment.subtype === 'sticker';
   const isExpressiveMedia = isSticker || isAnimatedGif;
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
-  const reservedSize = singleImage ? attachmentImageDisplaySize(attachment) : null;
+  const readyDimensions = attachmentImageReadyDimensions(readinessKey ?? previewUrl);
+  const reservedSize = singleImage ? attachmentImageDisplaySize(attachment)
+    ?? (readyDimensions ? attachmentImageDisplaySize({ ...attachment, ...readyDimensions }) : null) : null;
   const reservedStyle: CSSProperties | undefined = reservedSize ? {
     width: reservedSize.width,
     aspectRatio: `${reservedSize.width} / ${reservedSize.height}`,
@@ -132,6 +149,7 @@ function AttachmentImageCard({
     event.currentTarget,
   ));
   useEffect(() => {
+    if (!mediaActive) return;
     if (
       usableRecoveredPreviewUrl
       || usableRemotePreviewUrl
@@ -205,7 +223,7 @@ function AttachmentImageCard({
         }
       });
     return () => controller.abort();
-  }, [attachment, attachmentId, isAnimatedGif, previewCacheId, previewUnavailable, usableDirectPreviewUrl, usableRecoveredPreviewUrl, usableRemotePreviewUrl]);
+  }, [mediaActive, attachment, attachmentId, isAnimatedGif, previewCacheId, previewUnavailable, usableDirectPreviewUrl, usableRecoveredPreviewUrl, usableRemotePreviewUrl]);
 
   useEffect(() => {
     return () => {
@@ -234,7 +252,7 @@ function AttachmentImageCard({
         />
       ) : null}
       <img
-        src={previewUrl}
+        src={isAnimatedGif && !mediaActive && stillUrl ? stillUrl : previewUrl}
         alt={attachment.altText?.trim() || attachment.name || (isSticker ? 'Sticker' : 'Attached image')}
         draggable={false}
         data-attachment-image-loaded={String(imageLoaded)}
@@ -250,7 +268,11 @@ function AttachmentImageCard({
               : 'h-full w-full object-cover',
         )}
         onLoad={(event) => {
+          const { naturalWidth, naturalHeight } = event.currentTarget;
+          markAttachmentImageReady(previewUrl, naturalWidth, naturalHeight);
+          if (readinessKey) markAttachmentImageReady(readinessKey, naturalWidth, naturalHeight);
           setLoadedPreviewUrl(previewUrl);
+          if (isAnimatedGif && !stillUrl) setStillUrl(stillAttachmentFrame(event.currentTarget));
           onImageForegroundTone?.(
             attachmentPreviewIdentity(attachment),
             sampleAttachmentImageForegroundTone(event.currentTarget),
@@ -422,17 +444,18 @@ export function AttachmentPreview({
   ) {
     const galleryIndex = attachmentMediaGalleryIndex(mediaAttachments, attachment);
     const selectedIndex = galleryIndex >= 0 ? galleryIndex : 0;
+    const releasePreview = () => previewLease?.release();
     void openAttachmentMediaWindow({
       attachments: [...mediaAttachments],
       selectedIndex,
       initialPreviewUrl: previewUrl,
     }, {
       onClosed: () => {
+        releasePreview();
         if (trigger.isConnected) trigger.focus({ preventScroll: true });
       },
     })
-      .catch(() => undefined)
-      .finally(() => previewLease?.release());
+      .catch(releasePreview);
   }
 
   if (attachments.length === 0) {

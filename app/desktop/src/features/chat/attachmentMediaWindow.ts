@@ -176,6 +176,12 @@ export async function openAttachmentMediaWindow(
     throw new Error('The media preview window was blocked');
   }
   popup.focus();
+  const closedTimer = window.setInterval(() => {
+    if (!popup.closed) return;
+    window.clearInterval(closedTimer);
+    removeAttachmentMediaPayload(requestId);
+    options.onClosed?.();
+  }, 250);
   return popup;
 }
 
@@ -194,7 +200,9 @@ export async function subscribeToAttachmentMediaWindowPayload(
   const unlisten = await listen<AttachmentMediaWindowPayload>(ATTACHMENT_MEDIA_STATE_EVENT, (event) => {
     if (event.payload?.requestId === requestId) onPayload(event.payload);
   });
-  await emit(ATTACHMENT_MEDIA_READY_EVENT, { requestId } satisfies AttachmentMediaWindowReadyPayload);
+  // Native initialization already supplied this immutable payload. Requesting it
+  // again resets selection/zoom and can release an in-use preview during reveal.
+  if (!preparedPayload) await emit(ATTACHMENT_MEDIA_READY_EVENT, { requestId } satisfies AttachmentMediaWindowReadyPayload);
   return () => {
     unlisten();
     removeAttachmentMediaPayload(requestId);
