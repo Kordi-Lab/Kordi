@@ -247,6 +247,91 @@ final class ConversationTailScrollAnimatorTests: XCTestCase {
         XCTAssertEqual(scroll.contentOffset.y, 4_470, accuracy: 1)
     }
 
+    func testLateResizeCannotReverseVisibleDestinationDuringFade() async throws {
+        try await checkLateResize(delta: -80)
+    }
+
+    func testLateGrowthFollowsTheNewTailAfterFading() async throws {
+        try await checkLateResize(delta: 80)
+    }
+
+    func testCancellingRetargetedRevealRemovesItsCover() async throws {
+        try await checkLateResize(delta: -80, cancels: true)
+    }
+
+    private func checkLateResize(delta: CGFloat, cancels: Bool = false) async throws {
+        let scroll = scrollView(contentHeight: 2_000)
+        scroll.contentOffset.y = 100
+        scroll.contentInset.bottom = 17
+        let content = UIView(frame: CGRect(x: 0, y: 0, width: 320, height: 2_000))
+        let marker = UIView(frame: CGRect(x: 0, y: 1_700, width: 320, height: 40))
+        marker.backgroundColor = .systemBlue
+        content.addSubview(marker); scroll.addSubview(content)
+        let window = try mount(scroll)
+        let animator = ConversationTailScrollAnimator()
+        defer { animator.disconnect(); window.isHidden = true; window.rootViewController = nil }
+        await settle()
+        animator.request(in: scroll, contentView: content, animated: true, reduceMotion: false)
+        var fadingCover: UIView?
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(5))
+            if let cover = window.subviews.first(where: { $0.accessibilityIdentifier == "conversation-jump-cover" }),
+               let opacity = cover.layer.presentation()?.opacity, opacity > 0.2, opacity < 0.8 {
+                fadingCover = cover; break
+            }
+        }
+        let cover = try XCTUnwrap(fadingCover)
+        let visibleMarkerY = marker.convert(marker.bounds, to: window).minY
+        // Resize after destination pixels are visible. Both UIKit's own clamp
+        // and a follow request must remain behind a fresh, opaque snapshot.
+        content.frame.size.height += delta
+        scroll.contentSize.height += delta
+        animator.request(in: scroll, contentView: content, animated: false, reduceMotion: false)
+        let replacement = try XCTUnwrap(window.subviews.first {
+            $0.accessibilityIdentifier == "conversation-jump-cover"
+        })
+        XCTAssertFalse(replacement === cover)
+        XCTAssertNil(cover.superview)
+        XCTAssertEqual(replacement.alpha, 1)
+        XCTAssertEqual(scroll.contentInset.bottom, 17)
+        if cancels {
+            animator.cancel()
+            XCTAssertFalse(animator.isAnimating)
+            XCTAssertFalse(animator.isTransitionCoveringContent)
+            XCTAssertNil(replacement.superview)
+            let stoppedOffset = scroll.contentOffset.y
+            try await Task.sleep(for: .milliseconds(350))
+            XCTAssertEqual(scroll.contentOffset.y, stoppedOffset, accuracy: 1)
+            return
+        }
+        var previousVisibleY: CGFloat? = visibleMarkerY
+        var comparedFrames = 0
+        var sawCrossfade = false
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(5))
+            let opacity = replacement.layer.presentation()?.opacity ?? Float(replacement.alpha)
+            if replacement.superview != nil, opacity >= 0.99 {
+                previousVisibleY = nil
+                continue
+            }
+            sawCrossfade = sawCrossfade || (opacity > 0.01 && opacity < 0.99)
+            let y = marker.convert(marker.bounds, to: window).minY
+            if let previousVisibleY {
+                comparedFrames += 1
+                XCTAssertEqual(y, previousVisibleY, accuracy: 1,
+                    "The destination must remain stationary whenever it is visible through the cover")
+            }
+            previousVisibleY = y
+            if !animator.isAnimating, !animator.hasPendingRequest { break }
+        }
+        XCTAssertTrue(sawCrossfade)
+        XCTAssertGreaterThan(comparedFrames, 2)
+        XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 1)
+        XCTAssertFalse(animator.isAnimating)
+        XCTAssertFalse(animator.isTransitionCoveringContent)
+        XCTAssertEqual(scroll.contentInset.bottom, 17, "Retargeting must preserve the original inset")
+    }
+
     private func simulateBusyLayout() { Thread.sleep(forTimeInterval: 0.08) }
 
     func testRapidSendsMoveContinuouslyOnTheCompositedScrollLayer() async throws {

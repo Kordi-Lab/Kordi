@@ -94,6 +94,56 @@ final class ConversationScrollNavigationTests: XCTestCase {
             ConversationTailScrollAnimator.targetOffset(in: fixture.scroll), accuracy: 1)
     }
 
+    func testLateMessageEditDuringArrowRevealPreservesTheViewport() async throws {
+        let fixture = try await makeFixture()
+        defer { fixture.close() }
+        fixture.scroll.setContentOffset(CGPoint(x: 0,
+            y: ConversationTailScrollAnimator.targetOffset(in: fixture.scroll) / 3), animated: false)
+        try await Task.sleep(for: .milliseconds(200))
+        let originalInset = fixture.scroll.contentInset
+        let jump = try XCTUnwrap(ConversationMotionProbeRegistry.goToLatest)
+        jump()
+        var fadingCover: UIView?
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(5))
+            if let cover = fixture.window.subviews.first(where: { $0.accessibilityIdentifier == "conversation-jump-cover" }),
+               let opacity = cover.layer.presentation()?.opacity, opacity > 0.5, opacity < 0.9 {
+                fadingCover = cover; break
+            }
+        }
+        let cover = try XCTUnwrap(fadingCover)
+        let coveredFrame = cover.frame
+        let originalHeight = fixture.scroll.contentSize.height
+        let visibleOffset = fixture.scroll.contentOffset.y
+        let latest = try XCTUnwrap(fixture.model.messages(for: fixture.conversation).last)
+        let edited = await fixture.model.editMessage(latest, text: "Shorter synthetic message", in: fixture.conversation)
+        XCTAssertTrue(edited)
+        var sampledResizeDuringFade = false
+        var previousVisibleOffset: CGFloat? = visibleOffset
+        for _ in 0..<150 {
+            try await Task.sleep(for: .milliseconds(5))
+            let currentCover = fixture.window.subviews.first {
+                $0.accessibilityIdentifier == "conversation-jump-cover"
+            }
+            let opacity = currentCover?.layer.presentation()?.opacity ?? Float(currentCover?.alpha ?? 0)
+            if opacity >= 0.99 { previousVisibleOffset = nil; continue }
+            if let currentCover, opacity > 0.1,
+               fixture.scroll.contentSize.height < originalHeight - 1 {
+                sampledResizeDuringFade = true
+                if let previousVisibleOffset {
+                    XCTAssertEqual(fixture.scroll.contentOffset.y, previousVisibleOffset, accuracy: 1)
+                }
+                previousVisibleOffset = fixture.scroll.contentOffset.y
+                XCTAssertEqual(currentCover.frame.height, coveredFrame.height, accuracy: 1)
+            }
+        }
+        XCTAssertTrue(sampledResizeDuringFade, "The fixture must resize while the destination is visible through the cover")
+        XCTAssertEqual(fixture.scroll.contentInset, originalInset)
+        XCTAssertEqual(fixture.scroll.contentOffset.y,
+            ConversationTailScrollAnimator.targetOffset(in: fixture.scroll), accuracy: 1)
+        XCTAssertFalse(fixture.window.subviews.contains { $0.accessibilityIdentifier == "conversation-jump-cover" })
+    }
+
     @MainActor
     private struct Fixture {
         let model: AppModel

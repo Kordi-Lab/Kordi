@@ -25,6 +25,8 @@ final class ConversationTailScrollAnimator: NSObject {
     private var jumpCover: UIView?
     private var jumpImage: UIView?
     private var isFadingJumpCover = false
+    private var contentSizeObservation: NSKeyValueObservation?
+    private var pendingResizeSnapshot: UIView?
     private var settledJumpFrames = 0
     var onTransitionVisibilityChange: (() -> Void)?
     var isTransitionCoveringContent: Bool { jumpCover != nil }
@@ -85,6 +87,7 @@ final class ConversationTailScrollAnimator: NSObject {
     func disconnect() {
         cancel()
         keyboardAnimationDeadline = 0
+        contentSizeObservation = nil
         scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(userDidPan))
         scrollView = nil
     }
@@ -106,6 +109,24 @@ final class ConversationTailScrollAnimator: NSObject {
         keyboardAnimationDeadline = pendingKeyboardDeadline
         self.scrollView = scrollView
         scrollView.panGestureRecognizer.addTarget(self, action: #selector(userDidPan))
+        contentSizeObservation = scrollView.observe(\.contentSize, options: [.old, .new, .prior]) { [weak self, weak scrollView] _, change in
+            MainActor.assumeIsolated {
+                guard let self, let scrollView, self.isFadingJumpCover else { return }
+                if change.isPrior {
+                    // UIKit can clamp the offset inside the contentSize setter.
+                    // Capture the composited frame before either layout moves.
+                    if let window = scrollView.window, let cover = self.jumpCover {
+                        self.pendingResizeSnapshot = self.viewportSnapshot(in: window, viewport: cover.frame)
+                    }
+                } else {
+                    defer { self.pendingResizeSnapshot = nil }
+                    guard change.oldValue != change.newValue,
+                          let snapshot = self.pendingResizeSnapshot else { return }
+                    self.beginJumpCover(in: scrollView, snapshot: snapshot)
+                    self.nativePreviousGeometry = nil
+                }
+            }
+        }
 
     }
 
@@ -152,7 +173,10 @@ final class ConversationTailScrollAnimator: NSObject {
             scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: previousY + originDelta), animated: false)
         }
         guard abs(scrollView.contentOffset.y - targetY) > 0.5 else {
-            finishNativeAnimation()
+            // A content-size clamp may already have reached the new target.
+            // Keep its replacement cover until measurement and reveal finish.
+            if jumpCover == nil { finishNativeAnimation() }
+            else { nativeTargetY = targetY }
             return
         }
         if !running, let contentView, contentView.bounds.height > scrollView.bounds.height {
@@ -178,13 +202,9 @@ final class ConversationTailScrollAnimator: NSObject {
             .intersection(window.bounds)
     }
 
-    private func beginJumpCover(in scroll: UIScrollView) {
-        guard let window = scroll.window else { return }
-        let viewport = visibleViewport(in: scroll, window: window)
-        guard viewport.width > 0, viewport.height > 0 else { return }
-        let image: UIView
+    private func viewportSnapshot(in window: UIWindow, viewport: CGRect) -> UIView {
         if let snapshot = window.resizableSnapshotView(from: viewport, afterScreenUpdates: false, withCapInsets: .zero) {
-            image = snapshot
+            return snapshot
         } else {
             let format = UIGraphicsImageRendererFormat(); format.opaque = true
             let bitmap = UIGraphicsImageRenderer(size: viewport.size, format: format).image { context in
@@ -192,8 +212,16 @@ final class ConversationTailScrollAnimator: NSObject {
                 context.cgContext.translateBy(x: -viewport.minX, y: -viewport.minY)
                 window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
             }
-            image = UIImageView(image: bitmap)
+            return UIImageView(image: bitmap)
         }
+    }
+
+    private func beginJumpCover(in scroll: UIScrollView, snapshot: UIView? = nil) {
+        guard let window = scroll.window else { return }
+        let viewport = visibleViewport(in: scroll, window: window)
+        guard viewport.width > 0, viewport.height > 0 else { return }
+        let image = snapshot ?? viewportSnapshot(in: window, viewport: viewport)
+        let previousCover = jumpCover
         let cover = UIView(frame: viewport)
         // Old pixels must not activate a different message at the new position.
         cover.isUserInteractionEnabled = true
@@ -205,7 +233,11 @@ final class ConversationTailScrollAnimator: NSObject {
         window.addSubview(cover)
         jumpCover = cover; jumpImage = image
         settledJumpFrames = 0; isFadingJumpCover = false
-        onTransitionVisibilityChange?()
+        // Replace the partially faded cover atomically. Its completion belongs
+        // to the old view and must not finish this new measurement/reveal cycle.
+        previousCover?.layer.removeAllAnimations()
+        previousCover?.removeFromSuperview()
+        if previousCover == nil { onTransitionVisibilityChange?() }
     }
 
     private func revealJumpDestination() {
@@ -276,6 +308,7 @@ final class ConversationTailScrollAnimator: NSObject {
         jumpCover?.layer.removeAllAnimations()
         jumpCover?.removeFromSuperview()
         jumpCover = nil; jumpImage = nil
+        pendingResizeSnapshot = nil
         isFadingJumpCover = false; settledJumpFrames = 0
         if wasCovered { onTransitionVisibilityChange?() }
     }
