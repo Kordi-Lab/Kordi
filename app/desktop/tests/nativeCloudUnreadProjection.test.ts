@@ -10,6 +10,7 @@ import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { useCloudCanonicalReconciliation } from '../src/features/cloud/useCloudCanonicalReconciliation';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
 import { CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT } from '../src/lib/desktopChatSync';
+import { waitForReactCondition } from './helpers/waitForReactCondition';
 
 test('durable unread totals survive eviction of the entire renderer history', () => {
   const project = createNativeCloudUnreadProjection('account');
@@ -69,12 +70,14 @@ test('the native reconciliation hook reads durable totals and rejects stale opti
   const root = createRoot(document.getElementById('root')!);
   try {
     await act(async () => root.render(createElement(Harness)));
+    await waitForReactCondition(() => result !== null, 'native unread totals should finish loading');
     assert.deepEqual(result, { session: 900 }, 'one retained row must not replace the durable unread total');
     readIds = { peer: new Set(['latest']) };
     await act(async () => root.render(createElement(Harness)));
     assert.deepEqual(result, { session: 0 });
     head = { ...head, latestMessageSequence: 1_001, unreadCount: 901 };
     await act(async () => window.dispatchEvent(new dom.window.Event(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT)));
+    await waitForReactCondition(() => result?.session === 901, 'native unread totals should refresh after a local state change');
     assert.deepEqual(result, { session: 901 });
   } finally {
     await act(async () => root.unmount());

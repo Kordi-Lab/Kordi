@@ -282,8 +282,11 @@ pub async fn desktop_canonical_session_messages(
 ) -> Result<CanonicalMessagePage, String> {
     run_canonical_blocking(move || {
         commands::desktop_canonical_session_messages(
-            &session_id, before_sequence_num, limit,
-            timeline_order.unwrap_or(false), before_timeline.as_ref(),
+            &session_id,
+            before_sequence_num,
+            limit,
+            timeline_order.unwrap_or(false),
+            before_timeline.as_ref(),
         )
     })
     .await

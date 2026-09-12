@@ -1,37 +1,37 @@
-import { createTranscriptContentMeasure } from './transcriptContentMeasure';
-import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
-import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
-  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type UIEvent,
   type WheelEvent as ReactWheelEvent,
-  type ReactNode,
+  type UIEvent,
 } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { MemoizedTranscriptItemContent } from './TranscriptItemContent';
+import { createTranscriptContentMeasure } from './transcriptContentMeasure';
+import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
+import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
+  shouldPrefetchTranscriptHistory,
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
-  TRANSCRIPT_WINDOW_OVERSCAN, shouldPrefetchTranscriptHistory,
+  TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
-import { transcriptLayoutMaxScrollTop, preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
-import { hasActiveTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
 import {
   TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
-  type VirtualTranscriptNavigationRequest,
 } from '@/features/chat/useVirtualTranscriptNavigation';
+import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP, transcriptLayoutMaxScrollTop } from '@/features/chat/virtualTranscriptLayout';
+import { hasActiveTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
 import {
   beginChatPerformanceSpan,
   completeSessionClickToFirstMessage,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
+import { TranscriptNavigationControls } from './TranscriptLatestButton';
 import { useTranscriptSelectionViewportProps } from './transcriptSelection';
 import {
   clearTranscriptDisclosureConstraint,
@@ -41,25 +41,14 @@ import {
   transcriptDisclosureDirection,
   type TranscriptDisclosureDirection,
 } from './transcriptStableDisclosure';
-import { TranscriptNavigationControls } from './TranscriptLatestButton';
 import type {
-  StableDisclosureAnchor, AlignedTranscriptSession,
-  VirtualTranscriptProps,
+AlignedTranscriptSession,
+StableDisclosureAnchor,
+VirtualTranscriptProps,
 } from './virtualTranscriptTypes';
 
 export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
 export type { VirtualTranscriptProps } from './virtualTranscriptTypes';
-
-function TranscriptItemContent<Item>({ item, index, renderItem }: {
-  item: Item;
-  index: number;
-  renderItem: (item: Item, index: number) => ReactNode;
-}) {
-  return renderItem(item, index);
-}
-
-// Geometry and scroll updates move the row shell without rebuilding its content.
-const MemoizedTranscriptItemContent = memo(TranscriptItemContent) as typeof TranscriptItemContent;
 
 export function VirtualTranscript<Item>({
   items,

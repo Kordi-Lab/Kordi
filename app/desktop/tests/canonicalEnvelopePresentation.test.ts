@@ -18,3 +18,10 @@ test('persisted group envelopes render their text and hide internal model contro
   assert.equal(mapCanonicalMessage({ ...row, contentText: sync }, new Map()), null);
   assert.equal(mapCanonicalMessage({ ...row, contentText: 'kordi-cloud-message:invalid' }, new Map())?.text, 'Unable to display this message.');
 });
+
+
+test('normalized message text is not decoded again when a user shares a protocol-looking string', () => {
+  const text = encodeCloudDirectMessageEnvelope({ schemaVersion: 1, kind: 'message', text: 'Example control payload', synchronizationOnly: true });
+  const message = { ...row, contentText: text, content: { schemaVersion: 1, kind: 'message', text } };
+  assert.equal(mapCanonicalMessage(message, new Map())?.text, text);
+});

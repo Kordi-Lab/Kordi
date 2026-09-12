@@ -1,7 +1,9 @@
-import { useTranscriptMediaActive } from './transcriptMediaActivity';
-import { acquireCloudAttachmentPreviewLease, cachedCloudAttachmentPreviewResource, retainCloudAttachmentPreviewResource, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachmentPreviewCache';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { acquireCloudAttachmentPreviewLease, cachedCloudAttachmentPreviewResource, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachmentPreviewCache';
 import { LoaderCircle, Maximize2, Play, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useTranscriptMediaActive } from './transcriptMediaActivity';
+import { useInlineVideoLifecycle } from './useInlineVideoLifecycle';
+import { cacheVideoPresentation, videoPresentationCache } from './videoPresentationCache';
 
 import {
   attachmentVideoDisplaySize,
@@ -12,6 +14,10 @@ import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { videoPreviewFromSource } from '@/features/chat/composerVideoPreview';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import {
+  cacheCloudAttachmentLocalPath,
+  loadCachedCloudAttachmentLocalPath,
+} from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { cloudAttachmentPlaybackUrl } from '@/features/cloud/cloudAttachmentPlayback';
 import { loadVisibleCloudAttachmentPreview } from '@/features/cloud/cloudAttachments';
 import {
@@ -20,45 +26,17 @@ import {
   resolveCloudAttachmentUploadProgress,
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
-import {
-  cacheCloudAttachmentLocalPath,
-  loadCachedCloudAttachmentLocalPath,
-} from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
+import { isNativeDesktopShell } from '@/lib/desktop';
+import { downloadDesktopCloudAttachment } from '@/lib/desktopCloudAttachmentCache';
 import {
   imagePixelDimensionsFromUrl,
   normalizedImagePixelDimensions,
 } from '@/lib/imageDimensions';
-import { isNativeDesktopShell } from '@/lib/desktop';
-import { downloadDesktopCloudAttachment } from '@/lib/desktopCloudAttachmentCache';
 import type { MessageAttachment } from '../types';
 import { AttachmentImageLoadingSurface } from './transcriptAttachmentImageSurfaces';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
-
-type CachedVideoPresentation = {
-  widthPixels: number;
-  heightPixels: number;
-};
-
-const videoPresentationCache = new Map<string, CachedVideoPresentation>();
-
-function cacheVideoPresentation(key: string, presentation: CachedVideoPresentation & { posterUrl: string }) {
-  videoPresentationCache.delete(key);
-  videoPresentationCache.set(key, { widthPixels: presentation.widthPixels, heightPixels: presentation.heightPixels });
-  // Blob posters belong to the download cache and its active leases. Never keep
-  // an unleased copy of a blob URL in this metadata cache.
-  if (!presentation.posterUrl.startsWith('blob:')) {
-    const resource = retainCloudAttachmentPreviewResource(`video-poster:${key}`, presentation.posterUrl,
-      presentation.posterUrl.length * 2 + presentation.widthPixels * presentation.heightPixels * 4);
-    acquireCloudAttachmentPreviewLease(resource).release();
-  }
-  while (videoPresentationCache.size > 128) {
-    const oldest = videoPresentationCache.keys().next().value;
-    if (typeof oldest !== 'string') break;
-    videoPresentationCache.delete(oldest);
-  }
-}
 
 export function AttachmentVideoCard({
   attachment,
@@ -111,16 +89,7 @@ export function AttachmentVideoCard({
   }, [remotePosterUrl, resourceId]);
   useEffect(() => () => { posterLeaseRef.current?.release(); posterLeaseRef.current = null; }, []);
   const downloadedLocalPath = useRef<string | null>(null);
-  const playbackEnded = useRef(false);
-  const resumeTime = useRef(0);
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    return () => {
-      resumeTime.current = playbackEnded.current ? 0 : video.currentTime;
-      video.pause(); video.removeAttribute('src'); video.load();
-    };
-  }, [mediaActive, playbackRequested]);
+  const { playbackEndedRef, resumeTimeRef } = useInlineVideoLifecycle(videoRef, mediaActive, playbackRequested);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
   const posterUrl = directPosterUrl ?? remotePosterUrl ?? localPosterUrl;
   const declaredVideoDimensions = normalizedImagePixelDimensions(
@@ -297,7 +266,7 @@ export function AttachmentVideoCard({
       );
       setPlaybackUrl(url);
       setPhase('ready');
-      playbackEnded.current = false;
+      playbackEndedRef.current = false;
       setPlaybackRequested(true);
       if (isNativeDesktopShell()) {
         // ponytail: playback and durable caching use separate transfers until
@@ -309,7 +278,7 @@ export function AttachmentVideoCard({
         ).then((path) => {
           cacheCloudAttachmentLocalPath(attachmentId, path);
           downloadedLocalPath.current = path;
-          if (playbackEnded.current) {
+          if (playbackEndedRef.current) {
             setFailedSource(null);
             setLocalPath(path);
           }
@@ -318,7 +287,7 @@ export function AttachmentVideoCard({
     } catch {
       setPhase('error');
     }
-  }, [attachment.name, attachmentId]);
+  }, [attachment.name, attachmentId, playbackEndedRef]);
 
   const loadVideo = useCallback(async () => {
     if (phase === 'loading') return;
@@ -406,7 +375,7 @@ export function AttachmentVideoCard({
               className="app-attachment-inline-video block h-full w-full object-contain"
               aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
               onLoadedMetadata={(event) => {
-                if (resumeTime.current > 0) event.currentTarget.currentTime = resumeTime.current;
+                if (resumeTimeRef.current > 0) event.currentTarget.currentTime = resumeTimeRef.current;
                 const { videoWidth, videoHeight } = event.currentTarget;
                 if (videoWidth > 0 && videoHeight > 0) {
                   const dimensions = { widthPixels: videoWidth, heightPixels: videoHeight };
@@ -419,8 +388,8 @@ export function AttachmentVideoCard({
               onPause={keepControlsVisible}
               onEnded={() => {
                 keepControlsVisible();
-                playbackEnded.current = true;
-                resumeTime.current = 0;
+                playbackEndedRef.current = true;
+                resumeTimeRef.current = 0;
                 setPlaybackRequested(false);
                 if (downloadedLocalPath.current) {
                   setFailedSource(null);

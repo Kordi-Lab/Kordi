@@ -118,7 +118,7 @@ test('canonical transcript page uses descending indexed reads with a bounded lim
   assert.match(command, /ORDER BY sequence_num DESC, created_at_ms DESC, id DESC/);
   assert.match(command, /\.clamp\(25, 200\)/);
   assert.match(desktopSource(), /fetchCanonicalSessionCatalog[\s\S]*invokeDesktop<CanonicalSessionCatalog>/);
-  assert.match(desktopSource(), /fetchCanonicalSessionMessages[\s\S]*invokeDesktop<CanonicalMessagePage>/);
+  assert.match(readFileSync(new URL('../src/lib/desktopCanonicalHistory.ts', import.meta.url), 'utf8'), /fetchCanonicalSessionMessages[\s\S]*invokeDesktop<CanonicalMessagePage>/);
 });
 
 test('native scale regression seeds 20,000 rows and enforces catalog and page byte budgets', () => {

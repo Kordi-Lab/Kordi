@@ -1,3 +1,4 @@
+import { waitForReactCondition } from './helpers/waitForReactCondition';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { JSDOM } from 'jsdom';
@@ -82,6 +83,7 @@ test('realtime and repair polling preserve background delivery, account isolatio
   try {
     assert.equal(document.visibilityState, 'hidden');
     await act(async () => root.render(createElement(Harness, { account })));
+    await waitForReactCondition(() => Socket.instances.length === 1, 'socket initialization must settle');
     assert.equal(Socket.instances.length, 1);
     const socket = Socket.instances[0];
     await act(async () => socket.hello());
@@ -102,6 +104,7 @@ test('realtime and repair polling preserve background delivery, account isolatio
     const reconnect = [...timeouts].find(([, timer]) => timer.ms === 1_000)!;
     timeouts.delete(reconnect[0]);
     await act(async () => reconnect[1].callback());
+    await waitForReactCondition(() => Socket.instances.length === 2, 'socket initialization must settle');
     assert.equal(Socket.instances.length, 2);
     await act(async () => Socket.instances[1].hello());
     activeAccountId = 'second-fixture-account';
@@ -110,6 +113,7 @@ test('realtime and repair polling preserve background delivery, account isolatio
       save: async () => {}, clear: async () => {},
     });
     await act(async () => root.render(createElement(Harness, { account: { ...account, accountId: activeAccountId } })));
+    await waitForReactCondition(() => Socket.instances.length === 3, 'socket initialization must settle');
     assert.equal(Socket.instances.length, 3);
     assert.equal(Socket.instances[1].readyState, 3);
     const beforeLateHello = syncs;

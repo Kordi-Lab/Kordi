@@ -29,11 +29,13 @@ export function isSynchronizationOnlyCloudGroupTitleNotice(message: CanonicalSes
 
 export function isInternalCloudAgentControlMessage(message: CanonicalSessionMessage) {
   const text = message.contentText.trim();
-  const envelope = parseCloudDirectMessageEnvelope(text);
-  return contentRecord(message.content).synchronizationOnly === true
+  const content = contentRecord(message.content);
+  const normalized = content.schemaVersion === 1 && content.kind === 'message';
+  const envelope = normalized ? null : parseCloudDirectMessageEnvelope(text);
+  return content.synchronizationOnly === true
     || envelope?.synchronizationOnly === true
     || (Boolean(envelope) && message.messageKind === 'agent-model-change')
-    || isCloudAgentControlMessage(text);
+    || (!normalized && isCloudAgentControlMessage(text));
 }
 
 export function canonicalMessageCountsAsReadable(message: CanonicalSessionMessage) {

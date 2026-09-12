@@ -1,3 +1,4 @@
+import { sortedCanonicalMessages, type CanonicalMessageSortPosition, type SortableCanonicalMessage } from './messageSort';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import type {
@@ -9,10 +10,10 @@ import type {
   Message,
   SessionTaskActivity,
 } from '@/kordi-app/types';
-import { isActiveProcessingStatus,isAgedLegacyCollaborationProcessingPlaceholder,isLegacyCollaborationAgentProcessingPlaceholder,isOwnedAgentTurn,isPureLegacyCollaborationAgentStatusRow,isStaleableProcessingPlaceholder } from "./processingStatus";
+import { isActiveProcessingStatus, isAgedLegacyCollaborationProcessingPlaceholder, isLegacyCollaborationAgentProcessingPlaceholder, isOwnedAgentTurn, isPureLegacyCollaborationAgentStatusRow, isStaleableProcessingPlaceholder } from "./processingStatus";
 
 import { completedCallStartMessageIds } from './callActivity';
-import { applySessionAgentIdentity,canonicalMessageCountsForLastActive,isChatCreatedDirectAgentSession } from './conversationMapping';
+import { applySessionAgentIdentity, canonicalMessageCountsForLastActive, isChatCreatedDirectAgentSession } from './conversationMapping';
 import {
   cancelledCollaborationAgentDelegationMessage,
   contentRecord,
@@ -67,25 +68,6 @@ function emptyIndexes(): CanonicalIndexes {
     contextSnapshotCountBySessionId: new Map(),
     presenceSummaryBySessionId: new Map(),
   };
-}
-
-type CanonicalMessageSortPosition = {
-  sortAtMs: number;
-  sequenceNum: number;
-};
-
-type SortableCanonicalMessage = CanonicalMessageSortPosition & {
-  message: Message;
-  tieBreakAtMs: number;
-};
-
-function sortedCanonicalMessages(messages: SortableCanonicalMessage[]) {
-  return [...messages]
-    .sort((left, right) => left.sortAtMs - right.sortAtMs
-      || left.sequenceNum - right.sequenceNum
-      || left.tieBreakAtMs - right.tieBreakAtMs
-      || ((left.message.id ?? '') < (right.message.id ?? '') ? -1 : (left.message.id ?? '') > (right.message.id ?? '') ? 1 : 0))
-    .map((entry) => entry.message);
 }
 
 function inheritedDesktopForkSnapshot(session: CanonicalSessionState['sessions'][number] | undefined, message: CanonicalSessionMessage) {

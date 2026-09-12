@@ -78,52 +78,53 @@ export function useCloudDirectHistory(account: CloudAccount | null, activeConver
   const accountId = account?.accountId ?? null;
   const sessionId = accountId && isNativeDesktopShell() ? directHistorySessionId(accountId, activeConversationId) : null;
   const key = accountId && sessionId ? `${accountId}\u0000${sessionId}` : '';
-  const currentKey = useRef(key);
-  const snapshotRef = useRef<({ key: string } & CloudDirectHistoryPage) | null>(null);
-  const flightRef = useRef<{ key: string; promise: Promise<void> } | null>(null);
+  const scope = useMemo(() => ({ key }), [key]);
+  const currentScope = useRef<typeof scope | null>(scope);
+  const snapshotRef = useRef<({ scope: typeof scope } & CloudDirectHistoryPage) | null>(null);
+  const flightRef = useRef<{ scope: typeof scope; promise: Promise<void> } | null>(null);
   const [snapshot, setSnapshot] = useState<typeof snapshotRef.current>(null);
-  useLayoutEffect(() => { currentKey.current = key; }, [key]);
+  useLayoutEffect(() => { currentScope.current = scope; }, [scope]);
 
   const load = useCallback((older: boolean) => {
-    if (!accountId || !sessionId || currentKey.current !== key) return Promise.resolve();
-    if (flightRef.current?.key === key) return flightRef.current.promise;
-    const previous = snapshotRef.current?.key === key ? snapshotRef.current : null;
+    if (!accountId || !sessionId || currentScope.current !== scope) return Promise.resolve();
+    if (flightRef.current?.scope === scope) return flightRef.current.promise;
+    const previous = snapshotRef.current?.scope === scope ? snapshotRef.current : null;
     if (older && (!previous?.hasOlder || !previous.beforeSequence)) return Promise.resolve();
     const promise = readDirectCloudHistoryPage(accountId, sessionId, client, older ? previous!.beforeSequence! : undefined)
       .then((page) => {
-        if (!page || currentKey.current !== key) return;
+        if (!page || currentScope.current !== scope) return;
         if (older && page.hasOlder && (!page.beforeSequence || page.beforeSequence >= previous!.beforeSequence!)) {
           throw new Error('Direct conversation history cursor did not advance.');
         }
         const messagesByPeer = mergeCloudMessagesByPeerSnapshot(
           older && previous ? previous.messagesByPeer : {}, page.messagesByPeer, cloudMessageDeletions.ids(accountId),
         );
-        const next = { ...page, messagesByPeer, key };
+        const next = { ...page, messagesByPeer, scope };
         snapshotRef.current = next;
         setSnapshot(next);
       }).finally(() => {
         if (flightRef.current?.promise === promise) flightRef.current = null;
       });
-    flightRef.current = { key, promise };
+    flightRef.current = { scope, promise };
     return promise;
-  }, [accountId, client, key, sessionId]);
+  }, [accountId, client, scope, sessionId]);
 
   useEffect(() => {
-    currentKey.current = key;
-    if (snapshotRef.current?.key !== key) {
+    currentScope.current = scope;
+    if (snapshotRef.current?.scope !== scope) {
       snapshotRef.current = null;
       queueMicrotask(() => {
-        if (currentKey.current === key) setSnapshot((current) => current?.key === key ? current : null);
+        if (currentScope.current === scope) setSnapshot((current) => current?.scope === scope ? current : null);
       });
     }
     if (!key) return;
     let refreshing = false;
     let refreshAgain = false;
     const refresh = () => {
-      if (currentKey.current !== key) return;
+      if (currentScope.current !== scope) return;
       if (refreshing) { refreshAgain = true; return; }
       const previous = snapshotRef.current;
-      if (previous?.key === key) {
+      if (previous?.scope === scope) {
         const messagesByPeer = cloudMessageDeletions.filter(accountId, previous.messagesByPeer);
         if (messagesByPeer !== previous.messagesByPeer) {
           const next = { ...previous, messagesByPeer };
@@ -142,13 +143,13 @@ export function useCloudDirectHistory(account: CloudAccount | null, activeConver
     window.addEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, refresh);
     window.addEventListener('focus', refresh);
     return () => {
-      if (currentKey.current === key) currentKey.current = '';
+      if (currentScope.current === scope) currentScope.current = null;
       window.removeEventListener(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT, refresh);
       window.removeEventListener('focus', refresh);
     };
-  }, [accountId, key, load]);
+  }, [accountId, key, load, scope]);
 
-  const page = snapshot?.key === key ? snapshot : null;
+  const page = snapshot?.scope === scope ? snapshot : null;
   const hasOlderBySessionId = useMemo(() => page ? { [page.sessionId]: page.hasOlder } : {}, [page]);
   const loadOlderSessionMessages = useCallback((requestedSessionId: string) => requestedSessionId === sessionId ? load(true) : Promise.resolve(), [load, sessionId]);
   return { page, hasOlderBySessionId, loadOlderSessionMessages };

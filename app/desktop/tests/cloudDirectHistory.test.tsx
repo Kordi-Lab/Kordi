@@ -1,3 +1,4 @@
+import { waitForReactCondition } from './helpers/waitForReactCondition';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { JSDOM } from 'jsdom';
@@ -29,7 +30,7 @@ const messages: ChatSyncMessage[] = Array.from({ length: 120 }, (_, index) => ({
   created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, index + 1)).toISOString(), edited_at: null, deleted_at: null,
 }));
 
-function setupNative(gapped = false) {
+function setupNative(gapped = false, delayRead?: () => Promise<void>) {
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
   if (!globalThis.window) Object.defineProperty(globalThis, 'window', { configurable: true, value: {} });
   let reads = 0;
@@ -41,7 +42,8 @@ function setupNative(gapped = false) {
     if (command === 'desktop_chat_sync_messages_page') {
       reads += 1;
       const rows = messages.filter((row) => row.conversation_sequence > Number(payload?.afterSequence ?? 0)).slice(0, Number(payload?.limit));
-      return { conversationId: conversation.id, messages: rows, nextAfterSequence: rows.at(-1)?.conversation_sequence ?? null, hasMore: false };
+      const result = { conversationId: conversation.id, messages: rows, nextAfterSequence: rows.at(-1)?.conversation_sequence ?? null, hasMore: false };
+      return delayRead ? delayRead().then(() => result) : result;
     }
     if (command === 'desktop_chat_sync_apply') { persisted += 1; return { changedConversationHeads: [] }; }
     throw new Error(`Unexpected native command: ${command}`);
@@ -94,6 +96,7 @@ test('direct history overlays the latest-only preview and releases loaded pages 
   const root = createRoot(document.getElementById('root')!);
   try {
     await act(async () => root.render(createElement(Harness)));
+    await waitForReactCondition(() => history.page?.messagesByPeer.acct_peer.length === 50, 'initial direct page must finish before inspection');
     await act(async () => store.setValue({}));
     assert.equal(store.index.allMessages.length, 50);
     assert.equal(history.hasOlderBySessionId[sessionId], true);
@@ -128,4 +131,32 @@ test('gapped native coverage falls back to one server page and persists it local
     assert.equal(page?.messagesByPeer.acct_peer.length, 50);
     assert.equal(requests, 1); assert.equal(native.persisted(), 1); assert.equal(native.reads(), 0);
   } finally { __setSessionBackendForTests(null); native.restore(); Object.assign(globalThis, { window: previousWindow, Event: previousEvent }); dom.window.close(); }
+});
+
+
+test('switching away and back rejects an earlier direct-history flight', async () => {
+  const dom = new JSDOM('<div id="root"></div>');
+  const previous = { window: globalThis.window, document: globalThis.document,
+    IS_REACT_ACT_ENVIRONMENT: (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT };
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
+  let finishFirst!: () => void;
+  let calls = 0;
+  const native = setupNative(false, () => ++calls === 1 ? new Promise<void>(resolve => { finishFirst = resolve; }) : Promise.resolve());
+  let history!: ReturnType<typeof useCloudDirectHistory>;
+  const client = {} as CloudAuthClient;
+  function Harness({ active }: { active: string }) { history = useCloudDirectHistory(account, active, client); return null; }
+  const root = createRoot(document.getElementById('root')!);
+  const active = cloudCollaborationConversationId('acct_peer');
+  try {
+    await act(async () => root.render(createElement(Harness, { active })));
+    await waitForReactCondition(() => calls === 1, 'first request must be in flight');
+    await act(async () => root.render(createElement(Harness, { active: 'session:group:other' })));
+    await act(async () => root.render(createElement(Harness, { active })));
+    await waitForReactCondition(() => calls === 2 && Boolean(history.page), 'returning to the chat starts a new scoped request');
+    const accepted = history.page;
+    await act(async () => { finishFirst(); await new Promise<void>(resolve => setImmediate(resolve)); });
+    assert.strictEqual(history.page, accepted, 'an old visit must not replace the new visit');
+  } finally {
+    finishFirst?.(); await act(async () => root.unmount()); native.restore(); Object.assign(globalThis, previous); dom.window.close();
+  }
 });
