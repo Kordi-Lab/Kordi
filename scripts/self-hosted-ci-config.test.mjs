@@ -32,6 +32,18 @@ test("self-hosted checks do not depend on GitHub-hosted caches", async () => {
   assert.match(ci, /Configure runner-local Rust build cache/);
 });
 
+test("background runner browser tests explicitly select Chromium", async () => {
+  const ci = await workflow("../.github/workflows/ci.yml");
+  const commands = ci.split("\n").filter((line) => /(?:test:visual|playwright test)/.test(line));
+
+  assert.ok(commands.some((line) => line.includes("playwright.production.config.ts")),
+    "CI must exercise the complete production entrypoints");
+  for (const command of commands) {
+    assert.match(command, /--project chromium(?:\s|$)/,
+      "the isolated LaunchDaemon cannot launch WebKit; record its local checks separately");
+  }
+});
+
 test("the macOS runner installer stays syntax-valid and account-isolated", async () => {
   const installerUrl = new URL("./install-macos-self-hosted-runner.sh", import.meta.url);
   const plist = await workflow("../deploy/ci/io.kordi.github-actions-runner.plist");

@@ -72,8 +72,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install visual-test browsers
-        run: pnpm --dir app/desktop exec playwright install chromium webkit
+      - name: Install visual-test browser
+        run: pnpm --dir app/desktop exec playwright install chromium
 
       - name: Compare transient surfaces
         run: pnpm --dir app/desktop test:visual --project chromium
@@ -83,14 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           export KORDI_PRODUCTION_TEST_PORT="$(node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{process.stdout.write(String(s.address().port));s.close()})')"
-          pnpm --dir app/desktop exec playwright test -c playwright.production.config.ts
-
-      - name: Verify WebKit media continuity
-        shell: bash
-        run: |
-          set -euo pipefail
-          export KORDI_HISTORY_TEST_PORT="$(node -e 'const s=require("net").createServer();s.listen(0,"127.0.0.1",()=>{process.stdout.write(String(s.address().port));s.close()})')"
-          pnpm --dir app/desktop exec playwright test -c playwright.media-retention.config.ts --project webkit
+          pnpm --dir app/desktop exec playwright test -c playwright.production.config.ts --project chromium
 
   rust:
     name: Rust checks
