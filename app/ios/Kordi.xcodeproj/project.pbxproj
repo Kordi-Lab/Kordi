@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		F06EAE19DE5949DD8E025707 /* MessageDeletionRecoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF6592DA3F3948D280A5B367 /* MessageDeletionRecoveryTests.swift */; };
 		00A4DBCC20A4AA2AC8AA635E /* SubsessionConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7991665C65F9A43F00EE4092 /* SubsessionConversation.swift */; };
 		013F4527A10AEF91C682C06E /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092A3B6DDEAE95871DABB253 /* LoginView.swift */; };
 		01946512753EF805FD46F6D7 /* ConversationTailScrollAnimatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D46ABEB72814B88129564B0 /* ConversationTailScrollAnimatorTests.swift */; };
@@ -207,6 +208,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		FF6592DA3F3948D280A5B367 /* MessageDeletionRecoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageDeletionRecoveryTests.swift; sourceTree = "<group>"; };
 		030EF9AB2B49807064976F35 /* SharedEmojiAnimationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedEmojiAnimationView.swift; sourceTree = "<group>"; };
 		032F0E9CF2067EBA48D5195A /* BlobEmojiComposerText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlobEmojiComposerText.swift; sourceTree = "<group>"; };
 		092A3B6DDEAE95871DABB253 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
@@ -629,6 +631,7 @@
 				09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */,
 				6F8CE113A5D004E972C7441D /* ConversationSendQueueTests.swift */,
 				7D46ABEB72814B88129564B0 /* ConversationTailScrollAnimatorTests.swift */,
+				FF6592DA3F3948D280A5B367 /* MessageDeletionRecoveryTests.swift */,
 				568EBC3F7D9760AAD86C912C /* DigestViewTests.swift */,
 				D3BDEA26F6B2936B8130310A /* EmojiAnimationTests.swift */,
 				5FF8982F88272CFCECE0D898 /* GroupAgentTargetTests.swift */,
@@ -997,6 +1000,7 @@
 				81A5A5B135938E1C332EB16D /* ConversationSendMotionIntegrationTests.swift in Sources */,
 				8CF43B6243E2D98104E0E4A5 /* ConversationSendQueueTests.swift in Sources */,
 				01946512753EF805FD46F6D7 /* ConversationTailScrollAnimatorTests.swift in Sources */,
+				F06EAE19DE5949DD8E025707 /* MessageDeletionRecoveryTests.swift in Sources */,
 				97FE7B56ED21F0CDBDC8AAEB /* DigestViewTests.swift in Sources */,
 				43AD849D638FA91F9791A089 /* EmojiAnimationTests.swift in Sources */,
 				7450B6513CBD85BE88B9D802 /* GroupAgentTargetTests.swift in Sources */,

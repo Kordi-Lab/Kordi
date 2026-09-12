@@ -2250,21 +2250,28 @@ final class AppModel: ObservableObject {
             errorMessage = "This message is no longer available to delete."
             return false
         }
+        var removedIDs: Set<String> = [messageId]
         if !previewMode {
             guard let token else { return false }
+            let deletingAccountID = account?.accountId
             do {
-                try await api.deleteMessage(
+                let deletedID = try await api.deleteMessage(
                     token: token,
                     sessionId: conversation.sessionId,
                     messageId: messageId,
-                    forEveryone: forEveryone
+                    forEveryone: forEveryone,
+                    clientMessageId: message.author == .me ? message.clientMessageId : nil
                 )
+                guard self.token == token, account?.accountId == deletingAccountID else { return false }
+                removedIDs.insert(deletedID)
             } catch {
+                guard self.token == token, account?.accountId == deletingAccountID,
+                      !CloudTransportErrorPolicy.isCancellation(error) else { return false }
                 errorMessage = userFacing(error, fallback: "Could not delete this message.")
                 return false
             }
         }
-        removeCloudMessage(messageId)
+        removeCloudMessages(removedIDs)
         if !previewMode { await rebuildConversationCatalog() }
         return true
     }

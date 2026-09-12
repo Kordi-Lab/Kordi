@@ -1196,29 +1196,66 @@ actor CloudAPIClient {
         )
     }
 
+    @discardableResult
     func deleteMessage(
         token: String,
         sessionId: String,
         messageId: String,
-        forEveryone: Bool
-    ) async throws {
+        forEveryone: Bool,
+        clientMessageId: String? = nil
+    ) async throws -> String {
         _ = try await bootstrapChat(token: token)
         guard let conversation = chatConversationsBySessionId[sessionId]
             ?? chatConversationsById[sessionId] else {
-            throw CloudAPIError(
-                code: "chat_conversation_missing",
-                message: "This conversation is not available in reliable chat sync.",
-                statusCode: 404
-            )
+            throw CloudAPIError(code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.", statusCode: 404)
         }
+        let accountId = try requireActiveAccountId()
+        let generation = chatBootstrapGeneration
+        var deletedID = messageId
+        do {
+            try await deleteCanonicalMessage(token: token, conversationID: conversation.id,
+                messageID: messageId, forEveryone: forEveryone)
+        } catch let error as CloudAPIError {
+            guard error.statusCode == 404, error.code == "CHAT_ENTITY_NOT_FOUND",
+                  let clientMessageId = clientMessageId?.nonEmpty else { throw error }
+            guard activeAccountId == accountId, chatBootstrapGeneration == generation else {
+                throw CancellationError()
+            }
+            // A menu or persisted row can retain an older wire ID. Resolve the
+            // original send identity through the read API before retrying once.
+            let page = try await threadPage(token: token, sessionId: sessionId, messageId: clientMessageId)
+            guard activeAccountId == accountId, chatBootstrapGeneration == generation else {
+                throw CancellationError()
+            }
+            let matches = ([page.root] + page.messages).filter { candidate in
+                guard let wire = chatMessagesById[candidate.messageId] else { return false }
+                return wire.clientMessageId == clientMessageId && wire.senderAccountId == accountId
+                    && wire.conversationId == conversation.id && wire.deletedAt == nil
+            }
+            // Never substitute a reply's parent, guess from image contents, or
+            // interpret a 404 as a successful deletion.
+            guard matches.count == 1, let resolvedID = matches.first?.messageId,
+                  resolvedID != messageId else { throw error }
+            try await deleteCanonicalMessage(token: token, conversationID: conversation.id,
+                messageID: resolvedID, forEveryone: forEveryone)
+            deletedID = resolvedID
+        }
+        guard activeAccountId == accountId, chatBootstrapGeneration == generation else {
+            throw CancellationError()
+        }
+        chatMessagesById.removeValue(forKey: deletedID)
+        return deletedID
+    }
+
+    private func deleteCanonicalMessage(token: String, conversationID: String,
+        messageID: String, forEveryone: Bool) async throws {
         try await sendWithoutResponse(
-            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages/\(escapedPath(messageId))",
-            method: "DELETE",
-            token: token,
+            path: "/v2/chat/conversations/\(escapedPath(conversationID))/messages/\(escapedPath(messageID))",
+            method: "DELETE", token: token,
             query: [URLQueryItem(name: "for_everyone", value: forEveryone ? "true" : "false")],
             fallback: "Could not delete this message."
         )
-        chatMessagesById.removeValue(forKey: messageId)
     }
 
     func startCall(
