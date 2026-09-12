@@ -31,6 +31,7 @@ Options:
   --profile <name>         Profile label used for app title + Cloud identifier suffix.
   --title <name>           Custom window/app title.
   --identifier <value>     Full isolated Cloud identifier override (io.kordi.cloud.*).
+  --frontend <mode>       Frontend build: development (default) or production.
   --dry-run                Print the generated Tauri config and exit.
   --help                   Show this help.
 `);
@@ -43,6 +44,7 @@ function parseArgs(argv) {
     profile: 'dev',
     title: null,
     identifier: null,
+    frontend: 'development',
     dryRun: false,
   };
 
@@ -63,7 +65,7 @@ function parseArgs(argv) {
       continue;
     }
 
-    if (arg === '--port' || arg === '--host' || arg === '--profile' || arg === '--title' || arg === '--identifier') {
+    if (arg === '--port' || arg === '--host' || arg === '--profile' || arg === '--title' || arg === '--identifier' || arg === '--frontend') {
       const value = argv[index + 1];
       if (!value) {
         console.error(`[kordi] Missing value for ${arg}`);
@@ -116,6 +118,10 @@ function run(command, args) {
 }
 
 const options = parseArgs(process.argv.slice(2));
+if (!['development', 'production'].includes(options.frontend)) {
+  console.error('[kordi] Frontend mode must be development or production.');
+  process.exit(1);
+}
 const port = Number.parseInt(options.port, 10);
 
 if (!Number.isInteger(port) || port <= 0 || port > 65535) {
@@ -143,6 +149,7 @@ const beforeDevCommand = buildBeforeDevCommand({
   title,
   host: options.host,
   port,
+  frontendMode: options.frontend,
 });
 
 const baseConfig = JSON.parse(readFileSync(tauriConfigPath, 'utf8'));
@@ -190,6 +197,7 @@ if (options.dryRun) {
 
 ensureTauriCli();
 console.log(`[kordi] Starting profile "${options.profile}" at ${devUrl}`);
+console.log(`[kordi] Frontend mode: ${options.frontend}; native binary: debug.`);
 console.log(`[kordi] App identifier: ${identifier}`);
 console.log(`[kordi] Generated config: ${generatedConfigPath}`);
 

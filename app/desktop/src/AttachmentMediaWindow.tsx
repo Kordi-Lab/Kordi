@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 
 import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
@@ -77,7 +77,7 @@ export default function AttachmentMediaWindow() {
   ));
   const [selectedIndex, setSelectedIndex] = useState(() => payload?.selectedIndex ?? 0);
   const [zoom, setZoom] = useState(1);
-  const [theme, setTheme] = useState<ResolvedThemeMode>(initialMediaWindowTheme);
+  const [theme, setTheme] = useState<ResolvedThemeMode>(() => payload?.theme ?? initialMediaWindowTheme());
   const [failedDirectIdentity, setFailedDirectIdentity] = useState<string | null>(null);
   const [failedVideoIdentity, setFailedVideoIdentity] = useState<string | null>(null);
   const [remotePreview, setRemotePreview] = useState<PreviewState>({
@@ -88,21 +88,26 @@ export default function AttachmentMediaWindow() {
   const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const previewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
   const windowRevealedRef = useRef(false);
+  const nativeThemeReadyRef = useRef<Promise<void>>(Promise.resolve());
 
   const revealWindow = useCallback(() => {
     if (windowRevealedRef.current) return;
     windowRevealedRef.current = true;
-    void revealMediaWindow(requestId).catch(() => {
+    void nativeThemeReadyRef.current.then(() => revealMediaWindow(requestId)).catch(() => {
       windowRevealedRef.current = false;
     });
   }, [requestId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.classList.add('app-attachment-media-window-root');
     document.body.classList.add('app-attachment-media-window-root');
+    if (window.__KORDI_ATTACHMENT_MEDIA_NATIVE_MATERIAL__) {
+      document.documentElement.dataset.attachmentMediaNativeMaterial = 'true';
+    }
     return () => {
       document.documentElement.classList.remove('app-attachment-media-window-root');
       document.body.classList.remove('app-attachment-media-window-root');
+      delete document.documentElement.dataset.attachmentMediaNativeMaterial;
     };
   }, []);
 
@@ -127,10 +132,10 @@ export default function AttachmentMediaWindow() {
     };
   }, [requestId]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.dataset.attachmentMediaTheme = theme;
     document.documentElement.style.colorScheme = theme;
-    void syncNativeWindowTheme(theme).catch(() => undefined);
+    nativeThemeReadyRef.current = syncNativeWindowTheme(theme).catch(() => undefined);
     return () => {
       delete document.documentElement.dataset.attachmentMediaTheme;
     };
@@ -176,7 +181,7 @@ export default function AttachmentMediaWindow() {
     const controller = new AbortController();
     void (async () => {
       if (!isAnimatedGifAttachment(attachment) && !attachment.previewAttachmentId) {
-        const recoveredUrl = await recoverAttachmentPreviewOnce(attachment);
+        const recoveredUrl = await recoverAttachmentPreviewOnce(attachment, { signal: controller.signal });
         if (controller.signal.aborted) return;
         if (recoveredUrl && recoveredUrl !== directPreviewUrl) {
           setRemotePreview({ attachmentIdentity, status: 'ready', url: recoveredUrl });
@@ -202,7 +207,7 @@ export default function AttachmentMediaWindow() {
           previewAttachmentId: attachment.previewAttachmentId ?? null,
           name: attachment.name,
           kind: 'image',
-          mimeType: attachment.mimeType ?? null,
+          mimeType: attachment.mimeType ?? null, sizeBytes: attachment.sizeBytes, widthPixels: attachment.widthPixels, heightPixels: attachment.heightPixels,
         },
         signal: controller.signal,
       });

@@ -32,35 +32,39 @@ export function captureVideoPosterDataUrl(video: HTMLVideoElement | null) {
   return captureVideoPreview(video)?.previewUrl ?? null;
 }
 
-function waitForVideoEvent(video: HTMLVideoElement, eventName: 'loadeddata' | 'loadedmetadata' | 'seeked') {
+function waitForVideoEvent(video: HTMLVideoElement, eventName: 'loadeddata' | 'loadedmetadata' | 'seeked', signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     const timer = window.setTimeout(() => finish(new Error('Video poster timed out.')), VIDEO_POSTER_TIMEOUT_MS);
     const finish = (error?: Error) => {
       window.clearTimeout(timer);
       video.removeEventListener(eventName, handleSuccess);
       video.removeEventListener('error', handleError);
+      signal?.removeEventListener('abort', handleAbort);
       if (error) reject(error);
       else resolve();
     };
     const handleSuccess = () => finish();
     const handleError = () => finish(new Error('Video poster could not load.'));
+    const handleAbort = () => finish(new DOMException('Video poster cancelled.', 'AbortError'));
+    signal?.addEventListener('abort', handleAbort, { once: true });
+    if (signal?.aborted) { handleAbort(); return; }
     video.addEventListener(eventName, handleSuccess, { once: true });
     video.addEventListener('error', handleError, { once: true });
   });
 }
 
-export async function videoPreviewFromSource(source: string) {
-  if (typeof document === 'undefined') return null;
+export async function videoPreviewFromSource(source: string, signal?: AbortSignal) {
+  if (signal?.aborted || typeof document === 'undefined') return null;
   const video = document.createElement('video');
   video.preload = 'auto';
   video.muted = true;
   video.playsInline = true;
   try {
-    const metadataReady = waitForVideoEvent(video, 'loadedmetadata');
+    const metadataReady = waitForVideoEvent(video, 'loadedmetadata', signal);
     video.src = source;
     await metadataReady;
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      await waitForVideoEvent(video, 'loadeddata');
+      await waitForVideoEvent(video, 'loadeddata', signal);
     }
     const firstFrame = captureVideoPreview(video);
     const seekTime = Number.isFinite(video.duration) && video.duration > 0.1
@@ -68,7 +72,7 @@ export async function videoPreviewFromSource(source: string) {
       : 0;
     if (seekTime <= 0) return firstFrame;
     try {
-      const frameReady = waitForVideoEvent(video, 'seeked');
+      const frameReady = waitForVideoEvent(video, 'seeked', signal);
       video.currentTime = seekTime;
       await frameReady;
       return captureVideoPreview(video) ?? firstFrame;

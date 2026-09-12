@@ -54,14 +54,17 @@ export function useCloudRealtimeMessages({
   client,
   mergeMessage,
   syncCloudCollaborationDiff,
+  setRealtimeConnected,
   reportWarning,
 }: {
   account: CloudAccount | null;
   client: CloudAuthClient;
   mergeMessage: (message: CloudMessage) => void;
   syncCloudCollaborationDiff: SyncCloudCollaborationDiff;
+  setRealtimeConnected: (connected: boolean) => void;
   reportWarning: (message: string, error: unknown) => void;
 }) {
+  const accountId = account?.accountId;
   const mergeMessageRef = useRef(mergeMessage);
   const syncCloudCollaborationDiffRef = useRef(
     syncCloudCollaborationDiff,
@@ -77,7 +80,7 @@ export function useCloudRealtimeMessages({
   }, [syncCloudCollaborationDiff]);
 
   useEffect(() => {
-    if (!account || typeof window === 'undefined') {
+    if (!accountId || typeof window === 'undefined') {
       return undefined;
     }
     const handleAcceptedContact = (event: Event) => {
@@ -101,10 +104,10 @@ export function useCloudRealtimeMessages({
         handleAcceptedContact,
       );
     };
-  }, [account]);
+  }, [accountId]);
 
   useEffect(() => {
-    if (!account) return;
+    if (!accountId) return;
     // Pin the socket to the account lifetime. Canonical state updates
     // frequently change callback identities; refs keep the socket stable.
     if (!cloudRealtimeWebSocketEnabled()) return;
@@ -117,7 +120,8 @@ export function useCloudRealtimeMessages({
     let initialHeartbeatTimer: number | null = null;
     let heartbeatAwaitingAck = false;
     let lastAppliedSeq = 0;
-    const accountIdAtOpen = account.accountId;
+    const accountIdAtOpen = accountId;
+    setRealtimeConnected(false);
 
     const clearHeartbeatTimers = () => {
       if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer);
@@ -156,7 +160,7 @@ export function useCloudRealtimeMessages({
     const open = async () => {
       try {
         const session = await loadSession();
-        if (!session?.token || cancelled) return;
+        if (!session?.token || session.accountId !== accountIdAtOpen || cancelled) return;
         await syncCloudCollaborationDiffRef.current();
         const local = await loadChatSyncCursor(accountIdAtOpen);
         if (!local?.cursor || cancelled) {
@@ -168,6 +172,7 @@ export function useCloudRealtimeMessages({
         const socket = new WebSocket(chatSyncWebSocketUrl(realtime.ticket));
         ws = socket;
         socket.onopen = () => {
+          if (cancelled || ws !== socket) return;
           reconnectAttempt = 0;
           socket.send(JSON.stringify({
             type: 'connect',
@@ -177,6 +182,7 @@ export function useCloudRealtimeMessages({
           }));
         };
         socket.onmessage = (event) => {
+          if (cancelled || ws !== socket) return;
           try {
             const frame = JSON.parse(typeof event.data === 'string' ? event.data : '') as {
               type?: string;
@@ -185,6 +191,7 @@ export function useCloudRealtimeMessages({
               event?: ChatSyncEvent;
             };
             if (frame.type === 'hello') {
+              setRealtimeConnected(true);
               const interval = Math.max(5_000, frame.heartbeat_interval_ms ?? 30_000);
               clearHeartbeatTimers();
               heartbeatTimer = window.setInterval(() => sendHeartbeat(socket), interval);
@@ -201,7 +208,8 @@ export function useCloudRealtimeMessages({
               return;
             }
             if (frame.type === 'resync_required') {
-              void syncCloudCollaborationDiffRef.current().finally(() => socket.close());
+              setRealtimeConnected(false);
+              void syncCloudCollaborationDiffRef.current().catch(() => {}).finally(() => socket.close());
               return;
             }
             if (frame.type !== 'event' || typeof frame.stream_seq !== 'number') return;
@@ -221,11 +229,15 @@ export function useCloudRealtimeMessages({
           }
         };
         socket.onclose = () => {
-          if (ws === socket) ws = null;
+          if (cancelled || ws !== socket) return;
+          setRealtimeConnected(false);
+          ws = null;
           clearHeartbeatTimers();
           scheduleReconnect();
         };
         socket.onerror = () => {
+          if (cancelled || ws !== socket) return;
+          setRealtimeConnected(false);
           socket.close();
         };
       } catch (error) {
@@ -241,6 +253,7 @@ export function useCloudRealtimeMessages({
     void open();
     return () => {
       cancelled = true;
+      setRealtimeConnected(false);
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -248,5 +261,5 @@ export function useCloudRealtimeMessages({
       clearHeartbeatTimers();
       ws?.close();
     };
-  }, [account, client, reportWarning]);
+  }, [accountId, client, reportWarning, setRealtimeConnected]);
 }

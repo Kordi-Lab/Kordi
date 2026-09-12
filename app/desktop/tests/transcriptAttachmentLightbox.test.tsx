@@ -210,9 +210,10 @@ test('native media payload is injected before first render and the image reveals
   assert.match(nativeSource, /payload:\s*serde_json::Value/);
   assert.match(nativeSource, /initialization_script\(&initialization_script\)/);
   assert.match(nativeSource, /window\.__KORDI_ATTACHMENT_MEDIA_PAYLOAD__/);
+  assert.match(nativeSource, /window\.__KORDI_ATTACHMENT_MEDIA_NATIVE_MATERIAL__[\s\S]*cfg!\(target_os = "macos"\)/);
   assert.match(viewerSource, /useState<AttachmentMediaWindowPayload \| null>\(\(\) => \([\s\S]*readAttachmentMediaPayload\(requestId\)/);
   assert.match(viewerSource, /onImageLoad=\{revealWindow\}/);
-  assert.match(lightboxSource, /onLoad=\{onImageLoad\}/);
+  assert.match(lightboxSource, /onLoad=\{presentDecodedImage\}/);
   assert.doesNotMatch(readFileSync(new URL('../src/styles/shell-media-lightbox.css', import.meta.url), 'utf8'), /app-attachment-image-lightbox-enter/);
 });
 

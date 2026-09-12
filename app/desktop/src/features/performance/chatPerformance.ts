@@ -1,3 +1,5 @@
+import { installReactPerformanceRetention } from './reactPerformanceRetention';
+
 export const CHAT_PERFORMANCE_EVENT = 'kordi:performance-span';
 export const CHAT_PERFORMANCE_STORAGE_KEY = 'kordi:performance-diagnostics';
 
@@ -219,4 +221,12 @@ export function readChatPerformanceRecords(): readonly ChatPerformanceRecord[] {
 export function clearChatPerformanceRecords() {
   records.length = 0;
   pendingSessionClick = null;
+}
+
+
+if (import.meta.env?.DEV) {
+  const dispose = installReactPerformanceRetention({
+    retainHistory: import.meta.env.VITE_KORDI_RETAIN_REACT_PERFORMANCE_HISTORY === '1',
+  });
+  import.meta.hot?.dispose(dispose);
 }

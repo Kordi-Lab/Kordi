@@ -33,8 +33,16 @@ pub(crate) async fn desktop_open_media_preview_window(
 
     let media_path = format!("index.html?mediaPreview=1&mediaPreviewRequest={request_id}");
     let serialized_payload = serde_json::to_string(&payload).map_err(|error| error.to_string())?;
-    let initialization_script =
-        format!("window.__KORDI_ATTACHMENT_MEDIA_PAYLOAD__ = {serialized_payload};");
+    let initialization_script = format!(
+        "window.__KORDI_ATTACHMENT_MEDIA_PAYLOAD__ = {serialized_payload};\
+         window.__KORDI_ATTACHMENT_MEDIA_NATIVE_MATERIAL__ = {};",
+        cfg!(target_os = "macos")
+    );
+    let theme = match payload.get("theme").and_then(serde_json::Value::as_str) {
+        Some("light") => Some(tauri::Theme::Light),
+        Some("dark") => Some(tauri::Theme::Dark),
+        _ => None,
+    };
     let builder = tauri::WebviewWindowBuilder::new(
         &app,
         MEDIA_PREVIEW_WINDOW_LABEL,
@@ -45,6 +53,7 @@ pub(crate) async fn desktop_open_media_preview_window(
     } else {
         title.trim()
     })
+    .theme(theme)
     .initialization_script(&initialization_script)
     .inner_size(1080.0, 760.0)
     .min_inner_size(520.0, 360.0)
@@ -65,7 +74,7 @@ pub(crate) async fn desktop_open_media_preview_window(
         .hidden_title(true)
         .effects(tauri::utils::config::WindowEffectsConfig {
             effects: vec![tauri::window::Effect::UnderWindowBackground],
-            state: Some(tauri::window::EffectState::FollowsWindowActiveState),
+            state: Some(tauri::window::EffectState::Active),
             radius: Some(12.0),
             color: None,
         });

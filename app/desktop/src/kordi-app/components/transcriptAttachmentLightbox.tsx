@@ -1,5 +1,5 @@
 import { LivePhotoPlayback } from './livePhotoPlayback';
-import { useEffect, useId, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type MouseEvent } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
 
 import { shouldDismissAttachmentImageLightboxForTarget } from './transcriptAttachmentLightboxHitTest';
@@ -46,6 +46,24 @@ export function AttachmentImageLightbox({
   const instructionId = useId();
   const imageName = attachment.name?.trim() || 'Attached image';
   const imageDescription = attachment.altText?.trim() || imageName;
+  const presentedSource = useRef<string | null>(null);
+  const presentDecodedImage = useCallback(() => {
+    const image = imageRef.current;
+    if (!image) return;
+    const source = image.currentSrc || image.src;
+    const decoded = typeof image.decode === 'function' ? image.decode() : Promise.resolve();
+    void decoded.then(() => {
+      if (imageRef.current !== image || (image.currentSrc || image.src) !== source
+        || !image.naturalWidth || presentedSource.current === source) return;
+      image.getBoundingClientRect();
+      presentedSource.current = source;
+      onImageLoad?.();
+    }).catch(() => undefined);
+  }, [onImageLoad]);
+  useEffect(() => {
+    if (imageRef.current?.complete && imageRef.current.naturalWidth) presentDecodedImage();
+  }, [presentDecodedImage, previewUrl]);
+
 
   useEffect(() => {
     dialogRef.current?.focus({ preventScroll: true });
@@ -94,7 +112,7 @@ export function AttachmentImageLightbox({
           data-attachment-image-zoom={zoom}
           style={{ transform: `scale(${zoom})` }}
           draggable={false}
-          onLoad={onImageLoad}
+          onLoad={presentDecodedImage}
           onError={onImageError}
           onContextMenu={onContextMenu}
         />

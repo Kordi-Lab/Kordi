@@ -21,7 +21,7 @@ test.afterEach(async () => {
   await cleanupVirtualTranscriptHarness();
 });
 
-test('a visible reaction resize moves earlier content while keeping later messages fixed', async () => {
+test('a visible reaction resize preserves the reading position while later content relayouts', async () => {
   const view = await render(transcript({
     items: rows('reaction-', 0, 30, 50),
     sessionKey: 'reaction-resize',
@@ -40,6 +40,7 @@ test('a visible reaction resize moves earlier content while keeping later messag
   assert.ok(laterRow);
   const reactedBottom = virtualRowStart(reactedRow) - viewport.scrollTop + reactedRow.offsetHeight;
   const laterTop = virtualRowStart(laterRow) - viewport.scrollTop;
+  const scrollTop = viewport.scrollTop;
 
   await act(async () => {
     reactedMessage.dataset.testRowHeight = '80';
@@ -48,9 +49,10 @@ test('a visible reaction resize moves earlier content while keeping later messag
 
   assert.equal(
     virtualRowStart(reactedRow) - viewport.scrollTop + reactedRow.offsetHeight,
-    reactedBottom,
+    reactedBottom + 30,
   );
-  assert.equal(virtualRowStart(laterRow) - viewport.scrollTop, laterTop);
+  assert.equal(viewport.scrollTop, scrollTop);
+  assert.equal(virtualRowStart(laterRow) - viewport.scrollTop, laterTop + 30);
 });
 
 test('late media growth keeps a newly opened transcript pinned to its final message', async () => {

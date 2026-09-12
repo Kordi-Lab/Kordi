@@ -1,5 +1,6 @@
 import type { CanonicalSessionMessage } from '@/kordi-app/types';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
+import { parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { isCloudAgentControlMessage } from '@/features/cloud/cloudAgentMessages';
 
 function contentRecord(value: unknown): Record<string, unknown> {
@@ -27,7 +28,14 @@ export function isSynchronizationOnlyCloudGroupTitleNotice(message: CanonicalSes
 }
 
 export function isInternalCloudAgentControlMessage(message: CanonicalSessionMessage) {
-  return isCloudAgentControlMessage(message.contentText.trim());
+  const text = message.contentText.trim();
+  const content = contentRecord(message.content);
+  const normalized = content.schemaVersion === 1 && content.kind === 'message';
+  const envelope = normalized ? null : parseCloudDirectMessageEnvelope(text);
+  return content.synchronizationOnly === true
+    || envelope?.synchronizationOnly === true
+    || (Boolean(envelope) && message.messageKind === 'agent-model-change')
+    || (!normalized && isCloudAgentControlMessage(text));
 }
 
 export function canonicalMessageCountsAsReadable(message: CanonicalSessionMessage) {

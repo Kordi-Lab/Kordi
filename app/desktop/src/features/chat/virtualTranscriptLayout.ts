@@ -6,7 +6,7 @@ export const TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT = 72;
 export const preserveMeasuredDisclosurePosition = () => false;
 
 export function preserveMeasuredTranscriptRow(
-  item: { start: number },
+  item: { start: number; end: number },
   delta: number,
   instance: {
     scrollOffset: number | null;
@@ -15,8 +15,13 @@ export function preserveMeasuredTranscriptRow(
   tailAlignmentActiveRef: MutableRefObject<boolean>,
   tailAlignmentTargetRef: MutableRefObject<number | null>,
 ) {
-  const preserve = item.start < (instance.scrollOffset ?? 0)
-    + (instance.scrollRect?.height ?? 0);
+  const scrollTop = instance.scrollOffset ?? 0;
+  // History readers anchor the first visible row, including its pixel offset.
+  // Resizing that row or anything below it must not move the viewport. Tail
+  // following has a separate policy so late media still lands at the bottom.
+  const preserve = tailAlignmentActiveRef.current
+    ? item.start < scrollTop + (instance.scrollRect?.height ?? 0)
+    : item.end <= scrollTop;
   if (
     preserve
     && tailAlignmentActiveRef.current

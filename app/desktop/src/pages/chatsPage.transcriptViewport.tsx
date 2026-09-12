@@ -7,6 +7,7 @@ import { collectConversationImageAttachments, shouldPreviewAttachmentInline } fr
 import { createTranscriptTimeSeparatorCache } from '@/features/chat/transcriptTimestamps';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
+import { estimateTranscriptMessageHeight } from '@/features/chat/transcriptHeightEstimate';
 import { MessageBubble } from '@/kordi-app/components';
 import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 import type { Message } from '@/kordi-app/types';
@@ -173,6 +174,7 @@ export function useChatTranscriptViewport({
   return useMemo(() => (
     <VirtualTranscript
       items={transcriptEntries}
+      estimateSize={(entry) => estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]))}
       sessionKey={sessionKey}
       scrollRef={scrollRef}
       scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}

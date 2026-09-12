@@ -192,7 +192,10 @@ export async function loadChatSyncDeletedMessageIds(accountId: string): Promise<
 export async function applyChatSyncLocalBatch(request: ApplyChatSyncRequest) {
   if (!isNativeDesktopShell()) return null;
   const result = await invokeDesktop<ChatSyncApplyResult>('desktop_chat_sync_apply', { request });
-  publishChatSyncLocalStateChanged();
+  if (request.bootstrap || request.conversations?.length || request.messages?.length
+    || request.events?.length || result.changedConversationHeads.length) {
+    publishChatSyncLocalStateChanged();
+  }
   return result;
 }
 

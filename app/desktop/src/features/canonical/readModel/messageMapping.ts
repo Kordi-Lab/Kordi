@@ -1,23 +1,26 @@
+import { canonicalMessageRole } from './messageRole';
+export { canonicalMessageRole } from './messageRole';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { cloudAgentFallbackErrorNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
-import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
+import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import type {
 CanonicalIdentity,CanonicalSessionMessage,CanonicalSessionState,
 DesktopChatToolSnapshot,Message,MessageActionMetadata,
 } from '@/kordi-app/types';
-import { isSelfReferenceName,rewriteLeadingFirstPersonAgentMention,selfDisplayName } from '@/lib/identityLabels';
+import { isSelfReferenceName, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
-import { agentMessagePresentation,ownerScopedAgentName } from './agentMessagePresentation';
+import { agentMessagePresentation, ownerScopedAgentName } from './agentMessagePresentation';
 import { canonicalAttachments } from './attachmentMapping';
 import { canonicalCallActivity } from './callActivity';
 import { canonicalMentions } from './mentionMapping';
-import { canonicalMessageAction,canonicalMessageActionSourceReference } from './messageActionMapping';
-import { canonicalReadReceiptSummary,contentRecord,numberValue,stringValue } from "./messageContent";
+import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
+import { canonicalReadReceiptSummary, contentRecord, numberValue, stringValue } from "./messageContent";
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
-import { isInternalCloudAgentControlMessage,isPlaceholderSessionTitleNotice,isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 
 export { ownerScopedAgentName } from './agentMessagePresentation';
 
@@ -149,24 +152,6 @@ function agentLabelForHumanIdentity(
     .find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity.id)
     ?.displayName ?? 'Kordi';
 }
-export function canonicalMessageRole(
-  message: CanonicalSessionMessage,
-  identity?: CanonicalIdentity,
-  profileHumanIdentityId?: string | null,
-): Message['role'] {
-  if (message.messageKind === 'agent-model-change') return 'system';
-  if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(message.senderRole)) {
-    if (
-      message.senderRole === 'external-agent'
-      && identity?.kind === 'agent'
-      && identity.ownerIdentityId === profileHumanIdentityId?.trim()
-    ) return 'owned-agent';
-    return message.senderRole as Message['role'];
-  }
-  if (identity?.kind === 'agent') return identity.source === 'local' ? 'owned-agent' : 'external-agent';
-  return 'person';
-}
-
 export function canonicalMessageIsComplete(message: CanonicalSessionMessage, content: Record<string, unknown>) {
   const status = message.status.toLowerCase();
   const deliveryState = stringValue(content.deliveryState)?.toLowerCase();
@@ -316,7 +301,11 @@ export function mapCanonicalMessage(
   context: MapCanonicalMessageContext = {},
 ): Message | null {
   if (isPlaceholderSessionTitleNotice(message) || isSynchronizationOnlyCloudGroupTitleNotice(message) || isInternalCloudAgentControlMessage(message)) return null;
-  const content = contentRecord(message.content);
+  const contentText = message.contentText;
+  const storedContent = contentRecord(message.content);
+  const normalized = storedContent.schemaVersion === 1 && storedContent.kind === 'message';
+  const directEnvelope = normalized ? null : parseCloudDirectMessageEnvelope(contentText);
+  const content: Record<string, unknown> = { ...(directEnvelope ?? {}), ...storedContent };
   const sourceTransport = message.sourceTransport?.trim() ?? '';
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
@@ -327,7 +316,7 @@ export function mapCanonicalMessage(
     ? 'queued'
     : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
-  const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
+  const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
@@ -405,7 +394,7 @@ export function mapCanonicalMessage(
     return name === 'task_operator' || name === 'update_plan';
   });
   const visibleTools = role === 'owned-agent' || (role === 'external-agent' && hasSharedModelTaskTools) ? tools : [];
-  const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
+  const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(normalized ? contentText : cloudDirectMessageDisplayText(contentText)), content);
   const mentions = canonicalMentions(content.mentions);
   const rawDisplayText = !isOwnMessage && role === 'person'
     ? rewriteLeadingFirstPersonAgentMention(

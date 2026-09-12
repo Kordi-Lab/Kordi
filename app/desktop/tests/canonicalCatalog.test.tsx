@@ -466,3 +466,20 @@ test('product startup and Cloud replay no longer invoke the full canonical snaps
   assert.match(canonicalStoreSource, /fetchCanonicalSessionCatalog/);
   assert.match(canonicalStoreSource, /fetchCanonicalSessionMessages/);
 });
+
+
+test('timeline hydration removes sparse old notices until their page, even after catalog refresh', () => {
+  const oldJoin = { ...message('join', 'session:one', 999), createdAtMs: 1, senderRole: 'system' };
+  const shell = catalog();
+  shell.summaries[0].latestMessage = oldJoin;
+  let store = mergeCanonicalCatalog(createCanonicalStore(), shell);
+  const recent = Array.from({ length: 25 }, (_, index) => message(`recent:${index}`, 'session:one', index + 100));
+  store = mergeCanonicalMessagePage(store, { sessionId: 'session:one', messages: recent,
+    oldestSequenceNum: 100, newestSequenceNum: 124, hasOlder: true, timelineOrder: true, replaceWindow: true });
+  assert.deepEqual(store.messagesBySessionId['session:one'], recent);
+  store = mergeCanonicalCatalog(store, shell);
+  assert.deepEqual(store.messagesBySessionId['session:one'], recent);
+  store = mergeCanonicalMessagePage(store, { sessionId: 'session:one', messages: [oldJoin, message('older', 'session:one', 2)],
+    oldestSequenceNum: 999, newestSequenceNum: 2, hasOlder: false, timelineOrder: true });
+  assert.deepEqual(store.messagesBySessionId['session:one'].slice(0, 2).map(row => row.id), ['join', 'older']);
+});

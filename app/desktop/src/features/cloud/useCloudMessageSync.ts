@@ -1,4 +1,6 @@
 import { cloudMessageDeletions } from './cloudMessageDeletions';
+import { useCloudRepairPolling } from './useCloudRepairPolling';
+import { createCloudHistoryRepair } from './cloudHistoryRepair';
 import {
   useCallback,
   useEffect,
@@ -42,9 +44,7 @@ import {
 } from '@/lib/desktopChatSync';
 import { pruneMissingCanonicalCloudMessages } from '@/features/canonical/canonicalMessageSources';
 
-// Realtime uses the Cloud WebSocket; this interval repairs missed frames and
-// temporary disconnects without polling several times per second.
-export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
+export { CLOUD_MESSAGES_REFRESH_MS } from './cloudRepairPolling';
 const CLOUD_SYNC_EVENT_PAGE_LIMIT = 1_000;
 
 export function useCloudMessageSync({
@@ -90,12 +90,12 @@ export function useCloudMessageSync({
   } = stores.pinnedGroupSpaceIds;
   const pendingRequestRef = useRef<PendingCloudSyncRequest | null>(null);
   const startupSnapshotContextRef = useRef<string | null>(null);
-  const historyHydrationRef = useRef<Promise<void> | null>(null);
+  const historyRepairRef = useRef(createCloudHistoryRepair());
 
   useEffect(() => {
     pendingRequestRef.current = null;
     startupSnapshotContextRef.current = null;
-    historyHydrationRef.current = null;
+    historyRepairRef.current = createCloudHistoryRepair();
   }, [account?.accountId, coordinator]);
 
   const markUnreadReadiness = useCallback((
@@ -186,6 +186,8 @@ export function useCloudMessageSync({
             events: response.chat.events,
           });
           if (!coordinator.isCurrentGeneration(generation)) return;
+          if (response.chat.bootstrap || response.chat.conversations.length > 0
+            || response.chat.messages.length > 0 || response.chat.events.length > 0) historyRepairRef.current.invalidate();
           publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId, response.events);
           for (const event of response.events) if (event.eventType === 'message.deleted' && event.messageId) deletedMessageIds.add(event.messageId);
           directoryBootstrapPending ||= chatEventsRequireDirectoryBootstrap(response.chat.events);
@@ -392,13 +394,14 @@ export function useCloudMessageSync({
         await Promise.all([hydrateChatLocalState(generation), refreshCloudAgents(generation).catch(() => {})]);
       }
       await syncDiffOnceForGeneration(generation, request.mode === 'full' || !hasCachedCloudSessionVisibility(account?.accountId));
-      if (!historyHydrationRef.current) {
-        const hydration = hydrateMissingChatHistory(generation);
-        historyHydrationRef.current = hydration;
+      if (!coordinator.isCurrentGeneration(generation)) return;
+      if (request.mode !== 'diff') historyRepairRef.current.invalidate();
+      const hydration = historyRepairRef.current.run(() => hydrateMissingChatHistory(generation));
+      if (hydration) {
         void hydration.then(() => markUnreadReadiness('ready', generation, bootstrapPeerKey))
-          .catch(() => markUnreadReadiness('error', generation, bootstrapPeerKey)).finally(() => {
-          if (historyHydrationRef.current === hydration) historyHydrationRef.current = null;
-        });
+          .catch(() => markUnreadReadiness('error', generation, bootstrapPeerKey));
+      } else {
+        markUnreadReadiness('ready', generation, bootstrapPeerKey);
       }
     } catch (error) {
       if (request.mode !== 'diff' || request.settleInitialMessages) {
@@ -409,6 +412,7 @@ export function useCloudMessageSync({
   }, [
     account,
     bootstrapPeerKey,
+    coordinator,
     hydrateMissingChatHistory,
     hydrateChatLocalState,
     markUnreadReadiness,
@@ -462,10 +466,6 @@ export function useCloudMessageSync({
         }
       });
     }
-    const interval = window.setInterval(() => {
-      void syncCloudCollaborationDiff();
-    }, CLOUD_MESSAGES_REFRESH_MS);
-    return () => window.clearInterval(interval);
   }, [
     account,
     bootstrapCloudMessages,
@@ -474,8 +474,14 @@ export function useCloudMessageSync({
     coordinator,
     syncCloudCollaborationDiff,
   ]);
+  const setRealtimeConnected = useCloudRepairPolling(
+    account?.accountId,
+    contactsSettled && Boolean(cloudUnreadContextKey),
+    syncCloudCollaborationDiff,
+  );
   return {
     refreshCloudMessages,
     syncCloudCollaborationDiff,
+    setRealtimeConnected,
   };
 }

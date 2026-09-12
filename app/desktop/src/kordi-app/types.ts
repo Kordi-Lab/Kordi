@@ -455,13 +455,7 @@ export type CanonicalSessionCatalog = Omit<CanonicalSessionState, 'messages' | '
   summaries: CanonicalSessionSummary[];
 };
 
-export type CanonicalMessagePage = {
-  sessionId: string;
-  messages: CanonicalSessionMessage[];
-  oldestSequenceNum: number | null;
-  newestSequenceNum: number | null;
-  hasOlder: boolean;
-};
+export type { CanonicalTimelineCursor, CanonicalMessagePage } from './types/canonicalHistory';
 
 export type CanonicalReadCursorDelta = {
   sessionId: string;

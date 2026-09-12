@@ -7,6 +7,7 @@ import {
   parseCloudGroupControl,
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
+import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from './cloudDirectMessages';
 import { parseCloudAgentResponse } from './cloudAgentMessages';
 import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
@@ -218,6 +219,7 @@ function groupMessageBody(
   const groupId = conversation.legacy_session_id?.trim() || conversation.id.trim();
   if (!isCloudGroupSessionId(groupId) || participants.length === 0) return null;
   const agentResponse = parseCloudAgentResponse(text);
+  const directMessage = parseCloudDirectMessageEnvelope(text);
 
   return encodeCloudGroupControl({
     kind: 'group-message',
@@ -230,14 +232,16 @@ function groupMessageBody(
     message: {
       id: message.id,
       senderAccountId: message.sender_account_id,
-      text: agentResponse?.text ?? text,
+      text: agentResponse?.text ?? cloudDirectMessageDisplayText(text),
       createdAtMs: Date.parse(message.created_at) || Date.now(),
       senderKind: agentResponse ? 'agent' : 'human',
       senderDisplayName: agentResponse
         ? `${actor.displayName}'s Kordi`
         : actor.displayName,
       messageKind: message.kind,
-      structuredContent: recordValue(message.content),
+      structuredContent: { ...recordValue(message.content), ...(directMessage ?? {}),
+        ...(directMessage && message.kind === 'agent-model-change' ? { synchronizationOnly: true } : {}),
+      },
       ...(agentResponse ? {
         deliveryState: agentResponse.deliveryState,
         replyToMessageId: agentResponse.requestId,

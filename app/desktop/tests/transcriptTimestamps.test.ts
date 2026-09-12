@@ -17,7 +17,7 @@ function message(timestampMs: number | null, overrides: Partial<Message> = {}): 
   };
 }
 
-test('transcript separators follow the thirty-minute last-label rule', () => {
+test('transcript separators follow gaps between adjacent messages', () => {
   const start = Date.parse('2026-08-08T10:00:00.000Z');
   const messages = [
     message(start),
@@ -32,7 +32,7 @@ test('transcript separators follow the thirty-minute last-label rule', () => {
       timeZone: 'UTC',
       locales: 'en-US',
     }),
-    ['10:00', null, '10:30', null],
+    ['10:00', null, null, null],
   );
 });
 
@@ -66,7 +66,7 @@ test('messages without exact timestamps do not create guessed separators', () =>
   );
 });
 
-test('every transcript event gets its own timestamp component', () => {
+test('nearby transcript events share the surrounding time boundary', () => {
   const start = Date.parse('2026-08-08T10:00:00.000Z');
   const messages = [
     message(start),
@@ -80,7 +80,7 @@ test('every transcript event gets its own timestamp component', () => {
       timeZone: 'UTC',
       locales: 'en-US',
     }),
-    ['10:00', '10:01', '10:02'],
+    ['10:00', null, null],
   );
 });
 
@@ -133,4 +133,17 @@ test('cached separators handle prepend, deletion, edits, midnight, locale, and t
   for (const { messages, ...options } of cases) {
     assert.deepEqual(cache(messages, options), transcriptTimeSeparatorLabels(messages, options));
   }
+});
+
+
+test('prepending history changes only the old boundary label, not later labels', () => {
+  const start = Date.UTC(2026, 0, 1);
+  const original = [20, 40, 60, 120].map((minute) => message(start + minute * 60_000));
+  const options = { now: start, timeZone: 'UTC', locales: 'en-US' };
+  const before = transcriptTimeSeparatorLabels(original, options);
+  const after = transcriptTimeSeparatorLabels([message(start), ...original], options);
+  assert.equal(before[0], '00:20');
+  assert.equal(after[1], null);
+  assert.deepEqual(after.slice(2), before.slice(1));
+  assert.equal(after.at(-1), '02:00', 'real inactivity gaps still get labels');
 });

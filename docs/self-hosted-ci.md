@@ -78,8 +78,22 @@ pnpm --dir app/desktop exec playwright install webkit
 pnpm --dir app/desktop test:visual livePhoto.spec.ts --project webkit-live-photo
 ```
 
-Record that result in the pull request; a green CI visual job reports Chromium
-coverage only. Do not run pull-request code under an operator account or weaken
+For desktop startup, history, or media lifecycle changes, also run the complete
+production entrypoints and media-continuity regression on a logged-in development
+Mac. These tests use synthetic data and do not require a product account:
+
+```bash
+pnpm --dir app/desktop exec playwright test -c playwright.production.config.ts --project webkit
+pnpm --dir app/desktop exec playwright test -c playwright.media-retention.config.ts --project webkit
+```
+
+If the default test ports are occupied, set `KORDI_PRODUCTION_TEST_PORT` and
+`KORDI_HISTORY_TEST_PORT` to unused loopback ports. Record the tested commit and
+results in the pull request. The CI visual job covers Chromium transient
+surfaces, media continuity, and complete production entrypoints; its green
+status does not represent WebKit coverage.
+
+Do not run pull-request code under an operator account or weaken
 the runner account isolation to obtain a graphical session.
 
 ## Synthetic database tests

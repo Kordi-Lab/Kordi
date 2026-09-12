@@ -17,7 +17,17 @@ export type PreviewDownloadClient = Pick<CloudAuthClient, 'downloadAttachmentCon
 export type CloudAttachmentPreviewTarget = Pick<
   CloudMessageAttachment,
   'attachmentId' | 'previewAttachmentId' | 'name' | 'kind' | 'mimeType'
->;
+> & Partial<Pick<CloudMessageAttachment, 'sizeBytes' | 'widthPixels' | 'heightPixels'>>;
+
+// Includes encoded bytes and a conservative single decoded frame when source
+// dimensions are available. Animation frames and WebKit/GPU overhead vary.
+export function cloudPreviewMemoryCost(attachment: CloudAttachmentPreviewTarget, encodedBytes: number) {
+  const width = attachment.widthPixels ?? 0;
+  const height = attachment.heightPixels ?? 0;
+  const frameBytes = Number.isFinite(width) && Number.isFinite(height)
+    && width > 0 && height > 0 ? width * height * 4 : 0;
+  return Math.max(0, encodedBytes) + frameBytes;
+}
 
 export async function loadCloudAttachmentPreview({
   token,
@@ -25,12 +35,14 @@ export async function loadCloudAttachmentPreview({
   attachment,
   signal,
   createObjectUrl = (blob) => URL.createObjectURL(blob),
+  onMemoryCost,
 }: {
   token: string;
   client: PreviewDownloadClient;
   attachment: CloudAttachmentPreviewTarget;
   signal?: AbortSignal;
   createObjectUrl?: (blob: Blob) => string;
+  onMemoryCost?: (bytes: number) => void;
 }) {
   const isVideo = isMp4VideoAttachment(attachment);
   if (attachment.kind !== 'image' && !isVideo) return null;
@@ -41,7 +53,10 @@ export async function loadCloudAttachmentPreview({
   const previewCacheName = isVideo ? `${attachment.name}.preview.jpg` : attachment.name;
   if (isNativeDesktopShell()) {
     const cachedPath = await loadCachedCloudAttachmentLocalPath(previewCacheId, previewCacheName);
-    if (cachedPath) return convertFileSrc(cachedPath);
+    if (cachedPath) {
+      onMemoryCost?.(cloudPreviewMemoryCost(attachment, attachment.sizeBytes ?? 1024 * 1024));
+      return convertFileSrc(cachedPath);
+    }
   }
   const isAnimatedGif = isAnimatedGifAttachment(attachment);
   const contentAttachmentId = isVideo || isAnimatedGif
@@ -61,5 +76,6 @@ export async function loadCloudAttachmentPreview({
   if (isNativeDesktopShell()) {
     await persistCloudAttachmentBytes(previewCacheId, previewCacheName, blob);
   }
+  onMemoryCost?.(cloudPreviewMemoryCost(attachment, blob.size));
   return createObjectUrl(blob);
 }

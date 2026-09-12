@@ -9,6 +9,15 @@ import type { TranscriptSelectionProps } from './transcriptSelection';
 import type { TranscriptDisclosureDirection } from './transcriptStableDisclosure';
 import type { VirtualTranscriptNavigationRequest } from './useVirtualTranscriptNavigation';
 
+export type AlignedTranscriptSession = {
+  sessionKey: string;
+  itemCount: number;
+  lastItemKey: string;
+  tailKey: string;
+  totalSize: number;
+  viewportSize: number;
+};
+
 export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   items: readonly Item[];
   sessionKey: string;

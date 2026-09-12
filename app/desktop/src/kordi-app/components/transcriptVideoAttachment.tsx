@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { acquireCloudAttachmentPreviewLease, cachedCloudAttachmentPreviewResource, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachmentPreviewCache';
 import { LoaderCircle, Maximize2, Play, RotateCcw } from 'lucide-react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useTranscriptMediaActive } from './transcriptMediaActivity';
+import { useInlineVideoLifecycle } from './useInlineVideoLifecycle';
+import { cacheVideoPresentation, videoPresentationCache } from './videoPresentationCache';
 
 import {
   attachmentVideoDisplaySize,
@@ -10,6 +14,10 @@ import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { videoPreviewFromSource } from '@/features/chat/composerVideoPreview';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import {
+  cacheCloudAttachmentLocalPath,
+  loadCachedCloudAttachmentLocalPath,
+} from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { cloudAttachmentPlaybackUrl } from '@/features/cloud/cloudAttachmentPlayback';
 import { loadVisibleCloudAttachmentPreview } from '@/features/cloud/cloudAttachments';
 import {
@@ -18,39 +26,17 @@ import {
   resolveCloudAttachmentUploadProgress,
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
-import {
-  cacheCloudAttachmentLocalPath,
-  loadCachedCloudAttachmentLocalPath,
-} from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
+import { isNativeDesktopShell } from '@/lib/desktop';
+import { downloadDesktopCloudAttachment } from '@/lib/desktopCloudAttachmentCache';
 import {
   imagePixelDimensionsFromUrl,
   normalizedImagePixelDimensions,
 } from '@/lib/imageDimensions';
-import { isNativeDesktopShell } from '@/lib/desktop';
-import { downloadDesktopCloudAttachment } from '@/lib/desktopCloudAttachmentCache';
 import type { MessageAttachment } from '../types';
 import { AttachmentImageLoadingSurface } from './transcriptAttachmentImageSurfaces';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
-
-type CachedVideoPresentation = {
-  posterUrl: string;
-  widthPixels: number;
-  heightPixels: number;
-};
-
-const videoPresentationCache = new Map<string, CachedVideoPresentation>();
-
-function cacheVideoPresentation(key: string, presentation: CachedVideoPresentation) {
-  videoPresentationCache.delete(key);
-  videoPresentationCache.set(key, presentation);
-  while (videoPresentationCache.size > 128) {
-    const oldest = videoPresentationCache.keys().next().value;
-    if (typeof oldest !== 'string') break;
-    videoPresentationCache.delete(oldest);
-  }
-}
 
 export function AttachmentVideoCard({
   attachment,
@@ -63,7 +49,9 @@ export function AttachmentVideoCard({
   time?: string | null;
   onRetry?: () => void;
 }) {
+  const mediaActive = useTranscriptMediaActive();
   const attachmentId = attachment.attachmentId?.trim() ?? '';
+  const resourceId = attachment.previewAttachmentId?.trim() || attachmentId;
   const presentationCacheKey = attachmentId
     || attachment.localPath?.trim()
     || `${attachment.name}:${attachment.sizeBytes ?? ''}`;
@@ -76,8 +64,9 @@ export function AttachmentVideoCard({
   const directPosterUrl = attachment.previewUrl?.startsWith('data:image/')
     ? attachment.previewUrl
     : null;
-  const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(
-    cachedPresentation?.posterUrl ?? null,
+  const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(() =>
+    cachedCloudAttachmentPreviewResource(resourceId)?.previewUrl
+      ?? cachedCloudAttachmentPreviewResource(`video-poster:${presentationCacheKey}`)?.previewUrl ?? null,
   );
   const [localPosterUrl, setLocalPosterUrl] = useState<string | null>(null);
   const [localVideoDimensions, setLocalVideoDimensions] = useState<{
@@ -92,8 +81,15 @@ export function AttachmentVideoCard({
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsTimer = useRef<number | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const posterLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
+  useLayoutEffect(() => {
+    if (!remotePosterUrl || posterLeaseRef.current) return;
+    const resource = cachedCloudAttachmentPreviewResource(resourceId);
+    if (resource?.previewUrl === remotePosterUrl) posterLeaseRef.current = acquireCloudAttachmentPreviewLease(resource);
+  }, [remotePosterUrl, resourceId]);
+  useEffect(() => () => { posterLeaseRef.current?.release(); posterLeaseRef.current = null; }, []);
   const downloadedLocalPath = useRef<string | null>(null);
-  const playbackEnded = useRef(false);
+  const { playbackEndedRef, resumeTimeRef } = useInlineVideoLifecycle(videoRef, mediaActive, playbackRequested);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
   const posterUrl = directPosterUrl ?? remotePosterUrl ?? localPosterUrl;
   const declaredVideoDimensions = normalizedImagePixelDimensions(
@@ -189,9 +185,10 @@ export function AttachmentVideoCard({
   }, [directPosterUrl, rememberPresentation, videoDimensions]);
 
   useEffect(() => {
-    if (directPosterUrl || remotePosterUrl || !attachmentId) return;
+    if (!mediaActive || directPosterUrl || remotePosterUrl || !attachmentId) return;
     const controller = new AbortController();
     let previewLease: Awaited<ReturnType<typeof loadVisibleCloudAttachmentPreview>> = null;
+    let published = false;
     void loadSession().then(async (session) => {
       if (!session?.token || controller.signal.aborted) return;
       const loaded = await loadVisibleCloudAttachmentPreview({
@@ -202,26 +199,32 @@ export function AttachmentVideoCard({
           previewAttachmentId: attachment.previewAttachmentId ?? null,
           name: attachment.name,
           kind: attachment.kind,
-          mimeType: attachment.mimeType ?? null,
+          mimeType: attachment.mimeType ?? null, sizeBytes: attachment.sizeBytes, widthPixels: attachment.widthPixels, heightPixels: attachment.heightPixels,
         },
         signal: controller.signal,
       })
         .catch(() => null);
-      if (!loaded || controller.signal.aborted) return;
+      if (!loaded) return;
+      if (controller.signal.aborted) { loaded.release(); return; }
       previewLease = loaded;
       const dimensions = await imagePixelDimensionsFromUrl(loaded.previewUrl);
       if (controller.signal.aborted || !dimensions) return;
+      posterLeaseRef.current?.release();
+      posterLeaseRef.current = loaded;
+      published = true;
       rememberPresentation(loaded.previewUrl, dimensions, 'remote');
     });
     return () => {
       controller.abort();
-      previewLease?.release();
+      if (!published) previewLease?.release();
     };
   }, [
+    mediaActive,
     attachment.kind,
     attachment.mimeType,
     attachment.name,
     attachment.previewAttachmentId,
+    attachment.sizeBytes, attachment.widthPixels, attachment.heightPixels,
     attachmentId,
     directPosterUrl,
     rememberPresentation,
@@ -229,9 +232,10 @@ export function AttachmentVideoCard({
   ]);
 
   useEffect(() => {
-    if (directPosterUrl || remotePosterUrl || localPosterUrl || !posterGenerationSource) return;
+    if (!mediaActive || directPosterUrl || remotePosterUrl || localPosterUrl || !posterGenerationSource) return;
     let cancelled = false;
-    void videoPreviewFromSource(posterGenerationSource).then((preview) => {
+    const controller = new AbortController();
+    void videoPreviewFromSource(posterGenerationSource, controller.signal).then((preview) => {
       if (!cancelled && preview) {
         rememberPresentation(preview.previewUrl, {
           widthPixels: preview.widthPixels,
@@ -239,8 +243,9 @@ export function AttachmentVideoCard({
         }, 'local');
       }
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [
+    mediaActive,
     directPosterUrl,
     localPosterUrl,
     posterGenerationSource,
@@ -261,7 +266,7 @@ export function AttachmentVideoCard({
       );
       setPlaybackUrl(url);
       setPhase('ready');
-      playbackEnded.current = false;
+      playbackEndedRef.current = false;
       setPlaybackRequested(true);
       if (isNativeDesktopShell()) {
         // ponytail: playback and durable caching use separate transfers until
@@ -273,7 +278,7 @@ export function AttachmentVideoCard({
         ).then((path) => {
           cacheCloudAttachmentLocalPath(attachmentId, path);
           downloadedLocalPath.current = path;
-          if (playbackEnded.current) {
+          if (playbackEndedRef.current) {
             setFailedSource(null);
             setLocalPath(path);
           }
@@ -282,7 +287,7 @@ export function AttachmentVideoCard({
     } catch {
       setPhase('error');
     }
-  }, [attachment.name, attachmentId]);
+  }, [attachment.name, attachmentId, playbackEndedRef]);
 
   const loadVideo = useCallback(async () => {
     if (phase === 'loading') return;
@@ -298,13 +303,15 @@ export function AttachmentVideoCard({
     if (!source || !video) return;
     const wasPlaying = !video.paused;
     if (wasPlaying) video.pause();
+    const posterLease = posterLeaseRef.current?.retain();
     void openAttachmentMediaWindow({
       attachments: [attachment],
       selectedIndex: 0,
       initialPreviewUrl: posterUrl,
       initialMediaUrl: source,
       initialMediaTime: video.currentTime,
-    }).catch(() => {
+    }, { onClosed: () => posterLease?.release() }).catch(() => {
+      posterLease?.release();
       if (wasPlaying) void video.play().catch(() => undefined);
     });
   }, [attachment, posterUrl, source]);
@@ -354,7 +361,7 @@ export function AttachmentVideoCard({
         style={{ aspectRatio: `${displaySize.width} / ${displaySize.height}` }}
         onPointerMove={showControlsBriefly}
       >
-        {source && playbackRequested && !transferPending ? (
+        {source && playbackRequested && mediaActive && !transferPending ? (
           <>
             <video
               ref={videoRef}
@@ -368,6 +375,7 @@ export function AttachmentVideoCard({
               className="app-attachment-inline-video block h-full w-full object-contain"
               aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
               onLoadedMetadata={(event) => {
+                if (resumeTimeRef.current > 0) event.currentTarget.currentTime = resumeTimeRef.current;
                 const { videoWidth, videoHeight } = event.currentTarget;
                 if (videoWidth > 0 && videoHeight > 0) {
                   const dimensions = { widthPixels: videoWidth, heightPixels: videoHeight };
@@ -380,7 +388,8 @@ export function AttachmentVideoCard({
               onPause={keepControlsVisible}
               onEnded={() => {
                 keepControlsVisible();
-                playbackEnded.current = true;
+                playbackEndedRef.current = true;
+                resumeTimeRef.current = 0;
                 setPlaybackRequested(false);
                 if (downloadedLocalPath.current) {
                   setFailedSource(null);

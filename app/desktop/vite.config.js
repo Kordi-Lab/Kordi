@@ -35,7 +35,7 @@ export default defineConfig(({ command, mode }) => {
               { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
               { name: 'emoji-catalog', test: /[\\/]shared[\\/]noto-emoji[\\/]catalog\.json$/ },
               { name: 'agent-studio', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/](?:AgentStudio(?!Conversation)|factoryAgentUtils|shapeAgent|useAgentBuilderSession|useFactoryBuildRouting)/ },
-              { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/ },
+              { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/, maxSize: 650_000 },
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/ },
               { name: 'desktop-features', test: /[\\/]src[\\/]features[\\/]/ },
               { name: 'workspace-ui', test: /[\\/]src[\\/](?:app|components|kordi-app|pages)[\\/]/ },

@@ -18,12 +18,12 @@ import {
   createCanonicalStore,
   failCanonicalSessionHydration,
   mergeCanonicalCatalog,
-  mergeCanonicalMessagePage,
+  mergeCanonicalMessagePage, compareCanonicalMessages,
   retainCanonicalSessionPages,
   type CanonicalStore,
 } from '@/features/canonical/canonicalStore';
 import type {
-  CanonicalMessagePage,
+  CanonicalMessagePage, CanonicalTimelineCursor,
   CanonicalSessionState,
   DesktopCollaborationState,
 } from '@/kordi-app/types';
@@ -119,13 +119,20 @@ export function useKordiCanonicalSessionStore({
     () => createCanonicalStore(),
   );
   const storeRef = useRef(store);
-  const accountIdRef = useRef(accountId);
-  useLayoutEffect(() => { accountIdRef.current = accountId; }, [accountId]);
+  const accountScope = useMemo(() => ({ accountId }), [accountId]);
+  const accountScopeRef = useRef(accountScope);
   const refreshFlightRef = useRef(createSingleFlightState());
   const pageFlightsRef = useRef(
     new Map<string, Promise<CanonicalMessagePage | null>>(),
   );
   const recentPageSessionIdsRef = useRef<readonly string[]>([]);
+  useLayoutEffect(() => {
+    if (accountScopeRef.current === accountScope) return;
+    accountScopeRef.current = accountScope;
+    pageFlightsRef.current.clear();
+    refreshFlightRef.current = createSingleFlightState();
+    recentPageSessionIdsRef.current = [];
+  }, [accountScope]);
   const [
     initialRefreshSettled,
     setInitialRefreshSettled,
@@ -138,7 +145,7 @@ export function useKordiCanonicalSessionStore({
   const updateStore = useCallback((
     action: SetStateAction<CanonicalStore>,
   ) => {
-    if (accountIdRef.current !== accountId) return;
+    if (accountScopeRef.current !== accountScope) return;
     const current = storeRef.current;
     const candidate = typeof action === 'function'
       ? action(current)
@@ -147,7 +154,7 @@ export function useKordiCanonicalSessionStore({
     if (Object.is(next, current)) return;
     storeRef.current = next;
     setStoreValue(next);
-  }, [accountId]);
+  }, [accountId, accountScope]);
 
   const { catalog, messagesBySessionId } = store;
   const state = useMemo(() => canonicalStateFromStore({
@@ -170,11 +177,12 @@ export function useKordiCanonicalSessionStore({
     sessionId: string,
     options: {
       beforeSequenceNum?: number | null;
+      beforeTimeline?: CanonicalTimelineCursor | null;
       force?: boolean;
     } = {},
   ) => {
     const normalizedSessionId = sessionId.trim();
-    if (!isNativeShell || !normalizedSessionId) {
+    if (!isNativeShell || !normalizedSessionId || accountScopeRef.current !== accountScope) {
       return Promise.resolve(null);
     }
     recentPageSessionIdsRef.current = recentCanonicalSessionIds(
@@ -183,8 +191,13 @@ export function useKordiCanonicalSessionStore({
     );
     const retained = new Set(recentPageSessionIdsRef.current);
     const beforeSequenceNum = options.beforeSequenceNum ?? null;
+    const beforeTimeline = options.beforeTimeline ? {
+      id: options.beforeTimeline.id, createdAtMs: options.beforeTimeline.createdAtMs,
+      sequenceNum: options.beforeTimeline.sequenceNum,
+    } : null;
+    const isLatestPage = beforeTimeline === null && beforeSequenceNum === null;
     const flightKey =
-      `${normalizedSessionId}:${beforeSequenceNum ?? 'latest'}`;
+      JSON.stringify([normalizedSessionId, beforeTimeline, beforeSequenceNum]);
     const existingFlight = pageFlightsRef.current.get(flightKey);
     if (existingFlight) return existingFlight;
     const currentStore = storeRef.current;
@@ -192,7 +205,7 @@ export function useKordiCanonicalSessionStore({
       currentStore.hydrationBySessionId[normalizedSessionId]
       ?? 'cold';
     if (
-      beforeSequenceNum === null
+      isLatestPage
       && hydration === 'ready'
       && !options.force
     ) {
@@ -200,7 +213,7 @@ export function useKordiCanonicalSessionStore({
       return Promise.resolve(null);
     }
 
-    if (beforeSequenceNum === null) {
+    if (isLatestPage && hydration !== 'ready') {
       updateStore((current) => retainCanonicalSessionPages(
         beginCanonicalSessionHydration(current, normalizedSessionId),
         retained,
@@ -210,17 +223,18 @@ export function useKordiCanonicalSessionStore({
       normalizedSessionId,
       beforeSequenceNum,
       CANONICAL_MESSAGE_PAGE_SIZE,
+      beforeTimeline || beforeSequenceNum === null ? { before: beforeTimeline } : undefined,
     )
       .then((page) => {
-        if (!page) return null;
+        if (!page || accountScopeRef.current !== accountScope) return null;
         updateStore((current) => retainCanonicalSessionPages(
-          mergeCanonicalMessagePage(current, page),
+          mergeCanonicalMessagePage(current, { ...page, replaceWindow: hydration !== 'ready' && isLatestPage }),
           new Set(recentPageSessionIdsRef.current),
         ));
         return page;
       })
       .catch((error) => {
-        if (beforeSequenceNum === null) {
+        if (isLatestPage && hydration !== 'ready') {
           updateStore((current) => retainCanonicalSessionPages(
             failCanonicalSessionHydration(current, normalizedSessionId),
             new Set(recentPageSessionIdsRef.current),
@@ -229,11 +243,11 @@ export function useKordiCanonicalSessionStore({
         throw error;
       })
       .finally(() => {
-        pageFlightsRef.current.delete(flightKey);
+        if (pageFlightsRef.current.get(flightKey) === request) pageFlightsRef.current.delete(flightKey);
       });
     pageFlightsRef.current.set(flightKey, request);
     return request;
-  }, [isNativeShell, updateStore]);
+  }, [accountScope, isNativeShell, updateStore]);
 
   const loadSessionHistory = useCallback(async (sessionId: string) => {
     const normalizedSessionId = sessionId.trim();
@@ -247,11 +261,11 @@ export function useKordiCanonicalSessionStore({
     let pageCount = 0;
     while (
       page?.hasOlder
-      && page.oldestSequenceNum !== null
+      && page.messages.length > 0
       && pageCount < 10_000
     ) {
       page = await hydrateSessionPage(normalizedSessionId, {
-        beforeSequenceNum: page.oldestSequenceNum,
+        beforeTimeline: page.messages[0],
         force: true,
       });
       pageCount += 1;
@@ -264,27 +278,27 @@ export function useKordiCanonicalSessionStore({
   ) => {
     const normalizedSessionId = sessionId.trim();
     if (!normalizedSessionId) return;
+    if (accountScopeRef.current !== accountScope) return;
+    const initialFlight = pageFlightsRef.current.get(JSON.stringify([normalizedSessionId, null, null]));
+    if (initialFlight) await initialFlight;
+    if (accountScopeRef.current !== accountScope) return;
     const currentStore = storeRef.current;
     if (!currentStore.hasOlderBySessionId[normalizedSessionId]) return;
     const currentMessages =
       currentStore.messagesBySessionId[normalizedSessionId] ?? [];
-    const oldestSequenceNum = currentMessages.reduce<number | null>(
-      (oldest, message) => (
-        oldest === null || message.sequenceNum < oldest
-          ? message.sequenceNum
-          : oldest
-      ),
+    const oldest = currentMessages.reduce<CanonicalTimelineCursor | null>(
+      (previous, message) => !previous || compareCanonicalMessages(message, previous) < 0 ? message : previous,
       null,
     );
-    if (oldestSequenceNum === null) {
+    if (!oldest) {
       await hydrateSessionPage(normalizedSessionId, { force: true });
       return;
     }
     await hydrateSessionPage(normalizedSessionId, {
-      beforeSequenceNum: oldestSequenceNum,
+      beforeTimeline: oldest,
       force: true,
     });
-  }, [hydrateSessionPage]);
+  }, [accountScope, hydrateSessionPage]);
 
   const refreshState = useCallback(async () => {
     if (!isNativeShell) {
@@ -295,6 +309,7 @@ export function useKordiCanonicalSessionStore({
     const run = requestSingleFlightRun(flight, async () => {
       try {
         const fetchedCatalog = await fetchCanonicalSessionCatalog();
+        if (accountScopeRef.current !== accountScope) return;
         if (!fetchedCatalog) {
           throw new Error('Canonical catalog is unavailable.');
         }
@@ -314,15 +329,15 @@ export function useKordiCanonicalSessionStore({
         ));
         setInitialRefreshError(false);
       } catch {
-        setInitialRefreshError(true);
+        if (accountScopeRef.current === accountScope) setInitialRefreshError(true);
         // Canonical state is additive during migration. Existing UI remains
         // usable while a native catalog refresh is temporarily unavailable.
       } finally {
-        setInitialRefreshSettled(true);
+        if (accountScopeRef.current === accountScope) setInitialRefreshSettled(true);
       }
     });
     await (run ?? flight.currentPromise ?? Promise.resolve());
-  }, [isNativeShell, updateStore]);
+  }, [accountScope, isNativeShell, updateStore]);
 
   useEffect(() => {
     let cancelled = false;
@@ -367,6 +382,7 @@ export function useKordiCanonicalPageHydration({
     sessionId: string,
     options?: {
       beforeSequenceNum?: number | null;
+      beforeTimeline?: CanonicalTimelineCursor | null;
       force?: boolean;
     },
   ) => Promise<CanonicalMessagePage | null>;
