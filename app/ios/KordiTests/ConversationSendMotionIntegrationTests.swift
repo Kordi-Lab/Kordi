@@ -413,6 +413,80 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
 
 @MainActor
 final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
+    func testColdCachedEntryStaysAtLatestWhenOlderHistoryArrives() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, wireCache: CloudWireCache(directory: directory), previewMode: true)
+        let account = try XCTUnwrap(model.account)
+        let conversation = ConversationSummary(id: "person:cold-history", kind: .person,
+            peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil, displayName: "Cold history",
+            lastMessage: "Latest", lastActivityAt: Date(), unreadCount: 0, avatarSource: nil,
+            agentActivity: .ready, sessionId: "cold-history")
+        let messages = (0..<200).map { index in
+            ChatMessage(id: "cold-\(index)", clientMessageId: "client-\(index)",
+                conversationId: conversation.id, conversationSequence: Int64(index + 1),
+                author: .me, authorName: "You",
+                text: String(repeating: "Synthetic history line \(index).\n", count: 1 + index % 12),
+                createdAt: Date(timeIntervalSince1970: Double(index + 1_000)),
+                cloudMessageVersion: 1, deliveryState: .read, errorMessage: nil, requestMessageId: nil,
+                reactionTargetMessageId: "cold-\(index)")
+        }
+        store.saveMessages(Array(messages.suffix(64)), conversationId: conversation.id,
+            accountId: account.accountId, hasEarlier: true)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(navigation: navigation, model: model,
+            calls: KordiCallCoordinator(), notifications: KordiNotificationCoordinator()))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true; window.rootViewController = nil; previous?.makeKeyAndVisible()
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil; ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        navigation.path = [.conversation(conversation)]
+        let latestID = model.timelineIdentity(for: messages.last!)
+        var scroll: UIScrollView?
+        for _ in 0..<200 {
+            if let frame = ConversationMotionProbeRegistry.frame(for: latestID, in: window),
+               frame.intersects(window.bounds), let row = ConversationMotionProbeRegistry.views[latestID]?.value {
+                var ancestor = row.superview
+                while let value = ancestor, !(value is UIScrollView) { ancestor = value.superview }
+                scroll = ancestor as? UIScrollView
+                if let scroll, abs(scroll.contentOffset.y - ConversationTailScrollAnimator.targetOffset(in: scroll)) < 1 { break }
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let transcript = try XCTUnwrap(scroll)
+        let known = model.knownHistoryMessageIDs(conversationID: conversation.id)
+        let wires = messages.map { message in
+            CloudMessageDTO(messageId: message.id, clientMessageId: message.clientMessageId,
+                fromAccountId: account.accountId, toAccountId: "fixture-peer", body: message.text,
+                createdAt: message.createdAt.ISO8601Format(), deliveredAt: message.createdAt.ISO8601Format(),
+                readAt: message.createdAt.ISO8601Format(), direction: "outgoing", sessionId: conversation.sessionId,
+                conversationId: "canonical-cold-history", conversationSequence: message.conversationSequence, version: 1)
+        }
+        let hydration = Task { await model.applyConversationHistoryPage(CloudConversationMessagePage(
+            messages: wires, nextBeforeSequence: nil, hasMore: false), to: conversation,
+            account: account, knownMessageIDs: known) }
+        var largestGap: CGFloat = 0
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(10))
+            largestGap = max(largestGap, abs(ConversationTailScrollAnimator.targetOffset(in: transcript)
+                - (transcript.layer.presentation()?.bounds.minY ?? transcript.contentOffset.y)))
+        }
+        _ = await hydration.value
+        XCTAssertEqual(model.messages(for: conversation).count, 200)
+        XCTAssertLessThanOrEqual(largestGap, 2, "Prepending older history during cold entry must not pull the viewport away from latest")
+    }
+
     func testLongMessageCannotDrawIntoHeaderWhileScrolling() async throws {
         try await checkHeaderBoundary(transparentNavigation: true)
     }

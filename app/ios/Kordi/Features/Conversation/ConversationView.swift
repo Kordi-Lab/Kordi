@@ -189,7 +189,7 @@ struct ConversationView: View {
     @State private var isSending = false
     @State private var stagedMessageIDs: [String] = []
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
-    @State private var lastTimelineCount = 0
+    @State private var lastTimelineSnapshot = ConversationTimelineWindow.Snapshot(count: 0, latestMessageID: nil)
     @State private var isLoadingEarlier = false
     @State private var isAtBottom = false
     @State private var latestVisibleMessageID: String?
@@ -387,11 +387,12 @@ struct ConversationView: View {
             messageCount: timeline.count
         )
         let showsTimeline = hasRevealedInitialViewport || usesCachedThreadTimeline
+        let timelineSnapshot = ConversationTimelineWindow.Snapshot(count: timeline.count, latestMessageID: timeline.last?.id)
         let visibleTimeline = ConversationTimelineWindow.visibleMessages(
             in: timeline,
             limit: ConversationTimelineWindow.limitAfterAppending(
                 currentLimit: visibleMessageLimit,
-                oldCount: lastTimelineCount,
+                appendedCount: ConversationTimelineWindow.appendedCount(in: timeline, after: lastTimelineSnapshot.latestMessageID),
                 newCount: timeline.count,
                 isInitialViewportRevealed: hasRevealedInitialViewport
             )
@@ -890,9 +891,10 @@ struct ConversationView: View {
                 Text("Pinned messages stay visible above this session on synced Kordi devices.")
             }
             let observedTimeline = presentedTimeline
-            .onChange(of: timeline.count, initial: true) { oldCount, newCount in
-                lastTimelineCount = newCount
-                handleTimelineCountChange(oldCount: oldCount, newCount: newCount, proxy: proxy)
+            .onChange(of: timelineSnapshot, initial: true) { previous, current in
+                handleTimelineCountChange(oldCount: previous.count, newCount: current.count,
+                    previousLatestMessageID: previous.latestMessageID, proxy: proxy)
+                lastTimelineSnapshot = current
             }
             .onChange(of: pendingMentionCount) {
                 synchronizeReadPresentation()
@@ -1497,11 +1499,12 @@ struct ConversationView: View {
     private func handleTimelineCountChange(
         oldCount: Int,
         newCount: Int,
+        previousLatestMessageID: String?,
         proxy: ScrollViewProxy
     ) {
         visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
             currentLimit: visibleMessageLimit,
-            oldCount: oldCount,
+            appendedCount: ConversationTimelineWindow.appendedCount(in: messages, after: previousLatestMessageID),
             newCount: newCount,
             isInitialViewportRevealed: hasRevealedInitialViewport
         )
@@ -3070,6 +3073,17 @@ enum ConversationTimelineScrollBehavior {
 }
 
 enum ConversationTimelineWindow {
+    struct Snapshot: Equatable {
+        let count: Int
+        let latestMessageID: String?
+    }
+
+    static func appendedCount(in messages: [ChatMessage], after previousLatestMessageID: String?) -> Int {
+        guard let previousLatestMessageID,
+              let index = messages.lastIndex(where: { $0.id == previousLatestMessageID }) else { return 0 }
+        return messages.count - index - 1
+    }
+
     static let initialLimit = 64
     static let pageSize = 44
 
@@ -3080,12 +3094,12 @@ enum ConversationTimelineWindow {
 
     static func limitAfterAppending(
         currentLimit: Int,
-        oldCount: Int,
+        appendedCount: Int,
         newCount: Int,
         isInitialViewportRevealed: Bool
     ) -> Int {
-        guard isInitialViewportRevealed, newCount > oldCount else { return currentLimit }
-        return min(newCount, currentLimit + (newCount - oldCount))
+        guard isInitialViewportRevealed, appendedCount > 0 else { return currentLimit }
+        return min(newCount, currentLimit + appendedCount)
     }
 
     static func limitAfterLoadingEarlier(currentLimit: Int, totalCount: Int) -> Int {

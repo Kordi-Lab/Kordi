@@ -479,16 +479,34 @@ final class KordiMarkdownParserTests: XCTestCase {
         }
     }
 
+    func testHistoryPrependDoesNotExpandAnAlreadyVisibleWindow() {
+        let messages = (0..<201).map { index in
+            ChatMessage(id: "message-\(index)", conversationId: "fixture", author: .me,
+                authorName: "Tester", text: "", createdAt: Date(), deliveryState: .read,
+                errorMessage: nil, requestMessageId: nil)
+        }
+        let prependOnly = ConversationTimelineWindow.appendedCount(in: Array(messages.prefix(200)), after: "message-199")
+        XCTAssertEqual(prependOnly, 0)
+        XCTAssertEqual(ConversationTimelineWindow.limitAfterAppending(currentLimit: 64,
+            appendedCount: prependOnly, newCount: 200, isInitialViewportRevealed: true), 64)
+        let mixed = ConversationTimelineWindow.appendedCount(in: messages, after: "message-199")
+        XCTAssertEqual(mixed, 1)
+        XCTAssertEqual(ConversationTimelineWindow.limitAfterAppending(currentLimit: 64,
+            appendedCount: mixed, newCount: 201, isInitialViewportRevealed: true), 65)
+        XCTAssertEqual(ConversationTimelineWindow.appendedCount(in: messages, after: nil), 0)
+        XCTAssertEqual(ConversationTimelineWindow.appendedCount(in: messages, after: "removed-tail"), 0)
+    }
+
     func testInitialWindowStaysBoundedWhenRemoteHistoryArrives() {
         let limitBeforeReveal = ConversationTimelineWindow.limitAfterAppending(
             currentLimit: ConversationTimelineWindow.initialLimit,
-            oldCount: 5,
+            appendedCount: 0,
             newCount: 341,
             isInitialViewportRevealed: false
         )
         let limitAfterReveal = ConversationTimelineWindow.limitAfterAppending(
             currentLimit: ConversationTimelineWindow.initialLimit,
-            oldCount: 341,
+            appendedCount: 1,
             newCount: 342,
             isInitialViewportRevealed: true
         )
@@ -1270,7 +1288,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(source.contains("dismissKeyboard()\n                                    dismissComposerPickers()"))
 
         let composer = try XCTUnwrap(source.range(of: "                        ComposerView("))
-        let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count,"))
+        let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timelineSnapshot,"))
         XCTAssertLessThan(composer.lowerBound, rootModifiers.lowerBound)
     }
 
