@@ -48,13 +48,16 @@ struct ConversationTimelineRowSlot<Content: View>: View {
                     Color.clear.frame(height: measuredHeight).accessibilityHidden(true)
                 }
             }
-            .onGeometryChange(for: Bool.self) { [viewportFrame, isRetained] geometry in
+            .onGeometryChange(for: Bool.self) { [viewportFrame, isRetained, isNearViewport] geometry in
                 let frame = geometry.frame(in: .global)
+                // Retain a little beyond the entry boundary so subpixel height
+                // refinements cannot repeatedly mount and evict the same row.
+                let overscan = viewportFrame.height + (isNearViewport ? 64 : 0)
                 // A horizontal navigation transition must not evict the reading
                 // anchor before the conversation records its departure position.
                 return isRetained || (!viewportFrame.isEmpty
-                    && frame.maxY >= viewportFrame.minY - viewportFrame.height
-                    && frame.minY <= viewportFrame.maxY + viewportFrame.height)
+                    && frame.maxY >= viewportFrame.minY - overscan
+                    && frame.minY <= viewportFrame.maxY + overscan)
             } action: { isNear in
                 if isNearViewport != isNear { isNearViewport = isNear }
             }

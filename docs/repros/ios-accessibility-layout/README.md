@@ -1,5 +1,55 @@
 # SwiftUI accessibility layout reproduction
 
+This directory preserves the unfixed framework control. Its iOS 26 accessibility
+test is expected to reproduce the failure; Kordi's compatibility implementation
+is verified by the app's regression targets rather than by changing this control.
+
+## Applied compatibility implementation
+
+`ConversationTimelineVirtualization.swift` selects an explicit viewport window on
+iOS 26 and keeps native `LazyVStack` on other supported versions. Lightweight row
+slots retain measured heights and scroll identities. Message content is created
+within the viewport plus one screen of overscan on either side, then released
+when it leaves that window. A 64-point retention margin prevents repeated
+mount/evict cycles from subpixel refinements at the boundary. The latest message, initial navigation target,
+active menu/deletion source and staged sends remain available as needed.
+
+The 200-row hosted test checks that fewer than 50 message bodies are mounted,
+distant content is released, retained action sources survive scrolling, and a
+measured tall row keeps its height after eviction. Placeholder slots have no
+accessibility content; mounted messages retain their normal controls and labels.
+
+Reading-anchor probes now request a coalesced capture when a row attaches or
+finishes layout, even if the scroll offset has not changed. Departure bookkeeping
+runs before teardown and can use the last displayed anchor after native views
+detach; removed messages are still rejected. New tail rows are materialized by
+identity before native positioning releases staged send animations.
+
+The unread regression now approaches its target in bounded steps. Previously, a
+jump computed from estimated content height could actually visit the bottom and
+clear unread before the intended assertion. The test retains its offscreen
+unread check and verifies clearance while still above the exact bottom.
+
+Validation of the integrated fix:
+
+- iOS 26.5: all 123 related XCTest cases passed.
+- iOS 26.0: the same complete selection repeated twice, 246 executions passed.
+- iOS 27.0: the same complete selection repeated twice, 246 executions passed.
+- iOS 26.0 and iOS 26.5: ten menu scenarios repeated twice on each version,
+  40 UI executions passed. These cover rendered long text, reactions, grouped
+  photos, independent image/caption targets, voice holds, reply return, and the
+  particle fade fallback.
+- iOS 27.0: six menu/reaction UI executions passed.
+- Physical iOS 27 with optimized offline Beta 23: six UI executions passed,
+  covering grouped-photo actions, long-message reactions and menu/keyboard return.
+- Repeated cached-entry and visible-reply checks passed three times each.
+- The Markdown/parser class and container guard passed (70 XCTest cases and one
+  Swift Testing case). The five gesture-registration cases also passed after
+  updating legacy expectations: long presses cancel underlying control touches,
+  while ordinary taps retain native forwarding.
+
+## Original framework control
+
 This standalone app has no Kordi or third-party dependencies. It renders mixed,
 tall messages with native SwiftUI stacks and moves between rows with
 `ScrollViewReader`. Its automatic scenario scrolls, toggles an overlay, and opens
@@ -45,9 +95,9 @@ prove every production hang has the same cause.
   eager stack removes offscreen view eviction and can increase memory and
   rendering work. A compatibility implementation must preserve that behavior.
 
-The iOS 26 release blocker remains open. Passing iOS 27 tests and reproducing the
-issue on main do not establish that iOS 26 is safe. No experimental runtime
-workaround from this investigation is included in the PR or installed Beta 21.
+At this stage the iOS 26 release blocker remained open. Passing iOS 27 tests and
+reproducing the issue on main did not clear it. Beta 21 contained none of the
+experimental runtime workarounds.
 
 ## Integration with the newer main branch
 
@@ -60,7 +110,7 @@ The iOS 26.5 mixed-history regression still failed after this integration: one
 iteration lost the photo after opening the keyboard, and the next stalled during
 scrolling after menu dismissal. The bounded runner stopped that process; its
 sample again contained the SwiftUI transaction/lazy-placement loop. The newer
-main changes therefore do not clear this release blocker.
+main changes alone therefore did not clear the release blocker.
 
 The extended iOS 26.0 run passed 121 of 122 cases. The remaining case was
 `testVisibleAIReplyClearsUnreadWithoutReachingExactBottom`, whose unread count

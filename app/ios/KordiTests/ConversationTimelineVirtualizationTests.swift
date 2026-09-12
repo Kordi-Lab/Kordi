@@ -34,7 +34,7 @@ private struct VirtualizedTimelineHarness: View {
                             ) {
                                 Text("History row \(id)")
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: id == 5 ? 1600 : 100)
+                                    .frame(height: id == 5 ? 1600 : 100.25)
                                     .onAppear { ledger.mount(id) }
                                     .onDisappear { ledger.active.remove(id) }
                             }
