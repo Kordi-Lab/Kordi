@@ -135,6 +135,13 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-group-management` | Group-management sheet |
 | `--preview-group-invite` | Group-management sheet opened to invitations |
 | `--preview-markdown` | Markdown-rich message transcript |
+| `--preview-completed-subsession` | Completed long-answer task; combine with `--preview-data --preview-background-stop` to test repeated child navigation |
+| `--preview-menu-test-chat` | Manual menu testing chat with long text, voice, photos and captions; combine with `--preview-data --preview-contact-chat` |
+| `--preview-voice-message-actions` | Compact voice fixture for hold-versus-transcript checks |
+| `--preview-rich-message-actions` | Markdown and blob-emoji fixture for checking rendered long-press previews |
+| `--preview-image-caption-actions` | Single image with a separately interactive caption |
+| `--preview-long-message-actions` | Tall formatted message for menu scrolling and layout checks; combine with `--preview-data --preview-contact-chat` |
+| `--preview-formatted-message-actions` | Short formatted message for menu wrapping and return-position checks; combine with `--preview-data --preview-contact-chat` |
 | `--preview-tool-failure` | Completed My Kordi turn with one diagnostic tool failure |
 | `--preview-forward-message` | Forward-message destination picker |
 | `--preview-message-details` | Message delivery/read details |
@@ -149,6 +156,8 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-profile` | Profile settings |
 
 Focused arguments that require conversation fixtures should be combined with `--preview-data` unless their preview root installs data itself.
+
+For physical-device motion comparisons, use the Beta scheme with `SWIFT_OPTIMIZATION_LEVEL=-O` and `SWIFT_COMPILATION_MODE=wholemodule`, keeping its Beta/Debug definitions and isolated preview data. This removes unoptimized compiler overhead without changing the app environment. Compare the same interactions and content; passing functional UI tests alone does not establish frame-rate or hitch performance.
 
 Set `KORDI_PREVIEW_LAUNCH_FLOW=1` in the simulator process environment to show Color Relay briefly before persisted preview data opens the full app. The loading-only `--preview-launching` state continues animating until the app is relaunched without that argument.
 

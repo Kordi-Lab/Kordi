@@ -408,6 +408,7 @@ struct MessageActionOverlayLayout: Equatable {
     let pickerWidth: CGFloat
     let pickerHeight: CGFloat
     let menuIsBelow: Bool
+    let scrollLimit: CGFloat
 
     static func make(
         sourceFrame: CGRect,
@@ -415,6 +416,7 @@ struct MessageActionOverlayLayout: Equatable {
         showsReactions: Bool,
         reactionCount: Int,
         actionCount: Int,
+        alignsTrailing: Bool? = nil,
         forcedMenuIsBelow: Bool? = nil,
         fixedPreviewFrame: CGRect? = nil
     ) -> Self {
@@ -422,42 +424,40 @@ struct MessageActionOverlayLayout: Equatable {
         let reactionHeight: CGFloat = showsReactions ? 52 : 0
         let menuWidth = min(238, containerSize.width - margin * 2)
         let preferredMenuHeight = CGFloat(actionCount) * 44 + 10
-        // Reserve space for the whole presentation before positioning any surface.
-        // Moving/scaling the live bubble preserves selection and animated media.
         let availableHeight = max(1, containerSize.height - margin * 2)
         let gaps: CGFloat = showsReactions ? 16 : 8
-        let minimumPreviewHeight = min(sourceFrame.height, 80)
         let menuHeight = min(
             preferredMenuHeight,
-            max(44, availableHeight - reactionHeight - gaps - minimumPreviewHeight)
+            max(44, availableHeight - reactionHeight - gaps - min(sourceFrame.height, 80))
         )
-        let previewHeight = max(1, availableHeight - reactionHeight - gaps - menuHeight)
-        let scale = min(1, previewHeight / max(1, sourceFrame.height),
-                        max(1, containerSize.width - margin * 2) / max(1, sourceFrame.width))
-        let previewSize = CGSize(width: sourceFrame.width * scale, height: sourceFrame.height * scale)
+        // Preserve the exact source size. Tall messages extend above the viewport
+        // and scroll with their actions instead of becoming miniature text.
+        let overflows = sourceFrame.height + reactionHeight + gaps + menuHeight > availableHeight
         let below = containerSize.height - sourceFrame.maxY - margin
         let above = sourceFrame.minY - margin - reactionHeight - gaps
-        let placeMenuBelow = forcedMenuIsBelow ?? (below >= preferredMenuHeight + 8 || below >= above)
+        let placeMenuBelow = forcedMenuIsBelow ?? (overflows || below >= preferredMenuHeight + 8 || below >= above)
         let topReservation = placeMenuBelow
             ? reactionHeight + (showsReactions ? 8 : 0)
             : menuHeight + reactionHeight + gaps
         let bottomReservation = placeMenuBelow ? menuHeight + 8 : 0
-        let previewTop = min(
-            max(sourceFrame.minY, margin + topReservation),
-            max(margin + topReservation, containerSize.height - margin - bottomReservation - previewSize.height)
-        )
+        let previewTop = overflows
+            ? containerSize.height - margin - bottomReservation - sourceFrame.height
+            : min(max(sourceFrame.minY, margin + topReservation),
+                  containerSize.height - margin - bottomReservation - sourceFrame.height)
         let previewFrame = fixedPreviewFrame ?? CGRect(
-            x: clamped(sourceFrame.midX, half: previewSize.width / 2,
-                       extent: containerSize.width, margin: margin) - previewSize.width / 2,
-            y: previewTop, width: previewSize.width, height: previewSize.height
+            x: clamped(sourceFrame.midX, half: sourceFrame.width / 2,
+                       extent: containerSize.width, margin: margin) - sourceFrame.width / 2,
+            y: previewTop, width: sourceFrame.width, height: sourceFrame.height
         )
+        let scrollLimit = max(0, margin + reactionHeight + (showsReactions ? 8 : 0) - previewFrame.minY)
         let reactionWidth = min(
             containerSize.width - margin * 2,
             CGFloat(max(1, reactionCount + 1)) * 46 + 12
         )
         let pickerWidth = min(360, containerSize.width - margin * 2)
         let preferredPickerHeight = min(520, max(320, containerSize.height * 0.62))
-        let reactionCenterY = previewFrame.minY - (showsReactions ? 8 : 0) - reactionHeight / 2
+        let reactionCenterY = max(margin + reactionHeight / 2,
+                                  previewFrame.minY - (showsReactions ? 8 : 0) - reactionHeight / 2)
         let pickerHeight = min(preferredPickerHeight, max(52, availableHeight))
         let pickerTop = min(
             max(margin, reactionCenterY - reactionHeight / 2),
@@ -473,7 +473,8 @@ struct MessageActionOverlayLayout: Equatable {
                     sourceFrame: previewFrame,
                     width: reactionWidth,
                     containerWidth: containerSize.width,
-                    margin: margin
+                    margin: margin,
+                    alignsTrailing: alignsTrailing
                 ),
                 y: reactionCenterY
             ),
@@ -482,7 +483,8 @@ struct MessageActionOverlayLayout: Equatable {
                     sourceFrame: previewFrame,
                     width: menuWidth,
                     containerWidth: containerSize.width,
-                    margin: margin
+                    margin: margin,
+                    alignsTrailing: alignsTrailing
                 ),
                 y: clamped(menuY, half: menuHeight / 2, extent: containerSize.height, margin: margin)
             ),
@@ -491,7 +493,8 @@ struct MessageActionOverlayLayout: Equatable {
                     sourceFrame: previewFrame,
                     width: pickerWidth,
                     containerWidth: containerSize.width,
-                    margin: margin
+                    margin: margin,
+                    alignsTrailing: alignsTrailing
                 ),
                 y: pickerTop + pickerHeight / 2
             ),
@@ -500,19 +503,40 @@ struct MessageActionOverlayLayout: Equatable {
             menuHeight: menuHeight,
             pickerWidth: pickerWidth,
             pickerHeight: pickerHeight,
-            menuIsBelow: placeMenuBelow
+            menuIsBelow: placeMenuBelow,
+            scrollLimit: scrollLimit
         )
+    }
+
+    func controlFrames(in viewport: CGRect, showsReactions: Bool, showsPicker: Bool,
+                       showsMenu: Bool, scrollOffset: CGFloat) -> [CGRect] {
+        var frames: [CGRect] = []
+        if showsReactions {
+            let center = showsPicker ? pickerCenter : reactionCenter
+            let size = CGSize(width: showsPicker ? pickerWidth : reactionWidth,
+                              height: showsPicker ? pickerHeight : 52)
+            frames.append(CGRect(x: viewport.minX + center.x - size.width / 2,
+                                 y: viewport.minY + center.y - size.height / 2,
+                                 width: size.width, height: size.height))
+        }
+        if showsMenu {
+            frames.append(CGRect(x: viewport.minX + menuCenter.x - menuWidth / 2,
+                                 y: viewport.minY + menuCenter.y - menuHeight / 2 + scrollOffset,
+                                 width: menuWidth, height: menuHeight))
+        }
+        return frames
     }
 
     private static func alignedCenter(
         sourceFrame: CGRect,
         width: CGFloat,
         containerWidth: CGFloat,
-        margin: CGFloat
+        margin: CGFloat,
+        alignsTrailing: Bool?
     ) -> CGFloat {
-        let preferred = sourceFrame.midX < containerWidth / 2
-            ? sourceFrame.minX + width / 2
-            : sourceFrame.maxX - width / 2
+        let preferred = (alignsTrailing ?? (sourceFrame.midX >= containerWidth / 2))
+            ? sourceFrame.maxX - width / 2
+            : sourceFrame.minX + width / 2
         return clamped(preferred, half: width / 2, extent: containerWidth, margin: margin)
     }
 
@@ -526,15 +550,43 @@ struct MessageActionOverlayLayout: Equatable {
     }
 }
 
+/// Shared by the lifted live bubble and the window overlay; the chat itself
+/// remains stationary while a tall preview is read.
+@Observable
+@MainActor
+final class MessageActionPreviewScroll {
+    var offset: CGFloat = 0
+    var limit: CGFloat = 0
+    private var dragStart: CGFloat?
+
+    func drag(translation: CGFloat) {
+        guard limit > 0 else { return }
+        if dragStart == nil { dragStart = offset }
+        offset = min(limit, max(0, (dragStart ?? 0) + translation))
+    }
+
+    func endDrag() { dragStart = nil }
+
+    func reset() {
+        offset = 0
+        limit = 0
+        dragStart = nil
+    }
+}
+
 struct MessageActionOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
     @State private var hasPresented = false
+    @State private var isDismissing = false
     @State private var showsAllReactions = false
     @State private var isConfirmingDelete = false
     @State private var didSchedulePreviewExpansion = false
     let message: ChatMessage
     let sourceFrame: CGRect
+    var photoPreview: UIImage? = nil
+    var hitTestRegions: WindowOverlayHitTestRegions? = nil
+    let previewScroll: MessageActionPreviewScroll
     let usableFrame: CGRect
     let onPreviewFrameChange: (CGRect, Bool) -> Void
     let ownAccountId: String?
@@ -563,6 +615,11 @@ struct MessageActionOverlay: View {
     let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
 
+    private var targetReactions: [MessageReaction] {
+        if let mediaAttachment { return message.attachmentReactions[mediaAttachment.id] ?? [] }
+        return message.reactions
+    }
+
     private var quickReactions: [EmojiPickerItem] {
         EmojiRecentStore.quickReactions(from: storedRecentEmojiIDs)
     }
@@ -570,7 +627,7 @@ struct MessageActionOverlay: View {
     private var regularActionCount: Int {
         (allowsConversationReply ? 1 : 0)
             + (allowsThreadReply ? 1 : 0)
-            + (!message.text.isEmpty ? 2 : 0)
+            + (!message.text.isEmpty && mediaAttachment == nil ? 2 : 0)
             + 3
             + (allowsEdit ? 1 : 0)
             + (allowsDelete ? 1 : 0)
@@ -625,7 +682,8 @@ struct MessageActionOverlay: View {
                 containerSize: layoutFrame.size,
                 showsReactions: allowsReactions,
                 reactionCount: allowsReactions ? quickReactions.count : 0,
-                actionCount: regularActionCount
+                actionCount: regularActionCount,
+                alignsTrailing: message.author == .me
             )
             let showsReactionSurface = allowsReactions && !isConfirmingDelete
             let layout = MessageActionOverlayLayout.make(
@@ -634,15 +692,56 @@ struct MessageActionOverlay: View {
                 showsReactions: showsReactionSurface,
                 reactionCount: showsReactionSurface ? quickReactions.count : 0,
                 actionCount: actionCount,
+                alignsTrailing: message.author == .me,
                 forcedMenuIsBelow: regularLayout.menuIsBelow,
                 fixedPreviewFrame: regularLayout.previewFrame
             )
             let previewFrame = regularLayout.previewFrame.offsetBy(
-                dx: layoutOffset.width, dy: layoutOffset.height
+                dx: layoutOffset.width, dy: layoutOffset.height + previewScroll.offset
+            )
+            let controls = layout.controlFrames(
+                in: layoutFrame,
+                showsReactions: showsReactionSurface,
+                showsPicker: showsAllReactions,
+                showsMenu: isConfirmingDelete || !showsAllReactions || !allowsReactions,
+                scrollOffset: previewScroll.offset
             )
             ZStack {
-                dismissalBackdrop(cutout: hasPresented ? previewFrame : localSourceFrame)
-                    .opacity(hasPresented ? 1 : 0)
+                dismissalBackdrop(
+                    cutout: photoPreview == nil ? (hasPresented ? previewFrame : localSourceFrame) : .zero,
+                    clipRect: layoutFrame.offsetBy(dx: -containerFrame.minX, dy: -containerFrame.minY)
+                )
+                    .animation(MessageActionMotion.fade(reduceMotion: reduceMotion)) { content in
+                        content.opacity(hasPresented ? 1 : 0)
+                    }
+
+                MessageActionPreviewShadow(
+                    frame: hasPresented ? previewFrame : localSourceFrame,
+                    author: message.author, isMedia: mediaAttachment != nil
+                )
+                .opacity(hasPresented ? 1 : 0)
+                .clipShape(Path(layoutFrame.offsetBy(dx: -containerFrame.minX, dy: -containerFrame.minY)))
+                .allowsHitTesting(false)
+
+                if let photoPreview {
+                    let imageFrame = hasPresented ? previewFrame : localSourceFrame
+                    Image(uiImage: photoPreview)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: imageFrame.width, height: imageFrame.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .onTapGesture { performAction(onReviewAttachment) }
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 8)
+                                .onChanged { previewScroll.drag(translation: $0.translation.height) }
+                                .onEnded { _ in previewScroll.endDrag() },
+                            including: previewScroll.limit > 0 ? .all : .subviews
+                        )
+                        .position(x: imageFrame.midX, y: imageFrame.midY)
+                        .accessibilityIdentifier("message-action-photo-preview")
+                        .accessibilityLabel("Selected photo")
+                }
 
                 if showsReactionSurface {
                     reactionSurface
@@ -665,12 +764,15 @@ struct MessageActionOverlay: View {
                             radius: showsAllReactions ? 20 : 16,
                             y: showsAllReactions ? 10 : 8
                         )
+                        .scaleEffect(reduceMotion || hasPresented ? 1 : 0.96,
+                                     anchor: .bottom)
                         .position(
                             showsAllReactions ? layout.pickerCenter : layout.reactionCenter
                         )
                         .offset(layoutOffset)
-                        .scaleEffect(reduceMotion || hasPresented ? 1 : 0.96)
-                        .opacity(hasPresented ? 1 : 0)
+                        .animation(MessageActionMotion.fade(reduceMotion: reduceMotion)) { content in
+                            content.opacity(hasPresented ? 1 : 0)
+                        }
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.96).combined(with: .opacity))
                 }
 
@@ -681,39 +783,61 @@ struct MessageActionOverlay: View {
                             height: layout.menuHeight,
                             alignment: .top
                         )
+                        .scaleEffect(reduceMotion || hasPresented ? 1 : 0.96,
+                                     anchor: regularLayout.menuIsBelow ? .top : .bottom)
                         .position(layout.menuCenter)
-                        .offset(layoutOffset)
-                        .scaleEffect(reduceMotion || hasPresented ? 1 : 0.96)
-                        .opacity(hasPresented ? 1 : 0)
+                        .offset(x: layoutOffset.width, y: layoutOffset.height + previewScroll.offset)
+                        .animation(MessageActionMotion.fade(reduceMotion: reduceMotion)) { content in
+                            content.opacity(hasPresented ? 1 : 0)
+                        }
                         .transition(reduceMotion ? .opacity : .scale(scale: 0.96).combined(with: .opacity))
                 }
             }
             .animation(MessageActionMotion.animation(reduceMotion: reduceMotion), value: sourceFrame)
             .animation(
-                reduceMotion ? nil : .smooth(duration: 0.22),
+                reduceMotion ? nil : MessageActionMotion.animation(reduceMotion: false),
                 value: isConfirmingDelete
             )
             .onAppear {
-                withAnimation(MessageActionMotion.animation(reduceMotion: reduceMotion)) {
+                hitTestRegions?.controlFrames = controls
+                previewScroll.limit = regularLayout.scrollLimit
+                withAnimation(MessageActionMotion.enter(reduceMotion: reduceMotion)) {
                     hasPresented = true
                     onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
-                        dx: layoutFrame.minX, dy: layoutFrame.minY
+                        dx: layoutFrame.minX, dy: layoutFrame.minY + previewScroll.offset
                     ), !showsAllReactions)
                 }
             }
+            .onChange(of: controls) { _, frames in
+                hitTestRegions?.controlFrames = frames
+            }
             .onChange(of: regularLayout.previewFrame) {
+                guard !isDismissing else { return }
+                previewScroll.limit = regularLayout.scrollLimit
                 onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
-                    dx: layoutFrame.minX, dy: layoutFrame.minY
+                    dx: layoutFrame.minX, dy: layoutFrame.minY + previewScroll.offset
                 ), !showsAllReactions)
             }
+            .onChange(of: previewScroll.offset) {
+                guard !isDismissing else { return }
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
+                        dx: layoutFrame.minX, dy: layoutFrame.minY + previewScroll.offset
+                    ), !showsAllReactions)
+                }
+            }
             .onChange(of: showsAllReactions) {
+                guard !isDismissing else { return }
                 onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
-                    dx: layoutFrame.minX, dy: layoutFrame.minY
+                    dx: layoutFrame.minX, dy: layoutFrame.minY + previewScroll.offset
                 ), !showsAllReactions)
             }
             .onChange(of: layoutFrame) {
+                guard !isDismissing else { return }
                 onPreviewFrameChange(regularLayout.previewFrame.offsetBy(
-                    dx: layoutFrame.minX, dy: layoutFrame.minY
+                    dx: layoutFrame.minX, dy: layoutFrame.minY + previewScroll.offset
                 ), !showsAllReactions)
             }
         }
@@ -721,6 +845,7 @@ struct MessageActionOverlay: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Actions for message from \(message.authorName)")
         .accessibilityIdentifier("message-actions-\(message.id)")
+        .allowsHitTesting(!isDismissing)
         .onAppear {
             guard ProcessInfo.processInfo.arguments.contains("--preview-expanded-reactions"),
                   !didSchedulePreviewExpansion else {
@@ -729,28 +854,47 @@ struct MessageActionOverlay: View {
             didSchedulePreviewExpansion = true
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(1))
-                withAnimation(reduceMotion ? nil : .smooth(duration: 0.3)) {
+                guard !isDismissing else { return }
+                withAnimation(MessageActionMotion.animation(reduceMotion: reduceMotion)) {
                     showsAllReactions = true
                 }
             }
         }
     }
 
-    private func dismissalBackdrop(cutout: CGRect) -> some View {
-        Button(action: onDismiss) {
+    private func performAction(_ action: @escaping () -> Void) {
+        guard !isDismissing else { return }
+        isDismissing = true
+        // Keep the overlay mounted while its cutout follows the live bubble home.
+        // Composer changes, navigation and deletion must wait for that return.
+        withAnimation(
+            MessageActionMotion.exit(reduceMotion: reduceMotion),
+            completionCriteria: .removed
+        ) {
+            hasPresented = false
+            onPreviewFrameChange(sourceFrame, false)
+        } completion: {
+            action()
+        }
+    }
+
+    private func dismissalBackdrop(cutout: CGRect, clipRect: CGRect) -> some View {
+        Button {
+            performAction(onDismiss)
+        } label: {
             ZStack {
                 MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author,
-                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil)
+                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil, clipRect: clipRect)
                     .fill(.ultraThinMaterial, style: FillStyle(eoFill: true))
                 MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author,
-                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil)
+                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil, clipRect: clipRect)
                     .fill(.black.opacity(0.08), style: FillStyle(eoFill: true))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(
                 mediaAttachment == nil
                     ? AnyShape(MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author,
-                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil))
+                                      sourceWidth: sourceFrame.width, isMedia: mediaAttachment != nil, clipRect: clipRect))
                     : AnyShape(Rectangle()),
                 eoFill: mediaAttachment == nil
             )
@@ -759,7 +903,17 @@ struct MessageActionOverlay: View {
         .transaction { transaction in
             if reduceMotion { transaction.animation = nil }
         }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { previewScroll.drag(translation: $0.translation.height) }
+                .onEnded { _ in previewScroll.endDrag() },
+            including: previewScroll.limit > 0 ? .all : .subviews
+        )
         .accessibilityLabel("Close message actions")
+        #if DEBUG
+        .accessibilityValue(ProcessInfo.processInfo.arguments.contains("--preview-action-geometry")
+                            ? NSCoder.string(for: cutout) : "")
+        #endif
     }
 
     private var reactionSurface: some View {
@@ -774,7 +928,7 @@ struct MessageActionOverlay: View {
                 EmojiSelectionBoard(
                     initialCategory: hasRecentReactions ? .recent : .noto
                 ) { item in
-                    onReact(item.reactionValue)
+                    performAction { onReact(item.reactionValue) }
                 }
                 .transition(.opacity)
             }
@@ -785,16 +939,18 @@ struct MessageActionOverlay: View {
         HStack(spacing: 2) {
             ForEach(quickReactions) { item in
                 Button {
-                    storedRecentEmojiIDs = EmojiRecentStore.recording(
-                        item,
-                        in: storedRecentEmojiIDs
-                    )
-                    onReact(item.reactionValue)
+                    performAction {
+                        storedRecentEmojiIDs = EmojiRecentStore.recording(
+                            item,
+                            in: storedRecentEmojiIDs
+                        )
+                        onReact(item.reactionValue)
+                    }
                 } label: {
                     reactionImage(item)
                         .frame(width: 44, height: 44)
                         .background(
-                            message.reactions
+                            targetReactions
                                 .first(where: { $0.value == item.reactionValue })?
                                 .includes(accountId: ownAccountId) == true
                                 ? KordiTheme.agentViolet.opacity(0.14)
@@ -807,11 +963,10 @@ struct MessageActionOverlay: View {
                 .accessibilityLabel("React with \(item.accessibilityName)")
             }
             Button {
-                let willExpand = !showsAllReactions
                 withAnimation(
                     reduceMotion
                         ? nil
-                        : willExpand ? .smooth(duration: 0.3) : .easeOut(duration: 0.18)
+                        : MessageActionMotion.animation(reduceMotion: false)
                 ) {
                     showsAllReactions.toggle()
                 }
@@ -847,7 +1002,7 @@ struct MessageActionOverlay: View {
                         deleteChoiceButton(deleteForEveryoneLabel) { onDelete(true) }
                         Divider().padding(.horizontal, 14)
                     }
-                    deleteChoiceButton("Delete for me") { onDelete(false) }
+                    deleteChoiceButton(mediaAttachment == nil ? "Delete for me" : "Delete photo for me") { onDelete(false) }
                 } else {
                     if mediaAttachment != nil {
                         actionButton("Review", systemImage: "eye", action: onReviewAttachment)
@@ -875,7 +1030,7 @@ struct MessageActionOverlay: View {
                             onReply(.thread)
                         }
                     }
-                    if !message.text.isEmpty {
+                    if !message.text.isEmpty, mediaAttachment == nil {
                         actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)
                         actionButton(
                             "Share",
@@ -909,11 +1064,12 @@ struct MessageActionOverlay: View {
                     actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
                     if allowsDelete {
                         actionButton(
-                            "Delete",
+                            mediaAttachment == nil ? "Delete" : "Delete photo",
                             systemImage: "trash",
                             role: .destructive,
+                            dismissesMenu: false,
                             action: {
-                                withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+                                withAnimation(reduceMotion ? nil : MessageActionMotion.animation(reduceMotion: false)) {
                                     isConfirmingDelete = true
                                 }
                             }
@@ -944,7 +1100,9 @@ struct MessageActionOverlay: View {
         _ title: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(role: .destructive, action: action) {
+        Button(role: .destructive) {
+            performAction(action)
+        } label: {
             Text(title)
                 .font(.body)
                 .foregroundStyle(.red)
@@ -962,9 +1120,16 @@ struct MessageActionOverlay: View {
         systemImage: String,
         role: ButtonRole? = nil,
         disabled: Bool = false,
+        dismissesMenu: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
-        Button(role: role, action: action) {
+        Button(role: role) {
+            if dismissesMenu {
+                performAction(action)
+            } else {
+                action()
+            }
+        } label: {
             Label(title, systemImage: systemImage)
                 .font(.body)
                 .foregroundStyle(role == .destructive ? Color.red : Color.primary)
@@ -1026,8 +1191,16 @@ private struct MessageActionReadReceiptRow: View {
     }
 }
 
+/// Shared directly with the native window host so hit regions can follow
+/// overlay layout without invalidating the conversation's SwiftUI tree.
+@MainActor
+final class WindowOverlayHitTestRegions {
+    var controlFrames: [CGRect] = []
+}
+
 struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
     let passthroughFrame: CGRect?
+    private let hitTestRegions: WindowOverlayHitTestRegions?
     private let allowsInteraction: Bool
     private let animatesRemoval: Bool
     private let onDismissComplete: () -> Void
@@ -1035,12 +1208,14 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
 
     init(
         passthroughFrame: CGRect?,
+        hitTestRegions: WindowOverlayHitTestRegions? = nil,
         allowsInteraction: Bool = true,
         animatesRemoval: Bool = true,
         onDismissComplete: @escaping () -> Void = {},
         @ViewBuilder content: @escaping (CGRect) -> Content
     ) {
         self.passthroughFrame = passthroughFrame
+        self.hitTestRegions = hitTestRegions
         self.allowsInteraction = allowsInteraction
         self.animatesRemoval = animatesRemoval
         self.onDismissComplete = onDismissComplete
@@ -1060,6 +1235,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         let passthroughFrame = self.passthroughFrame
+        let hitTestRegions = self.hitTestRegions
         let content = self.content
         let coordinator = context.coordinator
         coordinator.onDismissComplete = onDismissComplete
@@ -1067,9 +1243,10 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         coordinator.animatesRemoval = animatesRemoval
         let update = { [weak uiView, weak coordinator] in
             guard let uiView, let coordinator else { return }
-            coordinator.install(
+            coordinator.scheduleInstall(
                 from: uiView,
                 passthroughFrame: passthroughFrame,
+                hitTestRegions: hitTestRegions,
                 content: content
             )
         }
@@ -1079,6 +1256,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
 
     static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
         (uiView as? WindowOverlayAnchorView)?.onWindowAttached = nil
+        coordinator.isDismantled = true
         coordinator.remove(
             animated: coordinator.animatesRemoval && !UIAccessibility.isReduceMotionEnabled,
             completion: coordinator.onDismissComplete
@@ -1093,21 +1271,42 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         var onDismissComplete: () -> Void = {}
         var allowsInteraction = true
         var animatesRemoval = true
+        var isDismantled = false
+        private var installGeneration = 0
 
         init(rootView: Content) {
             hostingController = UIHostingController(rootView: rootView)
             hostingController.view.backgroundColor = .clear
         }
 
+        func scheduleInstall(
+            from anchor: UIView,
+            passthroughFrame: CGRect?,
+            hitTestRegions: WindowOverlayHitTestRegions? = nil,
+            content: @escaping (CGRect) -> Content
+        ) {
+            installGeneration += 1
+            let generation = installGeneration
+            // Hosting callbacks can update the conversation's geometry. Run them
+            // after UIViewRepresentable's update transaction, and drop stale work.
+            DispatchQueue.main.async { [weak self, weak anchor] in
+                guard let self, let anchor, !self.isDismantled,
+                      self.installGeneration == generation else { return }
+                self.install(from: anchor, passthroughFrame: passthroughFrame, hitTestRegions: hitTestRegions, content: content)
+            }
+        }
+
         func install(
             from anchor: UIView,
             passthroughFrame: CGRect?,
+            hitTestRegions: WindowOverlayHitTestRegions? = nil,
             content: (CGRect) -> Content
         ) {
             guard let window = anchor.window else { return }
             let usableFrame = anchor.convert(anchor.bounds, to: window)
             hostingController.rootView = content(usableFrame)
             container.passthroughFrame = passthroughFrame
+            container.hitTestRegions = hitTestRegions
             container.isUserInteractionEnabled = allowsInteraction
 
             if container.superview === window {
@@ -1166,12 +1365,55 @@ private final class WindowOverlayAnchorView: UIView {
 
 private final class MessageActionWindowOverlayView: UIView {
     var passthroughFrame: CGRect?
+    var hitTestRegions: WindowOverlayHitTestRegions?
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        if let passthroughFrame, passthroughFrame.contains(point) {
+        if let passthroughFrame, passthroughFrame.contains(point),
+           !(hitTestRegions?.controlFrames.contains(where: { $0.contains(point) }) ?? false) {
             return false
         }
         return super.point(inside: point, with: event)
+    }
+}
+
+private struct MessageActionPreviewShadow: View {
+    let frame: CGRect
+    let author: MessageAuthor
+    let isMedia: Bool
+
+    var body: some View {
+        ZStack {
+            MessageActionPreviewOutline(frame: CGRect(origin: .zero, size: frame.size), author: author, isMedia: isMedia)
+                .fill(.black.opacity(0.12))
+                .blur(radius: 18)
+                .offset(y: 10)
+            MessageActionPreviewOutline(frame: CGRect(origin: .zero, size: frame.size), author: author, isMedia: isMedia)
+                .fill(.black)
+                .blendMode(.destinationOut)
+        }
+        .compositingGroup()
+        .frame(width: frame.width, height: frame.height)
+        .position(x: frame.midX, y: frame.midY)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct MessageActionPreviewOutline: Shape {
+    var frame: CGRect
+    let author: MessageAuthor
+    let isMedia: Bool
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(frame.minX, frame.minY), AnimatablePair(frame.width, frame.height)) }
+        set { frame = CGRect(x: newValue.first.first, y: newValue.first.second, width: newValue.second.first, height: newValue.second.second) }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let bounds = CGRect(origin: .zero, size: frame.size)
+        let path = isMedia
+            ? RoundedRectangle(cornerRadius: 12, style: .continuous).path(in: bounds)
+            : MessageBubbleGeometry.shape(for: author).path(in: bounds)
+        return path.applying(CGAffineTransform(translationX: frame.minX, y: frame.minY))
     }
 }
 
@@ -1180,6 +1422,7 @@ private struct MessageActionBackdrop: Shape {
     let sourceAuthor: MessageAuthor
     let sourceWidth: CGFloat
     let isMedia: Bool
+    var clipRect: CGRect? = nil
 
     var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
         get { AnimatablePair(AnimatablePair(cutout.minX, cutout.minY), AnimatablePair(cutout.width, cutout.height)) }
@@ -1196,16 +1439,55 @@ private struct MessageActionBackdrop: Shape {
         let outline = isMedia
             ? RoundedRectangle(cornerRadius: 12, style: .continuous).path(in: bounds)
             : MessageBubbleGeometry.shape(for: sourceAuthor).path(in: bounds)
-        path.addPath(outline.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
-                                                       tx: cutout.minX, ty: cutout.minY)))
+        let opening = outline.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
+                                                        tx: cutout.minX, ty: cutout.minY))
+        // The live bubble is clipped by the conversation viewport. Keep the
+        // blur opening and its hit region inside that same visible area.
+        path.addPath(opening.intersection(Path((clipRect ?? rect).intersection(rect))))
         return path
     }
 }
 
 /// Shared by the live bubble and the window-hosted overlay.
 enum MessageActionMotion {
+    static let pressFeedbackDelay: TimeInterval = 0.12
+    static let activationDelay: TimeInterval = 0.32
+
+    static func enter(reduceMotion: Bool) -> Animation {
+        reduceMotion ? fade(reduceMotion: true) : .spring(duration: 0.3, bounce: 0.1)
+    }
+
+    static func exit(reduceMotion: Bool) -> Animation {
+        reduceMotion ? fade(reduceMotion: true) : .timingCurve(0.32, 0.72, 0, 1, duration: 0.2)
+    }
+
+    static func fade(reduceMotion: Bool) -> Animation {
+        .easeOut(duration: reduceMotion ? 0.12 : 0.16)
+    }
+
     static func animation(reduceMotion: Bool) -> Animation {
-        reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.22)
+        reduceMotion ? fade(reduceMotion: true) : .timingCurve(0.23, 1, 0.32, 1, duration: 0.2)
+    }
+
+    static func reactionChange(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.12) : .spring(duration: 0.25, bounce: 0.1)
+    }
+
+    static func reactionTransition(reduceMotion: Bool, anchor: UnitPoint) -> AnyTransition {
+        guard !reduceMotion else { return .opacity.animation(.easeOut(duration: 0.12)) }
+        return .asymmetric(
+            insertion: .scale(scale: 0.9, anchor: anchor).combined(with: .opacity)
+                .animation(reactionChange(reduceMotion: false)),
+            removal: .scale(scale: 0.96, anchor: anchor).combined(with: .opacity)
+                .animation(.easeOut(duration: 0.16))
+        )
+    }
+
+    static func previewAnimation(for placement: MessageActionBubblePlacement?, reduceMotion: Bool) -> Animation {
+        guard let placement, placement.previewFrame != placement.sourceFrame else {
+            return exit(reduceMotion: reduceMotion)
+        }
+        return enter(reduceMotion: reduceMotion)
     }
 }
 
@@ -1233,6 +1515,6 @@ private struct MessageReactionButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed && !reduceMotion ? 1.16 : 1)
             .opacity(configuration.isPressed ? 0.8 : 1)
-            .animation(reduceMotion ? nil : .smooth(duration: 0.18), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

@@ -218,6 +218,8 @@ type SyncEventRow = (
     Value,
 );
 
+mod attachment_actions;
+pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachment_reaction};
 mod conversation;
 mod cursors;
 mod live_photo_validation;

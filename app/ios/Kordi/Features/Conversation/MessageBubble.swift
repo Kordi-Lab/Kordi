@@ -52,7 +52,9 @@ struct MessageBubble: View, Equatable {
     let onRetry: () async -> Void
     let onSelect: () -> Void
     let onOpenActions: (CGRect, ChatAttachment?) -> Void
-    let onSelectedTextChange: (String?) -> Void
+    let onUpdateActionFrame: (CGRect) -> Void
+    let actionPreviewScroll: MessageActionPreviewScroll?
+    let onReactToAttachment: (ChatAttachment, String) -> Void
     let onReact: (String) -> Void
     let onNavigateToReply: (String) -> Void
     let onOpenThread: () -> Void
@@ -65,13 +67,28 @@ struct MessageBubble: View, Equatable {
     let onAddAttachmentToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
+    var usesOverlayPhotoPreview = false
+    var presentedActionAttachmentID: String? = nil
+    var onPrepareActionImage: (UIImage?) -> Void = { _ in }
+    var deletingAttachmentID: String? = nil
+    var hidesDeletingAttachment = false
+    var onUpdateDeletingAttachmentFrame: (CGRect) -> Void = { _ in }
     @State private var isRetrying = false
     @State private var actionFrame = CGRect.zero
     @State private var didAutomaticallyPresentActions = false
     @State private var isRequestingActionFrame = false
-    @State private var actionAttachment: ChatAttachment?
+    @State private var pendingActionAttachment: ChatAttachment?
 
-    static let actionLongPressDuration = 0.5
+    private var actionAttachment: ChatAttachment? {
+        get {
+            (isActionPresented || usesOverlayPhotoPreview)
+                ? message.attachments.first { $0.id == presentedActionAttachmentID }
+                : pendingActionAttachment
+        }
+        nonmutating set { pendingActionAttachment = newValue }
+    }
+
+    static let actionLongPressDuration = MessageActionMotion.activationDelay
 
     private var showsSelectionHighlight: Bool {
         isHighlighted || isSelected
@@ -85,8 +102,13 @@ struct MessageBubble: View, Equatable {
             && lhs.replySourceMessage == rhs.replySourceMessage
             && lhs.isHighlighted == rhs.isHighlighted
             && lhs.isActionPresented == rhs.isActionPresented
+            && lhs.deletingAttachmentID == rhs.deletingAttachmentID
+            && lhs.hidesDeletingAttachment == rhs.hidesDeletingAttachment
+            && lhs.usesOverlayPhotoPreview == rhs.usesOverlayPhotoPreview
+            && lhs.presentedActionAttachmentID == rhs.presentedActionAttachmentID
             && lhs.pendingSendEntrance == rhs.pendingSendEntrance
             && lhs.outgoingAvatarGroupID == rhs.outgoingAvatarGroupID
+            && lhs.actionPreviewScroll === rhs.actionPreviewScroll
             && lhs.actionPlacement == rhs.actionPlacement
             && lhs.actionViewportFrame == rhs.actionViewportFrame
             && lhs.isPinned == rhs.isPinned
@@ -108,17 +130,6 @@ struct MessageBubble: View, Equatable {
 
     var body: some View {
         HStack(alignment: usesBorderlessMediaSurface ? .top : .bottom, spacing: 8) {
-            if selectionMode {
-                Button(action: onSelect) {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(isSelected ? chatTheme.accent : Color.secondary)
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isSelected ? "Deselect message" : "Select message")
-            }
-
             if showsAvatarSlot && message.author != .me {
                 if showAvatar {
                     Button(action: onOpenAuthorProfile) {
@@ -137,6 +148,8 @@ struct MessageBubble: View, Equatable {
                     }
                     .buttonStyle(.plain)
                     .disabled(selectionMode)
+                    .opacity(selectionMode ? 0 : 1)
+                    .accessibilityHidden(selectionMode)
                     .accessibilityLabel("Open profile for \(authorAvatarName)")
                     .padding(.bottom, 2)
                 } else {
@@ -173,22 +186,7 @@ struct MessageBubble: View, Equatable {
 
                 messageSurface
                     .overlay(alignment: .bottomTrailing) {
-                        if message.author == .me, !isCallActivity, !message.isEdited,
-                           message.agentQueuePosition == nil {
-                            if showsMediaDeliveryStatus {
-                                mediaDeliveryStatusOverlay
-                            } else {
-                                MessageDeliveryGlyph(
-                                    state: message.deliveryState,
-                                    readByCount: message.readByCount
-                                )
-                                .font(.caption2)
-                                .foregroundStyle(bubbleSecondaryTextColor)
-                                .padding(.trailing, 8)
-                                .padding(.bottom, 2)
-                                .allowsHitTesting(false)
-                            }
-                        }
+                        if !usesDetachedImageGroup { deliveryStatus }
                     }
                     .overlay {
                         if showsSelectionHighlight {
@@ -223,25 +221,21 @@ struct MessageBubble: View, Equatable {
                     .scaleEffect(
                         reduceMotion
                             ? 1
-                            : showsSelectionHighlight && !isActionPresented ? 1.018 : 1
+                            : isHighlighted && !isSelected && !isActionPresented ? 1.018 : 1
                     )
                     .animation(
                         reduceMotion ? nil : .snappy(duration: 0.24),
                         value: showsSelectionHighlight
                     )
                     .animation(
-                        reduceMotion
-                            ? nil
-                            : isActionPresented
-                                ? .smooth(duration: 0.22)
-                                : .easeOut(duration: 0.14),
+                        reduceMotion ? nil : MessageActionMotion.animation(reduceMotion: false),
                         value: isActionPresented
                     )
                     .contentShape(.contextMenuPreview, bubbleShape)
                     .background {
                         MessageInteractionGestureBridge(
                             minimumPressDuration: Self.actionLongPressDuration,
-                            isEnabled: !selectionMode
+                            isEnabled: !selectionMode && !isActionPresented
                                 && !hasImageAttachments
                                 && actionAttachment == nil,
                             onTap: nil,
@@ -249,11 +243,11 @@ struct MessageBubble: View, Equatable {
                         )
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .scaleEffect(actionPlacement?.scale ?? 1,
+                    .scaleEffect(usesIndependentImageActions ? 1 : actionPlacement?.scale ?? 1,
                                  anchor: actionPlacement?.anchor(in: actionFrame) ?? .center)
-                    .offset(actionPlacement?.offset ?? .zero)
+                    .offset(usesIndependentImageActions ? .zero : actionPlacement?.offset ?? .zero)
                     .animation(
-                        reduceMotion ? nil : MessageActionMotion.animation(reduceMotion: false),
+                        usesIndependentImageActions ? nil : MessageActionMotion.previewAnimation(for: actionPlacement, reduceMotion: reduceMotion),
                         value: actionPlacement
                     )
                     .background {
@@ -264,9 +258,10 @@ struct MessageBubble: View, Equatable {
                             .onGeometryChange(for: CGRect.self) { [
                                 automaticallyPresentsActions,
                                 isActionPresented,
+                                usesIndependentImageActions,
                                 isRequestingActionFrame
                             ] proxy in
-                                automaticallyPresentsActions || isActionPresented
+                                automaticallyPresentsActions || (isActionPresented && !usesIndependentImageActions)
                                     || isRequestingActionFrame
                                     ? proxy.frame(in: .global)
                                     : .zero
@@ -275,26 +270,17 @@ struct MessageBubble: View, Equatable {
                                 if !frame.isEmpty, frame != actionFrame { actionFrame = frame }
                                 if isActionPresented, !frame.isEmpty {
                                     if actionAttachment == nil {
-                                        onOpenActions(frame, nil)
-                                    } else if let placement = actionPlacement, !previousFrame.isEmpty {
-                                        onOpenActions(placement.sourceFrame.offsetBy(
+                                        if !usesIndependentImageActions { onUpdateActionFrame(frame) }
+                                    } else if !usesIndependentImageActions, let placement = actionPlacement, !previousFrame.isEmpty {
+                                        onUpdateActionFrame(placement.sourceFrame.offsetBy(
                                             dx: frame.minX - previousFrame.minX,
                                             dy: frame.minY - previousFrame.minY
-                                        ), actionAttachment)
+                                        ))
                                     }
                                 }
                                 if isRequestingActionFrame, !frame.isEmpty {
                                     isRequestingActionFrame = false
                                     onOpenActions(frame, nil)
-                                }
-                                if automaticallyPresentsActions,
-                                   !didAutomaticallyPresentActions,
-                                   !frame.isEmpty {
-                                    didAutomaticallyPresentActions = true
-                                    Task { @MainActor in
-                                        try? await Task.sleep(for: .milliseconds(500))
-                                        onOpenActions(actionFrame, message.attachments.first(where: { $0.kind == .image }))
-                                    }
                                 }
                             }
                     }
@@ -304,20 +290,16 @@ struct MessageBubble: View, Equatable {
                         isRequestingActionFrame = true
                     }
 
-                if !message.reactions.isEmpty || threadReplyCount > 0 {
-                    MessageBubbleAccessoryRow(
-                        reactions: message.reactions,
-                        threadReplyCount: threadReplyCount,
-                        threadHasUnread: threadHasUnread,
-                        threadAgentState: threadAgentState,
-                        ownAccountId: ownAccountId,
-                        scrollAnchor: message.author == .me ? .trailing : .leading,
-                        onReact: onReact,
-                        onOpenThread: onOpenThread
-                    )
-                    .offset(y: -Self.reactionChipVerticalLift)
-                    .padding(.bottom, -Self.reactionChipVerticalLift)
-                }
+                MessageBubbleAccessoryRow(
+                    reactions: message.reactions,
+                    threadReplyCount: threadReplyCount,
+                    threadHasUnread: threadHasUnread,
+                    threadAgentState: threadAgentState,
+                    ownAccountId: ownAccountId,
+                    scrollAnchor: message.author == .me ? .trailing : .leading,
+                    onReact: onReact,
+                    onOpenThread: onOpenThread
+                )
 
                 if !backgroundSessions.isEmpty {
                     BackgroundAgentSessionList(
@@ -354,12 +336,46 @@ struct MessageBubble: View, Equatable {
 
             if message.author != .me { Spacer(minLength: 34) }
         }
+        // Selection uses the existing avatar/spacer area. Adding a column here
+        // would narrow every bubble and rewrap the conversation on menu dismissal.
+        .overlay(alignment: message.author == .agent ? .bottomTrailing : .bottomLeading) {
+            if selectionMode {
+                Button(action: onSelect) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(isSelected ? chatTheme.accent : Color.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isSelected ? "Deselect message" : "Select message")
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { actionPreviewScroll?.drag(translation: $0.translation.height) }
+                .onEnded { _ in actionPreviewScroll?.endDrag() },
+            including: isActionPresented && (actionPreviewScroll?.limit ?? 0) > 0 ? .all : .subviews
+        )
+        .task(id: MessageActionPreviewGeometry(
+            source: actionFrame, viewport: actionViewportFrame, enabled: automaticallyPresentsActions
+        )) {
+            guard automaticallyPresentsActions, !didAutomaticallyPresentActions,
+                  !actionFrame.isEmpty, !actionViewportFrame.isEmpty else { return }
+            // A geometry change cancels the pending preview so it cannot open
+            // with a viewport captured before the initial chat positioning.
+            do { try await Task.sleep(for: .milliseconds(500)) } catch { return }
+            didAutomaticallyPresentActions = true
+            onOpenActions(actionFrame, message.attachments.first(where: { $0.kind == .image }))
+        }
         .onChange(of: actionViewportFrame) {
             guard isActionPresented, let actionPlacement else { return }
-            onOpenActions(actionPlacement.sourceFrame, actionAttachment)
+            onUpdateActionFrame(actionPlacement.sourceFrame)
+        }
+        .onChange(of: usesOverlayPhotoPreview) { _, isPresented in
+            if !isPresented { pendingActionAttachment = nil }
         }
         .onChange(of: isActionPresented) { wasPresented, isPresented in
             if wasPresented, !isPresented {
@@ -393,7 +409,11 @@ struct MessageBubble: View, Equatable {
         } else if usesDetachedImageGroup {
             VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 7) {
                 imageCollection
-                bubbleSurface
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("\(message.attachments.count) photos from \(message.authorName)")
+                    .accessibilityIdentifier("message-image-\(message.id)")
+                    .zIndex(isActionPresented && actionAttachment != nil ? 1 : 0)
+                captionSurface
             }
         } else if usesBorderlessVideoSurface {
             VStack(spacing: 7) {
@@ -414,6 +434,55 @@ struct MessageBubble: View, Equatable {
         }
     }
 
+    @ViewBuilder
+    private var deliveryStatus: some View {
+        if message.author == .me, !isCallActivity, !message.isEdited,
+           message.agentQueuePosition == nil {
+            if showsMediaDeliveryStatus {
+                mediaDeliveryStatusOverlay
+            } else {
+                MessageDeliveryGlyph(
+                    state: message.deliveryState,
+                    readByCount: message.readByCount
+                )
+                .font(.caption2)
+                .foregroundStyle(bubbleSecondaryTextColor)
+                .padding(.trailing, 8)
+                .padding(.bottom, 2)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private var captionSurface: some View {
+        bubbleSurface
+            .overlay(alignment: .bottomTrailing) { deliveryStatus }
+            .background {
+                MessageInteractionGestureBridge(
+                    minimumPressDuration: Self.actionLongPressDuration,
+                    isEnabled: !selectionMode && !isActionPresented,
+                    onTap: nil,
+                    onLongPress: { frame in
+                        actionAttachment = nil
+                        onOpenActions(frame, nil)
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .background {
+                Color.clear.onGeometryChange(for: CGRect.self) { [isActionPresented, actionAttachment] geometry in
+                    isActionPresented && actionAttachment == nil ? geometry.frame(in: .global) : .zero
+                } action: { frame in
+                    if isActionPresented, actionAttachment == nil, !frame.isEmpty { onUpdateActionFrame(frame) }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("message-caption-\(message.id)")
+            .offset(actionAttachment == nil ? actionPlacement?.offset ?? .zero : .zero)
+            .animation(MessageActionMotion.previewAnimation(for: actionPlacement, reduceMotion: reduceMotion), value: actionPlacement)
+            .zIndex(isActionPresented && actionAttachment == nil ? 1 : 0)
+    }
+
     private var imageCollection: some View {
         MessageImageCollection(
             attachments: message.attachments,
@@ -423,15 +492,28 @@ struct MessageBubble: View, Equatable {
             onPrepare: onPrepareAttachment,
             onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
             actionAttachmentID: actionAttachment?.id,
+            messageID: message.id,
+            attachmentReactions: message.attachmentReactions,
+            ownAccountID: ownAccountId,
+            onReactToAttachment: onReactToAttachment,
+            actionPlacement: actionPlacement,
+            isMessageActionPresented: isActionPresented,
             onPrepareActions: prepareImageActions,
-            onRequestActions: requestImageActions
+            onRequestActions: requestImageActions,
+            onUpdateActionFrame: onUpdateActionFrame,
+            usesOverlayPhotoPreview: usesOverlayPhotoPreview,
+            onPrepareActionImage: onPrepareActionImage,
+            deletingAttachmentID: deletingAttachmentID,
+            hidesDeletingAttachment: hidesDeletingAttachment,
+            onUpdateDeletingAttachmentFrame: onUpdateDeletingAttachmentFrame
         )
     }
 
     private var bubbleSurface: some View {
         AdaptiveBubbleLayout(
             maximumWidth: 360,
-            minimumWidth: agentExecutionMinimumWidth
+            minimumWidth: agentExecutionMinimumWidth,
+            fixedWidth: isActionPresented && actionAttachment == nil ? actionPlacement?.sourceFrame.width : nil
         ) {
             bubbleContents
                 .padding(.leading, message.voiceMessage == nil ? 12 : 10)
@@ -502,6 +584,7 @@ struct MessageBubble: View, Equatable {
             if let voiceMessage = message.voiceMessage {
                 VoiceMessageBubbleContent(
                     voiceMessage: voiceMessage,
+                    isActionPresented: isActionPresented,
                     reservesDeliveryStatus: message.author == .me,
                     onPrepare: onPrepareVoiceMessage
                 )
@@ -513,8 +596,7 @@ struct MessageBubble: View, Equatable {
                     mentionTargets: mentionTargets,
                     mentions: message.mentions,
                     inlineAccent: bubbleInlineAccentColor,
-                    allowsTextSelection: isActionPresented,
-                    onSelectedTextChange: onSelectedTextChange,
+                    allowsTextSelection: isActionPresented && actionAttachment == nil,
                     onOpenPersonMention: onOpenMentionProfile
                 )
                     .foregroundStyle(bubbleTextColor)
@@ -534,8 +616,20 @@ struct MessageBubble: View, Equatable {
                         onPrepare: onPrepareAttachment,
                         onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
                         actionAttachmentID: actionAttachment?.id,
+                        messageID: message.id,
+                        attachmentReactions: message.attachmentReactions,
+                        ownAccountID: ownAccountId,
+                        onReactToAttachment: onReactToAttachment,
+                        actionPlacement: actionPlacement,
+                        isMessageActionPresented: isActionPresented,
                         onPrepareActions: prepareImageActions,
-                        onRequestActions: requestImageActions
+                        onRequestActions: requestImageActions,
+                        onUpdateActionFrame: onUpdateActionFrame,
+                        usesOverlayPhotoPreview: usesOverlayPhotoPreview,
+                        onPrepareActionImage: onPrepareActionImage,
+                        deletingAttachmentID: deletingAttachmentID,
+                        hidesDeletingAttachment: hidesDeletingAttachment,
+                        onUpdateDeletingAttachmentFrame: onUpdateDeletingAttachmentFrame
                     )
                     .frame(maxWidth: .infinity, alignment: .center)
                 } else {
@@ -585,6 +679,10 @@ struct MessageBubble: View, Equatable {
 
     private var usesBorderlessImageSurface: Bool {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
+    }
+
+    private var usesIndependentImageActions: Bool {
+        usesBorderlessImageSurface || usesDetachedImageGroup
     }
 
     private var usesDetachedImageGroup: Bool {
@@ -922,8 +1020,20 @@ struct MessageBubble: View, Equatable {
 
 }
 
-private struct MessageBubbleAccessoryRow: View {
+private struct MessageReactionChipButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct MessageBubbleAccessoryRow: View {
     @Environment(\.kordiChatTheme) private var chatTheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let reactions: [MessageReaction]
     let threadReplyCount: Int
     let threadHasUnread: Bool
@@ -934,46 +1044,56 @@ private struct MessageBubbleAccessoryRow: View {
     let onOpenThread: () -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                if scrollAnchor == .leading {
-                    threadButton
-                }
-                ForEach(reactions) { reaction in
-                    Button {
-                        onReact(reaction.value)
-                    } label: {
-                        HStack(spacing: 4) {
-                            if let item = EmojiPickerItem(reactionValue: reaction.value) {
-                                reactionImage(item)
-                            } else {
-                                Text(reaction.value)
-                            }
-                            Text("\(reaction.accountIds.count)")
-                                .font(.caption2.weight(.semibold))
+        Group {
+            if !reactions.isEmpty || threadReplyCount > 0 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        if scrollAnchor == .leading {
+                            threadButton
                         }
-                        .padding(.horizontal, 9)
-                        .frame(minHeight: 32)
-                        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-                        .contentShape(Capsule())
+                        ForEach(reactions) { reaction in
+                            Button {
+                                onReact(reaction.value)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    if let item = EmojiPickerItem(reactionValue: reaction.value) {
+                                        reactionImage(item)
+                                    } else {
+                                        Text(reaction.value)
+                                    }
+                                    Text("\(reaction.accountIds.count)")
+                                        .font(.caption2.weight(.semibold))
+                                        .contentTransition(.numericText(value: Double(reaction.accountIds.count)))
+                                }
+                                .padding(.horizontal, 9)
+                                .frame(minHeight: 32)
+                                .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                                .contentShape(Capsule())
+                            }
+                            .buttonStyle(MessageReactionChipButtonStyle())
+                            .frame(minHeight: 44)
+                            .accessibilityLabel(
+                                "\(reactionAccessibilityName(reaction.value)) reaction, \(reaction.accountIds.count) people"
+                            )
+                            .accessibilityValue(
+                                reaction.includes(accountId: ownAccountId) ? "You reacted" : ""
+                            )
+                            .accessibilityHint("Double tap to toggle this reaction")
+                            .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: scrollAnchor))
+                        }
+                        if scrollAnchor == .trailing {
+                            threadButton
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .frame(minHeight: 44)
-                    .accessibilityLabel(
-                        "\(reactionAccessibilityName(reaction.value)) reaction, \(reaction.accountIds.count) people"
-                    )
-                    .accessibilityValue(
-                        reaction.includes(accountId: ownAccountId) ? "You reacted" : ""
-                    )
-                    .accessibilityHint("Double tap to toggle this reaction")
                 }
-                if scrollAnchor == .trailing {
-                    threadButton
-                }
+                .defaultScrollAnchor(scrollAnchor)
+                .frame(maxWidth: 310)
+                .offset(y: -MessageBubble.reactionChipVerticalLift)
+                .padding(.bottom, -MessageBubble.reactionChipVerticalLift)
+                .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: scrollAnchor))
             }
         }
-        .defaultScrollAnchor(scrollAnchor)
-        .frame(maxWidth: 310)
+        .animation(MessageActionMotion.reactionChange(reduceMotion: reduceMotion), value: reactions)
     }
 
     @ViewBuilder
@@ -1560,7 +1680,7 @@ enum MessageAttachmentPresentation {
     }
 
     static func usesDetachedImageGroup(for message: ChatMessage) -> Bool {
-        message.attachments.count > 1
+        !message.attachments.isEmpty
             && message.attachments.allSatisfy { $0.kind == .image }
             && !usesBorderlessImageSurface(for: message)
     }
@@ -1577,11 +1697,75 @@ enum MessageMediaStatusPresentation {
     }
 }
 
-/// Lets short messages keep their intrinsic width while capping long content
-/// to the readable chat column. A fixed `maxWidth` alone expands every bubble.
+private struct MessageActionSourceFrameProbe: UIViewRepresentable {
+    let isEnabled: Bool
+    let inset: CGSize
+    let onChange: (CGRect) -> Void
+
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
+        view.isUserInteractionEnabled = false
+        view.isAccessibilityElement = false
+        view.accessibilityElementsHidden = true
+        return view
+    }
+
+    func updateUIView(_ view: ProbeView, context: Context) {
+        view.onChange = isEnabled ? onChange : nil
+        view.inset = inset
+        if !isEnabled { view.lastFrame = nil }
+        view.scheduleMeasurement()
+    }
+
+    static func dismantleUIView(_ view: ProbeView, coordinator: ()) { view.onChange = nil }
+
+    final class ProbeView: UIView {
+        var onChange: ((CGRect) -> Void)?
+        var inset = CGSize.zero
+        var lastFrame: CGRect?
+        private var isScheduled = false
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            scheduleMeasurement()
+        }
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            scheduleMeasurement()
+        }
+
+        func scheduleMeasurement() {
+            guard onChange != nil, !isScheduled else { return }
+            isScheduled = true
+            // Read UIKit geometry after SwiftUI finishes its layout transaction.
+            // A global-frame read inside the extracted subtree can make lazy
+            // layout depend on the same presentation transform it is updating.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isScheduled = false
+                guard let window = self.window, let onChange = self.onChange else { return }
+                let frame = self.convert(self.bounds, to: window)
+                    .insetBy(dx: self.inset.width, dy: self.inset.height)
+                guard !frame.isEmpty, frame != self.lastFrame else { return }
+                self.lastFrame = frame
+                onChange(frame)
+            }
+        }
+    }
+}
+
+private struct MessageActionPreviewGeometry: Equatable {
+    let source: CGRect
+    let viewport: CGRect
+    let enabled: Bool
+}
+
+/// Keep short messages intrinsic while capping long text to the chat column.
 private struct AdaptiveBubbleLayout: Layout {
     let maximumWidth: CGFloat
     let minimumWidth: CGFloat
+    var fixedWidth: CGFloat? = nil
 
     func sizeThatFits(
         proposal: ProposedViewSize,
@@ -1591,9 +1775,11 @@ private struct AdaptiveBubbleLayout: Layout {
         guard let subview = subviews.first else { return .zero }
         let availableWidth = min(maximumWidth, proposal.width ?? maximumWidth)
         let ideal = subview.sizeThatFits(.unspecified)
-        let width = min(availableWidth, max(minimumWidth, ideal.width))
+        // Native text selection can round intrinsic widths differently. Keep
+        // the already-rendered bubble width throughout the context interaction.
+        let width = fixedWidth ?? min(availableWidth, max(minimumWidth, ideal.width))
         let fitted = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
-        let compactWidth = min(width, max(minimumWidth, fitted.width))
+        let compactWidth = fixedWidth ?? min(width, max(minimumWidth, fitted.width))
         return CGSize(width: ceil(compactWidth), height: ceil(fitted.height))
     }
 
@@ -1670,11 +1856,29 @@ private struct MessageImageCollection: View {
     let onPrepare: (ChatAttachment) async -> URL?
     let onAddToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let actionAttachmentID: String?
+    let messageID: String
+    let attachmentReactions: [String: [MessageReaction]]
+    let ownAccountID: String?
+    let onReactToAttachment: (ChatAttachment, String) -> Void
+    let actionPlacement: MessageActionBubblePlacement?
+    let isMessageActionPresented: Bool
     let onPrepareActions: (ChatAttachment?) -> Void
     let onRequestActions: (ChatAttachment, CGRect) -> Void
+    let onUpdateActionFrame: (CGRect) -> Void
+    let usesOverlayPhotoPreview: Bool
+    let onPrepareActionImage: (UIImage?) -> Void
+    let deletingAttachmentID: String?
+    let hidesDeletingAttachment: Bool
+    let onUpdateDeletingAttachmentFrame: (CGRect) -> Void
+    @State private var loadedImages: [String: UIImage] = [:]
 
-    @State private var isExpanded = ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
-    @State private var selectedImageIndex = 0
+    @Environment(\.conversationRowContentState) private var rowPresentation
+    @State private var standalonePresentation = ConversationRowContentState()
+    private var presentation: ConversationRowContentState { rowPresentation ?? standalonePresentation }
+    private var isExpanded: Bool {
+        get { presentation.photosExpanded }
+        nonmutating set { presentation.photosExpanded = newValue }
+    }
     @State private var flipProgress: CGFloat = 0
     @State private var flipDirection = 1
     @State private var isCompletingFlip = false
@@ -1698,15 +1902,15 @@ private struct MessageImageCollection: View {
     @ViewBuilder
     private var imageContent: some View {
         Group {
-            if attachments.count == 1, let attachment = attachments.first {
-                image(attachment, presentation: .natural)
-            } else if isExpanded {
+            if isExpanded {
                 VStack(alignment: author == .me ? .trailing : .leading, spacing: 6) {
                     ForEach(attachments) { attachment in
                         image(attachment, presentation: .groupedNatural)
                     }
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            } else if attachments.count == 1, let attachment = attachments.first {
+                image(attachment, presentation: .natural)
             } else if !attachments.isEmpty {
                 ZStack {
                     ForEach(
@@ -1764,6 +1968,15 @@ private struct MessageImageCollection: View {
                 .padding(.horizontal, 6)
                 .padding(.vertical, 8)
                 .clipped()
+                .overlay(alignment: .bottomTrailing) {
+                    if attachments.indices.contains(currentImageIndex) { reactionBadges(for: attachments[currentImageIndex]) }
+                }
+                .opacity(usesOverlayPhotoPreview && actionAttachmentID != nil ? 0 : 1)
+                .animation(nil, value: usesOverlayPhotoPreview)
+                .offset(isMessageActionPresented && actionAttachmentID != nil ? actionPlacement?.offset ?? .zero : .zero)
+                .animation(MessageActionMotion.previewAnimation(for: actionPlacement, reduceMotion: reduceMotion), value: actionPlacement)
+                .background { actionSourceGeometry(for: attachments.indices.contains(currentImageIndex) ? attachments[currentImageIndex].id : nil,
+                                                          inset: CGSize(width: 6, height: 8)) }
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
@@ -1780,7 +1993,7 @@ private struct MessageImageCollection: View {
     }
 
     private var currentImageIndex: Int {
-        min(selectedImageIndex, max(0, attachments.count - 1))
+        attachments.firstIndex { $0.id == presentation.selectedPhotoID } ?? 0
     }
 
     private var visibleBackdropIndices: [Int] {
@@ -1834,6 +2047,9 @@ private struct MessageImageCollection: View {
 
     private var collapsedInteractionSurface: some View {
         Button {
+            // A simultaneous drag can also release the underlying button.
+            // Finish the flip without treating that release as an expand tap.
+            guard flipProgress == 0, !isCompletingFlip else { return }
             isExpanded = true
         } label: {
             Color.clear
@@ -1844,6 +2060,20 @@ private struct MessageImageCollection: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
+        .background {
+            MessageInteractionGestureBridge(
+                minimumPressDuration: MessageBubble.actionLongPressDuration,
+                isEnabled: !isMessageActionPresented,
+                onTap: nil,
+                onLongPress: { frame in
+                    let attachment = attachments[currentImageIndex]
+                    onPrepareActionImage(loadedImages[attachment.id])
+                    onPrepareActions(attachment)
+                    onRequestActions(attachment, frame)
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
         .simultaneousGesture(flipGesture)
         .accessibilityLabel("Expand \(attachments.count) grouped photos")
         .accessibilityValue("Photo \(currentImageIndex + 1) of \(attachments.count)")
@@ -1867,17 +2097,19 @@ private struct MessageImageCollection: View {
     }
 
     private func completeFlip() {
-        let targetIndex = flipTargetIndex
+        let targetID = attachments[flipTargetIndex].id
+        isCompletingFlip = true
         if reduceMotion {
-            selectedImageIndex = targetIndex
+            presentation.selectedPhotoID = targetID
             flipProgress = 0
+            // Keep the button-release guard through this touch dispatch too.
+            DispatchQueue.main.async { isCompletingFlip = false }
             return
         }
-        isCompletingFlip = true
         withAnimation(.easeIn(duration: 0.18)) {
             flipProgress = 1
         } completion: {
-            selectedImageIndex = targetIndex
+            presentation.selectedPhotoID = targetID
             flipProgress = 0
             isCompletingFlip = false
         }
@@ -1909,6 +2141,39 @@ private struct MessageImageCollection: View {
                            : "Shows every photo in this message")
     }
 
+    @ViewBuilder
+    private func reactionBadges(for attachment: ChatAttachment) -> some View {
+        Group {
+            if let reactions = attachmentReactions[attachment.id], !reactions.isEmpty {
+                AttachmentReactionBadges(reactions: reactions, accountID: ownAccountID,
+                                         scopeIdentifier: "photo-reactions-\(messageID)-\(attachment.id)::") { reaction in
+                    onReactToAttachment(attachment, reaction)
+                }
+                .padding(4)
+                .accessibilityIdentifier("photo-reactions-\(messageID)-\(attachment.id)")
+                .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: .bottomTrailing))
+            }
+        }
+        .animation(MessageActionMotion.reactionChange(reduceMotion: reduceMotion),
+                   value: attachmentReactions[attachment.id] ?? [])
+    }
+
+    private func actionSourceGeometry(for attachmentID: String?, inset: CGSize = .zero) -> some View {
+        // Measure outside the presentation offset. A row's cached location may
+        // belong to an earlier scroll position or a different held photo.
+        MessageActionSourceFrameProbe(
+            isEnabled: attachmentID != nil && (((isMessageActionPresented || usesOverlayPhotoPreview) && actionAttachmentID == attachmentID)
+                                                || deletingAttachmentID == attachmentID),
+            inset: inset,
+            onChange: { frame in
+                if (isMessageActionPresented || usesOverlayPhotoPreview), actionAttachmentID == attachmentID { onUpdateActionFrame(frame) }
+                if deletingAttachmentID == attachmentID { onUpdateDeletingAttachmentFrame(frame) }
+            }
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityHidden(true)
+    }
+
     private func image(
         _ attachment: ChatAttachment,
         presentation: MessageImagePresentation
@@ -1926,7 +2191,7 @@ private struct MessageImageCollection: View {
             onShare: { onShare(attachment) },
             onPrepare: onPrepare,
             onAddToMediaLibrary: onAddToMediaLibrary,
-            isActionTarget: actionAttachmentID == attachment.id,
+            isActionTarget: isMessageActionPresented || actionAttachmentID == attachment.id,
             onPrepareActions: {
                 if presentation.isStackPreview {
                     onPrepareActions(nil)
@@ -1938,8 +2203,66 @@ private struct MessageImageCollection: View {
             onRequestActions: { frame in
                 guard !presentation.isStackPreview else { return }
                 onRequestActions(attachment, frame)
-            }
+            },
+            tapExclusionBottomInset: attachmentReactions[attachment.id]?.isEmpty == false ? 36 : 0,
+            onPrepareActionImage: onPrepareActionImage,
+            onImageReady: { loadedImages[attachment.id] = $0 }
         )
+        .overlay(alignment: .bottomTrailing) {
+            if !presentation.isStackPreview { reactionBadges(for: attachment) }
+        }
+        .opacity((usesOverlayPhotoPreview && !presentation.isStackPreview && actionAttachmentID == attachment.id)
+                 || (hidesDeletingAttachment && deletingAttachmentID == attachment.id) ? 0 : 1)
+        .animation(nil, value: hidesDeletingAttachment)
+        .transition(.identity)
+        .animation(nil, value: usesOverlayPhotoPreview)
+        .offset(!presentation.isStackPreview && actionAttachmentID == attachment.id
+                ? actionPlacement?.offset ?? .zero : .zero)
+        .animation(MessageActionMotion.previewAnimation(for: actionPlacement, reduceMotion: reduceMotion), value: actionPlacement)
+        .accessibilityIdentifier("message-photo-\(messageID)-\(attachment.id)")
+        .background {
+            if !presentation.isStackPreview { actionSourceGeometry(for: attachment.id) }
+        }
+        .zIndex(isMessageActionPresented && actionAttachmentID == attachment.id ? 1 : 0)
+    }
+}
+
+private struct AttachmentReactionBadges: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let reactions: [MessageReaction]
+    let accountID: String?
+    let scopeIdentifier: String
+    let onReact: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(reactions) { reaction in
+                    Button { onReact(reaction.value) } label: {
+                        HStack(spacing: 3) {
+                            if let item = EmojiPickerItem(reactionValue: reaction.value) {
+                                switch item {
+                                case .blob(let emoji): BlobEmojiView(emoji: emoji, size: 18)
+                                case .noto(let emoji): NotoEmojiView(emoji: emoji, size: 18)
+                                }
+                            } else { Text(reaction.value).font(.caption) }
+                            Text("\(reaction.accountIds.count)").font(.caption2.weight(.semibold))
+                                .contentTransition(.numericText(value: Double(reaction.accountIds.count)))
+                        }
+                        .padding(.horizontal, 7)
+                        .frame(height: 28)
+                        .background(.regularMaterial, in: Capsule())
+                    }
+                    .buttonStyle(MessageReactionChipButtonStyle())
+                    .accessibilityIdentifier(scopeIdentifier + reaction.value)
+                    .accessibilityLabel("Photo reaction \(reaction.value), \(reaction.accountIds.count) people")
+                    .accessibilityValue(reaction.includes(accountId: accountID) ? "You reacted" : "")
+                    .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: .bottomTrailing))
+                }
+            }
+        }
+        .defaultScrollAnchor(.trailing)
+        .frame(height: 28)
     }
 }
 
@@ -2472,7 +2795,62 @@ struct FullScreenMessageVideo: View {
 
 enum MessageGestureArbitration {
     static func allowsSimultaneousRecognition(with recognizer: UIGestureRecognizer) -> Bool {
+        // SwiftUI press recognizers need simultaneous admission; the winning
+        // hold cancels the control's touch before its release can become a tap.
         !(recognizer is UIPanGestureRecognizer)
+    }
+}
+
+private final class MessagePressGestureRecognizer: UILongPressGestureRecognizer {
+    var onFeedback: (() -> Void)?
+    var onFeedbackEnded: (() -> Void)?
+    private var feedbackWork: DispatchWorkItem?
+    private var feedbackGeneration = 0
+    private var initialLocation: CGPoint?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        guard state == .possible, touches.count == 1, let touch = touches.first else { return }
+        initialLocation = touch.location(in: view)
+        let generation = feedbackGeneration
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.feedbackGeneration == generation, self.state == .possible else { return }
+            self.onFeedback?()
+        }
+        feedbackWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + MessageActionMotion.pressFeedbackDelay, execute: work)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        guard let initialLocation, let touch = touches.first else { return }
+        let point = touch.location(in: view)
+        if hypot(point.x - initialLocation.x, point.y - initialLocation.y) > allowableMovement {
+            cancelFeedback()
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        cancelFeedback()
+        super.touchesEnded(touches, with: event)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        cancelFeedback()
+        super.touchesCancelled(touches, with: event)
+    }
+
+    override func reset() {
+        cancelFeedback()
+        super.reset()
+    }
+
+    func cancelFeedback() {
+        feedbackGeneration &+= 1
+        feedbackWork?.cancel()
+        feedbackWork = nil
+        initialLocation = nil
+        onFeedbackEnded?()
     }
 }
 
@@ -2481,6 +2859,7 @@ struct MessageInteractionGestureBridge: UIViewRepresentable {
     let isEnabled: Bool
     let onTap: (() -> Void)?
     let onLongPress: (CGRect) -> Void
+    var tapExclusionBottomInset: CGFloat = 0
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -2527,15 +2906,50 @@ struct MessageInteractionGestureBridge: UIViewRepresentable {
 
         private var longPressRecognizer: UILongPressGestureRecognizer?
         private var tapRecognizer: UITapGestureRecognizer?
+        private var pressFeedback: UIView?
+
+        private func showPressFeedback() {
+            guard parent.isEnabled, let source = attachmentView, let window = source.window,
+                  let scrollView = targetView as? UIScrollView,
+                  !scrollView.isDragging, !scrollView.isDecelerating else { return }
+            clearPressFeedback(animated: false)
+            let frame = source.convert(source.bounds, to: window)
+            guard !frame.isEmpty else { return }
+            let feedback = UIView(frame: frame)
+            feedback.isUserInteractionEnabled = false
+            feedback.accessibilityElementsHidden = true
+            feedback.layer.cornerRadius = 12
+            feedback.backgroundColor = UIColor.label.withAlphaComponent(0.06)
+            feedback.alpha = 0
+            window.addSubview(feedback)
+            pressFeedback = feedback
+            UIView.animate(withDuration: 0.16, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+                feedback.alpha = 1
+            }
+        }
+
+        private func clearPressFeedback(animated: Bool) {
+            guard let feedback = pressFeedback else { return }
+            pressFeedback = nil
+            if animated {
+                UIView.animate(withDuration: 0.1, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
+                    feedback.alpha = 0
+                } completion: { _ in feedback.removeFromSuperview() }
+            } else {
+                feedback.removeFromSuperview()
+            }
+        }
 
         private func makeLongPressRecognizer() -> UILongPressGestureRecognizer {
-            let recognizer = UILongPressGestureRecognizer(
+            let recognizer = MessagePressGestureRecognizer(
                 target: self,
                 action: #selector(handleLongPress(_:))
             )
+            recognizer.onFeedback = { [weak self] in self?.showPressFeedback() }
+            recognizer.onFeedbackEnded = { [weak self] in self?.clearPressFeedback(animated: true) }
             recognizer.minimumPressDuration = parent.minimumPressDuration
             recognizer.allowableMovement = 10
-            recognizer.cancelsTouchesInView = false
+            recognizer.cancelsTouchesInView = true
             recognizer.delegate = self
             return recognizer
         }
@@ -2588,6 +3002,8 @@ struct MessageInteractionGestureBridge: UIViewRepresentable {
         }
 
         func detach() {
+            (longPressRecognizer as? MessagePressGestureRecognizer)?.cancelFeedback()
+            clearPressFeedback(animated: false)
             if let longPressRecognizer, let view = longPressRecognizer.view {
                 view.removeGestureRecognizer(longPressRecognizer)
             }
@@ -2597,24 +3013,25 @@ struct MessageInteractionGestureBridge: UIViewRepresentable {
             targetView = nil
         }
 
-        func acceptsTouch(at location: CGPoint) -> Bool {
+        func acceptsTouch(at location: CGPoint, forTap: Bool = false) -> Bool {
             guard parent.isEnabled,
                   let attachmentView, let window = attachmentView.window,
                   let targetView, targetView.window === window else { return false }
             let frame = attachmentView.convert(attachmentView.bounds, to: targetView)
             return !frame.isEmpty && frame.contains(location)
+                && !(forTap && parent.tapExclusionBottomInset > 0 && location.y >= frame.maxY - parent.tapExclusionBottomInset)
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
             guard let targetView else { return false }
             if gestureRecognizer === tapRecognizer, parent.onTap == nil { return false }
-            return acceptsTouch(at: touch.location(in: targetView))
+            return acceptsTouch(at: touch.location(in: targetView), forTap: gestureRecognizer === tapRecognizer)
         }
 
         func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
             guard let targetView else { return false }
             if gestureRecognizer === tapRecognizer, parent.onTap == nil { return false }
-            return acceptsTouch(at: gestureRecognizer.location(in: targetView))
+            return acceptsTouch(at: gestureRecognizer.location(in: targetView), forTap: gestureRecognizer === tapRecognizer)
         }
 
         func gestureRecognizer(
@@ -2627,6 +3044,7 @@ struct MessageInteractionGestureBridge: UIViewRepresentable {
         }
 
         @objc private func handleLongPress(_ gestureRecognizer: UILongPressGestureRecognizer) {
+            clearPressFeedback(animated: false)
             guard gestureRecognizer.state == .began,
                   gestureRecognizerShouldBegin(gestureRecognizer),
                   let attachmentView,
@@ -2655,6 +3073,9 @@ private struct MessageImageAttachment: View {
     let isActionTarget: Bool
     let onPrepareActions: () -> Void
     let onRequestActions: (CGRect) -> Void
+    var tapExclusionBottomInset: CGFloat = 0
+    var onPrepareActionImage: (UIImage?) -> Void = { _ in }
+    var onImageReady: (UIImage) -> Void = { _ in }
 
     @State private var image: UIImage?
     @State private var loadedContentIdentity: String?
@@ -2669,9 +3090,10 @@ private struct MessageImageAttachment: View {
         .background {
             MessageInteractionGestureBridge(
                 minimumPressDuration: MessageBubble.actionLongPressDuration,
-                isEnabled: !isActionTarget,
+                isEnabled: !isActionTarget && !presentation.isStackPreview,
                 onTap: opensPreview ? activate : nil,
-                onLongPress: openActions
+                onLongPress: openActions,
+                tapExclusionBottomInset: tapExclusionBottomInset
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -2740,6 +3162,7 @@ private struct MessageImageAttachment: View {
     }
 
     private func openActions(frame: CGRect) {
+        onPrepareActionImage(image)
         onPrepareActions()
         onRequestActions(frame)
     }
@@ -2819,6 +3242,7 @@ private struct MessageImageAttachment: View {
            let preview = await AvatarImageLoader.image(from: source) {
             guard !Task.isCancelled else { return }
             image = preview
+            onImageReady(preview)
             loadedContentIdentity = contentIdentity
             isLoading = false
             return
@@ -2840,6 +3264,7 @@ private struct MessageImageAttachment: View {
         guard !Task.isCancelled else { return }
         if let loaded {
             image = loaded
+            onImageReady(loaded)
             loadedContentIdentity = contentIdentity
         }
         isLoading = false

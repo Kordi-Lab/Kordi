@@ -173,7 +173,8 @@ enum CloudDirectMessageProjector {
                 updatedAtMs: parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
             ),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
-            reactions: message.reactions
+            reactions: message.reactions,
+            attachmentReactions: message.attachmentReactions
         )
     }
 }

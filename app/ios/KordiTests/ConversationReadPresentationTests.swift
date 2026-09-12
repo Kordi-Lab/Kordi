@@ -163,7 +163,10 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
         let raisedHistoryOffset = historyOffset + historyViewportHeight - scroll.bounds.height
         XCTAssertEqual(scroll.contentOffset.y, raisedHistoryOffset, accuracy: 14,
             "The bottom visible history must move above the composer with the keyboard")
-        XCTAssertGreaterThan(bottomGap(scroll), 100)
+        // Lazy layout can refine the height of offscreen rows during resizing.
+        // The exact offset assertion above protects the reading position; this
+        // check only verifies that the reader has not returned to latest.
+        XCTAssertGreaterThan(bottomGap(scroll), 14, "Reading history must remain outside the latest-message tolerance")
         let didEdit = await model.editMessage(
             messages[39],
             text: String(repeating: "An updated message below the reading position.\n", count: 20),
@@ -589,6 +592,8 @@ final class ConversationReadingAnchorTests: XCTestCase {
         XCTAssertFalse(position.restore(anchor))
         position.captureReadingAnchor()
         XCTAssertNil(position.readingAnchor)
+        XCTAssertEqual(position.lastVisibleReadingAnchor, anchor,
+                       "Navigation teardown must retain the last displayed position for departure bookkeeping")
     }
 
     func testMissingMessageDiscardsQuickReturnAnchor() {
@@ -1089,9 +1094,9 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(actionSource.contains("actionButton(\"Edit\""))
-        XCTAssertTrue(actionSource.contains("\"Delete\","))
+        XCTAssertTrue(actionSource.contains("mediaAttachment == nil ? \"Delete\" : \"Delete photo\""))
         XCTAssertTrue(actionSource.contains("deleteChoiceButton(deleteForEveryoneLabel)"))
-        XCTAssertTrue(actionSource.contains("deleteChoiceButton(\"Delete for me\")"))
+        XCTAssertTrue(actionSource.contains("deleteChoiceButton(mediaAttachment == nil ? \"Delete for me\" : \"Delete photo for me\")"))
         XCTAssertTrue(actionSource.contains("isConfirmingDelete = true"))
         XCTAssertTrue(conversationSource.contains("? \"Delete for everyone\""))
         XCTAssertTrue(conversationSource.contains(": \"Delete for me and \\(conversation.displayName)\""))
@@ -1184,6 +1189,52 @@ final class ConversationReadPresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testEmptyReactionShelfDoesNotReserveMessageSpacing() {
+        func content(_ reactions: [MessageReaction]) -> some View {
+            VStack(spacing: 4) {
+                Color.clear.frame(width: 100, height: 50)
+                MessageBubbleAccessoryRow(reactions: reactions, threadReplyCount: 0,
+                    threadHasUnread: false, threadAgentState: nil, ownAccountId: "self",
+                    scrollAnchor: .leading, onReact: { _ in }, onOpenThread: {})
+            }
+        }
+        let host = UIHostingController(rootView: content([]))
+        let proposal = CGSize(width: 310, height: 800)
+        let emptySize = host.sizeThatFits(in: proposal)
+        XCTAssertEqual(emptySize.height, 50, accuracy: 0.5)
+        host.rootView = content([MessageReaction(value: "👍", accountIds: ["self"])])
+        XCTAssertGreaterThan(host.sizeThatFits(in: proposal).height, emptySize.height)
+        host.rootView = content([])
+        XCTAssertEqual(host.sizeThatFits(in: proposal).height, emptySize.height, accuracy: 0.5)
+    }
+
+    @MainActor
+    func testOverlayControlsKeepTouchesWhenTheyOverlapLongText() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let controller = UIViewController()
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let anchor = UIView(frame: window.bounds)
+        controller.view.addSubview(anchor)
+        let regions = WindowOverlayHitTestRegions()
+        regions.controlFrames = [CGRect(x: 20, y: 100, width: 320, height: 52),
+                                 CGRect(x: 20, y: 550, width: 240, height: 100)]
+        let coordinator = WindowOverlayPresenter<Text>.Coordinator(rootView: Text("Actions"))
+        coordinator.install(from: anchor, passthroughFrame: CGRect(x: 20, y: 50, width: 320, height: 650),
+                            hitTestRegions: regions) { _ in Text("Actions") }
+        defer { coordinator.remove(animated: false) }
+        let overlay = try XCTUnwrap(window.subviews.last)
+        XCTAssertTrue(overlay.point(inside: CGPoint(x: 100, y: 120), with: nil))
+        XCTAssertTrue(overlay.point(inside: CGPoint(x: 100, y: 580), with: nil))
+        XCTAssertFalse(overlay.point(inside: CGPoint(x: 100, y: 300), with: nil))
+        // Region updates must take effect without reinstalling the host.
+        regions.controlFrames = [CGRect(x: 20, y: 300, width: 320, height: 200)]
+        XCTAssertFalse(overlay.point(inside: CGPoint(x: 100, y: 120), with: nil))
+        XCTAssertTrue(overlay.point(inside: CGPoint(x: 100, y: 330), with: nil))
+    }
+
+    @MainActor
     func testParticleWindowDoesNotInterceptTouches() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let controller = UIViewController()
@@ -1198,6 +1249,26 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(window.subviews.last?.isUserInteractionEnabled, false)
         XCTAssertTrue(window.hitTest(CGPoint(x: 180, y: 400), with: nil) === anchor)
         coordinator.remove(animated: false)
+    }
+
+    func testAttachmentDeletionRetainsTheOriginalRowUntilParticleRemoval() throws {
+        var target = try XCTUnwrap(agentQueueFixture().first)
+        let first = ChatAttachment(attachmentId: "photo-one", name: "One.png", kind: .image,
+                                   mimeType: "image/png", sizeBytes: 1, previewURL: nil)
+        let second = ChatAttachment(attachmentId: "photo-two", name: "Two.png", kind: .image,
+                                    mimeType: "image/png", sizeBytes: 1, previewURL: nil)
+        target.attachments = [first, second]
+        target.text = "Original caption"
+        let deletion = MessageDeletionPresentation(message: target, messages: [target], attachmentID: first.id)
+        var authoritative = target
+        authoritative.attachments = [second]
+        authoritative.text = "Updated caption"
+        let retained = try XCTUnwrap(deletion.retainingMessage(in: [authoritative]).first)
+        XCTAssertEqual(retained.attachments.map(\.id), [first.id, second.id])
+        XCTAssertEqual(retained.text, "Original caption")
+        XCTAssertEqual(authoritative.attachments.map(\.id), [second.id])
+        XCTAssertEqual(authoritative.text, "Updated caption")
+        XCTAssertEqual(deletion.retainingMessage(in: []).map(\.id), [target.id])
     }
 
     func testDeletionRetainsSourceWhenSyncRemovesItBeforeRequestReturns() throws {
@@ -1396,7 +1467,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(bubbleSource.contains("MessageBubbleAccessoryRow("))
-        XCTAssertTrue(bubbleSource.contains("!message.reactions.isEmpty || threadReplyCount > 0"))
+        XCTAssertTrue(bubbleSource.contains("!reactions.isEmpty || threadReplyCount > 0"))
         XCTAssertTrue(conversationSource.contains("allowsQuotedReplies: conversation.kind.supportsQuotedReplies"))
         XCTAssertTrue(conversationSource.contains("allowsThreadReply: scopedThreadRootMessageID == nil"))
         XCTAssertTrue(conversationSource.contains("content.navigationDestination(item: $activeRootMessageID)"))
@@ -1423,7 +1494,9 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UITapGestureRecognizer()
         ))
-        XCTAssertEqual(MessageBubble.actionLongPressDuration, 0.5)
+        XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
+            with: UILongPressGestureRecognizer()
+        ))
     }
 
     func testMessageActionsAllowManualTextSelectionOnlyAfterOpening() throws {
@@ -1449,13 +1522,12 @@ final class ConversationReadPresentationTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(markdownSource.contains("SelectableMessageTextView("))
-        XCTAssertTrue(markdownSource.contains("textView.isSelectable = true"))
-        XCTAssertTrue(markdownSource.contains("textView.isScrollEnabled = false"))
         XCTAssertFalse(markdownSource.contains("textView.selectedRange = NSRange("))
         XCTAssertFalse(markdownSource.contains("textView.becomeFirstResponder()"))
+        XCTAssertTrue(markdownSource.contains("content.textSelection(.enabled)"))
+        XCTAssertTrue(markdownSource.contains("content.textSelection(.disabled)"))
+        XCTAssertFalse(markdownSource.contains("SelectableMessageTextView"))
         XCTAssertTrue(bubbleSource.contains("allowsTextSelection: isActionPresented"))
-        XCTAssertTrue(bubbleSource.contains("onSelectedTextChange: onSelectedTextChange"))
         XCTAssertTrue(bubbleSource.contains("isHighlighted || isSelected"))
         XCTAssertTrue(bubbleSource.contains("value: showsSelectionHighlight"))
         XCTAssertTrue(bubbleSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
@@ -1466,7 +1538,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("MessageDeliveryGlyph(state: .read"))
         XCTAssertFalse(overlaySource.contains("cornerSize: CGSize(width: 18, height: 18)"))
         XCTAssertTrue(overlaySource.contains("eoFill: true"))
-        XCTAssertTrue(overlaySource.contains("Button(action: onDismiss)"))
+        XCTAssertTrue(overlaySource.contains("performAction(onDismiss)"))
         XCTAssertTrue(overlaySource.contains("mediaAttachment == nil"))
         XCTAssertTrue(overlaySource.contains("AnyShape(Rectangle())"))
         XCTAssertTrue(overlaySource.contains("sourceFrame.offsetBy("))
@@ -1478,12 +1550,8 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains(".curveEaseOut"))
         XCTAssertFalse(overlaySource.contains("acceptsInput"))
         XCTAssertTrue(overlaySource.contains("actionButton(\"Select\""))
-        XCTAssertTrue(conversationSource.contains("@State private var selectedMessageText: String?"))
-        XCTAssertTrue(conversationSource.contains("selectedMessageText?.nonEmpty ?? message.text"))
-        XCTAssertTrue(conversationSource.contains("selectedMessageText = nil"))
         XCTAssertTrue(conversationSource.contains("toggleSelection(message.id)"))
         XCTAssertFalse(conversationSource.contains("messageActionAcceptsInput"))
-        XCTAssertTrue(conversationSource.contains(".scrollDisabled(messageActionMessage != nil)"))
         XCTAssertFalse(conversationSource.contains("proxy.scrollTo(row.id, anchor: .bottom)"))
         XCTAssertFalse(conversationSource.contains(".toolbarBackground(.visible"))
         XCTAssertTrue(conversationSource.contains(".toolbar(navigationBarVisibility, for: .navigationBar)"))
@@ -1632,6 +1700,53 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testSelectingFormattedTextDoesNotChangeItsLayout() {
+        let samples = [
+            "A short **bold** message with a [link](https://example.com).",
+            "# Blob heading\n\nKeep **bold** and :blob:blobwave: rendered.\n\n- A list item",
+            "# Notes\n\n- First item\n- Second **bold** item\n\n> A quoted passage.\n\n```swift\nlet value = 42\n```",
+            Array(repeating: "A long paragraph with **emphasis** and readable text.", count: 70).joined(separator: "\n\n"),
+            String(repeating: "A very long response. ", count: 2_000)
+        ]
+        for text in samples {
+            let host = UIHostingController(rootView: MarkdownMessageContent(text: text).frame(width: 290, alignment: .leading))
+            let proposal = CGSize(width: 290, height: CGFloat.greatestFiniteMagnitude)
+            let original = host.sizeThatFits(in: proposal)
+            host.rootView = MarkdownMessageContent(text: text, allowsTextSelection: true).frame(width: 290, alignment: .leading)
+            let selected = host.sizeThatFits(in: proposal)
+            host.rootView = MarkdownMessageContent(text: text).frame(width: 290, alignment: .leading)
+            let returned = host.sizeThatFits(in: proposal)
+            XCTAssertEqual(selected.width, original.width, accuracy: 0.5)
+            XCTAssertEqual(selected.height, original.height, accuracy: 0.5)
+            XCTAssertEqual(returned.height, original.height, accuracy: 0.5)
+        }
+    }
+
+    @MainActor
+    func testTallPreviewScrollKeepsItsOriginalSizeAndClampsMovement() {
+        let source = CGRect(x: 20, y: -800, width: 300, height: 1_600)
+        let layout = MessageActionOverlayLayout.make(
+            sourceFrame: source, containerSize: CGSize(width: 390, height: 700),
+            showsReactions: true, reactionCount: 6, actionCount: 8
+        )
+        XCTAssertEqual(layout.previewFrame.size, source.size)
+        XCTAssertLessThan(layout.previewFrame.minY, 0)
+        XCTAssertGreaterThan(layout.scrollLimit, 0)
+        XCTAssertTrue(layout.menuIsBelow)
+        let scroll = MessageActionPreviewScroll()
+        scroll.limit = layout.scrollLimit
+        scroll.drag(translation: 200)
+        XCTAssertEqual(scroll.offset, 200)
+        scroll.drag(translation: 10_000)
+        XCTAssertEqual(scroll.offset, layout.scrollLimit)
+        scroll.endDrag()
+        scroll.drag(translation: -10_000)
+        XCTAssertEqual(scroll.offset, 0)
+        scroll.reset()
+        XCTAssertEqual(scroll.limit, 0)
+    }
+
     func testActionOverlayStaysInsideTopAndBottomEdges() {
         let container = CGSize(width: 390, height: 700)
         let top = MessageActionOverlayLayout.make(
@@ -1731,12 +1846,14 @@ final class ConversationReadPresentationTests: XCTestCase {
                                       y: layout.reactionCenter.y - 26,
                                       width: layout.reactionWidth, height: 52)
                 let usable = CGRect(origin: .zero, size: container).insetBy(dx: 11.99, dy: 11.99)
-                XCTAssertTrue(usable.contains(layout.previewFrame))
+                XCTAssertEqual(layout.previewFrame.size, source.size)
+                XCTAssertTrue(usable.intersects(layout.previewFrame))
+                if layout.scrollLimit == 0 { XCTAssertTrue(usable.contains(layout.previewFrame)) }
                 XCTAssertTrue(usable.contains(menu))
                 XCTAssertFalse(menu.intersects(layout.previewFrame))
                 if showsReactions {
                     XCTAssertTrue(usable.contains(reaction))
-                    XCTAssertFalse(reaction.intersects(layout.previewFrame))
+                    if layout.scrollLimit == 0 { XCTAssertFalse(reaction.intersects(layout.previewFrame)) }
                     XCTAssertFalse(reaction.intersects(menu))
                 }
                 XCTAssertGreaterThanOrEqual(layout.menuHeight, 44)
@@ -1799,7 +1916,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(gestureSource.contains("UITapGestureRecognizer"))
         XCTAssertTrue(gestureSource.contains("tap.require(toFail: longPress)"))
         XCTAssertTrue(gestureSource.contains("current as? UIScrollView"))
-        XCTAssertTrue(gestureSource.contains("recognizer.cancelsTouchesInView = false"))
+        XCTAssertTrue(gestureSource.contains("recognizer.cancelsTouchesInView = true"))
         XCTAssertFalse(imageSource.contains(".onGeometryChange(for: CGRect.self)"))
         XCTAssertTrue(gestureSource.contains("attachmentView.convert(attachmentView.bounds, to: window)"))
         XCTAssertTrue(imageSource.contains("onRequestActions(frame)"))
@@ -1833,7 +1950,9 @@ final class ConversationReadPresentationTests: XCTestCase {
             .components(separatedBy: "private var usesBorderlessImageSurface")[0]
 
         XCTAssertTrue(messageSurface.contains("} else if usesDetachedImageGroup {"))
-        XCTAssertTrue(messageSurface.contains("imageCollection\n                bubbleSurface"))
+        XCTAssertTrue(messageSurface.contains("captionSurface"))
+        XCTAssertTrue(messageSurface.contains("message-image-"))
+        XCTAssertTrue(messageSurface.contains("message-caption-"))
         XCTAssertTrue(bubbleContents.contains("!usesDetachedImageGroup"))
     }
 

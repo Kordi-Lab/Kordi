@@ -225,6 +225,9 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertFalse(MessageAttachmentPresentation.usesDetachedImageGroup(for: imageMessage))
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
         XCTAssertTrue(MessageAttachmentPresentation.usesDetachedImageGroup(for: captionedMessage))
+        captionedMessage.attachments = Array(captionedMessage.attachments.prefix(1))
+        XCTAssertTrue(MessageAttachmentPresentation.usesDetachedImageGroup(for: captionedMessage),
+                      "A single photo and its caption also need separate interaction surfaces.")
     }
 
     func testVideoOnlyMessageUsesBorderlessMediaSurface() {

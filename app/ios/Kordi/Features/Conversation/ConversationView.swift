@@ -17,15 +17,19 @@ private struct CameraPhotoReview: Identifiable {
 // Keep the source row in layout until both the server and the menu dismissal finish.
 // Sync can remove it before the delete request returns (including catalog rebuilding).
 struct MessageDeletionPresentation {
+    let id = UUID()
     let message: ChatMessage
+    let attachmentID: String?
     let precedingIDs: [String]
     let followingIDs: [String]
     var isConfirmed = false
     var isMenuDismissed = false
     var isSourceHidden = false
+    var isCaptureScheduled = false
 
-    init(message: ChatMessage, messages: [ChatMessage]) {
+    init(message: ChatMessage, messages: [ChatMessage], attachmentID: String? = nil) {
         self.message = message
+        self.attachmentID = attachmentID
         let index = messages.firstIndex(where: { $0.id == message.id }) ?? messages.endIndex
         precedingIDs = messages[..<index].map(\.id)
         followingIDs = index < messages.endIndex ? messages[(index + 1)...].map(\.id) : []
@@ -34,7 +38,12 @@ struct MessageDeletionPresentation {
     var canAnimateRemoval: Bool { isConfirmed && isMenuDismissed && !isSourceHidden }
 
     func retainingMessage(in messages: [ChatMessage]) -> [ChatMessage] {
-        guard !messages.contains(where: { $0.id == message.id }) else { return messages }
+        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            guard attachmentID != nil else { return messages }
+            var retained = messages
+            retained[index] = message
+            return retained
+        }
         let indices = Dictionary(uniqueKeysWithValues: messages.enumerated().map { ($0.element.id, $0.offset) })
         let insertionIndex = followingIDs.lazy.compactMap { indices[$0] }.first
             ?? precedingIDs.reversed().lazy.compactMap { indices[$0].map { $0 + 1 } }.first
@@ -192,16 +201,18 @@ struct ConversationView: View {
     @State private var lastTimelineSnapshot = ConversationTimelineWindow.Snapshot(count: 0, latestMessageID: nil)
     @State private var isLoadingEarlier = false
     @State private var isAtBottom = false
+    @State private var latestMessageBottomVisible = false
     @State private var latestVisibleMessageID: String?
     @State private var initialReadAnchorPositioned = false
     @State private var hasPositionedInitialTimeline = false
     @State private var initialViewport = ConversationInitialViewport.latest
     @State private var hasPreparedInitialViewport = false
+    @State private var hasAttachedInitialScrollView = false
     @State private var hasLaidOutInitialTimeline = false
     @State private var didFinishInitialHistoryLoad = false
     @State private var didPresentInitialLoading = false
     @State private var hasRevealedInitialViewport = false
-    @State private var initialLoadFailed = false
+    @State private var initialFailure: ConversationInitialFailure?
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
     @State private var animateBottomScroll = false
@@ -250,13 +261,15 @@ struct ConversationView: View {
     @State private var deleteReflowOffsets: [String: CGFloat] = [:]
     @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
+    @State private var messageActionImage: UIImage?
     @State private var messageActionFrame = CGRect.zero
     @State private var messageActionPreviewFrame = CGRect.zero
     @State private var messageActionAllowsTextSelection = true
     @State private var messageActionViewportFrame = CGRect.zero
     @State private var messageActionAttachment: ChatAttachment?
-    @State private var selectedMessageText: String?
+    @State private var messageActionPreviewScroll = MessageActionPreviewScroll()
     @State private var messageActionFeedback = 0
+    @State private var messageActionHitTestRegions = WindowOverlayHitTestRegions()
 
     private var navigationBarVisibility: Visibility {
         showsNavigationChrome ? .visible : .automatic
@@ -344,7 +357,7 @@ struct ConversationView: View {
     }
     private var isWaitingForInitialHistory: Bool {
         hasPreparedInitialViewport && isReadPresentationVisible && messages.isEmpty
-            && !didFinishInitialHistoryLoad && !hasRevealedInitialViewport && !initialLoadFailed
+            && !didFinishInitialHistoryLoad && !hasRevealedInitialViewport && initialFailure == nil
     }
     private var initialReadPositionReady: Bool { initialViewport == .latest || initialReadAnchorPositioned }
     private var isLatestMessageVisible: Bool {
@@ -368,6 +381,11 @@ struct ConversationView: View {
             for: conversation,
             currentAccountID: model.account?.accountId ?? ""
         )
+    }
+    // Nested task conversations can retain stale lazy height estimates even
+    // on iOS 27. Use measured row slots for these destinations as well.
+    private var usesExplicitTimelineLayout: Bool {
+        conversation.subsessionId != nil || ConversationTimelineVirtualization.usesCompatibilityLayout
     }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14
@@ -498,7 +516,7 @@ struct ConversationView: View {
                             ZStack(alignment: .bottomTrailing) {
                             // History pages retain their data, not every offscreen message view.
                             ScrollView {
-                                LazyVStack(spacing: 0) {
+                                ConversationTimelineStack(usesCompatibilityLayout: usesExplicitTimelineLayout) {
                                     if timeline.isEmpty {
                                         EmptyConversation(
                                             conversation: conversation,
@@ -533,64 +551,77 @@ struct ConversationView: View {
                                             let threadReplyCount = scopedThreadRootMessageID == nil
                                                 ? projection.replyCount(rootID: message.id)
                                                 : 0
-                                            VStack(spacing: 0) {
-                                                if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
-                                                    HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
-                                                        .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                            ConversationTimelineRowSlot(
+                                                viewportFrame: viewport.frame(in: .global),
+                                                isRetained: message.id == timeline.last?.id
+                                                    || (!hasPositionedInitialTimeline && row.id == trackedMessageID)
+                                                    || messageActionMessage?.id == message.id
+                                                    || pendingMessageDeletion?.message.id == message.id
+                                                    || stagedMessageIDs.contains(message.clientMessageId ?? message.id),
+                                                usesCompatibilityLayout: usesExplicitTimelineLayout
+                                            ) {
+                                                VStack(spacing: 0) {
+                                                    if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
+                                                        HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
+                                                            .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                                    }
+                                                    timelineMessageRow(
+                                                        row: row,
+                                                        presentation: presentation,
+                                                        timeline: timeline,
+                                                        messagesByID: messagesById,
+                                                        mentionTargets: mentionTargets,
+                                                        isPendingMention: pendingMentionMessageIDs.contains(message.id),
+                                                        pinnedMessageIDs: pinnedMessageIDs,
+                                                        previewActionMessageID: previewActionMessageID,
+                                                        threadReplyCount: threadReplyCount,
+                                                        threadHasUnread: threadReadCursors.map { thread?.hasUnread(cursors: $0) ?? false } ?? false,
+                                                        threadAgentState: thread?.agentState,
+                                                        viewportFrame: viewport.frame(in: .global),
+                                                        proxy: proxy
+                                                    )
                                                 }
-                                                timelineMessageRow(
-                                                    row: row,
-                                                    presentation: presentation,
-                                                    timeline: timeline,
-                                                    messagesByID: messagesById,
-                                                    mentionTargets: mentionTargets,
-                                                    isPendingMention: pendingMentionMessageIDs.contains(message.id),
-                                                    pinnedMessageIDs: pinnedMessageIDs,
-                                                    previewActionMessageID: previewActionMessageID,
-                                                    threadReplyCount: threadReplyCount,
-                                                    threadHasUnread: threadReadCursors.map { thread?.hasUnread(cursors: $0) ?? false } ?? false,
-                                                    threadAgentState: thread?.agentState,
-                                                    viewportFrame: viewport.frame(in: .global),
-                                                    proxy: proxy
-                                                )
-                                            }
-                                            .background(ConversationReadingAnchorProbe(messageID: message.id, position: scrollPosition))
-                                            #if DEBUG
-                                            .background {
-                                                if ConversationMotionProbeRegistry.enabled {
-                                                    ConversationMotionProbe(id: row.id)
+                                                .background(ConversationReadingAnchorProbe(messageID: message.id, position: scrollPosition))
+                                                #if DEBUG
+                                                .background {
+                                                    if ConversationMotionProbeRegistry.enabled {
+                                                        ConversationMotionProbe(id: row.id)
+                                                    }
                                                 }
+                                                #endif
+                                                .accessibilityElement(children: .contain)
+                                                .accessibilityIdentifier("message-\(message.id)")
+                                                .modifier(InitialReadAnchorModifier(messageID: message.id, isAnchor: !initialReadAnchorPositioned && hasRevealedInitialViewport && row.id == initialReadAnchorID) { initialReadAnchorPositioned = true })
+                                                .modifier(LatestMessageVisibilityModifier(messageID: message.id, isLatest: message.id == timeline.last?.id, isEnabled: initialReadPositionReady && hasRevealedInitialViewport && isReadPresentationVisible) { visible in
+                                                    if visible { latestVisibleMessageID = message.id }
+                                                    else if latestVisibleMessageID == message.id { latestVisibleMessageID = nil }
+                                                })
+                                                .opacity(pendingMessageDeletion?.message.id == message.id
+                                                    && pendingMessageDeletion?.attachmentID == nil
+                                                    && pendingMessageDeletion?.isSourceHidden == true ? 0 : 1)
+                                                .allowsHitTesting(pendingMessageDeletion?.message.id != message.id)
+                                                .transition(.identity)
+                                                .offset(y: deleteReflowOffsets[row.id] ?? 0)
+                                                .background {
+                                                    Color.clear.onGeometryChange(for: CGRect.self) { [
+                                                        tracksReflow = (messageActionMessage != nil && messageActionAttachment == nil)
+                                                            || pendingMessageDeletion != nil || !activeDeleteSnapshots.isEmpty
+                                                    ] geometry in
+                                                        tracksReflow ? geometry.frame(in: .global) : .zero
+                                                    } action: { frame in
+                                                        if !frame.isEmpty { deleteCaptureFrames.rows[row.id] = frame }
+                                                    }
+                                                }
+                                                .zIndex(messageActionMessage?.id == message.id && messageActionImage == nil ? 1 : 0)
+                                                .modifier(OutgoingMessageEntrance(
+                                                    pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
+                                                        || (message.author == .agent && message.requestMessageId
+                                                            .flatMap { messagesById[$0] }
+                                                            .map { stagedMessageIDs.contains($0.clientMessageId ?? $0.id) } == true)
+                                                ))
                                             }
-                                            #endif
-                                            .accessibilityElement(children: .contain)
-                                            .accessibilityIdentifier("message-\(message.id)")
-                                            .modifier(InitialReadAnchorModifier(messageID: message.id, isAnchor: !initialReadAnchorPositioned && hasRevealedInitialViewport && row.id == initialReadAnchorID) { initialReadAnchorPositioned = true })
-                                            .modifier(LatestMessageVisibilityModifier(messageID: message.id, isLatest: message.id == timeline.last?.id, isEnabled: initialReadPositionReady && hasRevealedInitialViewport && isReadPresentationVisible) { visible in
-                                                if visible { latestVisibleMessageID = message.id }
-                                                else if latestVisibleMessageID == message.id { latestVisibleMessageID = nil }
-                                            })
-                                            .opacity(pendingMessageDeletion?.message.id == message.id
-                                                && pendingMessageDeletion?.isSourceHidden == true ? 0 : 1)
-                                            .allowsHitTesting(pendingMessageDeletion?.message.id != message.id)
+                                            .id(row.id)
                                             .transition(.identity)
-                                            .offset(y: deleteReflowOffsets[row.id] ?? 0)
-                                            .background {
-                                                Color.clear.onGeometryChange(for: CGRect.self) { [
-                                                    tracksReflow = messageActionMessage != nil
-                                                        || pendingMessageDeletion != nil || !activeDeleteSnapshots.isEmpty
-                                                ] geometry in
-                                                    tracksReflow ? geometry.frame(in: .global) : .zero
-                                                } action: { frame in
-                                                    if !frame.isEmpty { deleteCaptureFrames.rows[row.id] = frame }
-                                                }
-                                            }
-                                            .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
-                                            .modifier(OutgoingMessageEntrance(
-                                                pendingPosition: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
-                                                    || (message.author == .agent && message.requestMessageId
-                                                        .flatMap { messagesById[$0] }
-                                                        .map { stagedMessageIDs.contains($0.clientMessageId ?? $0.id) } == true)
-                                            ))
                                         }
                                     }
 
@@ -609,7 +640,12 @@ struct ConversationView: View {
                                 .background(
                                     ConversationScrollCommandBridge(
                                         scrollPosition: scrollPosition,
+                                        latestMessageID: timeline.last?.id,
+                                        viewportFrame: viewport.frame(in: .global),
+                                        isUserScrollEnabled: messageActionMessage == nil,
+                                        allowsContentFollowing: pendingMessageDeletion == nil && activeDeleteSnapshots.isEmpty,
                                         preservesReadingPosition: hasRevealedInitialViewport
+                                            && isReadPresentationVisible
                                             && stagedMessageIDs.isEmpty
                                             && messageActionMessage == nil
                                             && threadReturnMessageID == nil
@@ -619,6 +655,7 @@ struct ConversationView: View {
                                         reduceMotion: reduceMotion,
                                         exactRestoreRequest: $exactScrollRestoreRequest,
                                         onScrollGeometryChange: recordScrollGeometry,
+                                        onScrollAttached: { if !hasAttachedInitialScrollView { hasAttachedInitialScrollView = true } },
                                         onNavigationVisibilityChange: synchronizeReadPresentation,
                                         onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
                                             stagedMessageIDs.removeAll { messageIDs.contains($0) }
@@ -642,17 +679,15 @@ struct ConversationView: View {
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy())
-                            .onGeometryChange(for: Bool.self) { [prepared = hasPreparedInitialViewport] geometry in
-                                prepared && geometry.size.width > 0 && geometry.size.height > 0
+                            // A pushed destination can lay out before onAppear
+                            // prepares its history. Geometry readiness must not
+                            // depend on the state captured by that first layout.
+                            .onGeometryChange(for: Bool.self) { geometry in
+                                geometry.size.width > 0 && geometry.size.height > 0
                             } action: { ready in
                                 if ready { hasLaidOutInitialTimeline = true }
                             }
-                            .task(id: hasLaidOutInitialTimeline && (!timeline.isEmpty || didFinishInitialHistoryLoad)) {
-                                guard hasLaidOutInitialTimeline, !timeline.isEmpty || didFinishInitialHistoryLoad else { return }
-                                await positionAndRevealInitialViewport(using: proxy)
-                            }
                             .scrollDismissesKeyboard(.interactively)
-                            .scrollDisabled(messageActionMessage != nil)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
                                     dismissKeyboard()
@@ -676,7 +711,8 @@ struct ConversationView: View {
                                 }
                                 if ConversationTimelineScrollBehavior.shouldShowLatestButton(
                                     isAtBottom: isAtBottom,
-                                    messageCount: timeline.count
+                                    messageCount: timeline.count,
+                                    latestMessageBottomVisible: latestMessageBottomVisible
                                 ) {
                                     LatestMessageButton(count: newMessageCount) {
                                         scrollToBottom(animated: true)
@@ -701,13 +737,18 @@ struct ConversationView: View {
                                 animates: didPresentInitialLoading, reduceMotion: reduceMotion))
                             .allowsHitTesting(showsTimeline)
                             .accessibilityHidden(!showsTimeline)
-                        if !showsTimeline, initialLoadFailed {
-                            ConversationInitialFailureView {
-                                initialLoadFailed = false
+                        if !showsTimeline, let initialFailure {
+                            ConversationInitialFailureView(failure: initialFailure) {
+                                self.initialFailure = nil
                                 Task { await loadAndRevealInitialConversation(using: proxy) }
                             }
+                            .accessibilityIdentifier(initialFailure == .history ? "conversation-history-failed" : "conversation-positioning-failed")
+                            #if DEBUG
+                            .accessibilityValue(ProcessInfo.processInfo.arguments.contains("--diagnose-conversation-opening")
+                                ? "messages=\(messages.count) " + scrollPosition.initialPositionDiagnostic(requiredMessageID: messages.last?.id) : "")
+                            #endif
                         }
-                        if didPresentInitialLoading, !initialLoadFailed {
+                        if didPresentInitialLoading, initialFailure == nil {
                             ConversationInitialLoadingOverlay(isReady: showsTimeline,
                                 kind: conversation.kind, reduceMotion: reduceMotion)
                         }
@@ -808,11 +849,14 @@ struct ConversationView: View {
                                 deleteReflowBaseline = deleteCaptureFrames.rows
                                 var transaction = Transaction(animation: nil)
                                 transaction.disablesAnimations = true
-                                withTransaction(transaction) { pendingMessageDeletion = nil }
+                                if pendingMessageDeletion?.attachmentID == nil {
+                                    withTransaction(transaction) { pendingMessageDeletion = nil }
+                                }
                                 return true
                             },
                             onInstallOffsets: {
                                 guard deleteReflowID == snapshot.id else { return false }
+                                if pendingMessageDeletion?.attachmentID != nil { return true }
                                 let offsets = MessageDeleteReflow.offsets(
                                     before: deleteReflowBaseline, after: deleteCaptureFrames.rows
                                 )
@@ -824,11 +868,18 @@ struct ConversationView: View {
                             onAnimate: { duration in
                                 guard deleteReflowID == snapshot.id else { return false }
                                 withAnimation(.timingCurve(0.77, 0, 0.175, 1, duration: duration)) {
+                                    if pendingMessageDeletion?.attachmentID != nil { pendingMessageDeletion = nil }
                                     deleteReflowOffsets.removeAll()
                                 }
                                 return true
                             },
                             onComplete: {
+                                // Fade and empty-capture fallbacks skip onAnimate.
+                                // They must still release a retained attachment row.
+                                if pendingMessageDeletion?.message.id == snapshot.messageID,
+                                   pendingMessageDeletion?.isSourceHidden == true {
+                                    pendingMessageDeletion = nil
+                                }
                                 activeDeleteSnapshots.removeAll { $0.id == snapshot.id }
                                 if deleteReflowID == snapshot.id {
                                     deleteReflowID = nil
@@ -907,7 +958,7 @@ struct ConversationView: View {
                     isAtBottom: isAtBottom,
                     trackedMessageID: trackedMessageID,
                     bottomAnchorID: bottomAnchorID
-                )
+                ) || scrollPosition.isMessageBottomVisible(previousLatestMessage?.id)
                 if !scrollPosition.isUserScrolling,
                    previousLatestMessageID != currentLatestMessageID
                     || ConversationTimelineScrollBehavior.hasContentChange(previousLatestMessage, currentLatestMessage),
@@ -923,8 +974,9 @@ struct ConversationView: View {
                     isNavigationReturnPending: threadReturnMessageID != nil
                         || threadReturnScrollOffsetY != nil
                 ) {
-                    // Insertion has already laid out the new row. A second scroll
-                    // animation would replay the old position after its first paint.
+                    // Use one native content-bottom target. An identity scroll
+                    // can execute after native positioning and undo it by the
+                    // trailing sentinel/padding height, producing a second jump.
                     scrollToBottom()
                 }
             }
@@ -978,6 +1030,15 @@ struct ConversationView: View {
             .onAppear {
                 restoreThreadReturnPosition(using: proxy)
             }
+            // GeometryReader may replace its measured subtree during a push.
+            // Keep positioning on the stable page so cancellation cannot leave
+            // a newly visible child waiting behind an abandoned attempt.
+            .task(id: hasPreparedInitialViewport && hasLaidOutInitialTimeline && hasAttachedInitialScrollView && isReadPresentationVisible
+                && (!timeline.isEmpty || didFinishInitialHistoryLoad)) {
+                guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, hasAttachedInitialScrollView, isReadPresentationVisible,
+                      !timeline.isEmpty || didFinishInitialHistoryLoad else { return }
+                await positionAndRevealInitialViewport(using: proxy)
+            }
             .task(id: isWaitingForInitialHistory) {
                 guard isWaitingForInitialHistory else { return }
                 do { try await Task.sleep(for: ConversationOpeningMotion.loadingIndicatorDelay) } catch { return }
@@ -993,14 +1054,14 @@ struct ConversationView: View {
             }
         }
         return conversationTimeline
-        .navigationTitle(showsNavigationChrome && messageActionMessage == nil ? conversation.displayName : "")
+        .navigationTitle(showsNavigationChrome ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .tint(chatTheme.accent)
         .toolbarBackground(.regularMaterial, for: .navigationBar)
         .toolbarBackground(showsNavigationChrome ? .visible : .automatic, for: .navigationBar)
         .toolbar(navigationBarVisibility, for: .navigationBar)
         .toolbar {
-            if showsNavigationChrome, messageActionMessage == nil {
+            if showsNavigationChrome {
                 if canOpenCompanionPanel {
                     if #available(iOS 26.0, *) {
                         ToolbarItem(placement: .topBarLeading) {
@@ -1047,6 +1108,7 @@ struct ConversationView: View {
             _ = await MessageDeleteParticleResources.prepared.value
         }
         .onDisappear {
+            rememberViewport(in: messages)
             scrollPosition.cancelInitialPositioning()
             scrollPosition.cancelScrolling()
             voiceRecorder.cancel()
@@ -1062,11 +1124,12 @@ struct ConversationView: View {
             deleteReflowID = nil
             deleteReflowBaseline.removeAll()
             deleteReflowOffsets.removeAll()
+            deleteCaptureFrames.cancelPendingCapture()
             deleteCaptureFrames.frames.removeAll()
+            deleteCaptureFrames.attachments.removeAll()
             deleteCaptureFrames.rows.removeAll()
             isReadPresentationVisible = false
             synchronizeReadPresentation()
-            rememberViewport(in: messages)
         }
         .onAppear {
             prepareInitialConversationForDisplay()
@@ -1355,10 +1418,10 @@ struct ConversationView: View {
                     showAvatar: presentation.showsAvatar,
                     replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
                     isHighlighted: highlightedMessageID == message.id,
-                    isActionPresented: messageActionMessage?.id == message.id,
+                    isActionPresented: messageActionMessage?.id == message.id && messageActionImage == nil,
                     pendingSendEntrance: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
                     outgoingAvatarGroupID: presentation.outgoingAvatarGroupID,
-                    actionPlacement: messageActionMessage?.id == message.id && !messageActionPreviewFrame.isEmpty
+                    actionPlacement: messageActionMessage?.id == message.id && messageActionImage == nil && !messageActionPreviewFrame.isEmpty
                         ? MessageActionBubblePlacement(sourceFrame: messageActionFrame, previewFrame: messageActionPreviewFrame)
                         : nil,
                     actionViewportFrame: viewportFrame,
@@ -1399,6 +1462,7 @@ struct ConversationView: View {
                     },
                     onSelect: { toggleSelection(message.id) },
                     onOpenActions: { frame, attachment in
+                        if attachment == nil { messageActionImage = nil }
                         presentMessageActions(
                             message,
                             attachment: attachment,
@@ -1406,7 +1470,13 @@ struct ConversationView: View {
                             viewportFrame: viewportFrame
                         )
                     },
-                    onSelectedTextChange: { selectedMessageText = $0 },
+                    onUpdateActionFrame: { frame in
+                        updateMessageActionFrame(for: message.id, frame: frame, viewportFrame: viewportFrame)
+                    },
+                    actionPreviewScroll: messageActionMessage?.id == message.id ? messageActionPreviewScroll : nil,
+                    onReactToAttachment: { attachment, reaction in
+                        Task { _ = await model.toggleAttachmentReaction(reaction, on: attachment, message: message, in: conversation) }
+                    },
                     onReact: { reaction in
                         Task {
                             _ = await model.toggleReaction(
@@ -1465,6 +1535,15 @@ struct ConversationView: View {
                     onAgentExecutionExpansionChange: { expanded in
                         guard expanded else { return }
                         revealExpandedAgentExecution(row.id, using: proxy)
+                    },
+                    usesOverlayPhotoPreview: messageActionMessage?.id == message.id && messageActionImage != nil,
+                    presentedActionAttachmentID: messageActionMessage?.id == message.id ? messageActionAttachment?.id : nil,
+                    onPrepareActionImage: { messageActionImage = $0 },
+                    deletingAttachmentID: pendingMessageDeletion?.message.id == message.id ? pendingMessageDeletion?.attachmentID : nil,
+                    hidesDeletingAttachment: pendingMessageDeletion?.message.id == message.id && pendingMessageDeletion?.isSourceHidden == true,
+                    onUpdateDeletingAttachmentFrame: { frame in
+                        guard pendingMessageDeletion?.message.id == message.id else { return }
+                        deleteCaptureFrames.attachments[message.id] = frame
                     }
                 )
                 .equatable()
@@ -1481,7 +1560,7 @@ struct ConversationView: View {
                 .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
                 .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
                 .onGeometryChange(for: CGRect.self) { [
-                    tracksCapture = messageActionMessage?.id == message.id
+                    tracksCapture = (messageActionMessage?.id == message.id && messageActionAttachment == nil)
                         || pendingMessageDeletion?.message.id == message.id
                 ] geometry in
                     tracksCapture ? geometry.frame(in: .global) : .zero
@@ -1490,7 +1569,6 @@ struct ConversationView: View {
                 }
             }
         }
-        .id(row.id)
         .modifier(MentionPresentationModifier(isPending: scopedThreadRootMessageID != nil && scenePhase == .active && message.author != .me, viewportFrame: viewportFrame) {
             guard let root = scopedThreadRootMessageID, let thread = threadProjection.thread(rootID: root),
                   let sequence = message.conversationSequence else { return }
@@ -1527,10 +1605,17 @@ struct ConversationView: View {
             for: message,
             in: conversation
         )
+        let selectionFrame = messageActionPreviewFrame.isEmpty ? messageActionFrame : messageActionPreviewFrame
+        let visibleSelectionFrame = messageActionViewportFrame.isEmpty
+            ? selectionFrame : selectionFrame.intersection(messageActionViewportFrame)
         return WindowOverlayPresenter(
             passthroughFrame: messageActionAllowsTextSelection && messageActionAttachment == nil && !message.text.isEmpty
-                ? (messageActionPreviewFrame.isEmpty ? messageActionFrame : messageActionPreviewFrame)
+                ? visibleSelectionFrame
                 : nil,
+            hitTestRegions: messageActionHitTestRegions,
+            // MessageActionOverlay owns the complete exit, including the bubble.
+            // Detach immediately afterwards instead of starting a second fade.
+            animatesRemoval: false,
             onDismissComplete: {
                 Task { @MainActor in
                     guard pendingMessageDeletion?.message.id == message.id else { return }
@@ -1542,9 +1627,14 @@ struct ConversationView: View {
             MessageActionOverlay(
                 message: message,
                 sourceFrame: messageActionFrame,
+                photoPreview: messageActionImage,
+                hitTestRegions: messageActionHitTestRegions,
+                previewScroll: messageActionPreviewScroll,
                 usableFrame: messageActionViewportFrame.isEmpty ? usableFrame : messageActionViewportFrame,
                 onPreviewFrameChange: { frame, allowsTextSelection in
-                    guard messageActionMessage?.id == message.id, !frame.isEmpty else { return }
+                    // Floating photos animate entirely in the menu host. Feeding
+                    // their animation back into the lazy chat layout is unnecessary.
+                    guard messageActionImage == nil, messageActionMessage?.id == message.id, !frame.isEmpty else { return }
                     if messageActionPreviewFrame != frame { messageActionPreviewFrame = frame }
                     if messageActionAllowsTextSelection != allowsTextSelection {
                         messageActionAllowsTextSelection = allowsTextSelection
@@ -1560,7 +1650,7 @@ struct ConversationView: View {
                     for: message,
                     isPreviewMode: model.isPreviewMode
                 ),
-                allowsEdit: message.author == .me
+                allowsEdit: messageActionAttachment == nil && message.author == .me
                     && !message.isSystemNotice
                     && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     && !["voice", "sticker", "call"].contains(message.messageKind?.lowercased() ?? "")
@@ -1573,9 +1663,9 @@ struct ConversationView: View {
                         && message.deliveryState != .sending
                         && message.deliveryState != .failed
                         && message.reactionTargetMessageId?.nonEmpty != nil,
-                deleteForEveryoneLabel: conversation.kind == .group
-                    ? "Delete for everyone"
-                    : "Delete for me and \(conversation.displayName)",
+                deleteForEveryoneLabel: messageActionAttachment != nil
+                    ? (conversation.kind == .group ? "Delete photo for everyone" : "Delete photo for me and \(conversation.displayName)")
+                    : (conversation.kind == .group ? "Delete for everyone" : "Delete for me and \(conversation.displayName)"),
                 isPinned: pinnedMessageIDs.contains(message.id),
                 mediaAttachment: messageActionAttachment,
                 readReceiptLabel: MessageReadReceiptPresentation.label(
@@ -1600,8 +1690,15 @@ struct ConversationView: View {
                     Task { _ = await model.addAttachmentToExpressiveMediaLibrary(attachment) }
                 },
                 onReact: { reaction in
+                    let attachment = messageActionAttachment
                     dismissMessageActions()
-                    Task { _ = await model.toggleReaction(reaction, on: message, in: conversation) }
+                    Task {
+                        if let attachment {
+                            _ = await model.toggleAttachmentReaction(reaction, on: attachment, message: message, in: conversation)
+                        } else {
+                            _ = await model.toggleReaction(reaction, on: message, in: conversation)
+                        }
+                    }
                 },
                 onReply: { destination in
                     let source = destination == .thread
@@ -1636,11 +1733,11 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onCopy: {
-                    UIPasteboard.general.string = selectedMessageText?.nonEmpty ?? message.text
+                    UIPasteboard.general.string = message.text
                     dismissMessageActions()
                 },
                 onShareMessage: {
-                    let text = (selectedMessageText?.nonEmpty ?? message.text)
+                    let text = (message.text)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !text.isEmpty else { return }
                     messageShareItem = SharedMessageItem(
@@ -1660,7 +1757,7 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onDelete: { forEveryone in
-                    deleteMessage(message, forEveryone: forEveryone)
+                    deleteMessage(message, attachment: messageActionAttachment, forEveryone: forEveryone)
                 },
                 onSaveSticker: { attachment in
                     dismissMessageActions()
@@ -1682,6 +1779,18 @@ struct ConversationView: View {
         }
     }
 
+    private func updateMessageActionFrame(for messageID: String, frame: CGRect, viewportFrame: CGRect) {
+        // A queued layout callback may arrive after a menu action changed the
+        // composer or selection. Geometry updates must never reopen a closed menu.
+        guard messageActionMessage?.id == messageID, !frame.isEmpty else { return }
+        // Lazy layout can report subpixel rounding differences on successive
+        // passes. Feeding those back into the preview can keep layout invalid.
+        let delta = max(abs(messageActionFrame.minX - frame.minX), abs(messageActionFrame.minY - frame.minY),
+                        abs(messageActionFrame.width - frame.width), abs(messageActionFrame.height - frame.height))
+        if delta > 0.5 { messageActionFrame = frame }
+        if messageActionViewportFrame != viewportFrame { messageActionViewportFrame = viewportFrame }
+    }
+
     private func presentMessageActions(
         _ message: ChatMessage,
         attachment: ChatAttachment?,
@@ -1692,40 +1801,43 @@ struct ConversationView: View {
         if messageActionMessage?.id == message.id {
             // Geometry updates for the active message must not restart presentation,
             // dismiss the keyboard again, or replay the haptic.
-            if messageActionFrame != frame { messageActionFrame = frame }
-            if messageActionViewportFrame != viewportFrame { messageActionViewportFrame = viewportFrame }
+            updateMessageActionFrame(for: message.id, frame: frame, viewportFrame: viewportFrame)
             return
         }
         if activeDeleteSnapshots.isEmpty, pendingMessageDeletion == nil {
             deleteCaptureFrames.frames.removeAll(keepingCapacity: true)
             deleteCaptureFrames.rows.removeAll(keepingCapacity: true)
         }
+        messageActionHitTestRegions.controlFrames = []
         messageActionPreviewFrame = frame
         messageActionAllowsTextSelection = true
         messageActionViewportFrame = viewportFrame
         messageActionFrame = frame
         let selectedAttachment = attachment
-            ?? message.attachments.first(where: { $0.kind == .image })
+            ?? (message.text.isEmpty ? message.attachments.first(where: { $0.kind == .image }) : nil)
         let stickerAttachment = MessageImageInteraction.stickerAttachment(in: message)
         messageActionAttachment = selectedAttachment?.id == stickerAttachment?.id
             ? nil
             : selectedAttachment
-        selectedMessageText = nil
+        messageActionPreviewScroll.reset()
         isComposerFocused = false
         dismissComposerPickers()
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
+        // Only the extracted preview animates; installing its host must not
+        // animate every layout and environment update in the conversation.
+        withTransaction(Transaction(animation: nil)) {
             messageActionMessage = message
         }
         messageActionFeedback += 1
     }
 
     private func dismissMessageActions() {
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+        // The overlay has already returned the bubble and faded its surfaces.
+        // Remove its host without another SwiftUI or UIKit removal transition.
+        withTransaction(Transaction(animation: nil)) {
             messageActionMessage = nil
+            messageActionAttachment = nil
+            messageActionImage = nil
         }
-        // Retain the last geometry while the window overlay fades out.
-        messageActionAttachment = nil
-        selectedMessageText = nil
     }
 
     private func navigateToMessage(
@@ -1862,21 +1974,34 @@ struct ConversationView: View {
         editTarget = nil
     }
 
-    private func deleteMessage(_ target: ChatMessage, forEveryone: Bool) {
+    private func deleteMessage(_ target: ChatMessage, attachment: ChatAttachment? = nil, forEveryone: Bool) {
         guard pendingMessageDeletion == nil else { return }
-        pendingMessageDeletion = MessageDeletionPresentation(message: target, messages: allMessages)
+        var presentation = MessageDeletionPresentation(message: target, messages: allMessages, attachmentID: attachment?.id)
+        // The action is delivered after the menu's return animation. Capture is
+        // deferred until the source has actually been restored on screen.
+        presentation.isMenuDismissed = true
+        pendingMessageDeletion = presentation
+        if attachment != nil { deleteCaptureFrames.attachments[target.id] = messageActionFrame }
+        else if deleteCaptureFrames.frames[target.id] == nil { deleteCaptureFrames.frames[target.id] = messageActionFrame }
+        let deletionID = presentation.id
+        _ = MessageDeleteParticleResources.prepared
         dismissMessageActions()
         Task {
-            let succeeded = await model.deleteMessage(target, forEveryone: forEveryone, in: conversation)
-            guard pendingMessageDeletion?.message.id == target.id else { return }
+            let succeeded: Bool
+            if let attachment {
+                succeeded = await model.deleteAttachment(attachment, from: target, forEveryone: forEveryone, in: conversation)
+            } else {
+                succeeded = await model.deleteMessage(target, forEveryone: forEveryone, in: conversation)
+            }
+            guard pendingMessageDeletion?.id == deletionID else { return }
             if succeeded {
-                if editTarget?.reactionTargetMessageId == target.reactionTargetMessageId {
+                if attachment == nil, editTarget?.reactionTargetMessageId == target.reactionTargetMessageId {
                     cancelMessageEdit()
                 }
                 pendingMessageDeletion?.isConfirmed = true
                 animateConfirmedMessageDeletion()
             } else {
-                // The authoritative row stays visible on failure; do not animate a deletion.
+                deleteCaptureFrames.cancelPendingCapture()
                 pendingMessageDeletion = nil
                 messageMutationError = model.errorMessage ?? "Could not delete this message."
             }
@@ -1885,16 +2010,27 @@ struct ConversationView: View {
 
     private func animateConfirmedMessageDeletion() {
         guard deleteReflowID == nil,
-              let deletion = pendingMessageDeletion, deletion.canAnimateRemoval else { return }
+              let deletion = pendingMessageDeletion, deletion.canAnimateRemoval,
+              !deletion.isCaptureScheduled else { return }
         guard scenePhase == .active else { pendingMessageDeletion = nil; return }
-        guard let frame = deleteCaptureFrames.frames[deletion.message.id],
-              let snapshot = MessageDeleteSnapshot.capture(messageID: deletion.message.id, frame: frame) else {
+        pendingMessageDeletion?.isCaptureScheduled = true
+        deleteCaptureFrames.afterSourceRestored {
+            captureConfirmedMessageDeletion(id: deletion.id)
+        }
+    }
+
+    private func captureConfirmedMessageDeletion(id: UUID) {
+        guard let deletion = pendingMessageDeletion, deletion.id == id, deletion.canAnimateRemoval else { return }
+        guard scenePhase == .active else { pendingMessageDeletion = nil; return }
+        let frame = deletion.attachmentID == nil
+            ? deleteCaptureFrames.frames[deletion.message.id]
+            : deleteCaptureFrames.attachments[deletion.message.id]
+        guard let frame,
+              let snapshot = MessageDeleteSnapshot.capture(messageID: deletion.message.id, frame: frame,
+                                                            attachmentID: deletion.attachmentID) else {
             pendingMessageDeletion = nil
             return
         }
-        // Keep layout stationary while capturing the background behind the hidden row.
-        // The particle surface starts removal and reflow together once its transparent
-        // texture is ready. No wallpaper rectangle moves over neighboring messages.
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -1978,7 +2114,8 @@ struct ConversationView: View {
 
     @MainActor
     private func positionAndRevealInitialViewport(using proxy: ScrollViewProxy) async {
-        guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, !hasPositionedInitialTimeline,
+        guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, hasAttachedInitialScrollView, isReadPresentationVisible,
+              !hasPositionedInitialTimeline,
               !messages.isEmpty || didFinishInitialHistoryLoad,
               !scrollPosition.isPositioningInitialTimeline else { return }
         scrollPosition.isPositioningInitialTimeline = true
@@ -1991,7 +2128,7 @@ struct ConversationView: View {
         withTransaction(transaction) {
             switch initialViewport {
             case .latest:
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)
             case let .anchored(anchor):
                 proxy.scrollTo(timelineIdentity(for: anchor.messageID, in: messages), anchor: .top)
             case let .resumed(messageID):
@@ -2016,15 +2153,15 @@ struct ConversationView: View {
         guard !Task.isCancelled else { return }
         if initialViewport == .latest {
             withTransaction(transaction) {
-                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)
             }
             // A proxy request can arrive before a lazy stack commits its final
             // offset. Verify native layout on display frames before first paint.
             let positioned = await scrollPosition.positionInitialViewport {
-                scrollPosition.positionAtLatest()
+                scrollPosition.positionAtLatest(requiredMessageID: messages.last?.id)
             }
             guard !Task.isCancelled, isReadPresentationVisible, !hasPositionedInitialTimeline else { return }
-            guard positioned else { initialLoadFailed = true; return }
+            guard positioned else { initialFailure = .positioning; return }
         }
         guard isReadPresentationVisible else { return }
         withTransaction(transaction) {
@@ -2052,7 +2189,7 @@ struct ConversationView: View {
             rootMessageID: scopedThreadRootMessageID,
             messageCount: messages.count
         ) {
-            initialLoadFailed = false
+            initialFailure = nil
             return
         }
 
@@ -2061,10 +2198,10 @@ struct ConversationView: View {
         let didLoad = await model.loadConversation(conversation)
         guard !Task.isCancelled, model.account?.accountId == accountIDAtStart else { return }
         if !didLoad, messages.isEmpty {
-            initialLoadFailed = true
+            initialFailure = .history
             return
         }
-        initialLoadFailed = false
+        initialFailure = nil
         didFinishInitialHistoryLoad = true
         if initialMessageID == nil,
            !hasRevealedInitialViewport,
@@ -2104,6 +2241,9 @@ struct ConversationView: View {
     private func recordScrollGeometry(_ snapshot: ConversationScrollGeometrySnapshot) {
         guard hasRevealedInitialViewport, isReadPresentationVisible, snapshot.isValid else { return }
         scrollPosition.contentOffsetY = snapshot.contentOffsetY
+        if latestMessageBottomVisible != snapshot.latestMessageBottomVisible {
+            latestMessageBottomVisible = snapshot.latestMessageBottomVisible
+        }
         scrollPosition.captureReadingAnchor()
         if isAtBottom != snapshot.isAtLatest { isAtBottom = snapshot.isAtLatest }
         if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID { trackedMessageID = nil }
@@ -2157,7 +2297,10 @@ struct ConversationView: View {
 
     private func rememberViewport(in timeline: [ChatMessage], now: Date = Date()) {
         guard hasPreparedInitialViewport, hasRevealedInitialViewport else { return }
-        let anchor = isAtBottom ? nil : scrollPosition.readingAnchor
+        let candidate = scrollPosition.readingAnchor ?? scrollPosition.lastVisibleReadingAnchor
+        let anchor = isAtBottom ? nil : candidate.flatMap { anchor in
+            timeline.contains(where: { $0.id == anchor.messageID }) ? anchor : nil
+        }
         model.conversationViewportMemory.remember(
             key: viewportMemoryKey,
             messageID: anchor?.messageID,
@@ -3039,9 +3182,10 @@ enum ConversationTimelineScrollBehavior {
 
     static func shouldShowLatestButton(
         isAtBottom: Bool,
-        messageCount: Int
+        messageCount: Int,
+        latestMessageBottomVisible: Bool = false
     ) -> Bool {
-        !isAtBottom && messageCount > 0
+        !isAtBottom && !latestMessageBottomVisible && messageCount > 0
     }
 
     static func isAtLatest(
@@ -3423,12 +3567,17 @@ private struct ConversationScrollRestoreRequest: Equatable {
 // callbacks can leave read presentation stale after a UIKit-driven jump.
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollPosition: ConversationScrollPosition
+    let latestMessageID: String?
+    let viewportFrame: CGRect
+    let isUserScrollEnabled: Bool
+    let allowsContentFollowing: Bool
     let preservesReadingPosition: Bool
     let scrollToBottomRequest: Int
     let animateBottomScroll: Bool
     let reduceMotion: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
     let onScrollGeometryChange: (ConversationScrollGeometrySnapshot) -> Void
+    let onScrollAttached: () -> Void
     let onNavigationVisibilityChange: () -> Void
     let onTailPositioned: (() -> Void)?
 
@@ -3436,14 +3585,14 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         Coordinator()
     }
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+    func makeUIView(context: Context) -> ConversationScrollAttachmentView {
+        let view = ConversationScrollAttachmentView(frame: .zero)
         view.isUserInteractionEnabled = false
         view.backgroundColor = .clear
         return view
     }
 
-    func updateUIView(_ view: UIView, context: Context) {
+    func updateUIView(_ view: ConversationScrollAttachmentView, context: Context) {
         let shouldScrollToBottom = scrollToBottomRequest > 0
             && context.coordinator.lastHandledRequest != scrollToBottomRequest
         if shouldScrollToBottom {
@@ -3454,6 +3603,9 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         }
         let coordinator = context.coordinator
         coordinator.navigationVisibilityChanged = onNavigationVisibilityChange
+        coordinator.scrollPosition = scrollPosition
+        coordinator.latestMessageID = latestMessageID
+        scrollPosition.viewportFrameInWindow = viewportFrame
         scrollPosition.attachNavigationAnimator(coordinator.tailAnimator)
         coordinator.tailAnimator.onTransitionVisibilityChange = { [weak coordinator, weak scrollPosition] in
             guard let coordinator else { return }
@@ -3461,6 +3613,8 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             DispatchQueue.main.async { [weak coordinator] in coordinator?.navigationVisibilityChanged?() }
         }
         coordinator.preservesReadingPosition = preservesReadingPosition && exactRestoreRequest == nil
+        coordinator.contentResizeFollower.isEnabled = coordinator.preservesReadingPosition && isUserScrollEnabled && allowsContentFollowing
+        coordinator.isUserScrollEnabled = isUserScrollEnabled
         if shouldScrollToBottom || restoreRequest != nil {
             coordinator.cancelViewportAdjustment()
         }
@@ -3473,12 +3627,18 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion, onPositioned: onTailPositioned)
         }
 
-        DispatchQueue.main.async { [weak view] in
-            guard let view,
-                  let scrollView = enclosingScrollView(from: view) else { return }
+        view.onResolveScrollView = { [weak view] scrollView in
+            guard let view else { return }
             scrollPosition.attach(to: scrollView)
+            onScrollAttached()
+            coordinator.updateUserScrolling(in: scrollView)
             coordinator.observeViewport(of: scrollView)
             coordinator.observeGeometry(in: scrollView, update: onScrollGeometryChange)
+            coordinator.contentResizeFollower.connect(to: scrollView, contentView: view) { [weak coordinator, weak scrollView, weak view] in
+                guard let coordinator, let scrollView, let view else { return }
+                coordinator.tailAnimator.request(in: scrollView, contentView: view,
+                    animated: false, reduceMotion: reduceMotion)
+            }
             if let restoreRequest {
                 guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
                 coordinator.lastHandledRestoreRequestID = restoreRequest.id
@@ -3510,17 +3670,20 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             }
             // The immediate path preserves the pre-layout presentation offset.
             // A newly attached bridge may only find its scroll view on this turn.
-            if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest,
+            // Reconcile any unconsumed request even if another SwiftUI update
+            // replaced the attachment callback before native insertion.
+            if scrollToBottomRequest > 0, coordinator.lastHandledRequest == scrollToBottomRequest,
                !coordinator.tailAnimator.hasPendingRequest,
                coordinator.lastAttachedRequest != scrollToBottomRequest {
                 coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion, onPositioned: onTailPositioned)
             }
-            if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest {
+            if scrollToBottomRequest > 0, coordinator.lastHandledRequest == scrollToBottomRequest {
                 coordinator.lastAttachedRequest = scrollToBottomRequest
                 // A jump at the existing destination emits no offset change.
                 coordinator.scheduleGeometryUpdate()
             }
         }
+        view.scheduleScrollViewResolution(updating: true)
     }
 
     private func enclosingScrollView(from view: UIView) -> UIScrollView? {
@@ -3532,14 +3695,42 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         return nil
     }
 
-    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+    static func dismantleUIView(_ view: ConversationScrollAttachmentView, coordinator: Coordinator) {
+        view.onResolveScrollView = nil
         coordinator.disconnect()
     }
 
     @MainActor
     final class Coordinator {
         let tailAnimator = ConversationTailScrollAnimator()
+        let contentResizeFollower = ConversationContentResizeFollower()
+        weak var scrollPosition: ConversationScrollPosition?
+        var latestMessageID: String?
         var navigationVisibilityChanged: (() -> Void)?
+        var isUserScrollEnabled = true
+        private weak var lockedScrollView: UIScrollView?
+        private var originalPanEnabled: Bool?
+
+        func updateUserScrolling(in scrollView: UIScrollView) {
+            if isUserScrollEnabled {
+                restoreUserScrolling()
+            } else {
+                if lockedScrollView !== scrollView {
+                    restoreUserScrolling()
+                    lockedScrollView = scrollView
+                    originalPanEnabled = scrollView.panGestureRecognizer.isEnabled
+                }
+                if scrollView.panGestureRecognizer.isEnabled {
+                    scrollView.panGestureRecognizer.isEnabled = false
+                }
+            }
+        }
+
+        private func restoreUserScrolling() {
+            if let originalPanEnabled { lockedScrollView?.panGestureRecognizer.isEnabled = originalPanEnabled }
+            originalPanEnabled = nil
+            lockedScrollView = nil
+        }
         var lastHandledRequest = 0
         var lastAttachedRequest = 0
         var lastHandledRestoreRequestID = 0
@@ -3579,16 +3770,19 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                     contentOffsetY: scrollView.contentOffset.y,
                     minimumOffsetY: -scrollView.adjustedContentInset.top,
                     maximumOffsetY: ConversationTailScrollAnimator.targetOffset(in: scrollView),
-                    isValid: scrollView.window != nil && scrollView.bounds.height > 0 && scrollView.contentSize.height > 0
+                    isValid: scrollView.window != nil && scrollView.bounds.height > 0 && scrollView.contentSize.height > 0,
+                    latestMessageBottomVisible: self.scrollPosition?.isMessageBottomVisible(self.latestMessageID) ?? false
                 ))
             }
         }
 
         func disconnect() {
+            restoreUserScrolling()
             geometryObservations = []
             geometryScrollView = nil
             geometryUpdate = nil
             stopObservingViewport()
+            contentResizeFollower.disconnect()
             tailAnimator.disconnect()
             navigationVisibilityChanged = nil
         }
@@ -3690,14 +3884,20 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 }
 
+enum ConversationInitialFailure {
+    case history, positioning
+}
+
 private struct ConversationInitialFailureView: View {
+    let failure: ConversationInitialFailure
     let retry: () -> Void
 
     var body: some View {
         ContentUnavailableView {
-            Label("Couldn’t load messages", systemImage: "wifi.exclamationmark")
+            Label(failure == .history ? "Couldn’t load messages" : "Couldn’t display messages",
+                  systemImage: failure == .history ? "wifi.exclamationmark" : "exclamationmark.circle")
         } description: {
-            Text("Check your connection and try again.")
+            Text(failure == .history ? "Check your connection and try again." : "Your messages loaded, but the conversation could not be displayed. Try again.")
         } actions: {
             Button("Try again", action: retry)
                 .buttonStyle(.borderedProminent)

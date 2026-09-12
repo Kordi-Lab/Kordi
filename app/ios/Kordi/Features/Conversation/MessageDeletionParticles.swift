@@ -6,6 +6,59 @@ import MetalKit
 final class MessageDeleteCaptureFrames {
     var frames: [String: CGRect] = [:]
     var rows: [String: CGRect] = [:]
+    var attachments: [String: CGRect] = [:]
+    private var captureGate: MessageDeleteDisplayGate?
+
+    func afterSourceRestored(_ completion: @escaping () -> Void) {
+        cancelPendingCapture()
+        captureGate = MessageDeleteDisplayGate { [weak self] in
+            self?.captureGate = nil
+            completion()
+        }
+    }
+
+    func cancelPendingCapture() {
+        captureGate?.cancel()
+        captureGate = nil
+    }
+}
+
+@MainActor
+private final class MessageDeleteDisplayGate: NSObject {
+    private var link: CADisplayLink?
+    private var framesRemaining = 2
+    private var completion: (() -> Void)?
+    private var timeout: DispatchWorkItem?
+
+    init(completion: @escaping () -> Void) {
+        self.completion = completion
+        super.init()
+        let link = CADisplayLink(target: self, selector: #selector(tick))
+        self.link = link
+        link.add(to: .main, forMode: .common)
+        let timeout = DispatchWorkItem { [weak self] in self?.finish() }
+        self.timeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: timeout)
+    }
+
+    @objc private func tick() {
+        framesRemaining -= 1
+        if framesRemaining <= 0 { finish() }
+    }
+
+    private func finish() {
+        let action = completion
+        cancel()
+        action?()
+    }
+
+    func cancel() {
+        link?.invalidate()
+        link = nil
+        timeout?.cancel()
+        timeout = nil
+        completion = nil
+    }
 }
 
 struct MessageDeleteSnapshot: Identifiable {
@@ -13,11 +66,12 @@ struct MessageDeleteSnapshot: Identifiable {
     let messageID: String
     let image: UIImage
     let frame: CGRect
+    var attachmentID: String? = nil
 
     @MainActor
-    static func capture(messageID: String, frame: CGRect) -> Self? {
+    static func capture(messageID: String, frame: CGRect, attachmentID: String? = nil) -> Self? {
         guard let captured = captureImage(frame: frame) else { return nil }
-        return Self(messageID: messageID, image: captured.image, frame: captured.frame)
+        return Self(messageID: messageID, image: captured.image, frame: captured.frame, attachmentID: attachmentID)
     }
 
     @MainActor
@@ -128,9 +182,18 @@ struct MessageDeleteParticleOverlay: View {
     let onAnimate: (TimeInterval) -> Bool
     let onComplete: () -> Void
 
+    private var usesReducedMotion: Bool {
+        #if DEBUG
+        reduceMotion || (ProcessInfo.processInfo.arguments.contains("--preview-data")
+            && ProcessInfo.processInfo.arguments.contains("--preview-particle-fade"))
+        #else
+        reduceMotion
+        #endif
+    }
+
     var body: some View {
         MessageDeleteParticleSurface(
-            snapshot: snapshot, reduceMotion: reduceMotion,
+            snapshot: snapshot, reduceMotion: usesReducedMotion,
             onRemoveSource: onRemoveSource, onInstallOffsets: onInstallOffsets,
             onAnimate: onAnimate, onComplete: onComplete
         )
@@ -258,6 +321,11 @@ private final class MessageDeleteParticleContainer: UIView {
         imageView.image = image
         if !reduceMotion, let resources,
            let renderer = MessageDeleteParticleRenderer(image: image, resources: resources) {
+            #if DEBUG
+            renderer.onFirstFrame = { [snapshot] in
+                MessageDeleteParticleDiagnostics.record(snapshot: snapshot)
+            }
+            #endif
             renderer.frame = bounds
             renderer.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             renderer.isUserInteractionEnabled = false
@@ -269,6 +337,9 @@ private final class MessageDeleteParticleContainer: UIView {
             phase = .layout
             waitForFrames()
         } else {
+            #if DEBUG
+            MessageDeleteParticleDiagnostics.record(snapshot: snapshot, status: reduceMotion ? "reduced-motion" : "unavailable")
+            #endif
             guard onRemoveSource() else { cancel(); return }
             UIView.animate(withDuration: 0.18, animations: { self.imageView.alpha = 0 }) { _ in
                 self.onComplete()
@@ -277,6 +348,9 @@ private final class MessageDeleteParticleContainer: UIView {
     }
 
     private func finishWithoutSnapshot() {
+        #if DEBUG
+        MessageDeleteParticleDiagnostics.record(snapshot: snapshot, status: "empty-capture")
+        #endif
         imageView.isHidden = true
         _ = onRemoveSource()
         onComplete()
@@ -420,6 +494,7 @@ private final class MessageDeleteParticleRenderer: MTKView, MTKViewDelegate {
     private let resources: MessageDeleteParticleResources
     private let texture: MTLTexture
     private let grid: (cellSize: Int, columns: Int, rows: Int)
+    var onFirstFrame: (() -> Void)?
     private var startedAt: CFTimeInterval?
     private var onComplete: (() -> Void)?
 
@@ -493,6 +568,32 @@ private final class MessageDeleteParticleRenderer: MTKView, MTKViewDelegate {
         encoder.endEncoding()
         buffer.present(drawable)
         buffer.commit()
-
+        if let onFirstFrame {
+            self.onFirstFrame = nil
+            onFirstFrame()
+        }
     }
 }
+
+#if DEBUG
+@MainActor
+private enum MessageDeleteParticleDiagnostics {
+    private static var probe: UIView?
+
+    static func record(snapshot: MessageDeleteSnapshot, status: String = "rendered") {
+        guard ProcessInfo.processInfo.arguments.contains("--preview-data"),
+              ProcessInfo.processInfo.arguments.contains("--preview-particle-probe"),
+              let window = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows).first(where: \.isKeyWindow) else { return }
+        probe?.removeFromSuperview()
+        let marker = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        marker.isUserInteractionEnabled = false
+        marker.isAccessibilityElement = true
+        marker.accessibilityIdentifier = "deletion-particles-" + status
+        marker.accessibilityLabel = "Deletion particles rendered"
+        marker.accessibilityValue = snapshot.messageID + ":" + (snapshot.attachmentID ?? "message")
+        window.addSubview(marker)
+        probe = marker
+    }
+}
+#endif

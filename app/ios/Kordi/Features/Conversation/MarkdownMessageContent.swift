@@ -513,9 +513,17 @@ struct MarkdownMessageContent: View {
     let mentions: [MessageMention]
     let inlineAccent: Color?
     let allowsTextSelection: Bool
-    let onSelectedTextChange: (String?) -> Void
     let onOpenPersonMention: (String) -> Void
-    @State private var showsFullOversizedText = false
+    @Environment(\.conversationRowContentState) private var rowPresentation
+    @State private var standalonePresentation = ConversationRowContentState()
+    private var presentation: ConversationRowContentState {
+        // Quotes and execution details have independent compact text controls.
+        density == .standard ? rowPresentation ?? standalonePresentation : standalonePresentation
+    }
+    private var showsFullOversizedText: Bool {
+        get { presentation.showsFullOversizedText }
+        nonmutating set { presentation.showsFullOversizedText = newValue }
+    }
 
     // ponytail: Keep first layout bounded; paginate rich Markdown blocks if expanded formatting becomes necessary.
     static let oversizedTextByteLimit = 32 * 1_024
@@ -528,7 +536,6 @@ struct MarkdownMessageContent: View {
         mentions: [MessageMention] = [],
         inlineAccent: Color? = nil,
         allowsTextSelection: Bool = false,
-        onSelectedTextChange: @escaping (String?) -> Void = { _ in },
         onOpenPersonMention: @escaping (String) -> Void = { _ in }
     ) {
         self.text = text
@@ -537,7 +544,6 @@ struct MarkdownMessageContent: View {
         self.mentions = mentions
         self.inlineAccent = inlineAccent
         self.allowsTextSelection = allowsTextSelection
-        self.onSelectedTextChange = onSelectedTextChange
         self.onOpenPersonMention = onOpenPersonMention
     }
 
@@ -558,46 +564,43 @@ struct MarkdownMessageContent: View {
         return String(text.prefix(oversizedTextPreviewCharacters)) + "…"
     }
 
-    @ViewBuilder
     var body: some View {
-        if allowsTextSelection {
-            SelectableMessageTextView(
-                text: text,
-                density: density,
-                onSelectionChange: onSelectedTextChange
-            )
-        } else {
-            if let collapsed = Self.collapsedText(text) {
-                VStack(alignment: .leading, spacing: blockSpacing) {
-                    Text(showsFullOversizedText ? text : collapsed)
-                        .font(bodyFont)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button(showsFullOversizedText ? "Show less" : "Show full response") {
-                        showsFullOversizedText.toggle()
-                    }
-                    .font(.caption.weight(.semibold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
-                    .accessibilityHint("Changes how much of this long message is visible")
+        formattedContent
+            .modifier(MessageTextSelectionModifier(isEnabled: allowsTextSelection))
+    }
+
+    @ViewBuilder
+    private var formattedContent: some View {
+        if let collapsed = Self.collapsedText(text) {
+            VStack(alignment: .leading, spacing: blockSpacing) {
+                Text(showsFullOversizedText ? text : collapsed)
+                    .font(bodyFont)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button(showsFullOversizedText ? "Show less" : "Show full response") {
+                    showsFullOversizedText.toggle()
                 }
-            } else {
-                VStack(alignment: .leading, spacing: blockSpacing) {
-                    ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                        blockView(block)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                .environment(\.composerMentionTargets, mentionTargets)
-                .environment(\.messageMentions, mentions)
-                .environment(\.messageInlineAccent, inlineAccent)
-                .environment(\.openURL, OpenURLAction { url in
-                    guard let accountID = MentionProfileLink.accountID(from: url) else {
-                        return .systemAction
-                    }
-                    onOpenPersonMention(accountID)
-                    return .handled
-                })
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
+                .accessibilityHint("Changes how much of this long message is visible")
             }
+        } else {
+            VStack(alignment: .leading, spacing: blockSpacing) {
+                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    blockView(block)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .environment(\.composerMentionTargets, mentionTargets)
+            .environment(\.messageMentions, mentions)
+            .environment(\.messageInlineAccent, inlineAccent)
+            .environment(\.openURL, OpenURLAction { url in
+                guard let accountID = MentionProfileLink.accountID(from: url) else {
+                    return .systemAction
+                }
+                onOpenPersonMention(accountID)
+                return .handled
+            })
         }
     }
 
@@ -905,78 +908,17 @@ private struct BlobEmojiInlineFlowLayout: Layout {
     }
 }
 
-private struct SelectableMessageTextView: UIViewRepresentable {
-    let text: String
-    let density: MarkdownMessageContent.Density
-    let onSelectionChange: (String?) -> Void
+/// Selection changes interaction, never the renderer, fonts or line wrapping.
+private struct MessageTextSelectionModifier: ViewModifier {
+    let isEnabled: Bool
 
-    final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: SelectableMessageTextView
-
-        init(parent: SelectableMessageTextView) {
-            self.parent = parent
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.textSelection(.enabled)
+        } else {
+            content.textSelection(.disabled)
         }
-
-        func textViewDidChangeSelection(_ textView: UITextView) {
-            let range = textView.selectedRange
-            guard range.length > 0,
-                  NSMaxRange(range) <= (textView.text as NSString).length else {
-                parent.onSelectionChange(nil)
-                return
-            }
-            parent.onSelectionChange((textView.text as NSString).substring(with: range))
-        }
-
-        func textView(
-            _ textView: UITextView,
-            editMenuForTextIn range: NSRange,
-            suggestedActions: [UIMenuElement]
-        ) -> UIMenu? {
-            UIMenu(children: [])
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
-        textView.delegate = context.coordinator
-        textView.backgroundColor = .clear
-        textView.isEditable = false
-        textView.isSelectable = true
-        textView.isScrollEnabled = false
-        textView.adjustsFontForContentSizeCategory = true
-        textView.textContainerInset = .zero
-        textView.textContainer.lineFragmentPadding = 0
-        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        configure(textView)
-        return textView
-    }
-
-    func updateUIView(_ textView: UITextView, context: Context) {
-        context.coordinator.parent = self
-        guard textView.text != text else { return }
-        configure(textView)
-    }
-
-    func sizeThatFits(
-        _ proposal: ProposedViewSize,
-        uiView: UITextView,
-        context: Context
-    ) -> CGSize? {
-        guard let width = proposal.width else { return nil }
-        let size = uiView.sizeThatFits(
-            CGSize(width: width, height: .greatestFiniteMagnitude)
-        )
-        return CGSize(width: min(width, ceil(size.width)), height: ceil(size.height))
-    }
-
-    private func configure(_ textView: UITextView) {
-        textView.text = text
-        textView.font = .preferredFont(forTextStyle: density == .compact ? .caption1 : .body)
-        textView.textColor = .label
     }
 }
 

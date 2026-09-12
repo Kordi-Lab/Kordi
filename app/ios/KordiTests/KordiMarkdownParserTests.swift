@@ -81,7 +81,8 @@ struct MessageGestureRegistrationTests {
         #expect(initial.count == 1)
         #expect(longPress.minimumPressDuration == 0.5)
         #expect(longPress.allowableMovement == 10)
-        #expect(!longPress.cancelsTouchesInView)
+        // A hold must cancel the underlying voice/image control touch.
+        #expect(longPress.cancelsTouchesInView)
         let additions = scroll.addedRecognizers
         let removals = scroll.removedRecognizers
         for _ in 0..<20 { coordinator.attachToEnclosingScrollView(from: anchor) }
@@ -93,7 +94,9 @@ struct MessageGestureRegistrationTests {
         #expect(withTap.count == 2)
         #expect(withTap.contains { $0 === longPress })
         #expect(longPress.minimumPressDuration == 0.75)
-        #expect(withTap.allSatisfy { !$0.cancelsTouchesInView })
+        let tap = try #require(withTap.compactMap { $0 as? UITapGestureRecognizer }.first)
+        #expect(!tap.cancelsTouchesInView)
+        #expect(longPress.cancelsTouchesInView)
         coordinator.parent = bridge()
         coordinator.attachToEnclosingScrollView(from: anchor)
         #expect(recognizers(in: scroll, for: coordinator).count == 1)
@@ -142,8 +145,8 @@ struct MessageGestureRegistrationTests {
             .deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"), encoding: .utf8)
         #expect(source.contains("shouldReceive touch: UITouch"))
-        #expect(source.contains("acceptsTouch(at: touch.location(in: targetView))"))
-        #expect(source.contains("acceptsTouch(at: gestureRecognizer.location(in: targetView))"))
+        #expect(source.contains("acceptsTouch(at: touch.location(in: targetView), forTap:"))
+        #expect(source.contains("acceptsTouch(at: gestureRecognizer.location(in: targetView), forTap:"))
         #expect(source.contains("longPressRecognizer.minimumPressDuration != parent.minimumPressDuration"))
         #expect(source.contains("tap.require(toFail: longPress)"))
     }
@@ -176,7 +179,8 @@ struct MessageGestureRegistrationTests {
     let end = try #require(source.range(of: ".scrollTargetLayout()", range: start.upperBound..<source.endIndex))
     let content = source[start.upperBound..<end.lowerBound]
 
-    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("LazyVStack(spacing: 0)"))
+    // Mount/eviction behavior is covered by ConversationTimelineVirtualizationTests.
+    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("ConversationTimelineStack("))
     #expect(content.contains(".onGeometryChange(for: Bool.self)"))
     #expect(content.contains("ForEach(visibleTimelineRows)"))
     #expect(content.contains(".id(bottomAnchorID)"))
@@ -1306,7 +1310,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         let positioning = source[start.lowerBound..<end.lowerBound]
 
         XCTAssertEqual(
-            positioning.components(separatedBy: "proxy.scrollTo(bottomAnchorID, anchor: .bottom)").count - 1,
+            positioning.components(separatedBy: "proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)").count - 1,
             2
         )
     }

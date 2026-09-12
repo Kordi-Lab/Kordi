@@ -101,10 +101,14 @@ final class ConversationScrollPosition {
     private weak var scrollView: UIScrollView?
     private weak var navigationAnimator: ConversationTailScrollAnimator?
     private var initialPositioner: ConversationInitialPositioner?
+    private var isAnchorCaptureScheduled = false
     var contentOffsetY: CGFloat?
     var isPositioningInitialTimeline = false
     var isTransitionCovered = false
     private(set) var readingAnchor: ConversationReadingAnchor?
+    // Native rows can detach before SwiftUI delivers the conversation's exit.
+    // Keep the last displayed anchor separately from the current live geometry.
+    private(set) var lastVisibleReadingAnchor: ConversationReadingAnchor?
 
     func positionInitialViewport(using position: @escaping () -> Bool) async -> Bool {
         let positioner = ConversationInitialPositioner(position: position)
@@ -140,6 +144,16 @@ final class ConversationScrollPosition {
         if rows[messageID]?.view === view { rows[messageID] = nil }
     }
 
+    func scheduleReadingAnchorCapture() {
+        guard !isAnchorCaptureScheduled else { return }
+        isAnchorCaptureScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.isAnchorCaptureScheduled = false
+            self.captureReadingAnchor()
+        }
+    }
+
     func captureReadingAnchor() {
         guard let scrollView, scrollView.window != nil else { return }
         let viewport = scrollView.bounds.inset(by: scrollView.adjustedContentInset)
@@ -151,13 +165,40 @@ final class ConversationScrollPosition {
             return ConversationReadingAnchor(messageID: id, offsetFromViewportTop: frame.minY - viewport.minY)
         }
         readingAnchor = candidates.min { $0.offsetFromViewportTop < $1.offsetFromViewportTop }
+        if let readingAnchor { lastVisibleReadingAnchor = readingAnchor }
     }
 
-    func positionAtLatest() -> Bool {
+    #if DEBUG
+    func initialPositionDiagnostic(requiredMessageID: String?) -> String {
+        let row = requiredMessageID.flatMap { rows[$0]?.view }
+        let mounted = scrollView.flatMap { scroll in row.map { $0.isDescendant(of: scroll) } } ?? false
+        return "scroll=\(scrollView != nil) window=\(scrollView?.window != nil) rows=\(rows.count) required=\(row != nil) mounted=\(mounted) rowHeight=\(Int(row?.bounds.height ?? 0)) contentHeight=\(Int(scrollView?.contentSize.height ?? 0)) viewport=\(Int(scrollView?.bounds.height ?? 0)) offset=\(Int(scrollView?.contentOffset.y ?? 0))"
+    }
+    #endif
+
+    var viewportFrameInWindow: CGRect = .zero
+
+    func isMessageBottomVisible(_ messageID: String?) -> Bool {
+        guard let messageID, let row = rows[messageID]?.view,
+              let window = row.window, let scrollView, scrollView.window === window,
+              row.isDescendant(of: scrollView), row.bounds.height > 0 else { return false }
+        let frame = row.convert(row.bounds, to: window)
+        let viewport = viewportFrameInWindow.isEmpty
+            ? scrollView.convert(scrollView.bounds.inset(by: scrollView.adjustedContentInset), to: window)
+            : viewportFrameInWindow
+        return frame.intersects(viewport) && frame.maxY > viewport.minY && frame.maxY <= viewport.maxY + 1
+    }
+
+    func positionAtLatest(requiredMessageID: String? = nil) -> Bool {
         guard let scrollView, scrollView.window != nil,
               !scrollView.isTracking, !scrollView.isDragging,
               scrollView.bounds.height > 0, scrollView.contentSize.height > 0 else { return false }
         scrollView.layoutIfNeeded()
+        if let requiredMessageID {
+            guard let row = rows[requiredMessageID]?.view,
+                  row.window === scrollView.window, row.isDescendant(of: scrollView),
+                  row.bounds.height > 0 else { return false }
+        }
         let target = ConversationTailScrollAnimator.targetOffset(in: scrollView)
         guard abs(scrollView.contentOffset.y - target) > 1 else { return true }
         scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: target), animated: false)
@@ -229,31 +270,189 @@ final class ConversationInitialPositioner: NSObject {
     }
 }
 
+/// Capture bottom affinity before content-size mutation. By the next SwiftUI
+/// update the viewport can already look scrolled away because the reply grew.
+@MainActor
+final class ConversationContentResizeFollower: NSObject {
+    var isEnabled = false {
+        didSet { if !isEnabled { cancelPendingFollow() } }
+    }
+    private weak var scrollView: UIScrollView?
+    private weak var contentView: UIView?
+    private var observation: NSKeyValueObservation?
+    private var offsetObservation: NSKeyValueObservation?
+    private var isChangingContentSize = false
+    private var onFollow: (() -> Void)?
+    private var wasAtLatest = false
+    private var followScheduled = false
+    private var generation = 0
+
+    func connect(to scrollView: UIScrollView, contentView: UIView? = nil, onFollow: @escaping () -> Void) {
+        self.contentView = contentView
+        self.onFollow = onFollow
+        guard self.scrollView !== scrollView else { return }
+        disconnect()
+        self.onFollow = onFollow
+        self.contentView = contentView
+        self.scrollView = scrollView
+        scrollView.panGestureRecognizer.addTarget(self, action: #selector(userDidPan))
+        observation = scrollView.observe(\.contentSize, options: [.old, .new, .prior]) { [weak self, weak scrollView] _, change in
+            MainActor.assumeIsolated {
+                guard let self, let scrollView, self.isEnabled else { return }
+                if change.isPrior {
+                    self.isChangingContentSize = true
+                    self.wasAtLatest = scrollView.contentOffset.y >= ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12
+                    return
+                }
+                self.isChangingContentSize = false
+                guard let old = change.oldValue, let new = change.newValue,
+                      abs(new.height - old.height) > 0.5, self.wasAtLatest,
+                      !self.followScheduled else { return }
+                self.followScheduled = true
+                let generation = self.generation
+                DispatchQueue.main.async { [weak self, weak scrollView] in
+                    guard let self, let scrollView, self.generation == generation else { return }
+                    self.followScheduled = false
+                    guard self.isEnabled, scrollView.window != nil,
+                          !scrollView.isTracking, !scrollView.isDragging, !scrollView.isDecelerating else { return }
+                    let visibleHeight = scrollView.bounds.height - scrollView.adjustedContentInset.top - scrollView.adjustedContentInset.bottom
+                    let contentHeight = self.contentView?.bounds.height ?? scrollView.contentSize.height
+                    // Check after layout: short stacks align their own origin,
+                    // but a new reply can make previously short content overflow.
+                    guard contentHeight > visibleHeight + 1 else { return }
+                    self.onFollow?()
+                }
+            }
+        }
+        offsetObservation = scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self, weak scrollView] _, change in
+            MainActor.assumeIsolated {
+                guard let self, let scrollView, self.followScheduled, !self.isChangingContentSize,
+                      let old = change.oldValue, let new = change.newValue,
+                      new.y < old.y - 1,
+                      new.y < ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12 else { return }
+                // Quote and mention navigation have no pan gesture. A newer
+                // move into history takes precedence over a queued tail follow.
+                self.cancelPendingFollow()
+            }
+        }
+    }
+
+    @objc private func userDidPan(_ gesture: UIPanGestureRecognizer) {
+        if gesture.state == .began { cancelPendingFollow() }
+    }
+
+    private func cancelPendingFollow() {
+        generation &+= 1
+        followScheduled = false
+        wasAtLatest = false
+        isChangingContentSize = false
+    }
+
+    func disconnect() {
+        cancelPendingFollow()
+        observation = nil
+        offsetObservation = nil
+        scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(userDidPan))
+        scrollView = nil
+        contentView = nil
+        onFollow = nil
+    }
+}
+
+/// SwiftUI can update a representable before inserting it below its scroll view.
+/// Resolve again when UIKit attaches or lays out that hierarchy, without needing
+/// another model update to make the scroll bridge live.
+@MainActor
+final class ConversationScrollAttachmentView: UIView {
+    var onResolveScrollView: ((UIScrollView) -> Void)?
+    private weak var resolvedScrollView: UIScrollView?
+    private var resolutionScheduled = false
+    private var needsUpdate = false
+
+    func scheduleScrollViewResolution(updating: Bool = false) {
+        needsUpdate = needsUpdate || updating
+        guard !resolutionScheduled else { return }
+        resolutionScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.resolutionScheduled = false
+            guard self.window != nil, let scrollView = self.enclosingScrollView,
+                  scrollView.bounds.width > 0, scrollView.bounds.height > 0 else { return }
+            guard self.needsUpdate || self.resolvedScrollView !== scrollView else { return }
+            self.needsUpdate = false
+            self.resolvedScrollView = scrollView
+            self.onResolveScrollView?(scrollView)
+        }
+    }
+
+    private var enclosingScrollView: UIScrollView? {
+        var ancestor = superview
+        while let view = ancestor {
+            if let scrollView = view as? UIScrollView { return scrollView }
+            ancestor = view.superview
+        }
+        return nil
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        scheduleScrollViewResolution()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { resolvedScrollView = nil }
+        scheduleScrollViewResolution()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        scheduleScrollViewResolution()
+    }
+}
+
 /// Weak row references allow capture after native layout without a geometry
 /// preference or a scroll observer on every message.
 struct ConversationReadingAnchorProbe: UIViewRepresentable {
     let messageID: String
     let position: ConversationScrollPosition
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+    func makeUIView(context: Context) -> ProbeView {
+        let view = ProbeView()
         view.isUserInteractionEnabled = false
         return view
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
-    func updateUIView(_ view: UIView, context: Context) {
+    func updateUIView(_ view: ProbeView, context: Context) {
         if let previous = context.coordinator.messageID, previous != messageID {
             position.unregister(view, messageID: previous)
         }
         context.coordinator.messageID = messageID
         context.coordinator.position = position
+        view.position = position
         position.register(view, messageID: messageID)
+        position.scheduleReadingAnchorCapture()
     }
 
-    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+    static func dismantleUIView(_ view: ProbeView, coordinator: Coordinator) {
         if let id = coordinator.messageID { coordinator.position?.unregister(view, messageID: id) }
+        view.position = nil
+    }
+
+    final class ProbeView: UIView {
+        weak var position: ConversationScrollPosition?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil { position?.scheduleReadingAnchorCapture() }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if window != nil { position?.scheduleReadingAnchorCapture() }
+        }
     }
 
     final class Coordinator {
@@ -268,6 +467,7 @@ struct ConversationScrollGeometrySnapshot: Equatable {
     let minimumOffsetY: CGFloat
     let maximumOffsetY: CGFloat
     let isValid: Bool
+    var latestMessageBottomVisible: Bool = false
 }
 
 

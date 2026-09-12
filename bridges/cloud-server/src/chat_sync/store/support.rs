@@ -64,6 +64,7 @@ pub(super) fn message_from_row(
         edited_at: row.12,
         deleted_at: row.13,
         reactions,
+        attachment_reactions: Vec::new(),
     }
 }
 
@@ -279,7 +280,9 @@ pub(super) async fn load_message(
         .await?
         .remove(&row.0)
         .unwrap_or_default();
-    Ok(message_from_row(row, attachments, reactions))
+    let mut message = message_from_row(row, attachments, reactions);
+    attachment_actions::hydrate(transaction, None, std::slice::from_mut(&mut message)).await?;
+    Ok(message)
 }
 
 pub(super) async fn active_member_ids(

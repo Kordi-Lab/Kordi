@@ -25,6 +25,7 @@ fn message(content: Value, attachments: usize) -> MessageSnapshot {
         edited_at: None,
         deleted_at: None,
         reactions: Vec::new(),
+        attachment_reactions: Vec::new(),
     }
 }
 

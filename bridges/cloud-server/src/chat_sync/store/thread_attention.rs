@@ -133,6 +133,11 @@ pub async fn thread_page(
     for (id, _, _) in ids.into_iter().take(100) {
         messages.push(load_message(&mut tx, id).await?);
     }
+    let mut visible = vec![root];
+    visible.append(&mut messages);
+    attachment_actions::apply_visibility(&mut tx, account, &mut visible).await?;
+    let root = visible.remove(0);
+    messages = visible;
     let first_unread_message_id = messages
         .iter()
         .find(|m| {

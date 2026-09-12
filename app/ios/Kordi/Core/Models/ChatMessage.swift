@@ -1153,6 +1153,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var backgroundAgentSessions: [BackgroundAgentSession]
     var mentions: [MessageMention]
     var reactions: [MessageReaction]
+    var attachmentReactions: [String: [MessageReaction]]
 
     var callActivity: ChatCallActivity? {
         ChatCallActivity(messageKind: messageKind)
@@ -1226,7 +1227,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         voiceMessage: VoiceMessage? = nil,
         agentExecution: AgentExecutionSnapshot? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
-        reactions: [MessageReaction] = []
+        reactions: [MessageReaction] = [],
+        attachmentReactions: [String: [MessageReaction]] = [:]
     ) {
         self.id = id
         self.clientMessageId = clientMessageId
@@ -1255,6 +1257,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.backgroundAgentSessions = backgroundAgentSessions
         self.mentions = mentions
         self.reactions = reactions
+        self.attachmentReactions = attachmentReactions
     }
 
     var actionSource: MessageActionSource {
@@ -1298,7 +1301,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case agentExecution
         case backgroundAgentSessions
         case mentions
-        case reactions
+        case reactions, attachmentReactions
     }
 
     init(from decoder: Decoder) throws {
@@ -1339,6 +1342,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         ) ?? []
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+        attachmentReactions = try container.decodeIfPresent([String: [MessageReaction]].self, forKey: .attachmentReactions) ?? [:]
     }
 }
 
