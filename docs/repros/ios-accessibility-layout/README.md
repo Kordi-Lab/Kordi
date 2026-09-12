@@ -65,6 +65,27 @@ completed task, and an interrupted entry followed by reopening. A dedicated UI
 fixture verifies that the completed answer's end marker is actually hittable.
 No task data or server behavior is changed by this fix.
 
+### Cold-start scroll attachment
+
+Read-only validation in the production client then reproduced a distinct failure
+in one of three cold launches: the message row existed, but the scroll-position
+bridge had no scroll view. Its single deferred lookup ran before SwiftUI inserted
+the representable into the scroll hierarchy. The positioning deadline expired;
+rendering the failure state caused another update that finally attached the
+bridge, but the transcript remained hidden.
+
+The bridge now resolves on native insertion, window attachment and layout, and
+reconnects if its enclosing scroll view changes. It coalesces callbacks and avoids
+reattaching observers during unchanged layout. Initial positioning waits for a
+connected scroll view with usable bounds. History errors and positioning errors
+have distinct recovery messages. Opt-in debug accessibility diagnostics expose
+only counts, dimensions and attachment flags, never message text or identifiers.
+
+Synthetic regressions cover cold network loading, a response arriving after the
+navigation transition, very long content, late native insertion, zero-size initial
+bounds and reparenting. The production reproduction uses existing authorized
+content only; no production payload is copied into a fixture or this repository.
+
 ## Original framework control
 
 This standalone app has no Kordi or third-party dependencies. It renders mixed,

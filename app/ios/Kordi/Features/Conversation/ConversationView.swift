@@ -206,11 +206,12 @@ struct ConversationView: View {
     @State private var hasPositionedInitialTimeline = false
     @State private var initialViewport = ConversationInitialViewport.latest
     @State private var hasPreparedInitialViewport = false
+    @State private var hasAttachedInitialScrollView = false
     @State private var hasLaidOutInitialTimeline = false
     @State private var didFinishInitialHistoryLoad = false
     @State private var didPresentInitialLoading = false
     @State private var hasRevealedInitialViewport = false
-    @State private var initialLoadFailed = false
+    @State private var initialFailure: ConversationInitialFailure?
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
     @State private var animateBottomScroll = false
@@ -355,7 +356,7 @@ struct ConversationView: View {
     }
     private var isWaitingForInitialHistory: Bool {
         hasPreparedInitialViewport && isReadPresentationVisible && messages.isEmpty
-            && !didFinishInitialHistoryLoad && !hasRevealedInitialViewport && !initialLoadFailed
+            && !didFinishInitialHistoryLoad && !hasRevealedInitialViewport && initialFailure == nil
     }
     private var initialReadPositionReady: Bool { initialViewport == .latest || initialReadAnchorPositioned }
     private var isLatestMessageVisible: Bool {
@@ -649,6 +650,7 @@ struct ConversationView: View {
                                         reduceMotion: reduceMotion,
                                         exactRestoreRequest: $exactScrollRestoreRequest,
                                         onScrollGeometryChange: recordScrollGeometry,
+                                        onScrollAttached: { if !hasAttachedInitialScrollView { hasAttachedInitialScrollView = true } },
                                         onNavigationVisibilityChange: synchronizeReadPresentation,
                                         onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
                                             stagedMessageIDs.removeAll { messageIDs.contains($0) }
@@ -729,13 +731,18 @@ struct ConversationView: View {
                                 animates: didPresentInitialLoading, reduceMotion: reduceMotion))
                             .allowsHitTesting(showsTimeline)
                             .accessibilityHidden(!showsTimeline)
-                        if !showsTimeline, initialLoadFailed {
-                            ConversationInitialFailureView {
-                                initialLoadFailed = false
+                        if !showsTimeline, let initialFailure {
+                            ConversationInitialFailureView(failure: initialFailure) {
+                                self.initialFailure = nil
                                 Task { await loadAndRevealInitialConversation(using: proxy) }
                             }
+                            .accessibilityIdentifier(initialFailure == .history ? "conversation-history-failed" : "conversation-positioning-failed")
+                            #if DEBUG
+                            .accessibilityValue(ProcessInfo.processInfo.arguments.contains("--diagnose-conversation-opening")
+                                ? "messages=\(messages.count) " + scrollPosition.initialPositionDiagnostic(requiredMessageID: messages.last?.id) : "")
+                            #endif
                         }
-                        if didPresentInitialLoading, !initialLoadFailed {
+                        if didPresentInitialLoading, initialFailure == nil {
                             ConversationInitialLoadingOverlay(isReady: showsTimeline,
                                 kind: conversation.kind, reduceMotion: reduceMotion)
                         }
@@ -1027,9 +1034,9 @@ struct ConversationView: View {
             // GeometryReader may replace its measured subtree during a push.
             // Keep positioning on the stable page so cancellation cannot leave
             // a newly visible child waiting behind an abandoned attempt.
-            .task(id: hasPreparedInitialViewport && hasLaidOutInitialTimeline && isReadPresentationVisible
+            .task(id: hasPreparedInitialViewport && hasLaidOutInitialTimeline && hasAttachedInitialScrollView && isReadPresentationVisible
                 && (!timeline.isEmpty || didFinishInitialHistoryLoad)) {
-                guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, isReadPresentationVisible,
+                guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, hasAttachedInitialScrollView, isReadPresentationVisible,
                       !timeline.isEmpty || didFinishInitialHistoryLoad else { return }
                 await positionAndRevealInitialViewport(using: proxy)
             }
@@ -2108,7 +2115,7 @@ struct ConversationView: View {
 
     @MainActor
     private func positionAndRevealInitialViewport(using proxy: ScrollViewProxy) async {
-        guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, isReadPresentationVisible,
+        guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, hasAttachedInitialScrollView, isReadPresentationVisible,
               !hasPositionedInitialTimeline,
               !messages.isEmpty || didFinishInitialHistoryLoad,
               !scrollPosition.isPositioningInitialTimeline else { return }
@@ -2155,7 +2162,7 @@ struct ConversationView: View {
                 scrollPosition.positionAtLatest(requiredMessageID: messages.last?.id)
             }
             guard !Task.isCancelled, isReadPresentationVisible, !hasPositionedInitialTimeline else { return }
-            guard positioned else { initialLoadFailed = true; return }
+            guard positioned else { initialFailure = .positioning; return }
         }
         guard isReadPresentationVisible else { return }
         withTransaction(transaction) {
@@ -2183,7 +2190,7 @@ struct ConversationView: View {
             rootMessageID: scopedThreadRootMessageID,
             messageCount: messages.count
         ) {
-            initialLoadFailed = false
+            initialFailure = nil
             return
         }
 
@@ -2192,10 +2199,10 @@ struct ConversationView: View {
         let didLoad = await model.loadConversation(conversation)
         guard !Task.isCancelled, model.account?.accountId == accountIDAtStart else { return }
         if !didLoad, messages.isEmpty {
-            initialLoadFailed = true
+            initialFailure = .history
             return
         }
-        initialLoadFailed = false
+        initialFailure = nil
         didFinishInitialHistoryLoad = true
         if initialMessageID == nil,
            !hasRevealedInitialViewport,
@@ -3564,6 +3571,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let reduceMotion: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
     let onScrollGeometryChange: (ConversationScrollGeometrySnapshot) -> Void
+    let onScrollAttached: () -> Void
     let onNavigationVisibilityChange: () -> Void
     let onTailPositioned: (() -> Void)?
 
@@ -3571,14 +3579,14 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         Coordinator()
     }
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+    func makeUIView(context: Context) -> ConversationScrollAttachmentView {
+        let view = ConversationScrollAttachmentView(frame: .zero)
         view.isUserInteractionEnabled = false
         view.backgroundColor = .clear
         return view
     }
 
-    func updateUIView(_ view: UIView, context: Context) {
+    func updateUIView(_ view: ConversationScrollAttachmentView, context: Context) {
         let shouldScrollToBottom = scrollToBottomRequest > 0
             && context.coordinator.lastHandledRequest != scrollToBottomRequest
         if shouldScrollToBottom {
@@ -3609,10 +3617,10 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion, onPositioned: onTailPositioned)
         }
 
-        DispatchQueue.main.async { [weak view] in
-            guard let view,
-                  let scrollView = enclosingScrollView(from: view) else { return }
+        view.onResolveScrollView = { [weak view] scrollView in
+            guard let view else { return }
             scrollPosition.attach(to: scrollView)
+            onScrollAttached()
             coordinator.updateUserScrolling(in: scrollView)
             coordinator.observeViewport(of: scrollView)
             coordinator.observeGeometry(in: scrollView, update: onScrollGeometryChange)
@@ -3647,17 +3655,20 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             }
             // The immediate path preserves the pre-layout presentation offset.
             // A newly attached bridge may only find its scroll view on this turn.
-            if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest,
+            // Reconcile any unconsumed request even if another SwiftUI update
+            // replaced the attachment callback before native insertion.
+            if scrollToBottomRequest > 0, coordinator.lastHandledRequest == scrollToBottomRequest,
                !coordinator.tailAnimator.hasPendingRequest,
                coordinator.lastAttachedRequest != scrollToBottomRequest {
                 coordinator.tailAnimator.request(in: scrollView, contentView: view, animated: animateBottomScroll, reduceMotion: reduceMotion, onPositioned: onTailPositioned)
             }
-            if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest {
+            if scrollToBottomRequest > 0, coordinator.lastHandledRequest == scrollToBottomRequest {
                 coordinator.lastAttachedRequest = scrollToBottomRequest
                 // A jump at the existing destination emits no offset change.
                 coordinator.scheduleGeometryUpdate()
             }
         }
+        view.scheduleScrollViewResolution(updating: true)
     }
 
     private func enclosingScrollView(from view: UIView) -> UIScrollView? {
@@ -3669,7 +3680,8 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         return nil
     }
 
-    static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
+    static func dismantleUIView(_ view: ConversationScrollAttachmentView, coordinator: Coordinator) {
+        view.onResolveScrollView = nil
         coordinator.disconnect()
     }
 
@@ -3852,14 +3864,20 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 }
 
+enum ConversationInitialFailure {
+    case history, positioning
+}
+
 private struct ConversationInitialFailureView: View {
+    let failure: ConversationInitialFailure
     let retry: () -> Void
 
     var body: some View {
         ContentUnavailableView {
-            Label("Couldn’t load messages", systemImage: "wifi.exclamationmark")
+            Label(failure == .history ? "Couldn’t load messages" : "Couldn’t display messages",
+                  systemImage: failure == .history ? "wifi.exclamationmark" : "exclamationmark.circle")
         } description: {
-            Text("Check your connection and try again.")
+            Text(failure == .history ? "Check your connection and try again." : "Your messages loaded, but the conversation could not be displayed. Try again.")
         } actions: {
             Button("Try again", action: retry)
                 .buttonStyle(.borderedProminent)

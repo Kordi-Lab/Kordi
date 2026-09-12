@@ -168,6 +168,14 @@ final class ConversationScrollPosition {
         if let readingAnchor { lastVisibleReadingAnchor = readingAnchor }
     }
 
+    #if DEBUG
+    func initialPositionDiagnostic(requiredMessageID: String?) -> String {
+        let row = requiredMessageID.flatMap { rows[$0]?.view }
+        let mounted = scrollView.flatMap { scroll in row.map { $0.isDescendant(of: scroll) } } ?? false
+        return "scroll=\(scrollView != nil) window=\(scrollView?.window != nil) rows=\(rows.count) required=\(row != nil) mounted=\(mounted) rowHeight=\(Int(row?.bounds.height ?? 0)) contentHeight=\(Int(scrollView?.contentSize.height ?? 0)) viewport=\(Int(scrollView?.bounds.height ?? 0)) offset=\(Int(scrollView?.contentOffset.y ?? 0))"
+    }
+    #endif
+
     func positionAtLatest(requiredMessageID: String? = nil) -> Bool {
         guard let scrollView, scrollView.window != nil,
               !scrollView.isTracking, !scrollView.isDragging,
@@ -246,6 +254,58 @@ final class ConversationInitialPositioner: NSObject {
         let completion = completion
         self.completion = nil
         completion?(positioned)
+    }
+}
+
+/// SwiftUI can update a representable before inserting it below its scroll view.
+/// Resolve again when UIKit attaches or lays out that hierarchy, without needing
+/// another model update to make the scroll bridge live.
+@MainActor
+final class ConversationScrollAttachmentView: UIView {
+    var onResolveScrollView: ((UIScrollView) -> Void)?
+    private weak var resolvedScrollView: UIScrollView?
+    private var resolutionScheduled = false
+    private var needsUpdate = false
+
+    func scheduleScrollViewResolution(updating: Bool = false) {
+        needsUpdate = needsUpdate || updating
+        guard !resolutionScheduled else { return }
+        resolutionScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.resolutionScheduled = false
+            guard self.window != nil, let scrollView = self.enclosingScrollView,
+                  scrollView.bounds.width > 0, scrollView.bounds.height > 0 else { return }
+            guard self.needsUpdate || self.resolvedScrollView !== scrollView else { return }
+            self.needsUpdate = false
+            self.resolvedScrollView = scrollView
+            self.onResolveScrollView?(scrollView)
+        }
+    }
+
+    private var enclosingScrollView: UIScrollView? {
+        var ancestor = superview
+        while let view = ancestor {
+            if let scrollView = view as? UIScrollView { return scrollView }
+            ancestor = view.superview
+        }
+        return nil
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        scheduleScrollViewResolution()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { resolvedScrollView = nil }
+        scheduleScrollViewResolution()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        scheduleScrollViewResolution()
     }
 }
 
