@@ -6,11 +6,50 @@ tall messages with native SwiftUI stacks and moves between rows with
 the keyboard four times. Completion changes the heading to `Probe complete`.
 
 The UI test repeatedly queries that heading, activating accessibility inspection.
-On the tested iOS 26.0 simulator, this can leave the main thread continuously
-updating SwiftUI lazy layout. The same scenario can finish when launched directly
-without inspection. The same test passed on the installed iOS 27.0 simulator.
-This also occurs with the native stack and unique row IDs in
-this reproduction, without Kordi's custom bubble layout or UIKit scroll bridge.
+Samples from failing runs show the main thread repeatedly updating SwiftUI lazy
+layout through `GraphHost.flushTransactions`, AttributeGraph, and
+`LazySubviewPlacements`. This occurs with native stacks and unique row IDs,
+without Kordi's custom bubble layout or UIKit scroll bridge.
+
+## Observed controls
+
+| Target | Scenario | Result |
+| --- | --- | --- |
+| iOS 26.0 simulator | This reproduction under UI automation | Main-thread layout hang |
+| iOS 26.0 simulator | Direct launch without accessibility inspection | Scenario completed |
+| iOS 26.5 simulator | This reproduction under UI automation, three runs | Three main-thread layout hangs |
+| iOS 27.0 simulator | This reproduction under UI automation | Passed |
+| iOS 26.0 simulator | Replace only the outer `LazyVStack` with `VStack` | Passed |
+
+Simplifying each row to a single accessibility label did not prevent the iOS 26.0
+hang. Removing lazy layout did. These controls isolate a framework layout /
+accessibility interaction; they do not establish Apple's internal defect or
+prove every production hang has the same cause.
+
+## Kordi regression comparison
+
+- The main-branch baseline, with only synthetic fixtures and a UI test added,
+  also hung on iOS 26.0 after repeated image menus. This predates the per-photo
+  menu changes. Ordinary history scrolling followed by the keyboard passed on
+  both main and the PR branch.
+- The PR's mixed-history photo-menu regression on iOS 26.5 returned from both
+  menus, but opening the keyboard left an empty timeline. Two runs failed, and
+  a captured screenshot confirms this is visible content loss, not only an
+  accessibility-query failure. These runs are not counted as hangs or passes.
+- Optimized physical iOS 27 validation with Beta 21 passed the strengthened
+  repeated-photo-menu and keyboard regression. The related 74 unit and hosted
+  viewport tests also passed on the PR branch.
+- Replacing Kordi's outer `LazyVStack` with `VStack` passed that iOS 26.5 regression
+  three times. This remains a diagnostic control, not a retained runtime fix:
+  history starts with 64 messages and grows as earlier pages are loaded, so an
+  eager stack removes offscreen view eviction and can increase memory and
+  rendering work. A compatibility implementation must preserve that behavior.
+
+The iOS 26 release blocker remains open. Passing iOS 27 tests and reproducing the
+issue on main do not establish that iOS 26 is safe. No experimental runtime
+workaround from this investigation is included in the PR or installed Beta 21.
+
+## Running the reproduction
 
 Generate and run the project from this directory:
 

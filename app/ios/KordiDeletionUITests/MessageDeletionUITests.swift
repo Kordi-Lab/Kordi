@@ -450,9 +450,10 @@ final class MessageDeletionUITests: XCTestCase {
         let photoTop = photo.frame.minY
         editor.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        capture("Keyboard after returning from photo menus", app: app)
+        XCTAssertTrue(photo.exists, "Opening the keyboard must not remove the visible photo from the timeline.")
         XCTAssertEqual(photo.frame.minY, photoTop - (editorTop - editor.frame.minY), accuracy: 14,
                        "Opening the keyboard after dismissal must preserve the visible history.")
-        capture("Keyboard preserves reading position after photo menus", app: app)
         app.terminate()
     }
 
