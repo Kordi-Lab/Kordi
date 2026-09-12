@@ -508,6 +508,25 @@ struct MessageActionOverlayLayout: Equatable {
         )
     }
 
+    func controlFrames(in viewport: CGRect, showsReactions: Bool, showsPicker: Bool,
+                       showsMenu: Bool, scrollOffset: CGFloat) -> [CGRect] {
+        var frames: [CGRect] = []
+        if showsReactions {
+            let center = showsPicker ? pickerCenter : reactionCenter
+            let size = CGSize(width: showsPicker ? pickerWidth : reactionWidth,
+                              height: showsPicker ? pickerHeight : 52)
+            frames.append(CGRect(x: viewport.minX + center.x - size.width / 2,
+                                 y: viewport.minY + center.y - size.height / 2,
+                                 width: size.width, height: size.height))
+        }
+        if showsMenu {
+            frames.append(CGRect(x: viewport.minX + menuCenter.x - menuWidth / 2,
+                                 y: viewport.minY + menuCenter.y - menuHeight / 2 + scrollOffset,
+                                 width: menuWidth, height: menuHeight))
+        }
+        return frames
+    }
+
     private static func alignedCenter(
         sourceFrame: CGRect,
         width: CGFloat,
@@ -566,6 +585,7 @@ struct MessageActionOverlay: View {
     let message: ChatMessage
     let sourceFrame: CGRect
     var photoPreview: UIImage? = nil
+    var hitTestRegions: WindowOverlayHitTestRegions? = nil
     let previewScroll: MessageActionPreviewScroll
     let usableFrame: CGRect
     let onPreviewFrameChange: (CGRect, Bool) -> Void
@@ -679,6 +699,13 @@ struct MessageActionOverlay: View {
             let previewFrame = regularLayout.previewFrame.offsetBy(
                 dx: layoutOffset.width, dy: layoutOffset.height + previewScroll.offset
             )
+            let controls = layout.controlFrames(
+                in: layoutFrame,
+                showsReactions: showsReactionSurface,
+                showsPicker: showsAllReactions,
+                showsMenu: isConfirmingDelete || !showsAllReactions || !allowsReactions,
+                scrollOffset: previewScroll.offset
+            )
             ZStack {
                 dismissalBackdrop(
                     cutout: photoPreview == nil ? (hasPresented ? previewFrame : localSourceFrame) : .zero,
@@ -772,6 +799,7 @@ struct MessageActionOverlay: View {
                 value: isConfirmingDelete
             )
             .onAppear {
+                hitTestRegions?.controlFrames = controls
                 previewScroll.limit = regularLayout.scrollLimit
                 withAnimation(MessageActionMotion.enter(reduceMotion: reduceMotion)) {
                     hasPresented = true
@@ -779,6 +807,9 @@ struct MessageActionOverlay: View {
                         dx: layoutFrame.minX, dy: layoutFrame.minY + previewScroll.offset
                     ), !showsAllReactions)
                 }
+            }
+            .onChange(of: controls) { _, frames in
+                hitTestRegions?.controlFrames = frames
             }
             .onChange(of: regularLayout.previewFrame) {
                 guard !isDismissing else { return }
@@ -1160,8 +1191,16 @@ private struct MessageActionReadReceiptRow: View {
     }
 }
 
+/// Shared directly with the native window host so hit regions can follow
+/// overlay layout without invalidating the conversation's SwiftUI tree.
+@MainActor
+final class WindowOverlayHitTestRegions {
+    var controlFrames: [CGRect] = []
+}
+
 struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
     let passthroughFrame: CGRect?
+    private let hitTestRegions: WindowOverlayHitTestRegions?
     private let allowsInteraction: Bool
     private let animatesRemoval: Bool
     private let onDismissComplete: () -> Void
@@ -1169,12 +1208,14 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
 
     init(
         passthroughFrame: CGRect?,
+        hitTestRegions: WindowOverlayHitTestRegions? = nil,
         allowsInteraction: Bool = true,
         animatesRemoval: Bool = true,
         onDismissComplete: @escaping () -> Void = {},
         @ViewBuilder content: @escaping (CGRect) -> Content
     ) {
         self.passthroughFrame = passthroughFrame
+        self.hitTestRegions = hitTestRegions
         self.allowsInteraction = allowsInteraction
         self.animatesRemoval = animatesRemoval
         self.onDismissComplete = onDismissComplete
@@ -1194,6 +1235,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIView, context: Context) {
         let passthroughFrame = self.passthroughFrame
+        let hitTestRegions = self.hitTestRegions
         let content = self.content
         let coordinator = context.coordinator
         coordinator.onDismissComplete = onDismissComplete
@@ -1204,6 +1246,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
             coordinator.scheduleInstall(
                 from: uiView,
                 passthroughFrame: passthroughFrame,
+                hitTestRegions: hitTestRegions,
                 content: content
             )
         }
@@ -1239,6 +1282,7 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
         func scheduleInstall(
             from anchor: UIView,
             passthroughFrame: CGRect?,
+            hitTestRegions: WindowOverlayHitTestRegions? = nil,
             content: @escaping (CGRect) -> Content
         ) {
             installGeneration += 1
@@ -1248,19 +1292,21 @@ struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
             DispatchQueue.main.async { [weak self, weak anchor] in
                 guard let self, let anchor, !self.isDismantled,
                       self.installGeneration == generation else { return }
-                self.install(from: anchor, passthroughFrame: passthroughFrame, content: content)
+                self.install(from: anchor, passthroughFrame: passthroughFrame, hitTestRegions: hitTestRegions, content: content)
             }
         }
 
         func install(
             from anchor: UIView,
             passthroughFrame: CGRect?,
+            hitTestRegions: WindowOverlayHitTestRegions? = nil,
             content: (CGRect) -> Content
         ) {
             guard let window = anchor.window else { return }
             let usableFrame = anchor.convert(anchor.bounds, to: window)
             hostingController.rootView = content(usableFrame)
             container.passthroughFrame = passthroughFrame
+            container.hitTestRegions = hitTestRegions
             container.isUserInteractionEnabled = allowsInteraction
 
             if container.superview === window {
@@ -1319,9 +1365,11 @@ private final class WindowOverlayAnchorView: UIView {
 
 private final class MessageActionWindowOverlayView: UIView {
     var passthroughFrame: CGRect?
+    var hitTestRegions: WindowOverlayHitTestRegions?
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        if let passthroughFrame, passthroughFrame.contains(point) {
+        if let passthroughFrame, passthroughFrame.contains(point),
+           !(hitTestRegions?.controlFrames.contains(where: { $0.contains(point) }) ?? false) {
             return false
         }
         return super.point(inside: point, with: event)

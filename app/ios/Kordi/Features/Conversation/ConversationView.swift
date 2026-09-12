@@ -267,6 +267,7 @@ struct ConversationView: View {
     @State private var messageActionAttachment: ChatAttachment?
     @State private var messageActionPreviewScroll = MessageActionPreviewScroll()
     @State private var messageActionFeedback = 0
+    @State private var messageActionHitTestRegions = WindowOverlayHitTestRegions()
 
     private var navigationBarVisibility: Visibility {
         showsNavigationChrome ? .visible : .automatic
@@ -1573,6 +1574,7 @@ struct ConversationView: View {
             passthroughFrame: messageActionAllowsTextSelection && messageActionAttachment == nil && !message.text.isEmpty
                 ? visibleSelectionFrame
                 : nil,
+            hitTestRegions: messageActionHitTestRegions,
             // MessageActionOverlay owns the complete exit, including the bubble.
             // Detach immediately afterwards instead of starting a second fade.
             animatesRemoval: false,
@@ -1588,6 +1590,7 @@ struct ConversationView: View {
                 message: message,
                 sourceFrame: messageActionFrame,
                 photoPreview: messageActionImage,
+                hitTestRegions: messageActionHitTestRegions,
                 previewScroll: messageActionPreviewScroll,
                 usableFrame: messageActionViewportFrame.isEmpty ? usableFrame : messageActionViewportFrame,
                 onPreviewFrameChange: { frame, allowsTextSelection in
@@ -1767,6 +1770,7 @@ struct ConversationView: View {
             deleteCaptureFrames.frames.removeAll(keepingCapacity: true)
             deleteCaptureFrames.rows.removeAll(keepingCapacity: true)
         }
+        messageActionHitTestRegions.controlFrames = []
         messageActionPreviewFrame = frame
         messageActionAllowsTextSelection = true
         messageActionViewportFrame = viewportFrame

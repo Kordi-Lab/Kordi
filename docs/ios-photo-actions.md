@@ -41,3 +41,9 @@ client retains the original row while the request completes, waits for the menu
 to return and the source to be displayed, then captures and hides only the chosen
 photo. Remaining photos and the caption reflow when the particle animation starts.
 A failed deletion leaves the message visible. Reduced Motion keeps the fade fallback.
+
+The window host keeps reaction and action controls above the text-selection
+passthrough region. Tall previews can extend behind the reaction shelf, but taps
+on quick reactions and the expanded picker must stay in the menu host. The hit
+regions update directly with overlay layout and preview scrolling. Tapping one's
+existing reaction removes it directly; opening the picker is optional.

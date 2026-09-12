@@ -1184,6 +1184,32 @@ final class ConversationReadPresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testOverlayControlsKeepTouchesWhenTheyOverlapLongText() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let controller = UIViewController()
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        let anchor = UIView(frame: window.bounds)
+        controller.view.addSubview(anchor)
+        let regions = WindowOverlayHitTestRegions()
+        regions.controlFrames = [CGRect(x: 20, y: 100, width: 320, height: 52),
+                                 CGRect(x: 20, y: 550, width: 240, height: 100)]
+        let coordinator = WindowOverlayPresenter<Text>.Coordinator(rootView: Text("Actions"))
+        coordinator.install(from: anchor, passthroughFrame: CGRect(x: 20, y: 50, width: 320, height: 650),
+                            hitTestRegions: regions) { _ in Text("Actions") }
+        defer { coordinator.remove(animated: false) }
+        let overlay = try XCTUnwrap(window.subviews.last)
+        XCTAssertTrue(overlay.point(inside: CGPoint(x: 100, y: 120), with: nil))
+        XCTAssertTrue(overlay.point(inside: CGPoint(x: 100, y: 580), with: nil))
+        XCTAssertFalse(overlay.point(inside: CGPoint(x: 100, y: 300), with: nil))
+        // Region updates must take effect without reinstalling the host.
+        regions.controlFrames = [CGRect(x: 20, y: 300, width: 320, height: 200)]
+        XCTAssertFalse(overlay.point(inside: CGPoint(x: 100, y: 120), with: nil))
+        XCTAssertTrue(overlay.point(inside: CGPoint(x: 100, y: 330), with: nil))
+    }
+
+    @MainActor
     func testParticleWindowDoesNotInterceptTouches() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let controller = UIViewController()

@@ -139,6 +139,48 @@ final class MessageDeletionUITests: XCTestCase {
         checkMessagePreviewLayout(isLong: true)
     }
 
+    func testLongMessageQuickAndExpandedReactionsAfterPreviewScroll() {
+        let app = XCUIApplication(bundleIdentifier: "ai.kordi.ios.beta")
+        app.launchArguments = ["--preview-data", "--preview-contact-chat", "--preview-long-message-actions"]
+        app.launch()
+        let marker = app.staticTexts["Long message end marker."]
+        XCTAssertTrue(marker.waitForExistence(timeout: 10))
+        marker.press(forDuration: 0.4)
+        let quick = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "React with ")).firstMatch
+        XCTAssertTrue(quick.waitForExistence(timeout: 5))
+        let name = String(quick.label.dropFirst("React with ".count))
+        let originalY = marker.frame.minY
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.26))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.36)))
+        XCTAssertGreaterThan(marker.frame.minY, originalY + 20)
+        quick.tap()
+        XCTAssertTrue(app.buttons["Close message actions"].waitForNonExistence(timeout: 5))
+        let reaction = app.buttons["\(name) reaction, 1 people"]
+        XCTAssertTrue(reaction.waitForExistence(timeout: 5))
+        // The ordinary cancellation path is a tap on one's existing reaction.
+        reaction.tap()
+        XCTAssertTrue(reaction.waitForNonExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Close message actions"].exists)
+        // Re-add it only to cover the expanded picker's separate hit region.
+        marker.press(forDuration: 0.4)
+        let sameQuickReaction = app.buttons["React with \(name)"]
+        XCTAssertTrue(sameQuickReaction.waitForExistence(timeout: 5))
+        sameQuickReaction.tap()
+        XCTAssertTrue(app.buttons["Close message actions"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(reaction.waitForExistence(timeout: 5))
+        marker.press(forDuration: 0.4)
+        XCTAssertTrue(app.buttons["Show all reactions"].waitForExistence(timeout: 5))
+        app.buttons["Show all reactions"].tap()
+        XCTAssertTrue(app.buttons["Collapse reaction picker"].waitForExistence(timeout: 5))
+        let sameReaction = app.buttons[name].firstMatch
+        XCTAssertTrue(sameReaction.waitForExistence(timeout: 5))
+        sameReaction.tap()
+        XCTAssertTrue(app.buttons["Close message actions"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(reaction.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Add photo, video, or file"].isHittable)
+        app.terminate()
+    }
+
     func testShortFormattedMessageReturnsWithoutReflow() {
         checkMessagePreviewLayout(isLong: false)
     }
