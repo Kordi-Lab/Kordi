@@ -1184,6 +1184,26 @@ final class ConversationReadPresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testEmptyReactionShelfDoesNotReserveMessageSpacing() {
+        func content(_ reactions: [MessageReaction]) -> some View {
+            VStack(spacing: 4) {
+                Color.clear.frame(width: 100, height: 50)
+                MessageBubbleAccessoryRow(reactions: reactions, threadReplyCount: 0,
+                    threadHasUnread: false, threadAgentState: nil, ownAccountId: "self",
+                    scrollAnchor: .leading, onReact: { _ in }, onOpenThread: {})
+            }
+        }
+        let host = UIHostingController(rootView: content([]))
+        let proposal = CGSize(width: 310, height: 800)
+        let emptySize = host.sizeThatFits(in: proposal)
+        XCTAssertEqual(emptySize.height, 50, accuracy: 0.5)
+        host.rootView = content([MessageReaction(value: "👍", accountIds: ["self"])])
+        XCTAssertGreaterThan(host.sizeThatFits(in: proposal).height, emptySize.height)
+        host.rootView = content([])
+        XCTAssertEqual(host.sizeThatFits(in: proposal).height, emptySize.height, accuracy: 0.5)
+    }
+
+    @MainActor
     func testOverlayControlsKeepTouchesWhenTheyOverlapLongText() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         let controller = UIViewController()
@@ -1442,7 +1462,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(bubbleSource.contains("MessageBubbleAccessoryRow("))
-        XCTAssertTrue(bubbleSource.contains("!message.reactions.isEmpty || threadReplyCount > 0"))
+        XCTAssertTrue(bubbleSource.contains("!reactions.isEmpty || threadReplyCount > 0"))
         XCTAssertTrue(conversationSource.contains("allowsQuotedReplies: conversation.kind.supportsQuotedReplies"))
         XCTAssertTrue(conversationSource.contains("allowsThreadReply: scopedThreadRootMessageID == nil"))
         XCTAssertTrue(conversationSource.contains("content.navigationDestination(item: $activeRootMessageID)"))

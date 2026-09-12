@@ -1469,6 +1469,20 @@ enum MessageActionMotion {
         reduceMotion ? fade(reduceMotion: true) : .timingCurve(0.23, 1, 0.32, 1, duration: 0.2)
     }
 
+    static func reactionChange(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.12) : .spring(duration: 0.25, bounce: 0.1)
+    }
+
+    static func reactionTransition(reduceMotion: Bool, anchor: UnitPoint) -> AnyTransition {
+        guard !reduceMotion else { return .opacity.animation(.easeOut(duration: 0.12)) }
+        return .asymmetric(
+            insertion: .scale(scale: 0.9, anchor: anchor).combined(with: .opacity)
+                .animation(reactionChange(reduceMotion: false)),
+            removal: .scale(scale: 0.96, anchor: anchor).combined(with: .opacity)
+                .animation(.easeOut(duration: 0.16))
+        )
+    }
+
     static func previewAnimation(for placement: MessageActionBubblePlacement?, reduceMotion: Bool) -> Animation {
         guard let placement, placement.previewFrame != placement.sourceFrame else {
             return exit(reduceMotion: reduceMotion)

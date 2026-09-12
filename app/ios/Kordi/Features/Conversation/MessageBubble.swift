@@ -290,20 +290,16 @@ struct MessageBubble: View, Equatable {
                         isRequestingActionFrame = true
                     }
 
-                if !message.reactions.isEmpty || threadReplyCount > 0 {
-                    MessageBubbleAccessoryRow(
-                        reactions: message.reactions,
-                        threadReplyCount: threadReplyCount,
-                        threadHasUnread: threadHasUnread,
-                        threadAgentState: threadAgentState,
-                        ownAccountId: ownAccountId,
-                        scrollAnchor: message.author == .me ? .trailing : .leading,
-                        onReact: onReact,
-                        onOpenThread: onOpenThread
-                    )
-                    .offset(y: -Self.reactionChipVerticalLift)
-                    .padding(.bottom, -Self.reactionChipVerticalLift)
-                }
+                MessageBubbleAccessoryRow(
+                    reactions: message.reactions,
+                    threadReplyCount: threadReplyCount,
+                    threadHasUnread: threadHasUnread,
+                    threadAgentState: threadAgentState,
+                    ownAccountId: ownAccountId,
+                    scrollAnchor: message.author == .me ? .trailing : .leading,
+                    onReact: onReact,
+                    onOpenThread: onOpenThread
+                )
 
                 if !backgroundSessions.isEmpty {
                     BackgroundAgentSessionList(
@@ -1024,8 +1020,20 @@ struct MessageBubble: View, Equatable {
 
 }
 
-private struct MessageBubbleAccessoryRow: View {
+private struct MessageReactionChipButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+struct MessageBubbleAccessoryRow: View {
     @Environment(\.kordiChatTheme) private var chatTheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let reactions: [MessageReaction]
     let threadReplyCount: Int
     let threadHasUnread: Bool
@@ -1036,46 +1044,56 @@ private struct MessageBubbleAccessoryRow: View {
     let onOpenThread: () -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                if scrollAnchor == .leading {
-                    threadButton
-                }
-                ForEach(reactions) { reaction in
-                    Button {
-                        onReact(reaction.value)
-                    } label: {
-                        HStack(spacing: 4) {
-                            if let item = EmojiPickerItem(reactionValue: reaction.value) {
-                                reactionImage(item)
-                            } else {
-                                Text(reaction.value)
-                            }
-                            Text("\(reaction.accountIds.count)")
-                                .font(.caption2.weight(.semibold))
+        Group {
+            if !reactions.isEmpty || threadReplyCount > 0 {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 4) {
+                        if scrollAnchor == .leading {
+                            threadButton
                         }
-                        .padding(.horizontal, 9)
-                        .frame(minHeight: 32)
-                        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-                        .contentShape(Capsule())
+                        ForEach(reactions) { reaction in
+                            Button {
+                                onReact(reaction.value)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    if let item = EmojiPickerItem(reactionValue: reaction.value) {
+                                        reactionImage(item)
+                                    } else {
+                                        Text(reaction.value)
+                                    }
+                                    Text("\(reaction.accountIds.count)")
+                                        .font(.caption2.weight(.semibold))
+                                        .contentTransition(.numericText(value: Double(reaction.accountIds.count)))
+                                }
+                                .padding(.horizontal, 9)
+                                .frame(minHeight: 32)
+                                .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
+                                .contentShape(Capsule())
+                            }
+                            .buttonStyle(MessageReactionChipButtonStyle())
+                            .frame(minHeight: 44)
+                            .accessibilityLabel(
+                                "\(reactionAccessibilityName(reaction.value)) reaction, \(reaction.accountIds.count) people"
+                            )
+                            .accessibilityValue(
+                                reaction.includes(accountId: ownAccountId) ? "You reacted" : ""
+                            )
+                            .accessibilityHint("Double tap to toggle this reaction")
+                            .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: scrollAnchor))
+                        }
+                        if scrollAnchor == .trailing {
+                            threadButton
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .frame(minHeight: 44)
-                    .accessibilityLabel(
-                        "\(reactionAccessibilityName(reaction.value)) reaction, \(reaction.accountIds.count) people"
-                    )
-                    .accessibilityValue(
-                        reaction.includes(accountId: ownAccountId) ? "You reacted" : ""
-                    )
-                    .accessibilityHint("Double tap to toggle this reaction")
                 }
-                if scrollAnchor == .trailing {
-                    threadButton
-                }
+                .defaultScrollAnchor(scrollAnchor)
+                .frame(maxWidth: 310)
+                .offset(y: -MessageBubble.reactionChipVerticalLift)
+                .padding(.bottom, -MessageBubble.reactionChipVerticalLift)
+                .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: scrollAnchor))
             }
         }
-        .defaultScrollAnchor(scrollAnchor)
-        .frame(maxWidth: 310)
+        .animation(MessageActionMotion.reactionChange(reduceMotion: reduceMotion), value: reactions)
     }
 
     @ViewBuilder
@@ -2115,14 +2133,19 @@ private struct MessageImageCollection: View {
 
     @ViewBuilder
     private func reactionBadges(for attachment: ChatAttachment) -> some View {
-        if let reactions = attachmentReactions[attachment.id], !reactions.isEmpty {
-            AttachmentReactionBadges(reactions: reactions, accountID: ownAccountID,
-                                     scopeIdentifier: "photo-reactions-\(messageID)-\(attachment.id)::") { reaction in
-                onReactToAttachment(attachment, reaction)
+        Group {
+            if let reactions = attachmentReactions[attachment.id], !reactions.isEmpty {
+                AttachmentReactionBadges(reactions: reactions, accountID: ownAccountID,
+                                         scopeIdentifier: "photo-reactions-\(messageID)-\(attachment.id)::") { reaction in
+                    onReactToAttachment(attachment, reaction)
+                }
+                .padding(4)
+                .accessibilityIdentifier("photo-reactions-\(messageID)-\(attachment.id)")
+                .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: .bottomTrailing))
             }
-            .padding(4)
-            .accessibilityIdentifier("photo-reactions-\(messageID)-\(attachment.id)")
         }
+        .animation(MessageActionMotion.reactionChange(reduceMotion: reduceMotion),
+                   value: attachmentReactions[attachment.id] ?? [])
     }
 
     private func actionSourceGeometry(for attachmentID: String?, inset: CGSize = .zero) -> some View {
@@ -2195,6 +2218,7 @@ private struct MessageImageCollection: View {
 }
 
 private struct AttachmentReactionBadges: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let reactions: [MessageReaction]
     let accountID: String?
     let scopeIdentifier: String
@@ -2213,15 +2237,17 @@ private struct AttachmentReactionBadges: View {
                                 }
                             } else { Text(reaction.value).font(.caption) }
                             Text("\(reaction.accountIds.count)").font(.caption2.weight(.semibold))
+                                .contentTransition(.numericText(value: Double(reaction.accountIds.count)))
                         }
                         .padding(.horizontal, 7)
                         .frame(height: 28)
                         .background(.regularMaterial, in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(MessageReactionChipButtonStyle())
                     .accessibilityIdentifier(scopeIdentifier + reaction.value)
                     .accessibilityLabel("Photo reaction \(reaction.value), \(reaction.accountIds.count) people")
                     .accessibilityValue(reaction.includes(accountId: accountID) ? "You reacted" : "")
+                    .transition(MessageActionMotion.reactionTransition(reduceMotion: reduceMotion, anchor: .bottomTrailing))
                 }
             }
         }

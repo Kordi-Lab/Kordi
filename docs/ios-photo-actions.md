@@ -47,3 +47,8 @@ passthrough region. Tall previews can extend behind the reaction shelf, but taps
 on quick reactions and the expanded picker must stay in the menu host. The hit
 regions update directly with overlay layout and preview scrolling. Tapping one's
 existing reaction removes it directly; opening the picker is optional.
+
+Reaction chips use a short scale-and-opacity entrance, a softer fade on removal,
+and numeric transitions for count updates. The shelf remains structurally stable
+so its first and last reactions animate too, without reserving space when empty.
+The same motion applies to message and photo reactions; Reduced Motion uses fades.
