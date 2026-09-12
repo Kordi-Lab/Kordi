@@ -157,11 +157,11 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   );
   assert.match(
     conversation,
-    /if !showsTimeline, initialLoadFailed \{[\s\S]*ConversationInitialFailureView/,
+    /if !showsTimeline, let initialFailure \{[\s\S]*ConversationInitialFailureView\(failure: initialFailure\)/,
   );
   assert.match(
     conversation,
-    /if didPresentInitialLoading, !initialLoadFailed[\s\S]*ConversationInitialLoadingOverlay\(isReady: showsTimeline/,
+    /if didPresentInitialLoading, initialFailure == nil[\s\S]*ConversationInitialLoadingOverlay\(isReady: showsTimeline/,
   );
   assert.match(
     conversation,
@@ -171,6 +171,9 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
     conversation,
     /ConversationThreadLoadPolicy\.usesCachedTimeline\([\s\S]*return[\s\S]*model\.loadConversation/,
   );
+  assert.match(conversation, /initialFailure = \.history/);
+  assert.match(conversation, /initialFailure = \.positioning/);
+  assert.match(conversation, /guard hasPreparedInitialViewport, hasLaidOutInitialTimeline, hasAttachedInitialScrollView/);
   assert.match(conversation, /Button\("Try again", action: retry\)/);
   assert.match(model, /func loadConversation\(_ conversation: ConversationSummary, forceReload: Bool = false\) async -> Bool/);
   assert.match(model, /return await conversationHistoryLoads\.load\([\s\S]*reuseCompleted: !forceReload/);

@@ -391,6 +391,51 @@ final class MessageDeletionUITests: XCTestCase {
         app.terminate()
     }
 
+    func testExpandedPhotosAndSelectionSurviveScrollingOutOfTheViewport() {
+        let app = XCUIApplication(bundleIdentifier: "ai.kordi.ios.beta")
+        app.launchArguments = ["--preview-data", "--preview-contact-chat", "--preview-menu-test-chat"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Add photo, video, or file"].waitForExistence(timeout: 10))
+        let stack = app.buttons.matching(NSPredicate(format: "label == %@ AND value BEGINSWITH %@",
+            "Expand 2 grouped photos", "Photo ")).firstMatch
+        for _ in 0..<10 {
+            if stack.exists && stack.isHittable && stack.frame.minY > 140
+                && stack.frame.maxY < app.frame.height - 120 { break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.3))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.55)))
+        }
+        XCTAssertTrue(stack.isHittable)
+        stack.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: stack.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5)))
+        let selected = app.buttons.matching(NSPredicate(format: "label == %@ AND value == %@",
+            "Expand 2 grouped photos", "Photo 2 of 2")).firstMatch
+        capture("Selected photo before eviction", app: app)
+        XCTAssertTrue(selected.waitForExistence(timeout: 5), "The photo swipe must select the second attachment")
+        selected.tap()
+        let collapse = app.buttons["Collapse grouped photos"].firstMatch
+        XCTAssertTrue(collapse.waitForExistence(timeout: 5))
+        let photo = app.descendants(matching: .any).matching(identifier:
+            "message-photo-demo-photo-group-att_preview_image_portrait").firstMatch
+        for _ in 0..<14 {
+            if !photo.exists { break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.25))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.8)))
+        }
+        XCTAssertFalse(photo.exists, "The test must evict the photo content, not merely cover it")
+        let latest = app.buttons["Go to latest message"]
+        XCTAssertTrue(latest.waitForExistence(timeout: 5))
+        latest.tap()
+        XCTAssertTrue(collapse.waitForExistence(timeout: 5), "The returning group must remain expanded")
+        for _ in 0..<8 {
+            if collapse.isHittable { break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.3))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.55)))
+        }
+        collapse.tap()
+        XCTAssertTrue(selected.waitForExistence(timeout: 5), "The selected attachment must survive eviction and expansion")
+        app.terminate()
+    }
+
     func testPhotoHighlightTracksItsBoundsAfterScrollingAndReopening() {
         let app = XCUIApplication(bundleIdentifier: "ai.kordi.ios.beta")
         app.launchArguments = ["--preview-data", "--preview-contact-chat", "--preview-menu-test-chat",

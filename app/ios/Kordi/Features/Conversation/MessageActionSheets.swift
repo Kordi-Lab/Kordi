@@ -736,7 +736,7 @@ struct MessageActionOverlay: View {
                             DragGesture(minimumDistance: 8)
                                 .onChanged { previewScroll.drag(translation: $0.translation.height) }
                                 .onEnded { _ in previewScroll.endDrag() },
-                            including: previewScroll.limit > 0 ? .all : .none
+                            including: previewScroll.limit > 0 ? .all : .subviews
                         )
                         .position(x: imageFrame.midX, y: imageFrame.midY)
                         .accessibilityIdentifier("message-action-photo-preview")
@@ -907,7 +907,7 @@ struct MessageActionOverlay: View {
             DragGesture(minimumDistance: 8)
                 .onChanged { previewScroll.drag(translation: $0.translation.height) }
                 .onEnded { _ in previewScroll.endDrag() },
-            including: previewScroll.limit > 0 ? .all : .none
+            including: previewScroll.limit > 0 ? .all : .subviews
         )
         .accessibilityLabel("Close message actions")
         #if DEBUG

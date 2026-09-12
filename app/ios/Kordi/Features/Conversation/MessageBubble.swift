@@ -357,7 +357,7 @@ struct MessageBubble: View, Equatable {
             DragGesture(minimumDistance: 8)
                 .onChanged { actionPreviewScroll?.drag(translation: $0.translation.height) }
                 .onEnded { _ in actionPreviewScroll?.endDrag() },
-            including: isActionPresented && (actionPreviewScroll?.limit ?? 0) > 0 ? .all : .none
+            including: isActionPresented && (actionPreviewScroll?.limit ?? 0) > 0 ? .all : .subviews
         )
         .task(id: MessageActionPreviewGeometry(
             source: actionFrame, viewport: actionViewportFrame, enabled: automaticallyPresentsActions
@@ -1872,8 +1872,13 @@ private struct MessageImageCollection: View {
     let onUpdateDeletingAttachmentFrame: (CGRect) -> Void
     @State private var loadedImages: [String: UIImage] = [:]
 
-    @State private var isExpanded = ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
-    @State private var selectedImageIndex = 0
+    @Environment(\.conversationRowContentState) private var rowPresentation
+    @State private var standalonePresentation = ConversationRowContentState()
+    private var presentation: ConversationRowContentState { rowPresentation ?? standalonePresentation }
+    private var isExpanded: Bool {
+        get { presentation.photosExpanded }
+        nonmutating set { presentation.photosExpanded = newValue }
+    }
     @State private var flipProgress: CGFloat = 0
     @State private var flipDirection = 1
     @State private var isCompletingFlip = false
@@ -1988,7 +1993,7 @@ private struct MessageImageCollection: View {
     }
 
     private var currentImageIndex: Int {
-        min(selectedImageIndex, max(0, attachments.count - 1))
+        attachments.firstIndex { $0.id == presentation.selectedPhotoID } ?? 0
     }
 
     private var visibleBackdropIndices: [Int] {
@@ -2042,6 +2047,9 @@ private struct MessageImageCollection: View {
 
     private var collapsedInteractionSurface: some View {
         Button {
+            // A simultaneous drag can also release the underlying button.
+            // Finish the flip without treating that release as an expand tap.
+            guard flipProgress == 0, !isCompletingFlip else { return }
             isExpanded = true
         } label: {
             Color.clear
@@ -2089,17 +2097,19 @@ private struct MessageImageCollection: View {
     }
 
     private func completeFlip() {
-        let targetIndex = flipTargetIndex
+        let targetID = attachments[flipTargetIndex].id
+        isCompletingFlip = true
         if reduceMotion {
-            selectedImageIndex = targetIndex
+            presentation.selectedPhotoID = targetID
             flipProgress = 0
+            // Keep the button-release guard through this touch dispatch too.
+            DispatchQueue.main.async { isCompletingFlip = false }
             return
         }
-        isCompletingFlip = true
         withAnimation(.easeIn(duration: 0.18)) {
             flipProgress = 1
         } completion: {
-            selectedImageIndex = targetIndex
+            presentation.selectedPhotoID = targetID
             flipProgress = 0
             isCompletingFlip = false
         }

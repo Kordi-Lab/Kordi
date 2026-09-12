@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// Only lightweight presentation choices survive row eviction; decoded media stays
+/// with the disposable content views. Attachment identity survives reorder/delete.
+@Observable
+@MainActor
+final class ConversationRowContentState {
+    var photosExpanded = ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
+    var selectedPhotoID: String?
+    var showsFullOversizedText = false
+}
+
+private struct ConversationRowContentStateKey: EnvironmentKey {
+    static let defaultValue: ConversationRowContentState? = nil
+}
+
+extension EnvironmentValues {
+    var conversationRowContentState: ConversationRowContentState? {
+        get { self[ConversationRowContentStateKey.self] }
+        set { self[ConversationRowContentStateKey.self] = newValue }
+    }
+}
+
 enum ConversationTimelineVirtualization {
     // iOS 26 can continuously relayout LazyVStack during accessibility reads.
     // Retain lightweight row slots, but construct content only near the viewport.
@@ -33,12 +54,14 @@ struct ConversationTimelineRowSlot<Content: View>: View {
 
     @State private var isNearViewport = false
     @State private var measuredHeight: CGFloat = 120
+    @State private var presentation = ConversationRowContentState()
 
     var body: some View {
         if usesCompatibilityLayout {
             Group {
                 if isRetained || isNearViewport {
                     content()
+                        .environment(\.conversationRowContentState, presentation)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                             guard height.isFinite, height > 0,
                                   abs(measuredHeight - height) > 0.5 else { return }
@@ -62,6 +85,8 @@ struct ConversationTimelineRowSlot<Content: View>: View {
                 if isNearViewport != isNear { isNearViewport = isNear }
             }
         } else {
+            // Native lazy layout already owns its row state. Do not add a new
+            // environment boundary to its initial measurement and send path.
             content()
         }
     }

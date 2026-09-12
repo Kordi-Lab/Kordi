@@ -52,3 +52,20 @@ Reaction chips use a short scale-and-opacity entrance, a softer fade on removal,
 and numeric transitions for count updates. The shelf remains structurally stable
 so its first and last reactions animate too, without reserving space when empty.
 The same motion applies to message and photo reactions; Reduced Motion uses fades.
+
+Photo reaction writes are serialized per message and authenticated session. Pending
+choices overlay older history and sync snapshots, so an earlier response cannot
+replace a later tap. Failures restore the last confirmed state only when no newer
+choice supersedes them. Writes to different photos in the same message share the
+queue because their responses contain the entire message.
+
+The timeline retains lightweight row presentation state while evicting offscreen
+content. Expanded photo groups, the selected attachment identity and expanded
+long-message text survive scrolling away and back. Image buffers and temporary
+flip-animation state remain disposable. The eviction regression also checks that
+unneeded message views are released.
+
+Inactive preview drags use [GestureMask.subviews](https://developer.apple.com/documentation/swiftui/gesturemask/subviews)
+to preserve gestures on their child views. A photo flip also
+suppresses the underlying expand-button release until the flip has finished,
+including the nonanimated Reduced Motion path.

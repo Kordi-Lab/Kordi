@@ -308,6 +308,7 @@ final class AppModel: ObservableObject {
     private var conversationReadPresentations: [UUID: ConversationReadPresentation] = [:]
     private var pendingVisibleReadMessageBySessionID: [String: String] = [:]
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
+    private let attachmentReactionMutations = AttachmentReactionMutationQueue()
     private let previewMode: Bool
     private let previewLaunchFlow: Bool
     private let previewHistoryLoadDelay: Duration
@@ -2210,27 +2211,51 @@ final class AppModel: ObservableObject {
     ) async -> Bool {
         let accountID = account?.accountId ?? "preview-self"
         let expectedToken = token
-        let current = messagesByConversation[conversation.id]?.first { $0.id == message.id } ?? message
-        let wasActive = current.attachmentReactions[attachment.id]?.first { $0.value == reaction }?.includes(accountId: accountID) == true
-        updateAttachmentReaction(reaction, accountId: accountID, active: !wasActive,
-                                 messageId: message.id, attachmentId: attachment.id, conversationId: conversation.id)
-        if previewMode { return true }
-        do {
-            guard let token else { throw CloudAPIError(code: "signed_out", message: "Sign in to react.", statusCode: 401) }
+        let scope = AttachmentReactionMutationQueue.Scope(accountID: accountID, sessionToken: expectedToken,
+            conversationID: conversation.id, messageID: message.id)
+        let target = AttachmentReactionMutationQueue.Target(attachmentID: attachment.id, reaction: reaction)
+        let current = messages(for: conversation).first { $0.id == message.id } ?? message
+        let active = current.attachmentReactions[attachment.id]?.first { $0.value == reaction }?
+            .includes(accountId: accountID) == true
+        return await attachmentReactionMutations.toggle(in: scope, target: target, current: active) { [self] active in
+            guard token == expectedToken, account?.accountId == accountID else { throw CancellationError() }
+            if previewMode { return }
+            guard let expectedToken else { throw CloudAPIError(code: "signed_out", message: "Sign in to react.", statusCode: 401) }
             let updated = try await api.setAttachmentReaction(
-                token: token, sessionId: conversation.sessionId,
+                token: expectedToken, sessionId: conversation.sessionId,
                 messageId: message.reactionTargetMessageId ?? message.id, attachmentId: attachment.id,
-                reaction: reaction, active: !wasActive
+                reaction: reaction, active: active
             )
-            guard self.token == expectedToken, account?.accountId == accountID else { return false }
+            guard token == expectedToken, account?.accountId == accountID else { throw CancellationError() }
             mergeCloudMessage(updated, peerHint: conversation.peerAccountId)
-            return true
-        } catch {
-            guard self.token == expectedToken, account?.accountId == accountID else { return false }
-            updateAttachmentReaction(reaction, accountId: accountID, active: wasActive,
-                                     messageId: message.id, attachmentId: attachment.id, conversationId: conversation.id)
+        } reconcile: { [self] choices in
+            guard token == expectedToken, account?.accountId == accountID else { return }
+            for (target, active) in choices {
+                updateAttachmentReaction(target.reaction, accountId: accountID, active: active,
+                    messageId: message.id, attachmentId: target.attachmentID, conversationId: conversation.id)
+            }
+        } onFailure: { [self] error in
+            guard token == expectedToken, account?.accountId == accountID,
+                  !(error is CancellationError) else { return }
             errorMessage = userFacing(error, fallback: "Could not update this photo's reaction.")
-            return false
+        }
+    }
+
+    private func applyingPendingAttachmentReactions(to messages: [ChatMessage]) -> [ChatMessage] {
+        guard let accountID = account?.accountId else { return messages }
+        return messages.map { original in
+            let scope = AttachmentReactionMutationQueue.Scope(accountID: accountID, sessionToken: token,
+                conversationID: original.conversationId, messageID: original.id)
+            let pending = attachmentReactionMutations.pendingValues(in: scope)
+            guard !pending.isEmpty else { return original }
+            var message = original
+            for (target, active) in pending where message.attachments.contains(where: { $0.id == target.attachmentID }) {
+                let reactions = Self.updatingReaction(target.reaction, accountId: accountID, active: active,
+                    in: message.attachmentReactions[target.attachmentID] ?? [])
+                if reactions.isEmpty { message.attachmentReactions.removeValue(forKey: target.attachmentID) }
+                else { message.attachmentReactions[target.attachmentID] = reactions }
+            }
+            return message
         }
     }
 
@@ -2447,7 +2472,7 @@ final class AppModel: ObservableObject {
             )
             messages.append(placeholder)
         }
-        return AgentSessionQueuePresentation.apply(to: messages.sorted {
+        return AgentSessionQueuePresentation.apply(to: applyingPendingAttachmentReactions(to: messages).sorted {
             $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
         }, kind: conversation.kind)
     }

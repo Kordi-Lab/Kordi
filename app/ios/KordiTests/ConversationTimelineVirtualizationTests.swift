@@ -10,6 +10,8 @@ private final class TimelineMountLedger {
     var heights: [Int: CGFloat] = [:]
     var scroll: ((Int) -> Void)?
     var retain: ((Int?) -> Void)?
+    var setPresentation: [Int: () -> Void] = [:]
+    var restoredPresentation: [Int: (Bool, String?, Bool)] = [:]
 
     func mount(_ id: Int) {
         active.insert(id)
@@ -32,11 +34,7 @@ private struct VirtualizedTimelineHarness: View {
                                 isRetained: retainedID == id,
                                 usesCompatibilityLayout: true
                             ) {
-                                Text("History row \(id)")
-                                    .frame(maxWidth: .infinity)
-                                    .frame(height: id == 5 ? 1600 : 100.25)
-                                    .onAppear { ledger.mount(id) }
-                                    .onDisappear { ledger.active.remove(id) }
+                                StatefulTimelineContent(id: id, ledger: ledger)
                             }
                             .id(id)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
@@ -52,6 +50,31 @@ private struct VirtualizedTimelineHarness: View {
                 }
             }
         }
+    }
+}
+
+private struct StatefulTimelineContent: View {
+    @Environment(\.conversationRowContentState) private var presentation
+    let id: Int
+    let ledger: TimelineMountLedger
+
+    var body: some View {
+        Text("History row \(id)")
+            .frame(maxWidth: .infinity)
+            .frame(height: id == 5 ? 1600 : 100.25)
+            .onAppear {
+                ledger.mount(id)
+                if let presentation {
+                    ledger.restoredPresentation[id] = (presentation.photosExpanded,
+                        presentation.selectedPhotoID, presentation.showsFullOversizedText)
+                    ledger.setPresentation[id] = { [weak presentation] in
+                        presentation?.photosExpanded = true
+                        presentation?.selectedPhotoID = "second-photo"
+                        presentation?.showsFullOversizedText = true
+                    }
+                }
+            }
+            .onDisappear { ledger.active.remove(id) }
     }
 }
 
@@ -80,6 +103,8 @@ final class ConversationTimelineVirtualizationTests: XCTestCase {
         XCTAssertEqual(ledger.heights[5] ?? 0, 1600, accuracy: 1)
         XCTAssertLessThan(ledger.maximumActive, 50, "Loading history must not construct all 200 message bodies")
 
+        let editPresentation = try XCTUnwrap(ledger.setPresentation[5])
+        editPresentation()
         ledger.retain?(5)
         ledger.scroll?(150)
         try await settle()
@@ -96,6 +121,10 @@ final class ConversationTimelineVirtualizationTests: XCTestCase {
         try await settle()
         XCTAssertTrue(ledger.active.contains(0))
         XCTAssertFalse(ledger.active.contains(150))
+        let restored = try XCTUnwrap(ledger.restoredPresentation[5])
+        XCTAssertTrue(restored.0, "Expanded photos must stay expanded after eviction")
+        XCTAssertEqual(restored.1, "second-photo", "The selected photo identity must survive eviction")
+        XCTAssertTrue(restored.2, "Expanded long text must not collapse when remounted")
         XCTAssertLessThan(ledger.maximumActive, 50)
     }
 }

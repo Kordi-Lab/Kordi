@@ -514,7 +514,16 @@ struct MarkdownMessageContent: View {
     let inlineAccent: Color?
     let allowsTextSelection: Bool
     let onOpenPersonMention: (String) -> Void
-    @State private var showsFullOversizedText = false
+    @Environment(\.conversationRowContentState) private var rowPresentation
+    @State private var standalonePresentation = ConversationRowContentState()
+    private var presentation: ConversationRowContentState {
+        // Quotes and execution details have independent compact text controls.
+        density == .standard ? rowPresentation ?? standalonePresentation : standalonePresentation
+    }
+    private var showsFullOversizedText: Bool {
+        get { presentation.showsFullOversizedText }
+        nonmutating set { presentation.showsFullOversizedText = newValue }
+    }
 
     // ponytail: Keep first layout bounded; paginate rich Markdown blocks if expanded formatting becomes necessary.
     static let oversizedTextByteLimit = 32 * 1_024
