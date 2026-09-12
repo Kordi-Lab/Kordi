@@ -28,7 +28,7 @@ prove every production hang has the same cause.
 
 ## Kordi regression comparison
 
-- The main-branch baseline, with only synthetic fixtures and a UI test added,
+- The earlier main-branch baseline (`fa7ef49c8`), with only synthetic fixtures and a UI test added,
   also hung on iOS 26.0 after repeated image menus. This predates the per-photo
   menu changes. Ordinary history scrolling followed by the keyboard passed on
   both main and the PR branch.
@@ -48,6 +48,38 @@ prove every production hang has the same cause.
 The iOS 26 release blocker remains open. Passing iOS 27 tests and reproducing the
 issue on main do not establish that iOS 26 is safe. No experimental runtime
 workaround from this investigation is included in the PR or installed Beta 21.
+
+## Integration with the newer main branch
+
+The PR was subsequently rebased onto `1705ca0fb` (#1503), preserving its native
+reading-anchor restoration, initial-layout readiness, keyboard coordination,
+and canonical message-deletion recovery. The native scroll bridge retains both
+those hooks and the menu's temporary pan-gesture lock.
+
+The iOS 26.5 mixed-history regression still failed after this integration: one
+iteration lost the photo after opening the keyboard, and the next stalled during
+scrolling after menu dismissal. The bounded runner stopped that process; its
+sample again contained the SwiftUI transaction/lazy-placement loop. The newer
+main changes therefore do not clear this release blocker.
+
+The extended iOS 26.0 run passed 121 of 122 cases. The remaining case was
+`testVisibleAIReplyClearsUnreadWithoutReachingExactBottom`, whose unread count
+remained nonzero. The extended iOS 27.0 run also passed 121 of 122 cases; its
+failure was `testRapidSendStartsAtItsFinalVisiblePosition`, which did not observe
+the new bubble. These distinct results remain recorded rather than being
+reported as a clean suite. A subsequent isolated iOS 27 rapid-send run passed
+three of three repetitions; that retry does not erase the full-suite failure.
+
+The iOS 27.0 UI regression passed all six executions: two runs each of grouped
+photo reactions/deletion, long-message quick/expanded reactions, and repeated
+photo menus followed by keyboard opening.
+
+Production-channel Kordi 0.0.2 build 22 was built from the integrated runtime,
+installed in place on a physical iPhone running iOS 27, and launched without
+preview arguments. The app and share extension retained their signed app-group
+and Keychain capabilities. This is a direct device test installation, not a
+TestFlight release. No production server was changed; attachment-scoped mutations
+still require the PR's server migration and endpoints before backend validation.
 
 ## Running the reproduction
 
