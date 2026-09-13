@@ -170,10 +170,27 @@ export function selfAgentMirrorDuplicateIds(
       message.sourceTransport === 'canonical-fork-snapshot'
       && message.sourceEventId?.startsWith('fork-snapshot:')
     ));
-    if ((!hasCloudMirror || !hasPreferredLocalCopy) && !hasCanonicalSnapshotOrigin) continue;
+    // Desktop reconciliation can enrich a processing Cloud row without
+    // changing its transport. A later terminal Cloud event is then a second
+    // Cloud row for the same request, rather than a local/Cloud mirror pair.
+    const first = candidates[0];
+    const cloudRequestId = stringValue(contentRecord(first.content).cloudRequestMessageId)?.trim();
+    const sameCloudLifecycle = normalizeOwnedAgentIdentity && Boolean(cloudRequestId)
+      && candidates.every((message) => (
+        message.sourceTransport === 'cloud-self-agent'
+        && isTerminalOwnedAgentMessage(message)
+        && message.senderIdentityId === first.senderIdentityId
+        && message.status === first.status
+        && stringValue(contentRecord(message.content).cloudRequestMessageId)?.trim() === cloudRequestId
+      ));
+    if ((!hasCloudMirror || !hasPreferredLocalCopy) && !hasCanonicalSnapshotOrigin && !sameCloudLifecycle) continue;
 
     const preferred = [...candidates].sort((left, right) => (
-      selfAgentMirrorTransportPriority(left) - selfAgentMirrorTransportPriority(right)
+      (sameCloudLifecycle
+        ? Number(Boolean(stringValue(contentRecord(right.content).desktopEntryId)?.trim()))
+          - Number(Boolean(stringValue(contentRecord(left.content).desktopEntryId)?.trim()))
+        : 0)
+      || selfAgentMirrorTransportPriority(left) - selfAgentMirrorTransportPriority(right)
       || left.sequenceNum - right.sequenceNum
       || left.id.localeCompare(right.id)
     ))[0];
