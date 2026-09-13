@@ -86,4 +86,33 @@ struct AgentResponseDeduplicationTests {
         ])
         #expect(visible == ["duplicate", "peer", "another-request"])
     }
+    @Test func sentRequestNeedsARealProcessingEventBeforeShowingProcessing() throws {
+        let request = wire("request", body: "Hello", second: 0)
+        let sent = project([request])
+        #expect(sent.count == 1)
+        #expect([MessageDeliveryState.sent, .delivered, .read].contains(try #require(sent.first).deliveryState))
+        #expect(sent.allSatisfy { $0.agentExecution == nil })
+        let progress = try response("progress", text: "", state: "processing")
+        let processing = AppModel.mergePartialProjection(project([request, progress]), preserving: sent)
+        let active = try #require(processing.first { $0.author == .agent })
+        #expect(processing.count == 2)
+        #expect(MessageBubble.showsAgentWaitingIndicator(execution: try #require(active.agentExecution), responseText: active.text))
+        let complete = AppModel.mergePartialProjection(project([request, try response("complete", second: 2)]), preserving: processing)
+        #expect(complete.count == 2)
+        #expect(complete.allSatisfy { $0.agentExecution?.completed != false })
+    }
+
+    @Test(arguments: [MessageDeliveryState.sending, .sent, .delivered, .read, .failed, .cancelled])
+    func processingCannotOvertakeItsRequestsSendState(state: MessageDeliveryState) throws {
+        let request = wire("request", body: "Hello", second: 0)
+        let progress = try response("progress", text: "", state: "processing")
+        var rows = project([request, progress])
+        let index = try #require(rows.firstIndex { $0.author == .me })
+        rows[index].deliveryState = state
+        for kind: ConversationKind in [.agent, .group, .person] {
+            let visible = AgentSessionQueuePresentation.apply(to: rows, kind: kind)
+            #expect(visible.count == ([.sent, .delivered, .read].contains(state) ? 2 : 1))
+        }
+    }
+
 }

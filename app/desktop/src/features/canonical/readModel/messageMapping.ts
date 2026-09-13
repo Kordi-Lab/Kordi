@@ -322,7 +322,8 @@ export function mapCanonicalMessage(
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();
-  const desktopEntryId = stringValue(content.desktopEntryId)?.trim();
+  const desktopEntryId = stringValue(content.desktopEntryId)?.trim()
+    || (sourceTransport === 'cloud-self-agent' && message.senderRole === 'user' ? message.sourceEventId?.trim() : undefined);
   const parentMessageId = message.parentMessageId?.trim();
   const visibleParentMessageId = parentMessageId
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
@@ -436,11 +437,9 @@ export function mapCanonicalMessage(
   const voiceMessage = cloudVoiceMessageMetadataOnly(content.voiceMessage);
   return {
     id: message.id,
-    // Desktop-backed canonical messages retain the exact runtime entry
-    // alias written by desktop sync. This lets the runtime/canonical
-    // transcript merge reconcile tool-only turns without relying on
-    // visible text, while canonical-only and fork-snapshot messages
-    // continue to target their stable canonical message id.
+    // Cloud user messages already carry the runtime entry ID as sourceEventId,
+    // before desktop sync enriches their metadata. Use that stable identity
+    // rather than text/time matching; runtime admission may cross a minute.
     entryId: sourceTransport === 'canonical-fork-snapshot' ? message.id : desktopEntryId || message.id,
     isForkSnapshot: sourceTransport === 'canonical-fork-snapshot' || undefined,
     role,

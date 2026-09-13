@@ -70,7 +70,7 @@ struct InitialAgentModelNoticeTests {
     }
 
     @Test(arguments: [false, true])
-    func acceptedAgentRequestImmediatelyShowsOneWaitingIndicator(hasHistory: Bool) async throws {
+    func sendingAgentRequestDoesNotClaimProcessing(hasHistory: Bool) async throws {
         try await check { model, conversation, _ in
             if hasHistory { await model.send("Earlier request", attachments: [], to: conversation) }
             var staged: [ChatMessage] = []
@@ -79,14 +79,25 @@ struct InitialAgentModelNoticeTests {
             })
             let requestIndex = try #require(staged.firstIndex { $0.text == "New request" })
             let waiting = staged.filter { $0.author == .agent && $0.requestMessageId == staged[requestIndex].id }
-            #expect(waiting.count == 1)
-            let placeholder = try #require(waiting.first)
-            let execution = try #require(placeholder.agentExecution)
-            #expect(execution.phase == .preparing)
-            #expect(MessageBubble.showsAgentWaitingIndicator(execution: execution, responseText: placeholder.text))
-            #expect(staged.firstIndex { $0.id == placeholder.id } == requestIndex + 1)
+            #expect(staged[requestIndex].deliveryState == .sending)
+            #expect(waiting.isEmpty)
             #expect(staged.filter(\.isAgentModelChangeNotice).isEmpty)
             #expect(model.messages(for: conversation).allSatisfy { $0.agentExecution?.completed != false })
+        }
+    }
+
+    @Test(arguments: [MessageDeliveryState.sending, .sent, .delivered, .read, .failed, .cancelled])
+    func deliveryStateAloneNeverMeansProcessing(state: MessageDeliveryState) {
+        let request = ChatMessage(id: "request", conversationId: "agent-session:test", author: .me,
+            authorName: "You", text: "Hello", createdAt: .distantPast, deliveryState: state,
+            errorMessage: nil, requestMessageId: nil)
+        for kind: ConversationKind in [.agent, .person, .group] {
+            #expect(AgentSessionQueuePresentation.pendingPhase(requestID: request.id, createdAt: request.createdAt,
+                messages: [request], kind: kind, locallyQueued: false) == nil)
+        }
+        if state == .sending || state == .failed || state == .cancelled {
+            #expect(AgentSessionQueuePresentation.pendingPhase(requestID: request.id, createdAt: request.createdAt,
+                messages: [request], kind: .agent, locallyQueued: true) == nil)
         }
     }
 

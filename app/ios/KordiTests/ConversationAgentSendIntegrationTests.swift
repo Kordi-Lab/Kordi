@@ -120,7 +120,7 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
             }
         }
         XCTAssertNotNil(firstRequestTime, "A staged agent request must reveal without navigating away")
-        XCTAssertNotNil(firstProgressTime, "Pending agent work must remain visible after its request")
+        XCTAssertNil(firstProgressTime, "A staged request waiting for send must not claim agent processing")
         XCTAssertGreaterThan(requestFrames, 5)
         XCTAssertEqual(progressBeforeRequest, 0, "Processing must never appear before the outgoing request")
         if duringInitialLoad {
