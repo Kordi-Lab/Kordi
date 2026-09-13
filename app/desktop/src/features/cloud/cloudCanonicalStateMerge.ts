@@ -13,6 +13,7 @@ import {
 
 export type CloudSelfAgentCanonicalSyncBatch = {
   identity: CanonicalIdentity;
+  targetIdentities?: CanonicalIdentity[];
   sessions: OpenCanonicalSessionFastResult[];
   messages: CanonicalSessionMessage[];
   reconciledMessageMirrors: Array<{
@@ -220,6 +221,9 @@ export function mergeCloudSelfAgentCanonicalSyncBatch(
     current,
     batch.identity,
   );
+  for (const identity of batch.targetIdentities ?? []) {
+    next = upsertCanonicalIdentityIntoLocalState(next, identity);
+  }
   for (const session of batch.sessions) {
     next = mergeOpenCanonicalSessionFastResultIntoLocalState(
       next,

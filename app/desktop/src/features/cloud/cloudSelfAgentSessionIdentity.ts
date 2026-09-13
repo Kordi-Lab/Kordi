@@ -44,6 +44,7 @@ export function cloudAgentSessionTargetFromMessages(
 ) {
   const sessionId = beforeMessage?.sessionId?.trim();
   const targetNamesById = new Map<string, string>();
+  let hasExplicitRequestTarget = false;
   let target: { targetCloudAgentId: string; targetCloudAgentName: string | null } | null = null;
   for (const message of [...messages].sort(compareCloudMessages)) {
     if (sessionId && message.sessionId?.trim() !== sessionId) continue;
@@ -53,6 +54,11 @@ export function cloudAgentSessionTargetFromMessages(
       !targetCloudAgentId
       || cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body) !== ownerAccountId
     ) continue;
+    const isIdentityMarker = message.messageKind === CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND;
+    // A compatibility marker can seed plain follow-ups, but cannot override
+    // an Agent explicitly selected in a request (including older bad markers).
+    if (isIdentityMarker && hasExplicitRequestTarget) continue;
+    if (!isIdentityMarker) hasExplicitRequestTarget = true;
     const messageTargetName = cloudDirectMessageTargetCloudAgentName(message.body);
     if (messageTargetName) targetNamesById.set(targetCloudAgentId, messageTargetName);
     const targetCloudAgentName = targetNamesById.get(targetCloudAgentId) ?? null;
@@ -67,7 +73,7 @@ export function cloudSyncedLocalAgentSessionIds(state: CanonicalSessionState) {
     !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)
     && (session.kind === 'self-agent' || (
       session.kind === 'direct-agent'
-      && text(record(session.metadata).createdFrom) === 'chat-create-flow'
+      && (text(record(session.metadata).createdFrom) === 'chat-create-flow' || record(session.metadata).cloudSelfAgentTarget === true)
       && record(identityById.get(session.primaryIdentityId?.trim() ?? '')?.metadata).isOwned === true
     ))
   )).map((session) => session.id));
