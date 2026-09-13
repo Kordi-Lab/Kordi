@@ -6,6 +6,7 @@ export function agentTurnHasStarted(turn: DesktopChatTurnSnapshot) {
   const text = turn.assistantText.trim();
   if (turn.thinkingText.trim() || turn.tools.length > 0 || (text && !isProcessingPlaceholderText(text))) return true;
   // A request/stop handle is not evidence that the remote agent started work.
+  if (turn.localExecutionStarted) return true;
   if (turn.pendingCollaborationAgentRequest) return false;
   return ['preparing', 'streaming', 'processing', 'thinking', 'writing', 'tooling', 'running', 'retrying', 'cancelling', 'compacting', 'compacted', 'compaction_failed'].includes(turn.status);
 }

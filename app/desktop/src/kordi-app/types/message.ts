@@ -319,6 +319,7 @@ export type CollaborationAgentRequestControl = {
 };
 
 export type DesktopChatTurnSnapshot = {
+  localExecutionStarted?: boolean;
   messageAction?: MessageActionMetadata | null;
   id: string;
   sessionId: string;

@@ -898,7 +898,7 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
   return [
     turn.id,
     turn.sessionId,
-    turn.status,
+    turn.localExecutionStarted ? `${turn.status}:local-started` : turn.status,
     turn.message,
     turn.assistantText,
     turn.thinkingText,
