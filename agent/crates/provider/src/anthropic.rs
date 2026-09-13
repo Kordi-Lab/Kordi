@@ -56,7 +56,7 @@ impl Provider for AnthropicProvider {
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
-        crate::images::validate_direct_images(
+        crate::images::validate_message_images(
             &request.messages,
             crate::images::ImageRoute::Anthropic,
         )?;

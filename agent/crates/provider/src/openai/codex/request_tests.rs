@@ -93,7 +93,7 @@ fn convert_messages_for_codex_preserves_user_image_blocks() {
 }
 
 #[test]
-fn convert_messages_for_codex_flattens_structured_tool_output_blocks() {
+fn convert_messages_for_codex_preserves_structured_tool_output_blocks() {
     let messages = vec![
         json!({
             "role": "assistant",
@@ -123,7 +123,11 @@ fn convert_messages_for_codex_flattens_structured_tool_output_blocks() {
     assert_eq!(converted[1]["call_id"], "call_a");
     assert_eq!(
         converted[1]["output"],
-        "first line\n[tool returned image result: image/png]\nsecond line"
+        json!([
+            {"type":"input_text","text":"first line"},
+            {"type":"input_image","image_url":"data:image/png;base64,abcd","detail":"high"},
+            {"type":"input_text","text":"second line"}
+        ])
     );
 }
 

@@ -112,11 +112,11 @@ impl Provider for OpenAiProvider {
 
     async fn stream(
         &self,
-        request: CompletionRequest,
+        mut request: CompletionRequest,
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
-        crate::images::validate_direct_images(
+        crate::images::validate_message_images(
             &request.messages,
             crate::images::ImageRoute::OpenAi,
         )?;
@@ -133,6 +133,9 @@ impl Provider for OpenAiProvider {
             options.base_url.trim_end_matches('/')
         );
 
+        if !should_use_responses_api(&request, &options) {
+            request.messages = crate::tool_images::images_after_tool_results(&request.messages);
+        }
         let messages = prepare_messages(&request);
 
         if should_use_responses_api(&request, &options) {

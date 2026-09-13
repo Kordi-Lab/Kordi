@@ -28,39 +28,6 @@ fn normalize_call_id(id: &str) -> &str {
     id.split('|').next().unwrap_or(id)
 }
 
-fn flatten_tool_output_for_codex(content: &Value) -> String {
-    if let Some(text) = content.as_str() {
-        return text.to_string();
-    }
-    if let Some(blocks) = content.as_array() {
-        let mut parts = Vec::new();
-        for block in blocks {
-            match block.get("type").and_then(|value| value.as_str()) {
-                Some("text") => {
-                    if let Some(text) = block
-                        .get("text")
-                        .and_then(|value| value.as_str())
-                        .filter(|text| !text.is_empty())
-                    {
-                        parts.push(text.to_string());
-                    }
-                }
-                Some("image") => {
-                    let media_type = block
-                        .get("source")
-                        .and_then(|source| source.get("media_type"))
-                        .and_then(|value| value.as_str())
-                        .unwrap_or("image/unknown");
-                    parts.push(format!("[tool returned image result: {media_type}]"));
-                }
-                _ => {}
-            }
-        }
-        return parts.join("\n");
-    }
-    content.to_string()
-}
-
 fn function_tool_name(tool: &Value) -> Option<&str> {
     tool.get("function")?
         .get("name")?
@@ -219,7 +186,7 @@ pub(super) fn convert_messages_for_codex(messages: &[Value]) -> Vec<Value> {
                 out.push(json!({
                     "type": "function_call_output",
                     "call_id": normalize_call_id(tool_call_id),
-                    "output": flatten_tool_output_for_codex(&msg["content"]),
+                    "output": crate::tool_images::responses_output(&msg["content"]),
                 }));
             }
             _ => {}

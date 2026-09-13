@@ -1,38 +1,24 @@
 use kordi_core::error::{KordiError, KordiResult};
 use std::path::Path;
+use tokio::io::AsyncReadExt;
 
 use crate::{ToolResult, support::image_result};
 
-const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp"];
-
-pub(super) fn is_image(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| IMAGE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-        .unwrap_or(false)
-}
+pub(super) use crate::image_input::is_image_path as is_image;
 
 pub(super) async fn read_image(path: &Path) -> KordiResult<ToolResult> {
-    let data = tokio::fs::read(path)
+    if !tokio::fs::metadata(path).await?.is_file() {
+        return Err(KordiError::Tool(
+            "Image input must be a regular file.".into(),
+        ));
+    }
+    let file = tokio::fs::File::open(path).await?;
+    let mut bytes = Vec::new();
+    file.take(crate::image_input::MAX_IMAGE_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .await?;
+    let content = tokio::task::spawn_blocking(move || crate::image_input::image_content(&bytes))
         .await
-        .map_err(|e| KordiError::Tool(format!("Failed to read image: {e}")))?;
-
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("png")
-        .to_lowercase();
-
-    let mime = match ext.as_str() {
-        "jpg" | "jpeg" => "image/jpeg",
-        "png" => "image/png",
-        "gif" => "image/gif",
-        "webp" => "image/webp",
-        _ => "image/png",
-    };
-
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
-
-    Ok(image_result(encoded, mime.to_string()))
+        .map_err(|_| KordiError::Tool("Image decoding failed.".into()))??;
+    Ok(image_result(content))
 }

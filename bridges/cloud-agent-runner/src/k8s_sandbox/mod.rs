@@ -108,6 +108,48 @@ impl SandboxBackend for K8sSandboxBackend {
         }
     }
 
+    async fn read_bytes_bounded(
+        &self,
+        relative_path: &str,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, SandboxClientError> {
+        self.resolve_path(relative_path)?;
+        let output = self
+            .run_operation(K8sSandboxOperation::ReadBytesBounded {
+                path: relative_path.into(),
+                max_bytes,
+            })
+            .await?;
+        if output.exit_code != 0
+            || output.stdout.len()
+                > max_bytes
+                    .saturating_add(1)
+                    .div_ceil(3)
+                    .saturating_mul(4)
+                    .saturating_mul(2)
+        {
+            return Err(SandboxClientError::Process(
+                "Bounded image read failed or exceeded the read limit.".into(),
+            ));
+        }
+        let encoded: String = output
+            .stdout
+            .chars()
+            .filter(|c| !c.is_ascii_whitespace())
+            .collect();
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|_| {
+                SandboxClientError::Process("Image read returned invalid encoded data.".into())
+            })?;
+        if bytes.len() > max_bytes {
+            return Err(SandboxClientError::Process(
+                "Image exceeds the read limit; resize it and retry.".into(),
+            ));
+        }
+        Ok(bytes)
+    }
+
     async fn list(&self, relative_path: &str) -> Result<Vec<String>, SandboxClientError> {
         self.resolve_path(relative_path)?;
         let output = self

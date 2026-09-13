@@ -37,6 +37,12 @@ pub trait SandboxBackend: Send + Sync {
 
     async fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, SandboxClientError>;
 
+    async fn read_bytes_bounded(
+        &self,
+        relative_path: &str,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, SandboxClientError>;
+
     async fn write_text(
         &self,
         relative_path: &str,
@@ -125,6 +131,37 @@ impl SandboxBackend for LocalSandboxBackend {
     async fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, SandboxClientError> {
         let path = self.resolve_path(relative_path)?;
         Ok(tokio::fs::read(path).await?)
+    }
+
+    async fn read_bytes_bounded(
+        &self,
+        relative_path: &str,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, SandboxClientError> {
+        use tokio::io::AsyncReadExt;
+        let path = tokio::fs::canonicalize(self.resolve_path(relative_path)?).await?;
+        let root = tokio::fs::canonicalize(&self.root).await?;
+        if !path.starts_with(root) {
+            return Err(SandboxClientError::BlockedPath(
+                RunnerToolBlockReason::PathEscapesSandbox,
+            ));
+        }
+        if !tokio::fs::metadata(&path).await?.is_file() {
+            return Err(SandboxClientError::Process(
+                "Image input must be a regular file.".into(),
+            ));
+        }
+        let file = tokio::fs::File::open(path).await?;
+        let mut bytes = Vec::new();
+        file.take(max_bytes as u64 + 1)
+            .read_to_end(&mut bytes)
+            .await?;
+        if bytes.len() > max_bytes {
+            return Err(SandboxClientError::Process(
+                "Image exceeds the read limit; resize it and retry.".into(),
+            ));
+        }
+        Ok(bytes)
     }
 
     async fn write_text(

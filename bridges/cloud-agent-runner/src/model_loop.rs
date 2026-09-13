@@ -185,7 +185,7 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     sandbox: &SandboxBackendHandle,
     run: &CloudAgentRun,
     call: &ModelToolCall,
-) -> String {
+) -> Value {
     if call.name == "task_operator" {
         if run.subsession_id.is_some() {
             return "Nested execution subsessions are not supported.".into();
@@ -194,7 +194,7 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
             .task_operator(&run.run_id, &call.id, call.arguments.clone())
             .await
         {
-            Ok(record) => format!("Background session: {record}"),
+            Ok(record) => format!("Background session: {record}").into(),
             Err(_) => {
                 "The subsession could not be created or accessed. Do not claim it started.".into()
             }
@@ -218,30 +218,33 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
             return format!(
                 "Calendar reads require a direct request to the owner's own Agent. {}",
                 kordi_tools::calendar::CALENDAR_UNAVAILABLE
-            );
+            )
+            .into();
         }
         if (run.session_id.starts_with("session:group:")
             || run.session_id.starts_with("session:direct-person:"))
             && call.arguments["shareInConversation"] != true
         {
-            return format!("Calendar disclosure requires the owner's explicit request in this conversation. {}", kordi_tools::calendar::CALENDAR_UNAVAILABLE);
+            return format!("Calendar disclosure requires the owner's explicit request in this conversation. {}", kordi_tools::calendar::CALENDAR_UNAVAILABLE).into();
         }
         return match client
             .read_context(&run.run_id, &call.name, call.arguments.clone())
             .await
         {
-            Ok(value) => value.to_string(),
-            Err(_) => kordi_tools::calendar::CALENDAR_UNAVAILABLE.to_string(),
+            Ok(value) => value.to_string().into(),
+            Err(_) => kordi_tools::calendar::CALENDAR_UNAVAILABLE.into(),
         };
     }
     if matches!(call.name.as_str(), "search_sessions" | "read_session") {
         return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
-            Ok(value) => value.to_string(),
-            Err(_) => "Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".to_string(),
+            Ok(value) => value.to_string().into(),
+            Err(_) => "Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".into(),
         };
     }
     if call.name == "export_artifact" {
-        return export_model_artifact(client, sandbox, run, &call.arguments).await;
+        return export_model_artifact(client, sandbox, run, &call.arguments)
+            .await
+            .into();
     }
 
     let primary = primary_arg(&call.name, &call.arguments).unwrap_or_default();
@@ -286,7 +289,7 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
         .await
     {
         Ok(output) => format_tool_output(output),
-        Err(err) => err.to_string(),
+        Err(err) => err.to_string().into(),
     }
 }
 
@@ -332,13 +335,16 @@ fn primary_arg(tool_name: &str, arguments: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-fn format_tool_output(output: CloudToolOutput) -> String {
+fn format_tool_output(output: CloudToolOutput) -> Value {
     match output {
-        CloudToolOutput::Text(text) => text,
-        CloudToolOutput::List(items) => items.join("\n"),
+        CloudToolOutput::Text(text) => text.into(),
+        CloudToolOutput::List(items) => items.join("\n").into(),
         CloudToolOutput::Bash(output) => format!(
-            "exit_code={}\nstdout:\n{}\nstderr:\n{}",
-            output.exit_code, output.stdout, output.stderr
-        ),
+            "exit_code={}\nstdout:\n{}\nstderr:\n{}", output.exit_code, output.stdout, output.stderr,
+        ).into(),
+        CloudToolOutput::Content(blocks) => json!(blocks.into_iter().map(|block| match block {
+            kordi_core::types::ContentBlock::Text { text } => json!({"type":"text","text":text}),
+            kordi_core::types::ContentBlock::Image { data, mime_type } => json!({"type":"image","source":{"type":"base64","media_type":mime_type,"data":data}}),
+        }).collect::<Vec<_>>()),
     }
 }

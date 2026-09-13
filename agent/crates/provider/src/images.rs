@@ -1,4 +1,4 @@
-//! Validate direct image inputs before any provider can silently drop them.
+//! Validate message image inputs before any provider can silently drop them.
 
 use base64::Engine;
 use kordi_core::error::{KordiError, KordiResult};
@@ -11,9 +11,9 @@ pub(crate) enum ImageRoute {
     Google,
 }
 
-pub(crate) fn validate_direct_images(messages: &[Value], route: ImageRoute) -> KordiResult<()> {
+pub(crate) fn validate_message_images(messages: &[Value], route: ImageRoute) -> KordiResult<()> {
     for (message_index, message) in messages.iter().enumerate() {
-        if message["role"] != "user" {
+        if !matches!(message["role"].as_str(), Some("user" | "tool")) {
             continue;
         }
         let Some(blocks) = message["content"].as_array() else {
@@ -29,6 +29,13 @@ pub(crate) fn validate_direct_images(messages: &[Value], route: ImageRoute) -> K
                 Some("image_url" | "input_image") => Err(
                     "this image representation is unsupported on the selected route; attach a base64 image instead",
                 ),
+                Some("tool_result") => {
+                    validate_message_images(
+                        &[json!({"role":"tool","content":block["content"]})],
+                        route,
+                    )?;
+                    continue;
+                }
                 _ => continue,
             };
             result.map_err(|reason| {
