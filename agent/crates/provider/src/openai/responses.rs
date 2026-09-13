@@ -330,22 +330,8 @@ fn push_user_or_system_message(out: &mut Vec<Value>, role: &str, msg: &Value) {
                             content.push(json!({ "type": "input_text", "text": text }));
                         }
                     }
-                    "image" => {
-                        let media_type = part
-                            .get("source")
-                            .and_then(|s| s.get("media_type"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("image/png");
-                        let data = part
-                            .get("source")
-                            .and_then(|s| s.get("data"))
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
-                        content.push(json!({
-                            "type": "input_image",
-                            "image_url": format!("data:{media_type};base64,{data}"),
-                            "detail": "high",
-                        }));
+                    "image" | "image_url" => {
+                        content.push(crate::images::responses_image(part));
                     }
                     _ => {}
                 }

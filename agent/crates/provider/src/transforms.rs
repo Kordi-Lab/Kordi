@@ -255,12 +255,16 @@ fn convert_content_blocks_for_openai(arr: &[Value]) -> Value {
                         .as_str()
                         .unwrap_or("image/png");
                     let data = block["source"]["data"].as_str().unwrap_or("");
-                    json!({
+                    let mut image_url = json!({
                         "type": "image_url",
                         "image_url": {
                             "url": format!("data:{media_type};base64,{data}")
                         }
-                    })
+                    });
+                    if let Some(detail) = block.get("detail") {
+                        image_url["image_url"]["detail"] = detail.clone();
+                    }
+                    image_url
                 }
                 _ => block.clone(),
             }

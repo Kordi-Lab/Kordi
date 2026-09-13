@@ -94,6 +94,16 @@ fn add_github_copilot_hint(error: ProviderError, model: &str) -> ProviderError {
     }))
 }
 
+fn prepare_messages(request: &CompletionRequest) -> Vec<Value> {
+    let transformed = strip_thinking_blocks(&request.messages);
+    let mut messages = Vec::new();
+    if !request.system_prompt.is_empty() {
+        messages.push(json!({"role": "system", "content": request.system_prompt}));
+    }
+    messages.extend(convert_messages_for_openai(&transformed));
+    messages
+}
+
 #[async_trait]
 impl Provider for OpenAiProvider {
     fn name(&self) -> &str {
@@ -106,6 +116,10 @@ impl Provider for OpenAiProvider {
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
+        crate::images::validate_direct_images(
+            &request.messages,
+            crate::images::ImageRoute::OpenAi,
+        )?;
         if matches!(options.auth_mode, ProviderAuthMode::OAuth)
             && let Some(account_id) = options.auth_account_id.clone()
         {
@@ -119,14 +133,7 @@ impl Provider for OpenAiProvider {
             options.base_url.trim_end_matches('/')
         );
 
-        let transformed = strip_thinking_blocks(&request.messages);
-        let converted = convert_messages_for_openai(&transformed);
-
-        let mut messages = Vec::new();
-        if !request.system_prompt.is_empty() {
-            messages.push(json!({"role": "system", "content": request.system_prompt}));
-        }
-        messages.extend(converted);
+        let messages = prepare_messages(&request);
 
         if should_use_responses_api(&request, &options) {
             return self

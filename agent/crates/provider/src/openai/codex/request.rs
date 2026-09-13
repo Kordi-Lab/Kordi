@@ -157,22 +157,8 @@ pub(super) fn convert_messages_for_codex(messages: &[Value]) -> Vec<Value> {
                                     }));
                                 }
                             }
-                            "image" => {
-                                let media_type = block
-                                    .get("source")
-                                    .and_then(|s| s.get("media_type"))
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("image/png");
-                                let data = block
-                                    .get("source")
-                                    .and_then(|s| s.get("data"))
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-                                content.push(json!({
-                                    "type": "input_image",
-                                    "image_url": format!("data:{media_type};base64,{data}"),
-                                    "detail": "high",
-                                }));
+                            "image" | "image_url" => {
+                                content.push(crate::images::responses_image(block));
                             }
                             _ => {}
                         }
