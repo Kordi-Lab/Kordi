@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { filterParticipantSpaces } from '@/features/chat/participantSpaces';
 import { spaceMatchesChannel } from '@/features/chat/participantSpaceFilters';
-import { effectiveSessionUnread, totalVisibleUnread } from '@/features/chat/unreadCounts';
+import { effectiveSessionUnread, sessionsForGlobalAttention, totalVisibleUnread } from '@/features/chat/unreadCounts';
 import type { ChatChannel } from '@/kordi-app/types';
 import {
   buildChatSidebarRows,
@@ -412,8 +412,14 @@ export function useWorkspaceChatSidebarModel(
       topLevelAgentSessions,
     ],
   );
+  const archivedSessionIds = useMemo(() => new Set(
+    archivedParticipantSpaces.flatMap((space) => space.sessions.flatMap((session) => (
+      [session.id, session.canonicalSessionId, session.conversation.id, session.conversation.canonicalSessionId]
+        .filter((id): id is string => Boolean(id))
+    ))),
+  ), [archivedParticipantSpaces]);
   const totalUnread = totalVisibleUnread(
-    chatConversations,
+    sessionsForGlobalAttention(chatConversations, archivedSessionIds),
     mutedSessionIds,
     unreadSessionIds,
   );

@@ -5,7 +5,9 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
-import { effectiveSessionUnread, totalVisibleUnread } from '../src/features/chat/unreadCounts';
+import { effectiveSessionUnread, sessionsForGlobalAttention, totalVisibleUnread } from '../src/features/chat/unreadCounts';
+import { buildWorkspaceChatListViewModels } from '../src/app/workspaceChatListViewModels';
+import { newMessageAttentionEvents } from '../src/features/notifications/messageAttentionPolicy';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import { baseSidebarProps, conversation } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
@@ -53,4 +55,45 @@ test('group, channel, navigation, and native totals ignore muted and archived ch
   assert.equal(totalVisibleUnread(conversations, new Set([muted.id]), new Set()), 4);
   assert.match(markup, /data-unread-scope="channel-tab" data-unread-count="4"/);
   assert.match(markup, /data-unread-scope="participant-space" data-unread-count="4"/);
+});
+
+test('opening an archived conversation preserves its unread state without global badges or attention', () => {
+  const archived = conversation({
+    id: 'archived-ui', canonicalSessionId: 'archived-session', name: 'Archived chat', unread: 2,
+    messages: [{ id: 'archived-message', role: 'person', sender: 'Alice', text: 'Hello', time: '' }],
+  });
+  for (const archivedId of [archived.id, archived.canonicalSessionId!]) {
+    const archivedIds = new Set([archivedId]);
+    const model = buildWorkspaceChatListViewModels({
+      activeConversationId: archived.id,
+      allConversations: [archived],
+      archivedSessionIds: archivedIds,
+      hiddenSessionIds: archivedIds,
+      localAgentReachoutSessionIds: new Set(),
+      avatarSeed: 'test', chatSearch: '',
+    });
+    assert.equal(model.chatConversations[0]?.unread, 2);
+    assert.equal(model.archivedParticipantSpaces.flatMap(space => space.sessions)[0]?.unread, 2);
+    assert.equal(model.participantSpaces.flatMap(space => space.sessions).length, 0);
+    const attention = sessionsForGlobalAttention(model.chatConversations, archivedIds);
+    assert.equal(totalVisibleUnread(attention, new Set(), new Set([archivedId])), 0);
+    assert.deepEqual(newMessageAttentionEvents({ previous: {}, conversations: attention }), []);
+
+    const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+      chatConversations: model.chatConversations,
+      participantSpaces: model.participantSpaces,
+      contactParticipantSpaces: model.contactParticipantSpaces,
+      archivedParticipantSpaces: model.archivedParticipantSpaces,
+      activeConvId: archived.id,
+      unreadSessionIds: new Set([archivedId]),
+    }) as never));
+    assert.doesNotMatch(markup, /data-unread-count="2"/);
+    const chatButton = markup.match(/<button[^>]*aria-label="Chats"[^>]*>[\s\S]*?<\/button>/)?.[0];
+    assert.ok(chatButton);
+    assert.doesNotMatch(chatButton, />2<\/span>/);
+
+    const restored = sessionsForGlobalAttention(model.chatConversations, new Set());
+    assert.equal(totalVisibleUnread(restored, new Set(), new Set()), 2);
+    assert.equal(newMessageAttentionEvents({ previous: {}, conversations: restored }).length, 1);
+  }
 });

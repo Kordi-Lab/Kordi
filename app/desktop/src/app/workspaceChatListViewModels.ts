@@ -3,6 +3,7 @@ import {
   ensureSelfParticipantSpace,
   filterParticipantSpaces,
 } from '@/features/chat/participantSpaces';
+import { sessionsForGlobalAttention } from '@/features/chat/unreadCounts';
 import type { Conversation } from '@/kordi-app/types';
 
 export function buildWorkspaceChatListViewModels({
@@ -22,7 +23,7 @@ export function buildWorkspaceChatListViewModels({
   hiddenSessionIds: ReadonlySet<string>;
   localAgentReachoutSessionIds: ReadonlySet<string>;
 }) {
-  const hiddenIds = new Set([...hiddenSessionIds, ...localAgentReachoutSessionIds]);
+  const hiddenIds = new Set([...hiddenSessionIds, ...archivedSessionIds, ...localAgentReachoutSessionIds]);
   const chatConversations = hiddenIds.size === 0
     ? allConversations
     : allConversations.filter((conversation) => {
@@ -37,7 +38,7 @@ export function buildWorkspaceChatListViewModels({
     return archivedSessionIds.has(canonicalId) || archivedSessionIds.has(conversation.id);
   });
   const participantSpaces = ensureSelfParticipantSpace(
-    buildParticipantSpaces(chatConversations),
+    buildParticipantSpaces(sessionsForGlobalAttention(chatConversations, archivedSessionIds)),
     { avatarSeed },
   );
   return {

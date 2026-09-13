@@ -328,6 +328,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     isDesktopCollaborationSending,
     desktopLiveTurnsBySession,
     chatConversations,
+    hiddenSessionIds: combinedHiddenSessionIds,
     mutedSessionIds: cloudMutedSessionIds, unreadSessionIds: cloudUnreadSessionIds,
     isNativeShell,
     attentionReady: initialMessagesSettled,

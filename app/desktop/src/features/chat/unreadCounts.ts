@@ -29,3 +29,15 @@ export function totalVisibleUnread(
     0,
   );
 }
+
+// The selected archive stays available for reading, but must not contribute to
+// global badges or message notifications. Match both UI and canonical IDs.
+export function sessionsForGlobalAttention<T extends UnreadSession>(
+  sessions: readonly T[],
+  hiddenSessionIds: ReadonlySet<string>,
+): T[] {
+  return sessions.filter((session) => (
+    !hiddenSessionIds.has(session.id)
+    && !hiddenSessionIds.has(preferenceId(session))
+  ));
+}

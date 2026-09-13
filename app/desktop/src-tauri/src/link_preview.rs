@@ -2,19 +2,20 @@ use std::{collections::HashMap, time::Duration};
 
 use futures_util::{pin_mut, StreamExt};
 use reqwest::{header::CONTENT_TYPE, Url};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::remote_image::{request_public_remote_image, validated_remote_image_url};
 
 const LINK_PREVIEW_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_LINK_PREVIEW_HTML_BYTES: usize = 256 * 1024;
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopLinkPreviewMetadata {
     title: Option<String>,
     description: Option<String>,
     image_url: Option<String>,
+    image_data_url: Option<String>,
     site_name: Option<String>,
 }
 
@@ -229,6 +230,7 @@ fn link_preview_metadata(html: &str, base_url: &Url) -> DesktopLinkPreviewMetada
         title,
         description,
         image_url,
+        image_data_url: None,
         site_name,
     }
 }
@@ -238,6 +240,20 @@ pub async fn desktop_fetch_link_preview_metadata(
     url: String,
 ) -> Result<DesktopLinkPreviewMetadata, String> {
     let url = validated_remote_image_url(&url)?;
+    #[cfg(target_os = "macos")]
+    {
+        // Match iOS metadata and artwork through Apple's Link Presentation.
+        // Validate the initial DNS destination before handing it to the OS.
+        tokio::time::timeout(
+            LINK_PREVIEW_TIMEOUT,
+            crate::remote_image::resolve_public_remote_image_addrs(&url),
+        )
+        .await
+        .map_err(|_| "Link preview host lookup timed out.".to_string())??;
+        if let Ok(metadata) = macos::fetch(url.as_str()).await {
+            return Ok(metadata);
+        }
+    }
     tokio::time::timeout(LINK_PREVIEW_TIMEOUT, async move {
         let response = request_public_remote_image(url).await?;
         if response
@@ -272,6 +288,46 @@ pub async fn desktop_fetch_link_preview_metadata(
     })
     .await
     .map_err(|_| "Link preview request timed out.".to_string())?
+}
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use super::DesktopLinkPreviewMetadata;
+    use std::ffi::{c_char, CStr, CString};
+
+    static REQUESTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+    pub(super) async fn fetch(url: &str) -> Result<DesktopLinkPreviewMetadata, String> {
+        let permit = REQUESTS
+            .acquire()
+            .await
+            .map_err(|_| "Link preview is unavailable.")?;
+        let input = CString::new(url).map_err(|_| "Invalid link preview URL.")?;
+        tokio::task::spawn_blocking(move || {
+            let _permit = permit;
+            unsafe extern "C" {
+                fn kordi_fetch_link_preview(input: *const c_char) -> *mut c_char;
+                fn kordi_free_link_preview_result(result: *mut c_char);
+            }
+            // Swift copies the input before returning, and returns an owned C
+            // string. Copy it before freeing through the matching allocator.
+            let result = unsafe { kordi_fetch_link_preview(input.as_ptr()) };
+            if result.is_null() {
+                return Err("Native link preview is unavailable.".to_string());
+            }
+            let parsed = serde_json::from_slice::<DesktopLinkPreviewMetadata>(
+                unsafe { CStr::from_ptr(result) }.to_bytes(),
+            );
+            unsafe { kordi_free_link_preview_result(result) };
+            let metadata = parsed.map_err(|_| "Invalid native link preview.".to_string())?;
+            if metadata.title.is_none() && metadata.image_data_url.is_none() {
+                return Err("Native link preview is empty.".to_string());
+            }
+            Ok(metadata)
+        })
+        .await
+        .map_err(|_| "Native link preview failed.".to_string())?
+    }
 }
 
 #[cfg(test)]
