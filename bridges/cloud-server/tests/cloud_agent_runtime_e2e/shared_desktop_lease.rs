@@ -25,7 +25,8 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
     assert_eq!(ready.status(), StatusCode::OK);
     // Explicit fixture clocks make the admission checks independent of a test tunnel.
     sqlx_core::query::query("UPDATE cloud_agent_desktop_capabilities SET updated_at=now()+interval '10 minutes' WHERE agent_id=$1").bind(&agent).execute(&pool).await.unwrap();
-    for group in [true, false] {
+    for (group, self_request) in [(true, false), (false, false), (false, true)] {
+        let requester = if self_request { &owner } else { &peer };
         let session = if group {
             format!("session:group:{}", uuid::Uuid::new_v4())
         } else {
@@ -46,7 +47,7 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         )
         .await;
         let logical = uuid::Uuid::new_v4().to_string();
-        let request = json!({"schemaVersion":1,"kind":"message","id":logical,"senderAccountId":peer.account_id,"senderKind":"human","text":"Reply once","createdAtMs":chrono::Utc::now().timestamp_millis(),"targetCloudAgentId":agent,"targetCloudAgentOwnerAccountId":owner.account_id});
+        let request = json!({"schemaVersion":1,"kind":"message","id":logical,"senderAccountId":requester.account_id,"senderKind":"human","text":"Reply once","createdAtMs":chrono::Utc::now().timestamp_millis(),"targetCloudAgentId":agent,"targetCloudAgentOwnerAccountId":owner.account_id});
         let group_body = |message: Value| json!({"kind":"group-message","groupId":session,"groupSpaceId":session,"createdByAccountId":owner.account_id,"actor":{"accountId":owner.account_id,"displayName":"Owner","role":"admin"},"participants":[{"accountId":owner.account_id,"displayName":"Owner","role":"admin"},{"accountId":peer.account_id,"displayName":"Requester","role":"person"}],"message":message});
         let envelope = if group { group_body(request) } else { request };
         let encode = |prefix: &str, value: Value| {
@@ -57,7 +58,7 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         };
         let wire = insert_test_message(
             &pool,
-            &peer.account_id,
+            &requester.account_id,
             conversation,
             &encode(
                 if group {
@@ -70,7 +71,7 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         )
         .await;
         let claim_id = uuid::Uuid::new_v4();
-        let input = |request: &str, claim: uuid::Uuid| json!({"claimId":claim,"requestMessageId":request,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":peer.account_id,"prompt":"Reply once","idempotencyKey":format!("shared:{claim}")});
+        let input = |request: &str, claim: uuid::Uuid| json!({"claimId":claim,"requestMessageId":request,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":requester.account_id,"prompt":"Reply once","idempotencyKey":format!("shared:{claim}")});
         let claimed = router
             .clone()
             .oneshot(post_json_with_token(
@@ -86,7 +87,7 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         assert_eq!(claimed["turnIdentity"]["ownerAccountId"], owner.account_id);
         assert_eq!(
             claimed["turnIdentity"]["requesterAccountId"],
-            peer.account_id
+            requester.account_id
         );
         assert_eq!(claimed["turnIdentity"]["agentId"], agent);
         assert_eq!(claimed["turnIdentity"]["ownerName"], "Owner");
@@ -178,13 +179,22 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
             .unwrap();
         assert_eq!(first.status(), StatusCode::OK);
         let first = read_json(first).await;
+        assert_eq!(first["conversationId"], conversation.to_string());
+        assert_eq!(first["sessionId"], session);
+        assert_eq!(first["fromAccountId"], owner.account_id);
+        assert_eq!(
+            first["toAccountId"], peer.account_id,
+            "a direct reply stays with the contact even when the owner is the requester"
+        );
         let second = router
             .clone()
             .oneshot(post_json_with_token(&uri, &owner.token, publication))
             .await
             .unwrap();
         assert_eq!(second.status(), StatusCode::OK);
-        assert_eq!(read_json(second).await["messageId"], first["messageId"]);
+        let second = read_json(second).await;
+        assert_eq!(second["messageId"], first["messageId"]);
+        assert_eq!(second["toAccountId"], first["toAccountId"]);
         assert!(
             kordi_cloud_server::cloud_agent_runtime::runs::lease_canary_run(
                 &pool,

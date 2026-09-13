@@ -337,15 +337,17 @@ pub(super) async fn progress(
         if group {
             if envelope.as_ref().and_then(|value|value.get("groupId")).and_then(Value::as_str)!=Some(session_id.as_str()) || response.get("senderAccountId").and_then(Value::as_str)!=Some(session.account_id.as_str()) || response.get("senderAgentId").and_then(Value::as_str)!=Some(agent.as_str()) || response.get("senderKind").and_then(Value::as_str)!=Some("agent") { return Ok(None); }
         } else if response.get("kind").and_then(Value::as_str)!=Some("agent-response") { return Ok(None); }
-        let conversation: (Uuid,) = query_as("SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id=$1")
-            .bind(&session_id).fetch_one(&mut *tx).await?;
+        // The requester can be the owner invoking their own agent in a direct chat.
+        // Route the compatibility response by conversation membership, as chat sync does.
+        let conversation: (Uuid, String) = query_as("SELECT c.conversation_id, COALESCE((SELECT member.account_id FROM cloud_chat_conversation_members member WHERE member.conversation_id=c.conversation_id AND member.account_id<>$2 AND member.membership_state='active' AND c.kind='direct' ORDER BY member.account_id LIMIT 1), $3) FROM cloud_chat_conversations c WHERE c.legacy_session_id=$1")
+            .bind(&session_id).bind(&session.account_id).bind(&requester).fetch_one(&mut *tx).await?;
         let message = crate::chat_sync::store::send_message_in_transaction(&mut tx, &session.account_id, conversation.0, crate::chat_sync::models::SendMessageRequest {
             client_message_id: input.client_message_id, kind: "text".into(), content: json!({"schema":1,"blocks":[{"type":"text","text":input.body}]}), reply_to_message_id: None, attachment_ids:vec![],
         }).await?.value;
         query("UPDATE cloud_agent_fallback_runs SET status=$2, response_message_id=$3, updated_at=$4, completed_at=CASE WHEN $2 IN ('completed','failed','cancelled') THEN $4 ELSE NULL END WHERE run_id=$1")
             .bind(&run_id).bind(phase).bind(message.id.to_string()).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
         tx.commit().await?;
-        Ok(Some(json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":requester,"sessionId":session_id,"body":input.body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null})))
+        Ok(Some(json!({"messageId":message.id,"clientMessageId":message.client_message_id,"conversationId":message.conversation_id,"conversationSequence":message.conversation_sequence,"version":message.version,"fromAccountId":session.account_id,"toAccountId":conversation.1,"sessionId":session_id,"body":input.body,"createdAt":message.created_at,"deliveredAt":null,"readAt":null})))
     }.await;
     match result {
         Ok(Some(value)) => {

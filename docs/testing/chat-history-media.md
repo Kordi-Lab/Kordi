@@ -33,6 +33,10 @@ and labels. Do not capture or publish real conversation content.
 6. Edit a message, hide a message or attachment, delete it for everyone, and
    revoke membership. Stale versions must be refreshed; inaccessible content
    must not be returned, including when access changes during download.
+7. In a contact chat, mention your own agent and then ask the contact to mention
+   it. Both replies must remain in that contact chat without creating an Agent
+   sidebar entry or a second unread badge. Repeat after reopening the client;
+   previously cached shared replies must not become private agent chats.
 
 The reader fetches bytes on demand and does not return signed storage URLs.
 Limits are 4 MiB per image and the shared image decoder's dimension/allocation
