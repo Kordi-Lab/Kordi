@@ -1,3 +1,4 @@
+import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import { sessionHasActiveProcessing } from '@/features/canonical/readModel/conversationMapping';
 import { isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
@@ -146,6 +147,7 @@ export function activeConversationForSelection(
 
 export function applyCanonicalHydrationPlaceholder(
   selectedConversation: Conversation,
+  hydration?: SessionHydrationState,
 ): Conversation {
   if (
     selectedConversation.desktopRuntimeBacked
@@ -158,19 +160,21 @@ export function applyCanonicalHydrationPlaceholder(
       messages: [transcriptLoadingNotice(undefined, selectedConversation.messages)],
     };
   }
+  const pendingPage = hydration === 'cold' || hydration === 'loading';
+  const pendingProjection = selectedConversation.canonicalProjectionPending
+    && (selectedConversation.canonicalMessageCount ?? selectedConversation.messages.length) <= 1;
+  const hasPendingSend = selectedConversation.messages.some((message) => (
+    (message.isOwnMessage ?? message.role === 'user')
+    && message.statusChips?.some((chip) => ['sending', 'pending'].includes(chip.trim().toLowerCase()))
+  ));
   if (
-    selectedConversation.canonicalProjectionPending
-    && (selectedConversation.canonicalMessageCount
-      ?? selectedConversation.messages.length) <= 1
+    !selectedConversation.desktopRuntimeBacked
+    && !hasPendingSend
+    && (pendingPage || pendingProjection)
   ) {
-    if (selectedConversation.messages.length > 0) return selectedConversation;
-    return {
-      ...selectedConversation,
-      messages: [transcriptLoadingNotice(
-        'Syncing message history',
-        selectedConversation.messages,
-      )],
-    };
+    // Catalog heads belong to the session list. They are not a measured first
+    // transcript page, even when the head itself has finished rendering.
+    return { ...selectedConversation, messages: [transcriptLoadingNotice()] };
   }
   return selectedConversation;
 }

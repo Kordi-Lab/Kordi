@@ -1,6 +1,9 @@
 import { useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { VirtualTranscript } from '../../src/features/chat/VirtualTranscript';
+import { applyCanonicalHydrationPlaceholder } from '../../src/app/viewModels/conversationSelection';
+import { isTranscriptLoadingNotice } from '../../src/features/chat/transcriptLoadingNotice';
+import type { SessionHydrationState } from '../../src/features/canonical/canonicalStore';
 import '../../src/index.css';
 
 type Row = { id: string; height: number };
@@ -22,19 +25,30 @@ function Message({ row }: { row: Row }) {
 function Entry() {
   const [session, setSession] = useState('first');
   const [items, setItems] = useState(() => rows('first'));
+  const [hydration, setHydration] = useState<SessionHydrationState>('ready');
   const enter = (key: string, cold = false) => {
+    setHydration('ready');
     setSession(key);
     setItems(cold ? [] : rows(key));
     if (cold) setTimeout(() => setItems(rows(key)), 100);
   };
+  const selected = applyCanonicalHydrationPlaceholder({
+    id: session, canonicalSessionId: session, canonicalMessageCount: 200,
+    name: 'Synthetic chat', type: 'person', subtitle: 'Catalog preview', unread: 0,
+    collaborationSources: ['Cloud'], trust: 'Cloud', directness: 'Person chat', participants: [],
+    messages: items.map(row => ({ id: row.id, role: 'person', text: 'Synthetic message', time: '10:00' })),
+  }, hydration);
+  const loading = selected.messages.some(isTranscriptLoadingNotice);
   return <main style={{ height: 680, width: 800, display: 'flex', flexDirection: 'column' }}>
     <button onClick={() => enter('first')}>First session</button>
     <button onClick={() => enter('next')}>Next session</button>
     <button onClick={() => enter('cold', true)}>Cold session</button>
-    <VirtualTranscript items={items} sessionKey={session} getItemKey={row => row.id}
+    <button onClick={() => { setSession('catalog'); setItems(rows('catalog').slice(-1)); setHydration('loading'); }}>Catalog-only session</button>
+    <button onClick={() => { setItems(rows('catalog')); setHydration('ready'); }}>Finish catalog hydration</button>
+    {loading ? <div data-transcript-initial-loading style={{ height: 600 }} /> : <VirtualTranscript items={items} sessionKey={session} getItemKey={row => row.id}
       estimateSize={() => 160} scrollStyle={{ height: 600, overflowAnchor: 'none' }}
       emptyState={<div>Loading synthetic messages</div>}
-      renderItem={row => <Message row={row} />} />
+      renderItem={row => <Message row={row} />} />}
   </main>;
 }
 createRoot(document.getElementById('root')!).render(<Entry />);

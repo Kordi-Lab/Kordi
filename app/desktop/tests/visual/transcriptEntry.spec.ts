@@ -44,4 +44,14 @@ test('initial load, cold hydration, and session entry reveal only a stable measu
   await assertStableEntry('next');
   await page.getByRole('button', { name: 'First session' }).click();
   await assertStableEntry('first');
+  await page.getByRole('button', { name: 'Catalog-only session' }).click();
+  await expect(page.locator('[data-transcript-initial-loading]')).toBeVisible();
+  // A slow first page must not reveal the lone catalog head after the virtual
+  // list's bounded layout-settling window has elapsed.
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 35; frame += 1) await new Promise(requestAnimationFrame);
+  });
+  await expect(page.locator('[data-message-id="catalog-199"]')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish catalog hydration' }).click();
+  await assertStableEntry('catalog');
 });
