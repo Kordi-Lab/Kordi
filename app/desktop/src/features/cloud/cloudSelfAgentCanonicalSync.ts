@@ -417,6 +417,10 @@ export function planCloudSelfAgentCanonicalSync({
     };
     if (message.attachments?.length) {
       request.content = { ...(request.content ?? {}), attachments: message.attachments };
+      if (existingMatch && ['desktop-chat', 'desktop-chat-ui'].includes(existingMatch.sourceTransport ?? '')) {
+        request.sourceTransport = existingMatch.sourceTransport;
+        request.sourceEventId = existingMatch.sourceEventId;
+      }
     }
     const plannedIndex = plannedMessageIndexByCanonicalId.get(
       canonicalMessageId,

@@ -67,3 +67,19 @@ test('cloud restoration retains image-only messages and attachment metadata', as
   assert.equal(planned.messageRequests.length, 1);
   assert.deepEqual((planned.messageRequests[0].content as { attachments: unknown }).attachments, [attachment]);
 });
+
+test('attachment acknowledgements preserve local execution provenance', async () => {
+  const { planCloudSelfAgentCanonicalSync } = await import('../src/features/cloud/cloudSelfAgentCanonicalSync');
+  const { cloudSelfAgentOperationClientMessageId } = await import('../src/features/cloud/cloudSelfAgentForwardSync');
+  const { cloudAccountAvatarFixture } = await import('./helpers/cloudAccountAvatarFixture');
+  const account = { accountId: 'owner', displayName: 'Owner', primaryEmail: 'owner@example.com', avatarUrl: null, avatar: cloudAccountAvatarFixture, nodeId: null, passwordSet: true };
+  const createdAt = '2026-09-01T00:00:00Z';
+  const localMessage = { id: 'local', sessionId: 'chat', senderIdentityId: 'human:owner', senderRole: 'user', messageKind: 'text', contentText: 'Compare these', content: { attachments: [local] }, status: 'sent', sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-chat-ui:local', sequenceNum: 1, createdAtMs: Date.parse(createdAt), updatedAtMs: Date.parse(createdAt) };
+  const state = { sessions: [{ id: 'chat', kind: 'self-agent', status: 'active' }], identities: [], participants: [], profile: { id: 'profile', humanIdentityId: 'human:owner' }, messages: [localMessage], delegatedExchanges: [], presence: [], contextSnapshots: [], storagePath: '/tmp/synthetic' } as unknown as CanonicalSessionState;
+  const message: CloudMessage = { messageId: 'wire', clientMessageId: cloudSelfAgentOperationClientMessageId(operation), fromAccountId: 'owner', toAccountId: 'owner', sessionId: 'chat', body: 'Compare these', attachments: [attachment], createdAt, deliveredAt: null, readAt: null };
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [message], state });
+  assert.equal(plan.messageRequests.length, 1);
+  assert.equal(plan.messageRequests[0].id, 'local');
+  assert.equal(plan.messageRequests[0].sourceTransport, 'desktop-chat-ui');
+  assert.equal(plan.messageRequests[0].sourceEventId, 'desktop-chat-ui:local');
+});
