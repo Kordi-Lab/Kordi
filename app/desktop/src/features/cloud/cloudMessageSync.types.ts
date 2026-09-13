@@ -43,6 +43,7 @@ export type CloudMessageSyncStores = {
 };
 
 export type UseCloudMessageSyncInput = {
+  desktopExecutionEnabled?: boolean;
   account: CloudAccount | null;
   bootstrapPeerIds: string[];
   bootstrapPeerKey: string;
@@ -59,6 +60,7 @@ export type UseCloudMessageSyncInput = {
 };
 
 export type CloudMessageSyncController = {
+  executionMessagesReady: boolean;
   setRealtimeConnected: (connected: boolean) => void;
   refreshCloudMessages: () => Promise<void>;
   syncCloudCollaborationDiff: (

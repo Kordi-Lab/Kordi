@@ -1,3 +1,5 @@
+import { agentTurnHasStarted, canDisplayAgentTurn } from '@/features/chat/agentProcessingVisibility';
+import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
@@ -718,16 +720,14 @@ function LiveChatTurnCardView({
   onOpenAuthSettings?: () => void;
 }) {
   const visibleTurn = useVisibleLiveTurn(turn, historical);
-  // Suppress assistantText when it's just a "Failed: <error>" or duplicate of
-  // visibleTurn.error so the failure surface shows the red error line once,
-  // not twice. Wrappers like cloud-agent response writer at
-  // useCloudCollaborationState.ts:1169 store the failure as `Failed: ${error}` in
-  // canonical contentText; the read model surfaces that as assistantText, and
-  // the error field already carries the same message — rendering both is
-  // visually redundant. Retain assistantText whenever it contains additional
-  // content beyond the error (partial streamed reply before the failure).
+  const cancelledContent = visibleTurn.status === 'cancelled'
+    ? cancelledTurnContent(visibleTurn.assistantText, visibleTurn.message, visibleTurn.error)
+    : null;
+  const assistantText = cancelledContent?.assistantText ?? visibleTurn.assistantText;
+  // Failure transports may copy the error into assistantText. Render that
+  // notice once, while preserving any partial answer before the failure.
   const assistantTextDuplicatesError = (() => {
-    const text = visibleTurn.assistantText.trim();
+    const text = assistantText.trim();
     const error = visibleTurn.error?.trim();
     if (!text || !error) return false;
     if (text === error) return true;
@@ -739,11 +739,12 @@ function LiveChatTurnCardView({
     if (text.endsWith(error) && text.length - error.length <= 24) return true;
     return false;
   })();
-  const hasAssistant = visibleTurn.assistantText.trim().length > 0 && !assistantTextDuplicatesError;
+  const hasAssistant = assistantText.trim().length > 0 && !assistantTextDuplicatesError;
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
+  const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus
+    && (agentTurnHasStarted(visibleTurn) || Boolean(visibleTurn.pendingCollaborationAgentRequest));
   const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
   const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
@@ -768,10 +769,8 @@ function LiveChatTurnCardView({
   const hasTimelineActivity = hasThinking || visibleTurn.tools.length > 0;
   const changedFileRows = changedFileRowsFromTurn(visibleTurn);
   const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
-  const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : visibleTurn.error;
-  const cancellationNotice = visibleTurn.status === 'cancelled'
-    ? (visibleTurn.message.trim() || 'Response stopped')
-    : null;
+  const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : cancelledContent ? cancelledContent.error : visibleTurn.error;
+  const cancellationNotice = cancelledContent?.notice;
   const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean(
     shouldShowSourceQuote
@@ -784,7 +783,7 @@ function LiveChatTurnCardView({
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
   const showOpenAuthAction = Boolean(onOpenAuthSettings && noProviderConfiguredError);
-
+  if (!canDisplayAgentTurn(visibleTurn)) return null;
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
@@ -799,9 +798,9 @@ function LiveChatTurnCardView({
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   <span className="text-slate-300">{liveStatusText}</span>
                 </>
-              ) : (
+              ) : agentTurnHasStarted(visibleTurn) ? (
                 <AgentWaitingWave label="Waiting for agent response" />
-              )}
+              ) : null}
               {pendingCollaborationAgentRequest ? (
                 <CollaborationAgentStopButton
                   request={pendingCollaborationAgentRequest}
@@ -858,7 +857,7 @@ function LiveChatTurnCardView({
           {hasAssistant ? (
             <FoldableAssistantAnswer
               key="answer"
-              text={visibleTurn.assistantText}
+              text={assistantText}
               foldable={!plainAgentResponse} showLinkPreview={historical || visibleTurn.completed}
               tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
             />

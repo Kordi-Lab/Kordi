@@ -99,8 +99,10 @@ fn cloud_request_identity_reconciles_without_matching_message_text() {
     conn.execute_batch(
         "CREATE TABLE session_messages (
         id TEXT PRIMARY KEY, session_id TEXT, sender_role TEXT,
-        source_transport TEXT, source_event_id TEXT, content_json TEXT
-    ); INSERT INTO session_messages VALUES
+        source_transport TEXT, source_event_id TEXT, content_json TEXT,
+        content_text TEXT NOT NULL DEFAULT 'Identical repeated text',
+        content_hash TEXT NOT NULL DEFAULT 'old-hash', updated_at_ms INTEGER NOT NULL DEFAULT 1
+    ); INSERT INTO session_messages (id, session_id, sender_role, source_transport, source_event_id, content_json) VALUES
         ('canonical-one', 'session', 'user', 'cloud-self-agent', 'request-one', '{}'),
         ('canonical-two', 'session', 'user', 'cloud-self-agent', 'request-two', '{}');",
     )
@@ -130,6 +132,40 @@ fn cloud_request_identity_reconciles_without_matching_message_text() {
         })
         .unwrap();
     assert_eq!(count, 2);
+    let snapshot = || -> (String, String, i64) {
+        conn.query_row(
+            "SELECT content_json, content_hash, updated_at_ms FROM session_messages WHERE id = 'canonical-two'",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).unwrap()
+    };
+    let enriched = snapshot();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&enriched.0).unwrap()["desktopEntryId"],
+        "request-two"
+    );
+    assert_eq!(
+        enriched.1,
+        super::hash_hex(&format!("Identical repeated text|{}", enriched.0), 16)
+    );
+    assert!(enriched.2 > 1);
+    super::sync_desktop_chat_message(&conn, "session", "human", "agent", 0, &message, None)
+        .unwrap();
+    assert_eq!(
+        snapshot(),
+        enriched,
+        "replaying the same alias must not invalidate caches again"
+    );
+    conn.execute(
+        "UPDATE session_messages SET content_hash = 'stale-hash' WHERE id = 'canonical-two'",
+        [],
+    )
+    .unwrap();
+    super::sync_desktop_chat_message(&conn, "session", "human", "agent", 0, &message, None)
+        .unwrap();
+    let repaired = snapshot();
+    assert_eq!(repaired.0, enriched.0);
+    assert_eq!(repaired.1, enriched.1);
+    assert!(repaired.2 > enriched.2);
 }
 
 #[test]

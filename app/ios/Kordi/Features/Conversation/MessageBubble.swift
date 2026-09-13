@@ -574,10 +574,7 @@ struct MessageBubble: View, Equatable {
                 AgentExecutionTimeline(
                     messageID: message.id,
                     execution: execution,
-                    showsWaitingIndicator: Self.showsAgentWaitingIndicator(
-                        execution: execution,
-                        responseText: message.text
-                    ),
+                    showsWaitingIndicator: Self.showsAgentWaitingIndicator(execution: execution, responseText: message.text),
                     onExpansionChange: onAgentExecutionExpansionChange
                 )
             }
@@ -875,7 +872,7 @@ struct MessageBubble: View, Equatable {
     ) -> Bool {
         !execution.completed
             && !hasVisibleAgentResponseText(responseText)
-            && !AgentExecutionTimelinePresentation(execution: execution).hasExpandableContent
+            && AgentExecutionTimelinePresentation(execution: execution).activeOutputStatus == nil
     }
 
     private var isCallActivity: Bool {
@@ -1355,7 +1352,8 @@ struct AgentExecutionTimeline: View {
                     accessibilityStatus: presentation.headline
                 )
                 .frame(minHeight: 24, alignment: .leading)
-            } else if let activeOutputStatus = presentation.activeOutputStatus {
+            }
+            if let activeOutputStatus = presentation.activeOutputStatus {
                 Button(action: toggleExpansion) {
                     HStack(spacing: 8) {
                         if let completionLabel = presentation.completionLabel {

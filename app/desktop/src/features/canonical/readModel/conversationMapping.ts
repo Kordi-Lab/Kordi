@@ -139,14 +139,15 @@ export function sessionMetadata(session: CanonicalSessionState['sessions'][numbe
 }
 
 export function isChatCreatedDirectAgentSession(session?: CanonicalSessionState['sessions'][number]) {
-  return session?.kind === 'direct-agent' && sessionMetadata(session).createdFrom === 'chat-create-flow';
+  return session?.kind === 'direct-agent' && (sessionMetadata(session).createdFrom === 'chat-create-flow' || sessionMetadata(session).cloudSelfAgentTarget === true);
 }
 
 export function applySessionAgentIdentity(
   session: CanonicalSessionState['sessions'][number] | undefined,
   message: CanonicalSessionMessage,
 ) {
-  if (!session || message.senderRole !== 'owned-agent' || sessionMetadata(session).createdFrom !== 'chat-create-flow') return message;
+  if (!session || message.senderRole !== 'owned-agent' || message.sourceTransport === 'canonical-fork-snapshot'
+    || (sessionMetadata(session).createdFrom !== 'chat-create-flow' && sessionMetadata(session).cloudSelfAgentTarget !== true)) return message;
   const primaryIdentityId = session.primaryIdentityId?.trim();
   if (!primaryIdentityId) return message;
   return {

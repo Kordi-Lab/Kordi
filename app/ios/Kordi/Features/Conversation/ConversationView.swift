@@ -384,10 +384,10 @@ struct ConversationView: View {
             currentAccountID: model.account?.accountId ?? ""
         )
     }
-    // Nested task conversations can retain stale lazy height estimates even
-    // on iOS 27. Use measured row slots for these destinations as well.
+    // Agent replies can span a viewport and leave stale lazy height estimates
+    // during a follow-up send, including on iOS 27. Use measured row slots.
     private var usesExplicitTimelineLayout: Bool {
-        conversation.subsessionId != nil || ConversationTimelineVirtualization.usesCompatibilityLayout
+        conversation.kind == .agent || conversation.subsessionId != nil || ConversationTimelineVirtualization.usesCompatibilityLayout
     }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14

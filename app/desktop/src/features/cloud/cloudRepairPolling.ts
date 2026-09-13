@@ -1,5 +1,6 @@
 export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
 export const CLOUD_BACKGROUND_MESSAGES_REFRESH_MS = 60_000;
+export const CLOUD_DESKTOP_EXECUTION_REFRESH_MS = 2_000;
 
 // Realtime still delivers background messages immediately. Only redundant
 // repair requests slow down; a disconnected socket retains the normal poll.
@@ -12,8 +13,10 @@ export function createCloudRepairPolling(now = () => Date.now()) {
       if (realtimeConnected && !connected) lastPollAt = Number.NEGATIVE_INFINITY;
       realtimeConnected = connected;
     },
-    async poll(hidden: boolean, sync: () => Promise<void>) {
-      const interval = hidden && realtimeConnected
+    async poll(hidden: boolean, sync: () => Promise<void>, desktopExecutionEnabled = false) {
+      // Ready executors must discover requests inside the server's ten-second
+      // admission window, including hidden windows with a silent open socket.
+      const interval = desktopExecutionEnabled ? CLOUD_DESKTOP_EXECUTION_REFRESH_MS : hidden && realtimeConnected
         ? CLOUD_BACKGROUND_MESSAGES_REFRESH_MS
         : CLOUD_MESSAGES_REFRESH_MS;
       if (pending || now() - lastPollAt < interval) return;

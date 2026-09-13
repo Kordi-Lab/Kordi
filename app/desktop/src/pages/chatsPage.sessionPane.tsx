@@ -1,3 +1,4 @@
+import { canDisplayAgentTurn } from '@/features/chat/agentProcessingVisibility';
 import {TranscriptLoadingSkeleton} from './chatsPage.loadingSkeleton';
 import { TranscriptNavigationControls } from '@/features/chat/TranscriptLatestButton';
 import { useLayoutEffect, useMemo, useRef } from 'react';
@@ -212,13 +213,16 @@ export function ChatSessionPane({
     [attributedLiveTurn, liveTurnSender, shouldRenderLiveTurn],
   );
   const transcriptMessages = useMemo(() => {
-    if (!liveTurnMessage) return attributedTranscript.messages;
+    const visibleMessages = attributedTranscript.messages.filter((message) => (
+      !message.turn || canDisplayAgentTurn(message.turn, attributedTranscript.messages)
+    ));
+    if (!liveTurnMessage || !canDisplayAgentTurn(liveTurnMessage.turn!, attributedTranscript.messages)) return visibleMessages;
     const persistedReplacementIsVisible = attributedTranscript.messages.some(
       (message) => message.id === liveTurnMessage.id,
     );
     return persistedReplacementIsVisible
-      ? attributedTranscript.messages
-      : [...attributedTranscript.messages, liveTurnMessage];
+      ? visibleMessages
+      : [...visibleMessages, liveTurnMessage];
   }, [attributedTranscript.messages, liveTurnMessage]);
   const transcriptEntries = useMemo(
     () =>
