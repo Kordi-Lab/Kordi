@@ -16,7 +16,7 @@ async fn missing_private_history_images_are_backfilled_once_without_new_messages
     .await;
     let original = chat_store::send_message(&pool, &owner.account_id, conversation, SendMessageRequest {
         client_message_id: uuid::Uuid::new_v4(), kind: "canonical-history-user".into(),
-        content: json!({"schema":1,"blocks":[{"type":"text","text":"Describe the picture"}],"canonical_history":{"localMessageId":"synthetic-local","originalCreatedAt":"2026-09-01T00:00:00Z"},"legacy_attachments":[]}),
+        content: json!({"schema":1,"blocks":[{"type":"text","text":"Describe the picture"}],"canonical_history":{"local_message_id":"synthetic-local","original_created_at":"2026-09-01T00:00:00Z"},"legacy_attachments":[]}),
         attachment_ids: vec![], reply_to_message_id: None,
     }).await.unwrap().value;
     let attachment = format!("att_{}", uuid::Uuid::new_v4().simple());

@@ -55,7 +55,8 @@ pub async fn backfill_missing_images(
         || !current.attachment_ids.is_empty()
         || current
             .content
-            .pointer("/canonical_history/localMessageId")
+            .pointer("/canonical_history/local_message_id")
+            .or_else(|| current.content.pointer("/canonical_history/localMessageId"))
             .and_then(Value::as_str)
             .is_none()
     {
