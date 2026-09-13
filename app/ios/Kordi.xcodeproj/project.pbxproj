@@ -87,6 +87,7 @@
 		798E25FC71EFE3AFBBD92A56 /* CloudAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1891761174EB0D425725600A /* CloudAPIClient.swift */; };
 		7D759868D8B2AC1940DA003C /* AgentSubsessionStopTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9937A528C34DE6A3E1ADC0D5 /* AgentSubsessionStopTests.swift */; };
 		7DFA4853671269DDB4276A23 /* CompanionChatPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57000316D6B453E1690DA350 /* CompanionChatPanel.swift */; };
+		7F061BEB50E2E1B902DA1683 /* ConversationMessageOrdering.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4662EDE7761CB6739BB4959E /* ConversationMessageOrdering.swift */; };
 		801B1286BE27D9D500B36DE9 /* MessageLinkPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D362AF4BAC14A082A9A6A849 /* MessageLinkPreview.swift */; };
 		81A5A5B135938E1C332EB16D /* ConversationSendMotionIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */; };
 		82F8E9F873B0DC7C0CF81168 /* AttachmentReactionMutationQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2EB23221667A825E421722D /* AttachmentReactionMutationQueueTests.swift */; };
@@ -262,6 +263,7 @@
 		45283A731378FF0892492602 /* CloudWireCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudWireCacheTests.swift; sourceTree = "<group>"; };
 		4603ECC7913F5A0D715AC8F5 /* ChatMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessage.swift; sourceTree = "<group>"; };
 		466213B0B64F8844554C358D /* VoiceMessageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageTests.swift; sourceTree = "<group>"; };
+		4662EDE7761CB6739BB4959E /* ConversationMessageOrdering.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationMessageOrdering.swift; sourceTree = "<group>"; };
 		46FD8ADA8B828FDECB16AB83 /* ComposerMentionMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerMentionMenu.swift; sourceTree = "<group>"; };
 		470C042F5532317F61414EB9 /* DigestCalendarProposal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestCalendarProposal.swift; sourceTree = "<group>"; };
 		4D22A792A04EFA89754D2EE1 /* OfflineChatRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineChatRefreshTests.swift; sourceTree = "<group>"; };
@@ -424,6 +426,7 @@
 				4603ECC7913F5A0D715AC8F5 /* ChatMessage.swift */,
 				8048284446BA610E82C18CAC /* ComposerMentionTargetCatalog.swift */,
 				87791B7244F602AE37144B7B /* Conversation.swift */,
+				4662EDE7761CB6739BB4959E /* ConversationMessageOrdering.swift */,
 				A65E789E3576D0F0275E8B65 /* ConversationSendQueue.swift */,
 				947D36AE16CB8FC9349B6169 /* EmojiAnimationDiskCache.swift */,
 				416A049DC931011ECA554628 /* EmojiAnimationRepository.swift */,
@@ -1106,6 +1109,7 @@
 				EB453D88857B3296BE127B94 /* ContactsView.swift in Sources */,
 				E209B4E4DD968CF6AD4028E2 /* Conversation.swift in Sources */,
 				F7D2FBC93887F75BCDF18D61 /* ConversationInitialLoadingView.swift in Sources */,
+				7F061BEB50E2E1B902DA1683 /* ConversationMessageOrdering.swift in Sources */,
 				BAE153F27E5E1485C3D5424F /* ConversationMotionProbe.swift in Sources */,
 				45DBC71D7DECB3882799CBC3 /* ConversationOutgoingAvatars.swift in Sources */,
 				4C4FB202DD4C0FA3462A86DF /* ConversationReadVisibility.swift in Sources */,
