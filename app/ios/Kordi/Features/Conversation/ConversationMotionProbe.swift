@@ -13,6 +13,7 @@ enum ConversationMotionProbeRegistry {
     static var setDraft: ((String) -> Void)?
     static var send: (() -> Void)?
     static var goToLatest: (() -> Void)?
+    static var trajectoryToggles: [String: () -> Void] = [:]
     static var views: [String: WeakView] = [:]
 
     static func frame(for id: String, in window: UIWindow) -> CGRect? {
@@ -30,6 +31,7 @@ enum ConversationMotionProbeRegistry {
 
 struct ConversationMotionProbe: UIViewRepresentable {
     let id: String
+    var trajectoryToggle: (() -> Void)? = nil
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
         view.isUserInteractionEnabled = false
@@ -37,6 +39,9 @@ struct ConversationMotionProbe: UIViewRepresentable {
     }
     func updateUIView(_ view: UIView, context: Context) {
         ConversationMotionProbeRegistry.views[id] = .init(view)
+        if let trajectoryToggle {
+            ConversationMotionProbeRegistry.trajectoryToggles[id] = trajectoryToggle
+        }
     }
 }
 #endif

@@ -60,7 +60,7 @@ export type UseCloudCollaborationStateArgs = {
 };
 
 export type UseCloudCollaborationStateResult = {
-  directHistory: Pick<ReturnType<typeof import('./useCloudDirectHistory').useCloudDirectHistory>, 'hasOlderBySessionId' | 'loadOlderSessionMessages'>;
+  directHistory: Pick<ReturnType<typeof import('./useCloudDirectHistory').useCloudDirectHistory>, 'hasOlderBySessionId' | 'hydrationBySessionId' | 'loadOlderSessionMessages'>;
   cloudAgentRuntimeRouteMessages: CloudMessage[];
   cloudCollaborationState: DesktopCollaborationState | null;
   setCloudCollaborationState:

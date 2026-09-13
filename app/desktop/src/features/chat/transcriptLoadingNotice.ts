@@ -38,6 +38,14 @@ function loadingPlaceholder(message: Message): NonNullable<
   };
 }
 
+export function hasKnownTranscriptContent(messages: readonly Message[]): boolean {
+  return messages.some((message) => message.role !== 'system' && Boolean(
+    message.text.trim() || message.attachments?.length || message.voiceMessage
+      || message.turn?.assistantText.trim() || message.turn?.thinkingText.trim()
+      || message.turn?.tools.length || message.turn?.completed,
+  ));
+}
+
 export function transcriptLoadingNotice(
   text = '',
   cachedRows: readonly Message[] = [],

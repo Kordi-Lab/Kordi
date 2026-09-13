@@ -212,6 +212,9 @@ enum PreviewData {
     }
 
     private static func agentConversation(now: Date) -> [ChatMessage] {
+        if ProcessInfo.processInfo.arguments.contains("--preview-short-trajectory") {
+            return shortTrajectoryConversation(now: now)
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-tool-failure") {
             return toolFailureAgentConversation(now: now)
         }

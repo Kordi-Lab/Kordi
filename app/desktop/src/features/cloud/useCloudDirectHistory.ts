@@ -13,6 +13,7 @@ import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { cloudMessageDeletions } from './cloudMessageDeletions';
 import { mergeCloudMessagesByPeerSnapshot } from './cloudMessageSyncState';
 import { loadSession } from './session';
+import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 
 export const DIRECT_HISTORY_PAGE_SIZE = 50;
 export type CloudDirectHistoryPage = {
@@ -83,6 +84,7 @@ export function useCloudDirectHistory(account: CloudAccount | null, activeConver
   const snapshotRef = useRef<({ scope: typeof scope } & CloudDirectHistoryPage) | null>(null);
   const flightRef = useRef<{ scope: typeof scope; promise: Promise<void> } | null>(null);
   const [snapshot, setSnapshot] = useState<typeof snapshotRef.current>(null);
+  const [failedScope, setFailedScope] = useState<typeof scope | null>(null);
   useLayoutEffect(() => { currentScope.current = scope; }, [scope]);
 
   const load = useCallback((older: boolean) => {
@@ -92,7 +94,8 @@ export function useCloudDirectHistory(account: CloudAccount | null, activeConver
     if (older && (!previous?.hasOlder || !previous.beforeSequence)) return Promise.resolve();
     const promise = readDirectCloudHistoryPage(accountId, sessionId, client, older ? previous!.beforeSequence! : undefined)
       .then((page) => {
-        if (!page || currentScope.current !== scope) return;
+        if (currentScope.current !== scope) return;
+        if (!page) { setFailedScope(scope); return; }
         if (older && page.hasOlder && (!page.beforeSequence || page.beforeSequence >= previous!.beforeSequence!)) {
           throw new Error('Direct conversation history cursor did not advance.');
         }
@@ -102,6 +105,10 @@ export function useCloudDirectHistory(account: CloudAccount | null, activeConver
         const next = { ...page, messagesByPeer, scope };
         snapshotRef.current = next;
         setSnapshot(next);
+        setFailedScope(null);
+      }).catch((error) => {
+        if (currentScope.current === scope && !previous) setFailedScope(scope);
+        throw error;
       }).finally(() => {
         if (flightRef.current?.promise === promise) flightRef.current = null;
       });
@@ -151,6 +158,8 @@ export function useCloudDirectHistory(account: CloudAccount | null, activeConver
 
   const page = snapshot?.scope === scope ? snapshot : null;
   const hasOlderBySessionId = useMemo(() => page ? { [page.sessionId]: page.hasOlder } : {}, [page]);
+  const hydration: SessionHydrationState = page ? 'ready' : failedScope === scope ? 'error' : 'loading';
+  const hydrationBySessionId = useMemo(() => sessionId ? { [sessionId]: hydration } : {}, [hydration, sessionId]);
   const loadOlderSessionMessages = useCallback((requestedSessionId: string) => requestedSessionId === sessionId ? load(true) : Promise.resolve(), [load, sessionId]);
-  return { page, hasOlderBySessionId, loadOlderSessionMessages };
+  return { page, hasOlderBySessionId, hydrationBySessionId, loadOlderSessionMessages };
 }
