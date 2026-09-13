@@ -88,7 +88,7 @@ export function useCloudSelfAgentExecution({
   reportWarning,
 }: CloudSelfAgentExecutionInput) {
   const supersededRequestIdsRef = useRef<Set<string>>(new Set());
-  useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
+  const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
     account?.accountId ?? null,
   );
@@ -135,7 +135,7 @@ export function useCloudSelfAgentExecution({
     if (!cloudSelfAgentExecutionCanStart({
       account,
       initialMessagesSettled,
-      runtimeReady,
+      runtimeReady: executionReady,
     })) return;
     if (!account) return;
     if (!canonicalState) return;
@@ -482,7 +482,7 @@ export function useCloudSelfAgentExecution({
     processedRequestIdsRef,
     reportWarning,
     routesBySessionId,
-    runtimeReady,
+    executionReady,
     setLocalTurns,
     syncMessages,
     turnIdsByRequestIdRef,

@@ -1,3 +1,4 @@
+import { isCancellationNotice } from '@/features/chat/cancellation';
 import type { CanonicalIdentity, CanonicalSessionMessage } from '@/kordi-app/types';
 
 import { contentRecord, stringValue } from './messageMapping';
@@ -169,10 +170,27 @@ export function selfAgentMirrorDuplicateIds(
       message.sourceTransport === 'canonical-fork-snapshot'
       && message.sourceEventId?.startsWith('fork-snapshot:')
     ));
-    if ((!hasCloudMirror || !hasPreferredLocalCopy) && !hasCanonicalSnapshotOrigin) continue;
+    // Desktop reconciliation can enrich a processing Cloud row without
+    // changing its transport. A later terminal Cloud event is then a second
+    // Cloud row for the same request, rather than a local/Cloud mirror pair.
+    const first = candidates[0];
+    const cloudRequestId = stringValue(contentRecord(first.content).cloudRequestMessageId)?.trim();
+    const sameCloudLifecycle = normalizeOwnedAgentIdentity && Boolean(cloudRequestId)
+      && candidates.every((message) => (
+        message.sourceTransport === 'cloud-self-agent'
+        && isTerminalOwnedAgentMessage(message)
+        && message.senderIdentityId === first.senderIdentityId
+        && message.status === first.status
+        && stringValue(contentRecord(message.content).cloudRequestMessageId)?.trim() === cloudRequestId
+      ));
+    if ((!hasCloudMirror || !hasPreferredLocalCopy) && !hasCanonicalSnapshotOrigin && !sameCloudLifecycle) continue;
 
     const preferred = [...candidates].sort((left, right) => (
-      selfAgentMirrorTransportPriority(left) - selfAgentMirrorTransportPriority(right)
+      (sameCloudLifecycle
+        ? Number(Boolean(stringValue(contentRecord(right.content).desktopEntryId)?.trim()))
+          - Number(Boolean(stringValue(contentRecord(left.content).desktopEntryId)?.trim()))
+        : 0)
+      || selfAgentMirrorTransportPriority(left) - selfAgentMirrorTransportPriority(right)
       || left.sequenceNum - right.sequenceNum
       || left.id.localeCompare(right.id)
     ))[0];
@@ -201,8 +219,33 @@ export function selfAgentMirrorDuplicateIds(
       );
       return relation ? [relation] : [];
     }));
+    const cancellationKey = (message: CanonicalSessionMessage) => {
+      const relation = selfAgentMirrorMessageRelationKey(
+        message, messageById, messageBySourceEventId, identityById, profileHumanIdentityId, true,
+      );
+      if (!relation) return null;
+      return [message.sessionId, selfAgentLogicalSenderKey(message, identityById, profileHumanIdentityId, true), relation].join('\u001f');
+    };
+    const isCancelled = (message: CanonicalSessionMessage) => (
+      message.status === 'cancelled' || stringValue(contentRecord(message.content).deliveryState) === 'cancelled'
+    );
+    const localCancelledKeys = new Set(localTerminalMessages.flatMap((message) => {
+      const key = isCancelled(message) ? cancellationKey(message) : null;
+      return key ? [key] : [];
+    }));
     for (const message of messages) {
       if (message.sourceTransport !== 'cloud-self-agent') continue;
+      // A canceled desktop turn can have tools but no answer. Its cloud
+      // mirror carries a status sentence, so text matching cannot join them.
+      // Require the same request and owner, and never discard cloud answer text.
+      const cancelledKey = isCancelled(message) && isTerminalOwnedAgentMessage(message)
+        && (!message.contentText.trim() || isCancellationNotice(message.contentText))
+        ? cancellationKey(message)
+        : null;
+      if (cancelledKey && localCancelledKeys.has(cancelledKey)) {
+        duplicateIds.add(message.id);
+        continue;
+      }
       if (isActiveProcessingStatus(message)) {
         const cloudRequestId = stringValue(contentRecord(message.content).cloudRequestMessageId)?.trim();
         if (cloudRequestId && terminalCloudRequestIds.has(cloudRequestId)) {

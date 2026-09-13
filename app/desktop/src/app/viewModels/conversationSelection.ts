@@ -1,7 +1,8 @@
+import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import { sessionHasActiveProcessing } from '@/features/canonical/readModel/conversationMapping';
 import { isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
-import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
+import { hasKnownTranscriptContent, transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { cloudSystemAgentIdFromSessionId } from '@/features/collaboration/conversationIds';
 import {
   cloudConversationKindFromConversationId,
@@ -146,31 +147,35 @@ export function activeConversationForSelection(
 
 export function applyCanonicalHydrationPlaceholder(
   selectedConversation: Conversation,
+  hydration?: SessionHydrationState,
 ): Conversation {
   if (
     selectedConversation.desktopRuntimeBacked
     && selectedConversation.desktopRuntimeTranscriptLoaded !== true
     && !isLocalDraftChatConversationId(selectedConversation.id)
     && !sessionHasActiveProcessing(selectedConversation.messages)
+    && !hasKnownTranscriptContent(selectedConversation.messages)
   ) {
     return {
       ...selectedConversation,
       messages: [transcriptLoadingNotice(undefined, selectedConversation.messages)],
     };
   }
+  const pendingPage = hydration === 'cold' || hydration === 'loading';
+  const pendingProjection = hydration !== 'error' && selectedConversation.canonicalProjectionPending
+    && (selectedConversation.canonicalMessageCount ?? selectedConversation.messages.length) <= 1;
+  const hasPendingSend = selectedConversation.messages.some((message) => (
+    (message.isOwnMessage ?? message.role === 'user')
+    && message.statusChips?.some((chip) => ['sending', 'pending_send', 'pending'].includes(chip.trim().toLowerCase()))
+  ));
   if (
-    selectedConversation.canonicalProjectionPending
-    && (selectedConversation.canonicalMessageCount
-      ?? selectedConversation.messages.length) <= 1
+    !selectedConversation.desktopRuntimeBacked
+    && !hasPendingSend
+    && (pendingPage || pendingProjection)
   ) {
-    if (selectedConversation.messages.length > 0) return selectedConversation;
-    return {
-      ...selectedConversation,
-      messages: [transcriptLoadingNotice(
-        'Syncing message history',
-        selectedConversation.messages,
-      )],
-    };
+    // Catalog heads belong to the session list. They are not a measured first
+    // transcript page, even when the head itself has finished rendering.
+    return { ...selectedConversation, messages: [transcriptLoadingNotice()] };
   }
   return selectedConversation;
 }

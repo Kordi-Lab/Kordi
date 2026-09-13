@@ -285,6 +285,7 @@ final class AppModel: ObservableObject {
     private var pendingSessionVisibilityMutationCount = 0
     private var pendingAgentRequestIds: [String: [String]] = [:]
     private var pendingAgentQueuedRequestIds = Set<String>()
+    @Published private var confirmedAgentRunStatuses: [String: String] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
     private var pendingAgentOwnerNames: [String: String] = [:]
@@ -612,6 +613,7 @@ final class AppModel: ObservableObject {
         persistedVisibleReadMessageBySessionID = [:]
         pendingAgentRequestIds = [:]
         pendingAgentQueuedRequestIds = []
+        confirmedAgentRunStatuses = [:]
         agentRunTasks.values.forEach { $0.cancel() }
         agentRunTasks = [:]
         pendingAgentRequestStartedAt = [:]
@@ -1700,14 +1702,8 @@ final class AppModel: ObservableObject {
         let inheritedRuntimeRoute = isNewAgentSession
             ? requestedRuntimeRoute(for: conversation)
             : nil
-        let inheritedRouteNotice = inheritedRuntimeRoute.flatMap { routing in
-            recordAgentModelChange(
-                model: routing.defaultModel,
-                routing: routing,
-                conversation: conversation,
-                revision: UUID().uuidString,
-                previousRouting: nil
-            )
+        if let inheritedRuntimeRoute {
+            saveSessionRuntimeRoute(inheritedRuntimeRoute, sessionId: conversation.sessionId)
         }
         let messageAction = actionOverride ?? replySource.map(MessageActionMetadata.quote)
         let mentions = ComposerMentionTargetCatalog.mentions(
@@ -1832,18 +1828,6 @@ final class AppModel: ObservableObject {
             let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
             }
-            if let inheritedRouteNotice, let inheritedRuntimeRoute,
-               await publishAgentModelChangeNotice(
-                 inheritedRouteNotice,
-                 conversation: conversation,
-                 routing: inheritedRuntimeRoute
-               ) == false {
-                throw CloudAPIError(
-                    code: "agent_route_sync_failed",
-                    message: "Could not synchronize the new session model.",
-                    statusCode: 0
-                )
-            }
             if conversation.kind == .group {
                 let outgoingMessageKind = uploadedVoiceMessage != nil
                     ? "voice"
@@ -1937,16 +1921,6 @@ final class AppModel: ObservableObject {
                 voiceMessage: uploadedVoiceMessage,
                 sharedTitle: initialAgentSessionTitle
             )
-            if let initialAgentSessionTitle {
-                _ = try await api.updateSessionTitle(
-                    token: token,
-                    sessionId: conversation.sessionId,
-                    title: initialAgentSessionTitle,
-                    peerAccountId: conversation.peerAccountId,
-                    conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
-                    memberAccountIds: [conversation.peerAccountId]
-                )
-            }
             promotePendingAgentRequest(
                 conversationId: conversation.id,
                 from: localId,
@@ -1954,14 +1928,6 @@ final class AppModel: ObservableObject {
             )
             mergeCloudMessage(sent, peerHint: conversation.peerAccountId)
             replaceMessage(localId, with: mapMessage(sent, conversation: conversation, ownAccountId: account.accountId))
-            if isNewAgentSession {
-                // The route event may be the first row that materializes this
-                // stable session in reliable chat. Rebuild immediately so the
-                // current device and every other device use the same session
-                // identity and synchronized title instead of retaining a
-                // provisional template row until the next background refresh.
-                await rebuildConversationCatalog()
-            }
             cloudConnectionState = .connected
             outgoingAttachments.forEach { $0.discardOwnedFile() }
             clearPendingSendMetadata(localId)
@@ -1980,12 +1946,25 @@ final class AppModel: ObservableObject {
                     runtimeRoute: requestedRuntimeRoute(for: conversation)
                 )
             }
-        } catch {
-            if let inheritedRouteNotice {
-                messagesByConversation[conversation.id]?.removeAll {
-                    $0.id == inheritedRouteNotice.id
-                }
+            if let initialAgentSessionTitle {
+                _ = try? await api.updateSessionTitle(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    title: initialAgentSessionTitle,
+                    peerAccountId: conversation.peerAccountId,
+                    conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
+                    memberAccountIds: [conversation.peerAccountId]
+                )
             }
+            if isNewAgentSession {
+                // The route event may be the first row that materializes this
+                // stable session in reliable chat. Rebuild immediately so the
+                // current device and every other device use the same session
+                // identity and synchronized title instead of retaining a
+                // provisional template row until the next background refresh.
+                await rebuildConversationCatalog()
+            }
+        } catch {
             recordCloudConnectionFailure(error)
             if pendingAgentRequestIds[conversation.id, default: []].contains(localId) {
                 finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: localId, failed: true)
@@ -2451,7 +2430,7 @@ final class AppModel: ObservableObject {
             let ids = Set(remote.map(\.id))
             return remote + (messagesByConversation[conversation.id] ?? []).filter { !ids.contains($0.id) }
         }
-        var messages = CloudGroupAgentLifecycleProjector.withPendingRequests(messagesByConversation[conversation.id] ?? [], conversation: conversation)
+        var messages = messagesByConversation[conversation.id] ?? []
         for requestMessageId in pendingAgentRequestIds[conversation.id, default: []] {
             guard let startedAt = pendingAgentRequestStartedAt[requestMessageId],
                   !messages.contains(where: {
@@ -2465,7 +2444,8 @@ final class AppModel: ObservableObject {
                 createdAt: requestCreatedAt,
                 messages: messages,
                 kind: conversation.kind,
-                locallyQueued: pendingAgentQueuedRequestIds.contains(requestMessageId)
+                locallyQueued: pendingAgentQueuedRequestIds.contains(requestMessageId),
+                confirmedRunStatus: confirmedAgentRunStatuses[requestMessageId]
             ) else { continue }
             let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
             let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
@@ -2482,7 +2462,7 @@ final class AppModel: ObservableObject {
                 requestMessageId: requestMessageId,
                 agentExecution: AgentExecutionSnapshot(
                     phase: phase,
-                    summary: phase == .queued ? "Queued next" : "Preparing the response",
+                    summary: phase == .queued ? "Queued next" : "Waiting for agent response",
                     steps: [],
                     thinkingText: nil,
                     tools: nil,
@@ -4684,6 +4664,11 @@ final class AppModel: ObservableObject {
             synchronizedRouting,
             sessionId: conversation.sessionId
         )
+        // Resolving defaults or choosing a route before the first message is
+        // session setup, not a change to an existing conversation.
+        guard messagesByConversation[conversation.id]?.contains(where: { !$0.isSystemNotice }) == true else {
+            return nil
+        }
         let messageID = "\(ChatMessage.agentModelChangeMessageKind):\(conversation.id):\(revision)"
         guard messagesByConversation[conversation.id]?.contains(where: { $0.id == messageID }) != true else {
             return nil
@@ -4897,6 +4882,7 @@ final class AppModel: ObservableObject {
                 prompt: prompt,
                 runtimeRoute: runtimeRoute
             )
+                recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: requestMessageId)
                 agentExecutionLocation[conversation.id] = run.executionBackend == "desktop"
                     ? .mac(label: ownerAccountId == account.accountId ? "your Mac" : "the owner’s Mac")
                     : .cloud
@@ -5015,6 +5001,13 @@ final class AppModel: ObservableObject {
         pendingAgentContextByMessageId[messageId] = nil
     }
 
+    func recordConfirmedAgentRun(_ run: CloudAgentRun, conversationId: String, requestMessageId: String) {
+        guard pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId) else { return }
+        if confirmedAgentRunStatuses[requestMessageId] != run.status {
+            confirmedAgentRunStatuses[requestMessageId] = run.status
+        }
+    }
+
     private func pollForAgentReply(_ conversation: ConversationSummary, requestMessageId: String) async {
         guard !previewMode else { return }
         for _ in 0..<30 {
@@ -5026,6 +5019,7 @@ final class AppModel: ObservableObject {
             guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
             if let token,
                let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {
+                recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: requestMessageId)
                 if let backend = run.executionBackend {
                     agentExecutionLocation[conversation.id] = backend == "desktop" ? .mac(label: "the owner’s Mac") : .cloud
                 }
@@ -6322,7 +6316,7 @@ final class AppModel: ObservableObject {
     private func mergeMessages(_ messages: [CloudMessageDTO], for peer: String) {
         guard !peer.isEmpty, !messages.isEmpty else { return }
         let modelChangeSessionIDs = Set(messages.compactMap { message in
-            CloudMessageCodec.isAgentModelChange(message)
+            CloudMessageStateProjector.carriesAgentRuntimeRoute(message)
                 ? message.sessionId?.nonEmpty
                 : nil
         })
@@ -6377,7 +6371,7 @@ final class AppModel: ObservableObject {
     }
 
     private func applySyncedAgentModelChange(_ message: CloudMessageDTO) {
-        guard CloudMessageCodec.isAgentModelChange(message),
+        guard CloudMessageStateProjector.carriesAgentRuntimeRoute(message),
               let sessionId = message.sessionId?.nonEmpty else {
             return
         }
@@ -6774,6 +6768,7 @@ final class AppModel: ObservableObject {
             ?? localRequestMessageId
         agentRequestPresentationIds[serverRequestMessageId] = presentationId
         pendingAgentRequestIds[conversationId]?[index] = serverRequestMessageId
+        confirmedAgentRunStatuses[serverRequestMessageId] = confirmedAgentRunStatuses.removeValue(forKey: localRequestMessageId)
         pendingAgentRequestStartedAt[serverRequestMessageId] = pendingAgentRequestStartedAt.removeValue(forKey: localRequestMessageId)
         pendingAgentDisplayNames[serverRequestMessageId] = pendingAgentDisplayNames.removeValue(forKey: localRequestMessageId)
         pendingAgentOwnerNames[serverRequestMessageId] = pendingAgentOwnerNames.removeValue(forKey: localRequestMessageId)
@@ -6785,6 +6780,7 @@ final class AppModel: ObservableObject {
     private func clearPendingAgentRequest(conversationId: String) {
         for requestID in pendingAgentRequestIds[conversationId, default: []] {
             pendingAgentQueuedRequestIds.remove(requestID)
+            confirmedAgentRunStatuses[requestID] = nil
             pendingAgentRequestStartedAt[requestID] = nil
             pendingAgentDisplayNames[requestID] = nil
             pendingAgentOwnerNames[requestID] = nil
@@ -6804,6 +6800,7 @@ final class AppModel: ObservableObject {
     ) {
         pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
         pendingAgentQueuedRequestIds.remove(requestMessageId)
+        confirmedAgentRunStatuses[requestMessageId] = nil
         pendingAgentRequestStartedAt[requestMessageId] = nil
         pendingAgentDisplayNames[requestMessageId] = nil
         pendingAgentOwnerNames[requestMessageId] = nil

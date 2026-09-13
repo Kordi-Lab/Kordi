@@ -1,6 +1,5 @@
 import {requestThreadNavigation,useThreadNavigation} from '@/features/cloud/threadAttention';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-
 import { participantSpaceCreateKey } from '@/app/useKordiAppModelHelpers';
 import { hasCachedCloudSessionVisibility } from '@/features/cloud/cloudDiffSync';
 import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
@@ -92,7 +91,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       isDetailPanelCollapsed,
     },
     cloud: {
-      desktopCollaborationState,
+      desktopCollaborationState, directHistory,
       prepareCloudForwardAttachments, sendCloudCollaborationMessage, editCloudMessage, deleteCloudMessage,
       sendCloudGroupControl,
       setCloudMessageReaction,
@@ -115,7 +114,9 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       cloudReliableGroupSessionActivityAtMs,
     },
   } = foundation;
-
+  const transcriptHydration = useMemo(() => ({
+    ...canonicalStore.hydrationBySessionId, ...directHistory.hydrationBySessionId,
+  }), [canonicalStore.hydrationBySessionId, directHistory.hydrationBySessionId]);
   const combinedHiddenSessionIds = useMemo(() => new Set([
     ...locallyHiddenSessionIds,
     ...cloudHiddenSessionIds,
@@ -163,7 +164,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     localAgentDisplayName: foundation.profile.localAgentDisplayName,
     desktopCollaborationState,
     canonicalSessionState: cloudCanonicalReactionState ?? canonicalSessionState,
-    canonicalSessionSummaries: canonicalStore.catalog?.summaries,
+    canonicalSessionSummaries: canonicalStore.catalog?.summaries, transcriptHydration,
     hiddenSessionIds: combinedHiddenSessionIds,
     archivedSessionIds: cloudHiddenSessionIds,
     projectWorkspaces: projectsUi.projectWorkspaces,

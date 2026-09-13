@@ -131,14 +131,14 @@ export function buildFallbackShapeAgentDraft(input: {
     ? input.resources.map((resource) => `${resource.kind}: ${resource.value}`).join('; ')
     : 'No external resources were provided; the draft is based on the identity description.';
   const name = inferredName(identity);
-  const role = name.includes('Support') ? 'Technical support agent' : name.includes('Tutor') ? 'Tutor agent' : 'Private Cloud agent';
+  const role = name.includes('Support') ? 'Technical support agent' : name.includes('Tutor') ? 'Tutor agent' : 'Private agent';
   return {
     name,
     role,
     description: identity,
     sourceSummary: resourcesSummary,
     systemPrompt: [
-      `You are ${name}, a private Cloud agent available only to your creator.`,
+      `You are ${name}, a private agent available only to your creator.`,
       `Role: ${role}.`,
       `Use the available source context and this intent: ${identity}`,
       'Be concise, ask clarifying questions when needed, and clearly state when information is not available from the provided sources.',

@@ -146,6 +146,8 @@ test('cloudAgentDefinitionToAgent maps private cloud definition into Agent page 
   assert.equal(agent.id, 'cloud-agent:cloud_agent_abc');
   assert.equal(agent.name, 'Docs Helper');
   assert.equal(agent.status, 'Private');
+  assert.equal(agent.collaborationConfig, 'Agent');
+  assert.notEqual(agent.defaultProvider, 'Cloud');
   assert.equal(agent.messaging, 'Cloud synced');
   assert.equal(agent.systemPrompt, 'Use docs only.');
   assert.deepEqual(agent.loadedSkills, ['navigate-knowledge']);

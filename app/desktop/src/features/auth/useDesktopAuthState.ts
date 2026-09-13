@@ -32,6 +32,7 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
     useState<DesktopAuthSyncIntent | null>(null);
   const providerAuthSyncRevisionRef = useRef(0);
   const accountGenerationRef = useRef(0);
+  const [sessionRevision, setSessionRevision] = useState(0);
   const [authSyncGuard] = useState(createDesktopAuthSyncGuard);
 
   const recordProviderAuthSyncIntent = useCallback(async (
@@ -153,7 +154,7 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
     return () => {
       cancelled = true;
     };
-  }, [accountId, isNativeShell, loadDesktopAuthState]);
+  }, [accountId, isNativeShell, loadDesktopAuthState, sessionRevision]);
 
   useEffect(() => {
     if (!isNativeShell) return;
@@ -165,6 +166,8 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
       accountGenerationRef.current += 1;
       authSyncGuard.beginMutation();
       setDesktopAuthState(null);
+      setIsDesktopAuthLoading(true);
+      setSessionRevision(revision => revision + 1);
       setProviderAuthSyncIntent(null);
       setActiveLoginProviderId(null);
       authSyncGuard.finishMutation();

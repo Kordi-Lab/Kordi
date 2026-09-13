@@ -70,6 +70,7 @@ enum ConversationThreadLoadPolicy {
 }
 
 private struct ConversationScrollAnchorPolicy: ViewModifier {
+    var preservesTrajectoryPosition = false
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
@@ -77,7 +78,7 @@ private struct ConversationScrollAnchorPolicy: ViewModifier {
                 // estimated bottom anchor can leave newly hydrated history blank.
                 .defaultScrollAnchor(.top, for: .initialOffset)
                 // Preserve the visible bottom during keyboard and input-view resizing.
-                .defaultScrollAnchor(.bottom, for: .sizeChanges)
+                .defaultScrollAnchor(preservesTrajectoryPosition ? .top : .bottom, for: .sizeChanges)
                 .defaultScrollAnchor(.bottom, for: .alignment)
         } else {
             // Native scroll commands also position the initial viewport on iOS 17.
@@ -197,6 +198,7 @@ struct ConversationView: View {
     @State private var draft = ""
     @State private var isSending = false
     @State private var stagedMessageIDs: [String] = []
+    @State private var trajectoryViewport = ConversationTrajectoryViewport()
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
     @State private var lastTimelineSnapshot = ConversationTimelineWindow.Snapshot(count: 0, latestMessageID: nil)
     @State private var isLoadingEarlier = false
@@ -382,10 +384,10 @@ struct ConversationView: View {
             currentAccountID: model.account?.accountId ?? ""
         )
     }
-    // Nested task conversations can retain stale lazy height estimates even
-    // on iOS 27. Use measured row slots for these destinations as well.
+    // Agent replies can span a viewport and leave stale lazy height estimates
+    // during a follow-up send, including on iOS 27. Use measured row slots.
     private var usesExplicitTimelineLayout: Bool {
-        conversation.subsessionId != nil || ConversationTimelineVirtualization.usesCompatibilityLayout
+        conversation.kind == .agent || conversation.subsessionId != nil || ConversationTimelineVirtualization.usesCompatibilityLayout
     }
     private let bottomAnchorID = "conversation-bottom"
     private let timelineVerticalInset: CGFloat = 14
@@ -643,9 +645,10 @@ struct ConversationView: View {
                                         latestMessageID: timeline.last?.id,
                                         viewportFrame: viewport.frame(in: .global),
                                         isUserScrollEnabled: messageActionMessage == nil,
-                                        allowsContentFollowing: pendingMessageDeletion == nil && activeDeleteSnapshots.isEmpty,
+                                        allowsContentFollowing: pendingMessageDeletion == nil && activeDeleteSnapshots.isEmpty && !trajectoryViewport.isPinned,
                                         preservesReadingPosition: hasRevealedInitialViewport
                                             && isReadPresentationVisible
+                                            && !trajectoryViewport.isPinned
                                             && stagedMessageIDs.isEmpty
                                             && messageActionMessage == nil
                                             && threadReturnMessageID == nil
@@ -667,18 +670,20 @@ struct ConversationView: View {
                                         }
                                     )
                                 )
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.top, trajectoryViewport.leadingSpace ?? 0)
                                 .frame(
                                     minHeight: max(
                                         0,
                                         viewport.size.height - timelineVerticalInset
                                     ),
-                                    alignment: timeline.isEmpty ? .top : .bottom
+                                    alignment: timeline.isEmpty || trajectoryViewport.isPinned ? .top : .bottom
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
-                            .modifier(ConversationScrollAnchorPolicy())
+                            .modifier(ConversationScrollAnchorPolicy(preservesTrajectoryPosition: trajectoryViewport.isPinned))
                             // A pushed destination can lay out before onAppear
                             // prepares its history. Geometry readiness must not
                             // depend on the state captured by that first layout.
@@ -688,12 +693,13 @@ struct ConversationView: View {
                                 if ready { hasLaidOutInitialTimeline = true }
                             }
                             .scrollDismissesKeyboard(.interactively)
-                            .simultaneousGesture(
-                                TapGesture().onEnded {
-                                    dismissKeyboard()
-                                    dismissComposerPickers()
-                                }
-                            )
+                            // Interactive children own their taps. Treating a
+                            // trajectory toggle as a simultaneous background tap
+                            // dismisses the keyboard and moves the entire chat.
+                            .onTapGesture {
+                                dismissKeyboard()
+                                dismissComposerPickers()
+                            }
 
                             VStack(spacing: 8) {
                                 if pendingMentionCount > 0 {
@@ -947,6 +953,7 @@ struct ConversationView: View {
                 handleTimelineCountChange(oldCount: previous.count, newCount: current.count,
                     previousLatestMessageID: previous.latestMessageID, proxy: proxy)
                 lastTimelineSnapshot = current
+                trajectoryViewport.retainMessageIDs(Set(timeline.map(model.timelineIdentity(for:))))
             }
             .onChange(of: pendingMentionCount) {
                 synchronizeReadPresentation()
@@ -959,7 +966,7 @@ struct ConversationView: View {
                     trackedMessageID: trackedMessageID,
                     bottomAnchorID: bottomAnchorID
                 ) || scrollPosition.isMessageBottomVisible(previousLatestMessage?.id)
-                if !scrollPosition.isUserScrolling,
+                if !scrollPosition.isUserScrolling, !trajectoryViewport.isPinned,
                    previousLatestMessageID != currentLatestMessageID
                     || ConversationTimelineScrollBehavior.hasContentChange(previousLatestMessage, currentLatestMessage),
                    ConversationTimelineScrollBehavior.shouldFollowLatest(
@@ -1533,8 +1540,7 @@ struct ConversationView: View {
                         selectedBackgroundSession = session
                     },
                     onAgentExecutionExpansionChange: { expanded in
-                        guard expanded else { return }
-                        revealExpandedAgentExecution(row.id, using: proxy)
+                        updateTrajectoryExpansion(row.id, expanded: expanded, viewportHeight: viewportFrame.height)
                     },
                     usesOverlayPhotoPreview: messageActionMessage?.id == message.id && messageActionImage != nil,
                     presentedActionAttachmentID: messageActionMessage?.id == message.id ? messageActionAttachment?.id : nil,
@@ -1911,20 +1917,13 @@ struct ConversationView: View {
         }
     }
 
-    private func revealExpandedAgentExecution(
-        _ messageID: String,
-        using proxy: ScrollViewProxy
-    ) {
-        Task { @MainActor in
-            await Task.yield()
-            await Task.yield()
-            if reduceMotion {
-                proxy.scrollTo(messageID, anchor: .bottom)
-            } else {
-                withAnimation(.easeInOut(duration: 0.24)) {
-                    proxy.scrollTo(messageID, anchor: .bottom)
-                }
-            }
+    private func updateTrajectoryExpansion(_ messageID: String, expanded: Bool, viewportHeight: CGFloat) {
+        scrollPosition.cancelScrolling()
+        let height = max(0, viewportHeight - timelineVerticalInset)
+        let leadingSpace = scrollPosition.expansionLeadingSpace(topPadding: timelineVerticalInset)
+            ?? max(0, height - (scrollPosition.contentHeight ?? height))
+        withTransaction(Transaction(animation: nil)) {
+            trajectoryViewport.update(messageID: messageID, expanded: expanded, leadingSpace: leadingSpace)
         }
     }
 
@@ -2116,6 +2115,7 @@ struct ConversationView: View {
     }
 
     private func scrollToBottom(animated: Bool = false) {
+        trajectoryViewport.reset()
         animateBottomScroll = animated && !reduceMotion
         immediateBottomRequest &+= 1
         initialViewport = .latest
@@ -2139,7 +2139,8 @@ struct ConversationView: View {
         withTransaction(transaction) {
             // A reference into a short transcript must not create empty space
             // below the conversation just to center the referenced bubble.
-            if case .resumed = initialViewport, scrollPosition.contentFitsViewport {
+            if initialViewport != .latest, scrollPosition.contentFitsViewport,
+               scrollPosition.hasMountedMessages(messages.map(\.id)) {
                 initialViewport = .latest
                 trackedMessageID = bottomAnchorID
                 isAtBottom = true
@@ -2171,7 +2172,7 @@ struct ConversationView: View {
         guard !Task.isCancelled else { return }
         if initialViewport == .latest {
             withTransaction(transaction) {
-                proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
             }
             // A proxy request can arrive before a lazy stack commits its final
             // offset. Verify native layout on display frames before first paint.
@@ -3647,7 +3648,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
 
         view.onResolveScrollView = { [weak view] scrollView in
             guard let view else { return }
-            scrollPosition.attach(to: scrollView)
+            scrollPosition.attach(to: scrollView, contentView: view)
             onScrollAttached()
             coordinator.updateUserScrolling(in: scrollView)
             coordinator.observeViewport(of: scrollView)

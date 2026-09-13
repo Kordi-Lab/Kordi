@@ -8,6 +8,7 @@ final class ConversationRowContentState {
     var photosExpanded = ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
     var selectedPhotoID: String?
     var showsFullOversizedText = false
+    var trajectoryExpansion = AgentExecutionTimelineExpansion()
 }
 
 private struct ConversationRowContentStateKey: EnvironmentKey {

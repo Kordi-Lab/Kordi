@@ -204,7 +204,7 @@ test('canonical read model renders cloud group cancellations as one request-canc
   const cancelledTurn = conversation?.messages.find((message) => message.turn?.status === 'cancelled')?.turn;
 
   assert.equal(cancelledTurn?.message, 'Request canceled by sender.');
-  assert.equal(cancelledTurn?.assistantText, 'Request canceled by sender.');
+  assert.equal(cancelledTurn?.assistantText, '');
   assert.equal(cancelledTurn?.error, null);
 });
 

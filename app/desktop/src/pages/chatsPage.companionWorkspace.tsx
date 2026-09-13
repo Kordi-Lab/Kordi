@@ -16,7 +16,7 @@ import type {
   SaveDesktopAttachmentOptions,
 } from '@/features/chat/composerController.types';
 import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
-import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
+import { hasKnownTranscriptContent, transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
 import type {
   DesktopChatTurnSnapshot,
@@ -205,7 +205,7 @@ export function ChatCompanionWorkspace({
 
   const canonicalHistorySessionId =
     canonicalHistorySessionIdForConversation(conversation);
-  const transcriptMessages = session.transcript.isLoading
+  const transcriptMessages = session.transcript.isLoading && !hasKnownTranscriptContent(presentation.messages)
     ? [transcriptLoadingNotice()]
     : session.transcript.loadError
       ? []
