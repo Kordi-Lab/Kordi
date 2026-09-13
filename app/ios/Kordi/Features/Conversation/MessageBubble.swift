@@ -572,6 +572,7 @@ struct MessageBubble: View, Equatable {
 
             if let execution = Self.agentExecutionForDisplay(message) {
                 AgentExecutionTimeline(
+                    messageID: message.id,
                     execution: execution,
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(
                         execution: execution,
@@ -1315,28 +1316,40 @@ struct BackgroundAgentSessionRow: View {
     }
 }
 
-struct AgentExecutionTimelineExpansion {
+struct AgentExecutionTimelineExpansion: Equatable {
     var isExpanded = false
+    var observedCompletion: Bool?
 
     mutating func updateCompletion(from wasCompleted: Bool, to isCompleted: Bool) {
+        defer { observedCompletion = isCompleted }
         guard !wasCompleted, isCompleted else { return }
         isExpanded = false
     }
 }
 
-private struct AgentExecutionTimeline: View {
+struct AgentExecutionTimeline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.conversationRowContentState) private var rowContentState
+    let messageID: String
     let execution: AgentExecutionSnapshot
     let showsWaitingIndicator: Bool
     let onExpansionChange: (Bool) -> Void
-    @State private var expansion = AgentExecutionTimelineExpansion()
+    @State private var localExpansion = AgentExecutionTimelineExpansion()
+
+    private var expansion: AgentExecutionTimelineExpansion {
+        get { rowContentState?.trajectoryExpansion ?? localExpansion }
+        nonmutating set {
+            if let rowContentState { rowContentState.trajectoryExpansion = newValue }
+            else { localExpansion = newValue }
+        }
+    }
 
     private var presentation: AgentExecutionTimelinePresentation {
         AgentExecutionTimelinePresentation(execution: execution)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             if showsWaitingIndicator {
                 AgentExecutionActivityIndicator(
                     accessibilityStatus: presentation.headline
@@ -1374,37 +1387,56 @@ private struct AgentExecutionTimeline: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(presentation.completionLabel ?? activeOutputStatus)
                 .accessibilityValue(expansion.isExpanded ? "Expanded" : "Collapsed")
-            }
-
-            if expansion.isExpanded && presentation.hasExpandableContent {
-                VStack(alignment: .leading, spacing: 5) {
-                    if let thinkingText = presentation.thinkingText {
-                        reasoningSection(thinkingText)
-                    } else if let planningStep = presentation.planningStep {
-                        planningSection(planningStep)
+                #if DEBUG
+                .background {
+                    if ConversationMotionProbeRegistry.enabled {
+                        ConversationMotionProbe(id: "trajectory-header:\(messageID)", trajectoryToggle: toggleExpansion)
                     }
-
-                    if !presentation.tools.isEmpty || !presentation.toolSteps.isEmpty {
-                        executionSection
-                    }
-
-                    if let responseStep = presentation.responseStep {
-                        timelineRow(
-                            title: "Response",
-                            detail: responseStep.label,
-                            state: responseStep.state
-                        )
-                    }
-
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                #endif
             }
+
+            VStack(alignment: .leading, spacing: 0) {
+                if expansion.isExpanded && presentation.hasExpandableContent {
+                    VStack(alignment: .leading, spacing: 5) {
+                        if let thinkingText = presentation.thinkingText {
+                            reasoningSection(thinkingText)
+                        } else if let planningStep = presentation.planningStep {
+                            planningSection(planningStep)
+                        }
+
+                        if !presentation.tools.isEmpty || !presentation.toolSteps.isEmpty {
+                            executionSection
+                        }
+
+                        if let responseStep = presentation.responseStep {
+                            timelineRow(
+                                title: "Response",
+                                detail: responseStep.label,
+                                state: responseStep.state
+                            )
+                        }
+
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    #if DEBUG
+                    .background {
+                        if ConversationMotionProbeRegistry.enabled {
+                            ConversationMotionProbe(id: "trajectory-details:\(messageID)")
+                        }
+                    }
+                    #endif
+                    .transition(.opacity)
+                }
+            }
+            .padding(.top, expansion.isExpanded && presentation.hasExpandableContent ? 4 : 0)
+            .clipped()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
         .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: expansion.isExpanded)
-        .onChange(of: execution.completed) { wasCompleted, isCompleted in
-            expansion.updateCompletion(from: wasCompleted, to: isCompleted)
-        }
+        .onAppear(perform: synchronizeCompletion)
+        .onChange(of: execution.completed) { _, _ in synchronizeCompletion() }
     }
 
     private func planningSection(_ step: AgentExecutionStep) -> some View {
@@ -1543,14 +1575,29 @@ private struct AgentExecutionTimeline: View {
     }
 
     private func toggleExpansion() {
-        if reduceMotion {
-            expansion.isExpanded.toggle()
-        } else {
-            withAnimation(.snappy(duration: 0.24)) {
-                expansion.isExpanded.toggle()
-            }
+        var next = expansion
+        next.isExpanded.toggle()
+        next.observedCompletion = execution.completed
+        applyExpansion(next)
+    }
+
+    private func synchronizeCompletion() {
+        var next = expansion
+        next.updateCompletion(from: next.observedCompletion ?? execution.completed, to: execution.completed)
+        applyExpansion(next)
+    }
+
+    private func applyExpansion(_ next: AgentExecutionTimelineExpansion) {
+        guard expansion != next else { return }
+        guard next.isExpanded != expansion.isExpanded else { expansion = next; return }
+        if next.isExpanded { onExpansionChange(true) }
+        // Pin the surrounding timeline without animating its placement. The
+        // disclosure's value-scoped animation owns the changing content height.
+        withAnimation(nil, completionCriteria: .logicallyComplete) {
+            expansion = next
+        } completion: {
+            if !next.isExpanded && !expansion.isExpanded { onExpansionChange(false) }
         }
-        onExpansionChange(expansion.isExpanded)
     }
 }
 
@@ -1789,10 +1836,12 @@ private struct AdaptiveBubbleLayout: Layout {
         subviews: Subviews,
         cache: inout ()
     ) {
+        // Match measurement while the enclosing bubble animates its height.
+        // A temporary shorter proposal would squeeze and reposition its text.
         subviews.first?.place(
             at: bounds.origin,
             anchor: .topLeading,
-            proposal: ProposedViewSize(width: bounds.width, height: bounds.height)
+            proposal: ProposedViewSize(width: bounds.width, height: nil)
         )
     }
 }
