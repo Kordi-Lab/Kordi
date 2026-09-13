@@ -1,8 +1,47 @@
 # Changelog
 
-This file records notable user-facing changes to Kordi Desktop.
+This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
+
+## [0.0.2-beta.2] - 2026-09-13
+
+### Added
+
+- Added independent reactions and deletion for individual photos in iPhone
+  messages. ([#1507])
+- Added owner-only macOS application automation for local agents. ([#1500])
+
+### Changed
+
+- Reduced retained desktop chat and media state, reused loaded previews, and
+  kept reading position steadier while loading older messages. ([#1496])
+- Refined iPhone message menus to preserve Markdown, emoji, expanded text, and
+  individual photo targets, with smoother dismissal and reaction feedback.
+  ([#1507])
+
+### Fixed
+
+- Prevented repeated uploads of existing conversation history and preserved
+  original message dates on iPhone. ([#1497])
+- Kept local agents in the selected workspace across follow-ups and resumed
+  sessions, enabled tools by default for local model providers, and dismissed
+  reference suggestions after a separating space. ([#1500])
+- Kept pending desktop thread replies in order and visible when their original
+  message is outside the loaded history; separated navigation buttons and
+  cleared New replies after confirmed reads. ([#1502])
+- Prevented stale desktop history from appearing after switching chats and
+  reduced flicker when first opening media previews. ([#1496])
+- Restored iPhone chat position on re-entry, prevented backward jumps during
+  scrolling and keyboard changes, and kept long messages below the header.
+  ([#1503])
+- Removed stale cached photos and recovered eligible own-message deletions
+  after message identity reconciliation on iPhone. ([#1503])
+- Fixed blank Agent subsessions after navigation or a cold launch and kept
+  incoming replies aligned above the iPhone composer. ([#1507])
+- Cleared delivered iPhone notifications for read messages while preserving
+  unread messages and threads, and improved positioning when opening a
+  notification or message reference. ([#1509])
 
 ## [0.0.2-beta.1] - 2026-09-10
 
@@ -470,7 +509,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta2...HEAD
+[0.0.2-beta.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...V0.0.2.beta2
 [0.0.2-beta.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...V0.0.2.beta1
 [0.0.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta19.3...V0.0.1
 [0.0.1-beta.19.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta18...V0.0.1.beta19.3
@@ -710,3 +750,10 @@ This release is the comparison baseline for beta.8. See the
 [#1486]: https://github.com/Kordi-Lab/Kordi/pull/1486
 [#1488]: https://github.com/Kordi-Lab/Kordi/pull/1488
 [#1490]: https://github.com/Kordi-Lab/Kordi/pull/1490
+[#1496]: https://github.com/Kordi-Lab/Kordi/pull/1496
+[#1497]: https://github.com/Kordi-Lab/Kordi/pull/1497
+[#1500]: https://github.com/Kordi-Lab/Kordi/pull/1500
+[#1502]: https://github.com/Kordi-Lab/Kordi/pull/1502
+[#1503]: https://github.com/Kordi-Lab/Kordi/pull/1503
+[#1507]: https://github.com/Kordi-Lab/Kordi/pull/1507
+[#1509]: https://github.com/Kordi-Lab/Kordi/pull/1509
