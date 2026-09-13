@@ -72,6 +72,7 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
                 model.upsertPreviewMessage(remote)
             }
             let active = try XCTUnwrap(model.messages(for: conversation).first { $0.agentExecution?.completed == false })
+            XCTAssertEqual(MessageBubble.showsAgentWaitingIndicator(execution: try XCTUnwrap(active.agentExecution), responseText: active.text), phase != .analyzing, "Thinking output replaces the waiting animation while the row stays visible")
             XCTAssertEqual(model.timelineIdentity(for: active), stableRowID)
             XCTAssertEqual(model.messages(for: conversation).filter { $0.author == .agent }.count, 1)
             var visibleFrames = 0
