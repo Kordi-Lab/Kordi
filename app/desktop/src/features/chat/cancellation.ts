@@ -5,13 +5,10 @@ export function isCancellationNotice(text: string) {
 }
 
 export function cancelledTurnContent(assistantText: string, message: string, error?: string | null) {
-  const notice = isCancellationNotice(assistantText)
-    ? assistantText.trim()
-    : isCancellationNotice(error ?? '')
-      ? error!.trim()
-      : isCancellationNotice(message)
-        ? message.trim()
-        : 'Response stopped';
+  const notices = [assistantText, error ?? '', message]
+    .map((value) => value.trim())
+    .filter(isCancellationNotice);
+  const notice = notices.find((value) => / by /i.test(value)) ?? notices[0] ?? 'Response stopped';
   return {
     assistantText: isCancellationNotice(assistantText) ? '' : assistantText,
     notice,

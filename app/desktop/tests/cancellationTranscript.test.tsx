@@ -126,3 +126,13 @@ test('a real error accompanying cancellation remains visible', () => {
   assert.match(html, /Could not save the partial result/);
   assert.match(html, /app-live-turn-error-text/);
 });
+
+for (const role of ['sender', 'agent owner', 'participant']) {
+  test(`an attributed cancellation status survives a generic legacy answer for ${role}`, () => {
+    const turn = { ...mapCanonicalMessage(row(), identityById, 'human:test')!.turn!,
+      message: `Request canceled by ${role}.`, assistantText: 'Request canceled.' };
+    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+    assert.equal(html.split(`Request canceled by ${role}.`).length - 1, 1);
+    assert.ok(!html.includes('app-live-assistant-answer-cancelled'));
+  });
+}
