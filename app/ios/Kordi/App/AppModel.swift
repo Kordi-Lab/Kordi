@@ -1286,6 +1286,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func isMessageNotificationRead(_ payload: KordiMessageNotificationPayload) -> Bool {
+        guard payload.accountID == account?.accountId,
+              let conversation = (conversations + archivedConversations).first(where: {
+                  $0.id == payload.sessionID || $0.sessionId == payload.sessionID
+                      || canonicalConversationIDBySessionID[$0.id] == payload.sessionID
+                      || canonicalConversationIDBySessionID[$0.sessionId] == payload.sessionID
+              }) else { return false }
+        return KordiMessageNotificationReadState(
+            lastReadSequence: conversation.lastReadSequence,
+            threadReadCursors: threadReadCursors[conversation.sessionId] ?? [:],
+            messages: messagesByConversation[conversation.id] ?? []
+        ).contains(payload)
+    }
+
     func canRevealConversationImmediately(_ conversation: ConversationSummary) -> Bool {
         messagesByConversation[conversation.id]?.isEmpty == false
     }
@@ -1411,6 +1425,12 @@ final class AppModel: ObservableObject {
     }
 
     func loadThread(in conversation: ConversationSummary, messageId: String, after: Int64? = nil) async throws -> (root: String, first: String?, isThread: Bool, target: String) {
+        #if DEBUG
+        if previewMode, messageId.hasPrefix("notification-preview-"),
+           let message = messagesByConversation[conversation.id]?.first(where: { $0.id == messageId }) {
+            return (message.id, nil, false, message.id)
+        }
+        #endif
         guard let token, let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
         let page = try await api.threadPage(token: token, sessionId: conversation.sessionId, messageId: messageId, after: after)
         try Task.checkCancellation()
@@ -6972,6 +6992,28 @@ final class AppModel: ObservableObject {
     }
 
     #if DEBUG
+    func installNotificationCleanupPreviewMessages() {
+        guard previewMode else { return }
+        for (conversationID, count) in [("person:acct_maya", 3), ("person:acct_ethan", 1)] {
+            guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else { continue }
+            let conversation = conversations[index]
+            let messages = (1...count).map { number in
+                ChatMessage(
+                    id: "notification-preview-\(conversation.peerAccountId)-\(number)",
+                    conversationId: conversation.id, conversationSequence: Int64(number),
+                    author: .person, authorName: conversation.displayName,
+                    text: "Notification test \(number) of \(count)", createdAt: Date().addingTimeInterval(Double(number)),
+                    deliveryState: .delivered, errorMessage: nil, requestMessageId: nil
+                )
+            }
+            messagesByConversation[conversation.id] = messages
+            conversations[index].lastReadSequence = 0
+            conversations[index].unreadCount = count
+            conversations[index].lastMessage = messages.last?.text ?? ""
+            conversations[index].lastActivityAt = messages.last?.createdAt ?? Date()
+        }
+    }
+
     /// Synthetic transport updates for hosted viewport regression tests.
     func upsertPreviewMessage(_ message: ChatMessage) {
         guard previewMode else { return }

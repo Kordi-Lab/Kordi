@@ -1851,8 +1851,19 @@ struct ConversationView: View {
         Task { @MainActor in
             await Task.yield()
             await Task.yield()
-            withAnimation(.easeInOut(duration: 0.24)) {
-                proxy.scrollTo(targetIdentity, anchor: .center)
+            if messageID == timeline.last?.id || scrollPosition.contentFitsViewport {
+                if hasRevealedInitialViewport {
+                    scrollToBottom()
+                } else {
+                    initialViewport = .latest
+                    trackedMessageID = bottomAnchorID
+                    isAtBottom = true
+                    await positionAndRevealInitialViewport(using: proxy)
+                }
+            } else {
+                withAnimation(.easeInOut(duration: 0.24)) {
+                    proxy.scrollTo(targetIdentity, anchor: .center)
+                }
             }
             withAnimation(.snappy(duration: 0.2)) {
                 highlightedMessageID = messageID
@@ -2126,6 +2137,13 @@ struct ConversationView: View {
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
+            // A reference into a short transcript must not create empty space
+            // below the conversation just to center the referenced bubble.
+            if case .resumed = initialViewport, scrollPosition.contentFitsViewport {
+                initialViewport = .latest
+                trackedMessageID = bottomAnchorID
+                isAtBottom = true
+            }
             switch initialViewport {
             case .latest:
                 proxy.scrollTo(messages.last.map(model.timelineIdentity(for:)) ?? bottomAnchorID, anchor: .bottom)
@@ -2168,8 +2186,7 @@ struct ConversationView: View {
             hasPositionedInitialTimeline = true
             hasRevealedInitialViewport = true
         }
-        if case let .resumed(messageID) = initialViewport,
-           messageID == initialMessageID {
+        if let messageID = initialMessageID, messages.contains(where: { $0.id == messageID }) {
             highlightReferencedMessage(messageID)
         }
     }
@@ -2275,6 +2292,7 @@ struct ConversationView: View {
                 hasPositionedInitialTimeline = false
                 initialViewport = .anchored(anchor)
             } else if let resumedMessageID,
+               resumedMessageID != latestMessageID,
                let resumeIndex = timeline.firstIndex(where: { $0.id == resumedMessageID }) {
                 let contextStartIndex = max(timeline.startIndex, resumeIndex - 12)
                 visibleMessageLimit = max(

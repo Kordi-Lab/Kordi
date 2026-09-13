@@ -87,6 +87,7 @@ struct MessagePushPayload<'a> {
     account_id: &'a str,
     session_id: &'a str,
     message_id: &'a str,
+    message_sequence: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     thread_root_id: Option<String>,
     #[serde(skip_serializing)]
@@ -407,6 +408,7 @@ impl PushNotificationService {
             account_id: &event.account_id,
             session_id: &session_id,
             message_id: &message_id,
+            message_sequence: event.message_sequence,
             thread_root_id: event.thread_root_id.map(|id| id.to_string()),
             options: NotificationOptions {
                 apns_id: Some(&event_id),

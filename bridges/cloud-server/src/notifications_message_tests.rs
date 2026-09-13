@@ -248,6 +248,7 @@ fn message_payload_uses_absolute_badge_thread_and_opaque_routing_fields() {
         account_id: "recipient",
         session_id: &session_id,
         message_id: &message_id,
+        message_sequence: event.message_sequence,
         thread_root_id: event.thread_root_id.map(|id| id.to_string()),
         options: NotificationOptions {
             apns_id: Some(&event_id),
@@ -265,4 +266,5 @@ fn message_payload_uses_absolute_badge_thread_and_opaque_routing_fields() {
     );
     assert_eq!(value["notification_type"], "message");
     assert_eq!(value["message_id"], message_id);
+    assert_eq!(value["message_sequence"], 8);
 }
