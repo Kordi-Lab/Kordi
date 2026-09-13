@@ -2,6 +2,25 @@ import XCTest
 
 @MainActor
 final class TrajectoryExpansionUITests: XCTestCase {
+    func testBriefConversationExpansionRecording() {
+        let app = XCUIApplication(bundleIdentifier: "ai.kordi.ios.beta")
+        app.launchArguments = ["--preview-data", "--preview-short-trajectory", "--preview-brief-trajectory"]
+        app.launch()
+        defer { app.terminate() }
+        let header = app.buttons["Worked for 3s"].firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 15))
+        let earlier = app.staticTexts["One"].firstMatch
+        let initialY = earlier.frame.minY
+        for _ in 0..<3 {
+            header.tap()
+            XCTAssertEqual(header.value as? String, "Expanded")
+            XCTAssertEqual(earlier.frame.minY, initialY, accuracy: 2)
+            header.tap()
+            XCTAssertEqual(header.value as? String, "Collapsed")
+            XCTAssertEqual(earlier.frame.minY, initialY, accuracy: 2)
+        }
+    }
+
     func testRealTrajectoryTapsKeepEarlierMessagesInPlace() throws {
         try checkTaps(keyboardInitiallyOpen: false)
     }

@@ -3,6 +3,25 @@ import Foundation
 extension PreviewData {
     static func shortTrajectoryConversation(now: Date) -> [ChatMessage] {
         let conversationID = "agent:my-kordi"
+        if ProcessInfo.processInfo.arguments.contains("--preview-brief-trajectory") {
+            return [
+                ChatMessage(id: "trajectory-first-request", conversationId: conversationID, author: .me,
+                    authorName: "You", text: "One", createdAt: now.addingTimeInterval(-544),
+                    deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+                ChatMessage(id: "trajectory-first-response", conversationId: conversationID, author: .agent,
+                    authorName: "Fixture Agent", text: "Ready for the next sample.", createdAt: now.addingTimeInterval(-540),
+                    deliveryState: .delivered, errorMessage: nil, requestMessageId: "trajectory-first-request"),
+                ChatMessage(id: "trajectory-request", conversationId: conversationID, author: .me,
+                    authorName: "You", text: "Two", createdAt: now.addingTimeInterval(-4),
+                    deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+                ChatMessage(id: "trajectory-response", conversationId: conversationID, author: .agent,
+                    authorName: "Fixture Agent", text: "The next sample is ready. 👋😊", createdAt: now,
+                    deliveryState: .delivered, errorMessage: nil, requestMessageId: "trajectory-request",
+                    agentExecution: AgentExecutionSnapshot(phase: .complete, summary: "Finished",
+                        steps: [AgentExecutionStep(id: "response", label: "Preparing the sample response", state: .complete)],
+                        startedAtMs: 1_000, updatedAtMs: 4_000, completed: true))
+            ]
+        }
         return [
             ChatMessage(id: "trajectory-model", conversationId: conversationID, author: .agent,
                 authorName: "Fixture Agent", text: ChatMessage.runtimeRouteChangeNotice(model: "sample/model", thinking: "medium"),

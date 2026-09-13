@@ -1434,6 +1434,7 @@ struct AgentExecutionTimeline: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: expansion.isExpanded)
         .onAppear(perform: synchronizeCompletion)
         .onChange(of: execution.completed) { _, _ in synchronizeCompletion() }
     }
@@ -1590,7 +1591,9 @@ struct AgentExecutionTimeline: View {
         guard expansion != next else { return }
         guard next.isExpanded != expansion.isExpanded else { expansion = next; return }
         if next.isExpanded { onExpansionChange(true) }
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.24), completionCriteria: .logicallyComplete) {
+        // Pin the surrounding timeline without animating its placement. The
+        // disclosure's value-scoped animation owns the changing content height.
+        withAnimation(nil, completionCriteria: .logicallyComplete) {
             expansion = next
         } completion: {
             if !next.isExpanded && !expansion.isExpanded { onExpansionChange(false) }

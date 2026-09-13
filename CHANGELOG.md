@@ -22,8 +22,9 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
-- Kept iPhone agent trajectories anchored while expanding, prevented details
-  from overlapping their header, and stabilized short chats above the composer.
+- Kept iPhone agent trajectories anchored throughout expansion, including short
+  conversations, prevented details from overlapping their header, and stabilized
+  short chats above the composer.
   Trajectory controls also preserve the keyboard instead of dismissing it and
   moving the conversation. ([#1528])
 - Kept pending iPhone messages after confirmed history during rapid sends and
