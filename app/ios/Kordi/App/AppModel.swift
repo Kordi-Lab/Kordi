@@ -2493,9 +2493,9 @@ final class AppModel: ObservableObject {
             )
             messages.append(placeholder)
         }
-        return AgentSessionQueuePresentation.apply(to: applyingPendingAttachmentReactions(to: messages).sorted {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
-        }, kind: conversation.kind)
+        return AgentSessionQueuePresentation.apply(
+            to: ConversationMessageOrdering.displayMessages(applyingPendingAttachmentReactions(to: messages)),
+            kind: conversation.kind)
     }
 
     func pendingMentionMessages(for conversation: ConversationSummary) -> [ChatMessage] {
