@@ -57,7 +57,7 @@ export function useCloudMessageSync({
   coordinator,
   cancelledRef,
   stores,
-  setUnreadReadiness,
+  setUnreadReadiness, desktopExecutionEnabled = false,
   refreshCloudAgents, onMessagesDeleted, onCanonicalMessagesPruned,
 }: UseCloudMessageSyncInput): CloudMessageSyncController {
   const [executionContextKey, setExecutionContextKey] = useState<string | null>(null);
@@ -487,7 +487,7 @@ export function useCloudMessageSync({
   const setRealtimeConnected = useCloudRepairPolling(
     account?.accountId,
     contactsSettled && Boolean(cloudUnreadContextKey),
-    syncCloudCollaborationDiff,
+    syncCloudCollaborationDiff, desktopExecutionEnabled,
   );
   return {
     executionMessagesReady: Boolean(account && contactsSettled && executionContextKey === currentExecutionContextKey),

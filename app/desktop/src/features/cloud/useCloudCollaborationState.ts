@@ -343,7 +343,7 @@ export function useCloudCollaborationState({
     bootstrapPeerIds,
     bootstrapPeerKey,
     unreadContextKey: cloudUnreadContextKey,
-    initialContactsSettled,
+    initialContactsSettled, desktopExecutionEnabled: defaultCloudAgentRuntimeReady,
     initialMessagesSettled,
     reportAvailabilityWarning:
       reportCloudAgentAvailabilityWarning,

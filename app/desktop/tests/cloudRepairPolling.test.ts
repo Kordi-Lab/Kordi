@@ -65,3 +65,35 @@ test('slow repair requests cannot overlap', async () => {
   await polling.poll(false, async () => { calls += 1; });
   assert.equal(calls, 2);
 });
+
+
+test('ready desktops recover silent realtime delivery inside the admission window even when hidden', async () => {
+  for (const hidden of [false, true]) {
+    for (const connected of [false, true]) {
+      let now = 0;
+      const polling = createCloudRepairPolling(() => now);
+      polling.setRealtimeConnected(connected);
+      const observedAt: number[] = [];
+      for (now = 1_000; now <= 10_000; now += 1_000) {
+        await polling.poll(hidden, async () => { observedAt.push(now); }, true);
+      }
+      assert.deepEqual(observedAt, [2_000, 4_000, 6_000, 8_000, 10_000]);
+    }
+  }
+});
+
+test('disabling desktop execution restores background repair cadence', async () => {
+  let now = 0;
+  const polling = createCloudRepairPolling(() => now);
+  polling.setRealtimeConnected(true);
+  let calls = 0;
+  const sync = async () => { calls += 1; };
+  now = 2_000;
+  await polling.poll(true, sync, true);
+  now = 4_000;
+  await polling.poll(true, sync, false);
+  assert.equal(calls, 1);
+  now = 62_000;
+  await polling.poll(true, sync, false);
+  assert.equal(calls, 2);
+});

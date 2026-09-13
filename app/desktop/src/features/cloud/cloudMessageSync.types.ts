@@ -43,6 +43,7 @@ export type CloudMessageSyncStores = {
 };
 
 export type UseCloudMessageSyncInput = {
+  desktopExecutionEnabled?: boolean;
   account: CloudAccount | null;
   bootstrapPeerIds: string[];
   bootstrapPeerKey: string;
