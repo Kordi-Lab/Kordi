@@ -5,6 +5,103 @@ import XCTest
 
 @MainActor
 final class ConversationScrollNavigationTests: XCTestCase {
+    func testLatestNotificationInShortChatOpensAboveComposer() async throws {
+        try await checkNotificationOpening(extraMessages: 0, distanceFromLatest: 0)
+    }
+
+    func testEarlierNotificationInShortChatKeepsTranscriptAtBottom() async throws {
+        try await checkNotificationOpening(extraMessages: 0, distanceFromLatest: 2)
+    }
+
+    func testLatestNotificationInLongChatOpensAtLatest() async throws {
+        try await checkNotificationOpening(extraMessages: 40, distanceFromLatest: 0)
+    }
+
+    func testOlderNotificationInLongChatStillCentersItsMessage() async throws {
+        try await checkNotificationOpening(extraMessages: 40, distanceFromLatest: 20)
+    }
+
+    private func checkNotificationOpening(extraMessages: Int, distanceFromLatest: Int) async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let model = AppModel(cache: try LocalMessageStore(inMemory: true),
+            wireCache: CloudWireCache(directory: directory), previewMode: true)
+        model.installNotificationCleanupPreviewMessages()
+        let conversation = try XCTUnwrap(model.conversations.first { $0.id == "person:acct_maya" })
+        for index in 0..<extraMessages {
+            model.upsertPreviewMessage(ChatMessage(
+                id: "notification-preview-history-\(index)", conversationId: conversation.id,
+                conversationSequence: Int64(index + 4), author: .person, authorName: "Sender",
+                text: "Earlier conversation message \(index).", createdAt: Date().addingTimeInterval(Double(index + 10)),
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: nil
+            ))
+        }
+        let messages = model.messages(for: conversation)
+        let target = messages[messages.count - 1 - distanceFromLatest]
+        let targetID = model.timelineIdentity(for: target)
+        let latestID = model.timelineIdentity(for: try XCTUnwrap(messages.last))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            previous?.makeKeyAndVisible()
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(
+            navigation: navigation, model: model, calls: KordiCallCoordinator(),
+            notifications: KordiNotificationCoordinator()
+        ))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        navigation.path = [.message(KordiMessageNotificationRoute(conversation: conversation, messageID: target.id))]
+        func editor(in view: UIView) -> UITextView? {
+            if let textView = view as? UITextView { return textView }
+            return view.subviews.lazy.compactMap { editor(in: $0) }.first
+        }
+        var transcript: UIScrollView?
+        for _ in 0..<200 {
+            if let frame = ConversationMotionProbeRegistry.frame(for: targetID, in: window),
+               frame.intersects(window.bounds), let row = ConversationMotionProbeRegistry.views[targetID]?.value {
+                var ancestor = row.superview
+                while let view = ancestor, !(view is UIScrollView) { ancestor = view.superview }
+                transcript = ancestor as? UIScrollView
+                if transcript != nil, editor(in: controller.view) != nil { break }
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let scroll = try XCTUnwrap(transcript, "The referenced message must be visible on entry")
+        let input = try XCTUnwrap(editor(in: controller.view))
+        // Observe beyond the first paint so the deferred reference jump cannot
+        // silently undo the initial alignment after the chat becomes visible.
+        for _ in 0..<75 {
+            if extraMessages == 0 || distanceFromLatest == 0 {
+                XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 2)
+                let frame = try XCTUnwrap(ConversationMotionProbeRegistry.frame(for: latestID, in: window))
+                let gap = input.convert(input.bounds, to: window).minY - frame.maxY
+                XCTAssertGreaterThanOrEqual(gap, 0)
+                XCTAssertLessThan(gap, 90, "Latest messages must sit above the composer, not in the middle")
+            } else {
+                let frame = try XCTUnwrap(ConversationMotionProbeRegistry.frame(for: targetID, in: window))
+                let viewport = scroll.convert(scroll.bounds.inset(by: scroll.adjustedContentInset), to: window)
+                XCTAssertEqual(frame.midY, viewport.midY, accuracy: 60)
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "Notification entry: \(messages.count) messages, \(distanceFromLatest) from latest"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
     func testReceiptFilteringStillFollowsVisibleContentUpdates() {
         let original = ChatMessage(id: "fixture", conversationId: "fixture", author: .me,
             authorName: "Tester", text: "Hello", createdAt: Date(), deliveryState: .delivered,

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import UIKit
 import UserNotifications
 
@@ -71,9 +72,20 @@ final class KordiNotificationCoordinator: ObservableObject {
     private var latestPushToken: String?
     private var postLoginAuthorizationRequestInFlight = false
     private let defaults: UserDefaults
+    private let messageNotificationStore: any KordiMessageNotificationStore
+    private var readStateSubscriptions = Set<AnyCancellable>()
+    private var notificationCleanupTask: Task<Void, Never>?
+    private var notificationCleanupRequested = false
+    #if DEBUG
+    private var notificationCleanupPreviewScheduled = false
+    #endif
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        messageNotificationStore: (any KordiMessageNotificationStore)? = nil
+    ) {
         self.defaults = defaults
+        self.messageNotificationStore = messageNotificationStore ?? SystemMessageNotificationStore()
         messagesEnabled = defaults.object(forKey: PreferenceKey.messages) as? Bool ?? true
         soundEnabled = defaults.object(forKey: PreferenceKey.sound) as? Bool ?? true
         previewsEnabled = defaults.object(forKey: PreferenceKey.previews) as? Bool ?? true
@@ -81,9 +93,92 @@ final class KordiNotificationCoordinator: ObservableObject {
     }
 
     func configure(model: AppModel) {
+        guard self.model !== model else { return }
         self.model = model
+        readStateSubscriptions.removeAll()
+        // Published values emit before assignment. Schedule a task so cleanup
+        // sees the completed model mutation, and coalesce concurrent updates.
+        Publishers.MergeMany([
+            model.$account.map { _ in () }.eraseToAnyPublisher(),
+            model.$conversations.map { _ in () }.eraseToAnyPublisher(),
+            model.$archivedConversations.map { _ in () }.eraseToAnyPublisher(),
+            model.$threadReadCursors.map { _ in () }.eraseToAnyPublisher(),
+            model.$messagesByConversation.map { _ in () }.eraseToAnyPublisher()
+        ])
+        .throttle(for: .milliseconds(100), scheduler: RunLoop.main, latest: true)
+        .sink { [weak self] in self?.scheduleNotificationCleanup() }
+        .store(in: &readStateSubscriptions)
         registerCategories()
-        Task { await refreshAuthorizationState(registerIfAllowed: true) }
+        Task { await refreshAuthorizationState(registerIfAllowed: !model.isPreviewMode) }
+    }
+
+    @discardableResult
+    func scheduleNotificationCleanup() -> Task<Void, Never> {
+        notificationCleanupRequested = true
+        if let notificationCleanupTask { return notificationCleanupTask }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            defer { notificationCleanupTask = nil }
+            while notificationCleanupRequested {
+                notificationCleanupRequested = false
+                await removeReadMessageNotifications()
+            }
+        }
+        notificationCleanupTask = task
+        return task
+    }
+
+    #if DEBUG
+    func prepareNotificationCleanupPreview() async {
+        guard let model, model.isPreviewMode, !notificationCleanupPreviewScheduled,
+              ProcessInfo.processInfo.arguments.contains("--preview-notification-cleanup") else { return }
+        notificationCleanupPreviewScheduled = true
+        model.installNotificationCleanupPreviewMessages()
+        await requestAuthorization(registerIfAllowed: false)
+        guard authorizationState.canRegisterForRemoteNotifications,
+              let accountID = model.account?.accountId else { return }
+        let center = UNUserNotificationCenter.current()
+        var delay: TimeInterval = 30
+        for conversationID in ["person:acct_maya", "person:acct_ethan"] {
+            guard let conversation = model.conversations.first(where: { $0.id == conversationID }) else { continue }
+            for message in model.messagesByConversation[conversationID] ?? [] {
+                let content = UNMutableNotificationContent()
+                content.title = conversation.displayName
+                content.body = message.text
+                content.sound = .default
+                content.categoryIdentifier = Self.messageCategory
+                content.threadIdentifier = conversation.sessionId
+                content.userInfo = [
+                    "notification_type": "message", "account_id": accountID,
+                    "session_id": conversation.sessionId, "message_id": message.id,
+                    "message_sequence": message.conversationSequence ?? 0
+                ]
+                do {
+                    try await center.add(UNNotificationRequest(
+                        identifier: message.id, content: content,
+                        trigger: UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+                    ))
+                } catch {
+                    model.errorMessage = "Could not schedule the notification test: \(error.localizedDescription)"
+                    return
+                }
+                delay += 2
+            }
+        }
+    }
+    #endif
+
+    private func removeReadMessageNotifications() async {
+        guard let model, let accountID = model.account?.accountId else { return }
+        let notifications = await messageNotificationStore.deliveredMessages()
+        guard self.model === model, model.account?.accountId == accountID else { return }
+        let identifiers = notifications.compactMap { notification -> String? in
+            guard model.isMessageNotificationRead(notification.payload) else { return nil }
+            return notification.identifier
+        }
+        if !identifiers.isEmpty {
+            messageNotificationStore.removeDeliveredMessages(withIdentifiers: identifiers)
+        }
     }
 
     func accountDidChange() {
@@ -208,6 +303,11 @@ final class KordiNotificationCoordinator: ObservableObject {
         guard payload.accountID == model?.account?.accountId else {
             return []
         }
+        if model?.isMessageNotificationRead(payload) == true {
+            scheduleNotificationCleanup()
+            synchronizeBadge()
+            return []
+        }
         guard messagesEnabled else { return [] }
         if let root = payload.threadRootID,
            model?.isThreadActivelyReadable(conversationID: payload.sessionID, rootID: root) == true { return [] }
@@ -301,6 +401,7 @@ struct KordiMessageNotificationPayload {
     let sessionID: String
     let messageID: String
     let threadRootID: String?
+    let messageSequence: Int64?
 
     init?(_ payload: [AnyHashable: Any]) {
         guard payload["notification_type"] as? String == "message",
@@ -315,6 +416,19 @@ struct KordiMessageNotificationPayload {
         self.accountID = accountID
         self.sessionID = sessionID
         self.messageID = messageID
+        if let root = payload["thread_root_id"], !(root is NSNull) {
+            guard let root = root as? String, !root.isEmpty else { return nil }
+        }
         self.threadRootID = payload["thread_root_id"] as? String
+        if let number = payload["message_sequence"] as? NSNumber,
+           CFGetTypeID(number) != CFBooleanGetTypeID(),
+           let sequence = Int64(number.stringValue), sequence > 0 {
+            self.messageSequence = sequence
+        } else if let value = payload["message_sequence"] as? String,
+                  let sequence = Int64(value), sequence > 0 {
+            self.messageSequence = sequence
+        } else {
+            self.messageSequence = nil
+        }
     }
 }

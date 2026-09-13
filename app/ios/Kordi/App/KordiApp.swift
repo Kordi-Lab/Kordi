@@ -141,6 +141,7 @@ struct KordiApp: App {
                     notificationCoordinator.accountDidChange()
                     notificationCoordinator.synchronizeBadge()
                     #if DEBUG
+                    await notificationCoordinator.prepareNotificationCleanupPreview()
                     if model.isPreviewMode,
                        ProcessInfo.processInfo.arguments.contains("--preview-incoming-message") {
                         do { try await Task.sleep(for: .seconds(3)) } catch { return }
@@ -174,7 +175,10 @@ struct KordiApp: App {
                     switch scenePhase {
                     case .active:
                         callCoordinator.showCallScreen()
-                        Task { await model.appDidBecomeActive() }
+                        Task {
+                            await model.appDidBecomeActive()
+                            notificationCoordinator.scheduleNotificationCleanup()
+                        }
                         Task {
                             await notificationCoordinator.refreshAuthorizationState(
                                 registerIfAllowed: true
@@ -184,7 +188,7 @@ struct KordiApp: App {
                     case .background:
                         model.appDidEnterBackground()
                     case .inactive:
-                        break
+                        notificationCoordinator.scheduleNotificationCleanup()
                     @unknown default:
                         break
                     }

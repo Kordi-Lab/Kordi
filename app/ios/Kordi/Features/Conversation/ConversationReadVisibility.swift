@@ -132,6 +132,12 @@ final class ConversationScrollPosition {
         return scrollView.isTracking || scrollView.isDragging || scrollView.isDecelerating
     }
 
+    var contentFitsViewport: Bool {
+        guard let scrollView, scrollView.window != nil,
+              scrollView.contentSize.height > 0, scrollView.bounds.height > 0 else { return false }
+        return scrollView.contentSize.height <= scrollView.bounds.inset(by: scrollView.adjustedContentInset).height + 1
+    }
+
     func attach(to scrollView: UIScrollView) {
         self.scrollView = scrollView
     }
