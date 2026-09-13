@@ -1,3 +1,4 @@
+import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
@@ -409,9 +410,9 @@ export function mapCanonicalMessage(
     && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText));
   const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
-  const cancelledTurnText = cancelled
-    ? (displayText.trim() || (cancelledByRole ? `Request canceled by ${cancelledByRole}.` : 'Request canceled.'))
-    : '';
+  const cancelledContent = cancelled
+    ? cancelledTurnContent(displayText, cancelledByRole ? `Request canceled by ${cancelledByRole}.` : displayText.trim() || 'Request canceled.')
+    : null;
   const rawErrorText = stringValue(content.error) ?? (noProviderFailure ? rawDisplayText : null) ?? 'Message failed';
   const agentTurnErrorText = failed
     ? sourceTransport.startsWith('cloud-') || rawErrorText.toLowerCase().includes('cloud fallback')
@@ -474,8 +475,8 @@ export function mapCanonicalMessage(
           sessionId: message.sessionId,
           prompt: '',
           status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'queued' : 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
-          assistantText: cancelled ? cancelledTurnText : displayText,
+          message: completed ? (cancelledContent ? cancelledContent.notice : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          assistantText: cancelledContent ? cancelledContent.assistantText : displayText,
           thinkingText,
           tools: visibleTools,
           completed,
