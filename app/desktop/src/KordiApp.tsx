@@ -1,7 +1,10 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useRef, useState, type MouseEventHandler } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEventHandler } from 'react';
+
+import { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
+import { useNativeViewport } from '@/app/useNativeViewport';
 import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
 import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
@@ -32,13 +35,19 @@ import {
   usePendingGroupInvitation,
 } from '@/features/cloud/groupInvitationDeepLink';
 import { shouldShowCloudLoginGate, type CloudSessionStatus } from '@/features/cloud/sessionGate';
-import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/loginWindow';
+import { isTauriRuntime, type CloudLoginMode } from '@/features/cloud/loginWindow';
+import { readLoginModePreference } from '@/features/cloud/loginModePreference';
+import { useCloudWindowSurface } from '@/features/cloud/useCloudWindowSurface';
+import { useCloudSyncPresentation } from '@/features/cloud/useCloudSyncPresentation';
+import { useCloudAuthTransition } from '@/features/cloud/useCloudAuthTransition';
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
+
+export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
 
 const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
 
@@ -72,13 +81,24 @@ const APP_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
 // dark/light tokens never reach those screens. This hook syncs the body class
 // to the persisted theme preference; `auto` follows system while the
 // gate/splash is up. Once the shell mounts, its effect takes over.
-function useGateThemeClass() {
-  const [themeMode] = useState<ThemeMode>(() => readStoredThemeMode());
+function useGateThemeClass(active: boolean) {
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readStoredThemeMode());
   const [theme, setTheme] = useState<ResolvedThemeMode>(() => {
     return resolveThemeMode(themeMode, readSystemTheme());
   });
 
+  const [previousActive, setPreviousActive] = useState(active);
+  if (active !== previousActive) {
+    setPreviousActive(active);
+    if (active) {
+      const nextMode = readStoredThemeMode();
+      setThemeMode(nextMode);
+      setTheme(resolveThemeMode(nextMode, readSystemTheme()));
+    }
+  }
+
   useEffect(() => {
+    if (!active) return;
     let disposed = false;
     let unlistenNativeTheme: (() => void) | undefined;
     const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -118,28 +138,27 @@ function useGateThemeClass() {
       mediaQuery?.removeEventListener('change', handleMediaTheme);
       unlistenNativeTheme?.();
     };
-  }, [themeMode]);
+  }, [active, themeMode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    if (!active) return;
     document.body.classList.toggle('theme-light', theme === 'light');
     document.body.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
     void syncNativeWindowTheme(themeMode).catch(() => undefined);
-  }, [theme, themeMode]);
+  }, [active, theme, themeMode]);
 
-  useEffect(() => {
-    document.body.classList.add('app-cloud-gate-active');
+  useLayoutEffect(() => {
+    document.body.classList.toggle('app-cloud-gate-active', active);
     if (isTauriRuntime()) {
-      void getCurrentWindow().setBackgroundColor(GATE_WINDOW_BACKGROUND[theme]).catch(() => undefined);
+      const background = active ? GATE_WINDOW_BACKGROUND[theme] : APP_WINDOW_BACKGROUND[theme];
+      void getCurrentWindow().setBackgroundColor(background).catch(() => undefined);
     }
 
     return () => {
       document.body.classList.remove('app-cloud-gate-active');
-      if (isTauriRuntime()) {
-        void getCurrentWindow().setBackgroundColor(APP_WINDOW_BACKGROUND[theme]).catch(() => undefined);
-      }
     };
-  }, [theme]);
+  }, [active, theme]);
 
   return theme;
 }
@@ -159,6 +178,7 @@ export function KordiAppRoot({
   cloudSessionStatus,
   cloudSession,
 }: KordiAppRootProps = {}) {
+  useNativeViewport();
   useEffect(() => {
     const suppressUnscopedSelectAll = (event: KeyboardEvent) => {
       if (
@@ -189,8 +209,8 @@ export function KordiAppRoot({
 // splash) inside the same `kordi-app` root the main shell uses, so the
 // theme-tokens.css palette resolves. The wrapping hook installs the system
 // theme class on <body> until the shell takes over.
-function CloudGateShell({ children }: { children: React.ReactNode }) {
-  const theme = useGateThemeClass();
+function CloudGateShell({ children, active = true }: { children: React.ReactNode; active?: boolean }) {
+  const theme = useGateThemeClass(active);
   const handleGateWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     if (!shouldStartNativeWindowDrag({
       isNativeShell: isTauriRuntime(),
@@ -210,6 +230,9 @@ function CloudGateShell({ children }: { children: React.ReactNode }) {
   return (
     <div
       className={`kordi-app app-cloud-login-shell theme-${theme}`}
+      data-active={active}
+      inert={!active}
+      aria-hidden={!active}
       onMouseDownCapture={handleGateWindowDragMouseDown}
     >
       {children}
@@ -230,77 +253,69 @@ function CloudEditionRoot({
     enabled: cloudSessionOverride === undefined,
   });
   const session = cloudSessionOverride ?? liveSession;
+  const { activity, signIn, signUp, socialSignIn, signOut } = useCloudAuthTransition({
+    ...session, signOut: liveSession.signOut,
+  });
+  const presentedSession = useMemo(() => ({ ...liveSession, signOut }), [liveSession, signOut]);
   const status: CloudSessionStatus = cloudSessionStatusOverride ?? session.status;
-  if (shouldShowCloudLoginGate({ cloudSessionStatus: status })) {
-    return (
-      <CloudGateShell>
-        <CloudLoginPage
-          onSignIn={session.signIn}
-          onSignUp={session.signUp}
-          onSocialSignIn={session.signInWithProvider}
-          showDebugAuthDiagnostics={SHOW_DEBUG_AUTH_DIAGNOSTICS}
+  const [loginMode, setLoginMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? 'login');
+  const [sync, setSync] = useState<{ status: 'syncing' | 'error' | 'ready'; onRetry?: () => void }>({ status: 'syncing' });
+  const [previousStatus, setPreviousStatus] = useState(status);
+  const [loginPresented, setLoginPresented] = useState(false);
+  if (previousStatus !== status) {
+    setPreviousStatus(status);
+    setSync({ status: 'syncing' });
+    setLoginPresented(false);
+  }
+  const signedOut = shouldShowCloudLoginGate({ cloudSessionStatus: status });
+  const windowReady = useCloudWindowSurface(signedOut ? loginMode : status === 'authenticated' ? 'main' : null);
+  if (signedOut && windowReady && !loginPresented) setLoginPresented(true);
+  const loginReady = (windowReady || loginPresented) && !activity;
+  const gateActive = Boolean(activity) || status !== 'authenticated' || sync.status !== 'ready' || !windowReady;
+  return (
+    <>
+      {status === 'authenticated' ? (
+        <KordiAppShell
+          cloudSession={cloudSessionOverride === undefined ? presentedSession : undefined}
+          pendingGroupInvitation={pendingGroupInvitation}
+          onSyncChange={setSync}
+          windowReady={windowReady && !activity}
         />
-      </CloudGateShell>
-    );
-  }
-  if (status === 'loading') {
-    return (
-      <CloudGateShell>
-        <CloudStartingScreen />
-      </CloudGateShell>
-    );
-  }
-  return (
-    <KordiAppShell
-      cloudSession={cloudSessionOverride === undefined ? liveSession : undefined}
-      pendingGroupInvitation={pendingGroupInvitation}
-    />
-  );
-}
-
-export function CloudStartingScreen({
-  status = 'syncing',
-  onRetry,
-}: {
-  status?: 'syncing' | 'error';
-  onRetry?: () => void;
-}) {
-  return (
-    <div
-      className={`app-cloud-starting-screen ${status === 'error' ? 'app-cloud-starting-screen-error' : ''}`}
-      aria-live="polite"
-      aria-busy={status === 'syncing'}
-      aria-label={status === 'error' ? 'Cloud sync timed out' : 'Preparing Kordi Cloud'}
-    >
-      <div className="app-cloud-starting-dots" aria-hidden="true">
-        <span className="app-cloud-starting-dot app-cloud-starting-dot-1" />
-        <span className="app-cloud-starting-dot app-cloud-starting-dot-2" />
-        <span className="app-cloud-starting-dot app-cloud-starting-dot-3" />
-      </div>
-      {status === 'error' && onRetry ? (
-        <button
-          type="button"
-          className="app-cloud-starting-retry"
-          onClick={onRetry}
-        >
-          Retry sync
-        </button>
       ) : null}
-    </div>
+      <CloudGateShell active={gateActive}>
+        <CloudStartingScreen
+          visible={!(signedOut && loginReady)}
+          status={status === 'authenticated' && sync.status === 'error' ? 'error' : 'syncing'}
+          onRetry={sync.onRetry}
+        />
+        {signedOut ? (
+          <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>
+            <CloudLoginPage
+              initialMode={loginMode}
+              onModeChange={setLoginMode}
+              onSignIn={signIn}
+              onSignUp={signUp}
+              onSocialSignIn={socialSignIn}
+              showDebugAuthDiagnostics={SHOW_DEBUG_AUTH_DIAGNOSTICS}
+            />
+          </div>
+        ) : null}
+      </CloudGateShell>
+    </>
   );
 }
 
 function KordiAppShell({
   cloudSession,
   pendingGroupInvitation,
+  onSyncChange,
+  windowReady,
 }: {
   cloudSession?: UseCloudSessionResult;
   pendingGroupInvitation: ReturnType<typeof usePendingGroupInvitation>;
+  onSyncChange: (sync: { status: 'syncing' | 'error' | 'ready'; onRetry: () => void }) => void;
+  windowReady: boolean;
 }) {
-  useEffect(() => {
-    void applyKordiMainWindowSize();
-  }, []);
-
   const appShellFrameProps = useKordiAppModel({ cloudSessionOverride: cloudSession });
   const detachedCallWindowEnabled = isTauriRuntime();
   const {
@@ -309,18 +324,12 @@ function KordiAppShell({
     callConversations,
     ...frameProps
   } = appShellFrameProps;
+  useCloudSyncPresentation(cloudInitialSync, onSyncChange);
   if (cloudInitialSync.status !== 'ready') {
-    return (
-      <div className={`kordi-app ${appShellFrameProps.rootThemeClass}`}>
-        <CloudStartingScreen
-          status={cloudInitialSync.status === 'error' ? 'error' : 'syncing'}
-          onRetry={cloudInitialSync.onRetry}
-        />
-      </div>
-    );
+    return null;
   }
   return (
-    <>
+    <div className="app-cloud-workspace-surface" data-ready={windowReady} inert={!windowReady} aria-hidden={!windowReady}>
       <CloudCallProvider controller={cloudCalls}>
         <DetachedCallWindowLauncher
           controller={cloudCalls}
@@ -337,8 +346,8 @@ function KordiAppShell({
           )}
         />
       </CloudCallProvider>
-      <WhatsNewLaunchWindow />
-      {pendingGroupInvitation.token ? (
+      {windowReady ? <WhatsNewLaunchWindow /> : null}
+      {windowReady && pendingGroupInvitation.token ? (
         <GroupInvitationDialog
           key={pendingGroupInvitation.token}
           invitationToken={pendingGroupInvitation.token}
@@ -349,7 +358,7 @@ function KordiAppShell({
           }}
         />
       ) : null}
-    </>
+    </div>
   );
 }
 

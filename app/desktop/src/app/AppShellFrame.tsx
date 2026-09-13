@@ -7,6 +7,7 @@ import {
   shouldStartNativeWindowDrag,
 } from '@/app/windowDrag';
 import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
+import { useNativeBackdrop } from '@/app/useNativeBackdrop';
 import { cn } from '@/lib/utils';
 
 type AppShellFrameProps = {
@@ -65,6 +66,7 @@ export function AppShellFrame({
   windowResizeHandles,
   callOverlay,
 }: AppShellFrameProps) {
+  const rootRef = useNativeBackdrop(isNativeShell, rootThemeClass, leftWorkspaceWidth);
   const instanceLabel = previewInstanceLabel();
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     const shellBounds = event.currentTarget.getBoundingClientRect();
@@ -100,6 +102,7 @@ export function AppShellFrame({
 
   return (
     <div
+      ref={rootRef}
       className={cn(
         'kordi-app app-page-bg w-full min-w-0 max-w-full text-[13px] text-foreground',
         rootThemeClass,
@@ -108,7 +111,7 @@ export function AppShellFrame({
     >
       <div
         className={cn(
-          'app-shell relative flex min-w-0 max-w-full flex-col overflow-hidden',
+          'app-shell relative flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden',
           !isNativeShell && 'backdrop-blur-2xl',
           isNativeShell
             ? 'h-full w-full rounded-none border-0 shadow-none'
@@ -159,10 +162,11 @@ export function AppShellFrame({
         ) : null}
         <div
           className={cn(
-            'app-shell-layout-grid relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border transition-[grid-template-columns]',
+            'app-shell-layout-grid relative grid min-h-0 min-w-0 flex-1 gap-0 overflow-hidden box-border transition-[grid-template-columns]',
           )}
           style={{
             gridTemplateColumns: `${leftWorkspaceWidth}px minmax(0, 1fr)`,
+            gridTemplateRows: 'minmax(0, 1fr)',
           }}
         >
           {sidebar}
@@ -180,21 +184,21 @@ export function AppShellFrame({
 
           <section
             className={cn(
-              'relative min-h-0 min-w-0 overflow-hidden',
+              'app-shell-content relative min-h-0 min-w-0 overflow-hidden',
               isSingleWorkspacePage ? 'app-main-panel rounded-none border-0' : 'app-main-panel rounded-br-[22px] rounded-l-none border-l border-white/10',
             )}
             style={{ WebkitAppRegion: 'no-drag' as const }}
           >
             <div
               className={cn(
-                'app-shell-layout-grid grid h-full min-h-0 min-w-0 transition-[grid-template-columns] duration-300',
+                'app-shell-layout-grid grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300',
               )}
               style={{
                 gridTemplateColumns: showRightDetailRail && !isDetailPanelCollapsed ? `minmax(0, 1fr) ${detailRailWidth}px` : 'minmax(0, 1fr)',
                 gridTemplateRows: 'minmax(0, 1fr)',
               }}
             >
-              <main className="flex h-full min-h-0 min-w-0 overflow-hidden">
+              <main className="flex min-h-0 min-w-0 overflow-hidden">
                 {mainContent}
               </main>
 

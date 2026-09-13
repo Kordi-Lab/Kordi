@@ -95,8 +95,8 @@ test('resize styling suppresses transitions without toggling native shell blur',
   assert.doesNotMatch(frameSource, /isLayoutResizing \? 'backdrop-blur-none'/);
   assert.doesNotMatch(frameSource, /app-shell-resizing/);
   assert.doesNotMatch(shellCss, /\.app-shell-resizing/);
-  assert.match(shellCss, /\.app-native-viewport\s*\{[\s\S]*position:\s*fixed;[\s\S]*inset:\s*0;/);
-  assert.match(shellCss, /\.app-native-viewport > \.app-shell\s*\{[\s\S]*position:\s*absolute;[\s\S]*inset:\s*0;[\s\S]*backdrop-filter:\s*none;/);
+  assert.match(shellCss, /\.app-native-viewport\s*\{[^}]*width:\s*var\(--app-native-width, 100%\);[^}]*height:\s*var\(--app-native-height, 100%\);/);
+  assert.match(shellCss, /\.app-native-viewport > \.app-shell\s*\{[^}]*height:\s*100%;[^}]*backdrop-filter:\s*none;/);
   assert.match(shellCss, /html\.kordi-native-window-resizing \.app-shell/);
   assert.match(shellCss, /\.app-shell\[data-layout-resizing='true'\]\) \*[\s\S]*transition:\s*none\s*!important;/);
   assert.doesNotMatch(appCss + shellCss, /\.app-shell\[data-layout-resizing='true'\][^{]*\{[^}]*backdrop-filter:\s*none/);

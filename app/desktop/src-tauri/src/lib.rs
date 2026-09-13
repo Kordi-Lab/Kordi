@@ -1,4 +1,5 @@
 mod auth;
+mod auth_window;
 mod canonical_sessions;
 mod chat;
 mod cloud_account_paths;
@@ -20,6 +21,7 @@ mod system_proxy;
 #[cfg(test)]
 mod test_support;
 mod voice_message;
+mod window_backdrop;
 mod window_lifecycle;
 mod workspace;
 use std::process::Command;
@@ -226,6 +228,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            auth_window::desktop_set_auth_window_surface,
+            window_backdrop::desktop_set_window_backdrop,
             desktop_workspace_status,
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,

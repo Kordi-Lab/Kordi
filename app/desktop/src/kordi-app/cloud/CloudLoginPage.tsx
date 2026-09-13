@@ -129,6 +129,7 @@ function CloudField({
 }
 
 export type CloudLoginPageProps = {
+  onModeChange?: (mode: CloudLoginMode) => void;
   initialMode?: CloudLoginMode;
   onSignIn?: (email: string, password: string) => Promise<void>;
   onSignUp?: (input: {
@@ -153,6 +154,7 @@ export function CloudLoginPage({
   onSignUp = noopSignUp,
   onSocialSignIn,
   showDebugAuthDiagnostics = false,
+  onModeChange,
 }: CloudLoginPageProps = {}) {
   const [mode, setMode] = useState<CloudLoginMode>(() => readLoginModePreference() ?? initialMode);
   const [avatarSeed, setAvatarSeed] = useState(() => newCanonicalAvatarSeed());
@@ -172,9 +174,10 @@ export function CloudLoginPage({
   ) ?? '';
 
   useEffect(() => {
-    void applyCloudLoginWindowSize(mode);
+    if (onModeChange) onModeChange(mode);
+    else void applyCloudLoginWindowSize(mode).catch(() => undefined);
     writeLoginModePreference(mode);
-  }, [mode]);
+  }, [mode, onModeChange]);
 
   function regenerateAvatar() {
     setUploadedAvatar(null);
