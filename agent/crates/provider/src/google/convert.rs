@@ -39,6 +39,7 @@ fn flatten_tool_content_for_google(content: &Value) -> String {
 
 /// Convert OpenAI-style messages to Google Generative AI format.
 pub fn convert_messages_google(messages: &[Value]) -> Vec<Value> {
+    let messages = crate::tool_images::images_after_tool_results(messages);
     messages
         .iter()
         .filter_map(|msg| {

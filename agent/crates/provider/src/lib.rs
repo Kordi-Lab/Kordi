@@ -9,6 +9,7 @@ pub mod registry;
 pub mod resolver;
 mod retry;
 mod streaming;
+mod tool_images;
 mod traits;
 mod transforms;
 mod types;

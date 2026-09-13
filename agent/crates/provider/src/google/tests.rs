@@ -63,7 +63,7 @@ fn test_convert_tool_result() {
 }
 
 #[test]
-fn test_convert_tool_result_image_falls_back_to_text_note() {
+fn test_convert_tool_result_preserves_attributed_image_evidence() {
     let messages = vec![json!({
         "role": "tool",
         "name": "read",
@@ -81,9 +81,18 @@ fn test_convert_tool_result_image_falls_back_to_text_note() {
     })];
     let result = convert_messages_google(&messages);
     let fr = &result[0]["parts"][0]["functionResponse"];
-    assert_eq!(
-        fr["response"]["content"],
-        "[tool returned image result: image/png]"
+    assert!(
+        fr["response"]["content"]
+            .as_str()
+            .unwrap()
+            .contains("call_1")
+    );
+    assert_eq!(result[1]["parts"][1]["inlineData"]["data"], "iVBORw0KGgo=");
+    assert!(
+        result[1]["parts"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("call_1")
     );
 }
 

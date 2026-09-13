@@ -1,3 +1,5 @@
+#[path = "../../../provider/tests/support/images.rs"]
+mod image_fixtures;
 use super::*;
 use kordi_core::types::ContentBlock;
 use std::path::Path;
@@ -212,11 +214,7 @@ async fn read_utf8_content() {
 async fn read_image_returns_base64() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("test.png");
-    let png_bytes: &[u8] = &[
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
-        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
-        0x77, 0x53, 0xDE,
-    ];
+    let png_bytes = image_fixtures::RED_BLUE;
     std::fs::write(&file, png_bytes).unwrap();
 
     let tool = ReadTool;
@@ -238,6 +236,61 @@ async fn read_image_returns_base64() {
         }
         _ => panic!("expected image content block"),
     }
+}
+
+#[tokio::test]
+async fn image_reads_check_actual_format_and_reject_corrupt_or_oversized_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let ctx = make_ctx(dir.path());
+    std::fs::write(
+        dir.path().join("wrong-extension.jpg"),
+        image_fixtures::GREEN_WHITE,
+    )
+    .unwrap();
+    let result = ReadTool
+        .execute(
+            json!({"path":"wrong-extension.jpg"}),
+            &ctx,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(&result.content[0], ContentBlock::Image { mime_type, .. } if mime_type == "image/png")
+    );
+    std::fs::write(
+        dir.path().join("corrupt.png"),
+        &image_fixtures::RED_BLUE[..32],
+    )
+    .unwrap();
+    let error = ReadTool
+        .execute(
+            json!({"path":"corrupt.png"}),
+            &ctx,
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("corrupt"));
+    let file = std::fs::File::create(dir.path().join("large.png")).unwrap();
+    file.set_len(crate::image_input::MAX_IMAGE_BYTES as u64 + 1)
+        .unwrap();
+    let error = ReadTool
+        .execute(json!({"path":"large.png"}), &ctx, CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("4 MiB"));
+
+    let mut encoded = std::io::Cursor::new(Vec::new());
+    ::image::DynamicImage::new_rgb8(8193, 1)
+        .write_to(&mut encoded, ::image::ImageFormat::Png)
+        .unwrap();
+    assert!(
+        crate::image_input::image_content(encoded.get_ref())
+            .unwrap_err()
+            .to_string()
+            .contains("decoding limits")
+    );
 }
 
 #[tokio::test]

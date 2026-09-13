@@ -136,7 +136,7 @@ fn test_convert_messages_for_openai_tool_result_strips_error_flag() {
 }
 
 #[test]
-fn test_convert_messages_for_openai_tool_result_image_falls_back_to_text_note() {
+fn test_convert_messages_for_openai_preserves_tool_result_image_blocks() {
     let messages = vec![json!({
         "role": "user",
         "content": [{
@@ -157,10 +157,7 @@ fn test_convert_messages_for_openai_tool_result_image_falls_back_to_text_note() 
     let result = convert_messages_for_openai(&messages);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0]["role"], "tool");
-    assert_eq!(
-        result[0]["content"],
-        "[tool returned image result: image/png]"
-    );
+    assert_eq!(result[0]["content"], messages[0]["content"][0]["content"]);
 }
 
 #[test]

@@ -366,6 +366,9 @@ fn normalize_tool_call_id(id: &str) -> String {
 /// Flatten a content Value — if it's a string return it, if it's an array of
 /// blocks join text blocks.
 fn flatten_tool_content_for_openai(content: &Value) -> Value {
+    if crate::tool_images::has_images(content) {
+        return content.clone();
+    }
     if content.is_string() {
         return content.clone();
     }

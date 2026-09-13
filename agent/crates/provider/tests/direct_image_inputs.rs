@@ -247,6 +247,75 @@ async fn validation_preserves_anthropic_url_sources() {
 }
 
 #[tokio::test]
+async fn tool_images_reach_final_requests_and_stay_associated_with_their_call() {
+    let red = image(fixtures::RED_BLUE);
+    let green = image(fixtures::GREEN_WHITE);
+    for route in [Route::Chat, Route::OAuth, Route::Anthropic, Route::Google] {
+        let mut req = request(json!("Inspect both files"));
+        let content = json!([
+            {"type":"text","text":"first marker"}, red,
+            {"type":"text","text":"second marker"}, green
+        ]);
+        req.messages.extend([
+            json!({"role":"assistant","tool_calls":[
+                {"id":"call_image","type":"function","function":{"name":"read","arguments":"{}"}},
+                {"id":"call_text","type":"function","function":{"name":"read","arguments":"{}"}}
+            ]}),
+            json!({"role":"tool","name":"read","tool_call_id":"call_image","content":content}),
+            json!({"role":"tool","name":"read","tool_call_id":"call_text","content":"plain result"}),
+            json!({"role":"user","content":"Now compare them"}),
+        ]);
+        let (body, result) = capture(route, req, false).await;
+        assert!(result.is_ok(), "{route:?}: {result:?}");
+        let serialized = body.to_string();
+        for data in [&red["source"]["data"], &green["source"]["data"]] {
+            assert_eq!(
+                serialized.matches(data.as_str().unwrap()).count(),
+                1,
+                "{route:?}"
+            );
+        }
+        match route {
+            Route::OAuth => {
+                assert_eq!(body["input"][3]["call_id"], "call_image");
+                assert_eq!(body["input"][3]["output"][1]["type"], "input_image");
+                assert_eq!(body["input"][3]["output"][3]["type"], "input_image");
+            }
+            Route::Anthropic => assert_eq!(body["messages"][2]["content"][0]["content"], content),
+            Route::Chat => {
+                assert_eq!(body["messages"][2]["role"], "tool");
+                assert_eq!(body["messages"][3]["tool_call_id"], "call_text");
+                assert_eq!(body["messages"][4]["role"], "user");
+                assert!(
+                    body["messages"][4]["content"][0]["text"]
+                        .as_str()
+                        .unwrap()
+                        .contains("call_image")
+                );
+                assert_eq!(body["messages"][4]["content"][2]["type"], "image_url");
+                assert_eq!(body["messages"][5]["content"], "Now compare them");
+            }
+            Route::Google => {
+                assert_eq!(
+                    body["contents"][3]["parts"][0]["functionResponse"]["response"]["content"],
+                    "plain result"
+                );
+                assert!(
+                    body["contents"][4]["parts"][0]["text"]
+                        .as_str()
+                        .unwrap()
+                        .contains("call_image")
+                );
+                assert_eq!(
+                    body["contents"][4]["parts"][2]["inlineData"]["data"],
+                    red["source"]["data"]
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
 async fn unsupported_model_errors_are_reported_without_a_text_only_retry() {
     for route in [Route::Chat, Route::OAuth, Route::Anthropic, Route::Google] {
         let (_, result) = capture(route, request(json!([image(fixtures::RED_BLUE)])), true).await;

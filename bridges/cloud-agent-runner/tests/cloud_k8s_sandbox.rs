@@ -128,3 +128,5 @@ async fn k8s_backend_ensures_pvc_before_job() {
     assert_eq!(calls[0], "pvc:kordi-cloud:kordi-cloud-sandbox-cas-fake");
     assert!(calls[1].starts_with("job:kordi-cloud:kordi-sandbox-cas-fake"));
 }
+#[path = "cloud_k8s_sandbox/bounded_image_reads.rs"]
+mod bounded_image_reads;

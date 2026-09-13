@@ -19,7 +19,7 @@ fn final_responses_request_preserves_images_after_chat_format_conversion() {
         {"type":"text","text":"with this"},
         {"type":"image","source":{"type":"base64","media_type":"image/png","data":green}}
     ]})];
-    crate::images::validate_direct_images(&request.messages, crate::images::ImageRoute::OpenAi)
+    crate::images::validate_message_images(&request.messages, crate::images::ImageRoute::OpenAi)
         .unwrap();
     // The real OpenAiProvider::stream path converts to Chat Completions format
     // before building a Responses request. Skipping that step hid the regression.
@@ -46,6 +46,29 @@ fn final_responses_request_preserves_images_after_chat_format_conversion() {
     assert_eq!(
         body["input"][1]["content"],
         json!([{"type":"input_text","text":"text only"}])
+    );
+}
+
+#[test]
+fn final_responses_request_keeps_multimodal_tool_output_and_call_id() {
+    use base64::Engine;
+    let data = base64::engine::general_purpose::STANDARD.encode(fixtures::RED_BLUE);
+    let mut request = completion_request("gpt-5.4");
+    request.messages = vec![
+        json!({"role":"assistant","tool_calls":[{"id":"call_image|item","function":{"name":"read","arguments":"{}"}}]}),
+        json!({"role":"tool","tool_call_id":"call_image|item","content":[
+            {"type":"text","text":"visual evidence"},
+            {"type":"image","source":{"type":"base64","media_type":"image/png","data":data}}
+        ]}),
+    ];
+    let body = build_responses_request_body(&request, super::super::prepare_messages(&request));
+    assert_eq!(body["input"][2]["call_id"], "call_image");
+    assert_eq!(
+        body["input"][2]["output"],
+        json!([
+            {"type":"input_text","text":"visual evidence"},
+            {"type":"input_image","image_url":format!("data:image/png;base64,{data}"),"detail":"high"}
+        ])
     );
 }
 

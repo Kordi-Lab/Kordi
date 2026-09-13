@@ -14,6 +14,11 @@ use kordi_cloud_agent_runner::sandbox_client::{LocalSandboxBackend, SandboxBacke
 use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
 use serde_json::{json, Value};
 
+#[path = "../../../agent/crates/provider/tests/support/images.rs"]
+mod image_fixtures;
+#[path = "cloud_model_loop/image_results.rs"]
+mod image_results;
+
 #[derive(Default)]
 struct RecordingClient {
     exports: Arc<Mutex<Vec<ArtifactExportInput>>>,

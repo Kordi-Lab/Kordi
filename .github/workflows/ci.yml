@@ -120,6 +120,13 @@ jobs:
       - name: Test provider request contracts
         run: cargo test -p kordi-provider --locked
 
+      - name: Test local image reading
+        run: cargo test -p kordi-tools read::tests --locked
+
+      - name: Test cloud agent runner
+        # Existing runtime-selection tests modify process environment variables.
+        run: cargo test -p kordi-cloud-agent-runner --locked -- --test-threads=1
+
       - name: Test CLI lib
         run: cargo test -p kordi-cli --lib
 

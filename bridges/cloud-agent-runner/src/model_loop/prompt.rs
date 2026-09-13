@@ -26,7 +26,7 @@ pub fn tool_catalog() -> Vec<Value> {
         }),
         tool_schema(
             "read",
-            "Read a UTF-8 text file inside the Cloud sandbox.",
+            "Read a UTF-8 text file or image inside the Cloud sandbox. Images must be PNG, JPEG, WebP, or GIF, at most 4 MiB, and within decoding limits; actual image content is returned to the model.",
             vec![("path", "string")],
         ),
         tool_schema(

@@ -19,11 +19,12 @@ pub enum CloudToolExecutionError {
     Sandbox(#[from] SandboxClientError),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CloudToolOutput {
     Text(String),
     List(Vec<String>),
     Bash(BashOutput),
+    Content(Vec<ContentBlock>),
 }
 
 pub struct CloudToolExecutor {
@@ -52,9 +53,18 @@ impl CloudToolExecutor {
         }
 
         match request.tool_name {
-            "read" => Ok(CloudToolOutput::Text(
-                self.sandbox.read_text(primary_arg.unwrap_or_default()).await?,
-            )),
+            "read" => {
+                let path = primary_arg.unwrap_or_default();
+                if kordi_tools::image_input::is_image_path(std::path::Path::new(path)) {
+                    let bytes = tokio::time::timeout(std::time::Duration::from_secs(65), self.sandbox.read_bytes_bounded(path, kordi_tools::image_input::MAX_IMAGE_BYTES))
+                        .await.map_err(|_| CloudToolExecutionError::Blocked("Image read timed out.".into()))??;
+                    let content = tokio::task::spawn_blocking(move || kordi_tools::image_input::image_content(&bytes))
+                        .await.map_err(|_| CloudToolExecutionError::Blocked("Image decoding failed.".into()))?
+                        .map_err(|err| CloudToolExecutionError::Blocked(err.to_string()))?;
+                    return Ok(CloudToolOutput::Content(vec![content]));
+                }
+                Ok(CloudToolOutput::Text(self.sandbox.read_text(path).await?))
+            },
             "write" | "edit" => {
                 self.sandbox
                     .write_text(primary_arg.unwrap_or_default(), content.unwrap_or_default())
@@ -73,7 +83,7 @@ impl CloudToolExecutor {
                     .execute(arguments.clone(), &ctx, CancellationToken::new())
                     .await
                     .map_err(|err| CloudToolExecutionError::Blocked(err.to_string()))?;
-                Ok(CloudToolOutput::Text(format_kordi_tool_result(result)))
+                Ok(format_kordi_tool_result(result))
             }
             "web_fetch" => {
                 let ctx = cloud_tool_context(&self.sandbox);
@@ -81,7 +91,7 @@ impl CloudToolExecutor {
                     .execute(arguments.clone(), &ctx, CancellationToken::new())
                     .await
                     .map_err(|err| CloudToolExecutionError::Blocked(err.to_string()))?;
-                Ok(CloudToolOutput::Text(format_kordi_tool_result(result)))
+                Ok(format_kordi_tool_result(result))
             }
             _ => Err(CloudToolExecutionError::Blocked(
                 "This tool is not available in Cloud fallback until a safe remote implementation exists."
@@ -116,16 +126,25 @@ fn cloud_runner_tmp_dir() -> PathBuf {
     std::env::temp_dir().join("kordi-cloud-agent-runner-web-tools")
 }
 
-fn format_kordi_tool_result(result: ToolResult) -> String {
-    result
+fn format_kordi_tool_result(result: ToolResult) -> CloudToolOutput {
+    if result
         .content
-        .into_iter()
-        .map(|block| match block {
-            ContentBlock::Text { text } => text,
-            ContentBlock::Image { mime_type, .. } => format!("[image result: {mime_type}]"),
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .iter()
+        .any(|b| matches!(b, ContentBlock::Image { .. }))
+    {
+        return CloudToolOutput::Content(result.content);
+    }
+    CloudToolOutput::Text(
+        result
+            .content
+            .into_iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text),
+                ContentBlock::Image { .. } => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
 }
 
 #[cfg(test)]

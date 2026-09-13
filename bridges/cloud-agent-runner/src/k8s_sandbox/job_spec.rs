@@ -36,6 +36,7 @@ impl Default for K8sSandboxConfig {
 pub enum K8sSandboxOperation {
     ReadText { path: String },
     ReadBytes { path: String },
+    ReadBytesBounded { path: String, max_bytes: usize },
     WriteText { path: String, content: String },
     List { path: String },
     Bash { command: String },
@@ -157,6 +158,10 @@ fn operation_command(operation: K8sSandboxOperation) -> String {
     match operation {
         K8sSandboxOperation::ReadText { path } => format!("cat -- {}", shell_quote(&path)),
         K8sSandboxOperation::ReadBytes { path } => format!("base64 < {}", shell_quote(&path)),
+        K8sSandboxOperation::ReadBytesBounded { path, max_bytes } => format!(
+            "resolved=$(realpath -- {path}) || exit 1; case \"$resolved\" in /workspace/*) ;; *) exit 1 ;; esac; test -f \"$resolved\" || exit 1; head -c {limit} -- \"$resolved\" | base64",
+            path = shell_quote(&path), limit = max_bytes.saturating_add(1),
+        ),
         K8sSandboxOperation::WriteText { path, content } => {
             let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
             format!(

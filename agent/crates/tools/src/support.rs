@@ -48,11 +48,6 @@ pub(crate) fn text_result_with(
     )
 }
 
-pub(crate) fn image_result(data: String, mime_type: String) -> ToolResult {
-    build_result(
-        vec![ContentBlock::Image { data, mime_type }],
-        None,
-        false,
-        None,
-    )
+pub(crate) fn image_result(content: ContentBlock) -> ToolResult {
+    build_result(vec![content], None, false, None)
 }
