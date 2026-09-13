@@ -1377,9 +1377,9 @@ enum AgentSessionQueuePresentation {
                 && message.createdAt < createdAt
                 && message.requestMessageId.flatMap { snapshots[$0] }?.completed == false
         }
-        // Sending is not execution admission. Synced Mac work can establish a
-        // queue immediately; otherwise wait for the executor's actual snapshot.
-        return hasActivePredecessor ? .queued : nil
+        // Show waiting feedback immediately without claiming execution admission.
+        // Only show a queue when earlier work is known to be active.
+        return hasActivePredecessor ? .queued : .preparing
     }
 
     static func apply(to messages: [ChatMessage], kind: ConversationKind) -> [ChatMessage] {

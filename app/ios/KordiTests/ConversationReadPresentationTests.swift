@@ -630,18 +630,18 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(firstFrame.contains { $0.author == .agent && $0.requestMessageId == request.id })
     }
 
-    func testUnconfirmedAgentAdmissionDoesNotInventProcessingOrQueue() {
+    func testUnconfirmedAgentAdmissionShowsWaitingWithoutInventingAQueue() {
         let fixture = agentQueueFixture()
         let userMessages = fixture.filter { $0.author == .me }
-        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+        XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
             requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
             messages: userMessages, kind: .agent, locallyQueued: false
-        ))
+        ), .preparing)
         // A later queued request must not make the first request queue behind it.
-        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+        XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
             requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
             messages: fixture.filter { $0.id != "response-1" }, kind: .agent, locallyQueued: false
-        ))
+        ), .preparing)
         for kind: ConversationKind in [.group, .person] {
             XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
                 requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
@@ -659,10 +659,10 @@ final class ConversationReadPresentationTests: XCTestCase {
                 phase: phase, summary: "Finished", steps: [], thinkingText: nil,
                 tools: nil, startedAtMs: 1_000, updatedAtMs: 5_000, completed: true
             )
-            XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+            XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
                 requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
                 messages: [terminal] + earlier, kind: .agent, locallyQueued: false
-            ))
+            ), .preparing)
         }
     }
 

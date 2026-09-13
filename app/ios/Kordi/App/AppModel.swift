@@ -2459,7 +2459,7 @@ final class AppModel: ObservableObject {
                 requestMessageId: requestMessageId,
                 agentExecution: AgentExecutionSnapshot(
                     phase: phase,
-                    summary: phase == .queued ? "Queued next" : "Preparing the response",
+                    summary: phase == .queued ? "Queued next" : "Waiting for agent response",
                     steps: [],
                     thinkingText: nil,
                     tools: nil,

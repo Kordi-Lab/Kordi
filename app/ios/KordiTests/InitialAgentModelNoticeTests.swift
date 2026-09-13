@@ -69,4 +69,25 @@ struct InitialAgentModelNoticeTests {
         }
     }
 
+    @Test(arguments: [false, true])
+    func acceptedAgentRequestImmediatelyShowsOneWaitingIndicator(hasHistory: Bool) async throws {
+        try await check { model, conversation, _ in
+            if hasHistory { await model.send("Earlier request", attachments: [], to: conversation) }
+            var staged: [ChatMessage] = []
+            await model.send("New request", attachments: [], to: conversation, onStaged: { _ in
+                staged = model.messages(for: conversation)
+            })
+            let requestIndex = try #require(staged.firstIndex { $0.text == "New request" })
+            let waiting = staged.filter { $0.author == .agent && $0.requestMessageId == staged[requestIndex].id }
+            #expect(waiting.count == 1)
+            let placeholder = try #require(waiting.first)
+            let execution = try #require(placeholder.agentExecution)
+            #expect(execution.phase == .preparing)
+            #expect(MessageBubble.showsAgentWaitingIndicator(execution: execution, responseText: placeholder.text))
+            #expect(staged.firstIndex { $0.id == placeholder.id } == requestIndex + 1)
+            #expect(staged.filter(\.isAgentModelChangeNotice).isEmpty)
+            #expect(model.messages(for: conversation).allSatisfy { $0.agentExecution?.completed != false })
+        }
+    }
+
 }
