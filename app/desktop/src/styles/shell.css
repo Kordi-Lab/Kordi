@@ -30,28 +30,46 @@
   box-shadow: var(--app-shadow-float);
 }
 
-/* A native window owns all four viewport edges. Fixed insets avoid a transient
- * 100dvh mismatch in WebKit's macOS live-resize loop, keeping bottom/left
- * controls stationary when the opposite corner is dragged. */
+/* Use the native client dimensions as layout space, never as a scale factor.
+ * The shell grid recalculates its tracks while text and controls keep size. */
 .app-native-viewport {
-  position: fixed;
-  inset: 0;
-  width: auto;
+  position: relative;
+  width: var(--app-native-width, 100%);
   max-width: none;
-  height: auto;
+  height: var(--app-native-height, 100%);
   min-height: 0;
-  contain: layout;
 }
 
 .app-native-viewport > .app-shell {
-  position: absolute;
-  inset: 0;
-  width: auto;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  position: relative;
+  width: 100%;
   max-width: none;
-  height: auto;
+  height: 100%;
   min-height: 0;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
+}
+
+.app-native-viewport .app-shell-layout-grid {
+  transition-property: none;
+}
+
+.app-chat-pane-layout {
+  display: grid;
+  align-self: stretch;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.app-shell-content {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.app-chat-pane-layout[data-has-header="true"] {
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 /* The native class covers the first live-resize frame; the data attribute
@@ -180,6 +198,12 @@ html.kordi-native-shell .kordi-app .app-session-panel {
 html.kordi-native-shell .kordi-app .app-main-panel {
   background: var(--app-native-main-bg);
   box-shadow: none;
+}
+
+/* These tints are native panes once initialized. Painting them again inside
+ * WebKit would double the tint and expose bare material on live resize. */
+html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-session-panel {
+  background: transparent;
 }
 
 @media (prefers-reduced-transparency: reduce) {

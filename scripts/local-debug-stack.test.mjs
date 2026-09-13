@@ -395,6 +395,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
       KORDI_DEV_SSH_ZONE: 'example-zone',
       KORDI_DEV_SSH_TARGET: 'example-user@example-instance',
       KORDI_DEV_DESKTOP_PROFILE: 'remote-isolated',
+      KORDI_DEV_FRONTEND_MODE: 'production',
       KORDI_DEV_DESKTOP_TITLE: 'Kordi Remote Dev',
       KORDI_DEV_DESKTOP_PORT: '1498',
       TEST_GITHUB_LOGIN: 'example-maintainer',
@@ -420,7 +421,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
     assert.match(gcloudArgs, /-L 127\.0\.0\.1:17081:127\.0\.0\.1:17081/);
     assert.equal(
       readFileSync(desktopCapturePath, 'utf8').trim(),
-      'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --port 1498|http://127.0.0.1:17081|community||||1',
+      'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --frontend production --port 1498|http://127.0.0.1:17081|community||||1',
     );
     assert.match(launched.stdout, /Verified Google and GitHub OAuth/);
 

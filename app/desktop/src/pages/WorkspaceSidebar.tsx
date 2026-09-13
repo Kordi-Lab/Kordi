@@ -263,7 +263,7 @@ export function WorkspaceSidebar({
           {showSessionRail && !collapseChatSessions ? (
             <div
               className={cn(
-                'app-session-panel overflow-hidden',
+                'app-session-panel min-h-0 min-w-0 shrink-0 overflow-hidden',
                 isNativeShell ? 'pt-9' : '',
               )}
               style={{ width: `${sessionRailWidth}px` }}

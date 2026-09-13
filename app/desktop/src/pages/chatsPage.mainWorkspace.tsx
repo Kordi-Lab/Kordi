@@ -1,4 +1,5 @@
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
+import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
 import {
   localOwnedAgentSenderLabel,
 } from '@/app/viewModels/helpers';
@@ -174,9 +175,9 @@ export function ChatMainWorkspace({
   return (
     <>
       <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
-      <section
-        className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white/[0.025]"
-        data-active-side={presentation.activeSide}
+      <ChatPaneLayout
+        hasHeader={!isEmptySelection}
+        activeSide={presentation.activeSide}
       >
         {!isEmptySelection ? <MainChatHeader
           conversation={activeConv}
@@ -425,7 +426,7 @@ export function ChatMainWorkspace({
             {layout.rightDetailRail}
           </div>
         )}
-      </section>
+      </ChatPaneLayout>
       {threadPanel}
       </div>
 
