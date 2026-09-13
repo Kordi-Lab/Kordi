@@ -3,6 +3,7 @@
 pub mod anthropic;
 mod error;
 pub mod google;
+mod images;
 pub mod openai;
 pub mod registry;
 pub mod resolver;

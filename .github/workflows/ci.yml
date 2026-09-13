@@ -117,6 +117,9 @@ jobs:
       - name: Test session crate
         run: cargo test -p kordi-session
 
+      - name: Test provider request contracts
+        run: cargo test -p kordi-provider --locked
+
       - name: Test CLI lib
         run: cargo test -p kordi-cli --lib
 

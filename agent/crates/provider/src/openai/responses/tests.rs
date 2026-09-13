@@ -1,8 +1,53 @@
+#[path = "../../../tests/support/images.rs"]
+mod fixtures;
+
 use super::{build_responses_request_body, should_use_responses_api};
 use crate::{CompletionRequest, ProviderAuthMode, RequestOptions};
 use serde_json::json;
 use std::collections::HashMap;
 use tokio_util::sync::CancellationToken;
+
+#[test]
+fn final_responses_request_preserves_images_after_chat_format_conversion() {
+    use base64::Engine;
+    let red = base64::engine::general_purpose::STANDARD.encode(fixtures::RED_BLUE);
+    let green = base64::engine::general_purpose::STANDARD.encode(fixtures::GREEN_WHITE);
+    let mut request = completion_request("gpt-5.4");
+    request.messages = vec![json!({"role":"user","content":[
+        {"type":"text","text":"Compare these markers"},
+        {"type":"image","source":{"type":"base64","media_type":"image/png","data":red},"detail":"low"},
+        {"type":"text","text":"with this"},
+        {"type":"image","source":{"type":"base64","media_type":"image/png","data":green}}
+    ]})];
+    crate::images::validate_direct_images(&request.messages, crate::images::ImageRoute::OpenAi)
+        .unwrap();
+    // The real OpenAiProvider::stream path converts to Chat Completions format
+    // before building a Responses request. Skipping that step hid the regression.
+    let body = build_responses_request_body(&request, super::super::prepare_messages(&request));
+    assert_eq!(
+        body["input"][1]["content"],
+        json!([
+            {"type":"input_text","text":"Compare these markers"},
+            {"type":"input_image","image_url":format!("data:image/png;base64,{red}"),"detail":"low"},
+            {"type":"input_text","text":"with this"},
+            {"type":"input_image","image_url":format!("data:image/png;base64,{green}"),"detail":"high"}
+        ])
+    );
+    request.messages[0]["content"] = json!([{"type":"image_url","image_url":{"url":"https://example.com/marker.png","detail":"auto"}}]);
+    let body = build_responses_request_body(&request, super::super::prepare_messages(&request));
+    assert_eq!(
+        body["input"][1]["content"],
+        json!([
+            {"type":"input_image","image_url":"https://example.com/marker.png","detail":"auto"}
+        ])
+    );
+    request.messages[0]["content"] = json!("text only");
+    let body = build_responses_request_body(&request, super::super::prepare_messages(&request));
+    assert_eq!(
+        body["input"][1]["content"],
+        json!([{"type":"input_text","text":"text only"}])
+    );
+}
 
 fn request_options(base_url: &str) -> RequestOptions {
     RequestOptions {

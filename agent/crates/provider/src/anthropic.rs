@@ -56,6 +56,10 @@ impl Provider for AnthropicProvider {
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
+        crate::images::validate_direct_images(
+            &request.messages,
+            crate::images::ImageRoute::Anthropic,
+        )?;
         let url = format!("{}/v1/messages", options.base_url.trim_end_matches('/'));
         let is_oauth = matches!(options.auth_mode, ProviderAuthMode::OAuth);
 

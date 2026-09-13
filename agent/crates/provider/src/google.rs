@@ -56,6 +56,10 @@ impl Provider for GoogleProvider {
         options: RequestOptions,
         tx: mpsc::UnboundedSender<StreamEvent>,
     ) -> KordiResult<()> {
+        crate::images::validate_direct_images(
+            &request.messages,
+            crate::images::ImageRoute::Google,
+        )?;
         let url = format!(
             "{}/v1beta/models/{}:streamGenerateContent?key={}&alt=sse",
             options.base_url.trim_end_matches('/'),
