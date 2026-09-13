@@ -37,9 +37,20 @@ pub(super) fn references(
         .iter()
         .enumerate()
         .filter_map(|(index, value)| {
-            let mime = value["mimeType"]
-                .as_str()
-                .unwrap_or("application/octet-stream");
+            let mime = value["mimeType"].as_str().unwrap_or_else(|| {
+                match std::path::Path::new(value["localPath"].as_str().unwrap_or_default())
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .map(str::to_ascii_lowercase)
+                    .as_deref()
+                {
+                    Some("png") => "image/png",
+                    Some("jpg" | "jpeg") => "image/jpeg",
+                    Some("webp") => "image/webp",
+                    Some("gif") => "image/gif",
+                    _ => "application/octet-stream",
+                }
+            });
             value["localPath"].as_str()?;
             Some(SessionAttachmentReference {
                 message_id: message.into(),

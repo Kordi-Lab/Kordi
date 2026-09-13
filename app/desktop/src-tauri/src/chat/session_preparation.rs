@@ -167,7 +167,7 @@ pub(super) async fn prepare_desktop_session_for_send(
             .ok()
             .flatten()
     } else {
-        None
+        Some(format!("Current session: {prompt_session_id}. Use this session ID when retrieving earlier messages or attachments from this conversation."))
     };
     runtime.set_session_prompt_context(Some(format!(
         "{}\n{}",
