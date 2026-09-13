@@ -67,12 +67,22 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
             if index > 0 {
                 remote.agentExecution = AgentExecutionSnapshot(phase: phase, summary: "Working",
                     steps: phase == .analyzing ? [AgentExecutionStep(id: "analysis", label: "Checking context", state: .running)] : [],
-                    thinkingText: phase == .analyzing ? "Checking context" : nil,
+                    thinkingText: phase == .analyzing || phase == .usingTool ? "Checking context" : nil,
+                    tools: phase == .usingTool ? [AgentExecutionTool(id: "tool-search", name: "web_search",
+                        status: "running", arguments: #"{"query":"synthetic tool visibility"}"#, liveOutput: "Searching",
+                        resultText: nil, detail: "Searching the web", toolLayer: "observation", isError: false)] : nil,
                     startedAtMs: 1_000, updatedAtMs: Double(index + 1) * 1_000, completed: false)
                 model.upsertPreviewMessage(remote)
             }
             let active = try XCTUnwrap(model.messages(for: conversation).first { $0.agentExecution?.completed == false })
-            XCTAssertEqual(MessageBubble.showsAgentWaitingIndicator(execution: try XCTUnwrap(active.agentExecution), responseText: active.text), phase != .analyzing, "Thinking output replaces the waiting animation while the row stays visible")
+            XCTAssertEqual(MessageBubble.showsAgentWaitingIndicator(execution: try XCTUnwrap(active.agentExecution), responseText: active.text), phase != .analyzing && phase != .usingTool, "Thinking and tools replace the waiting animation while the row stays visible")
+            if phase == .usingTool {
+                let presentation = AgentExecutionTimelinePresentation(execution: try XCTUnwrap(active.agentExecution))
+                XCTAssertEqual(presentation.activeOutputStatus, "Searching the web", "The tool must take precedence over thinking text")
+                XCTAssertEqual(presentation.tools.first?.name, "web_search")
+                XCTAssertEqual(presentation.tools.first?.arguments, #"{"query":"synthetic tool visibility"}"#)
+                XCTAssertTrue(presentation.hasExpandableContent)
+            }
             XCTAssertEqual(model.timelineIdentity(for: active), stableRowID)
             XCTAssertEqual(model.messages(for: conversation).filter { $0.author == .agent }.count, 1)
             var visibleFrames = 0
