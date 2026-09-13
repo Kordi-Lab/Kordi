@@ -1,3 +1,7 @@
+.kordi-app.theme-light .app-workspace-sidebar {
+  --app-sidebar-selected-bg: #DCDCDC;
+}
+
 .app-workspace-sidebar .app-workspace-nav-button {
   min-height: 44px;
   border: 0;
