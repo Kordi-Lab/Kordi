@@ -87,13 +87,15 @@ struct InitialAgentModelNoticeTests {
     }
 
     @Test(arguments: [MessageDeliveryState.sending, .sent, .delivered, .read, .failed, .cancelled])
-    func deliveryStateAloneNeverMeansProcessing(state: MessageDeliveryState) {
+    func acceptedPendingAgentRequestShowsProgressWithoutRunEvents(state: MessageDeliveryState) {
         let request = ChatMessage(id: "request", conversationId: "agent-session:test", author: .me,
             authorName: "You", text: "Hello", createdAt: .distantPast, deliveryState: state,
             errorMessage: nil, requestMessageId: nil)
         for kind: ConversationKind in [.agent, .person, .group] {
+            let expected: AgentExecutionSnapshot.Phase? = kind == .agent
+                && [.sent, .delivered, .read].contains(state) ? .preparing : nil
             #expect(AgentSessionQueuePresentation.pendingPhase(requestID: request.id, createdAt: request.createdAt,
-                messages: [request], kind: kind, locallyQueued: false) == nil)
+                messages: [request], kind: kind, locallyQueued: false) == expected)
         }
         if state == .sending || state == .failed || state == .cancelled {
             #expect(AgentSessionQueuePresentation.pendingPhase(requestID: request.id, createdAt: request.createdAt,
@@ -110,7 +112,7 @@ struct InitialAgentModelNoticeTests {
             let phase = AgentSessionQueuePresentation.pendingPhase(requestID: request.id,
                 createdAt: request.createdAt, messages: [request], kind: .agent,
                 locallyQueued: false, confirmedRunStatus: status)
-            let expected: AgentExecutionSnapshot.Phase? = status == "running"
+            let expected: AgentExecutionSnapshot.Phase? = !["failed", "cancelled"].contains(status)
                 && [.sent, .delivered, .read].contains(state) ? .preparing : nil
             #expect(phase == expected)
         }
@@ -131,7 +133,11 @@ struct InitialAgentModelNoticeTests {
                 let completed = CloudAgentRun(runId: "run", status: "completed", sandboxId: nil,
                     createdAt: run.createdAt, updatedAt: "2026-09-13T10:00:02Z")
                 model.recordConfirmedAgentRun(completed, conversationId: conversation.id, requestMessageId: request.id)
-                #expect(model.messages(for: conversation).allSatisfy { $0.agentExecution == nil })
+                #expect(model.messages(for: conversation).last?.agentExecution?.phase == .preparing)
+                model.upsertPreviewMessage(ChatMessage(id: "final", conversationId: conversation.id, author: .agent,
+                    authorName: "Agent", text: "Done", createdAt: request.createdAt.addingTimeInterval(1),
+                    deliveryState: .delivered, errorMessage: nil, requestMessageId: request.id))
+                #expect(model.messages(for: conversation).filter { $0.author == .agent }.map(\.text) == ["Done"])
             })
             #expect(model.messages(for: conversation).allSatisfy { $0.agentExecution == nil })
         }

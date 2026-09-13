@@ -28,7 +28,7 @@ enum AgentSessionQueuePresentation {
               [.sent, .delivered, .read].contains(request.deliveryState) else { return nil }
         if let confirmedRunStatus {
             if confirmedRunStatus == "running" { return .preparing }
-            if ["completed", "failed", "cancelled"].contains(confirmedRunStatus) { return nil }
+            if ["failed", "cancelled"].contains(confirmedRunStatus) { return nil }
         }
         if locallyQueued { return .queued }
         let snapshots = executionSnapshots(in: messages)
@@ -38,9 +38,10 @@ enum AgentSessionQueuePresentation {
                 && message.createdAt < createdAt
                 && message.requestMessageId.flatMap { snapshots[$0] }?.completed == false
         }
-        // A local send cannot establish processing. Only executor responses
-        // provide that state; earlier active work can establish a queue.
-        return hasActivePredecessor ? .queued : nil
+        // An accepted request stays visibly pending until its reply arrives.
+        // Admission and progress events can refine this state, but are not
+        // prerequisites for acknowledging that the user is waiting.
+        return hasActivePredecessor ? .queued : .preparing
     }
 
     static func apply(to messages: [ChatMessage], kind: ConversationKind) -> [ChatMessage] {

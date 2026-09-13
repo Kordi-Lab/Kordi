@@ -1921,16 +1921,6 @@ final class AppModel: ObservableObject {
                 voiceMessage: uploadedVoiceMessage,
                 sharedTitle: initialAgentSessionTitle
             )
-            if let initialAgentSessionTitle {
-                _ = try await api.updateSessionTitle(
-                    token: token,
-                    sessionId: conversation.sessionId,
-                    title: initialAgentSessionTitle,
-                    peerAccountId: conversation.peerAccountId,
-                    conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
-                    memberAccountIds: [conversation.peerAccountId]
-                )
-            }
             promotePendingAgentRequest(
                 conversationId: conversation.id,
                 from: localId,
@@ -1938,14 +1928,6 @@ final class AppModel: ObservableObject {
             )
             mergeCloudMessage(sent, peerHint: conversation.peerAccountId)
             replaceMessage(localId, with: mapMessage(sent, conversation: conversation, ownAccountId: account.accountId))
-            if isNewAgentSession {
-                // The route event may be the first row that materializes this
-                // stable session in reliable chat. Rebuild immediately so the
-                // current device and every other device use the same session
-                // identity and synchronized title instead of retaining a
-                // provisional template row until the next background refresh.
-                await rebuildConversationCatalog()
-            }
             cloudConnectionState = .connected
             outgoingAttachments.forEach { $0.discardOwnedFile() }
             clearPendingSendMetadata(localId)
@@ -1963,6 +1945,24 @@ final class AppModel: ObservableObject {
                     account: account,
                     runtimeRoute: requestedRuntimeRoute(for: conversation)
                 )
+            }
+            if let initialAgentSessionTitle {
+                _ = try? await api.updateSessionTitle(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    title: initialAgentSessionTitle,
+                    peerAccountId: conversation.peerAccountId,
+                    conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
+                    memberAccountIds: [conversation.peerAccountId]
+                )
+            }
+            if isNewAgentSession {
+                // The route event may be the first row that materializes this
+                // stable session in reliable chat. Rebuild immediately so the
+                // current device and every other device use the same session
+                // identity and synchronized title instead of retaining a
+                // provisional template row until the next background refresh.
+                await rebuildConversationCatalog()
             }
         } catch {
             recordCloudConnectionFailure(error)

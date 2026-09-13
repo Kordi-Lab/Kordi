@@ -17,6 +17,62 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         try await checkSend(historyCount: 0, duringInitialLoad: true)
     }
 
+    func testSendAcknowledgementRevealsAnimatedProgressWithoutRunEvents() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let queue = ConversationSendQueue()
+        let model = AppModel(cache: try LocalMessageStore(inMemory: true), sendQueue: queue, previewMode: true)
+        let template = try XCTUnwrap(model.conversations.first { $0.agentId == "cloud_agent_research" })
+        let conversation = ConversationSummary(id: "agent-session:confirmed-progress", kind: .agent,
+            peerAccountId: template.peerAccountId, agentId: template.agentId, ownerDisplayName: template.ownerDisplayName,
+            displayName: "Confirmed progress", lastMessage: "", lastActivityAt: .distantPast, unreadCount: 0,
+            avatarSource: nil, agentActivity: .ready, sessionId: "session:confirmed-progress")
+        await queue.acquire(conversation.id)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(navigation: navigation, model: model,
+            calls: KordiCallCoordinator(), notifications: KordiNotificationCoordinator()))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            queue.release(conversation.id)
+            window.isHidden = true; window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+        }
+        navigation.path = [.conversation(conversation)]
+        try await Task.sleep(for: .seconds(1))
+        let sending = Task { await model.send("Synthetic status test", attachments: [], to: conversation) }
+        for _ in 0..<100 {
+            if model.messages(for: conversation).contains(where: { $0.author == .me }) { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        var request = try XCTUnwrap(model.messages(for: conversation).first { $0.author == .me })
+        XCTAssertEqual(request.deliveryState, .sending)
+        XCTAssertFalse(model.messages(for: conversation).contains { $0.agentExecution != nil })
+        request.deliveryState = .sent
+        model.upsertPreviewMessage(request)
+        let progress = try XCTUnwrap(model.messages(for: conversation).first { $0.agentExecution != nil })
+        XCTAssertTrue(MessageBubble.showsAgentWaitingIndicator(execution: try XCTUnwrap(progress.agentExecution), responseText: progress.text))
+        var visibleFrames = 0
+        for _ in 0..<60 {
+            try await Task.sleep(for: .milliseconds(16))
+            if let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: progress), in: window),
+               frame.intersects(window.bounds), frame.height > 0 { visibleFrames += 1 }
+        }
+        XCTAssertGreaterThan(visibleFrames, 10, "An accepted pending request must show its animation without any run or transcript progress event")
+        model.upsertPreviewMessage(ChatMessage(id: "reply", conversationId: conversation.id, author: .agent,
+            authorName: "Agent", text: "Done", createdAt: request.createdAt.addingTimeInterval(1),
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: request.id))
+        XCTAssertFalse(model.messages(for: conversation).contains { $0.agentExecution != nil })
+        queue.release(conversation.id)
+        await sending.value
+    }
+
     private func checkSend(historyCount: Int, duringInitialLoad: Bool) async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]
