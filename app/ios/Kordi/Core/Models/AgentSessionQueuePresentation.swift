@@ -59,8 +59,13 @@ enum AgentSessionQueuePresentation {
             $0.author == .me && !$0.isSystemNotice
                 && $0.deliveryState != .failed && $0.deliveryState != .cancelled
         }.sorted(by: ChatMessage.timelinePrecedes)
+        // The front request keeps its activity row while the executor moves
+        // from admission to running. Only requests waiting behind it collapse
+        // into queue positions on their outgoing bubbles.
+        let frontRequestID = requests.first { snapshots[$0.id]?.completed == false }?.id
         let queuedIDs = requests.filter {
-            snapshots[$0.id]?.phase == .queued && snapshots[$0.id]?.completed == false
+            $0.id != frontRequestID
+                && snapshots[$0.id]?.phase == .queued && snapshots[$0.id]?.completed == false
         }.map(\.id)
         let positions = Dictionary(uniqueKeysWithValues: queuedIDs.enumerated().map { ($0.element, $0.offset + 1) })
         return messages.compactMap { message in

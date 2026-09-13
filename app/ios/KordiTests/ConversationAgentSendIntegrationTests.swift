@@ -58,17 +58,37 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         model.upsertPreviewMessage(request)
         let progress = try XCTUnwrap(model.messages(for: conversation).first { $0.agentExecution != nil })
         XCTAssertTrue(MessageBubble.showsAgentWaitingIndicator(execution: try XCTUnwrap(progress.agentExecution), responseText: progress.text))
-        var visibleFrames = 0
-        for _ in 0..<60 {
-            try await Task.sleep(for: .milliseconds(16))
-            if let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: progress), in: window),
-               frame.intersects(window.bounds), frame.height > 0 { visibleFrames += 1 }
+        let stableRowID = model.timelineIdentity(for: progress)
+        var remote = ChatMessage(id: "remote-progress", conversationId: conversation.id, author: .agent,
+            authorName: "Agent", text: "", createdAt: request.createdAt.addingTimeInterval(0.001),
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: request.id)
+        let phases: [AgentExecutionSnapshot.Phase] = [.preparing, .queued, .preparing, .analyzing, .usingTool, .preparing]
+        for (index, phase) in phases.enumerated() {
+            if index > 0 {
+                remote.agentExecution = AgentExecutionSnapshot(phase: phase, summary: "Working",
+                    steps: phase == .analyzing ? [AgentExecutionStep(id: "analysis", label: "Checking context", state: .running)] : [],
+                    thinkingText: phase == .analyzing ? "Checking context" : nil,
+                    startedAtMs: 1_000, updatedAtMs: Double(index + 1) * 1_000, completed: false)
+                model.upsertPreviewMessage(remote)
+            }
+            let active = try XCTUnwrap(model.messages(for: conversation).first { $0.agentExecution?.completed == false })
+            XCTAssertEqual(model.timelineIdentity(for: active), stableRowID)
+            XCTAssertEqual(model.messages(for: conversation).filter { $0.author == .agent }.count, 1)
+            var visibleFrames = 0
+            for _ in 0..<30 {
+                try await Task.sleep(for: .milliseconds(16))
+                if let frame = ConversationMotionProbeRegistry.frame(for: stableRowID, in: window),
+                   frame.intersects(window.bounds), frame.height > 0 { visibleFrames += 1 }
+            }
+            XCTAssertGreaterThan(visibleFrames, 10, "Activity must remain visible through phase \(phase.rawValue)")
         }
-        XCTAssertGreaterThan(visibleFrames, 10, "An accepted pending request must show its animation without any run or transcript progress event")
-        model.upsertPreviewMessage(ChatMessage(id: "reply", conversationId: conversation.id, author: .agent,
-            authorName: "Agent", text: "Done", createdAt: request.createdAt.addingTimeInterval(1),
-            deliveryState: .delivered, errorMessage: nil, requestMessageId: request.id))
-        XCTAssertFalse(model.messages(for: conversation).contains { $0.agentExecution != nil })
+        remote.text = "Done"
+        remote.deliveryState = .delivered
+        remote.agentExecution = AgentExecutionSnapshot(phase: .complete, summary: "Done", steps: [],
+            startedAtMs: 1_000, updatedAtMs: 8_000, completed: true)
+        model.upsertPreviewMessage(remote)
+        XCTAssertFalse(model.messages(for: conversation).contains { $0.agentExecution?.completed == false })
+        XCTAssertEqual(model.messages(for: conversation).filter { $0.author == .agent }.map(\.text), ["Done"])
         queue.release(conversation.id)
         await sending.value
     }

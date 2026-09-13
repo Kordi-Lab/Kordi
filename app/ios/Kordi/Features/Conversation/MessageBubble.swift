@@ -573,10 +573,6 @@ struct MessageBubble: View, Equatable {
             if let execution = Self.agentExecutionForDisplay(message) {
                 AgentExecutionTimeline(
                     execution: execution,
-                    showsWaitingIndicator: Self.showsAgentWaitingIndicator(
-                        execution: execution,
-                        responseText: message.text
-                    ),
                     onExpansionChange: onAgentExecutionExpansionChange
                 )
             }
@@ -1327,7 +1323,6 @@ struct AgentExecutionTimelineExpansion {
 private struct AgentExecutionTimeline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let execution: AgentExecutionSnapshot
-    let showsWaitingIndicator: Bool
     let onExpansionChange: (Bool) -> Void
     @State private var expansion = AgentExecutionTimelineExpansion()
 
@@ -1337,12 +1332,13 @@ private struct AgentExecutionTimeline: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if showsWaitingIndicator {
+            if !execution.completed {
                 AgentExecutionActivityIndicator(
                     accessibilityStatus: presentation.headline
                 )
                 .frame(minHeight: 24, alignment: .leading)
-            } else if let activeOutputStatus = presentation.activeOutputStatus {
+            }
+            if let activeOutputStatus = presentation.activeOutputStatus {
                 Button(action: toggleExpansion) {
                     HStack(spacing: 8) {
                         if let completionLabel = presentation.completionLabel {
