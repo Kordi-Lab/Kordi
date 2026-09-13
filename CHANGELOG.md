@@ -22,6 +22,9 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Kept iPhone agent trajectories anchored while expanding, prevented details
+  from overlapping their header, and stabilized short chats above the composer.
+  ([#1528])
 - Kept pending iPhone messages after confirmed history during rapid sends and
   retries, while preserving original dates and related agent progress. ([#1521])
 - Prevented repeated uploads of existing conversation history and preserved
@@ -760,3 +763,4 @@ This release is the comparison baseline for beta.8. See the
 [#1507]: https://github.com/Kordi-Lab/Kordi/pull/1507
 [#1509]: https://github.com/Kordi-Lab/Kordi/pull/1509
 [#1521]: https://github.com/Kordi-Lab/Kordi/issues/1521
+[#1528]: https://github.com/Kordi-Lab/Kordi/issues/1528
