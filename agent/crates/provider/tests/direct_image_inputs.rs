@@ -326,3 +326,31 @@ async fn unsupported_model_errors_are_reported_without_a_text_only_retry() {
         );
     }
 }
+
+#[tokio::test]
+async fn text_followup_keeps_the_original_image_in_the_first_user_message() {
+    let blocks = vec![image(fixtures::RED_BLUE)];
+    for route in [Route::Chat, Route::OAuth, Route::Anthropic, Route::Google] {
+        let mut input = request(json!(blocks));
+        input
+            .messages
+            .push(json!({"role":"assistant","content":"What should I inspect?"}));
+        input
+            .messages
+            .push(json!({"role":"user","content":"Describe the picture I sent."}));
+        let (body, result) = capture(route, input, false).await;
+        assert!(result.is_ok(), "{route:?}: {result:?}");
+        let mut actual = match route {
+            Route::OAuth => body["input"][0]["content"].clone(),
+            Route::Google => body["contents"][0]["parts"].clone(),
+            _ => body["messages"][0]["content"].clone(),
+        };
+        if matches!(route, Route::Anthropic) {
+            for block in actual.as_array_mut().unwrap() {
+                block.as_object_mut().unwrap().remove("cache_control");
+            }
+        }
+        assert_eq!(actual, expected_blocks(route, &blocks), "{route:?}");
+        assert!(body.to_string().contains("Describe the picture I sent."));
+    }
+}

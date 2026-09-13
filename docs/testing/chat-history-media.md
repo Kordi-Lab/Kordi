@@ -17,6 +17,9 @@ Recent context contains bounded text and stable attachment references. The
 
 Use `beforeSequence` to continue an older index or search page. Read available
 history and inspect relevant attachments before requesting a repeat or re-upload.
+Images already attached to an active runtime message remain in that message on
+text follow-ups, until the existing compaction or shared-request boundary removes
+them. A new live desktop screenshot must never replace an uploaded attachment.
 
 ## Manual regression
 
@@ -37,6 +40,10 @@ and labels. Do not capture or publish real conversation content.
    it. Both replies must remain in that contact chat without creating an Agent
    sidebar entry or a second unread badge. Repeat after reopening the client;
    previously cached shared replies must not become private agent chats.
+8. In a private agent chat, upload an image without a question, then ask what it
+   contains in a separate text message. The model request must retain the exact
+   uploaded image in the original user message. It must not capture the current
+   desktop as a substitute. Repeat with two distinct images and a comparison.
 
 The reader fetches bytes on demand and does not return signed storage URLs.
 Limits are 4 MiB per image and the shared image decoder's dimension/allocation

@@ -1,6 +1,6 @@
 use kordi_core::types::{
     AgentMessage, CompactionSummaryMessage, ContentBlock, CustomMessage, ModelInfo, SessionContext,
-    SessionEntry, ThinkingLevel, UserMessage,
+    SessionEntry, ThinkingLevel,
 };
 
 use super::formatting::{append_message, update_settings};
@@ -51,7 +51,10 @@ pub(super) fn build_context_from_entries(entries: &[SessionEntry]) -> SessionCon
         append_messages_after_compaction(&mut messages, entries, &mut model, &mut thinking_level);
     }
 
-    scope_runtime_attachments_to_current_submission(&mut messages);
+    // Images remain attached to their original user messages on the active path.
+    // Removing them on a text follow-up loses the evidence and rewrites a stable
+    // prompt prefix. Compaction and branch boundaries still control retention.
+    scope_file_payloads_to_current_submission(&mut messages);
 
     SessionContext {
         messages,
@@ -62,7 +65,7 @@ pub(super) fn build_context_from_entries(entries: &[SessionEntry]) -> SessionCon
 
 const DESKTOP_ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
 
-fn scope_runtime_attachments_to_current_submission(messages: &mut [AgentMessage]) {
+fn scope_file_payloads_to_current_submission(messages: &mut [AgentMessage]) {
     let Some(latest_user_idx) = messages
         .iter()
         .rposition(|message| matches!(message, AgentMessage::User(_)))
@@ -84,9 +87,6 @@ fn scope_runtime_attachments_to_current_submission(messages: &mut [AgentMessage]
 
     for (idx, message) in messages.iter_mut().enumerate() {
         match message {
-            AgentMessage::User(user) if idx != latest_user_idx => {
-                replace_previous_user_images_with_references(user);
-            }
             AgentMessage::Custom(custom)
                 if custom.custom_type == DESKTOP_ATTACHMENT_CONTEXT_CUSTOM_TYPE
                     && Some(idx) != current_attachment_context_idx =>
@@ -95,33 +95,6 @@ fn scope_runtime_attachments_to_current_submission(messages: &mut [AgentMessage]
             }
             _ => {}
         }
-    }
-}
-
-fn replace_previous_user_images_with_references(user: &mut UserMessage) {
-    let stripped_image_count = user
-        .content
-        .iter()
-        .filter(|block| matches!(block, ContentBlock::Image { .. }))
-        .count();
-    if stripped_image_count == 0 {
-        return;
-    }
-
-    user.content
-        .retain(|block| !matches!(block, ContentBlock::Image { .. }));
-
-    let has_text = user.content.iter().any(|block| match block {
-        ContentBlock::Text { text } => !text.trim().is_empty(),
-        ContentBlock::Image { .. } => false,
-    });
-    if !has_text {
-        let label = if stripped_image_count == 1 {
-            "[Previous image attachment]".to_string()
-        } else {
-            format!("[{stripped_image_count} previous image attachments]")
-        };
-        user.content.push(ContentBlock::Text { text: label });
     }
 }
 

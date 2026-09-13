@@ -169,12 +169,11 @@ pub(super) async fn prepare_desktop_session_for_send(
     } else {
         None
     };
-    runtime.set_session_prompt_context(local_session_context.map(|context| {
-        format!(
-            "{context}\n{}",
-            kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
-        )
-    }));
+    runtime.set_session_prompt_context(Some(format!(
+        "{}\n{}",
+        local_session_context.unwrap_or_default(),
+        kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
+    )));
     let calendar = calendar_runtime::build(runtime, context_session_id);
     let observation = if let Some(lease) = cloud_lease {
         let observation =

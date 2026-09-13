@@ -195,7 +195,7 @@ fn test_build_context_with_compaction() {
 }
 
 #[test]
-fn build_context_keeps_all_current_submission_images_in_runtime() {
+fn build_context_preserves_historical_and_current_images_in_their_original_messages() {
     let older = AgentMessage::User(UserMessage {
         content: vec![
             ContentBlock::Text {
@@ -259,12 +259,9 @@ fn build_context_keeps_all_current_submission_images_in_runtime() {
     let AgentMessage::User(old_user) = &ctx.messages[0] else {
         panic!("old message should be user")
     };
-    assert!(
-        !old_user
-            .content
-            .iter()
-            .any(|block| matches!(block, ContentBlock::Image { .. }))
-    );
+    assert!(old_user.content.iter().any(
+        |block| matches!(block, ContentBlock::Image { data, .. } if data == "old-image-data")
+    ));
     assert!(
         old_user
             .content
