@@ -90,7 +90,8 @@ test('cloud shell shares the authenticated session instead of bootstrapping nest
   const sidebarSlot = readFileSync(new URL('../src/app/assembleSidebarSlot.tsx', import.meta.url), 'utf8');
   const mainContentSwitch = readFileSync(new URL('../src/app/MainContentSwitch.tsx', import.meta.url), 'utf8');
 
-  assert.match(appRoot, /<KordiAppShell\s+cloudSession=\{cloudSessionOverride === undefined \? liveSession : undefined\}/);
+  assert.match(appRoot, /<KordiAppShell\s+cloudSession=\{cloudSessionOverride === undefined \? presentedSession : undefined\}/);
+  assert.match(appRoot, /\(\{ \.\.\.liveSession, signOut \}\)/);
   assert.doesNotMatch(sidebarSlot, /useCloudSession\s*\(/);
   assert.doesNotMatch(mainContentSwitch, /useCloudSession\s*\(/);
 });

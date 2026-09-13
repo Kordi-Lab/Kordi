@@ -263,58 +263,14 @@ test('login-mode tab pill announces aria-pressed for accessibility', () => {
   assert.match(markup, /aria-pressed="false"[^>]*>Sign up/);
 });
 
-test('cloud login native window uses a compact size instead of the full app frame', async () => {
-  const calls: Array<{ method: string; size?: { width: number; height: number }; resizable?: boolean }> = [];
-  class FakeLogicalSize {
-    constructor(public width: number, public height: number) {}
-  }
-  const deps = {
-    LogicalSize: FakeLogicalSize,
-    getCurrentWindow: () => ({
-      setResizable: async (resizable: boolean) => calls.push({ method: 'setResizable', resizable }),
-      setMinSize: async (size: FakeLogicalSize) => calls.push({ method: 'setMinSize', size: { width: size.width, height: size.height } }),
-      setSize: async (size: FakeLogicalSize) => calls.push({ method: 'setSize', size: { width: size.width, height: size.height } }),
-      center: async () => calls.push({ method: 'center' }),
-    }),
-  };
-
+test('cloud window surfaces keep their compact and workspace dimensions', async () => {
   assert.deepEqual(cloudLoginWindowSizeForMode('login'), { width: 760, height: 760, minWidth: 620, minHeight: 640 });
   assert.deepEqual(cloudLoginWindowSizeForMode('signup'), { width: 760, height: 860, minWidth: 620, minHeight: 640 });
   assert.equal(isTauriRuntime({ __TAURI_INTERNALS__: {} } as typeof globalThis), true);
   assert.equal(isTauriRuntime({} as typeof globalThis), false);
-
-  await applyCloudLoginWindowSize('signup', deps);
-
-  assert.deepEqual(calls, [
-    { method: 'setResizable', resizable: false },
-    { method: 'setMinSize', size: { width: 620, height: 640 } },
-    { method: 'setSize', size: { width: 760, height: 860 } },
-    { method: 'center' },
-  ]);
-});
-
-test('main app shell restores the normal app window size after login', async () => {
-  const calls: Array<{ method: string; size?: { width: number; height: number }; resizable?: boolean }> = [];
-  class FakeLogicalSize {
-    constructor(public width: number, public height: number) {}
-  }
-
-  await applyKordiMainWindowSize({
-    LogicalSize: FakeLogicalSize,
-    getCurrentWindow: () => ({
-      setResizable: async (resizable: boolean) => calls.push({ method: 'setResizable', resizable }),
-      setMinSize: async (size: FakeLogicalSize) => calls.push({ method: 'setMinSize', size: { width: size.width, height: size.height } }),
-      setSize: async (size: FakeLogicalSize) => calls.push({ method: 'setSize', size: { width: size.width, height: size.height } }),
-      center: async () => calls.push({ method: 'center' }),
-    }),
-  });
-
-  assert.deepEqual(calls, [
-    { method: 'setResizable', resizable: true },
-    { method: 'setMinSize', size: { width: 1192, height: 760 } },
-    { method: 'setSize', size: { width: 1480, height: 980 } },
-    { method: 'center' },
-  ]);
+  // Browser renders have no native IPC dependency.
+  await applyCloudLoginWindowSize('signup');
+  await applyKordiMainWindowSize();
 });
 
 test('cloud starting screen renders only the quiet watercolor dots', () => {
@@ -420,9 +376,8 @@ test('cloud login gate reads persisted theme preference and native system theme 
   assert.match(source, /getCurrentWindow\(\)\.theme\(\)/);
   assert.match(source, /getCurrentWindow\(\)\.onThemeChanged/);
   assert.match(source, /nativeWindowThemeIsResolvedTheme/);
-  assert.match(source, /classList\.add\('app-cloud-gate-active'\)/);
-  assert.match(source, /setBackgroundColor\(GATE_WINDOW_BACKGROUND\[theme\]\)/);
-  assert.match(source, /setBackgroundColor\(APP_WINDOW_BACKGROUND\[theme\]\)/);
+  assert.match(source, /classList\.toggle\('app-cloud-gate-active', active\)/);
+  assert.match(source, /active \? GATE_WINDOW_BACKGROUND\[theme\] : APP_WINDOW_BACKGROUND\[theme\]/);
   assert.match(baseCss, /body\.app-cloud-gate-active\.theme-light\s*\{[^}]*background:\s*linear-gradient\(180deg, rgb\(248 250 252\)/s);
   assert.match(capabilities, /core:window:allow-set-background-color/);
   assert.doesNotMatch(source, /const \[theme, setTheme\] = useState<ResolvedThemeMode>\(\(\) => readSystemTheme\(\)\)/);

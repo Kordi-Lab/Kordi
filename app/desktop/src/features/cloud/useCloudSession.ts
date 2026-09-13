@@ -51,7 +51,7 @@ export type UseCloudSessionResult = {
   }): Promise<void>;
   signInWithProvider(provider: CloudOAuthProvider): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
-  signOut(): Promise<void>;
+  signOut(this: void): Promise<void>;
   clearError(): void;
 };
 

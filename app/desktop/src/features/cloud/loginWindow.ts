@@ -1,3 +1,5 @@
+import { createWindowSizeCoordinator } from './windowSizeCoordinator';
+
 export type CloudLoginMode = 'login' | 'signup';
 
 export const CLOUD_LOGIN_WINDOW_SIZE = {
@@ -15,18 +17,6 @@ export const KORDI_MAIN_WINDOW_SIZE = {
   minHeight: 760,
 } as const;
 
-type LogicalSizeConstructor = new (width: number, height: number) => unknown;
-type NativeWindowHandle = {
-  setMinSize(size: unknown): Promise<void>;
-  setSize(size: unknown): Promise<void>;
-  center(): Promise<void>;
-  setResizable?(resizable: boolean): Promise<void>;
-};
-type NativeWindowDeps = {
-  getCurrentWindow(): NativeWindowHandle;
-  LogicalSize: LogicalSizeConstructor;
-};
-
 export function cloudLoginWindowSizeForMode(mode: CloudLoginMode) {
   return {
     width: CLOUD_LOGIN_WINDOW_SIZE.width,
@@ -40,34 +30,18 @@ export function isTauriRuntime(runtime: (typeof globalThis & { __TAURI_INTERNALS
   return Boolean(runtime.__TAURI_INTERNALS__);
 }
 
-async function nativeWindowDeps(): Promise<NativeWindowDeps | null> {
-  if (!isTauriRuntime()) return null;
-  const [{ getCurrentWindow }, { LogicalSize }] = await Promise.all([
-    import('@tauri-apps/api/window'),
-    import('@tauri-apps/api/dpi'),
-  ]);
-  return { getCurrentWindow, LogicalSize };
+const resizeNativeWindow = createWindowSizeCoordinator(async (surface: CloudLoginMode | 'main') => {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('desktop_set_auth_window_surface', {
+    surface,
+    animate: !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches,
+  });
+});
+
+export async function applyCloudLoginWindowSize(mode: CloudLoginMode) {
+  if (isTauriRuntime()) await resizeNativeWindow(mode);
 }
 
-export async function applyCloudLoginWindowSize(mode: CloudLoginMode, deps?: NativeWindowDeps) {
-  const resolvedDeps = deps ?? await nativeWindowDeps();
-  if (!resolvedDeps) return;
-
-  const size = cloudLoginWindowSizeForMode(mode);
-  const window = resolvedDeps.getCurrentWindow();
-  await window.setResizable?.(false);
-  await window.setMinSize(new resolvedDeps.LogicalSize(size.minWidth, size.minHeight));
-  await window.setSize(new resolvedDeps.LogicalSize(size.width, size.height));
-  await window.center();
-}
-
-export async function applyKordiMainWindowSize(deps?: NativeWindowDeps) {
-  const resolvedDeps = deps ?? await nativeWindowDeps();
-  if (!resolvedDeps) return;
-
-  const window = resolvedDeps.getCurrentWindow();
-  await window.setResizable?.(true);
-  await window.setMinSize(new resolvedDeps.LogicalSize(KORDI_MAIN_WINDOW_SIZE.minWidth, KORDI_MAIN_WINDOW_SIZE.minHeight));
-  await window.setSize(new resolvedDeps.LogicalSize(KORDI_MAIN_WINDOW_SIZE.width, KORDI_MAIN_WINDOW_SIZE.height));
-  await window.center();
+export async function applyKordiMainWindowSize() {
+  if (isTauriRuntime()) await resizeNativeWindow('main');
 }

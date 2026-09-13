@@ -11,6 +11,7 @@ remote_api_port="${KORDI_DEV_REMOTE_API_PORT:-17081}"
 desktop_port="${KORDI_DEV_DESKTOP_PORT:-1422}"
 desktop_profile="${KORDI_DEV_DESKTOP_PROFILE:-dev-isolated}"
 desktop_title="${KORDI_DEV_DESKTOP_TITLE:-Kordi Dev}"
+frontend_mode="${KORDI_DEV_FRONTEND_MODE:-development}"
 preview_path="${KORDI_DEV_PREVIEW_PATH:-}"
 local_signaling_port="${KORDI_DEV_LOCAL_SIGNALING_PORT:-}"
 remote_signaling_port="${KORDI_DEV_REMOTE_SIGNALING_PORT:-}"
@@ -34,6 +35,11 @@ cleanup() {
   exit "$exit_status"
 }
 trap cleanup EXIT INT TERM
+
+if [[ "$frontend_mode" != "development" && "$frontend_mode" != "production" ]]; then
+  echo "[kordi-remote-dev] KORDI_DEV_FRONTEND_MODE must be development or production." >&2
+  exit 1
+fi
 
 if [[ -n "$local_signaling_port$remote_signaling_port$local_ice_tcp_port$remote_ice_tcp_port" ]]; then
   if [[ -z "$local_signaling_port" || -z "$remote_signaling_port" \
@@ -218,6 +224,7 @@ echo "[kordi-remote-dev] Launching the isolated desktop profile."
 pnpm dev:desktop:profile -- \
   --profile "$desktop_profile" \
   --title "$desktop_title" \
+  --frontend "$frontend_mode" \
   --port "$desktop_port" &
 desktop_pid=$!
 

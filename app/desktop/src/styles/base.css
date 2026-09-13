@@ -123,7 +123,8 @@ body {
 }
 
 body.kordi-native-shell {
-  overflow: hidden;
+  min-height: 0;
+  overflow: clip;
   overscroll-behavior: none;
 }
 
@@ -148,6 +149,11 @@ html.kordi-native-shell,
 html.kordi-native-shell body,
 html.kordi-native-shell body #root {
   background: transparent;
+  min-height: 0;
+}
+
+html.kordi-native-shell {
+  overflow: clip;
 }
 
 body.app-cloud-gate-active.theme-dark {

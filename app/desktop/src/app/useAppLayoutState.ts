@@ -132,41 +132,12 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   }, [detailRailWidth, isDetailPanelCollapsed, leftWorkspaceWidth, minWindowWidth, sessionRailWidth, showResizableRightDetailRail, windowSize]);
 
   useEffect(() => {
-    if (!isNativeShell) {
-      setWindowSize((current) => clampWindowSize(current.width, current.height, { minWidth: minWindowWidth, minHeight: WINDOW_MIN_HEIGHT }));
-      return;
-    }
-
-    let cancelled = false;
-
-    void (async () => {
-      const [{ getCurrentWindow }, { LogicalSize }] = await Promise.all([
-        import('@tauri-apps/api/window'),
-        import('@tauri-apps/api/dpi'),
-      ]);
-      const currentWindow = getCurrentWindow();
-
-      await currentWindow.setMinSize(new LogicalSize(minWindowWidth, WINDOW_MIN_HEIGHT));
-
-      const nextWidth = Math.max(window.innerWidth, minWindowWidth);
-      const nextHeight = Math.max(window.innerHeight, WINDOW_MIN_HEIGHT);
-
-      if (window.innerWidth < minWindowWidth || window.innerHeight < WINDOW_MIN_HEIGHT) {
-        await currentWindow.setSize(new LogicalSize(nextWidth, nextHeight));
-      }
-
-      if (!cancelled) {
-        setWindowSize((current) => (
-          current.width === nextWidth && current.height === nextHeight
-            ? current
-            : { width: nextWidth, height: nextHeight }
-        ));
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    // CloudEditionRoot owns native window size and minimum constraints. A
+    // second native writer here races the auth transition on shell mount.
+    if (isNativeShell) return;
+    setWindowSize((current) => clampWindowSize(current.width, current.height, {
+      minWidth: minWindowWidth, minHeight: WINDOW_MIN_HEIGHT,
+    }));
   }, [isNativeShell, minWindowWidth]);
 
   useEffect(() => {
@@ -215,6 +186,9 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       if (disposed) return;
       const next = getViewportFillSize(minWindowWidthRef.current, WINDOW_MIN_HEIGHT);
       const current = windowSizeRef.current;
+      // Height goes directly from the native viewport to the CSS layout.
+      // Only width affects rail constraints; rerendering the whole app model
+      // on a vertical drag delays transcript and composer paint unnecessarily.
       if (current.width === next.width) return;
       const nextWindowSize = { width: next.width, height: current.height };
       windowSizeRef.current = nextWindowSize;
