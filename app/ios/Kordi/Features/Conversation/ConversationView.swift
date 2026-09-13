@@ -693,12 +693,13 @@ struct ConversationView: View {
                                 if ready { hasLaidOutInitialTimeline = true }
                             }
                             .scrollDismissesKeyboard(.interactively)
-                            .simultaneousGesture(
-                                TapGesture().onEnded {
-                                    dismissKeyboard()
-                                    dismissComposerPickers()
-                                }
-                            )
+                            // Interactive children own their taps. Treating a
+                            // trajectory toggle as a simultaneous background tap
+                            // dismisses the keyboard and moves the entire chat.
+                            .onTapGesture {
+                                dismissKeyboard()
+                                dismissComposerPickers()
+                            }
 
                             VStack(spacing: 8) {
                                 if pendingMentionCount > 0 {
