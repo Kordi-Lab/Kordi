@@ -1,7 +1,7 @@
 import { sessionHasActiveProcessing } from '@/features/canonical/readModel/conversationMapping';
 import { isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
-import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
+import { hasKnownTranscriptContent, transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { cloudSystemAgentIdFromSessionId } from '@/features/collaboration/conversationIds';
 import {
   cloudConversationKindFromConversationId,
@@ -152,6 +152,7 @@ export function applyCanonicalHydrationPlaceholder(
     && selectedConversation.desktopRuntimeTranscriptLoaded !== true
     && !isLocalDraftChatConversationId(selectedConversation.id)
     && !sessionHasActiveProcessing(selectedConversation.messages)
+    && !hasKnownTranscriptContent(selectedConversation.messages)
   ) {
     return {
       ...selectedConversation,

@@ -441,7 +441,7 @@ export function AgentsPage({
       : routeKind === 'tool' || routeKind === 'plugin'
         ? `Publishing the ${routeKind} definition…`
         : creating
-          ? 'Publishing the Cloud Agent…'
+          ? 'Publishing the Agent…'
           : `Publishing ${selectedAgent?.name ?? 'agent'}…`;
     setPublishing(true);
     setPublishFeedback({ tone: 'info', text: publishWithoutModelTest || builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
@@ -496,7 +496,7 @@ export function AgentsPage({
       }
       if (!selectedAgent || !activeAgentConfig || !activePersistedConfig) return;
       if (selectedAgent.cloudAgentId) {
-        if (!onUpdateCloudAgent) throw new Error('Cloud Agent updates are unavailable in this session.');
+        if (!onUpdateCloudAgent) throw new Error('Agent updates are unavailable in this session.');
         const builderSkills = new Map((status.draft?.skills ?? []).map((skill) => [skill.name, skill]));
         const descriptions = new Map((selectedAgent.cloudAgentSkills ?? []).map((skill) => [skill.name, skill.description]));
         await onUpdateCloudAgent(selectedAgent, {

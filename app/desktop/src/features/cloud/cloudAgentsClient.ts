@@ -110,7 +110,7 @@ export class CloudAgentsClient {
     const body = await this.send<CloudAgentListResponse>('/v1/cloud/agents', {
       method: 'GET',
       headers: this.authHeaders(token),
-    }, 'Could not list Cloud Agents.');
+    }, 'Could not list Agents.');
     return (Array.isArray(body.agents) ? body.agents : [])
       .map(normalizeCloudAgentDefinition)
       .filter((agent): agent is CloudAgentDefinition => Boolean(agent));
@@ -122,7 +122,7 @@ export class CloudAgentsClient {
     const body = await this.send<CloudAgentListResponse>(`/v1/cloud/agents/shared?ownerAccountIds=${encodeURIComponent(owners.join(','))}`, {
       method: 'GET',
       headers: this.authHeaders(token),
-    }, 'Could not list shared Cloud Agents.');
+    }, 'Could not list shared Agents.');
     return (Array.isArray(body.agents) ? body.agents : [])
       .map(normalizeSharedCloudAgentSummary)
       .filter((agent): agent is SharedCloudAgentSummary => Boolean(agent));
@@ -137,9 +137,9 @@ export class CloudAgentsClient {
       method: 'POST',
       headers: this.authHeaders(token),
       body: JSON.stringify({ ...input, ...(pendingAvatar ? { avatarMutation: undefined } : {}) }),
-    }, 'Could not create Cloud Agent.');
+    }, 'Could not create Agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
-    if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
+    if (!agent) throw new CloudAuthError('unknown', 'Agent response was invalid.', 0);
     if (pendingAvatar?.uploadedAsset) {
       try {
         return await this.updateCloudAgent(token, agent.agentId, {
@@ -175,9 +175,9 @@ export class CloudAgentsClient {
       method: 'PUT',
       headers: this.authHeaders(token),
       body: JSON.stringify({ ...input, ...(avatarMutation ? { avatarMutation } : {}) }),
-    }, 'Could not update Cloud Agent.');
+    }, 'Could not update Agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
-    if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
+    if (!agent) throw new CloudAuthError('unknown', 'Agent response was invalid.', 0);
     return agent;
   }
 
@@ -201,9 +201,9 @@ export class CloudAgentsClient {
     const body = await this.send<CloudAgentEnvelope>(`/v1/cloud/agents/${encodeURIComponent(agentId)}`, {
       method: 'DELETE',
       headers: this.authHeaders(token),
-    }, 'Could not archive Cloud Agent.');
+    }, 'Could not archive Agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
-    if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
+    if (!agent) throw new CloudAuthError('unknown', 'Agent response was invalid.', 0);
     return agent;
   }
 }

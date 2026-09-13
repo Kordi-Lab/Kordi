@@ -1,3 +1,7 @@
+import { canDisplayAgentTurn } from '../src/features/chat/agentProcessingVisibility';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MessageBubble } from '../src/kordi-app/components/transcript';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
@@ -36,3 +40,19 @@ test('two intentional sends with identical text retain their separate wire ident
   assert.equal(merged.length, 2);
   assert.deepEqual(merged.map((message) => message.entryId), ['wire:one', 'wire:two']);
 });
+
+for (const state of ['sending', 'sent', 'delivered', 'read', 'failed']) {
+  test(`runtime hydration preserves the canonical ${state} delivery indicator`, () => {
+    const cloud = { ...canonical('wire:one'), statusChips: [state] };
+    const local = runtime('wire:one');
+    const [merged] = mergeCanonicalHistoryIntoRuntime([cloud], [local]);
+    assert.deepEqual(merged.statusChips, [state]);
+    const processing = { id: 'turn', sessionId: 'session:test', prompt: '', status: 'streaming', message: '',
+      assistantText: '', thinkingText: '', tools: [], completed: false, succeeded: false, replyToMessageId: cloud.id };
+    assert.equal(canDisplayAgentTurn(processing, [merged]), !['sending', 'failed'].includes(state));
+    const html = renderToStaticMarkup(createElement(MessageBubble, { msg: merged }));
+    assert.ok(html.includes(`data-message-delivery-status="${state}"`));
+    const [replayed] = mergeCanonicalHistoryIntoRuntime([cloud], [merged]);
+    assert.equal(replayed, merged);
+  });
+}

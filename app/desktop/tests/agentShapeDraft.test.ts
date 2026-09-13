@@ -53,7 +53,7 @@ test('buildFallbackShapeAgentDraft creates a usable private agent draft from inp
   });
 
   assert.equal(draft.name, 'Technical Support Helper');
-  assert.match(draft.systemPrompt, /private Cloud agent/i);
+  assert.match(draft.systemPrompt, /private agent/i);
   assert.match(draft.sourceSummary, /https:\/\/docs\.example\.com/);
   assert.ok(draft.skills.some((skill) => skill.name === 'navigate-knowledge'));
 });
@@ -67,13 +67,14 @@ test('buildShapeAgentDraftPrompt includes private cloud access and shape output 
     identity: 'A technical support agent for product docs.',
   });
 
-  assert.match(prompt, /private to the creator's Cloud account/i);
+  assert.match(prompt, /private to the creator's account/i);
   assert.match(prompt, /customer support/i);
   assert.match(prompt, /technical support/i);
   assert.match(prompt, /Return only JSON/i);
   assert.match(prompt, /https:\/\/docs\.example\.com/);
   assert.match(prompt, /A technical support agent for product docs\./);
   assert.match(prompt, /"systemPrompt"/);
+  assert.doesNotMatch(prompt, /cloud agent/i);
 });
 
 test('buildShapeAgentDraftPrompt includes existing Kordi creator tools and skills', () => {

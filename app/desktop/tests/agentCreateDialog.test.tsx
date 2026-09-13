@@ -44,7 +44,7 @@ const cloudAgent: Agent = {
   collaborationConfig: 'Cloud synced',
   contactId: 'cloud-agent:cloud_agent_1',
   systemPrompt: 'Use docs only.',
-  xMd: 'Cloud Agent Definition',
+  xMd: 'Agent Definition',
   identityFiles: [],
   loadedTools: [],
   loadedSkills: ['navigate-knowledge'],
@@ -61,7 +61,7 @@ test('AgentCreateDialog shows real cloud access options', () => {
     onCreateCloudAgent: async () => cloudAgent,
   }));
 
-  assert.match(markup, /Create Cloud Agent/);
+  assert.match(markup, /Create Agent/);
   assert.match(markup, /Created by Kordi/);
   assert.match(markup, /3 tools/);
   assert.match(markup, /2 skills/);

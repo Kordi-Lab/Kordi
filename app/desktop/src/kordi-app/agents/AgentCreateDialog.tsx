@@ -58,7 +58,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
     setFeedback({ tone: 'info', text: 'Shaping draft with the local Agent runtime…' });
     try {
       if (!creatorAgent || !creatorRoute) {
-        setFeedback({ tone: 'error', text: "Configure Kordi's LLM provider and model route before shaping a Cloud Agent." });
+        setFeedback({ tone: 'error', text: "Configure Kordi's LLM provider and model route before shaping a Agent." });
         return;
       }
       const result = await draftShapeAgentWithDesktopRuntime({ resources, identity, creatorAgent, route: creatorRoute });
@@ -77,7 +77,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
   const createAgent = async () => {
     if (!draft || !onCreateCloudAgent) return;
     setCreating(true);
-    setFeedback({ tone: 'info', text: `Creating Cloud agent with access: ${cloudAgentAccessLabel(accessScope)}…` });
+    setFeedback({ tone: 'info', text: `Creating Agent with access: ${cloudAgentAccessLabel(accessScope)}…` });
     try {
       const agent = await onCreateCloudAgent({
         accessScope,
@@ -95,7 +95,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
       onCreated?.(agent);
       onClose();
     } catch (error) {
-      setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to create Cloud agent' });
+      setFeedback({ tone: 'error', text: error instanceof Error ? error.message : 'Unable to create Agent' });
     } finally {
       setCreating(false);
     }
@@ -106,7 +106,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
       <div className="app-transient-surface app-agent-create-dialog app-agent-create-surface max-h-full w-full max-w-3xl overflow-hidden rounded-[24px] border">
         <div className="app-agent-panel-header flex items-start justify-between gap-4 px-5 py-4">
           <div>
-            <div id="agent-create-title" className="app-agent-panel-title text-[16px] font-semibold">Create Cloud Agent</div>
+            <div id="agent-create-title" className="app-agent-panel-title text-[16px] font-semibold">Create Agent</div>
           </div>
           <Button variant="quiet" className="h-8 rounded-[10px] px-3 text-[12px]" onClick={onClose}>Close</Button>
         </div>
