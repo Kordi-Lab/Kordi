@@ -128,9 +128,16 @@ export function useStableTranscriptSessionReveal({
   viewportRef: RefObject<HTMLDivElement | null>;
   virtualizer: TranscriptVirtualizer;
 }) {
-  const [revealedSessionKey, setRevealedSessionKey] = useState(sessionKey);
+  const hasItems = itemCount > 0;
+  const [reveal, setReveal] = useState({ sessionKey, hasItems, ready: false });
+  // Readiness belongs to this entry, not to a previously visited session key.
+  // Reset during render so neither a rapid return nor empty-to-loaded hydration
+  // can paint estimated positions before the layout effect starts measuring.
+  if (reveal.sessionKey !== sessionKey || reveal.hasItems !== hasItems) {
+    setReveal({ sessionKey, hasItems, ready: false });
+  }
   const frameRef = useRef<number | null>(null);
-  const sessionRevealed = revealedSessionKey === sessionKey;
+  const sessionRevealed = reveal.sessionKey === sessionKey && hasItems && reveal.hasItems && reveal.ready;
 
   useLayoutEffect(() => {
     if (sessionRevealed || itemCount === 0) return;
@@ -169,7 +176,7 @@ export function useStableTranscriptSessionReveal({
       }
       previousSignature = signature;
       if (stableFrames >= 5 || --framesRemaining <= 0) {
-        setRevealedSessionKey(sessionKey);
+        setReveal({ sessionKey, hasItems: true, ready: true });
       } else {
         frameRef.current = window.requestAnimationFrame(revealWhenMeasured);
       }
