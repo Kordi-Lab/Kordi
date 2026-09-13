@@ -38,11 +38,12 @@ test('a single emoji keeps its visible size without a message bubble', () => {
   assert.match(textMarkup, /app-message-bubble-shape/);
 });
 
-test('inline emoji use the text baseline instead of hanging below it', () => {
+test('inline emoji center on the text line with a centered fallback', () => {
   const css = readFileSync(
     new URL('../src/styles/shell-expressive-picker.css', import.meta.url),
     'utf8',
   );
 
-  assert.match(css, /\.app-inline-blob-emoji\s*\{[^}]*vertical-align:\s*-0\.2em;/s);
+  assert.match(css, /\.app-inline-blob-emoji\s*\{[^}]*display:\s*inline-grid;/s);
+  assert.match(css, /\.app-inline-blob-emoji\s*\{[^}]*vertical-align:\s*middle;/s);
 });
