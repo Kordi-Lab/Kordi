@@ -90,6 +90,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::desktop::progress),
         )
         .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/context",
+            post(super::desktop::read_context),
+        )
+        .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
         )
@@ -428,7 +432,7 @@ async fn read_runner_context(
     if !runner_authorized(&headers) {
         return runner_unauthorized();
     }
-    match super::runs::context_read::read_context(state.db_pool(), &run_id, input).await {
+    match super::runs::context_read::read_context(&state, &run_id, input).await {
         Ok(value) => Json(value).into_response(),
         Err(error) => run_error_response(
             "read run context",

@@ -107,6 +107,7 @@ impl ManagedChildAgentRunner {
                         .as_ref()
                         .map(
                             |text| kordi_cli::desktop_runtime::DesktopChatContextMessage {
+                                execution_lease: None,
                                 id: "group-directory".to_string(),
                                 author_name: "Group directory".to_string(),
                                 author_kind: "agent".to_string(),

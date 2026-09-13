@@ -92,6 +92,39 @@ pub(super) struct DesktopClaimInput {
 fn executor(session: &CloudSession, claim_id: Uuid) -> String {
     format!("desktop:{}:{claim_id}", session.device_id)
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct DesktopContextInput {
+    claim_id: Uuid,
+    tool: String,
+    arguments: Value,
+}
+
+pub(super) async fn read_context(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(run_id): Path<String>,
+    Json(input): Json<DesktopContextInput>,
+) -> Response {
+    match super::runs::context_read::read_desktop_context(
+        &state,
+        &run_id,
+        &session.account_id,
+        executor(&session, input.claim_id),
+        &input.tool,
+        &input.arguments,
+    )
+    .await
+    {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => run_error_response(
+            "desktop context",
+            "Conversation context is unavailable.",
+            error,
+        ),
+    }
+}
 fn denied() -> Response {
     error_response(
         "desktop_execution_denied",
@@ -123,7 +156,7 @@ pub(super) async fn claim(
     )
     .await
     {
-        Ok(Some(value)) => return Json(value).into_response(),
+        Ok(Some(value)) => return context_scope_response(state.db_pool(), value).await,
         Ok(None) => {}
         Err(error) => {
             return run_error_response(
@@ -148,7 +181,7 @@ pub(super) async fn claim(
         Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity})))
     }.await;
     match result {
-        Ok(Some(value)) => Json(value).into_response(),
+        Ok(Some(value)) => context_scope_response(state.db_pool(), value).await,
         Ok(None) => denied(),
         Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
     }
@@ -285,7 +318,7 @@ pub(super) async fn progress(
     )
     .await
     {
-        Ok(Some(value)) => return Json(value).into_response(),
+        Ok(Some(value)) => return context_scope_response(state.db_pool(), value).await,
         Ok(None) => {}
         Err(error) => {
             return run_error_response(
@@ -332,4 +365,27 @@ pub(super) async fn progress(
             StatusCode::INTERNAL_SERVER_ERROR,
         ),
     }
+}
+
+async fn context_scope_response(pool: &PgPool, mut value: Value) -> Response {
+    if value["acquired"] == true {
+        let run_id = value["runId"].as_str().unwrap_or_default();
+        match query_as::<_, (String,)>(
+            "SELECT session_id FROM cloud_agent_fallback_runs WHERE run_id=$1",
+        )
+        .bind(run_id)
+        .fetch_one(pool)
+        .await
+        {
+            Ok((scope,)) => value["contextSessionId"] = json!(scope),
+            Err(error) => {
+                return run_error_response(
+                    "desktop context scope",
+                    "Could not resolve conversation context.",
+                    error.into(),
+                )
+            }
+        }
+    }
+    Json(value).into_response()
 }

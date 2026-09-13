@@ -16,6 +16,7 @@ name = "kordi_cloud_server"
 path = "src/lib.rs"
 
 [dependencies]
+kordi-tools.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 semver = "1"

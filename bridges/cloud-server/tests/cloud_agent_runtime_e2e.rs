@@ -372,6 +372,8 @@ async fn lease_claimed_run_for_export(
 #[path = "cloud_agent_runtime_e2e/chat.rs"]
 mod chat;
 use chat::*;
+#[path = "cloud_agent_runtime_e2e/context_media.rs"]
+mod context_media;
 #[path = "cloud_agent_runtime_e2e/object_store.rs"]
 mod object_store;
 use object_store::*;

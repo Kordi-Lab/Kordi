@@ -194,6 +194,8 @@ pub struct ReflectionRuntime {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchSessionsRequest {
+    #[serde(default)]
+    pub before_sequence: Option<i64>,
     pub query: String,
     pub limit: Option<usize>,
     #[serde(default)]
@@ -203,6 +205,12 @@ pub struct SearchSessionsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadSessionRequest {
+    #[serde(default)]
+    pub before_sequence: Option<i64>,
+    #[serde(default)]
+    pub attachment_id: Option<String>,
+    #[serde(default)]
+    pub expected_version: Option<i64>,
     #[serde(default)]
     pub offset: Option<usize>,
     pub session_id: String,
@@ -246,6 +254,8 @@ pub struct SessionObservationSearchResult {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchSessionsResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_before_sequence: Option<i64>,
     pub sessions: Vec<SessionObservationSearchResult>,
 }
 
@@ -269,6 +279,8 @@ pub struct SessionObservationWindow {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionObservationMessage {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<SessionAttachmentReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<usize>,
     pub message_id: String,
@@ -280,14 +292,28 @@ pub struct SessionObservationMessage {
     pub time_label: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadSessionResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_before_sequence: Option<i64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub media: Vec<kordi_core::types::ContentBlock>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub directory: Option<String>,
     pub session: SessionObservationReadSession,
     pub window: SessionObservationWindow,
     pub messages: Vec<SessionObservationMessage>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionAttachmentReference {
+    pub message_id: String,
+    pub attachment_id: String,
+    pub message_version: i64,
+    pub mime_type: String,
+    pub size_bytes: i64,
 }
 
 pub type SearchSessionsFuture =

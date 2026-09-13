@@ -1,6 +1,7 @@
 use kordi_core::error::{KordiError, KordiResult};
 use kordi_tools::{ReadSessionRequest, SearchSessionsRequest, SessionObservationRuntime};
 use std::sync::Arc;
+pub(super) mod cloud;
 
 pub(super) fn build_session_observation_runtime(
     session_id: Option<String>,
@@ -68,6 +69,9 @@ mod tests {
     async fn group_context_cannot_read_another_session() {
         let runtime = build_session_observation_runtime(Some("group-a".to_string()), None, None);
         let result = (runtime.read_session)(ReadSessionRequest {
+            before_sequence: None,
+            attachment_id: None,
+            expected_version: None,
             offset: None,
             session_id: "private-session".to_string(),
             around_message_id: None,

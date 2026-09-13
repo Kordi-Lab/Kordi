@@ -8,6 +8,9 @@ fn read_session_returns_latest_window_in_transcript_order() {
     let response = super::super::super::session_observation::read_session_for_observation_in_db(
         &conn,
         ReadSessionRequest {
+            before_sequence: None,
+            attachment_id: None,
+            expected_version: None,
             offset: None,
             session_id,
             around_message_id: None,
@@ -37,6 +40,7 @@ fn group_observation_is_scoped_and_participants_are_loaded_only_on_demand() {
     let conn = test_conn();
     let session_id = seed_session_with_messages(&conn);
     let request = || SearchSessionsRequest {
+        before_sequence: None,
         query: "canary".to_string(),
         limit: Some(8),
         include_messages: Some(true),
@@ -59,6 +63,9 @@ fn group_observation_is_scoped_and_participants_are_loaded_only_on_demand() {
     let response = super::super::super::session_observation::read_session_for_observation_in_db(
         &conn,
         ReadSessionRequest {
+            before_sequence: None,
+            attachment_id: None,
+            expected_version: None,
             offset: None,
             session_id,
             around_message_id: None,
@@ -86,6 +93,9 @@ fn long_message_details_can_be_read_in_bounded_chunks() {
         super::super::super::session_observation::read_session_for_observation_in_db(
             &conn,
             ReadSessionRequest {
+                before_sequence: None,
+                attachment_id: None,
+                expected_version: None,
                 offset: Some(offset),
                 session_id: session_id.clone(),
                 around_message_id: None,

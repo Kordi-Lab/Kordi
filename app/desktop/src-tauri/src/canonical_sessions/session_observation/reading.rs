@@ -13,6 +13,7 @@ pub(super) struct ObservedMessageRow {
 impl ObservedMessageRow {
     pub(super) fn into_index_message(self) -> SessionObservationMessage {
         SessionObservationMessage {
+            attachments: Vec::new(),
             message_id: self.message_id,
             sender: self.sender,
             role: self.role,
@@ -27,6 +28,7 @@ impl ObservedMessageRow {
         let remainder = self.text.chars().skip(offset).collect::<String>();
         let truncated = remainder.chars().count() > MAX_READ_MESSAGE_TEXT_CHARS;
         SessionObservationMessage {
+            attachments: Vec::new(),
             next_offset: truncated.then(|| offset.saturating_add(MAX_READ_MESSAGE_TEXT_CHARS - 1)),
             message_id: self.message_id,
             sender: self.sender,

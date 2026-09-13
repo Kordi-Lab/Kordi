@@ -10,6 +10,27 @@ use super::{
 };
 
 impl DesktopRuntimeSession {
+    /// Attachment references belong after the stable header, not in the system prompt.
+    pub fn append_shared_attachment_preview(&mut self, text: &str) -> Result<()> {
+        ensure_session_row_created(&mut self.setup)?;
+        let parent_id =
+            kordi_session::store::get_session(&self.setup.conn, &self.setup.session_id)?
+                .and_then(|s| s.leaf_id)
+                .map(EntryId);
+        let entry = SessionEntry::CustomMessage {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id,
+                timestamp: Utc::now(),
+            },
+            custom_type: "shared_attachment_references".into(),
+            content: vec![ContentBlock::Text { text: text.into() }],
+            display: false,
+            details: None,
+        };
+        kordi_session::store::append_entry(&self.setup.conn, &self.setup.session_id, &entry)?;
+        Ok(())
+    }
     /// Persist retrieval access separately from provider-visible messages so reopening
     /// a linked task cannot silently expand its search scope to the owner's chats.
     pub fn group_observation_context(

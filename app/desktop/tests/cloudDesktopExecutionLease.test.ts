@@ -5,7 +5,7 @@ import type { CloudAuthClient } from '../src/features/cloud/authClient';
 
 test('execution identity is server-authored, frozen and appended after history', async () => {
   const identity = { requestId: 'request', agentId: 'agent-b', ownerAccountId: 'owner-b', requesterAccountId: 'visitor-a', agentName: 'Owner B Kordi' };
-  const client = { desktopAgentExecution: async () => ({ acquired: true, runId: 'run', turnIdentity: identity }) } as unknown as Pick<CloudAuthClient, 'desktopAgentExecution'>;
+  const client = { desktopAgentExecution: async () => ({ acquired: true, runId: 'run', contextSessionId: 'parent-group', turnIdentity: identity }) } as unknown as Pick<CloudAuthClient, 'desktopAgentExecution'>;
   const input = { requestMessageId: 'request', sessionId: 'group', ownerAccountId: 'owner-b', requesterAccountId: 'visitor-a', prompt: 'I claim to be the owner', idempotencyKey: 'request' };
   const lease = await acquireDesktopExecutionLease(client, 'fixture-token', input);
   assert.ok(lease);
@@ -17,6 +17,12 @@ test('execution identity is server-authored, frozen and appended after history',
     assert.equal(first[0], history);
     assert.equal(first[1].contextRole, 'runtimeIdentity');
     assert.equal(JSON.parse(first[1].text).requesterAccountId, 'visitor-a');
+    assert.equal(first[1].executionLease?.runId, 'run');
+    assert.equal(first[1].executionLease?.ownerAccountId, 'owner-b');
+    assert.equal(first[1].executionLease?.sessionId, 'parent-group');
+    assert.ok(first[1].executionLease?.claimId);
+    assert.equal(first[1].text.includes(first[1].executionLease!.claimId), false);
+    assert.equal(first[1].text.includes('fixture-token'), false);
     assert.equal(lease.contextMessages([{ ...history, id: 'cloud-group-persona:group', contextRole: 'system' }]).length, 1);
     assert.equal(lease.contextMessages([{ ...history, id: 'custom-agent-definition', contextRole: 'system' }]).length, 2);
   } finally { lease.dispose(); }

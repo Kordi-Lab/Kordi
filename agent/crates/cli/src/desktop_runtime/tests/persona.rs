@@ -21,6 +21,8 @@ async fn sync_context_messages_imports_cloud_history_once_as_native_session_cont
     .await?;
     let imported = vec![
         DesktopChatContextMessage {
+
+            execution_lease: None,
             id: "group_persona".to_string(),
             author_name: "Group agent identity".to_string(),
             author_kind: "agent".to_string(),
@@ -29,6 +31,8 @@ async fn sync_context_messages_imports_cloud_history_once_as_native_session_cont
             created_at_ms: Some(1_800_000_000_000),
         },
         DesktopChatContextMessage {
+
+            execution_lease: None,
             id: "msg_cloud_1".to_string(),
             author_name: "Alex Morgan".to_string(),
             author_kind: "human".to_string(),
@@ -112,6 +116,8 @@ async fn saved_owner_persona_refreshes_existing_sessions_and_stays_system_first(
     assert!(!runtime.setup.system_prompt.contains("You are Scout"));
 
     runtime.sync_context_messages(&[DesktopChatContextMessage {
+
+            execution_lease: None,
         id: "specialist-persona".to_string(),
         author_name: "Specialist identity".to_string(),
         author_kind: "agent".to_string(),
@@ -150,10 +156,14 @@ async fn shared_context_is_bounded_and_does_not_include_the_member_directory() -
     let cwd = tempfile::tempdir()?;
     let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), &format!("shared-context-{}", uuid::Uuid::new_v4())).await?;
     let mut messages = (0..100).map(|index| DesktopChatContextMessage {
+
+            execution_lease: None,
         id: format!("message-{index}"), author_name: "Recent speaker".to_string(), author_kind: "human".to_string(),
         context_role: None, text: format!("history-{index}: {}", "x".repeat(2000)), created_at_ms: Some(index),
     }).collect::<Vec<_>>();
     messages.push(DesktopChatContextMessage {
+
+            execution_lease: None,
         id: "directory".to_string(), author_name: "Directory".to_string(), author_kind: "agent".to_string(),
         context_role: Some("resource".to_string()), text: "Unrelated Participant Secret Name".to_string(), created_at_ms: None,
     });
@@ -191,6 +201,8 @@ async fn runtime_identity_is_append_only_and_keeps_the_full_prompt_stable() -> R
         requester_account_id: "visitor".into(), requester_name: "Visitor".into(), request_policy: None,
     };
     let message = |identity: &kordi_core::types::RuntimeIdentity| DesktopChatContextMessage {
+
+            execution_lease: None,
         id: identity.request_id.clone(), author_name: "Kordi runtime".into(), author_kind: "agent".into(),
         context_role: Some("runtimeIdentity".into()), text: serde_json::to_string(identity).unwrap(), created_at_ms: None,
     };

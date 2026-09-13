@@ -117,7 +117,10 @@ pub(crate) fn search_sessions_in_scope(
             break;
         }
     }
-    Ok(SearchSessionsResponse { sessions })
+    Ok(SearchSessionsResponse {
+        next_before_sequence: None,
+        sessions,
+    })
 }
 
 pub(crate) fn read_session_for_observation_in_db(
@@ -243,6 +246,8 @@ pub(crate) fn read_session_for_observation_in_db(
     };
 
     Ok(ReadSessionResponse {
+        next_before_sequence: None,
+        media: Vec::new(),
         directory: None,
         session: SessionObservationReadSession {
             participants,
