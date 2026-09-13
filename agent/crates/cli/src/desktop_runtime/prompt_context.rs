@@ -96,6 +96,18 @@ fn strip_tagged(prompt: &str, start_tag: &str, end_tag: &str) -> String {
         .to_string()
 }
 
+pub(super) fn with_current_model(prompt: &str, model: &kordi_provider::registry::Model) -> String {
+    let route = serde_json::json!({ "provider": model.provider, "model": model.id });
+    format!(
+        "{prompt}\n\n<current_model_route>\n\
+         Application-selected model route for this request: {route}\n\
+         When asked which model is selected or being used, report the model identifier from this current runtime metadata. \
+         Do not substitute a remembered model name, a previous reply, or a guess. \
+         This identifies the configured API route; it does not reveal an unreported underlying model version. \
+         Do not add model introductions to unrelated replies.\n</current_model_route>"
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

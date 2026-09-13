@@ -73,7 +73,7 @@ test('agent waiting state uses a waveform only until the first response content 
     id: 'turn-waiting-first-token',
     sessionId: 'session-1',
     prompt: 'hello',
-    status: 'starting',
+    status: 'streaming',
     message: 'Thinking…',
     assistantText: '',
     thinkingText: '',
@@ -381,11 +381,11 @@ test('renders bridge agent stop control beside the first-response waveform', () 
   assert.match(markup, /h-\[18px\] w-\[18px\]/);
   assert.match(markup, /text-slate-400/);
   assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
-  assert.match(markup, /app-agent-waiting-wave/);
+  assert.doesNotMatch(markup, /app-agent-waiting-wave/);
   assert.doesNotMatch(markup, />Processing…</);
 });
 
-test('empty pending agent turn renders the waiting waveform with its source quote', () => {
+test('a starting request does not render a processing card or duplicate quote', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-pending-source-delay',
     sessionId: 'session-1',
@@ -408,14 +408,10 @@ test('empty pending agent turn renders the waiting waveform with its source quot
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
-  assert.match(markup, /app-source-message-quote/);
-  assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
-  assert.match(markup, /what are you doing/);
-  assert.match(markup, /app-agent-waiting-wave/);
-  assert.doesNotMatch(markup, />Starting…</);
+  assert.equal(markup, '');
 });
 
-test('renders initial generic working status as a waveform until real content appears', () => {
+test('initial scheduling does not render a processing waveform', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-starting-work',
     sessionId: 'session-1',
@@ -438,7 +434,7 @@ test('renders initial generic working status as a waveform until real content ap
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
 
-  assert.match(markup, /app-agent-waiting-wave/);
+  assert.doesNotMatch(markup, /app-agent-waiting-wave/);
   assert.doesNotMatch(markup, />Starting…</);
   assert.doesNotMatch(markup, /Planning…/);
   assert.doesNotMatch(markup, />Working…</);

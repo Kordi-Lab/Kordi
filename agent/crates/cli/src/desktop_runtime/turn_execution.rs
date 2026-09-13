@@ -229,7 +229,7 @@ impl DesktopRuntimeSession {
     }
 }
 
-fn build_turn_config(
+pub(super) fn build_turn_config(
     setup: &mut crate::session_bootstrap::SessionRuntimeSetup,
     cancel: tokio_util::sync::CancellationToken,
     execution_policy: kordi_tools::ExecutionPolicy,
@@ -254,11 +254,14 @@ fn build_turn_config(
     Ok(TurnConfig {
         conn: sibling_conn,
         session_id: setup.session_id.clone(),
-        system_prompt: super::workspace::environment_prompt(
-            &setup.system_prompt,
-            &workspace,
-            execution_policy,
-            setup.tool_ctx.session_observation.is_some(),
+        system_prompt: super::prompt_context::with_current_model(
+            &super::workspace::environment_prompt(
+                &setup.system_prompt,
+                &workspace,
+                execution_policy,
+                setup.tool_ctx.session_observation.is_some(),
+            ),
+            &setup.model,
         ),
         model: setup.model.clone(),
         provider: setup.provider.clone(),

@@ -1,3 +1,4 @@
+import { agentTurnHasStarted, canDisplayAgentTurn } from '@/features/chat/agentProcessingVisibility';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
@@ -742,7 +743,8 @@ function LiveChatTurnCardView({
   const hasThinking = visibleTurn.thinkingText.trim().length > 0;
   const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
-  const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
+  const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus
+    && (agentTurnHasStarted(visibleTurn) || Boolean(visibleTurn.pendingCollaborationAgentRequest));
   const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
   const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
@@ -781,7 +783,7 @@ function LiveChatTurnCardView({
   );
   const showResponsePanel = hasResponseSurface || Boolean(visibleTurn.error);
   const showOpenAuthAction = Boolean(onOpenAuthSettings && noProviderConfiguredError);
-
+  if (!canDisplayAgentTurn(visibleTurn)) return null;
   return (
     <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
@@ -796,9 +798,9 @@ function LiveChatTurnCardView({
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   <span className="text-slate-300">{liveStatusText}</span>
                 </>
-              ) : (
+              ) : agentTurnHasStarted(visibleTurn) ? (
                 <AgentWaitingWave label="Waiting for agent response" />
-              )}
+              ) : null}
               {pendingCollaborationAgentRequest ? (
                 <CollaborationAgentStopButton
                   request={pendingCollaborationAgentRequest}

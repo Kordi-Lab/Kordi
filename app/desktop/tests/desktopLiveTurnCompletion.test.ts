@@ -38,6 +38,6 @@ test('live replies render inside the keyed transcript item collection instead of
   const source = readFileSync(new URL('../src/pages/chatsPage.sessionPane.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /buildDesktopLiveTurnTranscriptMessage/);
-  assert.match(source, /\[\.\.\.attributedTranscript\.messages, liveTurnMessage\]/);
+  assert.match(source, /\[\.\.\.visibleMessages, liveTurnMessage\]/);
   assert.doesNotMatch(source, /<LiveChatTurnMessage/);
 });
