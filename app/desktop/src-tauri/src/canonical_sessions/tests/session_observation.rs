@@ -479,3 +479,5 @@ mod reading;
 
 #[path = "session_observation/reading_contract.rs"]
 mod reading_contract;
+
+mod local_media;

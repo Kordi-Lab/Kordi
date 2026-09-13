@@ -71,3 +71,39 @@ Verify a desktop text-plus-image message and an image-only message on iOS. Repea
 after a failed upload, a failed send, and a client restart. The same attachment
 IDs must survive retries and images must remain associated with the original
 message rather than appearing as a new message.
+
+## Session coverage and lifecycle
+
+| Session or execution path | Historical image source |
+| --- | --- |
+| Local private Agent, owned custom Agent, project, relationship | Canonical attachment references with bounded local-file reads |
+| Synchronized private Agent and private Ask Agent | Account-authenticated server history; current membership and visibility |
+| Direct contact, group, channel mention | Existing admitted execution lease and server history |
+| Local child task and resumed shared task | Persisted admitted request identity; independently revalidated history permission |
+| Cloud child or cloud fallback | Run-authorized server history |
+| Archived local session | Read-only canonical history by exact session ID |
+
+Local file reads resolve only stored attachment references inside managed
+attachment storage. Pagination exposes a continuation sequence. Source versions
+must match; missing, changed, or removed images are not replaced with guessed
+filesystem paths or new screen captures.
+
+At each new desktop turn, previously synchronized image inputs are checked
+against current authorized history. Unavailable or changed image bytes are
+excluded from the next model request; changed attachments can be retrieved again.
+Previously returned tool images are also re-read on a later turn, rather than
+replaying bytes after visibility changes. This can reduce prefix-cache reuse
+across such mutations. Previously delivered text or model interpretations cannot
+be retroactively erased from an external provider.
+
+Background attachment uploads carry the expected account identity and preserve
+cloud attachment IDs, media subtype, dimensions, and Live Photo resources. A
+failure in one operation does not block unrelated messages. Explicit empty
+attachment lists remove local mirrors; older versions cannot resurrect them.
+
+Loaded, untouched private-history exports with provable original local images
+are eligible for automatic backfill. The repair preserves message identity and
+ordering. It never guesses missing originals, replaces edited/deleted messages,
+or migrates unrelated sessions. New attachments in subsession chat messages,
+voice understanding, and video/animation sampling remain separate feature work;
+the existing text-only subsession composer does not claim to accept attachments.

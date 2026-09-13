@@ -126,3 +126,65 @@ fn shared_context_boundary_does_not_reintroduce_an_earlier_request_image() {
     }
     assert!(images(&build_context(&conn, &sid).unwrap()).is_empty());
 }
+
+#[test]
+fn revoked_source_bindings_remove_cached_image_bytes_from_future_requests() {
+    let conn = store::open_memory().unwrap();
+    let sid = store::create_session(&conn, "/tmp").unwrap();
+    for entry in [
+        user(
+            "upload",
+            None,
+            vec![text("Original caption"), image("private-image-bytes")],
+        ),
+        SessionEntry::Custom {
+            base: base("visibility", Some("upload")),
+            custom_type: "history_image_visibility".into(),
+            data: Some(
+                serde_json::json!([{"entryId":"upload","blocked":true,"text":"[Message deleted]"}]),
+            ),
+        },
+        user(
+            "followup",
+            Some("visibility"),
+            vec![text("Describe the earlier image")],
+        ),
+    ] {
+        store::append_entry(&conn, &sid, &entry).unwrap();
+    }
+    let context = build_context(&conn, &sid).unwrap();
+    assert!(images(&context).is_empty());
+    let serialized = serde_json::to_string(&context.messages).unwrap();
+    assert!(!serialized.contains("private-image-bytes"));
+    assert!(!serialized.contains("Original caption"));
+    assert!(serialized.contains("Message deleted"));
+}
+
+#[test]
+fn old_tool_images_are_retrieved_again_instead_of_replaying_stale_bytes() {
+    let conn = store::open_memory().unwrap();
+    let sid = store::create_session(&conn, "/tmp").unwrap();
+    for entry in [
+        user("first", None, vec![text("Read an image")]),
+        SessionEntry::Message {
+            base: base("tool", Some("first")),
+            message: AgentMessage::ToolResult(ToolResultMessage {
+                tool_call_id: "read-image".into(),
+                tool_name: "read_session".into(),
+                content: vec![image("prior-tool-bytes")],
+                details: None,
+                is_error: false,
+                timestamp: 1000,
+            }),
+        },
+        user("next", Some("tool"), vec![text("Is it still available?")]),
+    ] {
+        store::append_entry(&conn, &sid, &entry).unwrap();
+    }
+    let context = build_context(&conn, &sid).unwrap();
+    assert!(
+        !serde_json::to_string(&context.messages)
+            .unwrap()
+            .contains("prior-tool-bytes")
+    );
+}

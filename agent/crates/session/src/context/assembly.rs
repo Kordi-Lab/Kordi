@@ -6,6 +6,8 @@ use kordi_core::types::{
 use super::formatting::{append_message, update_settings};
 
 pub(super) fn build_context_from_entries(entries: &[SessionEntry]) -> SessionContext {
+    let visible = super::image_visibility::apply(entries);
+    let entries = visible.as_ref();
     let mut messages = Vec::new();
     let mut model: Option<ModelInfo> = None;
     let mut thinking_level = ThinkingLevel::Off;
@@ -87,6 +89,17 @@ fn scope_file_payloads_to_current_submission(messages: &mut [AgentMessage]) {
 
     for (idx, message) in messages.iter_mut().enumerate() {
         match message {
+            AgentMessage::ToolResult(result) if idx < latest_user_idx => {
+                let before = result.content.len();
+                result
+                    .content
+                    .retain(|block| !matches!(block, ContentBlock::Image { .. }));
+                if result.content.len() != before {
+                    result.content.push(ContentBlock::Text {
+                    text: "[Previously inspected image omitted. Retrieve the current attachment before referring to its visual contents.]".into(),
+                });
+                }
+            }
             AgentMessage::Custom(custom)
                 if custom.custom_type == DESKTOP_ATTACHMENT_CONTEXT_CUSTOM_TYPE
                     && Some(idx) != current_attachment_context_idx =>

@@ -203,7 +203,7 @@ pub(super) async fn start_message(
                     fail_turn(&snapshot_for_task, error.to_string());
                     return;
                 }
-                prepare_desktop_session_for_send(
+                if let Err(error) = prepare_desktop_session_for_send(
                     &manager_for_task,
                     &mut session,
                     cwd.clone(),
@@ -212,7 +212,11 @@ pub(super) async fn start_message(
                     request_message_id.as_deref(),
                     &context_messages,
                 )
-                .await;
+                .await
+                {
+                    fail_turn(&snapshot_for_task, error);
+                    return;
+                }
             }
 
             let detail = session.detail().ok();

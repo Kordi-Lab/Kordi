@@ -548,7 +548,7 @@ pub async fn desktop_chat_send_message(
                 None,
                 &[],
             )
-            .await;
+            .await?;
         }
         let detail = session.detail().map_err(|err| err.to_string())?;
         (detail.provider, detail.model)

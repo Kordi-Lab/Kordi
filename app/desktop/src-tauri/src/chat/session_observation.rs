@@ -2,18 +2,36 @@ use kordi_core::error::{KordiError, KordiResult};
 use kordi_tools::{ReadSessionRequest, SearchSessionsRequest, SessionObservationRuntime};
 use std::sync::Arc;
 pub(super) mod cloud;
+pub(super) mod image_visibility;
 
+#[cfg(test)]
 pub(super) fn build_session_observation_runtime(
     session_id: Option<String>,
     directory: Option<String>,
     calendar: Option<kordi_tools::calendar::CalendarRuntime>,
 ) -> SessionObservationRuntime {
+    build_with_identity(session_id, directory, calendar, None)
+}
+
+pub(super) fn build_with_identity(
+    session_id: Option<String>,
+    directory: Option<String>,
+    calendar: Option<kordi_tools::calendar::CalendarRuntime>,
+    identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
+) -> SessionObservationRuntime {
     let search_scope = session_id.clone();
+    let search_identity = identity.clone();
     SessionObservationRuntime {
         calendar,
         search_sessions: Arc::new(move |request: SearchSessionsRequest| {
             let session_id = search_scope.clone();
+            let identity = search_identity.clone();
             Box::pin(async move {
+                if let Some(scope) = session_id.as_deref() {
+                    if let Some(remote) = cloud::member_runtime(scope, identity.as_ref())? {
+                        return (remote.search_sessions)(request).await;
+                    }
+                }
                 run_blocking_observation(move || {
                     crate::canonical_sessions::search_sessions_for_observation_scoped(
                         request,
@@ -26,7 +44,20 @@ pub(super) fn build_session_observation_runtime(
         read_session: Arc::new(move |request: ReadSessionRequest| {
             let scope = session_id.clone();
             let directory = directory.clone();
+            let identity = identity.clone();
             Box::pin(async move {
+                if scope
+                    .as_deref()
+                    .is_some_and(|id| id != request.session_id.trim())
+                {
+                    return Err(KordiError::Tool(
+                        "This agent can only read its current group conversation".into(),
+                    ));
+                }
+                if let Some(remote) = cloud::member_runtime(&request.session_id, identity.as_ref())?
+                {
+                    return (remote.read_session)(request).await;
+                }
                 run_blocking_observation(move || {
                     if scope
                         .as_deref()

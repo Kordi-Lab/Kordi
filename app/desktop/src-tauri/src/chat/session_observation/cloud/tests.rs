@@ -53,12 +53,7 @@ async fn history_uses_the_cloud_lease_without_a_local_canonical_session() {
     let logged_in = Arc::new(AtomicBool::new(true));
     let active = logged_in.clone();
     let observation = Arc::new(CloudObservation {
-        lease: DesktopCloudExecutionLease {
-            session_id: "cloud-only-session".into(),
-            run_id: "run-fixture".into(),
-            claim_id: "fixture-claim".into(),
-            owner_account_id: "fixture-owner".into(),
-        },
+        authorization: json!({"claimId":"fixture-claim"}),
         scope: "cloud-only-session".into(),
         endpoint: endpoint(&base, "run-fixture"),
         client: reqwest::Client::new(),

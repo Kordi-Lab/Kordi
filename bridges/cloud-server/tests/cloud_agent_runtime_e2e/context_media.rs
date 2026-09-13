@@ -351,3 +351,6 @@ async fn cloud_runner_reads_the_same_authorized_image_contract() {
     );
     f.objects.lock().await.clear();
 }
+
+#[path = "context_media/member_tests.rs"]
+mod member_tests;

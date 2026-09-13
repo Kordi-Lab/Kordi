@@ -125,7 +125,7 @@ pub(super) async fn prepare_desktop_session_for_send(
     context: (Option<&str>, Option<String>),
     request_message_id: Option<&str>,
     system_context: &[kordi_cli::desktop_runtime::DesktopChatContextMessage],
-) {
+) -> Result<(), String> {
     let (requested_session, directory) = context;
     let stored_scope = runtime
         .group_observation_context(requested_session, directory.as_deref())
@@ -186,12 +186,14 @@ pub(super) async fn prepare_desktop_session_for_send(
         }
         observation
     } else {
-        super::session_observation::build_session_observation_runtime(
+        super::session_observation::build_with_identity(
             context_session_id.map(str::to_string),
             directory.clone(),
             calendar,
+            runtime.runtime_identity_context().ok().flatten(),
         )
     };
+    super::session_observation::image_visibility::refresh(runtime, &observation).await?;
     runtime.set_session_observation_runtime(Some(observation));
 
     if let Ok(detail) = runtime.detail() {
@@ -229,6 +231,7 @@ pub(super) async fn prepare_desktop_session_for_send(
         );
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }
+    Ok(())
 }
 
 #[cfg(test)]

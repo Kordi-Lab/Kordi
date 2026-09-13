@@ -1,3 +1,4 @@
+import { selfAgentAttachmentUpdate } from './cloudSelfAgentAttachmentState';
 import { applyCloudSelfAgentTargetIdentities } from './cloudSelfAgentTargetIdentity';
 import type {
   AppendCanonicalMessageRequest,
@@ -183,7 +184,7 @@ export function planCloudSelfAgentCanonicalSync({
         ) ?? derivedStableCanonicalMessageId
       : cleanText(message.canonicalHistoryLocalMessageId)
         || derivedStableCanonicalMessageId;
-    if (durableSourceEventIds?.has(message.messageId)) {
+    if (durableSourceEventIds?.has(message.messageId) && !Array.isArray(message.attachments)) {
       if (!responseRequestId && role === 'user') {
         userTextByCloudMessageId.set(message.messageId, text);
         requestCreatedAtMsByCloudMessageId.set(
@@ -232,11 +233,8 @@ export function planCloudSelfAgentCanonicalSync({
       localUserMessageByClientMessageId,
     });
     if (reconciliation) mirrorReconciliations.push(reconciliation);
-    const existingContent = existingMatch?.content && typeof existingMatch.content === 'object'
-      ? existingMatch.content as Record<string, unknown> : {};
-    const missingAttachments = Boolean(message.attachments?.length)
-      && JSON.stringify(existingContent.attachments) !== JSON.stringify(message.attachments);
-    if (existingMatch && !responseRequestId && !missingAttachments) {
+    const attachmentUpdate = selfAgentAttachmentUpdate(message, existingMatch?.content);
+    if (existingMatch && !responseRequestId && !attachmentUpdate.changed) {
       const isUserRequest = role === 'user';
       if (isUserRequest) {
         userTextByCloudMessageId.set(message.messageId, text);
@@ -417,8 +415,8 @@ export function planCloudSelfAgentCanonicalSync({
       sourceTransport,
       sourceEventId: message.messageId,
     };
-    if (message.attachments?.length) {
-      request.content = { ...(request.content ?? {}), attachments: message.attachments };
+    if (Array.isArray(message.attachments)) {
+      request.content = { ...attachmentUpdate.content, ...(request.content ?? {}) };
       if (existingMatch && ['desktop-chat', 'desktop-chat-ui'].includes(existingMatch.sourceTransport ?? '')) {
         request.sourceTransport = existingMatch.sourceTransport;
         request.sourceEventId = existingMatch.sourceEventId;

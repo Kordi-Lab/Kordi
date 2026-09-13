@@ -10,6 +10,38 @@ use super::{
 };
 
 impl DesktopRuntimeSession {
+    pub fn history_image_visibility(&self) -> Result<serde_json::Value> {
+        let raw: Option<String> = self.setup.conn.query_row(
+            "SELECT json_extract(payload,'$.data') FROM entries WHERE session_id=?1 AND type='custom' AND json_extract(payload,'$.custom_type')='history_image_visibility' ORDER BY seq DESC LIMIT 1",
+            [&self.setup.session_id], |row|row.get(0),
+        ).optional()?;
+        Ok(raw
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| serde_json::json!([])))
+    }
+
+    pub fn set_history_image_visibility(&mut self, data: serde_json::Value) -> Result<()> {
+        if data == self.history_image_visibility()? {
+            return Ok(());
+        }
+        ensure_session_row_created(&mut self.setup)?;
+        let parent_id =
+            kordi_session::store::get_session(&self.setup.conn, &self.setup.session_id)?
+                .and_then(|s| s.leaf_id)
+                .map(EntryId);
+        let entry = SessionEntry::Custom {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id,
+                timestamp: Utc::now(),
+            },
+            custom_type: "history_image_visibility".into(),
+            data: Some(data),
+        };
+        kordi_session::store::append_entry(&self.setup.conn, &self.setup.session_id, &entry)?;
+        Ok(())
+    }
+
     /// Attachment references belong after the stable header, not in the system prompt.
     pub fn append_shared_attachment_preview(&mut self, text: &str) -> Result<()> {
         ensure_session_row_created(&mut self.setup)?;

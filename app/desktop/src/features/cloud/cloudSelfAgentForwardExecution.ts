@@ -116,7 +116,7 @@ export async function publishCloudSelfAgentExecutionSnapshot({
   );
 }
 
-export async function publishCloudSelfAgentOperations({
+async function publishCloudSelfAgentOperationBatch({
   accountId,
   client,
   ledger,
@@ -176,7 +176,7 @@ export async function publishCloudSelfAgentOperations({
         : operation.text;
       const uploadKey = `attachments:${operation.localMessageId}`;
       const attachments = ledger[operation.localMessageId]?.cloudMessageId
-        ? [] : ledger[uploadKey]?.uploadedAttachments ?? await uploadAttachments(operation, client, token);
+        ? [] : ledger[uploadKey]?.uploadedAttachments ?? await uploadAttachments(operation, client, token, accountId);
       if (!shouldContinue()) return;
       if (attachments.length && !ledger[uploadKey]?.uploadedAttachments) {
         ledger[uploadKey] = { cloudMessageId: null, syncedAtMs: Date.now(), uploadedAttachments: attachments };
@@ -303,4 +303,15 @@ export async function publishCloudSelfAgentOperations({
     saveLedger(ledger);
     if (shouldMergeMessage(operation)) mergeMessage(response);
   }
+}
+
+export async function publishCloudSelfAgentOperations(input: Parameters<typeof publishCloudSelfAgentOperationBatch>[0]) {
+  const failures: unknown[] = [];
+  for (const operation of input.operations) {
+    if (input.shouldContinue && !input.shouldContinue()) break;
+    try { await publishCloudSelfAgentOperationBatch({ ...input, operations: [operation] }); }
+    catch (error) { failures.push(error); }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length) throw new Error('Some messages could not synchronize; other messages were preserved.');
 }

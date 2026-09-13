@@ -1,3 +1,4 @@
+import { backfillLocalHistoryImages } from './cloudSelfAgentImageBackfill';
 import {
   useEffect,
   useRef,
@@ -195,7 +196,7 @@ export function useCloudSelfAgentForwardSync({
           loadSession(),
           loadChatSyncConversations(account.accountId),
         ]);
-        if (!session?.token || cancelledRef.current) return;
+        if (!session?.token || session.accountId !== account.accountId || cancelledRef.current) return;
         const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
 
         const syncedSessionIds = cloudSyncedLocalAgentSessionIds(latestState);
@@ -430,8 +431,10 @@ export function useCloudSelfAgentForwardSync({
             token: session.token,
           });
         }
+        const restoredImages = await backfillLocalHistoryImages({ accountId: account.accountId, token: session.token,
+          state: latestState, conversations: localConversations, client, shouldContinue: () => !cancelledRef.current });
         if (
-          reconciliation.length > 0
+          restoredImages || reconciliation.length > 0
           || operations.length > 0
         ) await syncCloudCollaborationDiff();
         saveCloudSelfAgentRecoverySessionIds(

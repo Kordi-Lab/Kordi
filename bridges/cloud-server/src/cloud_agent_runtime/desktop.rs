@@ -391,3 +391,21 @@ async fn context_scope_response(pool: &PgPool, mut value: Value) -> Response {
     }
     Json(value).into_response()
 }
+
+// Owner-authorized history reads are separate from execution admission.
+pub(super) async fn read_member_context(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(input): Json<super::runs::context_read::member::MemberContextInput>,
+) -> Response {
+    match super::runs::context_read::member::read_member_context(&state, session.account_id, input)
+        .await
+    {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => run_error_response(
+            "member history",
+            "Conversation retrieval is unavailable.",
+            error,
+        ),
+    }
+}

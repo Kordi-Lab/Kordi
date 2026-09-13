@@ -70,6 +70,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
         .route(
+            "/v1/cloud/agent-runs/desktop/read-context",
+            post(super::desktop::read_member_context),
+        )
+        .route(
             "/v1/cloud/agent-runs/desktop/ready",
             post(super::desktop::ready),
         )

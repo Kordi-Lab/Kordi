@@ -6,6 +6,7 @@ use serde_json::Value;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 pub(super) mod media;
+pub(crate) mod member;
 mod messages;
 
 #[derive(Deserialize)]
@@ -21,6 +22,7 @@ pub(super) struct ContextActor {
     executor: String,
     backend: &'static str,
     account: Option<String>,
+    observation: Option<(String, Option<String>)>,
 }
 
 pub(super) struct ContextScope {
@@ -42,6 +44,7 @@ pub(crate) async fn read_context(
         executor: input.runner_id.trim().into(),
         backend: "cloud",
         account: None,
+        observation: None,
     };
     read_for_actor(state, run_id, &actor, &input.tool, &input.arguments).await
 }
@@ -58,11 +61,15 @@ pub(crate) async fn read_desktop_context(
         executor,
         backend: "desktop",
         account: Some(account.into()),
+        observation: None,
     };
     read_for_actor(state, run_id, &actor, tool, args).await
 }
 
 async fn authorize(pool: &PgPool, run_id: &str, actor: &ContextActor) -> RunResult<ContextScope> {
+    if actor.observation.is_some() {
+        return member::authorize_member(pool, actor).await;
+    }
     let run: Option<(String,String,String,String)> = query_as(
         "SELECT run.session_id, COALESCE(sub.parent_request_id,parent.request_message_id,run.request_message_id), run.owner_account_id, run.requester_account_id
          FROM cloud_agent_fallback_runs run LEFT JOIN cloud_agent_fallback_runs parent ON parent.run_id=run.parent_run_id LEFT JOIN cloud_agent_subsessions sub ON sub.subsession_id=run.subsession_id

@@ -6,6 +6,7 @@ use kordi_tools::{
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::open_db;
+mod media;
 mod reading;
 use reading::{
     message_sequence_bounds, read_latest_messages, read_messages_by_ids,
@@ -137,7 +138,7 @@ pub(crate) fn read_session_for_observation_in_db(
         .clamp(1, MAX_READ_LIMIT);
     let session = conn
         .query_row(
-            "SELECT id, title, kind FROM sessions WHERE id = ?1 AND status <> 'archived'",
+            "SELECT id, title, kind FROM sessions WHERE id = ?1",
             params![session_id],
             |row| {
                 Ok(SessionObservationReadSession {
@@ -151,6 +152,9 @@ pub(crate) fn read_session_for_observation_in_db(
         .optional()
         .map_err(|err| err.to_string())?
         .ok_or_else(|| format!("session not found: {session_id}"))?;
+    if request.mode.as_deref() == Some("attachment") {
+        return media::read(conn, request);
+    }
     let participants = if request.mode.as_deref() == Some("participants") {
         participants_for_read(conn, session_id)?
     } else {
@@ -168,7 +172,7 @@ pub(crate) fn read_session_for_observation_in_db(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
-    let (messages, has_more_before, has_more_after) = match mode {
+    let (mut messages, has_more_before, has_more_after) = match mode {
         "participants" => (Vec::new(), false, false),
         "index" => {
             let bounds = message_sequence_bounds(conn, session_id)?;
@@ -201,7 +205,7 @@ pub(crate) fn read_session_for_observation_in_db(
                     has_after,
                 )
             } else {
-                let rows = read_latest_messages(conn, session_id, limit)?;
+                let rows = read_latest_messages(conn, session_id, limit, request.before_sequence)?;
                 let first_sequence = rows.first().map(|row| row.sequence_num);
                 let last_sequence = rows.last().map(|row| row.sequence_num);
                 let has_before = match (bounds, first_sequence) {
@@ -245,8 +249,14 @@ pub(crate) fn read_session_for_observation_in_db(
         other => return Err(format!("unsupported read_session mode: {other}")),
     };
 
+    for message in &mut messages {
+        message.attachments = media::references(conn, session_id, &message.message_id)?;
+    }
+    let next_before_sequence = has_more_before
+        .then(|| messages.first().map(|m| m.sequence_num))
+        .flatten();
     Ok(ReadSessionResponse {
-        next_before_sequence: None,
+        next_before_sequence,
         media: Vec::new(),
         directory: None,
         session: SessionObservationReadSession {

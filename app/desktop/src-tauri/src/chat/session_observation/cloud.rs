@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 
 struct CloudObservation {
-    lease: DesktopCloudExecutionLease,
+    authorization: Value,
     scope: String,
     endpoint: String,
     client: reqwest::Client,
@@ -30,7 +30,12 @@ impl CloudObservation {
             .client
             .post(&self.endpoint)
             .bearer_auth(token)
-            .json(&json!({"claimId":self.lease.claim_id,"tool":tool,"arguments":args}))
+            .json(&{
+                let mut body = self.authorization.clone();
+                body["tool"] = json!(tool);
+                body["arguments"] = args;
+                body
+            })
             .send()
             .await
             .map_err(|_| unavailable())?;
@@ -90,7 +95,7 @@ pub(in crate::chat) fn build(
         Ok(session.token)
     });
     let observation = Arc::new(CloudObservation {
-        lease,
+        authorization: json!({"claimId":lease.claim_id}),
         scope,
         endpoint,
         client,
@@ -176,4 +181,63 @@ fn endpoint(base: &str, run_id: &str) -> String {
             Some(url.to_string())
         })
         .unwrap_or_default()
+}
+
+pub(super) fn member_runtime(
+    scope: &str,
+    identity: Option<&kordi_cli::desktop_runtime::DesktopChatContextMessage>,
+) -> KordiResult<Option<SessionObservationRuntime>> {
+    let Some(session) = crate::cloud_session::cloud_session_load().map_err(|_| unavailable())?
+    else {
+        return Ok(None);
+    };
+    let conn = crate::canonical_sessions::open_db().map_err(|_| unavailable())?;
+    let synced: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sync_conversations WHERE account_id=?1 AND client_session_id=?2)",
+        rusqlite::params![session.account_id, scope], |row| row.get(0),
+    ).map_err(|_| unavailable())?;
+    if !synced {
+        return Ok(None);
+    }
+    let identity = identity
+        .map(|context| serde_json::from_str::<kordi_core::types::RuntimeIdentity>(&context.text))
+        .transpose()
+        .map_err(|_| unavailable())?;
+    if identity
+        .as_ref()
+        .is_some_and(|identity| identity.owner_account_id != session.account_id)
+    {
+        return Err(unavailable());
+    }
+    let source = identity
+        .as_ref()
+        .filter(|i| i.requester_account_id != i.owner_account_id)
+        .map(|i| i.request_id.clone());
+    let owner = session.account_id;
+    let token = Arc::new(move || {
+        let current = crate::cloud_session::cloud_session_load()
+            .ok()
+            .flatten()
+            .ok_or_else(unavailable)?;
+        if current.account_id != owner || current.token.is_empty() {
+            return Err(unavailable());
+        }
+        Ok(current.token)
+    });
+    let base = crate::cloud_api_base_url_from_env().unwrap_or_default();
+    let observation = Arc::new(CloudObservation {
+        scope: scope.into(),
+        authorization: json!({"sessionId":scope,"sourceRequestId":source}),
+        endpoint: format!(
+            "{}/v1/cloud/agent-runs/desktop/read-context",
+            base.trim_end_matches('/')
+        ),
+        client: reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(20))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| unavailable())?,
+        token,
+    });
+    Ok(Some(runtime(observation, None)))
 }

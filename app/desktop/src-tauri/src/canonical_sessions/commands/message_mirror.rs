@@ -129,7 +129,9 @@ pub(crate) fn reconcile_canonical_message_mirror_in_db(
     let payload_matches = if local_is_user {
         local.content_text.trim() == cloud.content_text.trim()
     } else {
-        local.parent_message_id.is_some() && local.parent_message_id == cloud.parent_message_id
+        local.parent_message_id.is_some()
+            && (local.parent_message_id == cloud.parent_message_id
+                || exported_agent_intent_matches(&transaction, local, cloud)?)
     };
     if local.session_id != cloud.session_id
         || !sender_matches
@@ -285,4 +287,22 @@ pub(in crate::canonical_sessions) fn desktop_canonical_reconcile_message_mirror(
 ) -> Result<bool, String> {
     let conn = open_db()?;
     reconcile_canonical_message_mirror_in_db(&conn, &preferred_message_id, &duplicate_message_id)
+}
+
+fn exported_agent_intent_matches(
+    conn: &Connection,
+    local: &super::super::CanonicalSessionMessage,
+    cloud: &super::super::CanonicalSessionMessage,
+) -> Result<bool, String> {
+    if local.content_text.trim() != cloud.content_text.trim() {
+        return Ok(false);
+    }
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sync_messages wire JOIN chat_sync_conversations conversation
+         ON conversation.account_id=wire.account_id AND conversation.conversation_id=wire.conversation_id
+         WHERE wire.message_id=?1 AND wire.message_kind='canonical-history-agent' AND conversation.client_session_id=?2
+         AND COALESCE(json_extract(wire.snapshot_json,'$.content.canonical_history.local_message_id'),
+                      json_extract(wire.snapshot_json,'$.content.canonical_history.localMessageId'))=?3)",
+        params![cloud.source_event_id,local.session_id,local.id], |row|row.get(0),
+    ).map_err(|error|error.to_string())
 }
