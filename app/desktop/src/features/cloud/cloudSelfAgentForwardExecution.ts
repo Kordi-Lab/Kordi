@@ -1,3 +1,4 @@
+import { uploadSelfAgentMessageAttachments } from './cloudSelfAgentAttachments';
 import type {
   CloudAuthClient,
   CloudMessage,
@@ -115,7 +116,7 @@ export async function publishCloudSelfAgentExecutionSnapshot({
   );
 }
 
-export async function publishCloudSelfAgentOperations({
+async function publishCloudSelfAgentOperationBatch({
   accountId,
   client,
   ledger,
@@ -129,9 +130,11 @@ export async function publishCloudSelfAgentOperations({
   shouldPublishProcessing = () => true,
   executionSnapshotForOperation = () => undefined,
   token,
+  uploadAttachments = uploadSelfAgentMessageAttachments,
 }: {
   accountId: string;
-  client: Pick<CloudAuthClient, 'sendMessage'>;
+  client: Pick<CloudAuthClient, 'sendMessage'> & Partial<Pick<CloudAuthClient, 'uploadAttachment' | 'updateAttachmentPreview'>>;
+  uploadAttachments?: typeof uploadSelfAgentMessageAttachments;
   ledger: CloudSelfAgentSyncLedger;
   mergeMessage: (message: CloudMessage) => void;
   onRequestPublished?: (
@@ -171,12 +174,21 @@ export async function publishCloudSelfAgentOperations({
             targetCloudAgentOwnerAccountId: accountId,
           })
         : operation.text;
+      const uploadKey = `attachments:${operation.localMessageId}`;
+      const attachments = ledger[operation.localMessageId]?.cloudMessageId
+        ? [] : ledger[uploadKey]?.uploadedAttachments ?? await uploadAttachments(operation, client, token, accountId);
+      if (!shouldContinue()) return;
+      if (attachments.length && !ledger[uploadKey]?.uploadedAttachments) {
+        ledger[uploadKey] = { cloudMessageId: null, syncedAtMs: Date.now(), uploadedAttachments: attachments };
+        saveLedger(ledger);
+      }
       const request = ledger[operation.localMessageId]?.cloudMessageId ? null : await client.sendMessage(
         token,
         accountId,
         body,
         {
           sessionId: operation.sessionId,
+          ...(attachments.length ? { attachments } : {}),
           clientCreatedAt: new Date(operation.createdAtMs).toISOString(),
           clientMessageId: stableClientMessageId(operation, 'request'),
           messageKind,
@@ -291,4 +303,15 @@ export async function publishCloudSelfAgentOperations({
     saveLedger(ledger);
     if (shouldMergeMessage(operation)) mergeMessage(response);
   }
+}
+
+export async function publishCloudSelfAgentOperations(input: Parameters<typeof publishCloudSelfAgentOperationBatch>[0]) {
+  const failures: unknown[] = [];
+  for (const operation of input.operations) {
+    if (input.shouldContinue && !input.shouldContinue()) break;
+    try { await publishCloudSelfAgentOperationBatch({ ...input, operations: [operation] }); }
+    catch (error) { failures.push(error); }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length) throw new Error('Some messages could not synchronize; other messages were preserved.');
 }

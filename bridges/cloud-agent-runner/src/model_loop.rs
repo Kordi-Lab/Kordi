@@ -237,7 +237,7 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     }
     if matches!(call.name.as_str(), "search_sessions" | "read_session") {
         return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
-            Ok(value) => value.to_string().into(),
+            Ok(value) => context_tool_output(value),
             Err(_) => "Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".into(),
         };
     }
@@ -290,6 +290,30 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     {
         Ok(output) => format_tool_output(output),
         Err(err) => err.to_string().into(),
+    }
+}
+
+fn context_tool_output(mut value: Value) -> Value {
+    let media = value.as_object_mut().and_then(|o| o.remove("media"));
+    match media {
+        Some(media) => {
+            match serde_json::from_value::<Vec<kordi_core::types::ContentBlock>>(media) {
+                Ok(mut blocks) => {
+                    blocks.insert(
+                        0,
+                        kordi_core::types::ContentBlock::Text {
+                            text: value.to_string(),
+                        },
+                    );
+                    format_tool_output(CloudToolOutput::Content(blocks))
+                }
+                Err(_) => {
+                    "Conversation retrieval returned invalid media. Retry reading the attachment."
+                        .into()
+                }
+            }
+        }
+        None => value.to_string().into(),
     }
 }
 
@@ -346,5 +370,25 @@ fn format_tool_output(output: CloudToolOutput) -> Value {
             kordi_core::types::ContentBlock::Text { text } => json!({"type":"text","text":text}),
             kordi_core::types::ContentBlock::Image { data, mime_type } => json!({"type":"image","source":{"type":"base64","media_type":mime_type,"data":data}}),
         }).collect::<Vec<_>>()),
+    }
+}
+#[cfg(test)]
+mod context_media_tests {
+    use super::*;
+    #[test]
+    fn context_media_is_image_content_and_not_embedded_in_text_metadata() {
+        let result = context_tool_output(
+            json!({"sessionId":"group","messages":[],"media":[{"type":"image","data":"fixture-image","mime_type":"image/png"}]}),
+        );
+        assert_eq!(result[1]["type"], "image");
+        assert_eq!(result[1]["source"]["data"], "fixture-image");
+        assert!(!result[0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("fixture-image"));
+        assert!(context_tool_output(json!({"media":"invalid"}))
+            .as_str()
+            .unwrap()
+            .contains("invalid media"));
     }
 }

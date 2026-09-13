@@ -7,6 +7,8 @@ use serde_json::json;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunError {
+    #[error("{0}")]
+    ContextUnavailable(&'static str),
     #[error("Cloud agent run was not found for the requested transition")]
     NotFound,
     #[error("Cloud agent run persistence failed: {0}")]
@@ -22,6 +24,7 @@ impl RunError {
         match self {
             Self::Persistence(error) => error,
             Self::NotFound => sqlx_core::Error::Protocol(self.to_string()),
+            Self::ContextUnavailable(_) => sqlx_core::Error::Protocol(self.to_string()),
         }
     }
 }
@@ -55,6 +58,11 @@ pub(crate) fn run_error_response(
     error: RunError,
 ) -> Response {
     match error {
+        RunError::ContextUnavailable(message) => error_response(
+            "context_unavailable",
+            message,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
         RunError::NotFound => error_response(
             "agent_run_not_found",
             "Cloud agent run was not found for this runner.",

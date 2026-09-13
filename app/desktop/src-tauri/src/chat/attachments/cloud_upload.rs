@@ -267,6 +267,7 @@ pub async fn desktop_cloud_attachment_upload(
     request_id: String,
     path: String,
     content_type: Option<String>,
+    expected_account_id: Option<String>,
 ) -> Result<DesktopCloudAttachmentUploadResult, String> {
     let request_id = request_id.trim().to_string();
     if request_id.is_empty() || request_id.len() > 128 {
@@ -282,6 +283,12 @@ pub async fn desktop_cloud_attachment_upload(
     let session = crate::cloud_session::cloud_session_load()?
         .filter(|session| !session.token.trim().is_empty())
         .ok_or_else(|| "Not signed in.".to_string())?;
+    if expected_account_id
+        .as_deref()
+        .is_some_and(|account| account != session.account_id)
+    {
+        return Err("The active account changed before attachment upload.".into());
+    }
     let base_url = crate::cloud_api_base_url_from_env()?;
     let cancel = CancellationToken::new();
     {

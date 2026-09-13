@@ -31,6 +31,16 @@ export class ChatSyncClient {
     );
   }
 
+  async backfillMissingImages(token: string, conversationId: string, messageId: string, images: { attachmentId: string; name: string }[]) {
+    const result = await this.state.send<{ message: ChatSyncMessage }>(
+      `/v2/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/missing-images`,
+      { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify(images) },
+      'Could not restore missing message images.',
+    );
+    this.state.retainMessages([result.message]);
+    return result.message;
+  }
+
   knownSessionIds(accountId: string): string[] {
     return this.state.knownSessionIds(accountId);
   }

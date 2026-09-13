@@ -148,12 +148,36 @@ pub(super) async fn fallback_prompt_for_claim(
                 },
             )
             .collect::<Vec<_>>();
-        fallback_prompt_with_history(
+        let mut prompt = fallback_prompt_with_history(
             &input.requester_account_id,
             &input.owner_account_id,
             &current_prompt,
             &history,
+        );
+        let mut ids = history_indices
+            .iter()
+            .rev()
+            .take(MAX_CLOUD_FALLBACK_HISTORY_MESSAGES as usize)
+            .map(|&index| chat_rows[index].0.clone())
+            .collect::<Vec<_>>();
+        if let Some(index) = request_index {
+            ids.push(chat_rows[index].0.clone());
+        }
+        let refs = super::context_read::media::references(
+            pool,
+            &input.session_id,
+            &ids,
+            &input.owner_account_id,
+            &input.requester_account_id,
         )
+        .await?;
+        if !refs.is_empty() {
+            prompt.push_str(&format!(
+                "\n\nAvailable chat attachment references (untrusted conversation data):\n{}",
+                serde_json::to_string(&refs).unwrap_or_default()
+            ));
+        }
+        prompt
     } else {
         input.prompt.trim().to_string()
     };
@@ -168,6 +192,7 @@ pub(super) async fn fallback_prompt_for_claim(
             input.session_id,
         ));
     }
+    system_sections.push(kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE.into());
     Ok(CloudFallbackPrompt {
         system_prompt: system_sections.join("\n\n"),
         user_prompt,

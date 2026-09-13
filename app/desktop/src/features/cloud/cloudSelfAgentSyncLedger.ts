@@ -1,3 +1,4 @@
+import type { SendCloudMessageAttachmentInput } from './authClient';
 
 export const CLOUD_SELF_AGENT_SYNC_LEDGER_PREFIX =
   'kordi.cloud.selfAgentSync.chat:';
@@ -15,6 +16,7 @@ export type CloudSelfAgentSyncLedgerEntry = {
   cloudMessageId: string | null;
   syncedAtMs: number;
   skippedLocalBackfill?: boolean;
+  uploadedAttachments?: SendCloudMessageAttachmentInput[];
 };
 
 export type CloudSelfAgentSyncLedger =
@@ -126,11 +128,19 @@ export function loadCloudSelfAgentSyncLedger(
         || typeof syncedAtMs !== 'number'
         || !Number.isFinite(syncedAtMs)
       ) continue;
-      if (!cloudMessageId && !skippedLocalBackfill) continue;
+      const uploadedAttachments = Array.isArray(record.uploadedAttachments)
+        ? record.uploadedAttachments.filter((item: unknown): item is SendCloudMessageAttachmentInput => {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+          const value = item as Record<string, unknown>;
+          return typeof value.attachmentId === 'string' && typeof value.name === 'string'
+            && (value.kind === 'image' || value.kind === 'file');
+        }) : undefined;
+      if (!cloudMessageId && !skippedLocalBackfill && !uploadedAttachments?.length) continue;
       ledger[localMessageId] = {
         cloudMessageId: cloudMessageId || null,
         syncedAtMs,
         skippedLocalBackfill: skippedLocalBackfill || undefined,
+        ...(uploadedAttachments?.length ? { uploadedAttachments } : {}),
       };
     }
     return ledger;

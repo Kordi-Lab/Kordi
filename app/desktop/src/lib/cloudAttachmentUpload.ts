@@ -13,11 +13,13 @@ export function uploadDesktopCloudAttachment(
   requestId: string,
   path: string,
   contentType?: string | null,
+  expectedAccountId?: string,
 ) {
   return invokeDesktop<DesktopCloudAttachmentUploadResult>('desktop_cloud_attachment_upload', {
     requestId,
     path,
     contentType: contentType ?? null,
+    expectedAccountId: expectedAccountId ?? null,
   });
 }
 

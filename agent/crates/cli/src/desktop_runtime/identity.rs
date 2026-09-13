@@ -36,6 +36,7 @@ impl DesktopRuntimeSession {
             [&self.setup.session_id, RUNTIME_IDENTITY_CUSTOM_TYPE], |row| row.get(0),
         ).optional()?;
         Ok(raw.map(|text| DesktopChatContextMessage {
+            execution_lease: None,
             id: RUNTIME_IDENTITY_CUSTOM_TYPE.into(),
             author_name: "Kordi runtime".into(),
             author_kind: "agent".into(),

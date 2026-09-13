@@ -3475,6 +3475,7 @@ dependencies = [
  "hmac",
  "http-body-util",
  "image",
+ "kordi-tools",
  "lettre",
  "livekit-api",
  "p256",

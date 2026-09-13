@@ -1,3 +1,4 @@
+import { selfAgentAttachmentUpdate } from './cloudSelfAgentAttachmentState';
 import { applyCloudSelfAgentTargetIdentities } from './cloudSelfAgentTargetIdentity';
 import type {
   AppendCanonicalMessageRequest,
@@ -183,7 +184,7 @@ export function planCloudSelfAgentCanonicalSync({
         ) ?? derivedStableCanonicalMessageId
       : cleanText(message.canonicalHistoryLocalMessageId)
         || derivedStableCanonicalMessageId;
-    if (durableSourceEventIds?.has(message.messageId)) {
+    if (durableSourceEventIds?.has(message.messageId) && !Array.isArray(message.attachments)) {
       if (!responseRequestId && role === 'user') {
         userTextByCloudMessageId.set(message.messageId, text);
         requestCreatedAtMsByCloudMessageId.set(
@@ -232,7 +233,8 @@ export function planCloudSelfAgentCanonicalSync({
       localUserMessageByClientMessageId,
     });
     if (reconciliation) mirrorReconciliations.push(reconciliation);
-    if (existingMatch && !responseRequestId) {
+    const attachmentUpdate = selfAgentAttachmentUpdate(message, existingMatch?.content);
+    if (existingMatch && !responseRequestId && !attachmentUpdate.changed) {
       const isUserRequest = role === 'user';
       if (isUserRequest) {
         userTextByCloudMessageId.set(message.messageId, text);
@@ -413,6 +415,13 @@ export function planCloudSelfAgentCanonicalSync({
       sourceTransport,
       sourceEventId: message.messageId,
     };
+    if (Array.isArray(message.attachments)) {
+      request.content = { ...attachmentUpdate.content, ...(request.content ?? {}) };
+      if (existingMatch && ['desktop-chat', 'desktop-chat-ui'].includes(existingMatch.sourceTransport ?? '')) {
+        request.sourceTransport = existingMatch.sourceTransport;
+        request.sourceEventId = existingMatch.sourceEventId;
+      }
+    }
     const plannedIndex = plannedMessageIndexByCanonicalId.get(
       canonicalMessageId,
     );

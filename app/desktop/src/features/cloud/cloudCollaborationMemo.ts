@@ -52,6 +52,9 @@ export function cloudSelfAgentMessagesBySession(
   let hasSessionScopedMessages = false;
   for (const message of messages) {
     const sessionId = cleanSessionId(message.sessionId);
+    // Older execution responses addressed the requester instead of the direct
+    // chat peer. A cached reply must not create a separate self-agent chat.
+    if (sessionId?.startsWith('session:direct-person:')) continue;
     if (sessionId) hasSessionScopedMessages = true;
     const bucket = mutable.get(sessionId) ?? [];
     bucket.push(message);

@@ -1,6 +1,6 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { withLocalExecutionProgress } from '@/features/chat/localExecutionProgress';
 import { collaborationMessageActionSourceReference,collaborationMessageActionWithRealSourceLabel } from "./messageActionPresentation";
-
 import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
 import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
@@ -332,7 +332,7 @@ export function mapCollaborationConversationToViewModel(
         timestampMs: message.timestampMs,
         conversationSequence: message.conversationSequence,
         replyToMessageId, messageAction, sourceMessage, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, cloudMessageVersion: message.cloudMessageVersion, editedAt: message.editedAt, reactions: message.reactions,
-        turn: {
+        turn: withLocalExecutionProgress(localTurn, {
           id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
           prompt: localTurn?.prompt ?? '',
@@ -349,7 +349,7 @@ export function mapCollaborationConversationToViewModel(
             conversationId: conversation.id,
             requestId,
           } : null,
-        },
+        }),
       }];
     }
     const mappedMessage: Message = {
@@ -450,7 +450,7 @@ export function mapCollaborationConversationToViewModel(
       time: conversation.updatedAtLabel,
       timestampMs: conversation.updatedAtMs,
       replyToMessageId,
-      turn: {
+      turn: withLocalExecutionProgress(localTurn, {
         id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:processing`,
         sessionId: conversation.id,
         prompt: localTurn?.prompt ?? '',
@@ -467,7 +467,7 @@ export function mapCollaborationConversationToViewModel(
           conversationId: conversation.id,
           requestId: stoppableRequestId,
         } : null,
-      },
+      }),
     });
   }
 

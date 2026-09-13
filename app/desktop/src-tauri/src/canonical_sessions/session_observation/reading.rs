@@ -13,6 +13,7 @@ pub(super) struct ObservedMessageRow {
 impl ObservedMessageRow {
     pub(super) fn into_index_message(self) -> SessionObservationMessage {
         SessionObservationMessage {
+            attachments: Vec::new(),
             message_id: self.message_id,
             sender: self.sender,
             role: self.role,
@@ -27,6 +28,7 @@ impl ObservedMessageRow {
         let remainder = self.text.chars().skip(offset).collect::<String>();
         let truncated = remainder.chars().count() > MAX_READ_MESSAGE_TEXT_CHARS;
         SessionObservationMessage {
+            attachments: Vec::new(),
             next_offset: truncated.then(|| offset.saturating_add(MAX_READ_MESSAGE_TEXT_CHARS - 1)),
             message_id: self.message_id,
             sender: self.sender,
@@ -104,6 +106,7 @@ pub(super) fn read_latest_messages(
     conn: &Connection,
     session_id: &str,
     limit: usize,
+    before: Option<i64>,
 ) -> Result<Vec<ObservedMessageRow>, String> {
     let mut stmt = conn
         .prepare(
@@ -111,14 +114,14 @@ pub(super) fn read_latest_messages(
                  SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, '', m.created_at_ms, m.sequence_num
                  FROM session_messages m
                  LEFT JOIN identities i ON i.id = m.sender_identity_id
-                 WHERE m.session_id = ?1
+                 WHERE m.session_id = ?1 AND (?3 IS NULL OR m.sequence_num < ?3)
                  ORDER BY m.sequence_num DESC
                  LIMIT ?2
              ) ORDER BY sequence_num ASC",
         )
         .map_err(|err| err.to_string())?;
     let rows = stmt
-        .query_map(params![session_id, limit], read_message_row)
+        .query_map(params![session_id, limit, before], read_message_row)
         .map_err(|err| err.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())

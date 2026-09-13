@@ -42,6 +42,8 @@ pub struct DesktopVisibleTaskRecord {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopChatContextMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_lease: Option<DesktopCloudExecutionLease>,
     pub id: String,
     pub author_name: String,
     pub author_kind: String,
@@ -49,6 +51,15 @@ pub struct DesktopChatContextMessage {
     pub context_role: Option<String>,
     pub text: String,
     pub created_at_ms: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopCloudExecutionLease {
+    pub session_id: String,
+    pub run_id: String,
+    pub claim_id: String,
+    pub owner_account_id: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

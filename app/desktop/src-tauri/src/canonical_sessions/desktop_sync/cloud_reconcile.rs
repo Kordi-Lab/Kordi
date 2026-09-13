@@ -130,3 +130,23 @@ pub(super) fn reconcile_cloud_self_agent_message_with_desktop_runtime(
     }
     Ok(Some(cloud_message_id))
 }
+
+/// A cloud-synchronized local history export is not a cloud-executed request.
+/// Its native terminal result must still enter the outbound synchronization path.
+pub(super) fn request_uses_cloud_executor(
+    conn: &Connection,
+    session_id: &str,
+    parent_id: &str,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM session_messages parent
+         WHERE parent.id=?1 AND parent.session_id=?2 AND parent.source_transport='cloud-self-agent'
+         AND NOT EXISTS(SELECT 1 FROM chat_sync_messages wire
+             JOIN chat_sync_conversations conversation
+               ON conversation.account_id=wire.account_id AND conversation.conversation_id=wire.conversation_id
+             WHERE wire.message_id=parent.source_event_id
+               AND conversation.client_session_id=parent.session_id
+               AND wire.message_kind='canonical-history-user'))",
+        rusqlite::params![parent_id, session_id], |row| row.get(0),
+    ).map_err(|error| error.to_string())
+}

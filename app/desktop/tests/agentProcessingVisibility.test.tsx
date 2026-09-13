@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { canDisplayAgentTurn, agentTurnHasStarted } from '../src/features/chat/agentProcessingVisibility';
+import { canDisplayAgentTurn, agentTurnHasStarted, shouldShowAgentWaitingAnimation } from '../src/features/chat/agentProcessingVisibility';
 import { LiveChatTurnCard } from '../src/kordi-app/components/transcriptLiveTurns';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 
@@ -37,4 +37,17 @@ test('executor preparation is visible after acknowledgement without exposing opt
   assert.equal(canDisplayAgentTurn(preparing, [request('sent')]), true);
   assert.equal(canDisplayAgentTurn(turn, [request('sent')]), false);
   assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: preparing, onStopActiveTurn: () => {} })), /app-agent-waiting-wave/);
+});
+
+test('acknowledged remote requests show waiting feedback beside stop without asserting execution started', () => {
+  const pending = { ...turn, status: 'processing', pendingCollaborationAgentRequest: { conversationId: 'chat', requestId: 'request' } };
+  assert.equal(agentTurnHasStarted(pending), false);
+  assert.equal(shouldShowAgentWaitingAnimation(pending), true);
+  assert.equal(canDisplayAgentTurn(pending, [request('sending')]), false);
+  assert.equal(canDisplayAgentTurn(pending, [request('sent')]), true);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: pending })), /app-agent-waiting-wave/);
+  for (const status of ['starting', 'queued', 'cancelled', 'failed']) {
+    assert.equal(shouldShowAgentWaitingAnimation({ ...pending, status }), false);
+  }
+  assert.equal(shouldShowAgentWaitingAnimation({ ...pending, completed: true }), false);
 });

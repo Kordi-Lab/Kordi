@@ -10,6 +10,9 @@ mod active_path_tests;
 mod assembly;
 mod formatting;
 #[cfg(test)]
+mod image_history_tests;
+mod image_visibility;
+#[cfg(test)]
 mod shared_context_tests;
 #[cfg(test)]
 mod tests;

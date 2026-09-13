@@ -130,7 +130,7 @@ test('expressive media keeps one preview source after durable caching', async ()
     });
 
     assert.equal(cachedCloudAttachmentLocalPath('att_sticker'), '/library/sticker.png');
-    assert.equal(uploaded[0]?.subtype, undefined);
+    assert.equal(uploaded[0]?.subtype, 'sticker');
     assert.equal(uploaded[0]?.widthPixels, 343);
     assert.equal(uploaded[0]?.heightPixels, 361);
   } finally {

@@ -49,8 +49,8 @@ pub use models::{
     DesktopChatContextWindowStatus, DesktopChatMessage, DesktopChatModelOption,
     DesktopChatProjectGroup, DesktopChatProjectInfo, DesktopChatProjectSource,
     DesktopChatSessionDetail, DesktopChatSessionSummary, DesktopChatSlashCommand,
-    DesktopChatStoredTool, DesktopForkSessionOutcome, DesktopSessionArtifact,
-    DesktopVisibleTaskRecord,
+    DesktopChatStoredTool, DesktopCloudExecutionLease, DesktopForkSessionOutcome,
+    DesktopSessionArtifact, DesktopVisibleTaskRecord,
 };
 
 use model_options::{

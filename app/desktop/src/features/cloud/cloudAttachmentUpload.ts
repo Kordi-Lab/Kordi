@@ -77,9 +77,11 @@ export function resolveCloudAttachmentUploadProgress(
 async function runNativeCloudAttachmentUpload({
   path,
   contentType,
+  expectedAccountId,
 }: {
   path: string;
   contentType?: string | null;
+  expectedAccountId?: string;
 }): Promise<DesktopCloudAttachmentUploadResult> {
   const id = requestId();
   pathByRequestId.set(id, path);
@@ -97,7 +99,7 @@ async function runNativeCloudAttachmentUpload({
       if (!eventPath) return;
       publish(eventPath, payload);
     });
-    const result = await uploadDesktopCloudAttachment(id, path, contentType);
+    const result = await uploadDesktopCloudAttachment(id, path, contentType, expectedAccountId);
     const totalBytes = Math.max(
       states.get(path)?.totalBytes ?? 0,
       result.sizeBytes ?? 0,
@@ -131,14 +133,16 @@ async function runNativeCloudAttachmentUpload({
 export function uploadNativeCloudAttachment({
   path,
   contentType,
+  expectedAccountId,
 }: {
   path: string;
   contentType?: string | null;
+  expectedAccountId?: string;
 }): Promise<DesktopCloudAttachmentUploadResult> {
-  const key = `${path}\u0000${contentType?.trim() ?? ''}`;
+  const key = `${expectedAccountId ?? ''}\u0000${path}\u0000${contentType?.trim() ?? ''}`;
   const existing = reusableUploads.get(key);
   if (existing) return existing;
-  const upload = runNativeCloudAttachmentUpload({ path, contentType }).then(
+  const upload = runNativeCloudAttachmentUpload({ path, contentType, expectedAccountId }).then(
     (result) => {
       window.setTimeout(() => {
         if (reusableUploads.get(key) === upload) reusableUploads.delete(key);

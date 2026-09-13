@@ -354,10 +354,8 @@ pub(crate) fn sync_desktop_chat_message(
     }
     if is_agent {
         if let Some(parent_id) = canonical_reply_to_message_id.as_deref() {
-            let cloud_owned: bool = conn.query_row(
-                "SELECT EXISTS(SELECT 1 FROM session_messages WHERE id = ?1 AND session_id = ?2 AND source_transport = 'cloud-self-agent')",
-                params![parent_id, session_id], |row| row.get(0),
-            ).map_err(|error| error.to_string())?;
+            let cloud_owned =
+                cloud_reconcile::request_uses_cloud_executor(conn, session_id, parent_id)?;
             // The owner executor publishes this exact request's terminal reply.
             // Importing the native transcript as a second outbound turn would
             // duplicate both the cloud reply and its request.

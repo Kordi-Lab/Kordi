@@ -57,6 +57,7 @@ fn shared_request_runtime_session_id(session_id: &str, request_id: &str) -> Resu
     })
 }
 
+mod admission;
 mod shared;
 pub(super) use shared::start_shared_message;
 
@@ -139,22 +140,9 @@ pub(super) async fn start_message(
         // including on failure. A canceled queued turn still waits for its
         // predecessor so cancellation cannot let later requests overtake it.
         let _completion = turn_completion;
-        if let Some(previous_turn) = previous_turn {
-            let _ = previous_turn.await;
-        }
-        if cancel.is_cancelled() {
-            update_turn(&snapshot_for_task, |state| {
-                state.status = "cancelled".to_string();
-                state.completed = true;
-                state.completed_at_ms = Some(now_millis());
-            });
+        if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }
-        update_turn(&snapshot_for_task, |state| {
-            state.status = "starting".to_string();
-            state.message = "Working…".to_string();
-            state.started_at_ms = now_millis();
-        });
         let (provider, model) = {
             let mut session = session_handle.lock().await;
             if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
@@ -203,7 +191,7 @@ pub(super) async fn start_message(
                     fail_turn(&snapshot_for_task, error.to_string());
                     return;
                 }
-                prepare_desktop_session_for_send(
+                if let Err(error) = prepare_desktop_session_for_send(
                     &manager_for_task,
                     &mut session,
                     cwd.clone(),
@@ -212,7 +200,11 @@ pub(super) async fn start_message(
                     request_message_id.as_deref(),
                     &context_messages,
                 )
-                .await;
+                .await
+                {
+                    fail_turn(&snapshot_for_task, error);
+                    return;
+                }
             }
 
             let detail = session.detail().ok();

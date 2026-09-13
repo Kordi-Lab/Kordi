@@ -129,6 +129,7 @@ export async function uploadComposerAttachments({
         ...(livePhoto ? { livePhoto } : {}),
         name: attachment.name,
         kind,
+        ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const } : {}),
         ...(attachment.subtype === 'meme' ? {
           subtype: 'meme' as const,
           altText: attachment.altText?.trim() || null,
