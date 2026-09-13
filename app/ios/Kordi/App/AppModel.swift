@@ -285,6 +285,7 @@ final class AppModel: ObservableObject {
     private var pendingSessionVisibilityMutationCount = 0
     private var pendingAgentRequestIds: [String: [String]] = [:]
     private var pendingAgentQueuedRequestIds = Set<String>()
+    @Published private var confirmedAgentRunStatuses: [String: String] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
     private var pendingAgentOwnerNames: [String: String] = [:]
@@ -612,6 +613,7 @@ final class AppModel: ObservableObject {
         persistedVisibleReadMessageBySessionID = [:]
         pendingAgentRequestIds = [:]
         pendingAgentQueuedRequestIds = []
+        confirmedAgentRunStatuses = [:]
         agentRunTasks.values.forEach { $0.cancel() }
         agentRunTasks = [:]
         pendingAgentRequestStartedAt = [:]
@@ -2442,7 +2444,8 @@ final class AppModel: ObservableObject {
                 createdAt: requestCreatedAt,
                 messages: messages,
                 kind: conversation.kind,
-                locallyQueued: pendingAgentQueuedRequestIds.contains(requestMessageId)
+                locallyQueued: pendingAgentQueuedRequestIds.contains(requestMessageId),
+                confirmedRunStatus: confirmedAgentRunStatuses[requestMessageId]
             ) else { continue }
             let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
             let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
@@ -4879,6 +4882,7 @@ final class AppModel: ObservableObject {
                 prompt: prompt,
                 runtimeRoute: runtimeRoute
             )
+                recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: requestMessageId)
                 agentExecutionLocation[conversation.id] = run.executionBackend == "desktop"
                     ? .mac(label: ownerAccountId == account.accountId ? "your Mac" : "the owner’s Mac")
                     : .cloud
@@ -4997,6 +5001,13 @@ final class AppModel: ObservableObject {
         pendingAgentContextByMessageId[messageId] = nil
     }
 
+    func recordConfirmedAgentRun(_ run: CloudAgentRun, conversationId: String, requestMessageId: String) {
+        guard pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId) else { return }
+        if confirmedAgentRunStatuses[requestMessageId] != run.status {
+            confirmedAgentRunStatuses[requestMessageId] = run.status
+        }
+    }
+
     private func pollForAgentReply(_ conversation: ConversationSummary, requestMessageId: String) async {
         guard !previewMode else { return }
         for _ in 0..<30 {
@@ -5008,6 +5019,7 @@ final class AppModel: ObservableObject {
             guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
             if let token,
                let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {
+                recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: requestMessageId)
                 if let backend = run.executionBackend {
                     agentExecutionLocation[conversation.id] = backend == "desktop" ? .mac(label: "the owner’s Mac") : .cloud
                 }
@@ -6756,6 +6768,7 @@ final class AppModel: ObservableObject {
             ?? localRequestMessageId
         agentRequestPresentationIds[serverRequestMessageId] = presentationId
         pendingAgentRequestIds[conversationId]?[index] = serverRequestMessageId
+        confirmedAgentRunStatuses[serverRequestMessageId] = confirmedAgentRunStatuses.removeValue(forKey: localRequestMessageId)
         pendingAgentRequestStartedAt[serverRequestMessageId] = pendingAgentRequestStartedAt.removeValue(forKey: localRequestMessageId)
         pendingAgentDisplayNames[serverRequestMessageId] = pendingAgentDisplayNames.removeValue(forKey: localRequestMessageId)
         pendingAgentOwnerNames[serverRequestMessageId] = pendingAgentOwnerNames.removeValue(forKey: localRequestMessageId)
@@ -6767,6 +6780,7 @@ final class AppModel: ObservableObject {
     private func clearPendingAgentRequest(conversationId: String) {
         for requestID in pendingAgentRequestIds[conversationId, default: []] {
             pendingAgentQueuedRequestIds.remove(requestID)
+            confirmedAgentRunStatuses[requestID] = nil
             pendingAgentRequestStartedAt[requestID] = nil
             pendingAgentDisplayNames[requestID] = nil
             pendingAgentOwnerNames[requestID] = nil
@@ -6786,6 +6800,7 @@ final class AppModel: ObservableObject {
     ) {
         pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
         pendingAgentQueuedRequestIds.remove(requestMessageId)
+        confirmedAgentRunStatuses[requestMessageId] = nil
         pendingAgentRequestStartedAt[requestMessageId] = nil
         pendingAgentDisplayNames[requestMessageId] = nil
         pendingAgentOwnerNames[requestMessageId] = nil

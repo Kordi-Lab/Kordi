@@ -20,11 +20,16 @@ enum AgentSessionQueuePresentation {
         createdAt: Date,
         messages: [ChatMessage],
         kind: ConversationKind,
-        locallyQueued: Bool
+        locallyQueued: Bool,
+        confirmedRunStatus: String? = nil
     ) -> AgentExecutionSnapshot.Phase? {
         guard kind == .agent,
               let request = messages.first(where: { $0.id == requestID }),
               [.sent, .delivered, .read].contains(request.deliveryState) else { return nil }
+        if let confirmedRunStatus {
+            if confirmedRunStatus == "running" { return .preparing }
+            if ["completed", "failed", "cancelled"].contains(confirmedRunStatus) { return nil }
+        }
         if locallyQueued { return .queued }
         let snapshots = executionSnapshots(in: messages)
         let hasActivePredecessor = messages.contains { message in

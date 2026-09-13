@@ -101,4 +101,40 @@ struct InitialAgentModelNoticeTests {
         }
     }
 
+    @Test(arguments: [MessageDeliveryState.sending, .sent, .delivered, .read, .failed, .cancelled])
+    func serverRunProcessingStillRequiresAnAcceptedRequest(state: MessageDeliveryState) {
+        let request = ChatMessage(id: "request", conversationId: "agent-session:test", author: .me,
+            authorName: "You", text: "Hello", createdAt: .distantPast, deliveryState: state,
+            errorMessage: nil, requestMessageId: nil)
+        for status in ["pending", "leased", "running", "completed", "failed", "cancelled"] {
+            let phase = AgentSessionQueuePresentation.pendingPhase(requestID: request.id,
+                createdAt: request.createdAt, messages: [request], kind: .agent,
+                locallyQueued: false, confirmedRunStatus: status)
+            let expected: AgentExecutionSnapshot.Phase? = status == "running"
+                && [.sent, .delivered, .read].contains(state) ? .preparing : nil
+            #expect(phase == expected)
+        }
+    }
+
+    @Test func serverRunLifecycleReplacesMissingProgressMessagesAndClearsOnCompletion() async throws {
+        try await check { model, conversation, _ in
+            await model.send("Hello", attachments: [], to: conversation, onStaged: { _ in
+                guard let request = model.messages(for: conversation).first else { return }
+                let run = CloudAgentRun(runId: "run", status: "running", sandboxId: nil,
+                    createdAt: "2026-09-13T10:00:00Z", updatedAt: "2026-09-13T10:00:01Z")
+                model.recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: request.id)
+                #expect(model.messages(for: conversation).allSatisfy { $0.agentExecution == nil })
+                var accepted = request
+                accepted.deliveryState = .sent
+                model.upsertPreviewMessage(accepted)
+                #expect(model.messages(for: conversation).last?.agentExecution?.phase == .preparing)
+                let completed = CloudAgentRun(runId: "run", status: "completed", sandboxId: nil,
+                    createdAt: run.createdAt, updatedAt: "2026-09-13T10:00:02Z")
+                model.recordConfirmedAgentRun(completed, conversationId: conversation.id, requestMessageId: request.id)
+                #expect(model.messages(for: conversation).allSatisfy { $0.agentExecution == nil })
+            })
+            #expect(model.messages(for: conversation).allSatisfy { $0.agentExecution == nil })
+        }
+    }
+
 }
