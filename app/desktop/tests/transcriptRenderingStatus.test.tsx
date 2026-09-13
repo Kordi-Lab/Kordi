@@ -381,7 +381,7 @@ test('renders bridge agent stop control beside the first-response waveform', () 
   assert.match(markup, /h-\[18px\] w-\[18px\]/);
   assert.match(markup, /text-slate-400/);
   assert.doesNotMatch(markup, /h-5\.5 w-5\.5/);
-  assert.doesNotMatch(markup, /app-agent-waiting-wave/);
+  assert.match(markup, /app-agent-waiting-wave/);
   assert.doesNotMatch(markup, />Processing…</);
 });
 

@@ -23,3 +23,10 @@ export function canDisplayAgentTurn(turn: DesktopChatTurnSnapshot, messages: rea
   // treating those controls as a processing event.
   return agentTurnHasStarted(turn) || Boolean(turn.pendingCollaborationAgentRequest);
 }
+
+export function shouldShowAgentWaitingAnimation(turn: DesktopChatTurnSnapshot) {
+  if (turn.completed || ['starting', 'queued', 'cancelled', 'failed'].includes(turn.status)) return false;
+  // Match AgentSessionQueuePresentation: acknowledged requests have waiting
+  // feedback before execution output. This does not change execution admission.
+  return agentTurnHasStarted(turn) || Boolean(turn.pendingCollaborationAgentRequest);
+}

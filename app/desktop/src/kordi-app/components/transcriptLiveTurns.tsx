@@ -1,4 +1,4 @@
-import { agentTurnHasStarted, canDisplayAgentTurn } from '@/features/chat/agentProcessingVisibility';
+import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '@/features/chat/agentProcessingVisibility';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import {
@@ -798,7 +798,7 @@ function LiveChatTurnCardView({
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   <span className="text-slate-300">{liveStatusText}</span>
                 </>
-              ) : agentTurnHasStarted(visibleTurn) ? (
+              ) : shouldShowAgentWaitingAnimation(visibleTurn) ? (
                 <AgentWaitingWave label="Waiting for agent response" />
               ) : null}
               {pendingCollaborationAgentRequest ? (
