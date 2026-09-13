@@ -106,7 +106,11 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         await sending.value
     }
 
-    private func checkSend(historyCount: Int, duringInitialLoad: Bool) async throws {
+    func testSendingAfterLongAgentReplyKeepsTheRequestVisible() async throws {
+        try await checkSend(historyCount: 2, duringInitialLoad: false, longAgentReply: true)
+    }
+
+    private func checkSend(historyCount: Int, duringInitialLoad: Bool, longAgentReply: Bool = false) async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]
         ConversationMotionProbeRegistry.send = nil
@@ -120,7 +124,7 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
             $0.accountId != accountID && !KordiSupportIdentity.matches(name: $0.preferredName, seed: $0.accountId)
         })
         let peerID = peer.accountId
-        let conversation = ConversationSummary(id: "group:send-order", kind: .group, peerAccountId: peerID,
+        let groupConversation = ConversationSummary(id: "group:send-order", kind: .group, peerAccountId: peerID,
             agentId: nil, ownerDisplayName: nil, displayName: "Agent send fixture", lastMessage: "", lastActivityAt: Date(),
             unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:group:send-order",
             groupParticipants: [
@@ -129,13 +133,20 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
                     agentId: peer.defaultAgent?.agentId ?? "cloud-agent:\(peerID)",
                     agentDisplayName: peer.defaultAgent?.displayName ?? "Kordi", role: "person")
             ])
+        let template = try XCTUnwrap(model.conversations.first { $0.agentId == "cloud_agent_research" })
+        let conversation = longAgentReply ? ConversationSummary(id: "agent-session:long-reply", kind: .agent,
+            peerAccountId: accountID, agentId: template.agentId, ownerDisplayName: template.ownerDisplayName,
+            displayName: "Long agent reply", lastMessage: "", lastActivityAt: Date(), unreadCount: 0,
+            avatarSource: nil, agentActivity: .ready, sessionId: "session:long-reply") : groupConversation
         let seed = (0..<historyCount).map { index in
-            ChatMessage(id: "seed-\(index)", conversationId: conversation.id, author: .person, authorName: "Fixture peer",
-                text: "Earlier message \(index)", createdAt: Date().addingTimeInterval(Double(index - 10)),
+            ChatMessage(id: "seed-\(index)", conversationId: conversation.id, author: longAgentReply && index == historyCount - 1 ? .agent : .person, authorName: "Fixture peer",
+                text: longAgentReply && index == historyCount - 1
+                    ? (1...30).map { "### Section \($0)\nA longer reply explaining the previous request and its details.\n" }.joined(separator: "\n")
+                    : "Earlier message \(index)", createdAt: Date().addingTimeInterval(Double(index - 10)),
                 deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
         }
         store.saveMessages(seed, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
-        let target = try XCTUnwrap(model.mentionTargets(for: conversation).first { $0.kind == .agent && $0.accountId == peerID })
+        let target = try XCTUnwrap(model.mentionTargets(for: groupConversation).first { $0.kind == .agent && $0.accountId == peerID })
         await queue.acquire(conversation.id)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let previousWindow = scene.windows.first(where: \.isKeyWindow)
@@ -169,7 +180,7 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         let composer = try XCTUnwrap(editor(in: controller.view))
         composer.becomeFirstResponder()
         try await Task.sleep(for: .milliseconds(duringInitialLoad ? 300 : 2300))
-        let text = target.mentionText + " Check this synthetic request"
+        let text = longAgentReply ? "Follow up after the long reply" : target.mentionText + " Check this synthetic request"
         let setDraft = try XCTUnwrap(ConversationMotionProbeRegistry.setDraft)
         let send = try XCTUnwrap(ConversationMotionProbeRegistry.send)
         setDraft(text)
@@ -210,6 +221,7 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
                 }
             }
         }
+        XCTAssertTrue(model.messages(for: conversation).contains { $0.author == .me && $0.text == text }, "The fixture must successfully stage the outgoing request")
         XCTAssertNotNil(firstRequestTime, "A staged agent request must reveal without navigating away")
         XCTAssertNil(firstProgressTime, "A staged request waiting for send must not claim agent processing")
         XCTAssertGreaterThan(requestFrames, 5)
