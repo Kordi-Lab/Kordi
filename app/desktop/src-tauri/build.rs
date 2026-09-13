@@ -3,6 +3,7 @@ use std::{env, path::PathBuf, process::Command};
 fn main() {
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
         println!("cargo:rerun-if-changed=native/LivePhotos.swift");
+        println!("cargo:rerun-if-changed=native/LinkPreview.swift");
         let output = PathBuf::from(env::var_os("OUT_DIR").unwrap());
         let arch = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
             "aarch64" => "arm64",
@@ -28,6 +29,7 @@ fn main() {
                 "-sdk",
                 sdk.trim(),
                 "native/LivePhotos.swift",
+                "native/LinkPreview.swift",
                 "-o",
             ])
             .arg(output.join("libKordiLivePhotos.a"))

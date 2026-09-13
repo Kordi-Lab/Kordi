@@ -6,7 +6,6 @@ import {
   openExternalMessageLink,
   safeExternalHttpHref,
 } from './messageLinks';
-import { SiteIcon } from './messageInlineContent';
 import {
   shouldLoadAvatarThroughNativeProxy,
   useRemoteAvatarImage,
@@ -27,7 +26,8 @@ function cleanLinkLabel(label: string, href: string): string | null {
 
 function fallbackTitle(href: string, label: string) {
   const labelTitle = cleanLinkLabel(label, href);
-  if (labelTitle) return labelTitle;
+  const hostname = new URL(href).hostname.replace(/^www\./i, '');
+  if (labelTitle && labelTitle.replace(/^www\./i, '').toLowerCase() !== hostname.toLowerCase()) return labelTitle;
   const url = new URL(href);
   const segments = decodedPath(url).split('/').filter(Boolean);
   const leaf = (segments[segments.length - 1] ?? '')
@@ -55,6 +55,7 @@ function compactPath(href: string) {
 function LinkPreviewCard({ href, label }: { href: string; label: string }) {
   const [metadata, setMetadata] = useState<LinkPreviewMetadata | null>(() => readCachedLinkPreview(href));
   const [failed, setFailed] = useState(false);
+  const [failedImageDataUrl, setFailedImageDataUrl] = useState<string | null>(null);
   const canLoad = isNativeDesktopShell() && new URL(href).protocol.toLowerCase() === 'https:';
 
   useEffect(() => {
@@ -73,10 +74,10 @@ function LinkPreviewCard({ href, label }: { href: string; label: string }) {
 
   const hostname = useMemo(() => new URL(href).hostname.replace(/^www\./i, ''), [href]);
   const title = metadata?.title ?? fallbackTitle(href, label);
-  const description = metadata?.description ?? compactPath(href);
+  const description = compactPath(href) ?? metadata?.description;
   const imageUrl = metadata?.imageUrl ?? null;
   const remoteImage = useRemoteAvatarImage(imageUrl, shouldLoadAvatarThroughNativeProxy(imageUrl));
-  const imageDataUrl = remoteImage.status === 'ready' ? remoteImage.dataUrl : null;
+  const imageDataUrl = metadata?.imageDataUrl ?? (remoteImage.status === 'ready' ? remoteImage.dataUrl : null);
   const state = metadata ? 'ready' : failed ? 'failed' : canLoad ? 'loading' : 'idle';
 
   return (
@@ -95,11 +96,9 @@ function LinkPreviewCard({ href, label }: { href: string; label: string }) {
         {description ? <span className="app-message-link-preview-description">{description}</span> : null}
       </span>
       <span className="app-message-link-preview-artwork" aria-hidden="true">
-        {imageDataUrl ? (
-          <img src={imageDataUrl} alt="" decoding="async" />
-        ) : (
-          <SiteIcon href={href} />
-        )}
+        {imageDataUrl && imageDataUrl !== failedImageDataUrl ? (
+          <img src={imageDataUrl} alt="" decoding="async" onError={() => setFailedImageDataUrl(imageDataUrl)} />
+        ) : null}
       </span>
     </a>
   );

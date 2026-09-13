@@ -17,7 +17,7 @@ import type {
 import { useDesktopMessageAttention } from '@/features/notifications/useDesktopMessageAttention';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
-import { totalVisibleUnread } from '@/features/chat/unreadCounts';
+import { sessionsForGlobalAttention, totalVisibleUnread } from '@/features/chat/unreadCounts';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudArtifactsForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { invokeDesktop } from '@/lib/desktop';
 
@@ -102,6 +102,7 @@ type UseKordiDesktopActivityArgs = {
   isDesktopCollaborationSending: boolean;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot | null | undefined>;
   chatConversations: Conversation[];
+  hiddenSessionIds: ReadonlySet<string>;
   mutedSessionIds: ReadonlySet<string>;
   unreadSessionIds: ReadonlySet<string>;
   isNativeShell: boolean;
@@ -131,6 +132,7 @@ export function useKordiDesktopActivity({
   isDesktopCollaborationSending,
   desktopLiveTurnsBySession,
   chatConversations,
+  hiddenSessionIds,
   mutedSessionIds,
   unreadSessionIds,
   isNativeShell,
@@ -172,9 +174,13 @@ export function useKordiDesktopActivity({
   );
   const activeArtifacts = activeNav === 'projects' ? activeProjectArtifacts : activeChatArtifacts;
   const artifactContextKey = activeNav === 'projects' ? `projects:${activeProjectSession.id}` : `chats:${activeConv.id}`;
+  const attentionConversations = useMemo(
+    () => sessionsForGlobalAttention(chatConversations, hiddenSessionIds),
+    [chatConversations, hiddenSessionIds],
+  );
   const totalUnreadMessages = useMemo(
-    () => totalVisibleUnread(chatConversations, mutedSessionIds, unreadSessionIds),
-    [chatConversations, mutedSessionIds, unreadSessionIds],
+    () => totalVisibleUnread(attentionConversations, mutedSessionIds, unreadSessionIds),
+    [attentionConversations, mutedSessionIds, unreadSessionIds],
   );
 
   useEffect(() => {
@@ -197,7 +203,7 @@ export function useKordiDesktopActivity({
     activeConversationId: activeConv.id,
     activeCanonicalSessionId: activeConv.canonicalSessionId,
     chatTranscriptScrollRef,
-    conversations: chatConversations,
+    conversations: attentionConversations,
     totalUnreadCount: totalUnreadMessages,
     onOpenSession: onOpenNotificationSession,
   });
