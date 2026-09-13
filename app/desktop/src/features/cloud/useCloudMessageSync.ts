@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useRef,
+  useState,
 } from 'react';
 import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
 import type { CloudMessage } from './authClient';
@@ -59,6 +60,10 @@ export function useCloudMessageSync({
   setUnreadReadiness,
   refreshCloudAgents, onMessagesDeleted, onCanonicalMessagesPruned,
 }: UseCloudMessageSyncInput): CloudMessageSyncController {
+  const [executionContextKey, setExecutionContextKey] = useState<string | null>(null);
+  const currentExecutionContextKey = account
+    ? cloudUnreadReadinessContextKey(account.accountId, coordinator.currentGeneration(), bootstrapPeerKey)
+    : null;
   const storesRef = useRef(stores);
   useEffect(() => { storesRef.current = stores; }, [stores]);
   const {
@@ -395,6 +400,11 @@ export function useCloudMessageSync({
       }
       await syncDiffOnceForGeneration(generation, request.mode === 'full' || !hasCachedCloudSessionVisibility(account?.accountId));
       if (!coordinator.isCurrentGeneration(generation)) return;
+      // The authoritative live cursor is caught up. Older transcript backfill
+      // and unread publication must not hold up an incoming execution lease.
+      if (account) setExecutionContextKey(cloudUnreadReadinessContextKey(
+        account.accountId, generation, bootstrapPeerKey,
+      ));
       if (request.mode !== 'diff') historyRepairRef.current.invalidate();
       const hydration = historyRepairRef.current.run(() => hydrateMissingChatHistory(generation));
       if (hydration) {
@@ -480,6 +490,7 @@ export function useCloudMessageSync({
     syncCloudCollaborationDiff,
   );
   return {
+    executionMessagesReady: Boolean(account && contactsSettled && executionContextKey === currentExecutionContextKey),
     refreshCloudMessages,
     syncCloudCollaborationDiff,
     setRealtimeConnected,

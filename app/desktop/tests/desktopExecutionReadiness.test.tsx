@@ -4,6 +4,10 @@ import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useDesktopAuthState } from '../src/features/auth/useDesktopAuthState';
+import { useCloudMessageSync, type CloudMessageSyncController, type CloudMessageSyncStores } from '../src/features/cloud/useCloudMessageSync';
+import { CloudSyncCoordinator } from '../src/features/cloud/cloudSyncCoordinator';
+import { cloudUnreadReadinessContextKey, type CloudUnreadReadinessSnapshot } from '../src/features/cloud/cloudMessageSyncState';
+import { EMPTY_CLOUD_SESSION_ACTIVITY } from '../src/features/cloud/cloudSessionActivity';
 import { useDesktopAgentReadiness } from '../src/features/cloud/useDesktopAgentReadiness';
 import { CloudAuthClient, type CloudAccount } from '../src/features/cloud/authClient';
 import { __setSessionBackendForTests, CLOUD_SESSION_CHANGED_EVENT } from '../src/features/cloud/session';
@@ -23,7 +27,7 @@ async function waitFor(predicate: () => boolean) {
 
 async function fixture(invoke: (command: string) => Promise<unknown>) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
-  const replacements = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true };
+  const replacements = { window: dom.window, document: dom.window.document, Event: dom.window.Event, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(replacements).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(replacements)) Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke } });
@@ -123,4 +127,77 @@ test('execution waits for capability acknowledgement and ignores stale account r
     await act(async () => requests[3].done.resolve({}));
     assert.equal(ready, true);
   } finally { await view.close(); }
+});
+
+
+test('live execution becomes ready after cursor catch-up while older history remains blocked', async () => {
+  const view = await fixture(async command => {
+    if (command === 'desktop_chat_sync_load' || command === 'desktop_chat_sync_cursor') return null;
+    if (command === 'desktop_chat_sync_apply') return { changedConversationHeads: [] };
+    if (command === 'desktop_chat_sync_conversations') return [{ id: 'conversation', latest_message_sequence: 1 }];
+    if (command === 'desktop_chat_sync_coverage') return [];
+    throw new Error(`Unexpected native command: ${command}`);
+  });
+  const client = new CloudAuthClient('http://localhost');
+  const coordinator = new CloudSyncCoordinator();
+  const cursor = deferred<Awaited<ReturnType<CloudAuthClient['syncCloudEvents']>>>();
+  const history = deferred<void>();
+  let historyStarted = false;
+  client.drainChatOutbox = async () => {};
+  client.syncCloudEvents = async () => cursor.promise;
+  client.listChatConversationHistoryPage = async () => {
+    historyStarted = true;
+    await history.promise;
+    throw new Error('Synthetic history unavailable');
+  };
+  function store<T>(initial: T) {
+    const stateRef = { current: initial };
+    return { stateRef, setState: (update: React.SetStateAction<T>) => {
+      stateRef.current = typeof update === 'function' ? (update as (value: T) => T)(stateRef.current) : update;
+    } };
+  }
+  const stores: CloudMessageSyncStores = {
+    messages: { ...store({}), peerReadAtByPeerRef: { current: {} } },
+    activity: store(EMPTY_CLOUD_SESSION_ACTIVITY), forks: store({}), pins: store({}), titles: store({}), agents: store({}),
+    hiddenSessionIds: store(new Set<string>()), deletedSessionIds: store(new Set<string>()),
+    unreadSessionIds: store(new Set<string>()), pinnedSessionIds: store(new Set<string>()),
+    mutedSessionIds: store(new Set<string>()), pinnedGroupSpaceIds: store(new Set<string>()),
+  };
+  let unread: CloudUnreadReadinessSnapshot = { status: 'pending', contextKey: null };
+  const setUnreadReadiness = (update: React.SetStateAction<CloudUnreadReadinessSnapshot>) => {
+    unread = typeof update === 'function' ? update(unread) : update;
+  };
+  const refreshCloudAgents = async () => {};
+  const cancelledRef = { current: false };
+  let state: CloudMessageSyncController;
+  function Probe({ accountId }: { accountId: string }) {
+    state = useCloudMessageSync({ account: { accountId } as CloudAccount, client, coordinator,
+      bootstrapPeerIds: [accountId], bootstrapPeerKey: accountId, contactsSettled: true,
+      cloudUnreadContextKey: cloudUnreadReadinessContextKey(accountId, coordinator.currentGeneration(), accountId),
+      cancelledRef, stores, setUnreadReadiness, refreshCloudAgents });
+    return null;
+  }
+  try {
+    await view.render(<Probe accountId="acct_test" />);
+    assert.equal(state!.executionMessagesReady, false);
+    await act(async () => cursor.resolve({ cursor: '1', events: [], hasMore: false,
+      chat: { bootstrap: true, nextCursor: '1', lastStreamSeq: 1, conversations: [], messages: [], events: [] },
+    } as unknown as Awaited<ReturnType<CloudAuthClient['syncCloudEvents']>>));
+    await waitFor(() => historyStarted && state!.executionMessagesReady);
+    assert.equal(unread.status, 'pending', 'Unread counts still wait for complete historical coverage');
+    await act(async () => history.resolve());
+    assert.equal(unread.status, 'error');
+    assert.equal(state!.executionMessagesReady, true, 'Unavailable old history cannot disable fresh request admission');
+    coordinator.changeAccount();
+    const nextCursor = deferred<Awaited<ReturnType<CloudAuthClient['syncCloudEvents']>>>();
+    client.syncCloudEvents = async () => nextCursor.promise;
+    view.setAccount('acct_other');
+    await view.render(<Probe accountId="acct_other" />);
+    // A new account must pass its own cursor boundary; the old readiness key
+    // is never accepted merely because it shared the same sync coordinator.
+    assert.equal(state!.executionMessagesReady, false);
+    assert.notEqual(unread.contextKey, cloudUnreadReadinessContextKey('acct_test', 0, 'acct_test'));
+    cancelledRef.current = true;
+    await act(async () => nextCursor.resolve(await cursor.promise));
+  } finally { cancelledRef.current = true; await view.close(); }
 });
