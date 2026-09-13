@@ -1,4 +1,4 @@
-import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
@@ -28,18 +28,49 @@ export type CloudSelfAgentExecutionInput = {
 export function useDesktopAgentReadiness({
   account, client, runtimeReady = true, cloudAgentDefinitionsById, reportWarning,
 }: Pick<CloudSelfAgentExecutionInput, 'account' | 'client' | 'runtimeReady' | 'cloudAgentDefinitionsById' | 'reportWarning'>) {
+  const accountId = account?.accountId;
+  const agentIdsKey = JSON.stringify(runtimeReady && accountId
+    ? [...new Set([defaultCloudAgentId(accountId), ...Object.values(cloudAgentDefinitionsById ?? {})
+      .filter(agent => agent.ownerAccountId === accountId && agent.status !== 'archived')
+      .map(agent => agent.agentId)])].sort()
+    : []);
+  const readinessKey = JSON.stringify([accountId, agentIdsKey]);
+  const registration = useMemo(() => ({ readinessKey, client }), [readinessKey, client]);
+  const publicationTail = useRef(Promise.resolve());
+  const [acknowledged, setAcknowledged] = useState<typeof registration | null>(null);
+
   useEffect(() => {
-    if (!account) return;
+    if (!accountId) return;
     let cancelled = false;
-    const publish = async () => {
-      const session = await loadSession();
-      if (!session?.token || session.accountId !== account.accountId || cancelled) return;
-      const agentIds = runtimeReady ? [defaultCloudAgentId(account.accountId), ...Object.values(cloudAgentDefinitionsById ?? {})
-        .filter(agent => agent.ownerAccountId === account.accountId && agent.status !== 'archived').map(agent => agent.agentId)] : [];
-      await client.desktopAgentExecution(session.token, 'ready', { agentIds });
+    let publishing = false;
+    const publish = () => {
+      if (publishing) return;
+      publishing = true;
+      // Serialize capability replacement across readiness/account transitions.
+      // An older withdrawal must never arrive after a newer registration.
+      publicationTail.current = publicationTail.current.then(async () => {
+        try {
+          if (cancelled) return;
+          const session = await loadSession();
+          if (!session?.token || session.accountId !== accountId || cancelled) return;
+          await client.desktopAgentExecution(session.token, 'ready', { agentIds: JSON.parse(agentIdsKey) as string[] });
+          if (!cancelled) setAcknowledged(registration);
+        } catch (error) {
+          if (!cancelled) {
+            setAcknowledged(null);
+            reportWarning('[desktop-runtime] readiness failed', error);
+          }
+        } finally {
+          publishing = false;
+        }
+      });
     };
-    void publish().catch(error => reportWarning('[desktop-runtime] readiness failed', error));
-    const timer = setInterval(() => { void publish().catch(() => undefined); }, 10_000);
+    void publish();
+    const timer = setInterval(() => { void publish(); }, 10_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning]);
+  }, [accountId, agentIdsKey, client, registration, reportWarning]);
+
+  // Presence alone does not grant a desktop execution lease. Admission must
+  // wait until the server has accepted this account's current capabilities.
+  return Boolean(accountId && runtimeReady && acknowledged === registration);
 }

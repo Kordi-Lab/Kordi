@@ -43,6 +43,7 @@ export function cloudSelfAgentCanonicalSyncPlanSignature(
 ) {
   return JSON.stringify([
     plan.agentIdentityRequest,
+    plan.targetIdentityRequests,
     plan.sessionRequests,
     plan.messageRequests,
     plan.mirrorReconciliations,
@@ -63,6 +64,11 @@ export async function persistCloudSelfAgentCanonicalSyncPlan(
   const identity = await persistence.upsertIdentity(
     plan.agentIdentityRequest,
   );
+  const targetIdentities: CanonicalIdentity[] = [];
+  for (const request of plan.targetIdentityRequests ?? []) {
+    if (!shouldContinue()) return null;
+    targetIdentities.push(await persistence.upsertIdentity(request));
+  }
   const sessions: OpenCanonicalSessionFastResult[] = [];
   for (const request of plan.sessionRequests) {
     if (!shouldContinue()) return null;
@@ -96,7 +102,7 @@ export async function persistCloudSelfAgentCanonicalSyncPlan(
     messages.push(await persistence.upsertMessage(request));
   }
   return {
-    identity,
+    identity, ...(targetIdentities.length ? { targetIdentities } : {}),
     sessions,
     messages,
     reconciledMessageMirrors,

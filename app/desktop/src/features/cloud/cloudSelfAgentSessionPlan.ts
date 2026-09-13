@@ -26,10 +26,10 @@ function configuredAgentIdentityId(
   metadata: Record<string, unknown>,
 ) {
   const configuredAgentId = cleanText(
-    typeof metadata.agentId === 'string' ? metadata.agentId : null,
+    typeof metadata.agentId === 'string' ? metadata.agentId : typeof metadata.cloudAgentId === 'string' ? metadata.cloudAgentId : null,
   );
   if (
-    metadata.createdFrom !== 'chat-create-flow'
+    (metadata.createdFrom !== 'chat-create-flow' && metadata.cloudSelfAgentTarget !== true)
     || !cleanText(typeof metadata.cloudAgentId === 'string' ? metadata.cloudAgentId : null)
     || !configuredAgentId
   ) return null;

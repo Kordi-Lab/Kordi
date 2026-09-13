@@ -4,6 +4,13 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+### Fixed
+
+- Kept cross-device Agent requests, replies, and cancellation notices from appearing twice,
+  preserved selected-Agent names and delivery states, and restored iPhone processing feedback.
+- Kept ready Macs responsive to incoming Agent requests and prevented blank iPhone timelines
+  when sending after a long reply. ([#1533](https://github.com/Kordi-Lab/Kordi/issues/1533))
+
 ## [0.0.2-beta.2] - 2026-09-13
 
 ### Added

@@ -630,23 +630,23 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(firstFrame.contains { $0.author == .agent && $0.requestMessageId == request.id })
     }
 
-    func testUnconfirmedAgentAdmissionDoesNotInventProcessingOrQueue() {
+    func testAcceptedRequestShowsProgressWithoutWaitingForAgentAdmission() {
         let fixture = agentQueueFixture()
         let userMessages = fixture.filter { $0.author == .me }
-        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+        XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
             requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
             messages: userMessages, kind: .agent, locallyQueued: false
-        ))
+        ), .preparing)
         // A later queued request must not make the first request queue behind it.
-        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+        XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
             requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
             messages: fixture.filter { $0.id != "response-1" }, kind: .agent, locallyQueued: false
-        ))
+        ), .preparing)
         for kind: ConversationKind in [.group, .person] {
-            XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
+            XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
                 requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
                 messages: fixture, kind: kind, locallyQueued: true
-            ), .preparing)
+            ))
         }
     }
 
@@ -659,10 +659,10 @@ final class ConversationReadPresentationTests: XCTestCase {
                 phase: phase, summary: "Finished", steps: [], thinkingText: nil,
                 tools: nil, startedAtMs: 1_000, updatedAtMs: 5_000, completed: true
             )
-            XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+            XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
                 requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
                 messages: [terminal] + earlier, kind: .agent, locallyQueued: false
-            ))
+            ), .preparing)
         }
     }
 
@@ -686,7 +686,9 @@ final class ConversationReadPresentationTests: XCTestCase {
             )
             messages.append(terminal)
             let waiting = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)
-            XCTAssertEqual(waiting.first { $0.id == "request-2" }?.agentQueuePosition, 1)
+            XCTAssertNil(waiting.first { $0.id == "request-2" }?.agentQueuePosition)
+            XCTAssertTrue(waiting.contains { $0.id == "response-2" })
+            XCTAssertEqual(waiting.first { $0.id == "request-3" }?.agentQueuePosition, 1)
             var started = messages.first { $0.id == "response-2" }!
             started.agentExecution = AgentExecutionSnapshot(
                 phase: .preparing, summary: "Starting", steps: [], thinkingText: nil,
@@ -697,6 +699,21 @@ final class ConversationReadPresentationTests: XCTestCase {
             XCTAssertNil(projected.first { $0.id == "request-2" }?.agentQueuePosition)
             XCTAssertEqual(projected.first { $0.id == "request-3" }?.agentQueuePosition, 1)
             XCTAssertTrue(projected.contains { $0.id == "response-2" })
+        }
+    }
+
+    func testFrontRequestKeepsItsActivityRowWhileAdmissionChangesToRunning() {
+        let fixture = agentQueueFixture()
+        let request = fixture.first { $0.id == "request-1" }!
+        var response = fixture.first { $0.id == "response-1" }!
+        for phase: AgentExecutionSnapshot.Phase in [.preparing, .queued, .preparing, .analyzing, .usingTool, .writing] {
+            response.agentExecution = AgentExecutionSnapshot(phase: phase, summary: "Working",
+                steps: [], startedAtMs: 1_000, updatedAtMs: 2_000, completed: false)
+            let rows = AgentSessionQueuePresentation.apply(to: [request, response], kind: .agent)
+            XCTAssertEqual(rows.count, 2)
+            XCTAssertNil(rows.first?.agentQueuePosition)
+            XCTAssertEqual(rows.last?.requestMessageId, request.id)
+            XCTAssertEqual(rows.last?.agentExecution?.completed, false)
         }
     }
 

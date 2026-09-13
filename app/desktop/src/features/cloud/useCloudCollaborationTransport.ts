@@ -35,7 +35,7 @@ export function useCloudCollaborationTransport({
   bootstrapPeerKey,
   unreadContextKey,
   initialContactsSettled,
-  initialMessagesSettled,
+  initialMessagesSettled, desktopExecutionEnabled,
   reportAvailabilityWarning,
 }: {
   account: CloudAccount | null;
@@ -51,6 +51,7 @@ export function useCloudCollaborationTransport({
   unreadContextKey: string | null;
   initialContactsSettled: boolean;
   initialMessagesSettled: boolean;
+  desktopExecutionEnabled?: boolean;
   reportAvailabilityWarning: (
     message: string,
     error: unknown,
@@ -91,13 +92,14 @@ export function useCloudCollaborationTransport({
       setSharedByOwner: stores.agents.setSharedByOwner,
     },
   });
-  const { refreshCloudMessages, syncCloudCollaborationDiff, setRealtimeConnected } =
+  const { refreshCloudMessages, syncCloudCollaborationDiff, setRealtimeConnected, executionMessagesReady } =
     useCloudMessageSync({
       account,
       bootstrapPeerIds,
       bootstrapPeerKey,
       cloudUnreadContextKey: unreadContextKey,
       contactsSettled: initialContactsSettled,
+      desktopExecutionEnabled,
       client,
       coordinator: syncCoordinator,
       cancelledRef: stores.cancelledRef,
@@ -187,6 +189,7 @@ export function useCloudCollaborationTransport({
 
   return {
     catalog,
+    executionMessagesReady,
     refreshCloudMessages,
     syncCloudCollaborationDiff,
     setRealtimeConnected,

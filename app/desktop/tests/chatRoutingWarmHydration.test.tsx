@@ -123,7 +123,7 @@ test('desktop runtime selection keeps an invisible loading marker until its tran
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
 });
 
-test('desktop runtime hides a partial canonical row until its native transcript cache is ready', () => {
+test('desktop runtime keeps known canonical content visible while native history loads', () => {
   const selected = {
     id: 'local-runtime-session',
     name: 'Agent session',
@@ -141,13 +141,8 @@ test('desktop runtime hides a partial canonical row until its native transcript 
 
   const loading = applyCanonicalHydrationPlaceholder(selected);
 
-  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
-  assert.deepEqual(loading.messages[0]?.loadingPlaceholders, [{
-    kind: 'message',
-    side: 'own',
-    lines: 1,
-    width: 'short',
-  }]);
+  assert.equal(loading, selected);
+  assert.equal(loading.messages[0]?.text, 'cached question');
 });
 
 test('desktop runtime hydration keeps a newly sent request ahead of its live response', () => {
@@ -275,4 +270,27 @@ test('selected Agent cache is remapped with current identity metadata before nat
   assert.equal(viewModels?.activeConv.id, 'session-b');
   assert.equal(viewModels?.activeConv.messages[0]?.sender, 'Research Kordi');
   assert.equal(viewModels?.activeConv.messages[0]?.text, 'Stable answer');
+});
+
+for (const status of ['sending', 'sent', 'delivered', 'read']) {
+  test(`an outgoing ${status} message is never replaced by a hydration skeleton`, () => {
+    const selected = { id: 'session:outgoing', name: 'New chat', type: 'owned-agent', subtitle: '', unread: 0,
+      collaborationSources: ['Local'], trust: 'Owned', directness: 'Agent chat', participants: ['Me', 'Agent'],
+      messages: [{ id: 'request', role: 'user', isOwnMessage: true, text: 'Show my message now', time: '12:00', statusChips: [status] }],
+      desktopRuntimeBacked: true, desktopRuntimeTranscriptLoaded: false } as const;
+    const shown = applyCanonicalHydrationPlaceholder(selected as never);
+    assert.equal(shown.messages[0].text, 'Show my message now');
+    assert.equal(shown.desktopRuntimeTranscriptLoaded, false);
+    assert.notEqual(shown.messages[0].detail, 'transcript-loading');
+  });
+}
+
+test('known outgoing attachment content stays visible before history hydration completes', () => {
+  const selected = { id: 'session:attachment', name: 'New chat', type: 'owned-agent', subtitle: '', unread: 0,
+    collaborationSources: ['Local'], trust: 'Owned', directness: 'Agent chat', participants: ['Me', 'Agent'],
+    messages: [{ id: 'attachment', role: 'user', isOwnMessage: true, text: '', time: '12:00', statusChips: ['sent'],
+      attachments: [{ kind: 'file', name: 'example.txt' }] }], desktopRuntimeBacked: true, desktopRuntimeTranscriptLoaded: false };
+  const shown = applyCanonicalHydrationPlaceholder(selected as never);
+  assert.equal(shown.messages, selected.messages);
+  assert.equal(shown.desktopRuntimeTranscriptLoaded, false);
 });

@@ -1,3 +1,4 @@
+import { applyCloudSelfAgentTargetIdentities } from './cloudSelfAgentTargetIdentity';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
@@ -49,6 +50,7 @@ function cloudSelfAgentCanonicalMessageId(messageId: string): string {
 
 export type CloudSelfAgentCanonicalSyncPlan = {
   agentIdentityRequest: UpsertCanonicalIdentityRequest;
+  targetIdentityRequests?: UpsertCanonicalIdentityRequest[];
   sessionRequests: OpenCanonicalSessionRequest[];
   messageRequests: AppendCanonicalMessageRequest[];
   mirrorReconciliations: CloudSelfAgentMirrorReconciliation[];
@@ -436,7 +438,7 @@ export function planCloudSelfAgentCanonicalSync({
     }
   }
 
-  return {
+  return applyCloudSelfAgentTargetIdentities({
     agentIdentityRequest: {
       id: agentIdentityId,
       kind: 'agent',
@@ -464,5 +466,5 @@ export function planCloudSelfAgentCanonicalSync({
       ));
     })(),
     mirrorReconciliations,
-  };
+  }, account, messages, state);
 }

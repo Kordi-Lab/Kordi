@@ -13,6 +13,7 @@ use super::{
 
 mod cloud_reconcile;
 mod message_role;
+mod user_identity;
 
 fn canonical_desktop_message_source_event_id(
     session_id: &str,
@@ -346,10 +347,7 @@ pub(crate) fn sync_desktop_chat_message(
                 params![session_id, entry_id], |row| row.get(0),
             ).optional().map_err(|error| error.to_string())?;
             if let Some(id) = existing {
-                conn.execute(
-                    "UPDATE session_messages SET content_json = json_set(COALESCE(content_json, '{}'), '$.desktopEntryId', ?2) WHERE id = ?1",
-                    params![id, entry_id],
-                ).map_err(|error| error.to_string())?;
+                user_identity::enrich_runtime_entry_id(conn, &id, entry_id)?;
                 return Ok(Some(id));
             }
         }

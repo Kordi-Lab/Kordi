@@ -12,6 +12,13 @@ enum CloudReadScope: Equatable {
 }
 
 enum CloudMessageStateProjector {
+    static func carriesAgentRuntimeRoute(_ message: CloudMessageDTO) -> Bool {
+        if CloudMessageCodec.isAgentModelChange(message) { return true }
+        guard let envelope = CloudMessageCodec.directEnvelope(message.body) else { return false }
+        return envelope.targetCloudAgentId?.nonEmpty != nil
+            && envelope.agentRuntimeRoute?.defaultModel?.nonEmpty != nil
+    }
+
     static func latestAgentModelChanges(
         in messagesByPeer: [String: [CloudMessageDTO]],
         sessionIds: Set<String>? = nil,
@@ -19,15 +26,20 @@ enum CloudMessageStateProjector {
     ) -> [CloudMessageDTO] {
         var latestBySessionID: [String: CloudMessageDTO] = [:]
         for message in messagesByPeer.values.flatMap({ $0 }) {
-            guard CloudMessageCodec.isAgentModelChange(message),
+            guard carriesAgentRuntimeRoute(message),
                   let sessionID = message.sessionId?.nonEmpty,
                   ownAccountId.map({ message.fromAccountId == $0 }) ?? true,
                   sessionIds?.contains(sessionID) ?? true else {
                 continue
             }
-            if let current = latestBySessionID[sessionID],
-               !synchronizationPrecedes(current, precedes: message) {
-                continue
+            if let current = latestBySessionID[sessionID] {
+                let currentIsChange = CloudMessageCodec.isAgentModelChange(current)
+                let incomingIsChange = CloudMessageCodec.isAgentModelChange(message)
+                // Request metadata initializes a route, but must not override
+                // an explicit selection when delayed request snapshots arrive.
+                if currentIsChange && !incomingIsChange { continue }
+                if currentIsChange == incomingIsChange,
+                   !synchronizationPrecedes(current, precedes: message) { continue }
             }
             latestBySessionID[sessionID] = message
         }
