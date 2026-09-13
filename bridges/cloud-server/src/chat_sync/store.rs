@@ -254,3 +254,5 @@ pub use titles::{update_personal_title, update_shared_title};
 
 mod thread_attention;
 pub use thread_attention::{thread_attention, thread_page};
+
+pub mod attachment_backfill;

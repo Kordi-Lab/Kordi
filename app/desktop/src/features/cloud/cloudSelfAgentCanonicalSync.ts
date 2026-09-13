@@ -230,7 +230,11 @@ export function planCloudSelfAgentCanonicalSync({
       localUserMessageByClientMessageId,
     });
     if (reconciliation) mirrorReconciliations.push(reconciliation);
-    if (existingMatch && !responseRequestId) {
+    const existingContent = existingMatch?.content && typeof existingMatch.content === 'object'
+      ? existingMatch.content as Record<string, unknown> : {};
+    const missingAttachments = Boolean(message.attachments?.length)
+      && JSON.stringify(existingContent.attachments) !== JSON.stringify(message.attachments);
+    if (existingMatch && !responseRequestId && !missingAttachments) {
       const isUserRequest = role === 'user';
       if (isUserRequest) {
         userTextByCloudMessageId.set(message.messageId, text);
@@ -411,6 +415,9 @@ export function planCloudSelfAgentCanonicalSync({
       sourceTransport,
       sourceEventId: message.messageId,
     };
+    if (message.attachments?.length) {
+      request.content = { ...(request.content ?? {}), attachments: message.attachments };
+    }
     const plannedIndex = plannedMessageIndexByCanonicalId.get(
       canonicalMessageId,
     );

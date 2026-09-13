@@ -412,3 +412,6 @@ mod subsession_follow;
 mod subsession_stop;
 #[path = "cloud_agent_runtime_e2e/subsessions.rs"]
 mod subsessions;
+
+#[path = "cloud_agent_runtime_e2e/attachment_backfill.rs"]
+mod attachment_backfill;

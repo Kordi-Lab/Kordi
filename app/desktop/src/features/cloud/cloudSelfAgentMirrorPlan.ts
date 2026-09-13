@@ -26,8 +26,7 @@ export function indexLocalSelfAgentMessagesByClientMessageId(
   return new Map(messages.flatMap((candidate) => {
     const sourceTransport = candidate.sourceTransport ?? '';
     if (
-      !cleanText(candidate.contentText)
-      || !['desktop-chat-ui', 'desktop-chat'].includes(sourceTransport)
+      !['desktop-chat-ui', 'desktop-chat'].includes(sourceTransport)
     ) return [];
     if (candidate.senderRole.includes('agent')) {
       const content = candidate.content && typeof candidate.content === 'object'

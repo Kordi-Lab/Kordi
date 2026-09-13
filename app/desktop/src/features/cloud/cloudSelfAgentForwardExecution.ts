@@ -1,3 +1,4 @@
+import { uploadSelfAgentMessageAttachments } from './cloudSelfAgentAttachments';
 import type {
   CloudAuthClient,
   CloudMessage,
@@ -129,9 +130,11 @@ export async function publishCloudSelfAgentOperations({
   shouldPublishProcessing = () => true,
   executionSnapshotForOperation = () => undefined,
   token,
+  uploadAttachments = uploadSelfAgentMessageAttachments,
 }: {
   accountId: string;
-  client: Pick<CloudAuthClient, 'sendMessage'>;
+  client: Pick<CloudAuthClient, 'sendMessage'> & Partial<Pick<CloudAuthClient, 'uploadAttachment' | 'updateAttachmentPreview'>>;
+  uploadAttachments?: typeof uploadSelfAgentMessageAttachments;
   ledger: CloudSelfAgentSyncLedger;
   mergeMessage: (message: CloudMessage) => void;
   onRequestPublished?: (
@@ -171,12 +174,21 @@ export async function publishCloudSelfAgentOperations({
             targetCloudAgentOwnerAccountId: accountId,
           })
         : operation.text;
+      const uploadKey = `attachments:${operation.localMessageId}`;
+      const attachments = ledger[operation.localMessageId]?.cloudMessageId
+        ? [] : ledger[uploadKey]?.uploadedAttachments ?? await uploadAttachments(operation, client, token);
+      if (!shouldContinue()) return;
+      if (attachments.length && !ledger[uploadKey]?.uploadedAttachments) {
+        ledger[uploadKey] = { cloudMessageId: null, syncedAtMs: Date.now(), uploadedAttachments: attachments };
+        saveLedger(ledger);
+      }
       const request = ledger[operation.localMessageId]?.cloudMessageId ? null : await client.sendMessage(
         token,
         accountId,
         body,
         {
           sessionId: operation.sessionId,
+          ...(attachments.length ? { attachments } : {}),
           clientCreatedAt: new Date(operation.createdAtMs).toISOString(),
           clientMessageId: stableClientMessageId(operation, 'request'),
           messageKind,

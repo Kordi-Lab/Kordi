@@ -50,3 +50,24 @@ Limits are 4 MiB per image and the shared image decoder's dimension/allocation
 limits. Animated images, video, and unsupported formats fail explicitly; this
 reader does not treat an animation's first frame as complete understanding.
 Already-delivered model context is not retroactively erased by a later deletion.
+
+## Cross-device attachment synchronization
+
+Local private-agent history exports upload attachments before publishing the
+message and persist the uploaded references for retries. Image-only messages
+remain eligible for export and restore. Cloud publication contains attachment
+IDs and display metadata, never a local filesystem path.
+
+For affected old exports, the authenticated
+`POST /v2/chat/conversations/:conversation_id/messages/:message_id/missing-images`
+endpoint accepts an array of `{attachmentId, name}` records for finalized images
+owned by the sender. It only accepts an untouched, attachment-free
+`canonical-history-user` message in that owner's private AI conversation. It
+increments the message version and emits `message.updated`, preserving its ID,
+text, timestamp, and conversation sequence. Edited, deleted, already-attached,
+and non-owned messages cannot be overwritten by this repair.
+
+Verify a desktop text-plus-image message and an image-only message on iOS. Repeat
+after a failed upload, a failed send, and a client restart. The same attachment
+IDs must survive retries and images must remain associated with the original
+message rather than appearing as a new message.

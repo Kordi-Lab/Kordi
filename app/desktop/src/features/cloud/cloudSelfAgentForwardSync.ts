@@ -1,3 +1,5 @@
+import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { selfAgentMessageAttachments } from './cloudSelfAgentAttachments';
 import { isGenericSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type {
   CanonicalSessionMessage,
@@ -19,6 +21,7 @@ export type CloudSelfAgentSyncOperation = {
   sessionId: string;
   role: 'user' | 'agent';
   text: string;
+  attachments?: AttachmentItem[];
   parentLocalMessageId: string | null;
   createdAtMs: number;
   deliveryState: 'sent' | 'complete' | 'failed' | 'cancelled';
@@ -271,7 +274,7 @@ export function planCloudSelfAgentSync(
       recoveringMissingChatSession,
     )) continue;
     const text = selfAgentMessageText(message, deliveryState);
-    if (!text) continue;
+    if (!text && !(message.senderRole === 'user' && selfAgentMessageAttachments(message.content).length)) continue;
     const bucket = messagesBySession.get(message.sessionId) ?? [];
     bucket.push(message);
     messagesBySession.set(message.sessionId, bucket);
@@ -303,6 +306,7 @@ export function planCloudSelfAgentSync(
             sessionId,
             role: 'user',
             text: cleanText(message.contentText),
+            ...(selfAgentMessageAttachments(message.content).length ? { attachments: selfAgentMessageAttachments(message.content) } : {}),
             parentLocalMessageId: null,
             createdAtMs: message.createdAtMs,
             deliveryState: 'sent',
