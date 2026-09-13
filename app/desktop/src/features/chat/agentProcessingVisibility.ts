@@ -7,7 +7,7 @@ export function agentTurnHasStarted(turn: DesktopChatTurnSnapshot) {
   if (turn.thinkingText.trim() || turn.tools.length > 0 || (text && !isProcessingPlaceholderText(text))) return true;
   // A request/stop handle is not evidence that the remote agent started work.
   if (turn.pendingCollaborationAgentRequest) return false;
-  return ['streaming', 'processing', 'thinking', 'writing', 'tooling', 'running', 'retrying', 'cancelling', 'compacting', 'compacted', 'compaction_failed'].includes(turn.status);
+  return ['preparing', 'streaming', 'processing', 'thinking', 'writing', 'tooling', 'running', 'retrying', 'cancelling', 'compacting', 'compacted', 'compaction_failed'].includes(turn.status);
 }
 
 export function canDisplayAgentTurn(turn: DesktopChatTurnSnapshot, messages: readonly Message[] = []) {

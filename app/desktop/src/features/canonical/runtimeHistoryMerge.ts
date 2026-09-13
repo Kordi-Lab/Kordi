@@ -89,10 +89,10 @@ export function mergeCanonicalHistoryIntoRuntime(
     const reactionMetadata = mergedMessageReactionMetadata(message, canonicalMessage);
     const senderOwnerName = canonicalMessage.senderOwnerName ?? message.senderOwnerName;
     const conversationSequence = canonicalMessage.conversationSequence ?? message.conversationSequence;
-    const hasCanonicalDelivery = message.role === 'user' && Boolean(canonicalMessage.statusChips?.length);
-    const statusChips = hasCanonicalDelivery ? canonicalMessage.statusChips : message.statusChips;
-    const detail = hasCanonicalDelivery ? canonicalMessage.detail : message.detail;
-    const deliveryChanged = statusChips?.join('\u0000') !== message.statusChips?.join('\u0000') || detail !== message.detail;
+    const statusChips = 'statusChips' in canonicalMessage ? canonicalMessage.statusChips : undefined;
+    const hasCanonicalDelivery = Boolean(statusChips?.length) && message.role === 'user';
+    const detail = hasCanonicalDelivery ? canonicalMessage.detail : undefined;
+    const deliveryChanged = hasCanonicalDelivery && (statusChips?.join('\u0000') !== message.statusChips?.join('\u0000') || detail !== message.detail);
     if (!isForkSnapshot && replyAliasIds.length === runtimeAliasIds.length && !reactionMetadata.changed && senderOwnerName === message.senderOwnerName && conversationSequence === message.conversationSequence && !deliveryChanged) {
       return message;
     }

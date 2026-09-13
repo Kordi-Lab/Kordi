@@ -47,7 +47,7 @@ export async function draftShapeAgentWithRunner(input: {
   runPrompt: ShapeAgentRunner;
 }): Promise<{ draft: ShapeAgentDraft; source: 'llm' | 'fallback'; error?: string | null }> {
   if (!input.creatorAgent || !input.route?.defaultModel || !input.route?.defaultAuthProvider) {
-    throw new Error("Configure Kordi's LLM provider and model route before shaping a Agent.");
+    throw new Error("Configure Kordi's LLM provider and model route before shaping an Agent.");
   }
   const prompt = buildShapeAgentDraftPrompt({ resources: input.resources, identity: input.identity, creatorAgent: input.creatorAgent });
   try {

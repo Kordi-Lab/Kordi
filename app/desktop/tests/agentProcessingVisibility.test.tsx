@@ -28,3 +28,13 @@ test('completion and errors remain visible after delivery failure', () => {
   assert.equal(canDisplayAgentTurn({ ...turn, completed: true, status: 'failed', error: 'Failed' }, [request('failed')]), true);
   assert.equal(agentTurnHasStarted({ ...turn, status: 'writing', assistantText: 'Hello' }), true);
 });
+
+
+test('executor preparation is visible after acknowledgement without exposing optimistic starting', () => {
+  const preparing = { ...turn, status: 'preparing' };
+  assert.equal(agentTurnHasStarted(preparing), true);
+  assert.equal(canDisplayAgentTurn(preparing, [request('sending')]), false);
+  assert.equal(canDisplayAgentTurn(preparing, [request('sent')]), true);
+  assert.equal(canDisplayAgentTurn(turn, [request('sent')]), false);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: preparing, onStopActiveTurn: () => {} })), /app-agent-waiting-wave/);
+});

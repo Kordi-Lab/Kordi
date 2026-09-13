@@ -58,7 +58,7 @@ export function AgentCreateDialog({ open, creatorAgent, onClose, onCreateCloudAg
     setFeedback({ tone: 'info', text: 'Shaping draft with the local Agent runtime…' });
     try {
       if (!creatorAgent || !creatorRoute) {
-        setFeedback({ tone: 'error', text: "Configure Kordi's LLM provider and model route before shaping a Agent." });
+        setFeedback({ tone: 'error', text: "Configure Kordi's LLM provider and model route before shaping an Agent." });
         return;
       }
       const result = await draftShapeAgentWithDesktopRuntime({ resources, identity, creatorAgent, route: creatorRoute });
