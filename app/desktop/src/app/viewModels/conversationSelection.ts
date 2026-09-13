@@ -161,11 +161,11 @@ export function applyCanonicalHydrationPlaceholder(
     };
   }
   const pendingPage = hydration === 'cold' || hydration === 'loading';
-  const pendingProjection = selectedConversation.canonicalProjectionPending
+  const pendingProjection = hydration !== 'error' && selectedConversation.canonicalProjectionPending
     && (selectedConversation.canonicalMessageCount ?? selectedConversation.messages.length) <= 1;
   const hasPendingSend = selectedConversation.messages.some((message) => (
     (message.isOwnMessage ?? message.role === 'user')
-    && message.statusChips?.some((chip) => ['sending', 'pending'].includes(chip.trim().toLowerCase()))
+    && message.statusChips?.some((chip) => ['sending', 'pending_send', 'pending'].includes(chip.trim().toLowerCase()))
   ));
   if (
     !selectedConversation.desktopRuntimeBacked

@@ -4,6 +4,7 @@ import { VirtualTranscript } from '../../src/features/chat/VirtualTranscript';
 import { applyCanonicalHydrationPlaceholder } from '../../src/app/viewModels/conversationSelection';
 import { isTranscriptLoadingNotice } from '../../src/features/chat/transcriptLoadingNotice';
 import type { SessionHydrationState } from '../../src/features/canonical/canonicalStore';
+import { MessageBubble } from '../../src/kordi-app/components/transcript';
 import '../../src/index.css';
 
 type Row = { id: string; height: number };
@@ -12,6 +13,12 @@ const rows = (session: string): Row[] => Array.from({ length: 200 }, (_, index) 
 }));
 function Message({ row }: { row: Row }) {
   const [mediaReady, setMediaReady] = useState(false);
+  const [lateMediaReady, setLateMediaReady] = useState(false);
+  useLayoutEffect(() => {
+    const loaded = () => setLateMediaReady(true);
+    window.addEventListener('synthetic-media-loaded', loaded);
+    return () => window.removeEventListener('synthetic-media-loaded', loaded);
+  }, []);
   useLayoutEffect(() => {
     // Model a cached media preview receiving its dimensions after first paint.
     let frame = requestAnimationFrame(() => {
@@ -19,7 +26,14 @@ function Message({ row }: { row: Row }) {
     });
     return () => cancelAnimationFrame(frame);
   }, []);
-  const height = row.height + (mediaReady && row.id.endsWith('-199') ? 90 : 0);
+  const height = row.height + (mediaReady && row.id.endsWith('-199') ? 90 : 0)
+    - (lateMediaReady && row.id.endsWith('-198') ? 90 : 0);
+  if (new URLSearchParams(window.location.search).has('media') && row.id.endsWith('-198')) {
+    return <div data-message-id={row.id}><MessageBubble msg={{
+      role: 'person', sender: 'Synthetic sender', text: 'Synthetic image caption', time: '10:00',
+      attachments: [{ kind: 'image', name: 'Synthetic portrait.svg', previewUrl: '/synthetic-portrait.svg' }],
+    }} /></div>;
+  }
   return <div data-message-id={row.id} style={{ height }}>Synthetic message {row.id}</div>;
 }
 function Entry() {
@@ -45,8 +59,9 @@ function Entry() {
     <button onClick={() => enter('cold', true)}>Cold session</button>
     <button onClick={() => { setSession('catalog'); setItems(rows('catalog').slice(-1)); setHydration('loading'); }}>Catalog-only session</button>
     <button onClick={() => { setItems(rows('catalog')); setHydration('ready'); }}>Finish catalog hydration</button>
+    <button onClick={() => window.dispatchEvent(new Event('synthetic-media-loaded'))}>Finish late image</button>
     {loading ? <div data-transcript-initial-loading style={{ height: 600 }} /> : <VirtualTranscript items={items} sessionKey={session} getItemKey={row => row.id}
-      estimateSize={() => 160} scrollStyle={{ height: 600, overflowAnchor: 'none' }}
+      estimateSize={() => 160} scrollStyle={{ height: 600, padding: '20px 20px 4px' }}
       emptyState={<div>Loading synthetic messages</div>}
       renderItem={row => <Message row={row} />} />}
   </main>;

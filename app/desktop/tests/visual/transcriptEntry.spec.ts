@@ -55,3 +55,47 @@ test('initial load, cold hydration, and session entry reveal only a stable measu
   await page.getByRole('button', { name: 'Finish catalog hydration' }).click();
   await assertStableEntry('catalog');
 });
+
+test('an image above the tail can finish after reveal without moving the final text row', async ({ page }) => {
+  await page.goto('/tests/visual/transcriptEntry.html');
+  await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+  const positions = await page.evaluate(async () => {
+    const final = document.querySelector<HTMLElement>('[data-message-id="first-199"]')!;
+    const positions = [final.getBoundingClientRect().top];
+    const record = async () => {
+      for (let frame = 0; frame < 30; frame += 1) {
+        await new Promise(requestAnimationFrame);
+        positions.push(final.getBoundingClientRect().top);
+      }
+    };
+    const recording = record();
+    [...document.querySelectorAll('button')].find(button => button.textContent === 'Finish late image')!.click();
+    await recording;
+    return positions;
+  });
+  expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1);
+});
+
+test('a decoded attachment preserves the tail after its placeholder was already visible', async ({ page }) => {
+  let finishImage!: () => void;
+  const imageReady = new Promise<void>(resolve => { finishImage = resolve; });
+  await page.route('**/synthetic-portrait.svg', async route => {
+    await imageReady;
+    await route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="260"><rect width="120" height="260" fill="#8aa"/></svg>' });
+  });
+  await page.goto('/tests/visual/transcriptEntry.html?media=1');
+  await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+  const recording = page.evaluate(async () => {
+    const final = document.querySelector<HTMLElement>('[data-message-id="first-199"]')!;
+    const positions = [final.getBoundingClientRect().top];
+    for (let frame = 0; frame < 60; frame += 1) {
+      await new Promise(requestAnimationFrame);
+      positions.push(final.getBoundingClientRect().top);
+    }
+    return positions;
+  });
+  finishImage();
+  await expect(page.locator('[data-attachment-image-loaded="true"]')).toBeVisible();
+  const positions = await recording;
+  expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1);
+});
