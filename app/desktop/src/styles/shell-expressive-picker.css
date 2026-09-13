@@ -209,11 +209,11 @@
 }
 
 .app-inline-blob-emoji {
-  display: inline-block;
+  display: inline-grid;
   width: 1.45em;
   height: 1.45em;
   margin: -0.25em 0.08em -0.25em;
-  vertical-align: -0.2em;
+  vertical-align: middle;
   object-fit: contain;
 }
 

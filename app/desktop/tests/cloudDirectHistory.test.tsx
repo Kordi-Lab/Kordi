@@ -100,6 +100,7 @@ test('direct history overlays the latest-only preview and releases loaded pages 
     await act(async () => store.setValue({}));
     assert.equal(store.index.allMessages.length, 50);
     assert.equal(history.hasOlderBySessionId[sessionId], true);
+    assert.equal(history.hydrationBySessionId[sessionId], 'ready');
     await act(async () => Promise.all([history.loadOlderSessionMessages(sessionId), history.loadOlderSessionMessages(sessionId)]));
     assert.equal(store.index.allMessages.length, 100);
     await act(async () => history.loadOlderSessionMessages(sessionId));
@@ -108,6 +109,7 @@ test('direct history overlays the latest-only preview and releases loaded pages 
     assert.equal(native.reads(), 3);
     await act(async () => root.render(createElement(Harness, { active: 'session:group:other' })));
     assert.equal(history.page, null);
+    assert.deepEqual(history.hydrationBySessionId, {});
     assert.equal(store.index.allMessages.length, 0);
   } finally {
     await act(async () => root.unmount()); native.restore(); Object.assign(globalThis, previous); dom.window.close();
@@ -150,6 +152,7 @@ test('switching away and back rejects an earlier direct-history flight', async (
   try {
     await act(async () => root.render(createElement(Harness, { active })));
     await waitForReactCondition(() => calls === 1, 'first request must be in flight');
+    assert.equal(history.hydrationBySessionId[sessionId], 'loading');
     await act(async () => root.render(createElement(Harness, { active: 'session:group:other' })));
     await act(async () => root.render(createElement(Harness, { active })));
     await waitForReactCondition(() => calls === 2 && Boolean(history.page), 'returning to the chat starts a new scoped request');

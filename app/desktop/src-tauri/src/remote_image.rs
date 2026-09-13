@@ -120,7 +120,9 @@ fn validated_remote_image_url_for_policy(
     validated_remote_image_url(value).map(|url| (url, false))
 }
 
-async fn resolve_public_remote_image_addrs(url: &Url) -> Result<Vec<SocketAddr>, String> {
+pub(crate) async fn resolve_public_remote_image_addrs(
+    url: &Url,
+) -> Result<Vec<SocketAddr>, String> {
     let host = url
         .host_str()
         .ok_or_else(|| "Avatar image URL is missing a host.".to_string())?;

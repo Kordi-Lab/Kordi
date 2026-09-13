@@ -20,6 +20,8 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
     func testSendAcknowledgementRevealsAnimatedProgressWithoutRunEvents() async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]
+        ConversationMotionProbeRegistry.send = nil
+        ConversationMotionProbeRegistry.setDraft = nil
         let queue = ConversationSendQueue()
         let model = AppModel(cache: try LocalMessageStore(inMemory: true), sendQueue: queue, previewMode: true)
         let template = try XCTUnwrap(model.conversations.first { $0.agentId == "cloud_agent_research" })
@@ -107,6 +109,8 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
     private func checkSend(historyCount: Int, duringInitialLoad: Bool) async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]
+        ConversationMotionProbeRegistry.send = nil
+        ConversationMotionProbeRegistry.setDraft = nil
         let store = try LocalMessageStore(inMemory: true)
         let queue = ConversationSendQueue()
         let model = AppModel(cache: store, sendQueue: queue, previewMode: true,
@@ -154,13 +158,13 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         }
         controller.view.layoutIfNeeded()
         navigation.path = [.conversation(conversation)]
-        for _ in 0..<200 {
-            if ConversationMotionProbeRegistry.send != nil { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
         func editor(in view: UIView) -> UITextView? {
             if let text = view as? UITextView, text.isEditable { return text }
             return view.subviews.lazy.compactMap { editor(in: $0) }.first
+        }
+        for _ in 0..<200 {
+            if ConversationMotionProbeRegistry.send != nil, editor(in: controller.view) != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
         }
         let composer = try XCTUnwrap(editor(in: controller.view))
         composer.becomeFirstResponder()

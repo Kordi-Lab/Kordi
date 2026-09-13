@@ -54,7 +54,7 @@ test('canonical history hydration never replaces cached rows with a placeholder'
   ]);
 });
 
-test('canonical history keeps its catalog tail visible while the full page hydrates', () => {
+test('canonical history hides its catalog tail until the first page hydrates', () => {
   const selected = {
     id: 'session:group:catalog-only',
     canonicalSessionId: 'session:group:catalog-only',
@@ -70,15 +70,15 @@ test('canonical history keeps its catalog tail visible while the full page hydra
     messages: [{ role: 'user' as const, text: 'catalog preview', time: '10:45' }],
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected);
+  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
-  assert.equal(loading, selected);
-  assert.deepEqual(loading.messages.map((message) => message.text), [
-    'catalog preview',
-  ]);
+  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+  assert.equal(loading.messages[0]?.loadingPlaceholders, undefined);
+  assert.equal(loading.subtitle, selected.subtitle);
+  assert.equal(applyCanonicalHydrationPlaceholder(selected, 'ready'), selected);
 });
 
-test('cold group projection keeps its durable head visible while history syncs', () => {
+test('cold group projection does not expose its durable head while history syncs', () => {
   const selected = {
     id: 'session:group:cold-history',
     canonicalSessionId: 'session:group:cold-history',
@@ -97,8 +97,8 @@ test('cold group projection keeps its durable head visible while history syncs',
 
   const loading = applyCanonicalHydrationPlaceholder(selected);
 
-  assert.equal(loading, selected);
-  assert.equal(loading.messages[0]?.text, 'bootstrap head');
+  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+  assert.equal(loading.messages[0]?.loadingPlaceholders, undefined);
 });
 
 test('desktop runtime selection keeps an invisible loading marker until its transcript cache is ready', () => {

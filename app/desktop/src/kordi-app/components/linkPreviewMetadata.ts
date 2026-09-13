@@ -7,6 +7,7 @@ export type LinkPreviewMetadata = {
   title: string | null;
   description: string | null;
   imageUrl: string | null;
+  imageDataUrl: string | null;
   siteName: string | null;
 };
 
@@ -37,6 +38,11 @@ function normalizedLinkPreviewMetadata(value: unknown): LinkPreviewMetadata {
     title: boundedText(record.title, 200),
     description: boundedText(record.description, 320),
     imageUrl: imageUrl && new URL(imageUrl).protocol.toLowerCase() === 'https:' ? imageUrl : null,
+    // Only accept the bounded JPEG thumbnail produced by the native bridge.
+    imageDataUrl: typeof record.imageDataUrl === 'string'
+      && record.imageDataUrl.length <= 220_000
+      && /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(record.imageDataUrl)
+      ? record.imageDataUrl : null,
     siteName: boundedText(record.siteName, 80),
   };
 }

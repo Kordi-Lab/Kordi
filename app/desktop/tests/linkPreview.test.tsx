@@ -86,3 +86,51 @@ test('link preview failures use a short retry cooldown', async () => {
     clearLinkPreviewCacheForTests();
   }
 });
+
+test('domain-only citation labels fall back to the page path instead of repeating the host', () => {
+  const html = renderToStaticMarkup(createElement(MessageLinkPreview, {
+    text: '[openai.com](https://openai.com/index/introducing-gpt-5/)',
+  }));
+  assert.match(html, /app-message-link-preview-title">introducing gpt 5<\/span>/);
+});
+
+test('native metadata renders the page title and thumbnail with the compact path', async () => {
+  clearLinkPreviewCacheForTests();
+  const href = 'https://example.com/index/introducing-a-model/';
+  const imageDataUrl = 'data:image/jpeg;base64,/9j/2Q==';
+  try {
+    await loadLinkPreviewMetadata(href, async <T,>() => ({
+      title: 'Introducing a model', imageDataUrl,
+      description: 'A description that should not expand the preview card.',
+    }) as T);
+    const html = renderToStaticMarkup(createElement(MessageLinkPreview, {
+      text: `[example.com](${href})`,
+    }));
+    assert.match(html, /data-link-preview-state="ready"/);
+    assert.match(html, /app-message-link-preview-title">Introducing a model<\/span>/);
+    assert.ok(html.includes(`src="${imageDataUrl}"`));
+    assert.match(html, /\/index\/introducing-a-model\//);
+    assert.doesNotMatch(html, /A description that/);
+  } finally {
+    clearLinkPreviewCacheForTests();
+  }
+});
+
+test('native artwork rejects unsupported and oversized data URLs', async () => {
+  clearLinkPreviewCacheForTests();
+  try {
+    for (const [index, imageDataUrl] of [
+      'data:image/svg+xml;base64,PHN2Zz4=',
+      'https://example.com/preview.jpg',
+      `data:image/jpeg;base64,${'A'.repeat(220_000)}`,
+    ].entries()) {
+      const metadata = await loadLinkPreviewMetadata(`https://example.com/invalid-${index}`, async <T,>() => ({
+        title: 'Page title', imageDataUrl,
+      }) as T);
+      assert.equal(metadata.imageDataUrl, null);
+      assert.equal(metadata.title, 'Page title');
+    }
+  } finally {
+    clearLinkPreviewCacheForTests();
+  }
+});

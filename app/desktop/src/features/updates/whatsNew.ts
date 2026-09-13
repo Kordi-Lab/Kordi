@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.2-beta.2': [
+    {
+      category: 'Desktop chats',
+      title: 'Keep your place in longer conversations',
+      detail: 'Older history loads more steadily, media previews reuse loaded images, and unread replies stay in order.',
+      kind: 'general',
+    },
+    {
+      category: 'Local agents',
+      title: 'Continue working in the folder you chose',
+      detail: 'Workspace selection survives follow-ups and resumed sessions. Owner-only macOS application automation is now available.',
+      kind: 'general',
+    },
+    {
+      category: 'iPhone messages',
+      title: 'React to individual photos',
+      detail: 'Each photo has its own reaction and deletion controls, with steadier message menus and chat scrolling.',
+      kind: 'general',
+    },
+    {
+      category: 'History and notifications',
+      title: 'Pick up conversations with less clutter',
+      detail: 'History recovery avoids repeat uploads and preserves original dates on iPhone. Read messages clear their delivered iPhone notifications.',
+      kind: 'general',
+    },
+  ],
   '0.0.1-beta.14': [
     {
       category: 'Large attachments',
