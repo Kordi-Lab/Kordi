@@ -1700,14 +1700,8 @@ final class AppModel: ObservableObject {
         let inheritedRuntimeRoute = isNewAgentSession
             ? requestedRuntimeRoute(for: conversation)
             : nil
-        let inheritedRouteNotice = inheritedRuntimeRoute.flatMap { routing in
-            recordAgentModelChange(
-                model: routing.defaultModel,
-                routing: routing,
-                conversation: conversation,
-                revision: UUID().uuidString,
-                previousRouting: nil
-            )
+        if let inheritedRuntimeRoute {
+            saveSessionRuntimeRoute(inheritedRuntimeRoute, sessionId: conversation.sessionId)
         }
         let messageAction = actionOverride ?? replySource.map(MessageActionMetadata.quote)
         let mentions = ComposerMentionTargetCatalog.mentions(
@@ -1831,18 +1825,6 @@ final class AppModel: ObservableObject {
             )
             let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
-            }
-            if let inheritedRouteNotice, let inheritedRuntimeRoute,
-               await publishAgentModelChangeNotice(
-                 inheritedRouteNotice,
-                 conversation: conversation,
-                 routing: inheritedRuntimeRoute
-               ) == false {
-                throw CloudAPIError(
-                    code: "agent_route_sync_failed",
-                    message: "Could not synchronize the new session model.",
-                    statusCode: 0
-                )
             }
             if conversation.kind == .group {
                 let outgoingMessageKind = uploadedVoiceMessage != nil
@@ -1981,11 +1963,6 @@ final class AppModel: ObservableObject {
                 )
             }
         } catch {
-            if let inheritedRouteNotice {
-                messagesByConversation[conversation.id]?.removeAll {
-                    $0.id == inheritedRouteNotice.id
-                }
-            }
             recordCloudConnectionFailure(error)
             if pendingAgentRequestIds[conversation.id, default: []].contains(localId) {
                 finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: localId, failed: true)
@@ -4684,6 +4661,11 @@ final class AppModel: ObservableObject {
             synchronizedRouting,
             sessionId: conversation.sessionId
         )
+        // Resolving defaults or choosing a route before the first message is
+        // session setup, not a change to an existing conversation.
+        guard messagesByConversation[conversation.id]?.contains(where: { !$0.isSystemNotice }) == true else {
+            return nil
+        }
         let messageID = "\(ChatMessage.agentModelChangeMessageKind):\(conversation.id):\(revision)"
         guard messagesByConversation[conversation.id]?.contains(where: { $0.id == messageID }) != true else {
             return nil
@@ -6322,7 +6304,7 @@ final class AppModel: ObservableObject {
     private func mergeMessages(_ messages: [CloudMessageDTO], for peer: String) {
         guard !peer.isEmpty, !messages.isEmpty else { return }
         let modelChangeSessionIDs = Set(messages.compactMap { message in
-            CloudMessageCodec.isAgentModelChange(message)
+            CloudMessageStateProjector.carriesAgentRuntimeRoute(message)
                 ? message.sessionId?.nonEmpty
                 : nil
         })
@@ -6377,7 +6359,7 @@ final class AppModel: ObservableObject {
     }
 
     private func applySyncedAgentModelChange(_ message: CloudMessageDTO) {
-        guard CloudMessageCodec.isAgentModelChange(message),
+        guard CloudMessageStateProjector.carriesAgentRuntimeRoute(message),
               let sessionId = message.sessionId?.nonEmpty else {
             return
         }

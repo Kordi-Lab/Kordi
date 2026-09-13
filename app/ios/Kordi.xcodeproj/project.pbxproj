@@ -124,6 +124,7 @@
 		B5B5BB40648C816CA1BCFEF9 /* LivePhotoMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A6E730DE888A7B0CBC6C9F /* LivePhotoMedia.swift */; };
 		B6385E2469989CDAB5A71539 /* MainNavigationHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = 984CB21DF1BA4C396217B6BC /* MainNavigationHost.swift */; };
 		B6CD1BEE84B0B1ACFDBA10C3 /* AttachmentReactionMutationQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB6037E13EA0BCC18AA44625 /* AttachmentReactionMutationQueue.swift */; };
+		BA1EBAE68A68B522D0B2C8C8 /* InitialAgentModelNoticeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8D24A6689116C11FF7A038 /* InitialAgentModelNoticeTests.swift */; };
 		BAE153F27E5E1485C3D5424F /* ConversationMotionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE9C2F4A6D2AEEB995AC122B /* ConversationMotionProbe.swift */; };
 		BC01C5D7FB643F5F18C116FE /* blob-emoji in Resources */ = {isa = PBXBuildFile; fileRef = 3D5D26C1845AB19D9120CB8D /* blob-emoji */; };
 		BD168B3F6BE8A731506F7A3A /* ChatRowSwipeGesture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DECAF58B49CE2DE63185B4C /* ChatRowSwipeGesture.swift */; };
@@ -386,6 +387,7 @@
 		FB201FE56A48A0CC09D85718 /* DigestMonthGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestMonthGrid.swift; sourceTree = "<group>"; };
 		FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiAppEnvironment.swift; sourceTree = "<group>"; };
 		FD490ECA738742A1C27BD23C /* ProviderAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthentication.swift; sourceTree = "<group>"; };
+		FD8D24A6689116C11FF7A038 /* InitialAgentModelNoticeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InitialAgentModelNoticeTests.swift; sourceTree = "<group>"; };
 		FFFD604ABA6CBEE2041D4D75 /* NotoEmoji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotoEmoji.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -660,6 +662,7 @@
 				568EBC3F7D9760AAD86C912C /* DigestViewTests.swift */,
 				D3BDEA26F6B2936B8130310A /* EmojiAnimationTests.swift */,
 				5FF8982F88272CFCECE0D898 /* GroupAgentTargetTests.swift */,
+				FD8D24A6689116C11FF7A038 /* InitialAgentModelNoticeTests.swift */,
 				1B3BED33D4A29116EAD073A0 /* KordiAppEnvironmentTests.swift */,
 				274B3D971B28CFFC0EF77C13 /* KordiMarkdownParserTests.swift */,
 				16C36C042F23DA97ABD30265 /* LocalMessageStoreTests.swift */,
@@ -1038,6 +1041,7 @@
 				97FE7B56ED21F0CDBDC8AAEB /* DigestViewTests.swift in Sources */,
 				43AD849D638FA91F9791A089 /* EmojiAnimationTests.swift in Sources */,
 				7450B6513CBD85BE88B9D802 /* GroupAgentTargetTests.swift in Sources */,
+				BA1EBAE68A68B522D0B2C8C8 /* InitialAgentModelNoticeTests.swift in Sources */,
 				F72232A5E55E5DDBF7C08493 /* KordiAppEnvironmentTests.swift in Sources */,
 				A7D9800431A98277443048BB /* KordiMarkdownParserTests.swift in Sources */,
 				C6F07352981BFA43F316E7AA /* LocalMessageStoreTests.swift in Sources */,
