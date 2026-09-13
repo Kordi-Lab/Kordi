@@ -1,3 +1,4 @@
+import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {useThreadAttention} from '@/features/cloud/threadAttention';
 import {
   useLayoutEffect,
@@ -5,7 +6,6 @@ import {
   useRef,
   useState,
 } from 'react';
-
 import { createCollaborationConversationMapper } from '@/features/collaboration/conversationProjectionCache';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
@@ -80,7 +80,6 @@ import {
   visibleCollaborationPeople,
   collaborationPeerIsReachableAgent,
 } from './viewModels/helpers';
-
 const EMPTY_DESKTOP_SESSION_IDS: ReadonlySet<string> = new Set();
 const EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map(); const EMPTY_CLOUD_GROUP_NUMBERS: ReadonlyMap<string, number> = new Map();
 
@@ -91,7 +90,6 @@ export {
   pendingCanonicalCloudConversationForActiveId,
   pendingCloudCollaborationConversationForActiveId,
 } from './viewModels/conversationSelection';
-
 import { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatConversationIsVisible } from './viewModels/collaborationVisibility';
 export { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatConversationIsVisible } from './viewModels/collaborationVisibility';
 
@@ -104,6 +102,7 @@ type UseWorkspaceViewModelsArgs = {
   desktopCollaborationState: DesktopCollaborationState | null;
   canonicalSessionState: CanonicalSessionState | null;
   canonicalSessionSummaries?: CanonicalSessionSummary[];
+  transcriptHydration?: Readonly<Record<string, SessionHydrationState>>;
   hiddenSessionIds: Set<string>;
   archivedSessionIds?: ReadonlySet<string>;
   projectWorkspaces: Project[];
@@ -141,6 +140,7 @@ export function useWorkspaceViewModels({
   desktopCollaborationState,
   canonicalSessionState,
   canonicalSessionSummaries = [],
+  transcriptHydration,
   hiddenSessionIds,
   archivedSessionIds = EMPTY_DESKTOP_SESSION_IDS,
   projectWorkspaces,
@@ -439,8 +439,8 @@ export function useWorkspaceViewModels({
         visibleMaterializedChatConversations[0]
         ?? (!isNativeShell ? conversations[0] : undefined),
     });
-    return applyCanonicalHydrationPlaceholder(selected);
-  }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder, visibleMaterializedChatConversations]);
+    return applyCanonicalHydrationPlaceholder(selected, transcriptHydration?.[selected.canonicalSessionId ?? selected.id]);
+  }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder, transcriptHydration, visibleMaterializedChatConversations]);
   const activeConversationUsesCollaboration = isNativeShell && (
     activeConv.id.startsWith('bridge:')
     || isLegacyCanonicalCollaborationSessionId(activeConv.canonicalSessionId ?? activeConv.id)
