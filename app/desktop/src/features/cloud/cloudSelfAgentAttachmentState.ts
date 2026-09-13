@@ -17,7 +17,8 @@ export function selfAgentAttachmentUpdate(message: CloudMessage, content: unknow
   const current = record(content);
   const previous = Array.isArray(current.attachments) ? current.attachments : [];
   if (!Array.isArray(message.attachments)) return { changed: false, content: current };
-  const previousVersion = typeof current.cloudAttachmentVersion === 'number' ? current.cloudAttachmentVersion : 0;
+  const previousVersion = Math.max(typeof current.cloudAttachmentVersion === 'number' ? current.cloudAttachmentVersion : 0,
+    typeof current.cloudMessageVersion === 'number' ? current.cloudMessageVersion : 0);
   if (previousVersion > 0 && (message.version == null || message.version < previousVersion)) return { changed: false, content: current };
   const changed = JSON.stringify(previous.map(portable)) !== JSON.stringify(message.attachments.map(portable))
     || (previousVersion > 0 && (message.version ?? 0) > previousVersion);

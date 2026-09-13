@@ -52,3 +52,8 @@ test('an unavailable attachment does not block unrelated messages in the same sy
   }), /Attachment unavailable/);
   assert.deepEqual(sent, ['Intact message']);
 });
+
+test('native wire versions also fence stale attachment updates', () => {
+  const stored = { attachments: [image], cloudAttachmentVersion: 1, cloudMessageVersion: 3 };
+  assert.equal(selfAgentAttachmentUpdate({ ...message, version: 2, attachments: [] }, stored).changed, false);
+});

@@ -85,6 +85,9 @@ pub(in crate::chat) async fn refresh(
                 let binding = &mut bindings[index];
                 match &response {
                     Ok(response) => {
+                        if let Some(object) = binding.as_object_mut() {
+                            object.remove("text");
+                        }
                         let message = response
                             .messages
                             .iter()
