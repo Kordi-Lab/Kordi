@@ -640,7 +640,7 @@ function MessageBubbleView({
             </div>
             <LiveChatTurnCard
               turn={msg.turn}
-              historical={msg.turn.completed}
+              historical={msg.turn.completed} showReasoning={msg.role === 'owned-agent'}
               plainAgentResponse={plainAgentResponse}
               onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
               onStopActiveTurn={onStopActiveTurn}

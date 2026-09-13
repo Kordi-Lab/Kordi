@@ -89,6 +89,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
   conversationId,
   cancelledByAccountId,
   cancelledByRole,
+  ownerThinkingText,
   now,
 }: {
   processingMessage: CanonicalSessionMessage;
@@ -96,6 +97,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
   conversationId: string;
   cancelledByAccountId: string;
   cancelledByRole: CloudGroupAgentCancelRole;
+  ownerThinkingText?: string;
   now?: number;
 }): AppendCanonicalMessageRequest {
   const content = objectContent(processingMessage.content);
@@ -134,6 +136,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
       ...(content.messageAction ? { messageAction: content.messageAction } : {}),
       cancelledByAccountId: trimmedCancelledByAccountId,
       cancelledByRole: role,
+      ...(ownerThinkingText?.trim() ? { thinkingText: ownerThinkingText } : {}),
     },
     createdAtMs: noticeTimestampMs,
     parentMessageId: trimmedRequestId,

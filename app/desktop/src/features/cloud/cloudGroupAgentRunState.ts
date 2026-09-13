@@ -51,6 +51,7 @@ export async function waitForCloudGroupAgentTurn(
 export async function persistCloudGroupAgentCancellation(
   input: ApplyCloudGroupAgentControlInput,
   processingMessage: Awaited<ReturnType<typeof upsertCanonicalMessageFast>>,
+  finalTurn?: DesktopChatTurnSnapshot,
 ) {
   const { account, envelope } = input.context;
   const message = envelope.message!;
@@ -61,6 +62,7 @@ export async function persistCloudGroupAgentCancellation(
     conversationId: cloudGroupAgentConversationId(envelope.groupId),
     cancelledByAccountId: account.accountId,
     cancelledByRole: 'agent owner',
+    ownerThinkingText: finalTurn?.thinkingText,
     now: Date.now(),
   });
   try {

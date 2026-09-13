@@ -1,6 +1,8 @@
 //! Focused SQLite persistence adapters for canonical session resources.
 
+mod agent_turn_lifecycle;
 mod delegated_exchanges;
+mod group_reasoning;
 mod identities;
 mod messages;
 mod sessions;

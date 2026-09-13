@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
+import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
@@ -528,59 +529,6 @@ function FoldableToolTimeline({
   );
 }
 
-function longerText(current: string, next: string) {
-  return next.length >= current.length ? next : current;
-}
-
-function mergeVisibleToolSnapshot(
-  current: DesktopChatTurnSnapshot['tools'][number],
-  next: DesktopChatTurnSnapshot['tools'][number],
-): DesktopChatTurnSnapshot['tools'][number] {
-  return {
-    ...current,
-    ...next,
-    arguments: longerText(current.arguments ?? '', next.arguments ?? ''),
-    liveOutput: longerText(current.liveOutput ?? '', next.liveOutput ?? ''),
-    resultText: next.resultText || current.resultText,
-    detail: next.detail || current.detail,
-    artifactPath: next.artifactPath || current.artifactPath,
-    toolLayer: next.toolLayer || current.toolLayer,
-  };
-}
-
-function mergeVisibleLiveTurn(
-  current: DesktopChatTurnSnapshot,
-  next: DesktopChatTurnSnapshot,
-): DesktopChatTurnSnapshot {
-  const currentToolsById = new Map(current.tools.map((tool) => [tool.id, tool]));
-  const nextToolIds = new Set(next.tools.map((tool) => tool.id));
-  const mergedTools = next.tools.map((tool) => {
-    const existing = currentToolsById.get(tool.id);
-    return existing ? mergeVisibleToolSnapshot(existing, tool) : tool;
-  });
-
-  return {
-    ...current,
-    ...next,
-    assistantText: longerText(current.assistantText, next.assistantText),
-    thinkingText: longerText(current.thinkingText, next.thinkingText),
-    tools: [
-      ...mergedTools,
-      ...current.tools.filter((tool) => !nextToolIds.has(tool.id)),
-    ],
-  };
-}
-
-function useVisibleLiveTurn(turn: DesktopChatTurnSnapshot, historical: boolean) {
-  const visibleTurnRef = useRef<DesktopChatTurnSnapshot>(turn);
-  if (historical || visibleTurnRef.current.id !== turn.id) {
-    visibleTurnRef.current = turn;
-  } else {
-    visibleTurnRef.current = mergeVisibleLiveTurn(visibleTurnRef.current, turn);
-  }
-  return visibleTurnRef.current;
-}
-
 function useDelayedLiveStatus(shouldShow: boolean, turnId: string, delayMs = 180) {
   const [visible, setVisible] = useState(false);
 
@@ -703,6 +651,7 @@ function CollaborationAgentStopButton({
 function LiveChatTurnCardView({
   turn,
   historical = false,
+  showReasoning = false,
   plainAgentResponse = false,
   onStopCollaborationAgentRequest,
   onStopActiveTurn,
@@ -712,6 +661,7 @@ function LiveChatTurnCardView({
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
+  showReasoning?: boolean;
   plainAgentResponse?: boolean;
   onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
   onStopActiveTurn?: StopActiveTurnHandler;
@@ -719,7 +669,7 @@ function LiveChatTurnCardView({
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
 }) {
-  const visibleTurn = useVisibleLiveTurn(turn, historical);
+  const visibleTurn = useVisibleLiveTurn(turn, historical, showReasoning);
   const cancelledContent = visibleTurn.status === 'cancelled'
     ? cancelledTurnContent(visibleTurn.assistantText, visibleTurn.message, visibleTurn.error)
     : null;
@@ -928,6 +878,7 @@ export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
 export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
+    && previous.showReasoning === next.showReasoning
     && previous.plainAgentResponse === next.plainAgentResponse
     && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
@@ -965,6 +916,7 @@ function LiveChatTurnMessageView({
       <div className="app-message-meta">{sender}</div>
       <LiveChatTurnCard
         turn={turn}
+        showReasoning
         plainAgentResponse={plainAgentResponse}
         onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
         onStopActiveTurn={onStopActiveTurn}

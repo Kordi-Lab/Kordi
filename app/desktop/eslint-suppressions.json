@@ -547,9 +547,6 @@
     "react-hooks/purity": {
       "count": 1
     },
-    "react-hooks/refs": {
-      "count": 5
-    },
     "react-hooks/set-state-in-effect": {
       "count": 2
     },
