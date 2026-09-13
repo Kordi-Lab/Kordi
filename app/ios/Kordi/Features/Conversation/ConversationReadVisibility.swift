@@ -99,6 +99,7 @@ final class ConversationScrollPosition {
     }
     private var rows: [String: WeakRow] = [:]
     private weak var scrollView: UIScrollView?
+    private weak var contentView: UIView?
     private weak var navigationAnimator: ConversationTailScrollAnimator?
     private var initialPositioner: ConversationInitialPositioner?
     private var isAnchorCaptureScheduled = false
@@ -138,8 +139,30 @@ final class ConversationScrollPosition {
         return scrollView.contentSize.height <= scrollView.bounds.inset(by: scrollView.adjustedContentInset).height + 1
     }
 
-    func attach(to scrollView: UIScrollView) {
+    var contentHeight: CGFloat? { contentView?.bounds.height }
+
+    var shortContentAlignmentOffset: CGFloat {
+        guard contentFitsViewport, let scrollView else { return 0 }
+        return max(0, -scrollView.adjustedContentInset.top - scrollView.contentOffset.y)
+    }
+
+    func expansionLeadingSpace(topPadding: CGFloat) -> CGFloat? {
+        guard let contentView, let scrollView, contentView.window === scrollView.window,
+              contentView.window != nil else { return nil }
+        return max(0, contentView.convert(.zero, to: scrollView).y - topPadding + shortContentAlignmentOffset)
+    }
+
+    func hasMountedMessages(_ messageIDs: [String]) -> Bool {
+        guard let scrollView, scrollView.window != nil else { return false }
+        return messageIDs.allSatisfy { id in
+            guard let view = rows[id]?.view else { return false }
+            return view.window === scrollView.window && view.isDescendant(of: scrollView) && view.bounds.height > 0
+        }
+    }
+
+    func attach(to scrollView: UIScrollView, contentView: UIView? = nil) {
         self.scrollView = scrollView
+        self.contentView = contentView
     }
 
     func register(_ view: UIView, messageID: String) {
