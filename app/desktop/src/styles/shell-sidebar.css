@@ -54,6 +54,28 @@
   transform: none;
 }
 
+.app-workspace-sidebar .app-nav-rail-unread-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--app-sidebar-accent);
+  color: var(--app-sidebar-accent-text);
+  box-shadow: 0 0 0 2px var(--app-nav-rail-unread-ring);
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 .app-workspace-sidebar .app-nav-rail-profile {
   position: relative;
   border: 0;
