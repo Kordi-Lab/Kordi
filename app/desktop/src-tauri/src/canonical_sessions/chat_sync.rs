@@ -135,14 +135,12 @@ use projection::*;
 pub async fn desktop_chat_sync_apply(
     request: ChatSyncApplyRequest,
 ) -> Result<ChatSyncApplyResult, String> {
-    tauri::async_runtime::spawn_blocking(move || apply(request))
-        .await
-        .map_err(|error| error.to_string())?
+    super::run_canonical_blocking(move || apply(request)).await
 }
 
 #[tauri::command]
 pub async fn desktop_chat_sync_cursor(account_id: String) -> Result<ChatSyncCursorState, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = account_id.trim().to_string();
         if account_id.is_empty() {
             return Err("Chat sync account id is required".to_string());
@@ -151,14 +149,13 @@ pub async fn desktop_chat_sync_cursor(account_id: String) -> Result<ChatSyncCurs
         load_cursor_state(&conn, &account_id)
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn desktop_chat_sync_coverage(
     account_id: String,
 ) -> Result<Vec<ChatSyncConversationCoverage>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = account_id.trim().to_string();
         if account_id.is_empty() {
             return Err("Chat sync account id is required".to_string());
@@ -167,12 +164,11 @@ pub async fn desktop_chat_sync_coverage(
         load_coverage(&conn, &account_id)
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn desktop_chat_sync_conversations(account_id: String) -> Result<Vec<Value>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = account_id.trim().to_string();
         if account_id.is_empty() {
             return Err("Chat sync account id is required".to_string());
@@ -181,7 +177,6 @@ pub async fn desktop_chat_sync_conversations(account_id: String) -> Result<Vec<V
         load_conversations(&conn, &account_id)
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -189,7 +184,7 @@ pub async fn desktop_chat_sync_message_refs(
     account_id: String,
     conversation_ids: Vec<String>,
 ) -> Result<Vec<ChatSyncMessageRef>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = account_id.trim().to_string();
         if account_id.is_empty() {
             return Err("Chat sync account id is required".to_string());
@@ -198,7 +193,6 @@ pub async fn desktop_chat_sync_message_refs(
         load_message_refs(&conn, &account_id, &conversation_ids)
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -208,7 +202,7 @@ pub async fn desktop_chat_sync_messages_page(
     after_sequence: Option<i64>,
     limit: Option<i64>,
 ) -> Result<ChatSyncMessagePage, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = account_id.trim().to_string();
         let conversation_id = conversation_id.trim().to_string();
         if account_id.is_empty() {
@@ -227,7 +221,6 @@ pub async fn desktop_chat_sync_messages_page(
         )
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -235,7 +228,7 @@ pub async fn desktop_chat_sync_recovery_message_ids(
     account_id: String,
     conversation_id: String,
 ) -> Result<ChatSyncRecoveryMessageIds, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = account_id.trim().to_string();
         let conversation_id = conversation_id.trim().to_string();
         if account_id.is_empty() {
@@ -248,12 +241,11 @@ pub async fn desktop_chat_sync_recovery_message_ids(
         load_recovery_message_ids(&conn, &account_id, &conversation_id)
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn desktop_chat_sync_load(account_id: String) -> Result<ChatSyncLocalState, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = account_id.trim().to_string();
         if account_id.is_empty() {
             return Err("Chat sync account id is required".to_string());
@@ -262,25 +254,20 @@ pub async fn desktop_chat_sync_load(account_id: String) -> Result<ChatSyncLocalS
         load_state(&conn, &account_id)
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn desktop_chat_sync_outbox_enqueue(
     request: ChatSyncOutboxEnqueueRequest,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || enqueue_outbox(request))
-        .await
-        .map_err(|error| error.to_string())?
+    super::run_canonical_blocking(move || enqueue_outbox(request)).await
 }
 
 #[tauri::command]
 pub async fn desktop_chat_sync_outbox_due(
     account_id: String,
 ) -> Result<Vec<ChatSyncPendingOperation>, String> {
-    tauri::async_runtime::spawn_blocking(move || list_due_outbox(&account_id))
-        .await
-        .map_err(|error| error.to_string())?
+    super::run_canonical_blocking(move || list_due_outbox(&account_id)).await
 }
 
 #[tauri::command]
@@ -288,7 +275,7 @@ pub async fn desktop_chat_sync_outbox_complete(
     account_id: String,
     operation_id: String,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::run_canonical_blocking(move || {
         let account_id = clean_outbox_key(&account_id, "account id")?;
         let operation_id = clean_outbox_key(&operation_id, "operation id")?;
         let conn = open_db()?;
@@ -301,16 +288,13 @@ pub async fn desktop_chat_sync_outbox_complete(
         Ok(())
     })
     .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn desktop_chat_sync_outbox_fail(
     request: ChatSyncOutboxFailureRequest,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || record_outbox_failure(request))
-        .await
-        .map_err(|error| error.to_string())?
+    super::run_canonical_blocking(move || record_outbox_failure(request)).await
 }
 
 #[cfg(test)]

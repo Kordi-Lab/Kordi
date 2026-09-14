@@ -102,9 +102,12 @@ pub(crate) use self::session_observation::{
 use self::title_policy::reconcile_session_title_metadata;
 
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
-const SCHEMA_VERSION: i64 = 2;
+// Version 3 certifies all previously unversioned chat projection migrations.
+// Bump this whenever schema initialization gains a migration.
+const SCHEMA_VERSION: i64 = 3;
 
 mod database;
+mod database_jobs;
 pub(crate) use database::open_db;
 use database::open_db_at_path;
 
@@ -257,9 +260,7 @@ async fn run_canonical_blocking<T>(
 where
     T: Send + 'static,
 {
-    tauri::async_runtime::spawn_blocking(task)
-        .await
-        .map_err(|err| err.to_string())?
+    database_jobs::run(task).await
 }
 
 #[tauri::command]
