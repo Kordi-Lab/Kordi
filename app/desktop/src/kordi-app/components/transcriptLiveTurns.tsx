@@ -723,7 +723,7 @@ function LiveChatTurnCardView({
   const noProviderConfiguredError = Boolean(visibleTurn.error && isCloudAgentNoProviderConfiguredError(visibleTurn.error));
   const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : cancelledContent ? cancelledContent.error : visibleTurn.error;
   const cancellationNotice = cancelledContent?.notice;
-  const shouldShowSourceQuote = Boolean(visibleTurn.sourceMessage);
+  const shouldShowSourceQuote = !plainAgentResponse && Boolean(visibleTurn.sourceMessage);
   const hasResponseSurface = Boolean(
     shouldShowSourceQuote
       || showLiveStatusHeader

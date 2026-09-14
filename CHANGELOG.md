@@ -28,6 +28,8 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Hid redundant automatic reply references from the first render of direct Agent
+  conversations, while preserving shared-chat context and manually quoted messages.
 - Kept desktop session entry immediate and prevented late message measurements
   from briefly shifting Agent and Human conversations before scroll correction.
 - Kept earlier Agent replies visible during follow-up tool calls and prevented

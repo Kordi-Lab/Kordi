@@ -337,7 +337,7 @@ test('shouldInferLatestHumanReplyTarget enables fallback linking for person, ext
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'owned-agent', participantSpaceId: null, canonicalParticipantCount: 1 }), false);
 });
 
-test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent conversations', () => {
+test('shouldSuppressAgentReplyAttribution covers direct Agent conversations but preserves shared context', () => {
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:self-agent:1',
     type: 'owned-agent',
@@ -356,7 +356,7 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     type: 'external-agent',
     participantSpaceId: null,
     canonicalParticipantCount: 2,
-  }), false);
+  }), true);
 });
 test('buildReplyAttribution resolves canonical bridge parent aliases as the source request', () => {
   const messages: Message[] = [
