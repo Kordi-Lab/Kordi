@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { LiveChatTurnCard, MessageBubble } from '../src/kordi-app/components/transcript';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import { shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('renders agent source quote and waiting waveform without an output block before text exists', () => {
@@ -28,6 +29,8 @@ test('renders agent source quote and waiting waveform without an output block be
     },
   };
 
+  assert.equal(shouldSuppressAgentReplyAttribution({ id: 'session:group:1', type: 'external-agent', canonicalParticipantCount: 4 }), false);
+  assert.equal(shouldSuppressAgentReplyAttribution({ id: 'private-fork', type: 'external-agent', forkedFromSessionId: 'session:group:1' }), false);
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
   assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
@@ -346,3 +349,24 @@ test('folds very long active streaming agent responses with remaining line count
   assert.match(markup, /Show 2 more lines/);
   assert.doesNotMatch(markup, /— 2 more lines\. Click to show all —/);
 });
+
+
+for (const type of ['owned-agent', 'external-agent'] as const) {
+  for (const completed of [false, true]) {
+    test(`private ${type} hides raw reply references on the first ${completed ? 'history' : 'live'} render`, () => {
+      const turn: DesktopChatTurnSnapshot = {
+        id: 'private-turn', sessionId: 'private-agent-session', prompt: '',
+        status: completed ? 'complete' : 'writing', message: '',
+        assistantText: 'Synthetic direct answer', thinkingText: '', tools: [],
+        completed, succeeded: completed,
+        sourceMessage: { messageId: 'private-request', senderLabel: 'You', text: 'Synthetic request reference', attachmentCount: 0 },
+      };
+      const plainAgentResponse = shouldSuppressAgentReplyAttribution({ id: turn.sessionId, type, canonicalParticipantCount: 2 });
+      const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: completed, plainAgentResponse }));
+      assert.match(markup, /Synthetic direct answer/);
+      assert.doesNotMatch(markup, /app-source-message-quote|Synthetic request reference/);
+      assert.doesNotMatch(markup, /app-live-assistant-answer-surface/);
+      assert.equal(turn.sourceMessage?.messageId, 'private-request', 'presentation must not mutate persisted reply linkage');
+    });
+  }
+}

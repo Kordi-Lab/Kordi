@@ -12,6 +12,8 @@ type TailAlignmentOptions = {
   virtualizer: Parameters<typeof alignAndRevealMeasuredTranscriptRows>[0]['virtualizer'];
   gap: number;
   animateTailResize?: boolean;
+  hasItems?: boolean;
+  suspendTailResize?: boolean;
   setIsAtTail: (value: boolean) => void;
   onTailChange?: (value: boolean) => void;
 };
@@ -19,7 +21,7 @@ type TailAlignmentOptions = {
 /** Own measurement, tail alignment, and presentation motion as one operation. */
 export function useTranscriptTailAlignment({
   internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
-  tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange, animateTailResize = false,
+  tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange, animateTailResize = false, hasItems = true, suspendTailResize = false,
 }: TailAlignmentOptions) {
   const tailAlignmentFrameRef = useRef<number | null>(null);
   const rowLayoutTopsRef = useRef(new Map<HTMLElement, number>());
@@ -93,29 +95,23 @@ export function useTranscriptTailAlignment({
 
   useLayoutEffect(() => {
     const container = sizeContainerRef.current;
-    if (!animateTailResize || !container || typeof MutationObserver === 'undefined') return;
+    if (!hasItems || suspendTailResize || !container || typeof MutationObserver === 'undefined') return;
     let lastHeight = container.style.height;
-    let frame: number | null = null;
-    // Direct DOM measurement updates do not necessarily render React again.
-    // Observe its committed extent, not an ancestor ResizeObserver that can
-    // feed back into the virtualizer’s own measurement notifications.
+    // The virtualizer can adjust scrollTop before publishing a larger extent;
+    // the browser clamps that write against the old height. Repair the tail
+    // in this mutation microtask, before paint, for Human and Agent histories.
+    // A later animation frame exposes the moved rows for one frame first.
     const observer = new MutationObserver(() => {
       const height = container.style.height;
       if (height === lastHeight) return;
       lastHeight = height;
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        frame = null;
-        if (!viewportWasAtTailRef.current && !tailAlignmentActiveRef.current) return;
-        scheduleTailAlignment(Number.MAX_SAFE_INTEGER);
-      });
+      if (!viewportWasAtTailRef.current && !tailAlignmentActiveRef.current) return;
+      if (animateTailResize) scheduleTailAlignment(Number.MAX_SAFE_INTEGER);
+      else alignViewportToTail();
     });
     observer.observe(container, { attributes: true, attributeFilter: ['style'] });
-    return () => {
-      observer.disconnect();
-      if (frame !== null) window.cancelAnimationFrame(frame);
-    };
-  }, [animateTailResize, scheduleTailAlignment, sizeContainerRef, tailAlignmentActiveRef, viewportWasAtTailRef]);
+    return () => observer.disconnect();
+  }, [alignViewportToTail, animateTailResize, hasItems, scheduleTailAlignment, sizeContainerRef, suspendTailResize, tailAlignmentActiveRef, viewportWasAtTailRef]);
 
   return { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment };
 }

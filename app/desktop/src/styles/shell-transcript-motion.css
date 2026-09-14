@@ -1,10 +1,11 @@
+/* Keep measured history out of paint until entry settles, without animating
+ * opacity across the entire virtualized history on every session switch. */
 [data-virtual-transcript-session-ready='false'] {
-  opacity: 0;
+  visibility: hidden;
 }
 
 [data-virtual-transcript-session-ready='true'] {
-  opacity: 1;
-  transition: opacity 80ms cubic-bezier(0.23, 1, 0.32, 1);
+  visibility: visible;
 }
 
 .app-message-bubble-enter,
@@ -36,10 +37,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-virtual-transcript-session-ready] {
-    transition: none;
-  }
-
   [data-transcript-window-item] {
     animation: none !important;
     translate: none !important;
