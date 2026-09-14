@@ -180,8 +180,12 @@ export function useStableTranscriptSessionReveal({
       const distanceFromBottom = viewport
         ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
         : Number.POSITIVE_INFINITY;
-      const signature = viewport
-        ? `${viewport.scrollHeight}:${viewport.scrollTop}:${virtualizer.getTotalSize()}`
+      // Native scrollbar/inset changes can move both message edges without
+      // changing any row height. Include the shared horizontal geometry before
+      // revealing history, alongside the measured vertical tail.
+      const contentBounds = sizeContainer?.getBoundingClientRect();
+      const signature = viewport && contentBounds
+        ? `${viewport.scrollHeight}:${viewport.scrollTop}:${virtualizer.getTotalSize()}:${viewport.clientWidth}:${viewport.scrollLeft}:${contentBounds.left}:${contentBounds.width}`
         : '';
       if (
         allMountedRowsMeasured

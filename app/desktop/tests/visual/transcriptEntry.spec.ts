@@ -99,3 +99,30 @@ test('a decoded attachment preserves the tail after its placeholder was already 
   const positions = await recording;
   expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1);
 });
+
+
+test('session entry waits for both transcript edges to settle before showing history', async ({ page }) => {
+  await page.goto('/tests/visual/transcriptEntry.html');
+  await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+  const samples = await page.evaluate(async () => {
+    [...document.querySelectorAll('button')].find(button => button.textContent === 'Next session')!.click();
+    const samples: Array<{ left: number; right: number }> = [];
+    for (let frame = 0; frame < 35; frame += 1) {
+      await new Promise(requestAnimationFrame);
+      const viewport = document.querySelector<HTMLElement>('[data-virtual-transcript-scroll]')!;
+      // Model native scrollbar/inset settling without changing message heights.
+      if ([4, 7, 10, 13].includes(frame)) viewport.style.paddingInline = `${20 + ((frame - 1) / 3) * 2}px`;
+      const content = document.querySelector<HTMLElement>('[data-virtual-transcript-size]')!;
+      if (Number(getComputedStyle(content).opacity) > 0) {
+        const rect = content.getBoundingClientRect();
+        samples.push({ left: rect.left, right: rect.right });
+      }
+    }
+    return samples;
+  });
+  expect(samples.length).toBeGreaterThan(5);
+  for (const edge of ['left', 'right'] as const) {
+    const positions = samples.map(sample => sample[edge]);
+    expect(Math.max(...positions) - Math.min(...positions), edge).toBeLessThanOrEqual(1);
+  }
+});
