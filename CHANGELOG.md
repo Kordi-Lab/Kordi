@@ -28,6 +28,7 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Kept both message edges stable while desktop session-entry layout settles.
 - Kept earlier Agent replies visible during follow-up tool calls and prevented
   failed or cancelled replies from appearing again during history synchronization.
   ([#1541](https://github.com/Kordi-Lab/Kordi/pull/1541))
