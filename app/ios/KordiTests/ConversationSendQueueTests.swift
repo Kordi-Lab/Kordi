@@ -92,16 +92,81 @@ final class ConversationSendQueueTests: XCTestCase {
         }
     }
 
-    func testFailedDraftKeepsItsPlaceWhenRetryStarts() {
-        for state in [MessageDeliveryState.failed, .sending] {
-            let model = AppModel(previewMode: true)
-            let conversation = orderingConversation()
-            let confirmed = orderingMessage("confirmed", sequence: 40, time: 100, state: .delivered)
-            let draft = orderingMessage("draft", time: 1, state: state)
-            [draft, confirmed].forEach(model.upsertPreviewMessage)
+    func testOlderFailureDoesNotMoveAfterNewAcknowledgedMessages() {
+        let failed = orderingMessage("failed", time: 2, state: .failed)
+        let later = orderingMessage("later", sequence: 41, time: 3, state: .delivered)
+        XCTAssertEqual(ConversationMessageOrdering.displayMessages([later, failed]).map(\.id), ["failed", "later"])
+    }
 
-            XCTAssertEqual(model.messages(for: conversation).map(\.id), ["confirmed", "draft"])
+    func testAnchoredFailureRetainsItsPlaceAcrossRetryAndAcknowledgement() {
+        let confirmed = orderingMessage("confirmed", sequence: 40, time: 100, state: .delivered)
+        var draft = orderingMessage("draft", clientID: "draft-client", time: 1, state: .failed)
+        draft.localTimelineAnchorID = "confirmed"
+        var newer = orderingMessage("new", clientID: "new-client", time: 2, state: .sending)
+        newer.localTimelineAnchorID = "draft-client"
+        for state in [MessageDeliveryState.failed, .sending] {
+            draft.deliveryState = state
+            XCTAssertEqual(ConversationMessageOrdering.displayMessages([newer, draft, confirmed]).map(\.id), ["confirmed", "draft", "new"])
         }
+        let accepted = orderingMessage("server-new", clientID: "new-client", sequence: 41, time: 101, state: .delivered)
+        XCTAssertEqual(ConversationMessageOrdering.displayMessages([accepted, draft, confirmed]).map(\.id), ["confirmed", "draft", "server-new"])
+    }
+
+    func testAnchorFollowsAcknowledgedClientIdentityAndSurvivesCacheRoundTrip() throws {
+        let accepted = orderingMessage("server-first", clientID: "first-client", sequence: 41, time: 101, state: .delivered)
+        var pending = orderingMessage("pending", time: 1, state: .sending)
+        pending.localTimelineAnchorID = "first-client"
+        let restored = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(pending))
+        XCTAssertEqual(restored.localTimelineAnchorID, pending.localTimelineAnchorID)
+        XCTAssertEqual(ConversationMessageOrdering.displayMessages([restored, accepted]).map(\.id), ["server-first", "pending"])
+    }
+
+    func testMissingAndCyclicAnchorsDoNotHideMessages() {
+        var first = orderingMessage("first", time: 1, state: .failed)
+        var second = orderingMessage("second", time: 2, state: .failed)
+        first.localTimelineAnchorID = "second"
+        second.localTimelineAnchorID = "first"
+        XCTAssertEqual(Set(ConversationMessageOrdering.displayMessages([first, second]).map(\.id)), ["first", "second"])
+        first.localTimelineAnchorID = "not-loaded"
+        XCTAssertEqual(ConversationMessageOrdering.displayMessages([first]).map(\.id), ["first"])
+    }
+
+    func testFailedSendCanBeRemovedLocallyWithoutDeletingOtherMessages() async {
+        let model = AppModel(previewMode: true)
+        let conversation = orderingConversation()
+        let failed = orderingMessage("failed", time: 1, state: .failed)
+        let later = orderingMessage("later", sequence: 42, time: 2, state: .delivered)
+        [failed, later].forEach(model.upsertPreviewMessage)
+        let sharedDelete = await model.deleteMessage(failed, forEveryone: true, in: conversation)
+        XCTAssertFalse(sharedDelete)
+        let removed = await model.deleteMessage(failed, forEveryone: false, in: conversation)
+        XCTAssertTrue(removed)
+        XCTAssertEqual(model.messages(for: conversation).map(\.id), ["later"])
+    }
+
+    func testRemovingFailureReanchorsLaterPendingSends() async {
+        let model = AppModel(previewMode: true)
+        let confirmed = orderingMessage("confirmed", sequence: 40, time: 100, state: .delivered)
+        var failed = orderingMessage("failed", clientID: "failed-client", time: 1, state: .failed)
+        failed.localTimelineAnchorID = "confirmed"
+        var pending = orderingMessage("pending", time: 2, state: .sending)
+        pending.localTimelineAnchorID = "failed-client"
+        [confirmed, failed, pending].forEach(model.upsertPreviewMessage)
+        let removed = await model.deleteMessage(failed, forEveryone: false, in: orderingConversation())
+        XCTAssertTrue(removed)
+        XCTAssertEqual(model.messages(for: orderingConversation()).map(\.id), ["confirmed", "pending"])
+        XCTAssertEqual(model.messages(for: orderingConversation()).last?.localTimelineAnchorID, "confirmed")
+    }
+
+    func testStaleFailedMessageCannotRemoveAnActiveRetry() async {
+        let model = AppModel(previewMode: true)
+        let failed = orderingMessage("retry", time: 1, state: .failed)
+        var retry = failed
+        retry.deliveryState = .sending
+        model.upsertPreviewMessage(retry)
+        let removed = await model.deleteMessage(failed, forEveryone: false, in: orderingConversation())
+        XCTAssertFalse(removed)
+        XCTAssertEqual(model.messages(for: orderingConversation()).first?.deliveryState, .sending)
     }
 
     private func orderingConversation(kind: ConversationKind = .person) -> ConversationSummary {
