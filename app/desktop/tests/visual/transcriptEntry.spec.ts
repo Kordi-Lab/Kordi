@@ -4,17 +4,18 @@ test.use({ reducedMotion: 'no-preference' });
 
 test('initial load, cold hydration, and session entry reveal only a stable measured tail', async ({ page }) => {
   await page.addInitScript(() => {
-    const samples: Array<{ id: string; top: number; tailGap: number }> = [];
+    const samples: Array<{ id: string; top: number; tailGap: number; historyAnimations: number }> = [];
     Object.assign(window, { transcriptEntrySamples: samples });
     const sample = () => {
       const content = document.querySelector<HTMLElement>('[data-virtual-transcript-size]');
       const viewport = document.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
-      if (content && viewport && Number(getComputedStyle(content).opacity) > 0) {
+      if (content && viewport && getComputedStyle(content).visibility !== 'hidden') {
         const lastRow = content.lastElementChild;
         const message = lastRow?.querySelector<HTMLElement>('[data-message-id]');
         if (message) samples.push({
           id: message.dataset.messageId!, top: message.getBoundingClientRect().top,
           tailGap: viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight,
+          historyAnimations: content.getAnimations().length,
         });
       }
       requestAnimationFrame(sample);
@@ -24,13 +25,14 @@ test('initial load, cold hydration, and session entry reveal only a stable measu
   await page.goto('/tests/visual/transcriptEntry.html');
   const assertStableEntry = async (key: string) => {
     const samples = await page.evaluate(async (session) => {
-      const samples = (window as unknown as { transcriptEntrySamples: Array<{ id: string; top: number; tailGap: number }> }).transcriptEntrySamples;
+      const samples = (window as unknown as { transcriptEntrySamples: Array<{ id: string; top: number; tailGap: number; historyAnimations: number }> }).transcriptEntrySamples;
       // Include the settling frames after the first visible paint, not only the
       // final geometry that an ordinary visibility assertion would inspect.
       for (let frame = 0; frame < 35; frame += 1) await new Promise(requestAnimationFrame);
       return samples.filter(sample => sample.id.startsWith(`${session}-`));
     }, key);
     expect(samples.length).toBeGreaterThan(5);
+    expect(samples.every(sample => sample.historyAnimations === 0), 'session history must not fade or slide on entry').toBe(true);
     expect(samples.every(sample => sample.id === `${key}-199`)).toBe(true);
     expect(Math.max(...samples.map(sample => Math.abs(sample.tailGap)))).toBeLessThanOrEqual(1);
     const tops = samples.map(sample => sample.top);
@@ -113,7 +115,7 @@ test('session entry waits for both transcript edges to settle before showing his
       // Model native scrollbar/inset settling without changing message heights.
       if ([4, 7, 10, 13].includes(frame)) viewport.style.paddingInline = `${20 + ((frame - 1) / 3) * 2}px`;
       const content = document.querySelector<HTMLElement>('[data-virtual-transcript-size]')!;
-      if (Number(getComputedStyle(content).opacity) > 0) {
+      if (getComputedStyle(content).visibility !== 'hidden') {
         const rect = content.getBoundingClientRect();
         samples.push({ left: rect.left, right: rect.right });
       }
@@ -126,3 +128,21 @@ test('session entry waits for both transcript edges to settle before showing his
     expect(Math.max(...positions) - Math.min(...positions), edge).toBeLessThanOrEqual(1);
   }
 });
+
+for (const progress of [false, true]) {
+  test(`late small row growth keeps the visible tail still (${progress ? 'Agent' : 'Human'})`, async ({ page }) => {
+    await page.goto(`/tests/visual/transcriptEntry.html${progress ? '?progress=1' : ''}`);
+    await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+    const samples = await page.evaluate(async () => {
+      const row = document.querySelector<HTMLElement>('[data-message-id="first-199"]')!;
+      const samples = [row.getBoundingClientRect().top];
+      for (let frame = 0; frame < 50; frame += 1) {
+        if ([4, 14, 24, 34].includes(frame)) window.dispatchEvent(new Event('synthetic-small-growth'));
+        await new Promise(requestAnimationFrame);
+        samples.push(row.getBoundingClientRect().top);
+      }
+      return samples;
+    });
+    expect(Math.max(...samples) - Math.min(...samples)).toBeLessThanOrEqual(1);
+  });
+}

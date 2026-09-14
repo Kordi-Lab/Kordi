@@ -14,6 +14,12 @@ const rows = (session: string): Row[] => Array.from({ length: 200 }, (_, index) 
 function Message({ row }: { row: Row }) {
   const [mediaReady, setMediaReady] = useState(false);
   const [lateMediaReady, setLateMediaReady] = useState(false);
+  const [smallGrowth, setSmallGrowth] = useState(0);
+  useLayoutEffect(() => {
+    const grow = () => setSmallGrowth(value => value + 5);
+    window.addEventListener('synthetic-small-growth', grow);
+    return () => window.removeEventListener('synthetic-small-growth', grow);
+  }, []);
   useLayoutEffect(() => {
     const loaded = () => setLateMediaReady(true);
     window.addEventListener('synthetic-media-loaded', loaded);
@@ -27,7 +33,8 @@ function Message({ row }: { row: Row }) {
     return () => cancelAnimationFrame(frame);
   }, []);
   const height = row.height + (mediaReady && row.id.endsWith('-199') ? 90 : 0)
-    - (lateMediaReady && row.id.endsWith('-198') ? 90 : 0);
+    - (lateMediaReady && row.id.endsWith('-198') ? 90 : 0)
+    + (row.id.endsWith('-198') ? smallGrowth : 0);
   if (new URLSearchParams(window.location.search).has('media') && row.id.endsWith('-198')) {
     return <div data-message-id={row.id}><MessageBubble msg={{
       role: 'person', sender: 'Synthetic sender', text: 'Synthetic image caption', time: '10:00',
@@ -61,6 +68,7 @@ function Entry() {
     <button onClick={() => { setItems(rows('catalog')); setHydration('ready'); }}>Finish catalog hydration</button>
     <button onClick={() => window.dispatchEvent(new Event('synthetic-media-loaded'))}>Finish late image</button>
     {loading ? <div data-transcript-initial-loading style={{ height: 600 }} /> : <VirtualTranscript items={items} sessionKey={session} getItemKey={row => row.id}
+      animateTailResize={new URLSearchParams(window.location.search).has('progress')}
       estimateSize={() => 160} scrollStyle={{ height: 600, padding: '20px 20px 4px' }}
       emptyState={<div>Loading synthetic messages</div>}
       renderItem={row => <Message row={row} />} />}

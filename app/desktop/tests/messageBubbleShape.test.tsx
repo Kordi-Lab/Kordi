@@ -62,7 +62,7 @@ test('bubble CSS uses the seamless shape layer with natural motion and no stitch
   assert.match(entryBubbleRule, /animation:\s*app-message-bubble-send-enter 150ms cubic-bezier\(0\.23, 1, 0\.32, 1\)/);
   assert.match(shellCss, /@keyframes app-message-bubble-send-enter[\s\S]*translate3d\(var\(--app-message-bubble-enter-x\), 9px, 0\)/);
   assert.doesNotMatch(shellCss, /@keyframes app-transcript-existing-row-lift/);
-  assert.match(shellCss, /data-virtual-transcript-session-ready='false'[\s\S]*opacity:\s*0/);
+  assert.match(shellCss, /data-virtual-transcript-session-ready='false'[\s\S]*visibility:\s*hidden/);
   assert.match(shellCss, /prefers-reduced-motion:\s*reduce[\s\S]*app-message-bubble/);
   assert.doesNotMatch(shellCss, /\.app-message-bubble-own::after/);
   assert.doesNotMatch(shellCss, /\.app-message-bubble-peer::after/);
