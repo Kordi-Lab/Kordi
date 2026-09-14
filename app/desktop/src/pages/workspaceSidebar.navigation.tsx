@@ -59,17 +59,14 @@ export function WorkspaceNavigationRail({
                 onClick={() => setActiveNav(item.id)}
                 className="app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-[14px] p-0"
                 data-active={active ? 'true' : 'false'}
-                aria-label={item.label}
+                aria-label={item.id === 'chats' && totalUnread > 0
+                  ? `${item.label}, ${totalUnread} unread message${totalUnread === 1 ? '' : 's'}`
+                  : item.label}
                 aria-current={active ? 'page' : undefined}
                 title={item.label}
               >
                 <span className="relative grid h-8 w-8 place-items-center rounded-[14px]">
                   <Icon className="h-5 w-5" />
-                  {item.id === 'chats' && totalUnread > 0 ? (
-                    <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-white px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]">
-                      {formatUnreadCount(totalUnread)}
-                    </span>
-                  ) : null}
                   {item.id === 'contacts' && pendingContactRequestCount > 0 ? (
                     <span
                       className="absolute -right-1.5 -top-1.5 inline-flex min-w-[1rem] items-center justify-center rounded-full bg-emerald-300 px-1 py-[0.1rem] text-[8px] font-semibold leading-none text-slate-950 shadow-[0_0_0_1px_rgba(15,23,42,0.55)]"
@@ -79,6 +76,11 @@ export function WorkspaceNavigationRail({
                     </span>
                   ) : null}
                 </span>
+                {item.id === 'chats' && totalUnread > 0 ? (
+                  <span className="app-nav-rail-unread-badge" aria-hidden="true">
+                    {formatUnreadCount(totalUnread)}
+                  </span>
+                ) : null}
               </button>
             );
           })}

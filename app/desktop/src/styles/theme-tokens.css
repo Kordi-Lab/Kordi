@@ -29,6 +29,7 @@
   --app-nav-rail-glass-border: rgb(255 255 255 / 0.10);
   --app-nav-rail-glass-highlight: rgb(255 255 255 / 0.08);
   --app-nav-rail-avatar-ring: rgb(255 255 255 / 0.16);
+  --app-nav-rail-unread-ring: #20252D;
   --app-nav-rail-glass-blur: 24px;
   --app-nav-rail-glass-saturate: 1.28;
   --app-chat-mention-own: #3B6394;
@@ -174,6 +175,7 @@
   --app-nav-rail-glass-border: rgb(15 23 42 / 0.12);
   --app-nav-rail-glass-highlight: rgb(255 255 255 / 0.72);
   --app-nav-rail-avatar-ring: rgb(15 23 42 / 0.16);
+  --app-nav-rail-unread-ring: #EEEDE9;
   --app-chat-mention-own: #315884;
   --app-chat-mention-peer: var(--app-sidebar-accent);
   --app-chat-mention-agent: #2563EB;
