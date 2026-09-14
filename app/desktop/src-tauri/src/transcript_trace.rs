@@ -18,11 +18,15 @@ fn append_frames(path: &Path, frames: &[Vec<f64>]) -> Result<bool, String> {
     if frames.is_empty() {
         return Ok(true);
     }
+    let mut encoded = Vec::new();
+    for frame in frames {
+        serde_json::to_writer(&mut encoded, frame)
+            .map_err(|_| "Unable to encode geometry trace")?;
+        encoded.push(b'\n');
+    }
     let _guard = WRITE_LOCK.lock().map_err(|_| "Trace lock unavailable")?;
-    if path
-        .metadata()
-        .is_ok_and(|metadata| metadata.len() >= MAX_FILE_BYTES)
-    {
+    let existing_bytes = path.metadata().map_or(0, |metadata| metadata.len());
+    if existing_bytes + encoded.len() as u64 > MAX_FILE_BYTES {
         return Ok(false);
     }
     let mut options = OpenOptions::new();
@@ -35,11 +39,9 @@ fn append_frames(path: &Path, frames: &[Vec<f64>]) -> Result<bool, String> {
     let mut file = options
         .open(path)
         .map_err(|_| "Unable to open local geometry trace")?;
-    for frame in frames {
-        serde_json::to_writer(&mut file, frame).map_err(|_| "Unable to encode geometry trace")?;
-        file.write_all(b"\n")
-            .map_err(|_| "Unable to write geometry trace")?;
-    }
+    // One buffered write avoids adding per-number filesystem work to UI capture.
+    file.write_all(&encoded)
+        .map_err(|_| "Unable to write geometry trace")?;
     Ok(true)
 }
 
