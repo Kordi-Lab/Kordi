@@ -49,7 +49,11 @@ impl Drop for DatabaseConnection {
         // from an unwinding job, or a handle to a replaced/deleted database.
         if !conn.is_autocommit()
             || std::thread::panicking()
-            || cache_key(&key.path).as_ref() != Some(&key)
+            || connection_cache_key(&conn, &key.path)
+                .ok()
+                .flatten()
+                .as_ref()
+                != Some(&key)
         {
             return;
         }
@@ -82,6 +86,38 @@ fn cache_key(path: &Path) -> Option<CacheKey> {
     {
         let _ = path;
         None
+    }
+}
+
+fn connection_cache_key(conn: &Connection, path: &Path) -> Result<Option<CacheKey>, String> {
+    #[cfg(unix)]
+    {
+        // Stat alone can assign a replacement file's identity to an older open
+        // handle. Ask SQLite to check the file backing this exact connection.
+        let key = cache_key(path);
+        let mut moved: std::ffi::c_int = 0;
+        // SAFETY: the live connection owns this SQLite handle, and `moved` is a
+        // writable C integer for the duration of the synchronous file-control call.
+        let status = unsafe {
+            rusqlite::ffi::sqlite3_file_control(
+                conn.handle(),
+                c"main".as_ptr(),
+                rusqlite::ffi::SQLITE_FCNTL_HAS_MOVED,
+                (&mut moved as *mut std::ffi::c_int).cast(),
+            )
+        };
+        if status != rusqlite::ffi::SQLITE_OK {
+            return Ok(None);
+        }
+        if moved != 0 {
+            return Err("Canonical database changed while opening; retry the operation".into());
+        }
+        Ok(key)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (conn, path);
+        Ok(None)
     }
 }
 
@@ -136,9 +172,10 @@ fn open_with_cache(path: &Path, cache: &ConnectionCache) -> Result<DatabaseConne
         .map_err(|err| err.to_string())?;
     }
     initialize_schema(&conn)?;
+    let key = connection_cache_key(&conn, &normalized)?;
     Ok(DatabaseConnection {
         conn: Some(conn),
-        key: cache_key(&normalized),
+        key,
         cache: cache.clone(),
     })
 }

@@ -119,3 +119,23 @@ fn replacing_a_database_does_not_reuse_the_previous_handle() {
     assert!(conn.prepare("SELECT * FROM previous_account").is_err());
     conn.prepare("SELECT * FROM replacement_account").unwrap();
 }
+
+#[test]
+#[cfg(unix)]
+fn an_open_connection_cannot_acquire_a_replacement_files_cache_identity() {
+    let storage = ScopedKordiStorageRoot::new("canonical-connection-open-replacement");
+    let path = storage.root().join("test.sqlite3");
+    let replacement = storage.root().join("replacement.sqlite3");
+    std::fs::create_dir_all(storage.root()).unwrap();
+    let original = Connection::open(&path).unwrap();
+    initialize_schema(&original).unwrap();
+    assert!(connection_cache_key(&original, &path).unwrap().is_some());
+    {
+        let next = Connection::open(&replacement).unwrap();
+        initialize_schema(&next).unwrap();
+    }
+    std::fs::rename(replacement, &path).unwrap();
+    assert!(
+        matches!(connection_cache_key(&original, &path), Err(error) if error.contains("changed"))
+    );
+}
