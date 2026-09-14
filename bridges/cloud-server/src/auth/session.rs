@@ -17,6 +17,11 @@ use sqlx_postgres::{PgPool, Postgres};
 
 pub const SESSION_TOKEN_PREFIX: &str = "kordi_cs_";
 pub const DEFAULT_SESSION_LIFETIME_DAYS: i64 = 30;
+pub const SESSION_INACTIVITY_LIMIT_DAYS: i64 = 7;
+
+pub fn session_inactivity_cutoff(now: DateTime<Utc>) -> DateTime<Utc> {
+    now - Duration::days(SESSION_INACTIVITY_LIMIT_DAYS)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IssuedSession {
@@ -118,16 +123,19 @@ pub async fn lookup_session(
     }
     let token_hash = hash_session_token(plaintext_token);
     let now = Utc::now();
+    let inactivity_cutoff = session_inactivity_cutoff(now);
 
     let row: Option<(String, String, String, String)> = query_as(
         "SELECT token.token_id, token.account_id, token.device_id, token.expires_at \
          FROM cloud_refresh_tokens token \
          JOIN cloud_devices device ON device.device_id = token.device_id \
          WHERE token.token_hash = $1 AND token.revoked_at IS NULL AND token.expires_at > $2 \
-           AND device.account_id = token.account_id AND device.revoked_at IS NULL",
+           AND device.account_id = token.account_id AND device.revoked_at IS NULL \
+           AND device.last_seen_at > $3",
     )
     .bind(&token_hash)
     .bind(now.to_rfc3339())
+    .bind(inactivity_cutoff.to_rfc3339())
     .fetch_optional(pool)
     .await?;
 
@@ -184,12 +192,15 @@ pub async fn device_is_active(
     account_id: &str,
     device_id: &str,
 ) -> Result<bool, SessionError> {
+    let inactivity_cutoff = session_inactivity_cutoff(Utc::now()).to_rfc3339();
     let row: Option<(i32,)> = query_as(
         "SELECT 1 FROM cloud_devices \
-         WHERE account_id = $1 AND device_id = $2 AND revoked_at IS NULL",
+         WHERE account_id = $1 AND device_id = $2 AND revoked_at IS NULL \
+           AND last_seen_at > $3",
     )
     .bind(account_id)
     .bind(device_id)
+    .bind(inactivity_cutoff)
     .fetch_optional(pool)
     .await?;
     Ok(row.is_some())
