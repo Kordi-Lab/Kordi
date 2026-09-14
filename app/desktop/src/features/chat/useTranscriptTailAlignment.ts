@@ -72,6 +72,7 @@ export function useTranscriptTailAlignment({
       reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
       revealFromIndex,
       previousRowTops: rowLayoutTopsRef.current,
+      progressMotion: animateTailResize,
       sizeContainer: sizeContainerRef.current,
       virtualizer,
     });
@@ -88,7 +89,7 @@ export function useTranscriptTailAlignment({
       }
     };
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-  }, [alignViewportToTail, gap, virtualizer, tailAlignmentActiveRef, tailLiftRowsRef, sizeContainerRef]);
+  }, [alignViewportToTail, animateTailResize, gap, virtualizer, tailAlignmentActiveRef, tailLiftRowsRef, sizeContainerRef]);
 
   useLayoutEffect(() => {
     const container = sizeContainerRef.current;

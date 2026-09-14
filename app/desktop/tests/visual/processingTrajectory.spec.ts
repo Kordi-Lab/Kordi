@@ -93,3 +93,35 @@ test('reduced motion keeps measured processing layout without row animation', as
     expect(state.rowAnimations).toBe(0);
   }
 });
+
+test('direct processing entry stays gradual across a 40ms native frame gap', async ({ page }) => {
+  await page.goto('/tests/visual/processingTrajectory.html?count=50');
+  await expect(page.locator('[data-transcript-window-item]').last()).toBeVisible();
+  await page.waitForTimeout(250);
+  const samples = await page.evaluate(async () => {
+    const driver = (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory;
+    driver.step(1);
+    await new Promise(resolve => setTimeout(resolve, 220));
+    driver.step(3); // Direct admission has no intervening queued-bubble layout.
+    const row = document.querySelector<HTMLElement>('[data-index="49"]')!;
+    let animation: Animation | undefined;
+    for (let i = 0; i < 10 && !animation; i++) {
+      await new Promise(requestAnimationFrame);
+      animation = row.getAnimations()[0];
+    }
+    if (!animation) throw new Error('Expected processing-entry motion');
+    animation.pause();
+    const duration = Number(animation.effect!.getTiming().duration);
+    const positions: number[] = [];
+    for (let at = 0; at <= duration + 40; at += 40) {
+      animation.currentTime = Math.min(at, duration);
+      positions.push(row.getBoundingClientRect().top);
+    }
+    return positions;
+  });
+  expect(Math.abs(samples[0] - samples[samples.length - 1])).toBeGreaterThan(90);
+  for (let i = 1; i < samples.length; i++) {
+    expect(Math.abs(samples[i] - samples[i - 1])).toBeLessThanOrEqual(30);
+    expect(samples[i]).toBeLessThanOrEqual(samples[i - 1] + 1);
+  }
+});

@@ -29,10 +29,15 @@ export async function installTranscriptTrajectoryRecorder() {
       if (enabled) enabled = await invoke<boolean>('desktop_transcript_trace', { frames: batch }).catch(() => false);
     });
   };
-  const end = performance.now() + 10 * 60_000;
+  let end = performance.now() + 10 * 60_000;
+  let previousFrameAt = performance.now();
   let flushedAt = performance.now();
   const sample = () => {
-    if (!enabled || performance.now() > end) { flush(); return; }
+    const frameAt = performance.now();
+    // Occluded native windows suspend frames; that wait must not use the capture budget.
+    if (frameAt - previousFrameAt > 1000) end += frameAt - previousFrameAt;
+    previousFrameAt = frameAt;
+    if (!enabled || frameAt > end) { flush(); return; }
     const at = Date.now();
     const shell = document.querySelector('.app-shell');
     for (const viewport of document.querySelectorAll<HTMLElement>('[data-virtual-transcript-scroll]')) {

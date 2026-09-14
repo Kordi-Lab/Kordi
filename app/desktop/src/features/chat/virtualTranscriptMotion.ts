@@ -37,11 +37,12 @@ export function captureTranscriptRowLayoutTops(sizeContainer: HTMLDivElement | n
 }
 
 export function alignAndRevealMeasuredTranscriptRows({
-  alignToTail, reduceMotion, revealFromIndex, sizeContainer, virtualizer, previousRowTops,
+  alignToTail, reduceMotion, revealFromIndex, sizeContainer, virtualizer, previousRowTops, progressMotion = false,
 }: {
   alignToTail: () => void;
   gap: number;
   reduceMotion: boolean;
+  progressMotion?: boolean;
   revealFromIndex?: number;
   sizeContainer: HTMLDivElement | null;
   virtualizer: TranscriptVirtualizer;
@@ -81,6 +82,12 @@ export function alignAndRevealMeasuredTranscriptRows({
   }
   const layoutTops = previousRows.map(row => row.getBoundingClientRect().top - rowLiftOffset(row));
   const animatedRows: HTMLElement[] = [];
+  // Progress moves content already being read. Use steady motion instead of
+  // spending most of the displacement in the first delayed native frame.
+  const duration = progressMotion
+    ? Number.parseFloat(getComputedStyle(sizeContainer).getPropertyValue('--app-motion-base')) || 220
+    : 150;
+  const easing = progressMotion ? 'linear' : 'cubic-bezier(0.23, 1, 0.32, 1)';
   const animateRow = (row: HTMLElement, distance: number) => {
     rowLiftAnimations.get(row)?.cancel();
     rowLiftAnimations.delete(row);
@@ -90,7 +97,7 @@ export function alignAndRevealMeasuredTranscriptRows({
     const animation = row.animate([
       { translate: `0 ${distance}px` },
       { translate: '0 0' },
-    ], { duration: 150, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
+    ], { duration, easing });
     rowLiftAnimations.set(row, animation);
     animatedRows.push(row);
     animation.onfinish = () => {
