@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 test('login fills its viewport throughout cover transitions and returns intact after failure', async ({ page }) => {
+  await page.setViewportSize({ width: 760, height: 760 });
   await page.goto('/tests/visual/authTransitions.html');
   const surface = page.locator('.app-cloud-login-surface');
   const pageSurface = page.locator('.app-cloud-login-page');

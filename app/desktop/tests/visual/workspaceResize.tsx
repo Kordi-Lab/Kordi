@@ -20,6 +20,9 @@ if (params.has('backdrop')) {
   });
 }
 const noop = () => {};
+// Cross several line boundaries at both test widths instead of depending on a
+// short paragraph gaining one line with a particular browser's font metrics.
+const resizeMessage = 'The available message width changes with the window, while text and icons retain their original dimensions and the composer remains at the bottom of the chat column. '.repeat(3);
 createRoot(document.getElementById('root')!).render(
   <div className="app-cloud-workspace-surface">
   <AppShellFrame
@@ -40,7 +43,7 @@ createRoot(document.getElementById('root')!).render(
       <div className="app-chat-theme-surface flex min-h-0 min-w-0 flex-col overflow-hidden">
         <div data-testid="messages" className="app-scroll-area min-h-0 min-w-0 flex-1 overflow-y-auto px-5">
           {Array.from({ length: 80 }, (_, index) => <p key={index} style={{ fontSize: 15, lineHeight: '24px', maxWidth: '80%' }}>
-            Synthetic message {index + 1}. The available message width changes with the window, while text and icons retain their original dimensions and the composer remains at the bottom of the chat column.
+            Synthetic message {index + 1}. {resizeMessage}
           </p>)}
         </div>
         <div data-testid="composer" className="shrink-0 px-5 pb-4 pt-3">

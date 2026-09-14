@@ -30,7 +30,7 @@ function cloudRow(overrides: Partial<CanonicalSessionMessage> = {}) {
 }
 function markup(message: CanonicalSessionMessage) {
   const mapped = mapCanonicalMessage(message, identityById, 'human:test')!;
-  return renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: mapped.turn!, historical: true }));
+  return renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: mapped.turn!, historical: true }));
 }
 for (const text of ['Request canceled.', 'Request cancelled.', 'Request stopped.', 'Response stopped', 'Request canceled by sender.']) {
   test(`canonical cancellation renders one status for ${text}`, () => {
@@ -67,7 +67,7 @@ test('cloud cancellation and empty local cancellation become one runtime card wi
   assert.equal(result.messages.length, 2);
   const turn = result.messages[1].turn!;
   assert.deepEqual(turn.tools, tools);
-  const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
   assert.match(html, /Worked for 8s/);
   assert.equal(html.split('Response stopped').length - 1, 1);
 });
@@ -90,7 +90,7 @@ for (const message of ['Stopped', 'Request canceled by sender.', 'Response stopp
   test(`legacy canceled turns render only the descriptive notice with status ${message}`, () => {
     const mapped = mapCanonicalMessage(row(), identityById, 'human:test')!;
     const turn = { ...mapped.turn!, message, assistantText: 'Request canceled by sender.' };
-    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
     assert.equal(html.split('Request canceled by sender.').length - 1, 1);
     assert.ok(!html.includes('app-live-assistant-answer-cancelled'));
   });
@@ -99,7 +99,7 @@ for (const message of ['Stopped', 'Request canceled by sender.', 'Response stopp
 test('successful answer text that mentions cancellation remains an answer', () => {
   const mapped = mapCanonicalMessage(row({ status: 'complete', content: {}, contentText: 'Request canceled.' }), identityById, 'human:test')!;
   assert.equal(mapped.turn!.assistantText, 'Request canceled.');
-  const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: mapped.turn!, historical: true }));
+  const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: mapped.turn!, historical: true }));
   assert.equal(html.split('Request canceled.').length - 1, 1);
   assert.ok(!html.includes('app-live-turn-cancelled'));
 });
@@ -114,7 +114,7 @@ test('cancellation mirror aliases resolve cloud request IDs to local request row
 for (const error of ['Request stopped', 'Request canceled.']) {
   test(`legacy delegation cancellation does not render ${error} as a second error`, () => {
     const turn = { ...mapCanonicalMessage(row(), identityById, 'human:test')!.turn!, message: 'Stopped', error };
-    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
     assert.equal(html.split(error).length - 1, 1);
     assert.ok(!html.includes('app-live-turn-error-text'));
   });
@@ -122,7 +122,7 @@ for (const error of ['Request stopped', 'Request canceled.']) {
 
 test('a real error accompanying cancellation remains visible', () => {
   const turn = { ...mapCanonicalMessage(row(), identityById, 'human:test')!.turn!, error: 'Could not save the partial result.' };
-  const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
   assert.match(html, /Could not save the partial result/);
   assert.match(html, /app-live-turn-error-text/);
 });
@@ -131,7 +131,7 @@ for (const role of ['sender', 'agent owner', 'participant']) {
   test(`an attributed cancellation status survives a generic legacy answer for ${role}`, () => {
     const turn = { ...mapCanonicalMessage(row(), identityById, 'human:test')!.turn!,
       message: `Request canceled by ${role}.`, assistantText: 'Request canceled.' };
-    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
     assert.equal(html.split(`Request canceled by ${role}.`).length - 1, 1);
     assert.ok(!html.includes('app-live-assistant-answer-cancelled'));
   });

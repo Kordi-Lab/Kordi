@@ -28,7 +28,7 @@ test('renders agent source quote and waiting waveform without an output block be
     },
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
   assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
   assert.match(markup, /app-source-message-quote/);
@@ -113,7 +113,7 @@ test('folds long source quotes after three lines while keeping the full request 
     },
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.match(markup, /app-source-message-quote-text-frame app-source-message-quote-folded/);
   assert.match(markup, /app-fold-reveal-row app-source-message-quote-reveal-row/);
@@ -197,7 +197,7 @@ test('keeps medium completed agent responses readable without folding too early'
     error: null,
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.doesNotMatch(markup, /app-live-assistant-answer-folded/);
   assert.doesNotMatch(markup, /Show full response/);
@@ -218,7 +218,7 @@ test('folds only substantially long completed agent responses by default', () =>
     error: null,
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
   assert.match(markup, /app-fold-reveal-row app-live-assistant-answer-reveal-row/);
@@ -299,7 +299,7 @@ test('keeps source quote and tool summary inside the same assistant response bac
     },
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.match(markup, quoteToolAnswerSurfacePattern);
 });
@@ -319,7 +319,7 @@ test('keeps short active streaming agent responses expanded while text is still 
     error: null,
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
   assert.doesNotMatch(markup, /app-live-assistant-answer-folded/);
   assert.doesNotMatch(markup, /Show full response/);
@@ -340,7 +340,7 @@ test('folds very long active streaming agent responses with remaining line count
     error: null,
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
   assert.match(markup, /app-live-assistant-answer-content app-live-assistant-answer-folded/);
   assert.match(markup, /Show 2 more lines/);

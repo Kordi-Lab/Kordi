@@ -6,6 +6,11 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Kept earlier Agent replies visible during follow-up tool calls and prevented
+  failed or cancelled replies from appearing again during history synchronization.
+  ([#1510](https://github.com/Kordi-Lab/Kordi/issues/1510))
+- Preserved locally generated group-Agent reasoning for its owner on Mac
+  through completion and synchronization, while keeping it hidden from peers.
 - Kept cross-device Agent requests, replies, and cancellation notices from appearing twice,
   preserved selected-Agent names and delivery states, and restored iPhone processing feedback.
 - Kept ready Macs responsive to incoming Agent requests and prevented blank iPhone timelines

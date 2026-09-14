@@ -98,6 +98,7 @@ mod hooks;
 mod panic;
 mod persistence;
 mod runner;
+mod tool_argument_progress;
 mod tool_policy;
 mod tools;
 

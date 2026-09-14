@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { projectCloudGroupLiveTurns } from './cloudGroupLiveProjection';
 import type {
   DesktopCollaborationState,
   MessageActionMetadata,
@@ -84,7 +85,6 @@ import type {
   UseCloudCollaborationStateArgs,
   UseCloudCollaborationStateResult,
 } from './cloudCollaborationState.types';
-
 export type {
   UseCloudCollaborationStateResult,
 } from './cloudCollaborationState.types';
@@ -637,7 +637,7 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
-  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudMessages(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => projectCloudGroupLiveTurns(patchCanonicalCloudMessages(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), localAgentTurnsByRequestId, account?.accountId), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById, localAgentTurnsByRequestId, account?.accountId]);
   return {
     cloudAgentRuntimeRouteMessages, directHistory,
     cloudCollaborationState,

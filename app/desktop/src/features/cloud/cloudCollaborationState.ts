@@ -892,7 +892,7 @@ export function buildCloudDesktopCollaborationState({
           )];
         }
         if (isSelfPeer && hasMessages) {
-          const { hasSessionScopedMessages, messagesBySessionId } = cloudSelfAgentMessagesBySession(messages);
+          const { hasSessionScopedMessages, messagesBySessionId } = cloudSelfAgentMessagesBySession(messages, groupControlMessageIds);
           return [...messagesBySessionId.entries()].flatMap(([cloudSessionId, sessionMessages]) => {
             if (cloudSessionId?.startsWith('draft:')) return [];
             if (cloudSessionId && hiddenCloudSessionIds.has(cloudSessionId)) return [];

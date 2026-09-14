@@ -2,6 +2,7 @@ import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionMessage,
   CanonicalSessionState,
+  DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
 import type { CloudAccount, CloudMessage } from './authClient';
 import { encodeCloudAgentCancel } from './cloudAgentMessages';
@@ -89,6 +90,8 @@ export function cloudGroupAgentCancelledNoticeRequest({
   conversationId,
   cancelledByAccountId,
   cancelledByRole,
+  ownerThinkingText,
+  ownerTools,
   now,
 }: {
   processingMessage: CanonicalSessionMessage;
@@ -96,6 +99,8 @@ export function cloudGroupAgentCancelledNoticeRequest({
   conversationId: string;
   cancelledByAccountId: string;
   cancelledByRole: CloudGroupAgentCancelRole;
+  ownerThinkingText?: string;
+  ownerTools?: DesktopChatTurnSnapshot['tools'];
   now?: number;
 }): AppendCanonicalMessageRequest {
   const content = objectContent(processingMessage.content);
@@ -134,6 +139,8 @@ export function cloudGroupAgentCancelledNoticeRequest({
       ...(content.messageAction ? { messageAction: content.messageAction } : {}),
       cancelledByAccountId: trimmedCancelledByAccountId,
       cancelledByRole: role,
+      ...(ownerTools?.length ? { tools: ownerTools } : {}),
+      ...(ownerThinkingText?.trim() ? { thinkingText: ownerThinkingText } : {}),
     },
     createdAtMs: noticeTimestampMs,
     parentMessageId: trimmedRequestId,

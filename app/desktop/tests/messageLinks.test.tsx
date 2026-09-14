@@ -413,7 +413,7 @@ test('streaming replies and queued messages use the same transcript link treatme
     completed: true,
     succeeded: true,
   };
-  const liveHtml = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const liveHtml = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
   const queuedHtml = renderToStaticMarkup(createElement(QueuedMessageBubble, {
     message: {
       id: 'queued-link',

@@ -1,4 +1,6 @@
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
+import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
+import { mergeDesktopTurnSnapshot } from '@/features/chat/desktopLiveTurns';
 import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
@@ -153,12 +155,19 @@ export async function respondToCloudGroupAgentMention(
       respondingAgentId: presentation.agentId,
     }),
   ];
+  let rememberedTurn: DesktopChatTurnSnapshot | undefined;
+  let observedRevision = '';
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
     if (signal.aborted) return;
-    void publishModelSubsessions(turn).catch(() => undefined);
+    const revision = liveTurnSnapshotKey(turn);
+    if (revision === observedRevision) return;
+    observedRevision = revision;
+    const snapshot = mergeDesktopTurnSnapshot(rememberedTurn, turn);
+    rememberedTurn = snapshot;
+    void publishModelSubsessions(snapshot).catch(() => undefined);
     runtime.setLocalTurns((current) => ({
       ...current,
-      [message.id]: { ...turn, replyToMessageId: message.id, messageAction: threadMessageAction },
+      [message.id]: { ...snapshot, replyToMessageId: message.id, messageAction: threadMessageAction },
     }));
   };
   const runtimeStartSpan = beginChatPerformanceSpan(
@@ -289,12 +298,14 @@ export async function respondToCloudGroupAgentMention(
   }
   throwIfCloudAgentTurnAborted(signal);
   rememberLocalTurn(finalTurn);
+  finalTurn = rememberedTurn ?? finalTurn;
   void publishModelSubsessions(finalTurn).catch(() => undefined);
   if (finalTurn.status === 'cancelled') {
     await lease.cancel();
     await persistCloudGroupAgentCancellation(
       { ...input, context: replyContext },
       persistedProcessingMessage,
+      finalTurn,
     );
     return;
   }
@@ -331,6 +342,7 @@ export async function respondToCloudGroupAgentMention(
       replyToMessageId: message.id,
       ...(threadMessageAction ? { messageAction: threadMessageAction } : {}),
       ...(finalTurn.tools.length > 0 ? { tools: finalTurn.tools } : {}),
+      ...(finalTurn.thinkingText.trim() ? { thinkingText: finalTurn.thinkingText } : {}),
       ...(failureMessage ? { error: failureMessage } : {}),
     },
     createdAtMs: responseCreatedAtMs,

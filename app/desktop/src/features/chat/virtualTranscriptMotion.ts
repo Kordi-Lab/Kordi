@@ -9,6 +9,14 @@ type TranscriptVirtualizer = {
 
 const rowLiftAnimations = new WeakMap<HTMLElement, Animation>();
 
+function progressDurationMilliseconds(element: HTMLElement) {
+  // Production CSS minification can rewrite 260ms as .26s.
+  const token = getComputedStyle(element).getPropertyValue('--app-motion-base').trim();
+  const match = /^(\d*\.?\d+)(ms|s)$/.exec(token);
+  if (!match) return 220;
+  return Number(match[1]) * (match[2] === 's' ? 1000 : 1);
+}
+
 export function hasActiveTranscriptRowLift(rows: readonly HTMLElement[]) {
   return rows.some(row => rowLiftAnimations.has(row));
 }
@@ -37,11 +45,12 @@ export function captureTranscriptRowLayoutTops(sizeContainer: HTMLDivElement | n
 }
 
 export function alignAndRevealMeasuredTranscriptRows({
-  alignToTail, reduceMotion, revealFromIndex, sizeContainer, virtualizer, previousRowTops,
+  alignToTail, reduceMotion, revealFromIndex, sizeContainer, virtualizer, previousRowTops, progressMotion = false,
 }: {
   alignToTail: () => void;
   gap: number;
   reduceMotion: boolean;
+  progressMotion?: boolean;
   revealFromIndex?: number;
   sizeContainer: HTMLDivElement | null;
   virtualizer: TranscriptVirtualizer;
@@ -81,6 +90,12 @@ export function alignAndRevealMeasuredTranscriptRows({
   }
   const layoutTops = previousRows.map(row => row.getBoundingClientRect().top - rowLiftOffset(row));
   const animatedRows: HTMLElement[] = [];
+  // Progress moves content already being read. Use steady motion instead of
+  // spending most of the displacement in the first delayed native frame.
+  const duration = progressMotion
+    ? progressDurationMilliseconds(sizeContainer)
+    : 150;
+  const easing = progressMotion ? 'linear' : 'cubic-bezier(0.23, 1, 0.32, 1)';
   const animateRow = (row: HTMLElement, distance: number) => {
     rowLiftAnimations.get(row)?.cancel();
     rowLiftAnimations.delete(row);
@@ -90,11 +105,15 @@ export function alignAndRevealMeasuredTranscriptRows({
     const animation = row.animate([
       { translate: `0 ${distance}px` },
       { translate: '0 0' },
-    ], { duration: 150, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
+    ], { duration, easing });
     rowLiftAnimations.set(row, animation);
     animatedRows.push(row);
     animation.onfinish = () => {
-      if (rowLiftAnimations.get(row) === animation) rowLiftAnimations.delete(row);
+      if (rowLiftAnimations.get(row) !== animation) return;
+      rowLiftAnimations.delete(row);
+      // Remove the finished effect too. WebKit can otherwise retain its old
+      // translated overflow until a later DOM update, moving the scrollbar.
+      animation.cancel();
     };
   };
   previousRows.forEach((row, index) => {

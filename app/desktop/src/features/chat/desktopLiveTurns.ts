@@ -340,6 +340,18 @@ export function desktopStateIncludesCompletedTurn(state: DesktopChatState, turn:
 
 function transcriptMessageMatchesIncompleteLiveTurn(message: Message, turn: DesktopChatTurnSnapshot) {
   if (message.role !== 'owned-agent') return false;
+  if (message.id === turn.id || message.turn?.id === turn.id) return true;
+  const entryId = turn.transcriptEntryId?.trim();
+  if (entryId && message.entryId?.trim()) return message.entryId.trim() === entryId;
+  const messageRequest = message.replyToMessageId?.trim() || message.turn?.replyToMessageId?.trim();
+  const turnRequest = turn.replyToMessageId?.trim();
+  if (messageRequest && turnRequest) return messageRequest === turnRequest;
+
+  const messageTime = message.turn?.startedAtMs ?? message.timestampMs;
+  // Runtime history can have second-resolution timestamps. Text fallback must
+  // not hide an older reply just because another request produces the same text.
+  if (usableTimestamp(messageTime) && usableTimestamp(turn.startedAtMs)
+    && Math.floor(messageTime / 1_000) < Math.floor(turn.startedAtMs / 1_000)) return false;
   const turnText = liveTurnResponseText(turn);
   if (turnText.length > 0 && normalizedTranscriptText(message.text) === turnText) return true;
 
@@ -348,7 +360,9 @@ function transcriptMessageMatchesIncompleteLiveTurn(message: Message, turn: Desk
     return true;
   }
 
-  return turn.tools.length > 0 && (message.turn?.tools.length ?? 0) >= turn.tools.length;
+  const messageToolIds = new Set((message.turn?.tools ?? []).map(tool => tool.id?.trim()).filter(Boolean));
+  return turn.tools.length > 0
+    && turn.tools.every(tool => Boolean(tool.id?.trim()) && messageToolIds.has(tool.id.trim()));
 }
 
 export function suppressIncompleteLiveTurnEcho(messages: Message[], turn?: DesktopChatTurnSnapshot) {

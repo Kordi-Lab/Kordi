@@ -62,6 +62,7 @@ mod desktop_sync_blank_sessions;
 mod desktop_sync_failure;
 mod direct_message_sync;
 mod group_authority;
+mod group_reasoning;
 mod group_titles;
 mod identity_sessions;
 mod message_lifecycle;
