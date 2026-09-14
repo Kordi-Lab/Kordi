@@ -42,6 +42,7 @@ fn owner_connection(owner: bool) -> Connection {
 
 #[test]
 fn group_owner_reasoning_survives_public_progress_completion_and_reload() {
+    let _environment = crate::test_support::lock_process_environment();
     let conn = owner_connection(true);
     append_message_in_db(
         &conn,
@@ -65,6 +66,7 @@ fn group_owner_reasoning_survives_public_progress_completion_and_reload() {
 
 #[test]
 fn group_non_owner_never_stores_reasoning_even_with_an_owned_role_hint() {
+    let _environment = crate::test_support::lock_process_environment();
     let conn = owner_connection(false);
     let mut request = group_reasoning_request("request-a", Some("Synthetic private reasoning"));
     request.content.as_mut().unwrap()["execution"] = serde_json::json!({
@@ -87,6 +89,7 @@ fn group_non_owner_never_stores_reasoning_even_with_an_owned_role_hint() {
 
 #[test]
 fn group_reasoning_does_not_move_to_another_request() {
+    let _environment = crate::test_support::lock_process_environment();
     let conn = owner_connection(true);
     append_message_in_db(
         &conn,
@@ -99,6 +102,7 @@ fn group_reasoning_does_not_move_to_another_request() {
 
 #[test]
 fn group_owner_tool_only_trace_survives_answer_only_public_sync() {
+    let _environment = crate::test_support::lock_process_environment();
     let conn = owner_connection(true);
     let tools = serde_json::json!([
         {"id":"read-1","name":"read","status":"complete","arguments":"example.md","liveOutput":"First local result","isError":false},
@@ -121,6 +125,7 @@ fn group_owner_tool_only_trace_survives_answer_only_public_sync() {
 
 #[test]
 fn group_peer_keeps_only_explicit_public_background_task_tools() {
+    let _environment = crate::test_support::lock_process_environment();
     let conn = owner_connection(false);
     let mut request = group_reasoning_request("request-a", None);
     request.content = Some(serde_json::json!({"tools":[
@@ -137,6 +142,7 @@ fn group_peer_keeps_only_explicit_public_background_task_tools() {
 
 #[test]
 fn group_public_task_summary_does_not_replace_the_owners_full_trace() {
+    let _environment = crate::test_support::lock_process_environment();
     let conn = owner_connection(true);
     let private_tools =
         serde_json::json!([{"id":"native-task","name":"task_operator","arguments":"Owner detail"}]);
@@ -153,6 +159,7 @@ fn group_public_task_summary_does_not_replace_the_owners_full_trace() {
 
 #[test]
 fn group_tool_trace_does_not_move_to_another_request() {
+    let _environment = crate::test_support::lock_process_environment();
     let conn = owner_connection(true);
     let mut local = group_reasoning_request("request-a", None);
     local.content = Some(serde_json::json!({"tools":[{"id":"private-read","name":"read"}]}));
