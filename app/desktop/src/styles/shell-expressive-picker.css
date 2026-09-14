@@ -189,6 +189,12 @@
   z-index: 1;
 }
 
+.app-noto-thumbnail {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+}
+
 .app-noto-animation[data-ready='true'] ~ .app-noto-still {
   opacity: 0;
 }

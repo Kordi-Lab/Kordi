@@ -517,7 +517,7 @@
   },
   "src/kordi-app/components/remoteAvatarImage.ts": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
+      "count": 1
     },
     "@typescript-eslint/prefer-promise-reject-errors": {
       "count": 1

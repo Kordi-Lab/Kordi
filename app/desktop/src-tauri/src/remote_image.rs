@@ -322,6 +322,16 @@ async fn fetch_remote_image_data_url(
 
 #[tauri::command]
 pub async fn desktop_fetch_remote_image_data_url(url: String) -> Result<String, String> {
+    if let Some(policy) = cache::noto_cache_policy(&url) {
+        // Bound thumbnail downloads, hashing and disk-cache maintenance during
+        // a cold picker open instead of starting a task for every visible cell.
+        static NOTO_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+        let _permit = NOTO_SLOTS
+            .acquire()
+            .await
+            .map_err(|error| error.to_string())?;
+        return fetch_remote_image_data_url(url, None, policy).await;
+    }
     fetch_remote_image_data_url(url, None, &AVATAR_CACHE_POLICY).await
 }
 

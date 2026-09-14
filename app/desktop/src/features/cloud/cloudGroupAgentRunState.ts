@@ -53,15 +53,13 @@ export async function persistCloudGroupAgentCancellation(
   processingMessage: Awaited<ReturnType<typeof upsertCanonicalMessageFast>>,
   finalTurn?: DesktopChatTurnSnapshot,
 ) {
-  const { account, envelope } = input.context;
+  const { envelope } = input.context;
   const message = envelope.message!;
   const span = beginChatPerformanceSpan('cloud-agent-terminal-upsert');
   const request = cloudGroupAgentCancelledNoticeRequest({
     processingMessage,
     requestId: message.id,
     conversationId: cloudGroupAgentConversationId(envelope.groupId),
-    cancelledByAccountId: account.accountId,
-    cancelledByRole: 'agent owner',
     ownerThinkingText: finalTurn?.thinkingText,
     ownerTools: finalTurn?.tools,
     now: Date.now(),

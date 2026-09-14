@@ -31,6 +31,7 @@ export function EmojiPickerItemImage({
     <NotoEmojiImage
       emoji={item.emoji}
       animated={animated}
+      thumbnail
       className={className}
       decorative={decorative}
     />
@@ -142,7 +143,7 @@ export function EmojiPicker({
           }}
           title="Noto Emoji"
         >
-          <NotoEmojiImage emoji={representativeNotoEmoji} animated={false} decorative className="app-emoji-collection-icon" />
+          <NotoEmojiImage emoji={representativeNotoEmoji} animated={false} thumbnail decorative className="app-emoji-collection-icon" />
         </button>
         <button
           type="button"

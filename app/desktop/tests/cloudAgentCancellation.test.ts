@@ -240,3 +240,21 @@ test('owner cancellation keeps a tool-only trace in the processing slot', () => 
   assert.equal(notice.id, 'processing-slot');
   assert.deepEqual((notice.content as { tools: unknown }).tools, tools);
 });
+
+
+test('runtime cancellation does not attribute lease loss or an unknown stop to a person', () => {
+  const tools = [{ id: 'synthetic-tool', name: 'bash', status: 'completed', arguments: '{}', isError: true,
+    detail: { durationMs: 68_000, cancelled: true, timedOut: false, exitCode: -1 } }];
+  const notice = cloudGroupAgentCancelledNoticeRequest({
+    processingMessage: { id: 'processing-slot', sessionId: 'group', senderIdentityId: 'agent:owner',
+      senderRole: 'owned-agent', content: {}, createdAtMs: 100 } as CanonicalSessionMessage,
+    requestId: 'request', conversationId: 'group-runtime', ownerTools: tools,
+  });
+  assert.equal(notice.contentText, 'Request stopped.');
+  assert.equal(notice.status, 'cancelled');
+  assert.equal(notice.id, 'processing-slot');
+  assert.equal(notice.sourceEventId, 'cloud-group-agent-cancel:request:runtime');
+  assert.equal(Object.hasOwn(notice.content, 'cancelledByAccountId'), false);
+  assert.equal(Object.hasOwn(notice.content, 'cancelledByRole'), false);
+  assert.deepEqual((notice.content as { tools: unknown }).tools, tools);
+});

@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { NotoEmojiImage } from '../src/features/emoji/NotoEmojiImage';
 import { notoEmojiAssetUrl, notoEmojiCatalog } from '../src/features/emoji/notoEmoji';
 import { clearRemoteAvatarImageCacheForTests } from '../src/kordi-app/components/remoteAvatarImage';
+import { clearEmojiImageReadinessForTests } from '../src/features/emoji/emojiImageReadiness';
 
 const imageData = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6Q2sAAAAASUVORK5CYII=';
 
@@ -30,6 +31,7 @@ function setup() {
   const replacements: Record<string, unknown> = {
     window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node,
+    IntersectionObserver: undefined,
     IS_REACT_ACT_ENVIRONMENT: true,
   };
   const previous = new Map(Object.keys(replacements).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -41,6 +43,7 @@ function setup() {
   dom.window.document.head.append(style);
   const root = createRoot(dom.window.document.getElementById('root')!);
   clearRemoteAvatarImageCacheForTests();
+  clearEmojiImageReadinessForTests();
   async function waitForRequest(url: string) {
     if (pending.has(url)) return;
     await new Promise<void>((resolve, reject) => {
@@ -78,6 +81,32 @@ function setup() {
 }
 
 const emoji = notoEmojiCatalog.find(item => item.id === '1f602')!;
+
+test('Noto picker thumbnails render at final size without native loads or a Unicode swap, even cold', async () => {
+  const app = setup();
+  try {
+    // Never deliver a visibility callback, network response or image load event.
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof IntersectionObserver;
+    await act(async () => app.root.render(<NotoEmojiImage emoji={emoji} animated={false} thumbnail />));
+    const still = app.dom.window.document.querySelector<HTMLElement>('.app-noto-thumbnail')!;
+    assert.ok(still);
+    assert.match(still.style.backgroundImage, /atlas-0/);
+    assert.equal(app.dom.window.document.querySelector('.app-noto-fallback'), null);
+    assert.equal(app.dom.window.document.querySelector('img'), null);
+    assert.equal(app.calls.length, 0);
+    const originalBackground = still.style.backgroundImage;
+    await act(async () => app.root.render(null));
+    clearRemoteAvatarImageCacheForTests();
+    clearEmojiImageReadinessForTests();
+    await act(async () => app.root.render(<NotoEmojiImage emoji={emoji} animated={false} thumbnail />));
+    assert.equal(app.dom.window.document.querySelector<HTMLElement>('.app-noto-thumbnail')?.style.backgroundImage, originalBackground);
+    assert.equal(app.calls.length, 0);
+  } finally { await app.close(); }
+});
 
 test('Noto keeps its decoded still visible until the animated replacement loads', async () => {
   const app = setup();

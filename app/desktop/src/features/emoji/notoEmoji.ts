@@ -18,12 +18,12 @@ export const notoEmojiCatalog = Object.freeze(
 export const notoEmojiById = new Map(notoEmojiCatalog.map((emoji) => [emoji.id, emoji]));
 export const notoEmojiByValue = new Map(notoEmojiCatalog.map((emoji) => [emoji.value, emoji]));
 
-export function notoEmojiAssetUrl(emoji: NotoEmoji, format: NotoEmojiFormat) {
+export function notoEmojiAssetUrl(emoji: NotoEmoji, format: NotoEmojiFormat, size: 128 | 512 = 512) {
   const catalogEmoji = notoEmojiById.get(emoji.id);
   if (!catalogEmoji || catalogEmoji.value !== emoji.value) {
     throw new Error('Noto Emoji asset must come from the bundled catalog.');
   }
-  return `${NOTO_EMOJI_CDN_ORIGIN}/s/e/notoemoji/latest/${emoji.id}/512.${format}`;
+  return `${NOTO_EMOJI_CDN_ORIGIN}/s/e/notoemoji/latest/${emoji.id}/${format === 'png' ? size : 512}.${format}`;
 }
 
 export function notoEmojiRanges(value: string) {
