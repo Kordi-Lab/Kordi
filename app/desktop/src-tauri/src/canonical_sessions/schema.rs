@@ -4,7 +4,52 @@ use super::{
     canonical_storage_root, now_ms, stable_profile_id, CanonicalLocalProfile, SCHEMA_VERSION,
 };
 
+#[cfg(test)]
+mod performance_tests;
+
 pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
+    // This setting belongs to each connection, even when migrations are done.
+    conn.pragma_update(None, "foreign_keys", true)
+        .map_err(|error| error.to_string())?;
+    if schema_is_current(conn)? {
+        return Ok(());
+    }
+
+    // Only cold opens wait here. Recheck after acquiring the lock so a burst
+    // of sync commands does not run the same migration on every connection.
+    static MIGRATION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    let _migration = MIGRATION_LOCK.lock().map_err(|error| error.to_string())?;
+    if schema_is_current(conn)? {
+        return Ok(());
+    }
+    migrate_schema(conn)
+}
+
+fn schema_is_current(conn: &Connection) -> Result<bool, String> {
+    if !table_exists(conn, "canonical_schema_meta")? {
+        return Ok(false);
+    }
+    let version = conn
+        .query_row(
+            "SELECT value FROM canonical_schema_meta WHERE key = 'version'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let Some(version) = version else {
+        return Ok(false);
+    };
+    let version = version
+        .parse::<i64>()
+        .map_err(|_| "Invalid canonical schema version".to_string())?;
+    if version > SCHEMA_VERSION {
+        return Err("Canonical database requires a newer version of Kordi".to_string());
+    }
+    Ok(version == SCHEMA_VERSION)
+}
+
+fn migrate_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(
         "PRAGMA foreign_keys = ON;
          CREATE TABLE IF NOT EXISTS canonical_schema_meta (
@@ -222,13 +267,14 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|error| error.to_string())?;
     migrate_versioned_chat_tables(conn)?;
+    ensure_local_profile(conn)?;
+    // Publish the version only after every initialization step succeeds.
     conn.execute(
         "INSERT INTO canonical_schema_meta(key, value) VALUES('version', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![SCHEMA_VERSION.to_string()],
     )
     .map_err(|err| err.to_string())?;
-    ensure_local_profile(conn)?;
     Ok(())
 }
 
