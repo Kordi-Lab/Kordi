@@ -12,7 +12,10 @@ test('the complete production bundle renders its login screen without module ini
   expect(html).toContain('/assets/');
   expect(html).not.toContain('/@vite/client');
   expect(html).not.toContain('/src/main.jsx');
-  await expect(page.getByRole('heading', { name: 'Welcome to Kordi' })).toBeVisible();
+  await expect.poll(async () => ({
+    errors: [...errors],
+    loginVisible: await page.getByRole('heading', { name: 'Welcome to Kordi' }).isVisible(),
+  })).toEqual({ errors: [], loginVisible: true });
   await page.waitForLoadState('networkidle');
   expect(errors).toEqual([]);
 });

@@ -34,6 +34,9 @@ export default defineConfig(({ command, mode }) => {
               { name: 'calling-media', test: /(?:^|[\\/])node_modules[\\/](?:livekit-client|@livekit|webrtc-adapter|sdp-transform|jose)(?:[\\/]|$)/ },
               { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
               { name: 'emoji-catalog', test: /[\\/]shared[\\/]noto-emoji[\\/]catalog\.json$/ },
+              // Startup preloading and the picker share this leaf dependency.
+              // Keep its manifest with the loader to avoid an entry-chunk cycle.
+              { name: 'emoji-thumbnails', minSize: 0, test: /[\\/]src[\\/](?:features[\\/]emoji[\\/]notoEmojiThumbnails\.ts|assets[\\/]noto-thumbnails[\\/]manifest\.json)$/ },
               { name: 'agent-studio', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/](?:AgentStudio(?!Conversation)|factoryAgentUtils|shapeAgent|useAgentBuilderSession|useFactoryBuildRouting)/ },
               { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/, maxSize: 650_000 },
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/ },
