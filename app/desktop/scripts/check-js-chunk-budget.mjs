@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const MAX_JS_CHUNK_BYTES = Number.parseInt(process.env.KORDI_MAX_JS_CHUNK_BYTES ?? '', 10) || 700_000;
 const MAX_DESKTOP_DIST_BYTES = Number.parseInt(process.env.KORDI_MAX_DESKTOP_DIST_BYTES ?? '', 10) || 5_000_000;
+// Offline picker artwork replaces hundreds of runtime image requests. Give
+// these four known atlases a separate cap without relaxing the app/code budget.
+const MAX_NOTO_THUMBNAIL_BYTES = 2_600_000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const assetsDir = process.argv[2]
@@ -55,13 +58,20 @@ try {
 
   const largestChunk = chunks[0];
   const distBytes = await directoryBytes(path.dirname(assetsDir));
-  if (distBytes > MAX_DESKTOP_DIST_BYTES) {
+  const atlasFiles = (await readdir(assetsDir)).filter(name => /^atlas-[0-3]-[\w-]+\.webp$/.test(name));
+  const atlasSizes = await Promise.all(atlasFiles.map(async name => (await stat(path.join(assetsDir, name))).size));
+  const atlasBytes = atlasSizes.reduce((total, size) => total + size, 0);
+  if (atlasBytes > MAX_NOTO_THUMBNAIL_BYTES || atlasFiles.length > 4) {
+    throw new Error('Bundled Noto thumbnails exceed their separate 2.6 MB budget.');
+  }
+  if (distBytes - atlasBytes > MAX_DESKTOP_DIST_BYTES) {
     console.error(`Desktop web bundle budget exceeded. Maximum allowed size is ${formatKb(MAX_DESKTOP_DIST_BYTES)}.`);
     console.error(`- dist: ${formatKb(distBytes)}`);
     process.exit(1);
   }
   console.log(`JavaScript chunk budget ok: ${chunks.length} chunks, largest ${largestChunk.name} at ${formatKb(largestChunk.bytes)}.`);
   console.log(`Desktop web bundle budget ok: ${formatKb(distBytes)} total.`);
+  if (atlasBytes) console.log(`Bundled Noto thumbnails: ${formatKb(atlasBytes)} of ${formatKb(MAX_NOTO_THUMBNAIL_BYTES)}.`);
 } catch (error) {
   if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
     console.error(`No built JavaScript chunks found in ${assetsDir}. Run pnpm --dir app/desktop build first.`);

@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { isEmojiImageReady, markEmojiImageReady } from './emojiImageReadiness';
 import { useNearEmojiViewport } from './emojiViewport';
 import { notoEmojiAssetUrl, type NotoEmoji } from './notoEmoji';
+import { notoThumbnailStyle } from './notoEmojiThumbnails';
 
 function NotoFrame({ source, readinessKey, className, native, lazy = false, onError }: {
   source: string | null;
@@ -68,6 +69,21 @@ function NotoAnimation({ emoji, nearViewport, native }: {
   );
 }
 
+function RemoteNotoStill({ emoji, native, nearViewport }: {
+  emoji: NotoEmoji;
+  native: boolean;
+  nearViewport: boolean;
+}) {
+  const stillUrl = notoEmojiAssetUrl(emoji, 'png');
+  const cachedStill = getRemoteImageSnapshot(stillUrl).status === 'ready';
+  const still = useRemoteImage(stillUrl, native && (nearViewport || cachedStill));
+  const source = native ? (still.status === 'ready' ? still.dataUrl : null) : stillUrl;
+  return <>
+    <NotoFrame key={stillUrl} source={source} readinessKey={`noto:${stillUrl}`} className="app-noto-still" native={native} lazy={cachedStill} />
+    <span className="app-noto-fallback" aria-hidden="true">{emoji.value}</span>
+  </>;
+}
+
 export const NotoEmojiImage = memo(function NotoEmojiImage({
   emoji,
   animated = true,
@@ -83,13 +99,8 @@ export const NotoEmojiImage = memo(function NotoEmojiImage({
 }) {
   const reduceMotion = useReducedMotion();
   const imageRef = useRef<HTMLSpanElement | null>(null);
-  const stillUrl = notoEmojiAssetUrl(emoji, 'png', thumbnail ? 128 : 512);
-  const native = shouldLoadRemoteImageThroughNativeProxy(stillUrl);
-  const nearViewport = useNearEmojiViewport(imageRef, native);
-  // A warm picker can render its cached still before the observer's first callback.
-  const cachedStill = getRemoteImageSnapshot(stillUrl).status === 'ready';
-  const still = useRemoteImage(stillUrl, native && (nearViewport || cachedStill));
-  const stillSource = native ? (still.status === 'ready' ? still.dataUrl : null) : stillUrl;
+  const native = shouldLoadRemoteImageThroughNativeProxy(notoEmojiAssetUrl(emoji, 'png'));
+  const nearViewport = useNearEmojiViewport(imageRef, native && (!thumbnail || animated));
   return (
     <span
       ref={imageRef}
@@ -101,8 +112,11 @@ export const NotoEmojiImage = memo(function NotoEmojiImage({
       {animated && !reduceMotion ? (
         <NotoAnimation key={emoji.id} emoji={emoji} native={native} nearViewport={nearViewport} />
       ) : null}
-      <NotoFrame key={stillUrl} source={stillSource} readinessKey={`noto:${stillUrl}`} className="app-noto-still" native={native} lazy={cachedStill} />
-      <span className="app-noto-fallback" aria-hidden="true">{emoji.value}</span>
+      {thumbnail ? (
+        <span className="app-noto-still app-noto-thumbnail" style={notoThumbnailStyle(emoji.id)} aria-hidden="true" />
+      ) : (
+        <RemoteNotoStill emoji={emoji} native={native} nearViewport={nearViewport} />
+      )}
     </span>
   );
 });

@@ -13,7 +13,7 @@ import {
 } from '../src/features/emoji/emojiCatalog';
 import { notoEmojiAssetUrl, notoEmojiCatalog } from '../src/features/emoji/notoEmoji';
 
-test('Noto Emoji catalog uses trusted Google Fonts CDN URLs without bundled image assets', () => {
+test('Noto Emoji animations use trusted Google Fonts CDN URLs with bundled picker thumbnails', () => {
   const catalog = JSON.parse(readFileSync(
     new URL('../../../shared/noto-emoji/catalog.json', import.meta.url),
     'utf8',
