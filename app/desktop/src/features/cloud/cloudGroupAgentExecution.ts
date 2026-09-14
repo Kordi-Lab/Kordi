@@ -1,4 +1,5 @@
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
+import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 import { mergeDesktopTurnSnapshot } from '@/features/chat/desktopLiveTurns';
 import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
@@ -155,8 +156,12 @@ export async function respondToCloudGroupAgentMention(
     }),
   ];
   let rememberedTurn: DesktopChatTurnSnapshot | undefined;
+  let observedRevision = '';
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
     if (signal.aborted) return;
+    const revision = liveTurnSnapshotKey(turn);
+    if (revision === observedRevision) return;
+    observedRevision = revision;
     const snapshot = mergeDesktopTurnSnapshot(rememberedTurn, turn);
     rememberedTurn = snapshot;
     void publishModelSubsessions(snapshot).catch(() => undefined);

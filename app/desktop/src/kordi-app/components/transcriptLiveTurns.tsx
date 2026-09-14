@@ -1,3 +1,5 @@
+import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
+export { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '@/features/chat/agentProcessingVisibility';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { memo, useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
@@ -844,36 +846,6 @@ function LiveChatTurnCardView({
   );
 }
 
-export function liveTurnSnapshotKey(turn: DesktopChatTurnSnapshot) {
-  return [
-    turn.id,
-    turn.sessionId,
-    turn.localExecutionStarted ? `${turn.status}:local-started` : turn.status,
-    turn.message,
-    turn.assistantText,
-    turn.thinkingText,
-    turn.completed ? 'completed' : 'running',
-    turn.succeeded ? 'succeeded' : 'pending',
-    turn.error ?? '',
-    turn.transcriptRefreshRequired ? 'refresh' : 'stable',
-    turn.replyToMessageId ?? '',
-    turn.sourceMessage ? [turn.sourceMessage.messageId, turn.sourceMessage.text, turn.sourceMessage.senderLabel ?? ''].join(':') : '',
-    turn.pendingCollaborationAgentRequest?.conversationId ?? '',
-    turn.pendingCollaborationAgentRequest?.requestId ?? '',
-    ...turn.tools.map((tool) => [
-      tool.id,
-      tool.name,
-      tool.status,
-      tool.arguments,
-      tool.liveOutput,
-      tool.resultText ?? '',
-      tool.detail ?? '',
-      tool.artifactPath ?? '',
-      tool.toolLayer ?? '',
-      tool.isError ? 'error' : 'ok',
-    ].join('\u0000')),
-  ].join('\u0001');
-}
 
 export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,

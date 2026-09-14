@@ -27,6 +27,7 @@ export function useVisibleLiveTurn(turn: DesktopChatTurnSnapshot, historical: bo
     visible = {
       ...visible,
       thinkingText: merged.thinkingText,
+      startedAtMs: merged.startedAtMs, completedAtMs: merged.completedAtMs,
       tools: hasPrivateTools ? (publicOrEmpty ? previous.tools : merged.tools) : turn.tools,
     };
   }

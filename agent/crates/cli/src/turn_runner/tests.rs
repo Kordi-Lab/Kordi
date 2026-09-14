@@ -22,7 +22,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::{Notify, mpsc};
 use tokio::time::{Duration, timeout};
 use tokio_util::sync::CancellationToken;
-
 struct DummyProvider {
     call_count: AtomicUsize,
 }
@@ -888,4 +887,5 @@ fn set_local_model_timeout_override(timeout: Duration) -> LocalModelTimeoutOverr
 mod cancellation;
 mod compaction;
 mod provider_failures;
+mod tool_argument_progress;
 mod tool_execution;
