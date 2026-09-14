@@ -25,7 +25,7 @@ test('light outgoing human bubble uses the selected chat-theme tokens with no vi
   assert.match(rule, /--app-message-mention:\s*var\(--app-chat-mention-own\);/);
   assert.match(rule, /--app-message-meta:\s*var\(--app-chat-meta-own\);/);
   assert.match(rule, /color:\s*var\(--app-chat-bubble-user-text\);/);
-  assert.match(baseRule, /--app-markdown-link:\s*var\(--app-chat-mention-own\);/);
+  assert.match(baseRule, /--app-markdown-link:\s*var\(--app-chat-mention-own-agent\);/);
   assert.match(tokens, /--app-chat-bubble-user-bg:\s*#E2EBF5;/);
   assert.match(tokens, /--app-chat-bubble-user-text:\s*#1F3145;/);
 });
