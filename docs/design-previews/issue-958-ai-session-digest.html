@@ -1,0 +1,1154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kordi AI Digest — Morning Brief demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #080a0e;
+      --window: #0f1115;
+      --rail: #0c0f13;
+      --surface: #15171c;
+      --surface-2: #1a1d23;
+      --control: #1c2027;
+      --control-hover: #252a33;
+      --ink: #f5f7fa;
+      --secondary: #a3aab6;
+      --muted: #7c8594;
+      --faint: #606979;
+      --line: rgba(255, 255, 255, .09);
+      --line-strong: rgba(255, 255, 255, .15);
+      --blue: #60a5fa;
+      --blue-fill: #2563eb;
+      --blue-soft: rgba(37, 99, 235, .17);
+      --violet: #b39cff;
+      --violet-soft: rgba(132, 122, 196, .15);
+      --green: #62c49a;
+      --amber: #d6a85b;
+      --danger: #f18b83;
+      --danger-soft: rgba(191, 64, 55, .13);
+      --shadow: 0 24px 72px rgba(0, 0, 0, .42);
+      --shadow-preview: 0 12px 34px rgba(0, 0, 0, .2);
+      --shadow-popover: 0 18px 44px rgba(0, 0, 0, .32);
+      --shadow-drawer: -20px 0 52px rgba(0, 0, 0, .26);
+      --shadow-toast: 0 16px 38px rgba(0, 0, 0, .26);
+      --mac-red: #ff5f57;
+      --mac-yellow: #febc2e;
+      --mac-green: #28c840;
+      --profile-avatar: #42556b;
+    }
+
+    body.light {
+      color-scheme: light;
+      --page: #dedfe3;
+      --window: #fcfcfd;
+      --rail: #f0f2f5;
+      --surface: #f5f6f8;
+      --surface-2: #eceef2;
+      --control: #eef0f4;
+      --control-hover: #e3e6eb;
+      --ink: #172033;
+      --secondary: #556174;
+      --muted: #697589;
+      --faint: #8a94a4;
+      --line: rgba(15, 23, 42, .1);
+      --line-strong: rgba(15, 23, 42, .17);
+      --blue: #2563eb;
+      --blue-fill: #2563eb;
+      --blue-soft: rgba(37, 99, 235, .1);
+      --violet: #6d5ab2;
+      --violet-soft: rgba(109, 90, 178, .11);
+      --green: #237a59;
+      --amber: #986716;
+      --danger: #b6443d;
+      --danger-soft: rgba(182, 68, 61, .08);
+      --shadow: 0 24px 64px rgba(39, 46, 58, .18);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; min-width: 0; min-height: 100%; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: var(--page);
+      color: var(--ink);
+      font: 14px/1.46 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, select { font: inherit; }
+    button { cursor: pointer; }
+    button, select, input { color: inherit; }
+    svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    [hidden] { display: none !important; }
+
+    .preview-bar {
+      position: fixed;
+      z-index: 100;
+      top: 12px;
+      left: 50%;
+      display: flex;
+      width: min(920px, calc(100vw - 24px));
+      min-height: 44px;
+      align-items: center;
+      gap: 7px;
+      transform: translateX(-50%);
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      background: var(--surface);
+      padding: 5px;
+      box-shadow: var(--shadow-preview);
+    }
+
+    .preview-title { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; padding: 0 8px; color: var(--secondary); font-size: 11px; white-space: nowrap; }
+    .preview-title strong { overflow: hidden; color: var(--ink); text-overflow: ellipsis; }
+    .preview-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--green); }
+    .preview-control {
+      display: inline-flex;
+      min-height: 32px;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--secondary);
+      padding: 0 10px;
+      font-size: 11px;
+      font-weight: 620;
+    }
+    .preview-control:hover { background: var(--control); color: var(--ink); }
+    .preview-select { border: 1px solid var(--line); background: var(--control); }
+    .preview-control.monitor-sim { color: var(--blue); }
+    .preview-control:disabled { cursor: wait; opacity: .62; }
+
+    .preview-root { min-height: 100dvh; padding: 68px 16px 16px; }
+    .app-window {
+      position: relative;
+      width: min(1510px, 100%);
+      height: calc(100dvh - 84px);
+      min-height: min(640px, calc(100dvh - 84px));
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 16px;
+      background: var(--window);
+      box-shadow: var(--shadow);
+    }
+    .app-shell { display: grid; height: 100%; grid-template-columns: 72px minmax(0, 1fr); }
+
+    .rail {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      min-height: 0;
+      flex-direction: column;
+      align-items: center;
+      border-right: 1px solid var(--line);
+      background: var(--rail);
+      padding: 14px 8px 12px;
+    }
+    .traffic { display: flex; height: 20px; align-items: center; gap: 6px; }
+    .traffic i { width: 9px; height: 9px; border-radius: 50%; background: var(--mac-red); }
+    .traffic i:nth-child(2) { background: var(--mac-yellow); }
+    .traffic i:nth-child(3) { background: var(--mac-green); }
+    .app-mark { display: grid; width: 38px; height: 38px; margin-top: 14px; place-items: center; border-radius: 12px; background: var(--ink); color: var(--window); font-size: 15px; font-weight: 780; }
+    .rail-nav { display: grid; gap: 7px; margin-top: 22px; }
+    .rail-button {
+      position: relative;
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--secondary);
+    }
+    .rail-button:hover { background: var(--control); color: var(--ink); }
+    .rail-button.active { border-color: rgba(132, 122, 196, .22); background: var(--violet-soft); color: var(--violet); }
+    .rail-button.active::before { position: absolute; top: 12px; bottom: 12px; left: -9px; width: 2px; border-radius: 999px; background: var(--violet); content: ""; }
+    .rail-bottom { display: grid; gap: 8px; margin-top: auto; }
+    .avatar { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--profile-avatar); color: white; font-size: 10px; font-weight: 700; }
+
+    .main { position: relative; min-width: 0; min-height: 0; background: var(--window); }
+    .main-scroll { height: 100%; overflow-y: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+    .main-scroll:hover { scrollbar-color: var(--faint) transparent; }
+    .content-ready { min-height: 100%; }
+    .digest-head { padding: 34px clamp(24px, 4vw, 56px) 0; }
+    .head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 28px; }
+    .head-copy { min-width: 0; }
+    h1 { max-width: 18ch; margin: 0; font-size: clamp(26px, 2.4vw, 35px); line-height: 1.12; letter-spacing: -.03em; font-weight: 710; }
+    .range-line { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 9px; color: var(--secondary); font-size: 13px; }
+    .meta-separator { color: var(--faint); }
+    .link-button { border: 0; background: transparent; color: var(--blue); padding: 0; text-align: left; }
+    .link-button:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .head-actions { display: flex; flex: none; align-items: center; gap: 8px; }
+    .period-switch { display: flex; min-height: 40px; align-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--control); padding: 3px; }
+    .period-button { min-height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--secondary); padding: 0 12px; font-size: 11px; font-weight: 650; }
+    .period-button:hover { color: var(--ink); }
+    .period-button.active { background: var(--surface-2); color: var(--ink); }
+    .period-button:disabled { cursor: wait; opacity: .64; }
+    .control-button {
+      display: inline-flex;
+      min-height: 40px;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: transparent;
+      color: var(--secondary);
+      padding: 0 13px;
+      font-size: 12px;
+      font-weight: 620;
+    }
+    .control-button:hover { border-color: var(--line-strong); background: var(--control); color: var(--ink); }
+    .control-button:disabled { cursor: default; opacity: .58; }
+    .control-button:disabled:hover { border-color: var(--line); background: transparent; color: var(--secondary); }
+    .control-button.primary { border-color: var(--blue-fill); background: var(--blue-fill); color: white; }
+    .control-button.primary:hover { background: color-mix(in srgb, var(--blue-fill) 82%, black); }
+    .control-button svg { width: 15px; height: 15px; }
+    .refreshing svg { animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .range-wrap { position: relative; }
+    .report { max-width: 78ch; margin: 26px 0 0; color: var(--ink); font-size: clamp(15px, 1.25vw, 17px); line-height: 1.58; }
+    .report strong { font-weight: 650; }
+    .coverage-note { display: flex; align-items: center; gap: 7px; margin-top: 12px; color: var(--muted); font-size: 11px; }
+    .coverage-note svg { width: 14px; height: 14px; color: var(--green); }
+    .coverage-note.partial svg { color: var(--amber); }
+    .partial-warning { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; border-top: 1px solid color-mix(in srgb, var(--amber) 38%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--amber) 38%, transparent); background: color-mix(in srgb, var(--amber) 8%, transparent); padding: 11px 12px; color: var(--secondary); font-size: 11px; line-height: 1.5; }
+    .partial-warning svg { width: 16px; height: 16px; flex: none; margin-top: 1px; color: var(--amber); }
+    .partial-warning strong { color: var(--ink); }
+
+    .monitor-strip { display: grid; grid-template-columns: minmax(180px, auto) minmax(220px, 1fr) auto; align-items: center; gap: 22px; margin-top: 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 13px 0; color: var(--secondary); }
+    .monitor-identity { display: flex; min-width: 0; align-items: center; gap: 10px; }
+    .monitor-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--green); }
+    .monitor-identity strong, .monitor-identity span { display: block; }
+    .monitor-identity strong { color: var(--ink); font-size: 11px; font-weight: 660; }
+    .monitor-identity span { margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .monitor-meter { min-width: 0; }
+    .monitor-meter-copy { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 7px; color: var(--muted); font-size: 10px; }
+    .monitor-meter-copy span:first-child { color: var(--secondary); }
+    .monitor-progress { display: block; width: 100%; height: 3px; overflow: hidden; border: 0; border-radius: 999px; background: var(--control); appearance: none; }
+    .monitor-progress::-webkit-progress-bar { border-radius: 999px; background: var(--control); }
+    .monitor-progress::-webkit-progress-value { border-radius: 999px; background: var(--blue); }
+    .monitor-progress::-moz-progress-bar { border-radius: 999px; background: var(--blue); }
+    .monitor-policy { min-width: 178px; text-align: right; }
+    .monitor-policy strong, .monitor-policy span { display: block; }
+    .monitor-policy strong { color: var(--ink); font-size: 10px; font-weight: 650; }
+    .monitor-policy span { margin-top: 2px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+    .monitor-strip.updating .monitor-dot { background: var(--blue); animation: monitor-pulse 1s ease-in-out infinite; }
+    @keyframes monitor-pulse { 50% { opacity: .38; transform: scale(.78); } }
+
+    .highlights { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 26px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .highlight {
+      display: grid;
+      min-width: 0;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 13px;
+      border: 0;
+      border-right: 1px solid var(--line);
+      background: transparent;
+      color: var(--ink);
+      padding: 20px 20px 20px 0;
+      text-align: left;
+    }
+    .highlight + .highlight { padding-left: 20px; }
+    .highlight:last-child { border-right: 0; }
+    .highlight:hover { background: color-mix(in srgb, var(--control) 55%, transparent); }
+    .highlight-index { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: var(--violet); color: #111318; font-size: 11px; font-weight: 760; }
+    .highlight-title { display: block; font-size: 13px; font-weight: 620; line-height: 1.48; }
+    .source-line { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; color: var(--muted); font-size: 11px; }
+    .source-line span:first-child { color: var(--blue); }
+
+    .brief-grid { display: grid; min-height: 460px; grid-template-columns: minmax(0, 1.36fr) minmax(340px, .84fr); margin: 28px clamp(24px, 4vw, 56px) 0; padding-bottom: 48px; }
+    .changes { min-width: 0; padding-right: clamp(22px, 3.2vw, 48px); }
+    .next { min-width: 0; border-left: 1px solid var(--line); padding-left: clamp(22px, 3.2vw, 42px); }
+    .section-title { margin: 0 0 20px; font-size: 22px; line-height: 1.2; letter-spacing: -.02em; font-weight: 690; }
+    .timeline { position: relative; }
+    .timeline::before { position: absolute; top: 12px; bottom: 8px; left: 77px; width: 1px; background: var(--line-strong); content: ""; }
+    .timeline-item { position: relative; display: grid; grid-template-columns: 60px minmax(0, 1fr); gap: 28px; padding-bottom: 24px; }
+    .timeline-date { padding-top: 2px; color: var(--muted); font-size: 11px; text-align: right; }
+    .timeline-dot { position: absolute; top: 7px; left: 73px; width: 9px; height: 9px; border: 2px solid var(--window); border-radius: 50%; background: var(--violet); box-shadow: 0 0 0 1px var(--violet); }
+    .timeline-main { min-width: 0; }
+    .timeline-toggle { display: flex; width: 100%; min-height: 32px; align-items: flex-start; gap: 12px; border: 0; background: transparent; color: var(--ink); padding: 0; text-align: left; }
+    .timeline-copy { flex: 1; font-size: 14px; line-height: 1.5; }
+    .person-badge { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--secondary); font-size: 9px; }
+    .chevron { flex: none; margin-top: 6px; color: var(--muted); transition: transform 180ms cubic-bezier(.22, 1, .36, 1); }
+    [aria-expanded="true"] .chevron { transform: rotate(180deg); }
+    .thread-link { display: inline-flex; min-height: 30px; align-items: center; border: 0; background: transparent; color: var(--blue); padding: 0; font-size: 12px; }
+    .thread-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .source-thread { margin: 8px 0 3px; border-radius: 12px; background: var(--surface); padding: 12px 14px; }
+    .source-message { position: relative; padding: 7px 0 7px 13px; color: var(--ink); font-size: 12px; line-height: 1.5; }
+    .source-message::before { position: absolute; top: 9px; bottom: 9px; left: 0; width: 1px; background: var(--violet); content: ""; }
+    .source-author { display: block; margin-bottom: 2px; color: var(--secondary); font-size: 10px; }
+    .more-sources { min-height: 34px; margin-top: 2px; }
+
+    .ledger-group + .ledger-group { margin-top: 27px; }
+    .group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; color: var(--secondary); font-size: 11px; font-weight: 640; }
+    .group-head::after { height: 1px; flex: 1; background: var(--line); content: ""; }
+    .group-head.ai { color: var(--violet); }
+    .group-head svg { width: 15px; height: 15px; }
+    .task-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 11px; border-bottom: 1px solid var(--line); padding: 13px 0; }
+    .task-check { display: grid; width: 30px; height: 30px; place-items: center; }
+    .task-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--blue-fill); }
+    .task-title { color: var(--ink); font-size: 13px; line-height: 1.45; }
+    .task-meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 6px; color: var(--muted); font-size: 10px; }
+    .task-source { display: inline-flex; min-height: 30px; align-items: center; border: 0; background: transparent; color: var(--blue); padding: 0; font-size: 10px; }
+    .task-source:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .task-owner { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid var(--line-strong); border-radius: 50%; color: var(--secondary); font-size: 8px; }
+    .task-row.done .task-title { color: var(--muted); text-decoration: line-through; }
+    .task-row.done { opacity: .72; }
+    .suggestion-row { border-bottom: 1px solid var(--line); padding: 13px 0; }
+    .suggestion-main { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 11px; align-items: start; }
+    .ai-mark { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 8px; background: var(--violet-soft); color: var(--violet); }
+    .ai-mark svg { width: 16px; height: 16px; }
+    .suggestion-title { font-size: 13px; line-height: 1.45; }
+    .suggestion-reason { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .mini-button { min-height: 34px; border: 1px solid color-mix(in srgb, var(--violet) 68%, transparent); border-radius: 8px; background: transparent; color: var(--violet); padding: 0 11px; font-size: 10px; font-weight: 650; }
+    .mini-button:hover { background: var(--violet-soft); }
+    .suggestion-actions { display: flex; flex-wrap: wrap; gap: 7px; margin: 11px 0 0 43px; padding: 10px; border-radius: 12px; background: var(--surface); }
+    .suggestion-actions .control-button { min-height: 34px; font-size: 10px; }
+    .suggestion-row.dismissed { display: none; }
+    .suggestion-row.created .mini-button { border-color: var(--line); color: var(--green); }
+    .suggestion-row.created .suggestion-title::after { margin-left: 7px; color: var(--green); font-size: 10px; content: "Task created"; }
+
+    .state-panel { display: grid; height: 100%; min-height: 100%; place-items: center; padding: 32px; }
+    .state-content { width: min(520px, 100%); text-align: center; }
+    .state-icon { display: grid; width: 46px; height: 46px; margin: 0 auto 17px; place-items: center; border-radius: 12px; background: var(--surface); color: var(--secondary); }
+    .state-icon svg { width: 21px; height: 21px; }
+    .state-content h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+    .state-content p { max-width: 48ch; margin: 9px auto 0; color: var(--secondary); line-height: 1.55; }
+    .state-actions { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
+    .loading-layout { width: min(980px, 100%); }
+    .skeleton { border-radius: 8px; background: var(--surface); animation: pulse 1.1s ease-in-out infinite alternate; }
+    .skeleton.title { width: 320px; height: 34px; }
+    .skeleton.line { width: 78%; height: 13px; margin-top: 15px; }
+    .skeleton.line.short { width: 54%; }
+    .skeleton-grid { display: grid; grid-template-columns: 1.3fr .8fr; gap: 44px; margin-top: 54px; }
+    .skeleton-block { height: 320px; }
+    @keyframes pulse { from { opacity: .48; } to { opacity: 1; } }
+
+    .drawer-scrim { position: absolute; z-index: 30; inset: 0; background: rgba(4, 6, 9, .48); }
+    .source-drawer {
+      position: absolute;
+      z-index: 31;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(430px, calc(100% - 72px));
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--line-strong);
+      background: var(--surface);
+      box-shadow: var(--shadow-drawer);
+      animation: drawer-in 220ms cubic-bezier(.22, 1, .36, 1);
+    }
+    @keyframes drawer-in { from { transform: translateX(24px); opacity: .7; } }
+    .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); padding: 25px 24px 18px; }
+    .drawer-title { margin: 0; font-size: 19px; letter-spacing: -.02em; }
+    .drawer-copy { margin-top: 5px; color: var(--secondary); font-size: 11px; }
+    .close-button { display: grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 12px; background: transparent; color: var(--secondary); }
+    .close-button:hover { background: var(--control-hover); color: var(--ink); }
+    .drawer-body { min-height: 0; overflow-y: auto; padding: 10px 24px 28px; }
+    .source-session { border-bottom: 1px solid var(--line); padding: 16px 0; }
+    .source-session-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; font-weight: 650; }
+    .source-session-meta { margin-top: 5px; color: var(--muted); font-size: 10px; }
+    .source-excerpt { margin: 11px 0 0; color: var(--secondary); font-size: 11px; line-height: 1.5; }
+    .source-session[hidden] { display: none; }
+
+    .toast { position: absolute; z-index: 50; right: 20px; bottom: 20px; display: flex; min-height: 42px; align-items: center; gap: 8px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface-2); color: var(--ink); padding: 0 14px; box-shadow: var(--shadow-toast); font-size: 11px; }
+    .toast svg { width: 15px; height: 15px; color: var(--green); }
+
+    @media (max-width: 1040px) {
+      .digest-head { padding-right: 28px; padding-left: 28px; }
+      .brief-grid { grid-template-columns: 1fr; margin-right: 28px; margin-left: 28px; }
+      .changes { padding-right: 0; }
+      .next { margin-top: 18px; border-top: 1px solid var(--line); border-left: 0; padding-top: 28px; padding-left: 0; }
+      .highlights { grid-template-columns: 1fr; }
+      .highlight, .highlight + .highlight { border-right: 0; border-bottom: 1px solid var(--line); padding: 15px 0; }
+      .highlight:last-child { border-bottom: 0; }
+      .monitor-strip { grid-template-columns: minmax(180px, auto) 1fr; }
+      .monitor-policy { grid-column: 1 / -1; text-align: left; }
+    }
+
+    @media (max-width: 900px) {
+      .head-row { display: block; }
+      .head-actions { flex-wrap: wrap; margin-top: 18px; }
+    }
+
+    @media (max-width: 720px) {
+      .preview-root { padding-right: 8px; padding-left: 8px; }
+      .preview-title span { display: none; }
+      .preview-control span.optional { display: none; }
+      .app-shell { grid-template-columns: 60px minmax(0, 1fr); }
+      .rail { padding-right: 6px; padding-left: 6px; }
+      .rail-button { width: 42px; }
+      .digest-head { padding: 24px 18px 0; }
+      .period-switch { flex: 1; }
+      .period-button { flex: 1; }
+      .report { font-size: 15px; }
+      .monitor-strip { grid-template-columns: 1fr; gap: 12px; }
+      .monitor-policy { grid-column: auto; }
+      .brief-grid { margin-right: 18px; margin-left: 18px; }
+      .source-drawer { width: calc(100% - 60px); }
+      .timeline::before { left: 57px; }
+      .timeline-item { grid-template-columns: 42px minmax(0, 1fr); gap: 26px; }
+      .timeline-dot { left: 53px; }
+      .person-badge { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 1ms !important; animation-iteration-count: 1 !important; transition-duration: 1ms !important; }
+    }
+  </style>
+</head>
+<body><!--
+  THESIS: One calm report turns scattered sessions into verifiable action; it refuses the generic metric-dashboard template.
+  OWN-WORLD: Kordi's continuous near-black canvas, hairline sections, signal-blue citations, and agent-violet recommendations.
+  STORY: Move between today's brief and the week, see when the backend will refresh both, inspect evidence, and confirm next steps.
+  FIRST VIEWPORT: A 72px rail frames the period switch, report, live 100-message monitor, and three cited outcomes; the timeline and action ledger continue below without card walls.
+  FORM: Morning Brief, selected from the third grounded structure; seed b922c1f1.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+  -->
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <defs>
+      <symbol id="i-message" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3 1.5-4A7 7 0 0 1 3 14V8a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+      <symbol id="i-bot" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="3"/><path d="M12 3v4M8 12h.01M16 12h.01M8 16h8"/></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3-1.6 4.1a5 5 0 0 1-2.8 2.8L3.5 11.5l4.1 1.6a5 5 0 0 1 2.8 2.8L12 20l1.6-4.1a5 5 0 0 1 2.8-2.8l4.1-1.6-4.1-1.6a5 5 0 0 1-2.8-2.8z"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.55V21h-4v-.08a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3v-4h.08a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3h4v.08a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.25.61.85 1 1.51 1H21v4h-.08a1.7 1.7 0 0 0-1.52 1z"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15.2A8.5 8.5 0 1 1 8.8 4 7 7 0 0 0 20 15.2z"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></symbol>
+      <symbol id="i-empty" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3 2.8 19h18.4zM12 9v4M12 17h.01"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="preview-bar" aria-label="Demo controls">
+    <div class="preview-title"><span class="preview-dot"></span><strong>AI Digest demo</strong><span>approved Morning Brief direction</span></div>
+    <select id="scenario-select" class="preview-control preview-select" aria-label="Preview state">
+      <option value="ready">Ready</option>
+      <option value="partial">Partial</option>
+      <option value="loading">Loading</option>
+      <option value="empty">Empty</option>
+      <option value="error">Error</option>
+    </select>
+    <button id="simulate-monitor" class="preview-control monitor-sim" type="button" aria-label="Simulate messages reaching the automatic update threshold"><svg><use href="#i-spark"/></svg><span class="optional" id="simulate-monitor-label">Simulate +36 messages</span></button>
+    <button id="theme-toggle" class="preview-control" type="button"><svg><use href="#i-sun"/></svg><span class="optional">Light</span></button>
+    <button id="reset-demo" class="preview-control" type="button"><svg><use href="#i-refresh"/></svg><span class="optional">Reset</span></button>
+  </div>
+
+  <div class="preview-root">
+    <section class="app-window" aria-label="Kordi desktop AI Digest preview">
+      <div class="app-shell">
+        <aside class="rail" aria-label="Kordi navigation">
+          <div class="traffic" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="app-mark" aria-label="Kordi">K</div>
+          <nav class="rail-nav">
+            <button class="rail-button" type="button" title="Chats" aria-label="Chats"><svg><use href="#i-message"/></svg></button>
+            <button class="rail-button" type="button" title="Contacts" aria-label="Contacts"><svg><use href="#i-users"/></svg></button>
+            <button class="rail-button" type="button" title="Agents" aria-label="Agents"><svg><use href="#i-bot"/></svg></button>
+            <button class="rail-button active" type="button" title="Digest" aria-label="Digest" aria-current="page"><svg><use href="#i-spark"/></svg></button>
+          </nav>
+          <div class="rail-bottom">
+            <button class="rail-button" type="button" title="Settings" aria-label="Settings"><svg><use href="#i-settings"/></svg></button>
+            <div class="avatar" aria-label="Shuyang">SY</div>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div class="main-scroll" id="main-scroll">
+            <div class="content-ready" data-view="ready">
+              <header class="digest-head">
+                <div class="head-row">
+                  <div class="head-copy">
+                    <h1 id="report-title">Your weekly brief</h1>
+                    <div class="range-line">
+                      <span id="date-range">Aug 3–9</span><span class="meta-separator">·</span>
+                      <button class="link-button" id="sessions-included" type="button" data-open-sources>23 sessions included</button><span class="meta-separator">·</span>
+                      <span id="generation-time">Generated 4 minutes ago</span>
+                    </div>
+                  </div>
+                  <div class="head-actions">
+                    <div class="period-switch" role="group" aria-label="Report period">
+                      <button class="period-button" type="button" aria-pressed="false" data-report-period="daily">Daily</button>
+                      <button class="period-button active" type="button" aria-pressed="true" data-report-period="weekly">Weekly</button>
+                    </div>
+                    <div class="range-wrap">
+                      <button id="range-button" class="control-button" type="button" aria-label="Weekly report uses a fixed trailing seven-day window in this preview" disabled>7 days</button>
+                    </div>
+                    <button id="refresh-button" class="control-button" type="button"><svg><use href="#i-refresh"/></svg>Refresh</button>
+                    <button class="control-button primary" type="button" data-open-sources>View sources</button>
+                  </div>
+                </div>
+
+                <p class="report" id="report-copy">This week, Kordi <strong>aligned on the account invitation flow</strong>, traced a cloud-agent reliability issue to stale runtime routing, and prepared the next release notes. Two decisions are ready to ship; one reliability fix still needs validation before rollout.</p>
+                <div class="coverage-note" id="coverage-note"><svg><use href="#i-check"/></svg><span id="coverage-text">All accessible sessions in this range were included. Private and deleted sessions were excluded.</span></div>
+                <div class="partial-warning" id="partial-warning" hidden><svg><use href="#i-alert"/></svg><span id="partial-warning-text"><strong>Partial coverage:</strong> 20 of 23 eligible sessions were included. Two sessions timed out during retrieval and one source was redacted after access changed. The usable results below remain linked to validated sources.</span></div>
+
+                <div class="monitor-strip" id="monitor-strip" aria-live="polite">
+                  <div class="monitor-identity"><span class="monitor-dot" aria-hidden="true"></span><div><strong id="monitor-title">Backend monitor active</strong><span id="monitor-subtitle">Watching eligible session messages</span></div></div>
+                  <div class="monitor-meter"><div class="monitor-meter-copy"><span id="monitor-count">64 of 100 new messages</span><span id="monitor-next">36 until automatic update</span></div><progress class="monitor-progress" id="monitor-progress" max="100" value="64" aria-label="64 of 100 eligible messages until the next automatic report update"></progress></div>
+                  <div class="monitor-policy"><strong id="monitor-policy-title">Daily + weekly update together</strong><span id="monitor-policy-copy">Access and source references are checked again before generation</span></div>
+                </div>
+
+                <div class="highlights" aria-label="Key outcomes">
+                  <button class="highlight" type="button" data-timeline="invitation">
+                    <span class="highlight-index">1</span>
+                    <span><span class="highlight-title" id="highlight-invitation-title">Use short Kordi IDs and shareable app links for invitations.</span><span class="source-line"><span>Account invitations</span><span id="highlight-invitation-date">Aug 8</span></span></span>
+                  </button>
+                  <button class="highlight" type="button" data-timeline="reliability">
+                    <span class="highlight-index">2</span>
+                    <span><span class="highlight-title" id="highlight-reliability-title">Runtime-route fallback is the remaining cloud-agent release blocker.</span><span class="source-line"><span>Cloud reliability</span><span id="highlight-reliability-date">Aug 7</span></span></span>
+                  </button>
+                  <button class="highlight" type="button" data-timeline="release">
+                    <span class="highlight-index">3</span>
+                    <span><span class="highlight-title" id="highlight-release-title">The What’s New surface is ready for final copy and QA.</span><span class="source-line"><span>Release planning</span><span id="highlight-release-date">Aug 6</span></span></span>
+                  </button>
+                </div>
+              </header>
+
+              <div class="brief-grid">
+                <section class="changes" aria-labelledby="changes-title">
+                  <h2 class="section-title" id="changes-title">What changed</h2>
+                  <div class="timeline">
+                    <article class="timeline-item" id="timeline-release">
+                      <time class="timeline-date" id="timeline-release-date">Aug 9</time><span class="timeline-dot" aria-hidden="true"></span>
+                      <div class="timeline-main">
+                        <button class="timeline-toggle" type="button" aria-expanded="false" aria-controls="sources-release">
+                          <span class="timeline-copy" id="timeline-release-copy">The beta release note flow moved from a one-off dialog to a reusable, versioned surface.</span><span class="person-badge">SY</span><svg class="chevron"><use href="#i-chevron"/></svg>
+                        </button>
+                        <button class="thread-link" id="timeline-release-source" type="button">Release planning · Aug 9</button>
+                        <div class="source-thread" id="sources-release" hidden>
+                          <div class="source-message"><span class="source-author">Shuyang · 10:22</span>The final surface should stay square on desktop and preserve a concise change list.</div>
+                          <div class="source-message"><span class="source-author">My Kordi · 10:31</span>The implementation now has a version manifest, launch policy, and replay path.</div>
+                        </div>
+                      </div>
+                    </article>
+
+                    <article class="timeline-item" id="timeline-invitation">
+                      <time class="timeline-date" id="timeline-invitation-date">Aug 8</time><span class="timeline-dot" aria-hidden="true"></span>
+                      <div class="timeline-main">
+                        <button class="timeline-toggle" type="button" aria-expanded="true" aria-controls="sources-invitation">
+                          <span class="timeline-copy" id="timeline-invitation-copy">The account invitation direction converged on public nine-digit Kordi IDs and app invitation links.</span><span class="person-badge">SY</span><svg class="chevron"><use href="#i-chevron"/></svg>
+                        </button>
+                        <button class="thread-link" id="timeline-invitation-source" type="button">Account invitations · Aug 8</button>
+                        <div class="source-thread" id="sources-invitation">
+                          <div class="source-message"><span class="source-author">Shuyang · 14:06</span>Raw account IDs should never appear in the product. Give people a short Kordi ID they can share.</div>
+                          <div class="source-message"><span class="source-author">My Kordi · 14:11</span>App invitation links can carry discovery without exposing account internals.</div>
+                          <div class="source-message"><span class="source-author">Design review · 15:03</span>Keep profile and invitation actions together in the account menu.</div>
+                        </div>
+                        <button class="thread-link more-sources" type="button" data-open-sources>View 5 more source messages</button>
+                      </div>
+                    </article>
+
+                    <article class="timeline-item" id="timeline-reliability">
+                      <time class="timeline-date" id="timeline-reliability-date">Aug 7</time><span class="timeline-dot" aria-hidden="true"></span>
+                      <div class="timeline-main">
+                        <button class="timeline-toggle" type="button" aria-expanded="false" aria-controls="sources-reliability">
+                          <span class="timeline-copy" id="timeline-reliability-copy">Cloud-agent requests were narrowed to stale runtime routes when an owned agent changed execution location.</span><span class="person-badge">MK</span><svg class="chevron"><use href="#i-chevron"/></svg>
+                        </button>
+                        <button class="thread-link" id="timeline-reliability-source" type="button">Cloud reliability · Aug 7</button>
+                        <div class="source-thread" id="sources-reliability" hidden>
+                          <div class="source-message"><span class="source-author">My Kordi · 09:42</span>The request remains valid, but the cached route points at a runtime that no longer owns the agent.</div>
+                          <div class="source-message"><span class="source-author">Shuyang · 10:04</span>Add a server-resolved fallback and cover route changes in the Cloud session tests.</div>
+                        </div>
+                      </div>
+                    </article>
+                  </div>
+                </section>
+
+                <aside class="next" aria-labelledby="next-title">
+                  <h2 class="section-title" id="next-title">Do next</h2>
+                  <section class="ledger-group" aria-labelledby="commitments-title">
+                    <div class="group-head" id="commitments-title">Extracted commitments</div>
+                    <article class="task-row">
+                      <label class="task-check"><input type="checkbox" aria-label="Mark invitation profile copy complete" /></label>
+                      <span><span class="task-title">Approve the invitation profile copy and share-link labels.</span><span class="task-meta"><span>Account invitations</span><span>·</span><span>Due today</span></span><button class="task-source" type="button" data-open-sources data-source-session="Account invitations" data-source-message="Profile menu invitation copy decision">View source message</button></span>
+                      <span class="task-owner" title="Assigned to you">You</span>
+                    </article>
+                    <article class="task-row">
+                      <label class="task-check"><input type="checkbox" aria-label="Mark runtime route validation complete" /></label>
+                      <span><span class="task-title">Validate runtime-route fallback against owned cloud-agent sessions.</span><span class="task-meta"><span>Cloud reliability</span><span>·</span><span>Due Tuesday</span></span><button class="task-source" type="button" data-open-sources data-source-session="Cloud reliability" data-source-message="Runtime route fallback validation request">View source message</button></span>
+                      <span class="task-owner" title="Assigned to you">You</span>
+                    </article>
+                  </section>
+
+                  <section class="ledger-group" aria-labelledby="suggestions-title">
+                    <div class="group-head ai" id="suggestions-title"><svg><use href="#i-spark"/></svg>AI suggestions</div>
+                    <article class="suggestion-row">
+                      <div class="suggestion-main">
+                        <span class="ai-mark"><svg><use href="#i-spark"/></svg></span>
+                        <div><div class="suggestion-title">Draft the public changelog entry while release context is fresh.</div><div class="suggestion-reason">Release planning mentions the same changes in three sessions, but no public summary exists yet.</div></div>
+                        <button class="mini-button review-suggestion" type="button" aria-expanded="false" aria-controls="suggestion-release-actions">Review</button>
+                      </div>
+                      <div class="suggestion-actions" id="suggestion-release-actions" hidden>
+                        <button class="control-button create-task" type="button">Create task</button>
+                        <button class="control-button dismiss-suggestion" type="button">Dismiss</button>
+                        <button class="link-button" type="button" data-open-sources data-source-session="Release planning" data-source-message="Public changelog follow-up">Inspect source session</button>
+                      </div>
+                    </article>
+                    <article class="suggestion-row">
+                      <div class="suggestion-main">
+                        <span class="ai-mark"><svg><use href="#i-spark"/></svg></span>
+                        <div><div class="suggestion-title">Add a regression alert for runtime-route mismatches.</div><div class="suggestion-reason">The failure was diagnosed manually and can recur after agent ownership or execution changes.</div></div>
+                        <button class="mini-button review-suggestion" type="button" aria-expanded="false" aria-controls="suggestion-reliability-actions">Review</button>
+                      </div>
+                      <div class="suggestion-actions" id="suggestion-reliability-actions" hidden>
+                        <button class="control-button create-task" type="button">Create task</button>
+                        <button class="control-button dismiss-suggestion" type="button">Dismiss</button>
+                        <button class="link-button" type="button" data-open-sources data-source-session="Cloud reliability" data-source-message="Runtime-route regression alert">Inspect source session</button>
+                      </div>
+                    </article>
+                  </section>
+                </aside>
+              </div>
+            </div>
+
+            <div class="state-panel" data-view="loading" hidden aria-live="polite" aria-busy="true">
+              <div class="loading-layout" aria-label="Generating digest">
+                <div class="skeleton title"></div><div class="skeleton line"></div><div class="skeleton line short"></div>
+                <div class="skeleton-grid"><div class="skeleton skeleton-block"></div><div class="skeleton skeleton-block"></div></div>
+              </div>
+            </div>
+
+            <div class="state-panel" data-view="empty" hidden>
+              <div class="state-content"><div class="state-icon"><svg><use href="#i-empty"/></svg></div><h2>No sessions in this range</h2><p>Choose a longer time range or start a conversation. Kordi will build your first brief after there is activity to summarize.</p><div class="state-actions"><button class="control-button primary show-ready" type="button">Show 30 days</button></div></div>
+            </div>
+
+            <div class="state-panel" data-view="error" hidden>
+              <div class="state-content"><div class="state-icon" style="color:var(--danger);background:var(--danger-soft)"><svg><use href="#i-alert"/></svg></div><h2>The brief could not be generated</h2><p>Your sessions are safe. The AI generation request timed out before a complete, source-validated report was available.</p><div class="state-actions"><button class="control-button primary show-ready" type="button">Try again</button><button class="control-button" type="button" data-open-sources>Review scope</button></div></div>
+            </div>
+          </div>
+
+          <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+          <aside class="source-drawer" id="source-drawer" hidden role="dialog" aria-modal="true" aria-labelledby="source-drawer-title" tabindex="-1">
+            <header class="drawer-head"><div><h2 class="drawer-title" id="source-drawer-title">Sources in this brief</h2><div class="drawer-copy" id="source-drawer-copy">Showing 4 cited sessions from 23 eligible sessions · 186 messages · Aug 3–9</div></div><button class="close-button" id="close-drawer" type="button" aria-label="Close sources"><svg><use href="#i-close"/></svg></button></header>
+            <div class="drawer-body">
+              <article class="source-session" data-session="Account invitations"><div class="source-session-title"><span>Account invitations</span><button class="link-button" type="button">Open cited message</button></div><div class="source-session-meta">8 cited messages · Shuyang + My Kordi</div><p class="source-excerpt">Public Kordi IDs, invitation links, and profile-menu placement support the approved flow.</p></article>
+              <article class="source-session" data-session="Cloud reliability"><div class="source-session-title"><span>Cloud reliability</span><button class="link-button" type="button">Open cited message</button></div><div class="source-session-meta">6 cited messages · Shuyang + My Kordi</div><p class="source-excerpt">Runtime route changes, fallback ownership, and regression coverage support the blocker summary.</p></article>
+              <article class="source-session" data-session="Release planning"><div class="source-session-title"><span>Release planning</span><button class="link-button" type="button">Open cited message</button></div><div class="source-session-meta">5 cited messages · Shuyang + My Kordi</div><p class="source-excerpt">The versioned What’s New surface and changelog discussion support the release follow-up.</p></article>
+              <article class="source-session" data-session="Desktop visual QA"><div class="source-session-title"><span>Desktop visual QA</span><button class="link-button" type="button">Open cited message</button></div><div class="source-session-meta">4 cited messages · Shuyang</div><p class="source-excerpt">Layout checks and acceptance notes confirm what remains before shipping.</p></article>
+            </div>
+          </aside>
+          <div class="toast" id="toast" hidden role="status"><svg><use href="#i-check"/></svg><span></span></div>
+        </main>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const body = document.body;
+    const views = [...document.querySelectorAll('[data-view]')];
+    const scenarioSelect = document.getElementById('scenario-select');
+    const themeToggle = document.getElementById('theme-toggle');
+    const refreshButton = document.getElementById('refresh-button');
+    const sourceDrawer = document.getElementById('source-drawer');
+    const drawerScrim = document.getElementById('drawer-scrim');
+    const closeDrawerButton = document.getElementById('close-drawer');
+    const drawerTitle = document.getElementById('source-drawer-title');
+    const drawerCopy = document.getElementById('source-drawer-copy');
+    const sourceSessions = [...document.querySelectorAll('.source-session')];
+    const partialWarning = document.getElementById('partial-warning');
+    const partialWarningText = document.getElementById('partial-warning-text');
+    const coverageNote = document.getElementById('coverage-note');
+    const coverageText = document.getElementById('coverage-text');
+    const periodButtons = [...document.querySelectorAll('[data-report-period]')];
+    const rangeWrap = document.querySelector('.range-wrap');
+    const simulateMonitorButton = document.getElementById('simulate-monitor');
+    const simulateMonitorLabel = document.getElementById('simulate-monitor-label');
+    const monitorStrip = document.getElementById('monitor-strip');
+    const monitorTitle = document.getElementById('monitor-title');
+    const monitorSubtitle = document.getElementById('monitor-subtitle');
+    const monitorCountText = document.getElementById('monitor-count');
+    const monitorNext = document.getElementById('monitor-next');
+    const monitorProgress = document.getElementById('monitor-progress');
+    const monitorPolicyTitle = document.getElementById('monitor-policy-title');
+    const monitorPolicyCopy = document.getElementById('monitor-policy-copy');
+    const previewBar = document.querySelector('.preview-bar');
+    const rail = document.querySelector('.rail');
+    const mainScroll = document.getElementById('main-scroll');
+    const toast = document.getElementById('toast');
+    const baselineTasks = [
+      { id: 'approve-invitation-copy', title: 'Approve the invitation profile copy and share-link labels.', session: 'Account invitations', due: 'Due today', sourceMessage: 'Profile menu invitation copy decision', checkboxLabel: 'Mark invitation profile copy complete' },
+      { id: 'validate-runtime-route', title: 'Validate runtime-route fallback against owned cloud-agent sessions.', session: 'Cloud reliability', due: 'Due Tuesday', sourceMessage: 'Runtime route fallback validation request', checkboxLabel: 'Mark runtime route validation complete' },
+    ];
+    const updatedTasks = [
+      { id: 'merge-invitation-copy', title: 'Merge the approved invitation copy and share-link labels.', session: 'Account invitations', due: 'Due today', sourceMessage: 'Approved invitation copy merge request', checkboxLabel: 'Mark invitation copy merge complete' },
+      { id: 'add-route-alert', title: 'Add the runtime-route mismatch regression alert.', session: 'Cloud reliability', due: 'Due Tuesday', sourceMessage: 'Runtime route regression alert follow-up', checkboxLabel: 'Mark route mismatch alert complete' },
+    ];
+    const baselineSuggestions = [
+      { id: 'draft-public-changelog', title: 'Draft the public changelog entry while release context is fresh.', reason: 'Release planning mentions the same changes in three sessions, but no public summary exists yet.', session: 'Release planning', sourceMessage: 'Public changelog follow-up' },
+      { id: 'suggest-route-alert', title: 'Add a regression alert for runtime-route mismatches.', reason: 'The failure was diagnosed manually and can recur after agent ownership or execution changes.', session: 'Cloud reliability', sourceMessage: 'Runtime-route regression alert' },
+    ];
+    const updatedSuggestions = [
+      { id: 'schedule-changelog-qa', title: 'Schedule final changelog QA with the release owner.', reason: 'The public draft entered final review, but no final QA owner or review window is recorded.', session: 'Release planning', sourceMessage: 'Final changelog QA handoff' },
+      { id: 'backfill-ownership-route-test', title: 'Backfill an ownership-migration route test.', reason: 'The fallback passed current owned-session cases; an ownership-migration case would harden the same path.', session: 'Cloud reliability', sourceMessage: 'Ownership migration regression coverage' },
+    ];
+    const baselineEvidence = {
+      release: [
+        ['Shuyang · 10:22', 'The final surface should stay square on desktop and preserve a concise change list.'],
+        ['My Kordi · 10:31', 'The implementation now has a version manifest, launch policy, and replay path.'],
+      ],
+      invitation: [
+        ['Shuyang · 14:06', 'Raw account IDs should never appear in the product. Give people a short Kordi ID they can share.'],
+        ['My Kordi · 14:11', 'App invitation links can carry discovery without exposing account internals.'],
+        ['Design review · 15:03', 'Keep profile and invitation actions together in the account menu.'],
+      ],
+      reliability: [
+        ['My Kordi · 09:42', 'The request remains valid, but the cached route points at a runtime that no longer owns the agent.'],
+        ['Shuyang · 10:04', 'Add a server-resolved fallback and cover route changes in the Cloud session tests.'],
+      ],
+    };
+    const updatedEvidence = {
+      release: [
+        ['Shuyang · 16:18', 'The public changelog draft is complete. Schedule final QA with the release owner before publishing.'],
+        ['My Kordi · 16:24', 'The reviewed change set introduces no new release blocker.'],
+      ],
+      invitation: [
+        ['Design review · 15:41', 'Profile copy and share-link labels are approved for the account invitation flow.'],
+        ['Shuyang · 15:47', 'Merge the approved copy with the invitation surface in the next desktop change.'],
+        ['My Kordi · 15:52', 'The source references and public Kordi ID wording remain unchanged.'],
+      ],
+      reliability: [
+        ['My Kordi · 16:02', 'Owned-session validation passed after the runtime route changed execution location.'],
+        ['Shuyang · 16:09', 'Keep the fallback and add a route-mismatch alert plus ownership-migration regression coverage.'],
+      ],
+    };
+    const reportContent = {
+      weekly: {
+        title: 'Your weekly brief',
+        date: 'Aug 4–10',
+        sessions: 23,
+        messages: 186,
+        generated: 'Generated 4 minutes ago',
+        fullCoverage: 'All accessible sessions in this range were included. Private and deleted sessions were excluded.',
+        partialCoverage: '20 of 23 eligible sessions were included. Results remain available with omissions called out below.',
+        partialWarning: '20 of 23 eligible sessions were included. Two sessions timed out during retrieval and one source was redacted after access changed. The usable results below remain linked to validated sources.',
+        baseline: {
+          report: 'During the last seven days, Kordi <strong>aligned on the account invitation flow</strong>, traced a cloud-agent reliability issue to stale runtime routing, and prepared the next release notes. Copy approval and fallback validation remain before rollout.',
+          highlights: [['Use short Kordi IDs and shareable app links for invitations.', 'Aug 8'], ['Runtime-route fallback still needs owned-session validation.', 'Aug 7'], ['The What’s New surface is ready for changelog drafting.', 'Aug 9']],
+          timeline: [['Aug 9', 'The beta release note flow moved from a one-off dialog to a reusable, versioned surface.', 'Release planning · Aug 9'], ['Aug 8', 'The account invitation direction converged on public nine-digit Kordi IDs and app invitation links.', 'Account invitations · Aug 8'], ['Aug 7', 'Cloud-agent requests were narrowed to stale runtime routes when an owned agent changed execution location.', 'Cloud reliability · Aug 7']],
+          tasks: baselineTasks, suggestions: baselineSuggestions, evidence: baselineEvidence,
+        },
+        updated: {
+          report: 'The latest 100-message monitor batch <strong>confirmed the invitation direction</strong>, verified the runtime-route fallback, and moved the public changelog draft into final review. No release blocker remains.',
+          highlights: [['Invitation copy and share-link labels are approved for merge.', 'Today'], ['Runtime-route fallback passed owned-session validation.', 'Today'], ['The public changelog draft entered final review.', 'Today']],
+          timeline: [['Today', 'The public changelog draft entered final review; final QA still needs an owner and review window.', 'Release planning · Today'], ['Today', 'Invitation profile copy and share-link labels were approved and queued for merge.', 'Account invitations · Today'], ['Today', 'Owned cloud-agent validation passed; regression coverage is the remaining hardening step.', 'Cloud reliability · Today']],
+          tasks: updatedTasks, suggestions: updatedSuggestions, evidence: updatedEvidence,
+        },
+      },
+      daily: {
+        title: 'Your daily brief',
+        date: 'Today · Aug 10',
+        sessions: 8,
+        messages: 86,
+        generated: 'Generated 2 minutes ago',
+        fullCoverage: 'All accessible sessions with activity today were included. Private and deleted sessions were excluded.',
+        partialCoverage: '7 of 8 eligible sessions were included. Results remain available with one omission called out below.',
+        partialWarning: '7 of 8 eligible sessions were included. One source timed out during retrieval. The usable results below remain linked to validated sources.',
+        baseline: {
+          report: 'Today, Kordi <strong>prepared invitation copy for approval</strong>, narrowed the runtime-route fallback validation plan, and confirmed the public changelog scope. Copy approval and fallback validation remain open.',
+          highlights: [['Invitation profile copy is ready for approval.', 'Today'], ['Cloud fallback is ready for owned-session validation.', 'Today'], ['Release-note scope is ready for changelog drafting.', 'Today']],
+          timeline: [['Today', 'Release-note scope was confirmed and the public changelog entry is ready to draft.', 'Release planning · Today'], ['Today', 'Profile copy and share-link labels moved into approval for the account invitation flow.', 'Account invitations · Today'], ['Today', 'The runtime-route fallback validation plan was narrowed to owned cloud-agent sessions.', 'Cloud reliability · Today']],
+          tasks: baselineTasks, suggestions: baselineSuggestions, evidence: baselineEvidence,
+        },
+        updated: {
+          report: 'Today’s latest monitor batch <strong>confirmed the invitation copy and runtime-route fallback</strong>, then moved the public changelog draft into final review. Merge, alerting, and final QA are the remaining follow-ups.',
+          highlights: [['Invitation copy and share-link labels are approved for merge.', 'Today'], ['Runtime-route fallback passed owned-session validation.', 'Today'], ['The public changelog draft entered final review.', 'Today']],
+          timeline: [['Today', 'The public changelog draft entered final review; final QA still needs an owner and review window.', 'Release planning · Today'], ['Today', 'Invitation profile copy and share-link labels were approved and queued for merge.', 'Account invitations · Today'], ['Today', 'Owned cloud-agent validation passed; regression coverage is the remaining hardening step.', 'Cloud reliability · Today']],
+          tasks: updatedTasks, suggestions: updatedSuggestions, evidence: updatedEvidence,
+        },
+      },
+    };
+    let toastTimer = null;
+    let lastDrawerTrigger = null;
+    let monitorTimer = null;
+    let monitorCount = 64;
+    let monitorUpdateScope = null;
+    let lastAutomaticUpdate = false;
+    let currentPeriod = 'weekly';
+    const reportStates = { daily: { updated: false }, weekly: { updated: false } };
+    const taskFeedback = new Map();
+    const suggestionFeedback = new Map();
+
+    function icon(id) {
+      return `<svg><use href="#${id}"/></svg>`;
+    }
+
+    function updateCoverage(isPartial) {
+      const content = reportContent[currentPeriod];
+      partialWarning.hidden = !isPartial;
+      coverageNote.classList.toggle('partial', isPartial);
+      coverageNote.querySelector('use').setAttribute('href', isPartial ? '#i-alert' : '#i-check');
+      coverageText.textContent = isPartial ? content.partialCoverage : content.fullCoverage;
+      partialWarningText.innerHTML = `<strong>Partial coverage:</strong> ${content.partialWarning}`;
+    }
+
+    function applyTasks(tasks) {
+      document.querySelectorAll('.task-row').forEach((row, index) => {
+        const task = tasks[index];
+        const meta = row.querySelectorAll('.task-meta span');
+        const completed = taskFeedback.get(task.id) === true;
+        row.dataset.itemId = task.id;
+        row.classList.toggle('done', completed);
+        row.querySelector('.task-check input').checked = completed;
+        row.querySelector('.task-check input').setAttribute('aria-label', task.checkboxLabel);
+        row.querySelector('.task-title').textContent = task.title;
+        meta[0].textContent = task.session;
+        meta[2].textContent = task.due;
+        row.querySelector('.task-source').dataset.sourceSession = task.session;
+        row.querySelector('.task-source').dataset.sourceMessage = task.sourceMessage;
+      });
+    }
+
+    function applySuggestions(suggestions) {
+      document.querySelectorAll('.suggestion-row').forEach((row, index) => {
+        const suggestion = suggestions[index];
+        const feedback = suggestionFeedback.get(suggestion.id) ?? { status: null, expanded: false };
+        row.dataset.itemId = suggestion.id;
+        row.classList.toggle('dismissed', feedback.status === 'dismissed');
+        row.classList.toggle('created', feedback.status === 'created');
+        row.querySelector('.suggestion-title').textContent = suggestion.title;
+        row.querySelector('.suggestion-reason').textContent = suggestion.reason;
+        const review = row.querySelector('.review-suggestion');
+        review.textContent = feedback.status === 'created' ? 'Created' : feedback.expanded ? 'Close' : 'Review';
+        review.setAttribute('aria-expanded', String(feedback.status === null && feedback.expanded));
+        row.querySelector('.suggestion-actions').hidden = feedback.status !== null || !feedback.expanded;
+        const source = row.querySelector('[data-open-sources]');
+        source.dataset.sourceSession = suggestion.session;
+        source.dataset.sourceMessage = suggestion.sourceMessage;
+      });
+    }
+
+    function applyEvidence(snapshot) {
+      ['release', 'invitation', 'reliability'].forEach((key, index) => {
+        const messages = document.querySelectorAll(`#sources-${key} .source-message`);
+        snapshot.evidence[key].forEach(([author, copy], messageIndex) => {
+          messages[messageIndex].innerHTML = `<span class="source-author">${author}</span>${copy}`;
+        });
+        const sessionName = key === 'release' ? 'Release planning' : key === 'invitation' ? 'Account invitations' : 'Cloud reliability';
+        const session = document.querySelector(`.source-session[data-session="${sessionName}"]`);
+        session.querySelector('.source-session-meta').textContent = `${snapshot.evidence[key].length} exact cited messages · Shuyang + My Kordi`;
+        session.querySelector('.source-excerpt').textContent = snapshot.timeline[index][1];
+      });
+    }
+
+    function applyReportPeriod(period, announce = true) {
+      currentPeriod = period;
+      const content = reportContent[period];
+      const state = reportStates[period];
+      const snapshot = state.updated ? content.updated : content.baseline;
+      periodButtons.forEach((button) => {
+        const active = button.dataset.reportPeriod === period;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+      document.getElementById('report-title').textContent = content.title;
+      document.getElementById('date-range').textContent = content.date;
+      document.getElementById('sessions-included').textContent = `${content.sessions} sessions included`;
+      document.getElementById('generation-time').textContent = state.updated ? 'Updated just now' : content.generated;
+      document.getElementById('report-copy').innerHTML = snapshot.report;
+      ['invitation', 'reliability', 'release'].forEach((key, index) => {
+        document.getElementById(`highlight-${key}-title`).textContent = snapshot.highlights[index][0];
+        document.getElementById(`highlight-${key}-date`).textContent = snapshot.highlights[index][1];
+      });
+      ['release', 'invitation', 'reliability'].forEach((key, index) => {
+        document.getElementById(`timeline-${key}-date`).textContent = snapshot.timeline[index][0];
+        document.getElementById(`timeline-${key}-copy`).textContent = snapshot.timeline[index][1];
+        document.getElementById(`timeline-${key}-source`).textContent = snapshot.timeline[index][2];
+      });
+      applyTasks(snapshot.tasks);
+      applySuggestions(snapshot.suggestions);
+      applyEvidence(snapshot);
+      rangeWrap.hidden = period === 'daily';
+      updateCoverage(scenarioSelect.value === 'partial');
+      if (announce) showToast(`${period === 'daily' ? 'Daily' : 'Weekly'} report opened`);
+    }
+
+    function renderMonitor(updating = false) {
+      const remaining = Math.max(0, 100 - monitorCount);
+      monitorStrip.classList.toggle('updating', updating);
+      monitorProgress.value = monitorCount;
+      monitorProgress.setAttribute('aria-label', `${monitorCount} of 100 eligible messages until the next automatic report update`);
+      monitorCountText.textContent = `${monitorCount} of 100 new messages`;
+      if (updating) {
+        const updatingBoth = monitorUpdateScope === 'both';
+        monitorTitle.textContent = updatingBoth ? 'Updating both reports' : `Refreshing ${currentPeriod === 'daily' ? 'Daily' : 'Weekly'} report`;
+        monitorSubtitle.textContent = updatingBoth ? 'Threshold reached · validating sources and permissions' : 'Manual refresh · cached report remains readable';
+        monitorNext.textContent = updatingBoth ? 'Update in progress' : 'Manual refresh in progress';
+        monitorPolicyTitle.textContent = updatingBoth ? 'Daily + weekly update together' : `Only ${currentPeriod === 'daily' ? 'Daily' : 'Weekly'} updates manually`;
+        monitorPolicyCopy.textContent = updatingBoth ? 'Access and source references are checked again before generation' : 'The other cached report keeps its own version and timestamp';
+      } else {
+        monitorTitle.textContent = 'Backend monitor active';
+        monitorSubtitle.textContent = lastAutomaticUpdate ? 'Last automatic update completed just now' : 'Watching eligible session messages';
+        monitorNext.textContent = `${remaining} until automatic update`;
+        monitorPolicyTitle.textContent = 'Daily + weekly update together';
+        monitorPolicyCopy.textContent = 'Access and source references are checked again before generation';
+      }
+      simulateMonitorLabel.textContent = updating ? 'Updating reports…' : `Simulate +${remaining || 100} messages`;
+      simulateMonitorButton.disabled = updating;
+      refreshButton.disabled = updating;
+      periodButtons.forEach((button) => { button.disabled = updating; });
+    }
+
+    function setView(view) {
+      views.forEach((element) => {
+        const showReady = element.dataset.view === 'ready' && (view === 'ready' || view === 'partial');
+        element.hidden = !showReady && element.dataset.view !== view;
+      });
+      const isPartial = view === 'partial';
+      updateCoverage(isPartial);
+      scenarioSelect.value = view;
+      closeDrawer(false);
+    }
+
+    function showToast(message) {
+      window.clearTimeout(toastTimer);
+      toast.querySelector('span').textContent = message;
+      toast.hidden = false;
+      toastTimer = window.setTimeout(() => { toast.hidden = true; }, 2200);
+    }
+
+    function openDrawer(trigger) {
+      lastDrawerTrigger = trigger;
+      const scopedSession = trigger.dataset.sourceSession;
+      const scopedMessage = trigger.dataset.sourceMessage;
+      sourceSessions.forEach((session) => {
+        session.hidden = Boolean(scopedSession) && session.dataset.session !== scopedSession;
+      });
+      if (scopedSession) {
+        drawerTitle.textContent = `Sources for ${scopedSession}`;
+        drawerCopy.textContent = `${scopedMessage} · exact cited session`;
+      } else {
+        const content = reportContent[currentPeriod];
+        const partialIncluded = currentPeriod === 'daily' ? 7 : 20;
+        const omitted = content.sessions - partialIncluded;
+        drawerTitle.textContent = 'Sources in this brief';
+        drawerCopy.textContent = scenarioSelect.value === 'partial'
+          ? `Showing 4 cited sessions from ${partialIncluded} included sessions · ${omitted} eligible ${omitted === 1 ? 'session' : 'sessions'} omitted`
+          : `Showing 4 cited sessions from ${content.sessions} eligible sessions · ${content.messages} messages · ${content.date}`;
+      }
+      drawerScrim.hidden = false;
+      sourceDrawer.hidden = false;
+      previewBar.inert = true;
+      rail.inert = true;
+      mainScroll.inert = true;
+      previewBar.setAttribute('inert', '');
+      rail.setAttribute('inert', '');
+      mainScroll.setAttribute('inert', '');
+      previewBar.setAttribute('aria-hidden', 'true');
+      rail.setAttribute('aria-hidden', 'true');
+      mainScroll.setAttribute('aria-hidden', 'true');
+      closeDrawerButton.focus();
+    }
+
+    function closeDrawer(restoreFocus = true) {
+      if (sourceDrawer.hidden) return;
+      drawerScrim.hidden = true;
+      sourceDrawer.hidden = true;
+      previewBar.inert = false;
+      rail.inert = false;
+      mainScroll.inert = false;
+      previewBar.removeAttribute('inert');
+      rail.removeAttribute('inert');
+      mainScroll.removeAttribute('inert');
+      previewBar.removeAttribute('aria-hidden');
+      rail.removeAttribute('aria-hidden');
+      mainScroll.removeAttribute('aria-hidden');
+      if (restoreFocus && lastDrawerTrigger?.isConnected) lastDrawerTrigger.focus();
+      lastDrawerTrigger = null;
+    }
+
+    scenarioSelect.addEventListener('change', () => setView(scenarioSelect.value));
+
+    periodButtons.forEach((button) => {
+      button.addEventListener('click', () => applyReportPeriod(button.dataset.reportPeriod));
+    });
+
+    simulateMonitorButton.addEventListener('click', () => {
+      window.clearTimeout(monitorTimer);
+      monitorCount = 100;
+      monitorUpdateScope = 'both';
+      renderMonitor(true);
+      monitorTimer = window.setTimeout(() => {
+        monitorCount = 0;
+        reportStates.daily.updated = true;
+        reportStates.weekly.updated = true;
+        lastAutomaticUpdate = true;
+        monitorUpdateScope = null;
+        applyReportPeriod(currentPeriod, false);
+        renderMonitor(false);
+        showToast('Daily and weekly reports updated from 100 new messages');
+      }, 1050);
+    });
+
+    themeToggle.addEventListener('click', () => {
+      const isLight = body.classList.toggle('light');
+      themeToggle.innerHTML = `${icon(isLight ? 'i-moon' : 'i-sun')}<span class="optional">${isLight ? 'Dark' : 'Light'}</span>`;
+    });
+
+    document.getElementById('reset-demo').addEventListener('click', () => {
+      window.clearTimeout(monitorTimer);
+      taskFeedback.clear();
+      suggestionFeedback.clear();
+      body.classList.remove('light');
+      themeToggle.innerHTML = `${icon('i-sun')}<span class="optional">Light</span>`;
+      document.querySelectorAll('.task-check input').forEach((input) => { input.checked = false; input.closest('.task-row').classList.remove('done'); });
+      document.querySelectorAll('.suggestion-row').forEach((row) => {
+        row.classList.remove('dismissed', 'created');
+        const review = row.querySelector('.mini-button');
+        review.textContent = 'Review';
+        review.setAttribute('aria-expanded', 'false');
+      });
+      document.querySelectorAll('.suggestion-actions').forEach((actions) => { actions.hidden = true; });
+      monitorCount = 64;
+      monitorUpdateScope = null;
+      lastAutomaticUpdate = false;
+      reportStates.daily.updated = false;
+      reportStates.weekly.updated = false;
+      refreshButton.classList.remove('refreshing');
+      applyReportPeriod('weekly', false);
+      renderMonitor(false);
+      setView('ready');
+      showToast('Demo reset');
+    });
+
+    refreshButton.addEventListener('click', () => {
+      window.clearTimeout(monitorTimer);
+      const refreshingPeriod = currentPeriod;
+      refreshButton.classList.add('refreshing');
+      monitorUpdateScope = 'current';
+      renderMonitor(true);
+      monitorTimer = window.setTimeout(() => {
+        reportStates[refreshingPeriod].updated = true;
+        monitorUpdateScope = null;
+        applyReportPeriod(refreshingPeriod, false);
+        renderMonitor(false);
+        refreshButton.classList.remove('refreshing');
+        showToast(`${refreshingPeriod === 'daily' ? 'Daily' : 'Weekly'} brief refreshed manually`);
+      }, 900);
+    });
+
+    document.querySelectorAll('[data-open-sources]').forEach((button) => button.addEventListener('click', () => openDrawer(button)));
+    closeDrawerButton.addEventListener('click', closeDrawer);
+    drawerScrim.addEventListener('click', closeDrawer);
+
+    document.querySelectorAll('.thread-link:not([data-open-sources])').forEach((button) => {
+      button.addEventListener('click', () => showToast(`Source link ready: ${button.textContent.trim()}`));
+    });
+
+    document.querySelectorAll('.source-session .link-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const title = button.closest('.source-session').querySelector('.source-session-title span').textContent;
+        closeDrawer();
+        showToast(`Would open ${title} at the cited message`);
+      });
+    });
+
+    document.querySelectorAll('.timeline-toggle').forEach((button) => {
+      button.addEventListener('click', () => {
+        const expanded = button.getAttribute('aria-expanded') === 'true';
+        button.setAttribute('aria-expanded', String(!expanded));
+        document.getElementById(button.getAttribute('aria-controls')).hidden = expanded;
+      });
+    });
+
+    document.querySelectorAll('[data-timeline]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = document.getElementById(`timeline-${button.dataset.timeline}`);
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+        target.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'center' });
+        const toggle = target.querySelector('.timeline-toggle');
+        if (toggle.getAttribute('aria-expanded') !== 'true') toggle.click();
+        toggle.focus({ preventScroll: true });
+      });
+    });
+
+    document.querySelectorAll('.task-check input').forEach((input) => {
+      input.addEventListener('change', () => {
+        const row = input.closest('.task-row');
+        taskFeedback.set(row.dataset.itemId, input.checked);
+        row.classList.toggle('done', input.checked);
+        showToast(input.checked ? 'Commitment marked complete' : 'Commitment reopened');
+      });
+    });
+
+    document.querySelectorAll('.review-suggestion').forEach((button) => {
+      button.addEventListener('click', () => {
+        const row = button.closest('.suggestion-row');
+        const actions = row.querySelector('.suggestion-actions');
+        const open = actions.hidden;
+        suggestionFeedback.set(row.dataset.itemId, { status: null, expanded: open });
+        actions.hidden = !open;
+        button.setAttribute('aria-expanded', String(open));
+        button.textContent = open ? 'Close' : 'Review';
+      });
+    });
+
+    document.querySelectorAll('.create-task').forEach((button) => {
+      button.addEventListener('click', () => {
+        const row = button.closest('.suggestion-row');
+        suggestionFeedback.set(row.dataset.itemId, { status: 'created', expanded: false });
+        row.classList.add('created');
+        row.querySelector('.suggestion-actions').hidden = true;
+        const review = row.querySelector('.review-suggestion');
+        review.textContent = 'Created';
+        review.setAttribute('aria-expanded', 'false');
+        showToast('Suggestion converted to a task');
+      });
+    });
+
+    document.querySelectorAll('.dismiss-suggestion').forEach((button) => {
+      button.addEventListener('click', () => {
+        const row = button.closest('.suggestion-row');
+        suggestionFeedback.set(row.dataset.itemId, { status: 'dismissed', expanded: false });
+        row.classList.add('dismissed');
+        showToast('Suggestion dismissed');
+      });
+    });
+
+    document.querySelectorAll('.show-ready').forEach((button) => button.addEventListener('click', () => {
+      setView('loading');
+      window.setTimeout(() => setView('ready'), 650);
+    }));
+
+    document.addEventListener('keydown', (event) => {
+      if (!sourceDrawer.hidden && event.key === 'Tab') {
+        const focusable = [...sourceDrawer.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+          .filter((element) => !element.disabled && !element.hidden && element.getClientRects().length > 0);
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      if (event.key === 'Escape') {
+        closeDrawer();
+      }
+    });
+
+    document.addEventListener('focusin', (event) => {
+      if (!sourceDrawer.hidden && !sourceDrawer.contains(event.target)) closeDrawerButton.focus();
+    });
+
+    applyReportPeriod('weekly', false);
+    renderMonitor(false);
+  </script>
+</body>
+</html>
