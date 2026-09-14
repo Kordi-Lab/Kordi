@@ -1,4 +1,4 @@
-import { useCallback, useRef, type MutableRefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, type MutableRefObject } from 'react';
 import { transcriptLayoutMaxScrollTop } from './virtualTranscriptLayout';
 import { alignAndRevealMeasuredTranscriptRows, cancelTranscriptRowLift, captureTranscriptRowLayoutTops } from './virtualTranscriptMotion';
 
@@ -11,6 +11,7 @@ type TailAlignmentOptions = {
   sizeContainerRef: MutableRefObject<HTMLDivElement | null>;
   virtualizer: Parameters<typeof alignAndRevealMeasuredTranscriptRows>[0]['virtualizer'];
   gap: number;
+  animateTailResize?: boolean;
   setIsAtTail: (value: boolean) => void;
   onTailChange?: (value: boolean) => void;
 };
@@ -18,7 +19,7 @@ type TailAlignmentOptions = {
 /** Own measurement, tail alignment, and presentation motion as one operation. */
 export function useTranscriptTailAlignment({
   internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
-  tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange,
+  tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange, animateTailResize = false,
 }: TailAlignmentOptions) {
   const tailAlignmentFrameRef = useRef<number | null>(null);
   const rowLayoutTopsRef = useRef(new Map<HTMLElement, number>());
@@ -88,6 +89,32 @@ export function useTranscriptTailAlignment({
     };
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
   }, [alignViewportToTail, gap, virtualizer, tailAlignmentActiveRef, tailLiftRowsRef, sizeContainerRef]);
+
+  useLayoutEffect(() => {
+    const container = sizeContainerRef.current;
+    if (!animateTailResize || !container || typeof MutationObserver === 'undefined') return;
+    let lastHeight = container.style.height;
+    let frame: number | null = null;
+    // Direct DOM measurement updates do not necessarily render React again.
+    // Observe its committed extent, not an ancestor ResizeObserver that can
+    // feed back into the virtualizer’s own measurement notifications.
+    const observer = new MutationObserver(() => {
+      const height = container.style.height;
+      if (height === lastHeight) return;
+      lastHeight = height;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        if (!viewportWasAtTailRef.current && !tailAlignmentActiveRef.current) return;
+        scheduleTailAlignment(Number.MAX_SAFE_INTEGER);
+      });
+    });
+    observer.observe(container, { attributes: true, attributeFilter: ['style'] });
+    return () => {
+      observer.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [animateTailResize, scheduleTailAlignment, sizeContainerRef, tailAlignmentActiveRef, viewportWasAtTailRef]);
 
   return { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment };
 }

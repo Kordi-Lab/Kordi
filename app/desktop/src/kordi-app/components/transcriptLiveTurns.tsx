@@ -737,7 +737,7 @@ function LiveChatTurnCardView({
   const showOpenAuthAction = Boolean(onOpenAuthSettings && noProviderConfiguredError);
   if (!canDisplayAgentTurn(visibleTurn)) return null;
   return (
-    <div className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
+    <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
         <div className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,58rem)] space-y-2.5')}>
           {shouldShowSourceQuote ? (

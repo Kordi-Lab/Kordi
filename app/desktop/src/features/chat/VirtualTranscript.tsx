@@ -71,7 +71,7 @@ export function VirtualTranscript<Item>({
   tailKey,
   unreadCount = 0,
   navigationAccessory,
-  animateLatestAppend = false,
+  animateLatestAppend = false, animateTailResize = false,
   estimateSize,
   gap = 4, selectionMode = false, onSelectAllMessages, onCancelMessageSelection,
 }: VirtualTranscriptProps<Item>) {
@@ -124,14 +124,14 @@ export function VirtualTranscript<Item>({
     getItemKey: itemKeyAt,
     overscan: TRANSCRIPT_WINDOW_OVERSCAN,
     gap,
-    anchorTo: stableDisclosureActive ? 'start' : 'end',
+    anchorTo: stableDisclosureActive || (animateTailResize && isAtTail) ? 'start' : 'end',
     useFlushSync: false,
     directDomUpdates: true,
     directDomUpdatesMode: 'transform',
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = stableDisclosureActive
     ? preserveMeasuredDisclosurePosition
-    : (virtualizer.scrollRect?.height ?? 0) > 0
+    : animateTailResize && isAtTail ? () => false : (virtualizer.scrollRect?.height ?? 0) > 0
       ? (item, delta, instance) => preserveMeasuredTranscriptRow(
           item, delta, instance, tailAlignmentActiveRef, tailAlignmentTargetRef,
         )
@@ -157,7 +157,7 @@ export function VirtualTranscript<Item>({
 
   const { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment } = useTranscriptTailAlignment({
     internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
-    tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange,
+    tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange, animateTailResize: animateTailResize && !stableDisclosureActive,
   });
 
   const selectionViewportProps = useTranscriptSelectionViewportProps({ cancelTailAlignment, viewportRef: internalScrollRef, selectionMode, onSelectAllMessages, onCancelMessageSelection });
@@ -419,7 +419,7 @@ export function VirtualTranscript<Item>({
       || viewportSizeChanged;
     const revealFromIndex = animateLatestAppend && latestItemAppended
       ? aligned?.itemCount
-      : undefined;
+      : animateTailResize && measuredSizeChanged ? items.length : undefined;
     if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
       cancelTailAlignment();
       const element = internalScrollRef.current;
@@ -450,7 +450,7 @@ export function VirtualTranscript<Item>({
       totalSize,
       viewportSize,
     };
-  }, [animateLatestAppend, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
+  }, [animateLatestAppend, animateTailResize, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   const scrollToLatest = useCallback(() => {
     viewportWasAtTailRef.current = true;
@@ -540,7 +540,7 @@ export function VirtualTranscript<Item>({
             ref={setSizeContainer}
             data-virtual-transcript-size="true"
             data-virtual-transcript-session-ready={sessionRevealed ? 'true' : 'false'}
-            className="relative w-full"
+            className="relative w-full overflow-y-clip"
           >
             {virtualItems.map((virtualItem) => {
               const item = items[virtualItem.index];

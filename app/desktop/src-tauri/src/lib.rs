@@ -20,6 +20,7 @@ mod skill_library;
 mod system_proxy;
 #[cfg(test)]
 mod test_support;
+mod transcript_trace;
 mod voice_message;
 mod window_backdrop;
 mod window_lifecycle;
@@ -228,6 +229,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            transcript_trace::desktop_transcript_trace,
             auth_window::desktop_set_auth_window_surface,
             window_backdrop::desktop_set_window_backdrop,
             desktop_workspace_status,

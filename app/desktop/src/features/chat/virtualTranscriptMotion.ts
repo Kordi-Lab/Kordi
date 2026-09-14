@@ -94,7 +94,11 @@ export function alignAndRevealMeasuredTranscriptRows({
     rowLiftAnimations.set(row, animation);
     animatedRows.push(row);
     animation.onfinish = () => {
-      if (rowLiftAnimations.get(row) === animation) rowLiftAnimations.delete(row);
+      if (rowLiftAnimations.get(row) !== animation) return;
+      rowLiftAnimations.delete(row);
+      // Remove the finished effect too. WebKit can otherwise retain its old
+      // translated overflow until a later DOM update, moving the scrollbar.
+      animation.cancel();
     };
   };
   previousRows.forEach((row, index) => {

@@ -10,3 +10,7 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+if (import.meta.env.VITE_KORDI_TRANSCRIPT_TRACE === '1') {
+  void import('./features/performance/transcriptTrajectory').then(({ installTranscriptTrajectoryRecorder }) => installTranscriptTrajectoryRecorder())
+}

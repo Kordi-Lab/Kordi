@@ -163,7 +163,8 @@ export function useChatTranscriptViewport({
     [transcriptMessages],
   );
   const latestMessage = transcriptMessages[transcriptMessages.length - 1];
-  const animateLatestAppend = Boolean(
+  const animateTailResize = Boolean(latestMessage?.turn);
+  const animateLatestAppend = animateTailResize || Boolean(
     latestMessage
     && shouldAnimateHumanMessageEntry(
       transcriptMessageIsOwnHuman(latestMessage),
@@ -195,6 +196,7 @@ export function useChatTranscriptViewport({
       onCancelMessageSelection={onCancelMessageSelection}
       onSelectAllMessages={onSelectAllMessages}
       animateLatestAppend={animateLatestAppend}
+      animateTailResize={animateTailResize}
       getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={({ message: msg, originalIndex: idx }) => (
         <div data-incoming-sequence={!msg.isOwnMessage && msg.role!=='user'?msg.conversationSequence:undefined}>
@@ -292,6 +294,7 @@ export function useChatTranscriptViewport({
     activeForkSourceSessionId,
     activeForkSourceTitle,
     animateLatestAppend,
+    animateTailResize,
     canLoadOlderMessages,
     densityMode,
     emptyState,

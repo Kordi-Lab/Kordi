@@ -40,6 +40,7 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   unreadCount?: number;
   navigationAccessory?: ReactNode;
   animateLatestAppend?: boolean;
+  animateTailResize?: boolean;
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
