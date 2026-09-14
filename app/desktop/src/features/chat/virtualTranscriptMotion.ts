@@ -9,6 +9,14 @@ type TranscriptVirtualizer = {
 
 const rowLiftAnimations = new WeakMap<HTMLElement, Animation>();
 
+function progressDurationMilliseconds(element: HTMLElement) {
+  // Production CSS minification can rewrite 260ms as .26s.
+  const token = getComputedStyle(element).getPropertyValue('--app-motion-base').trim();
+  const match = /^(\d*\.?\d+)(ms|s)$/.exec(token);
+  if (!match) return 220;
+  return Number(match[1]) * (match[2] === 's' ? 1000 : 1);
+}
+
 export function hasActiveTranscriptRowLift(rows: readonly HTMLElement[]) {
   return rows.some(row => rowLiftAnimations.has(row));
 }
@@ -85,7 +93,7 @@ export function alignAndRevealMeasuredTranscriptRows({
   // Progress moves content already being read. Use steady motion instead of
   // spending most of the displacement in the first delayed native frame.
   const duration = progressMotion
-    ? Number.parseFloat(getComputedStyle(sizeContainer).getPropertyValue('--app-motion-base')) || 220
+    ? progressDurationMilliseconds(sizeContainer)
     : 150;
   const easing = progressMotion ? 'linear' : 'cubic-bezier(0.23, 1, 0.32, 1)';
   const animateRow = (row: HTMLElement, distance: number) => {

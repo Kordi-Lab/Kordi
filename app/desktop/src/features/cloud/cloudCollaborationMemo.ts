@@ -9,7 +9,10 @@ export type CloudSelfAgentSessionPartition = {
   messagesBySessionId: ReadonlyMap<string | null, readonly CloudMessage[]>;
 };
 
-const selfAgentPartitionCache = new WeakMap<readonly CloudMessage[], CloudSelfAgentSessionPartition>();
+const selfAgentPartitionCache = new WeakMap<readonly CloudMessage[], {
+  excludedMessageIds?: ReadonlySet<string>;
+  partition: CloudSelfAgentSessionPartition;
+}>();
 const directPersonMessagesCache = new WeakMap<readonly CloudMessage[], Map<string, readonly CloudMessage[]>>();
 const groupControlMessageIdsCache = new WeakMap<CloudMessageIndex, ReadonlySet<string>>();
 const turnRevisionCache = new WeakMap<
@@ -45,12 +48,16 @@ export function cloudDirectPersonMessagesForPeer(
 
 export function cloudSelfAgentMessagesBySession(
   messages: readonly CloudMessage[],
+  excludedMessageIds?: ReadonlySet<string>,
 ): CloudSelfAgentSessionPartition {
   const cached = selfAgentPartitionCache.get(messages);
-  if (cached) return cached;
+  if (cached && cached.excludedMessageIds === excludedMessageIds) return cached.partition;
   const mutable = new Map<string | null, CloudMessage[]>();
   let hasSessionScopedMessages = false;
   for (const message of messages) {
+    // Group controls belong to the canonical group, not a private Agent route.
+    // Materializing that route changes the conversation identity on first use.
+    if (excludedMessageIds?.has(message.messageId)) continue;
     const sessionId = cleanSessionId(message.sessionId);
     // Older execution responses addressed the requester instead of the direct
     // chat peer. A cached reply must not create a separate self-agent chat.
@@ -62,7 +69,7 @@ export function cloudSelfAgentMessagesBySession(
   }
   const messagesBySessionId = new Map<string | null, readonly CloudMessage[]>(mutable);
   const partition = { hasSessionScopedMessages, messagesBySessionId };
-  selfAgentPartitionCache.set(messages, partition);
+  selfAgentPartitionCache.set(messages, { excludedMessageIds, partition });
   return partition;
 }
 

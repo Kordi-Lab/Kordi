@@ -125,3 +125,33 @@ test('direct processing entry stays gradual across a 40ms native frame gap', asy
     expect(samples[i]).toBeLessThanOrEqual(samples[i - 1] + 1);
   }
 });
+
+test('first request after opening a group does not reset its transcript when the self control arrives', async ({ page }) => {
+  for (let opening = 0; opening < 2; opening++) {
+    await page.goto('/tests/visual/processingTrajectory.html?count=50&cold=1');
+    await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
+    const step = (phase: number) => page.evaluate(phase => (window as unknown as { processingTrajectory: { step(phase: number): void } }).processingTrajectory.step(phase), phase);
+    await step(1);
+    await step(3);
+    await expect(page.locator('.app-agent-waiting-wave')).toBeVisible();
+    await page.waitForTimeout(300);
+    const history = await page.locator('[data-index="49"]').elementHandle();
+    const viewport = await page.locator('[data-virtual-transcript-scroll]').elementHandle();
+    const ready = page.evaluate(async () => {
+      const element = document.querySelector('[data-virtual-transcript-size]')!;
+      let stayedReady = true;
+      for (let i = 0; i < 40; i++) {
+        await new Promise(requestAnimationFrame);
+        stayedReady &&= element.isConnected && element.getAttribute('data-virtual-transcript-session-ready') === 'true';
+      }
+      return stayedReady;
+    });
+    await step(4); // First self-addressed processing control materializes during runtime start.
+    await step(5);
+    expect(await ready).toBe(true);
+    expect(await history!.evaluate(element => element.isConnected)).toBe(true);
+    expect(await viewport!.evaluate(element => element.isConnected)).toBe(true);
+    await step(10);
+    await expect(page.getByText('Synthetic final answer that fits on one line.', { exact: true })).toBeVisible();
+  }
+});
