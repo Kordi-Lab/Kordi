@@ -17,6 +17,10 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Changed
 
+- Made the desktop Chats unread badge easier to read while preserving the full
+  count for assistive technology. ([#1547](https://github.com/Kordi-Lab/Kordi/pull/1547))
+- Reduced repeated local database setup during desktop history synchronization.
+  ([#1550](https://github.com/Kordi-Lab/Kordi/pull/1550))
 - Improved mention, link, reply, and receipt contrast in chat themes on Mac and
   iPhone, including the Sand palette and link cards.
   ([#1543](https://github.com/Kordi-Lab/Kordi/pull/1543))
@@ -28,6 +32,12 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Made Noto emoji picker artwork available immediately on Mac, including offline
+  and when reopening, without switching from a smaller system-glyph placeholder.
+  ([#1553](https://github.com/Kordi-Lab/Kordi/pull/1553))
+- Stopped attributing unknown runtime cancellations to the agent owner; explicit
+  sender and owner cancellations remain identified.
+  ([#1553](https://github.com/Kordi-Lab/Kordi/pull/1553))
 - Hid redundant automatic reply references from the first render of direct Agent
   conversations, while preserving shared-chat context and manually quoted messages.
 - Kept desktop session entry immediate and prevented late message measurements
