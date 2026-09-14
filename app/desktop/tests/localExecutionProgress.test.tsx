@@ -19,8 +19,8 @@ test('a stop handle does not hide genuine local preparation after a cloud placeh
   assert.equal(agentTurnHasStarted(presented),true);
   assert.deepEqual(presented.pendingCollaborationAgentRequest,pending.pendingCollaborationAgentRequest);
   assert.notEqual(liveTurnSnapshotKey(presented),liveTurnSnapshotKey(pending));
-  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard,{turn:presented})),/app-agent-waiting-wave/);
-  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard,{turn:pending})),/app-agent-waiting-wave/);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard,{showReasoning:true,turn:presented})),/app-agent-waiting-wave/);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard,{showReasoning:true,turn:pending})),/app-agent-waiting-wave/);
 });
 
 test('optimistic, queued, and projected cloud states cannot establish local execution', () => {

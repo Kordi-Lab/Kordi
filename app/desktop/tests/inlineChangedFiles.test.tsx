@@ -119,8 +119,8 @@ test('inline changed files render under assistant turns and hide when there are 
   ]);
   const unchangedTurn = turnWithTools([]);
 
-  const changedMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: changedTurn, historical: true }));
-  const unchangedMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: unchangedTurn, historical: true }));
+  const changedMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: changedTurn, historical: true }));
+  const unchangedMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: unchangedTurn, historical: true }));
 
   assert.match(changedMarkup, /Changed 1 file/);
   assert.match(changedMarkup, /data-inline-changed-files="true"/);
@@ -184,7 +184,7 @@ test('failed turns still show successful file writes without an incomplete badge
     error: 'The final command failed.',
   });
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.match(markup, /Changed 1 file/);
   assert.doesNotMatch(markup, /incomplete/);
@@ -224,7 +224,7 @@ test('failed file write attempts are not shown as changed files', () => {
     diffStat: { added: 1, removed: 0 },
   }]);
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
   assert.match(markup, /Changed 1 file/);
   assert.doesNotMatch(markup, /tmp_test_task.md/);
   assert.doesNotMatch(markup, /\/root\/tmp_test_task\/README.md/);
@@ -240,7 +240,7 @@ test('inline changed file lists are collapsed by default', () => {
     resultText: '+line',
     isError: false,
   }));
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: turnWithTools(tools), historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: turnWithTools(tools), historical: true }));
 
   assert.match(markup, /Changed 7 files/);
   assert.match(markup, /aria-expanded="false"/);

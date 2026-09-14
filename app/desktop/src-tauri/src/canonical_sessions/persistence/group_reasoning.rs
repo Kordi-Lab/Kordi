@@ -6,6 +6,14 @@ use super::super::{
     CanonicalSessionMessage,
 };
 
+fn public_tool(tool: &Value) -> bool {
+    tool.get("name").and_then(Value::as_str) == Some("task_operator")
+        && tool
+            .get("id")
+            .and_then(Value::as_str)
+            .is_some_and(|id| id.starts_with("background-session:"))
+}
+
 fn thinking(content: Option<&Value>) -> Option<&str> {
     let content = content?;
     content
@@ -51,11 +59,9 @@ pub(super) fn normalize(
         // an old client supplied an incorrect sender-role hint.
         if let Some(content) = request.content.as_mut().and_then(Value::as_object_mut) {
             content.remove("thinkingText");
-            if let Some(execution) = content.get_mut("execution").and_then(Value::as_object_mut) {
-                execution.remove("thinkingText");
-                if let Some(steps) = execution.get_mut("steps").and_then(Value::as_array_mut) {
-                    steps.retain(|step| step.get("id").and_then(Value::as_str) != Some("analysis"));
-                }
+            content.remove("execution");
+            if let Some(tools) = content.get_mut("tools").and_then(Value::as_array_mut) {
+                tools.retain(public_tool);
             }
         }
         return Ok(());
@@ -67,18 +73,39 @@ pub(super) fn normalize(
             && message.parent_message_id.is_some()
             && message.parent_message_id == request.parent_message_id
     });
-    let previous = same_request.and_then(|message| thinking(message.content.as_ref()));
+    let previous_content = same_request.and_then(|message| message.content.as_ref());
+    let previous = thinking(previous_content);
     let incoming = thinking(request.content.as_ref());
     let retained = match (previous, incoming) {
-        (Some(previous), Some(incoming)) if incoming.len() >= previous.len() => incoming,
-        (Some(previous), _) => previous,
-        (None, Some(incoming)) => incoming,
-        (None, None) => return Ok(()),
+        (Some(previous), Some(incoming)) if incoming.len() >= previous.len() => Some(incoming),
+        (Some(previous), _) => Some(previous),
+        (None, incoming) => incoming,
     }
-    .to_string();
+    .map(str::to_string);
+    // A public echo carries only shared task links, never the owner's tool trace.
+    // Preserve that trace independently of reasoning: many turns only use tools.
+    let previous_tools = previous_content
+        .and_then(|content| content.get("tools"))
+        .and_then(Value::as_array)
+        .filter(|tools| tools.iter().any(|tool| !public_tool(tool)));
+    let incoming_tools = request
+        .content
+        .as_ref()
+        .and_then(|content| content.get("tools"))
+        .and_then(Value::as_array);
+    let public_or_empty = incoming_tools.is_none_or(|tools| tools.iter().all(public_tool));
+    let retained_tools = previous_tools.filter(|_| public_or_empty).cloned();
+    if retained.is_none() && retained_tools.is_none() {
+        return Ok(());
+    }
     let content = request.content.get_or_insert_with(|| serde_json::json!({}));
     if let Some(content) = content.as_object_mut() {
-        content.insert("thinkingText".into(), Value::String(retained));
+        if let Some(thinking) = retained {
+            content.insert("thinkingText".into(), Value::String(thinking));
+        }
+        if let Some(tools) = retained_tools {
+            content.insert("tools".into(), Value::Array(tools));
+        }
     }
     Ok(())
 }

@@ -433,7 +433,7 @@ test('renders completed assistant responses as a compact contrast surface', () =
     error: null,
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
   assert.match(markup, /max-w-\[min\(100%,58rem\)\]/);

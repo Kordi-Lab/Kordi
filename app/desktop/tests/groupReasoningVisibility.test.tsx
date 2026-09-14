@@ -21,3 +21,21 @@ for (const completed of [false, true]) {
     });
   }
 }
+
+
+test('peers retain public background task links without private tool details', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'group-turn', sessionId: 'group-session', prompt: '', status: 'complete', message: '',
+    assistantText: 'Public reply', thinkingText: reasoning, completed: true, succeeded: true,
+    tools: [
+      { id: 'read-private', name: 'read', arguments: 'Private file', liveOutput: '', status: 'completed', isError: false },
+      { id: 'background-session:shared-task', name: 'task_operator', arguments: '{}', liveOutput: '', status: 'completed', isError: false,
+        resultText: 'Background session: {"sessionId":"shared-task","title":"Shared research","status":"running"}' },
+    ],
+  };
+  const html = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: { id: 'group-reply', role: 'external-agent', sender: 'Synthetic Agent', text: '', time: '12:00', turn },
+  }));
+  assert.match(html, /Shared research/);
+  assert.doesNotMatch(html, /Private file|synthetic private reasoning/i);
+});

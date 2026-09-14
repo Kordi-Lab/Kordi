@@ -133,7 +133,7 @@ test('direct person agent mentions show the renamed local agent processing immed
   assert.equal(processing?.turn?.completed, false);
   assert.equal(processing?.turn?.pendingCollaborationAgentRequest, null);
   assert.ok(processing?.turn);
-  const sendingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const sendingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn: processing.turn,
     onStopActiveTurn: () => undefined,
   }));
@@ -152,7 +152,7 @@ test('direct person agent mentions show the renamed local agent processing immed
     requestId: 'request-canonical-agent',
   });
   assert.ok(stoppableProcessing?.turn);
-  const deliveredMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const deliveredMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn: stoppableProcessing.turn,
     onStopCollaborationAgentRequest: () => undefined,
   }));

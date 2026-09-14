@@ -229,3 +229,14 @@ test('cloud group cancel notices default to the stable processing timestamp', ()
     55_000,
   );
 });
+
+
+test('owner cancellation keeps a tool-only trace in the processing slot', () => {
+  const tools = [{ id: 'read-one', name: 'read', status: 'completed', arguments: '{}', liveOutput: 'Synthetic result', isError: false }];
+  const notice = cloudGroupAgentCancelledNoticeRequest({
+    processingMessage: { id: 'processing-slot', sessionId: 'group', senderIdentityId: 'agent:owner', senderRole: 'owned-agent', content: {}, createdAtMs: 100 } as CanonicalSessionMessage,
+    requestId: 'request', conversationId: 'group-runtime', cancelledByAccountId: 'owner', cancelledByRole: 'agent owner', ownerTools: tools,
+  });
+  assert.equal(notice.id, 'processing-slot');
+  assert.deepEqual((notice.content as { tools: unknown }).tools, tools);
+});

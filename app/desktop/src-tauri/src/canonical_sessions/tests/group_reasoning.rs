@@ -96,3 +96,67 @@ fn group_reasoning_does_not_move_to_another_request() {
     let stored = upsert_message_in_db(&conn, group_reasoning_request("request-b", None)).unwrap();
     assert!(stored.content.unwrap()["thinkingText"].is_null());
 }
+
+#[test]
+fn group_owner_tool_only_trace_survives_answer_only_public_sync() {
+    let conn = owner_connection(true);
+    let tools = serde_json::json!([
+        {"id":"read-1","name":"read","status":"complete","arguments":"example.md","liveOutput":"First local result","isError":false},
+        {"id":"read-2","name":"read","status":"complete","arguments":"notes.md","liveOutput":"Second local result","isError":false}
+    ]);
+    let mut local = group_reasoning_request("request-a", None);
+    local.status = Some("complete".into());
+    local.content = Some(serde_json::json!({"deliveryState":"complete","tools":tools}));
+    append_message_in_db(&conn, local).unwrap();
+    for version in 1..=3 {
+        let mut public = group_reasoning_request("request-a", None);
+        public.status = Some("received".into());
+        public.content = Some(
+            serde_json::json!({"deliveryState":"complete","cloudMessageVersion":version,"tools":[]}),
+        );
+        let stored = upsert_message_in_db(&conn, public).unwrap();
+        assert_eq!(stored.content.unwrap()["tools"], tools);
+    }
+}
+
+#[test]
+fn group_peer_keeps_only_explicit_public_background_task_tools() {
+    let conn = owner_connection(false);
+    let mut request = group_reasoning_request("request-a", None);
+    request.content = Some(serde_json::json!({"tools":[
+        {"id":"private-read","name":"read","arguments":"Synthetic private input"},
+        {"id":"background-session:public-task","name":"task_operator","arguments":"Public task"}
+    ]}));
+    let stored = append_message_in_db(&conn, request).unwrap();
+    let content = stored.content.unwrap();
+    let tools = content["tools"].as_array().unwrap();
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0]["id"], "background-session:public-task");
+    assert!(!content.to_string().contains("Synthetic private input"));
+}
+
+#[test]
+fn group_public_task_summary_does_not_replace_the_owners_full_trace() {
+    let conn = owner_connection(true);
+    let private_tools =
+        serde_json::json!([{"id":"native-task","name":"task_operator","arguments":"Owner detail"}]);
+    let mut local = group_reasoning_request("request-a", None);
+    local.content = Some(serde_json::json!({"tools":private_tools}));
+    append_message_in_db(&conn, local).unwrap();
+    let mut public = group_reasoning_request("request-a", None);
+    public.content = Some(
+        serde_json::json!({"cloudMessageVersion":2,"tools":[{"id":"background-session:public-task","name":"task_operator"}]}),
+    );
+    let stored = upsert_message_in_db(&conn, public).unwrap();
+    assert_eq!(stored.content.unwrap()["tools"], private_tools);
+}
+
+#[test]
+fn group_tool_trace_does_not_move_to_another_request() {
+    let conn = owner_connection(true);
+    let mut local = group_reasoning_request("request-a", None);
+    local.content = Some(serde_json::json!({"tools":[{"id":"private-read","name":"read"}]}));
+    append_message_in_db(&conn, local).unwrap();
+    let stored = upsert_message_in_db(&conn, group_reasoning_request("request-b", None)).unwrap();
+    assert!(stored.content.unwrap()["tools"].is_null());
+}

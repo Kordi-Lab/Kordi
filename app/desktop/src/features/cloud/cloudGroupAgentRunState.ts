@@ -63,6 +63,7 @@ export async function persistCloudGroupAgentCancellation(
     cancelledByAccountId: account.accountId,
     cancelledByRole: 'agent owner',
     ownerThinkingText: finalTurn?.thinkingText,
+    ownerTools: finalTurn?.tools,
     now: Date.now(),
   });
   try {

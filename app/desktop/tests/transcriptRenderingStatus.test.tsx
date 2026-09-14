@@ -82,7 +82,7 @@ test('agent waiting state uses a waveform only until the first response content 
     succeeded: false,
     error: null,
   };
-  const waitingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const waitingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn: waitingTurn,
     onStopActiveTurn: () => undefined,
   }));
@@ -91,7 +91,7 @@ test('agent waiting state uses a waveform only until the first response content 
   assert.match(waitingMarkup, /aria-label="Waiting for agent response"/);
   assert.doesNotMatch(waitingMarkup, />Thinking…</);
 
-  const streamingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const streamingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn: { ...waitingTurn, status: 'writing', assistantText: 'H' },
     onStopActiveTurn: () => undefined,
   }));
@@ -113,7 +113,7 @@ test('renders live turn errors as raw red inline text instead of a popped bubble
     error: 'ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.',
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.match(markup, /app-live-turn-error app-live-turn-error-text/);
   assert.match(markup, /text-\[12px\]/);
@@ -148,7 +148,7 @@ test('completed activity summary renders before the final assistant result', () 
     completedAtMs: 1_725_000_352_000,
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
   const answerIndex = markup.indexOf('Primary answer');
   const toolsIndex = markup.indexOf('app-transcript-tool-timeline');
 
@@ -197,12 +197,12 @@ test('failed tool details never replace live or completed turn utility', () => {
     completedAtMs: 1_725_000_010_000,
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
   assert.match(markup, /Worked for 10s/);
   assert.doesNotMatch(markup, /tool failed|circle-alert/);
 
-  const activeMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const activeMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn: {
       ...turn,
       status: 'tooling',
@@ -233,7 +233,7 @@ test('no-provider failed agent turn renders red inline text with authentication 
     error: 'No provider configured yet.',
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn,
     historical: true,
     onOpenAuthSettings: () => undefined,
@@ -264,7 +264,7 @@ test('unknown-model provider failures render as the compact authentication notic
     error: 'Unknown model: openai/gpt-5.4',
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn,
     historical: true,
     onOpenAuthSettings: () => undefined,
@@ -296,7 +296,7 @@ test('no-provider live turn keeps the source quote so reply context stays stable
     },
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn,
     historical: true,
     onOpenAuthSettings: () => undefined,
@@ -370,7 +370,7 @@ test('renders bridge agent stop control beside the first-response waveform', () 
     },
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true,
     turn,
     onStopCollaborationAgentRequest: () => undefined,
   }));
@@ -406,7 +406,7 @@ test('a starting request does not render a processing card or duplicate quote', 
     },
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
   assert.equal(markup, '');
 });
@@ -432,7 +432,7 @@ test('initial scheduling does not render a processing waveform', () => {
     },
   };
 
-  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn }));
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
   assert.doesNotMatch(markup, /app-agent-waiting-wave/);
   assert.doesNotMatch(markup, />Starting…</);

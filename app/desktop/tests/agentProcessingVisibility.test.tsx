@@ -13,7 +13,7 @@ function request(status: string): Message { return { id: 'request', role: 'user'
 test('scheduling a native turn does not show processing even after sending', () => {
   assert.equal(canDisplayAgentTurn(turn, [request('sending')]), false);
   assert.equal(canDisplayAgentTurn(turn, [request('sent')]), false);
-  assert.equal(renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, onStopActiveTurn: () => {} })), '');
+  assert.equal(renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, onStopActiveTurn: () => {} })), '');
 });
 
 test('real execution must wait for the linked request to be acknowledged', () => {
@@ -21,7 +21,7 @@ test('real execution must wait for the linked request to be acknowledged', () =>
   for (const state of ['sending', 'failed', 'queued', 'cancelled']) assert.equal(canDisplayAgentTurn(streaming, [request(state)]), false);
   for (const state of ['sent', 'delivered', 'read']) assert.equal(canDisplayAgentTurn(streaming, [request(state)]), true);
   assert.equal(canDisplayAgentTurn(streaming, [{ ...request('sending'), id: 'runtime-user', replyAliasIds: ['request'] }]), false);
-  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: streaming, onStopActiveTurn: () => {} })), /app-agent-waiting-wave/);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: streaming, onStopActiveTurn: () => {} })), /app-agent-waiting-wave/);
 });
 
 test('completion and errors remain visible after delivery failure', () => {
@@ -36,7 +36,7 @@ test('executor preparation is visible after acknowledgement without exposing opt
   assert.equal(canDisplayAgentTurn(preparing, [request('sending')]), false);
   assert.equal(canDisplayAgentTurn(preparing, [request('sent')]), true);
   assert.equal(canDisplayAgentTurn(turn, [request('sent')]), false);
-  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: preparing, onStopActiveTurn: () => {} })), /app-agent-waiting-wave/);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: preparing, onStopActiveTurn: () => {} })), /app-agent-waiting-wave/);
 });
 
 test('acknowledged remote requests show waiting feedback beside stop without asserting execution started', () => {
@@ -45,7 +45,7 @@ test('acknowledged remote requests show waiting feedback beside stop without ass
   assert.equal(shouldShowAgentWaitingAnimation(pending), true);
   assert.equal(canDisplayAgentTurn(pending, [request('sending')]), false);
   assert.equal(canDisplayAgentTurn(pending, [request('sent')]), true);
-  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: pending })), /app-agent-waiting-wave/);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn: pending })), /app-agent-waiting-wave/);
   for (const status of ['starting', 'queued', 'cancelled', 'failed']) {
     assert.equal(shouldShowAgentWaitingAnimation({ ...pending, status }), false);
   }
