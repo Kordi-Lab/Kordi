@@ -8,7 +8,9 @@ import {
 } from '../../src/app/useKordiAppModelHelpers';
 import { buildParticipantSpaces } from '../../src/features/chat/participantSpaces';
 import type { ComposerMentionOption } from '../../src/kordi-app/components';
-import type { Conversation } from '../../src/kordi-app/types';
+import type { Conversation, Message } from '../../src/kordi-app/types';
+import { MessageBubble } from '../../src/kordi-app/components/transcript';
+import { loadLinkPreviewMetadata } from '../../src/kordi-app/components/linkPreviewMetadata';
 import { ChatsPage } from '../../src/pages/ChatsPage';
 import type { ChatsPageProps } from '../../src/pages/chatsPage.types';
 import { WorkspaceSidebar, type WorkspaceSidebarProps } from '../../src/pages/WorkspaceSidebar';
@@ -17,9 +19,10 @@ import { baseSidebarProps } from '../helpers/workspaceSidebarParticipantSpacesFi
 
 const groupSessionId = 'session:group:preview-human-all';
 const broadcastText = '@all The mobile review is ready. Please check your section before 16:00.';
-const replyContrastPreview = new URLSearchParams(window.location.search).has('replyContrast');
+const themeContrastPreview = new URLSearchParams(window.location.search).has('themeContrast');
+const replyContrastPreview = themeContrastPreview || new URLSearchParams(window.location.search).has('replyContrast');
 type PreviewAppearance = 'light' | 'dark';
-type PreviewChatTheme = 'quiet' | 'midnight' | 'sand' | 'ocean';
+type PreviewChatTheme = 'default' | 'quiet' | 'midnight' | 'sand' | 'ocean';
 const previewConversation: Conversation = {
   id: groupSessionId,
   canonicalSessionId: groupSessionId,
@@ -183,6 +186,49 @@ const previewConversation: Conversation = {
   updatedAtLabel: '15:48',
 };
 
+const contrastMessages: Message[] = [
+  {
+    id: 'contrast-url-own', role: 'user', sender: 'Me', senderType: 'human', isOwnMessage: true,
+    text: '@Maya @Assistant Review the color study: https://example.com/color-study',
+    time: '11:01', statusChips: ['read'],
+    mentions: [{ label: 'Maya', targetKind: 'person' }, { label: 'Assistant', targetKind: 'agent' }],
+    replySummary: { replyCount: 2, targetMessageId: 'contrast-url-peer' },
+  },
+  {
+    id: 'contrast-url-peer', role: 'person', sender: 'Maya Chen', senderType: 'human', showSenderMeta: true,
+    text: '@Alex Here is the preview reference: https://example.org/interface-review',
+    time: '11:02', mentions: [{ label: 'Alex', targetKind: 'person' }],
+  },
+  {
+    id: 'contrast-url-label', role: 'user', sender: 'Me', senderType: 'human', isOwnMessage: true,
+    text: 'You can also open [the review checklist](https://example.net/review-checklist) from an inline text link.',
+    time: '11:03', statusChips: ['delivered'],
+  },
+  {
+    id: 'contrast-peer', role: 'person', sender: 'Maya Chen', senderType: 'human',
+    showSenderMeta: true, text: '@Alex @Assistant Please review the mention and receipt colors.',
+    time: '11:06', mentions: [{ label: 'Alex', targetKind: 'person' }, { label: 'Assistant', targetKind: 'agent' }],
+  },
+  ...['sent', 'delivered', 'read', 'responded', 'sending', 'processing', 'failed', 'partial'].map((status, index): Message => ({
+    id: `contrast-${status}`, role: 'user', sender: 'Me', senderType: 'human', isOwnMessage: true,
+    text: `@Maya @Assistant ${status === 'read' ? 'Can you check the resource usage on my laptop?' : `This message shows the ${status} state.`}`,
+    time: `11:${String(7 + index).padStart(2, '0')}`, statusChips: [status],
+    mentions: [{ label: 'Maya', targetKind: 'person' }, { label: 'Assistant', targetKind: 'agent' }],
+    replySummary: { replyCount: index + 1, targetMessageId: 'contrast-peer' },
+  })),
+  {
+    id: 'contrast-all', role: 'user', sender: 'Me', senderType: 'human', isOwnMessage: true,
+    text: '@all The contrast review is ready. This longer message wraps onto a second line so you can inspect the mentions and footer in a larger bubble.',
+    time: '11:16', statusChips: ['read'], mentions: [{ label: 'all', targetKind: 'all' }],
+    replySummary: { replyCount: 12, targetMessageId: 'contrast-peer' },
+  },
+];
+if (themeContrastPreview) {
+  previewConversation.name = 'Theme contrast review';
+  previewConversation.subtitle = 'Synthetic conversation';
+  previewConversation.messages = contrastMessages;
+}
+
 const mentionTargets: ComposerMentionOption[] = [
   {
     value: 'all',
@@ -237,10 +283,14 @@ type PreviewChatsPageProps = ChatsPageProps['layout']
   & ChatsPageProps['auth'];
 
 function GroupMentionPreview() {
+  useEffect(() => {
+    if (themeContrastPreview) document.title = 'Kordi — Theme contrast review';
+  }, []);
   const [draft, setDraft] = useState(replyContrastPreview ? '' : '@');
   const [mentionIndex, setMentionIndex] = useState(0);
   const [appearance, setAppearance] = useState<PreviewAppearance>('light');
-  const [chatTheme, setChatTheme] = useState<PreviewChatTheme>('quiet');
+  const [chatTheme, setChatTheme] = useState<PreviewChatTheme>(themeContrastPreview ? 'sand' : 'quiet');
+  const [componentView, setComponentView] = useState(themeContrastPreview);
   useEffect(() => {
     document.body.dataset.kordiChatTheme = chatTheme;
   }, [chatTheme]);
@@ -343,6 +393,11 @@ function GroupMentionPreview() {
     <>
       {replyContrastPreview ? (
         <div className="fixed right-[150px] top-2.5 z-[100] flex items-center gap-2 rounded-[10px] border border-slate-300 bg-white/95 p-1.5 text-[11px] font-medium text-slate-700 shadow-sm">
+          {themeContrastPreview ? <>
+            <span className="px-2">Synthetic data</span>
+            <button type="button" aria-pressed={!componentView} onClick={() => setComponentView(false)} className="rounded-md border border-slate-300 px-2 py-1">Conversation</button>
+            <button type="button" aria-pressed={componentView} onClick={() => setComponentView(true)} className="rounded-md border border-slate-300 px-2 py-1">Components</button>
+          </> : null}
           <label className="flex items-center gap-1.5">
             Appearance
             <select
@@ -363,6 +418,7 @@ function GroupMentionPreview() {
               value={chatTheme}
               onChange={(event) => setChatTheme(event.target.value as PreviewChatTheme)}
             >
+              <option value="default">Default</option>
               <option value="quiet">Quiet</option>
               <option value="midnight">Midnight</option>
               <option value="sand">Sand</option>
@@ -386,10 +442,43 @@ function GroupMentionPreview() {
         onSessionResizeMouseDown={() => undefined}
         onDetailResizeMouseDown={() => undefined}
         sidebar={<WorkspaceSidebar {...sidebar as unknown as WorkspaceSidebarProps} />}
-        mainContent={<ChatsPage layout={pageProps} session={pageProps} transcript={pageProps} composer={pageProps} runtime={pageProps} auth={pageProps} />}
+        mainContent={componentView ? <div className="app-chat-theme-surface h-full overflow-y-auto p-8" data-contrast-components>
+          <div className="mb-6 pt-5 text-[18px] font-semibold">Message components</div>
+          <p className="mb-6 text-[13px]">Mint person mentions · Sky agent mentions · Gold replies and delivery · Mint read receipts. These are the app’s current theme colors.</p>
+          <div className="flex flex-col gap-8">{contrastMessages.map(message => <section key={message.id}>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide">{message.id === 'contrast-url-own' ? 'Outgoing URL + preview card' : message.id === 'contrast-url-peer' ? 'Received URL + preview card' : message.id === 'contrast-url-label' ? 'Inline text link + preview card' : message.statusChips?.[0] ?? 'Received message'}</div>
+            <MessageBubble msg={message} />
+          </section>)}</div>
+        </div> : <ChatsPage layout={pageProps} session={pageProps} transcript={pageProps} composer={pageProps} runtime={pageProps} auth={pageProps} />}
       />
     </>
   );
 }
 
-createRoot(document.querySelector('#root')!).render(<GroupMentionPreview />);
+async function renderPreview() {
+  if (themeContrastPreview) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 360;
+    canvas.height = 240;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = '#854627';
+    context.fillRect(0, 0, 360, 240);
+    ['#78efb5', '#99dfff', '#ffdf80'].forEach((color, index) => {
+      context.fillStyle = color;
+      context.fillRect(36 + index * 100, 50, 82, 140);
+    });
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    const previews = [
+      { href: 'https://example.com/color-study', title: 'Mint, sky, and gold — color study', siteName: 'Design notebook' },
+      { href: 'https://example.org/interface-review', title: 'An interface with a little more color', siteName: 'Team review' },
+      { href: 'https://example.net/review-checklist', title: 'Chat theme review checklist', siteName: 'Design notes' },
+    ];
+    await Promise.all(previews.map(preview => loadLinkPreviewMetadata(preview.href, async <T,>() => ({
+      title: preview.title, siteName: preview.siteName,
+      description: 'Synthetic link-preview content for this local design review.',
+      imageUrl: null, imageDataUrl,
+    }) as T)));
+  }
+  createRoot(document.querySelector('#root')!).render(<GroupMentionPreview />);
+}
+void renderPreview();

@@ -443,7 +443,8 @@ struct MessageBubble: View, Equatable {
             } else {
                 MessageDeliveryGlyph(
                     state: message.deliveryState,
-                    readByCount: message.readByCount
+                    readByCount: message.readByCount,
+                    tint: bubbleDeliveryColor
                 )
                 .font(.caption2)
                 .foregroundStyle(bubbleSecondaryTextColor)
@@ -594,13 +595,15 @@ struct MessageBubble: View, Equatable {
                     mentionTargets: mentionTargets,
                     mentions: message.mentions,
                     inlineAccent: bubbleInlineAccentColor,
+                    personMentionAccent: bubblePersonMentionColor,
+                    agentMentionAccent: bubbleAgentMentionColor,
                     allowsTextSelection: isActionPresented && actionAttachment == nil,
                     onOpenPersonMention: onOpenMentionProfile
                 )
                     .foregroundStyle(bubbleTextColor)
 
                 if let url = KordiMarkdownParser.firstExternalURL(in: message.text) {
-                    MessageLinkPreview(url: url)
+                    MessageLinkPreview(url: url, foreground: bubbleTextColor, secondaryForeground: bubbleTextColor.opacity(0.88))
                 }
             }
 
@@ -664,7 +667,8 @@ struct MessageBubble: View, Equatable {
                     if message.author == .me {
                         MessageDeliveryGlyph(
                             state: message.deliveryState,
-                            readByCount: message.readByCount
+                            readByCount: message.readByCount,
+                            tint: bubbleDeliveryColor
                         )
                     }
                 }
@@ -915,7 +919,9 @@ struct MessageBubble: View, Equatable {
                         density: .compact,
                         mentionTargets: mentionTargets,
                         mentions: source.mentions ?? [],
-                        inlineAccent: bubbleInlineAccentColor
+                        inlineAccent: bubbleInlineAccentColor,
+                        personMentionAccent: bubblePersonMentionColor,
+                        agentMentionAccent: bubbleAgentMentionColor
                     )
                         .foregroundStyle(bubbleSecondaryTextColor)
                         .lineLimit(2)
@@ -945,7 +951,7 @@ struct MessageBubble: View, Equatable {
     private var lightAppearanceBubbleTintColor: Color {
         guard colorScheme == .light else { return .clear }
         return switch message.author {
-        case .me: chatTheme == .quiet ? .clear : chatTheme.accent.opacity(0.12)
+        case .me: chatTheme == .quiet || chatTheme == .sand ? .clear : chatTheme.accent.opacity(0.12)
         case .person: chatTheme == .quiet
             ? chatTheme.peerText.opacity(0.12)
             : chatTheme.accent.opacity(0.16)
@@ -955,10 +961,22 @@ struct MessageBubble: View, Equatable {
 
     private var bubbleInlineAccentColor: Color {
         switch message.author {
-        case .me: chatTheme.ownText
+        case .me: chatTheme.ownAgentMention
         case .person: chatTheme.accent
         case .agent: KordiTheme.agentMention
         }
+    }
+
+    private var bubblePersonMentionColor: Color {
+        message.author == .me ? chatTheme.ownPersonMention : KordiTheme.personMention
+    }
+
+    private var bubbleAgentMentionColor: Color {
+        message.author == .me ? chatTheme.ownAgentMention : KordiTheme.agentMention
+    }
+
+    private var bubbleDeliveryColor: Color {
+        message.deliveryState == .read ? chatTheme.ownPersonMention : chatTheme.ownReplyAccent
     }
 
     private var replyPreviewBackgroundColor: Color {
@@ -3595,8 +3613,22 @@ enum AttachmentImageDecoder {
 struct MessageDeliveryGlyph: View {
     let state: MessageDeliveryState
     let readByCount: Int?
+    var tint: Color? = nil
 
     var body: some View {
+        Group {
+            if let tint {
+                glyph.foregroundStyle(tint)
+            } else {
+                glyph
+            }
+        }
+        .font(.caption2.weight(.semibold))
+        .frame(width: 16, height: 14)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var glyph: some View {
         Group {
             switch state {
             case .sending:
@@ -3616,9 +3648,6 @@ struct MessageDeliveryGlyph: View {
                 Image(systemName: "xmark")
             }
         }
-        .font(.caption2.weight(.semibold))
-        .frame(width: 16, height: 14)
-        .accessibilityLabel(accessibilityLabel)
     }
 
     private var accessibilityLabel: String {

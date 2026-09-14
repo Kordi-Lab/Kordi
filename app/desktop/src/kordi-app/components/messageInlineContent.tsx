@@ -1,5 +1,5 @@
 import { Fragment, memo, useMemo, useState, type ReactNode } from 'react';
-import { Globe2 } from 'lucide-react';
+import { Link2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
@@ -59,7 +59,7 @@ export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
           onError={() => setFailedDataUrl(loadedDataUrl)}
         />
       ) : (
-        <Globe2 />
+        <Link2 />
       )}
     </span>
   );

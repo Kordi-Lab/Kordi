@@ -83,6 +83,13 @@ struct KordiApp: App {
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
 
     init() {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview-data"),
+           ProcessInfo.processInfo.arguments.contains("--preview-theme-contrast") {
+            UserDefaults.standard.set(KordiChatTheme.sand.rawValue, forKey: KordiChatTheme.storageKey)
+            UserDefaults.standard.set(AppAppearance.light.rawValue, forKey: AppAppearance.storageKey)
+        }
+#endif
         let model = AppModel()
         let callCoordinator = KordiCallCoordinator()
         let notificationCoordinator = KordiNotificationCoordinator()
