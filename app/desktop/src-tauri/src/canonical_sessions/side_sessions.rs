@@ -6,7 +6,8 @@ pub(crate) fn initialize_private_side_session(
     source: Option<&str>,
     cwd: &str,
 ) -> Result<(), String> {
-    initialize_in_db(&open_db()?, id, source, cwd)
+    let conn = open_db()?;
+    initialize_in_db(&conn, id, source, cwd)
 }
 
 fn initialize_in_db(

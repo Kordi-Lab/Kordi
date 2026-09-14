@@ -202,7 +202,7 @@ pub(super) fn load_message_refs(
 
 pub(in crate::canonical_sessions) fn open_account_db(
     account_id: &str,
-) -> Result<Connection, String> {
+) -> Result<super::super::database::DatabaseConnection, String> {
     if account_id.is_empty() {
         return Err("Chat sync account id is required".into());
     }

@@ -44,10 +44,9 @@ pub(super) fn load_deleted_message_ids(
 pub async fn desktop_chat_sync_deleted_message_ids(
     account_id: String,
 ) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    super::super::run_canonical_blocking(move || {
         let conn = open_account_db(account_id.trim())?;
         load_deleted_message_ids(&conn, account_id.trim())
     })
     .await
-    .map_err(|error| error.to_string())?
 }
