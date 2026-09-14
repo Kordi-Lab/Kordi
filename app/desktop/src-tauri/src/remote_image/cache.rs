@@ -7,6 +7,9 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+mod noto;
+pub(super) use noto::noto_cache_policy;
+
 pub(super) const MAX_REMOTE_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 const REMOTE_IMAGE_CACHE_VERSION: u8 = 1;
 const REMOTE_IMAGE_CACHE_MAX_HEADER_BYTES: usize = 4 * 1024;

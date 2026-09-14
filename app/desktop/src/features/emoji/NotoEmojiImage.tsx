@@ -2,29 +2,33 @@ import { memo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import {
+  getRemoteImageSnapshot,
   shouldLoadRemoteImageThroughNativeProxy,
   useRemoteImage,
 } from '@/kordi-app/components/remoteAvatarImage';
 import { cn } from '@/lib/utils';
-import { markEmojiImageReady } from './emojiImageReadiness';
+import { isEmojiImageReady, markEmojiImageReady } from './emojiImageReadiness';
 import { useNearEmojiViewport } from './emojiViewport';
 import { notoEmojiAssetUrl, type NotoEmoji } from './notoEmoji';
 
-function NotoFrame({ source, readinessKey, className, native, onError }: {
+function NotoFrame({ source, readinessKey, className, native, lazy = false, onError }: {
   source: string | null;
   readinessKey: string;
   className: string;
   native: boolean;
+  lazy?: boolean;
   onError?: () => void;
 }) {
-  const [loadedSource, setLoadedSource] = useState<string | null>(null);
+  const [loadedSource, setLoadedSource] = useState<string | null>(() => (
+    className === 'app-noto-still' && isEmojiImageReady(readinessKey) ? source : null
+  ));
   return (
     <img
       src={source ?? undefined}
       className={className}
       alt=""
       data-ready={Boolean(source && loadedSource === source)}
-      loading={native ? 'eager' : 'lazy'}
+      loading={native && !lazy ? 'eager' : 'lazy'}
       decoding="async"
       draggable={false}
       onLoad={() => {
@@ -67,20 +71,24 @@ function NotoAnimation({ emoji, nearViewport, native }: {
 export const NotoEmojiImage = memo(function NotoEmojiImage({
   emoji,
   animated = true,
+  thumbnail = false,
   className,
   decorative = false,
 }: {
   emoji: NotoEmoji;
   animated?: boolean;
+  thumbnail?: boolean;
   className?: string;
   decorative?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
   const imageRef = useRef<HTMLSpanElement | null>(null);
-  const stillUrl = notoEmojiAssetUrl(emoji, 'png');
+  const stillUrl = notoEmojiAssetUrl(emoji, 'png', thumbnail ? 128 : 512);
   const native = shouldLoadRemoteImageThroughNativeProxy(stillUrl);
   const nearViewport = useNearEmojiViewport(imageRef, native);
-  const still = useRemoteImage(stillUrl, native && nearViewport);
+  // A warm picker can render its cached still before the observer's first callback.
+  const cachedStill = getRemoteImageSnapshot(stillUrl).status === 'ready';
+  const still = useRemoteImage(stillUrl, native && (nearViewport || cachedStill));
   const stillSource = native ? (still.status === 'ready' ? still.dataUrl : null) : stillUrl;
   return (
     <span
@@ -93,7 +101,7 @@ export const NotoEmojiImage = memo(function NotoEmojiImage({
       {animated && !reduceMotion ? (
         <NotoAnimation key={emoji.id} emoji={emoji} native={native} nearViewport={nearViewport} />
       ) : null}
-      <NotoFrame source={stillSource} readinessKey={`noto:${stillUrl}`} className="app-noto-still" native={native} />
+      <NotoFrame key={stillUrl} source={stillSource} readinessKey={`noto:${stillUrl}`} className="app-noto-still" native={native} lazy={cachedStill} />
       <span className="app-noto-fallback" aria-hidden="true">{emoji.value}</span>
     </span>
   );

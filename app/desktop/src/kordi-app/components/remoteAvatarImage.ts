@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { avatarMemoryCache, remoteImageMemoryCache, remoteImageMemoryCaches } from './remoteImageMemoryCache';
 
 type NativeInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
@@ -15,8 +16,6 @@ export type RemoteAvatarImageSnapshot =
   | { status: 'ready'; dataUrl: string; error: null }
   | { status: 'failed'; dataUrl: null; error: unknown };
 
-const MAX_CACHED_REMOTE_AVATARS = 192;
-const MAX_CACHED_REMOTE_AVATAR_BYTES = 16 * 1024 * 1024;
 const MAX_FAILED_REMOTE_AVATARS = 64;
 const FAILED_REMOTE_AVATAR_RETRY_COOLDOWN_MS = 30_000;
 const IDLE_REMOTE_AVATAR_SNAPSHOT: RemoteAvatarImageSnapshot = Object.freeze({
@@ -30,23 +29,16 @@ const PENDING_REMOTE_AVATAR_SNAPSHOT: RemoteAvatarImageSnapshot = Object.freeze(
   error: null,
 });
 
-type RemoteAvatarCacheEntry = {
-  dataUrl: string;
-  estimatedBytes: number;
-  snapshot: RemoteAvatarImageSnapshot;
-};
 type FailedRemoteAvatarEntry = {
   failedAt: number;
   error: unknown;
   snapshot: RemoteAvatarImageSnapshot;
 };
 
-const resolvedRemoteAvatars = new Map<string, RemoteAvatarCacheEntry>();
 const inFlightRemoteAvatars = new Map<string, Promise<string>>();
 const pendingRemoteAvatars = new Set<string>();
 const failedRemoteAvatars = new Map<string, FailedRemoteAvatarEntry>();
 const remoteAvatarListeners = new Map<string, Set<() => void>>();
-let resolvedRemoteAvatarBytes = 0;
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
@@ -92,12 +84,6 @@ async function defaultNativeInvoke<T>(command: string, args?: Record<string, unk
   return invoke<T>(command, args);
 }
 
-function estimatedStringBytes(value: string): number {
-  // Data URLs are ASCII today, but counting two bytes per character keeps the
-  // budget conservative across JavaScript engines and future payload formats.
-  return value.length * 2;
-}
-
 function notifyRemoteAvatarListeners(url: string): void {
   remoteAvatarListeners.get(url)?.forEach((listener) => listener());
 }
@@ -113,48 +99,16 @@ function subscribeRemoteAvatar(url: string, listener: () => void): () => void {
   };
 }
 
-function readResolvedRemoteAvatar(url: string, touch: boolean): string | null {
-  const cached = resolvedRemoteAvatars.get(url);
+function readResolvedRemoteAvatar(key: string, touch: boolean): string | null {
+  const cache = remoteImageMemoryCache(key);
+  const cached = cache.entries.get(key);
   if (!cached) return null;
-  if (touch) {
-    resolvedRemoteAvatars.delete(url);
-    resolvedRemoteAvatars.set(url, cached);
-  }
+  if (touch) cache.touch(key);
   return cached.dataUrl;
 }
 
-function evictOldestResolvedRemoteAvatar(): boolean {
-  const oldest = resolvedRemoteAvatars.entries().next().value as [string, RemoteAvatarCacheEntry] | undefined;
-  if (!oldest) return false;
-  const [url, entry] = oldest;
-  resolvedRemoteAvatars.delete(url);
-  resolvedRemoteAvatarBytes -= entry.estimatedBytes;
-  return true;
-}
-
-function rememberResolvedRemoteAvatar(url: string, dataUrl: string): void {
-  const estimatedBytes = estimatedStringBytes(dataUrl);
-  if (estimatedBytes > MAX_CACHED_REMOTE_AVATAR_BYTES) return;
-
-  const existing = resolvedRemoteAvatars.get(url);
-  if (existing) {
-    resolvedRemoteAvatars.delete(url);
-    resolvedRemoteAvatarBytes -= existing.estimatedBytes;
-  }
-
-  while (
-    resolvedRemoteAvatars.size >= MAX_CACHED_REMOTE_AVATARS
-    || resolvedRemoteAvatarBytes + estimatedBytes > MAX_CACHED_REMOTE_AVATAR_BYTES
-  ) {
-    if (!evictOldestResolvedRemoteAvatar()) break;
-  }
-
-  resolvedRemoteAvatars.set(url, {
-    dataUrl,
-    estimatedBytes,
-    snapshot: Object.freeze({ status: 'ready', dataUrl, error: null }),
-  });
-  resolvedRemoteAvatarBytes += estimatedBytes;
+function rememberResolvedRemoteAvatar(key: string, dataUrl: string): void {
+  remoteImageMemoryCache(key).remember(key, dataUrl);
 }
 
 function rememberFailedRemoteAvatar(url: string, error: unknown): void {
@@ -178,7 +132,7 @@ export function getRemoteImageSnapshot(
   const normalized = normalizeRemoteAvatarUrl(imageUrl);
   if (!normalized) return IDLE_REMOTE_AVATAR_SNAPSHOT;
   const key = remoteImageRequestKey(normalized, options);
-  const resolved = resolvedRemoteAvatars.get(key);
+  const resolved = remoteImageMemoryCache(key).entries.get(key);
   if (resolved) return resolved.snapshot;
   if (pendingRemoteAvatars.has(key)) return PENDING_REMOTE_AVATAR_SNAPSHOT;
   return failedRemoteAvatars.get(key)?.snapshot ?? IDLE_REMOTE_AVATAR_SNAPSHOT;
@@ -297,15 +251,14 @@ export function useRemoteAvatarImage(
 
 export function clearRemoteAvatarImageCacheForTests(): void {
   const affectedUrls = new Set([
-    ...resolvedRemoteAvatars.keys(),
+    ...remoteImageMemoryCaches.flatMap(cache => [...cache.entries.keys()]),
     ...pendingRemoteAvatars,
     ...failedRemoteAvatars.keys(),
   ]);
-  resolvedRemoteAvatars.clear();
+  remoteImageMemoryCaches.forEach(cache => cache.clear());
   inFlightRemoteAvatars.clear();
   pendingRemoteAvatars.clear();
   failedRemoteAvatars.clear();
-  resolvedRemoteAvatarBytes = 0;
   affectedUrls.forEach(notifyRemoteAvatarListeners);
 }
 
@@ -318,11 +271,11 @@ export function getRemoteAvatarImageCacheStatsForTests(): {
   maxEntries: number;
 } {
   return {
-    entries: resolvedRemoteAvatars.size,
+    entries: avatarMemoryCache.entries.size,
     inFlight: inFlightRemoteAvatars.size,
     failed: failedRemoteAvatars.size,
-    totalBytes: resolvedRemoteAvatarBytes,
-    maxBytes: MAX_CACHED_REMOTE_AVATAR_BYTES,
-    maxEntries: MAX_CACHED_REMOTE_AVATARS,
+    totalBytes: avatarMemoryCache.totalBytes,
+    maxBytes: avatarMemoryCache.maxBytes,
+    maxEntries: avatarMemoryCache.maxEntries,
   };
 }
