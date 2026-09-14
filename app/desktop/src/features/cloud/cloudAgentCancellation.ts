@@ -97,8 +97,8 @@ export function cloudGroupAgentCancelledNoticeRequest({
   processingMessage: CanonicalSessionMessage;
   requestId: string;
   conversationId: string;
-  cancelledByAccountId: string;
-  cancelledByRole: CloudGroupAgentCancelRole;
+  cancelledByAccountId?: string;
+  cancelledByRole?: CloudGroupAgentCancelRole;
   ownerThinkingText?: string;
   ownerTools?: DesktopChatTurnSnapshot['tools'];
   now?: number;
@@ -114,10 +114,11 @@ export function cloudGroupAgentCancelledNoticeRequest({
       ? now
       : stableTimestampMs;
   const trimmedRequestId = requestId.trim();
-  const trimmedCancelledByAccountId =
-    cancelledByAccountId.trim() || 'local';
-  const role = cancelledByRole || 'participant';
-  const text = `Request canceled by ${role}.`;
+  // A native turn can stop when its execution lease expires. Only explicit
+  // cancellation controls provide evidence of the person who stopped it.
+  const trimmedCancelledByAccountId = cancelledByAccountId?.trim();
+  const role = trimmedCancelledByAccountId ? cancelledByRole : undefined;
+  const text = role ? `Request canceled by ${role}.` : 'Request stopped.';
   // Overwrite the request's processing slot. Reusing a separate cancel ID can
   // leave two rows and lets timeout reconciliation oscillate the UI.
   const noticeId = processingMessage.id;
@@ -137,8 +138,10 @@ export function cloudGroupAgentCancelledNoticeRequest({
       requestId: trimmedRequestId,
       replyToMessageId: trimmedRequestId,
       ...(content.messageAction ? { messageAction: content.messageAction } : {}),
-      cancelledByAccountId: trimmedCancelledByAccountId,
-      cancelledByRole: role,
+      ...(role ? {
+        cancelledByAccountId: trimmedCancelledByAccountId,
+        cancelledByRole: role,
+      } : {}),
       ...(ownerTools?.length ? { tools: ownerTools } : {}),
       ...(ownerThinkingText?.trim() ? { thinkingText: ownerThinkingText } : {}),
     },
@@ -148,7 +151,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
     sourceTransport: 'cloud-group-agent',
     sourceEventId:
       `cloud-group-agent-cancel:${trimmedRequestId}`
-      + `:${trimmedCancelledByAccountId}`,
+      + `:${role ? trimmedCancelledByAccountId : 'runtime'}`,
   };
 }
 
