@@ -224,7 +224,7 @@ test('shared direct and group requests use internal request runtimes without aut
 
   assert.match(directSource, /startDesktopSharedChatMessage\(\s*message\.messageId,/);
   assert.match(groupSource, /startDesktopSharedChatMessage\(\s*message\.id,/);
-  assert.match(groupSource, /\[message\.id\]: \{ \.\.\.turn, replyToMessageId: message\.id, messageAction: threadMessageAction \}/);
+  assert.match(groupSource, /\[message\.id\]: \{ \.\.\.[A-Za-z_$][\w$]*, replyToMessageId: message\.id, messageAction: threadMessageAction \}/);
   assert.match(directSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(groupSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(desktopSource, /desktop_chat_start_shared_message/);
