@@ -1,5 +1,6 @@
 import Foundation
 import UIKit
+@preconcurrency import LinkPresentation
 
 struct PreviewFixture {
     let account: CloudAccount
@@ -457,7 +458,61 @@ enum PreviewData {
         return messages
     }
 
+    @MainActor
+    static func themeContrastLinkMetadata(for url: URL) -> LPLinkMetadata? {
+#if DEBUG
+        guard ProcessInfo.processInfo.arguments.contains("--preview-data"),
+              ProcessInfo.processInfo.arguments.contains("--preview-theme-contrast"),
+              ["example.com", "example.org", "example.net"].contains(url.host ?? "") else { return nil }
+        let metadata = LPLinkMetadata()
+        metadata.originalURL = url
+        metadata.url = url
+        metadata.title = url.host == "example.com" ? "Mint, sky, and gold — color study" : "Chat theme review checklist"
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 240))
+        let image = renderer.image { context in
+            UIColor(red: 133 / 255, green: 70 / 255, blue: 39 / 255, alpha: 1).setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 360, height: 240))
+            let colors = [UIColor(red: 120 / 255, green: 239 / 255, blue: 181 / 255, alpha: 1),
+                          UIColor(red: 153 / 255, green: 223 / 255, blue: 255 / 255, alpha: 1),
+                          UIColor(red: 255 / 255, green: 223 / 255, blue: 128 / 255, alpha: 1)]
+            for (index, color) in colors.enumerated() {
+                color.setFill()
+                context.fill(CGRect(x: 36 + index * 100, y: 50, width: 82, height: 140))
+            }
+        }
+        metadata.imageProvider = NSItemProvider(object: image)
+        return metadata
+#else
+        return nil
+#endif
+    }
+
+    private static func themeContrastConversation(now: Date) -> [ChatMessage] {
+        let mentions = [MessageMention(label: "Maya", targetKind: "person", humanId: "acct_maya"),
+                        MessageMention(label: "Assistant", targetKind: "agent")]
+        var messages = [MessageDeliveryState.sent, .delivered, .read].enumerated().map { index, state in
+            ChatMessage(id: "theme-state-\(index)", conversationId: "person:acct_maya", author: .me,
+                authorName: "You", text: "@Maya @Assistant This message is \(state.label.lowercased()).",
+                createdAt: now.addingTimeInterval(Double(index - 8) * 60), deliveryState: state,
+                errorMessage: nil, requestMessageId: nil, mentions: mentions)
+        }
+        messages.append(ChatMessage(id: "theme-link-received", conversationId: "person:acct_maya", author: .person,
+            authorName: "Maya Chen", text: "Here is the review checklist: https://example.org/interface-review",
+            createdAt: now.addingTimeInterval(-180), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil))
+        messages.append(ChatMessage(id: "theme-link-sent", conversationId: "person:acct_maya", author: .me,
+            authorName: "You", text: "@Maya @Assistant Review the color study: https://example.com/color-study",
+            createdAt: now.addingTimeInterval(-120), deliveryState: .read, errorMessage: nil, requestMessageId: nil,
+            mentions: mentions))
+        messages.append(ChatMessage(id: "theme-link-inline", conversationId: "person:acct_maya", author: .me,
+            authorName: "You", text: "Open [the review checklist](https://example.net/review-checklist) from this inline link.",
+            createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil))
+        return messages
+    }
+
     private static func mayaConversation(now: Date, resurrected: Bool = false) -> [ChatMessage] {
+        if ProcessInfo.processInfo.arguments.contains("--preview-theme-contrast") {
+            return themeContrastConversation(now: now)
+        }
         let richText = "# Rendered message\n\n**Bold stays bold** and *italic stays italic*.\n\nA waving blob :blob:blobwave:\n\n- First formatted item\n- Second formatted item\n\n`let value = 42`\n\nRich message end marker."
         if ProcessInfo.processInfo.arguments.contains("--preview-rich-message-actions") {
             return [ChatMessage(id: "rich-menu", conversationId: "person:acct_maya", author: .person,

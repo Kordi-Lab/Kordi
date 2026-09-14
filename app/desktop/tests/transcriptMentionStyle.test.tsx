@@ -41,7 +41,7 @@ test('chat mention and footer colors are tokenized by bubble context', () => {
   const shellCss = readDesktopShellCss();
   const themeTokensCss = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
 
-  assert.match(themeTokensCss, /--app-chat-mention-own:\s*var\(--app-sidebar-accent\);/);
+  assert.match(themeTokensCss, /--app-chat-mention-own:\s*#315884;/);
   assert.match(themeTokensCss, /--app-chat-mention-peer:\s*var\(--app-sidebar-accent\);/);
   assert.match(themeTokensCss, /--app-sidebar-accent:\s*#60A5FA;/);
   assert.match(themeTokensCss, /--app-chat-meta-own:\s*oklch\(/);

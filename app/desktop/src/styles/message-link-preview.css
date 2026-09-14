@@ -35,7 +35,7 @@
 
 .app-message-link-preview-site {
   overflow: hidden;
-  color: color-mix(in oklab, currentColor 66%, transparent);
+  color: color-mix(in oklab, currentColor 88%, transparent);
   font-size: 11px;
   font-weight: 600;
   line-height: 1.25;
@@ -59,7 +59,7 @@
 }
 
 .app-message-link-preview-description {
-  color: color-mix(in oklab, currentColor 68%, transparent);
+  color: color-mix(in oklab, currentColor 88%, transparent);
   font-size: 12px;
   line-height: 1.35;
   -webkit-line-clamp: 1;

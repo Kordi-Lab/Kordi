@@ -34,6 +34,9 @@
   --app-chat-mention-own: #3B6394;
   --app-chat-mention-peer: var(--app-sidebar-accent);
   --app-chat-mention-agent: #60A5FA;
+  --app-chat-mention-own-person: #176B4D;
+  --app-chat-mention-own-agent: #245B9A;
+  --app-chat-reply-own: #805500;
   --app-chat-mention-person: oklch(78% 0.12 165);
   --app-chat-meta-own: oklch(34% 0.018 70);
   --app-chat-meta-peer: oklch(74% 0.018 245);
@@ -171,9 +174,12 @@
   --app-nav-rail-glass-border: rgb(15 23 42 / 0.12);
   --app-nav-rail-glass-highlight: rgb(255 255 255 / 0.72);
   --app-nav-rail-avatar-ring: rgb(15 23 42 / 0.16);
-  --app-chat-mention-own: var(--app-sidebar-accent);
+  --app-chat-mention-own: #315884;
   --app-chat-mention-peer: var(--app-sidebar-accent);
   --app-chat-mention-agent: #2563EB;
+  --app-chat-mention-own-person: #176B4D;
+  --app-chat-mention-own-agent: #245B9A;
+  --app-chat-reply-own: #805500;
   --app-chat-mention-person: oklch(43% 0.105 165);
   --app-chat-meta-own: rgb(31 49 69 / 0.88);
   --app-chat-meta-peer: rgb(17 24 39 / 0.68);

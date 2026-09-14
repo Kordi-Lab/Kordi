@@ -105,7 +105,7 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
         switch self {
         case .quiet: KordiTheme.adaptive(light: 0xE2EBF5, dark: 0x2D425B)
         case .midnight: KordiTheme.adaptive(light: 0x6652A3, dark: 0x6554A2)
-        case .sand: KordiTheme.adaptive(light: 0x9D572F, dark: 0x9A5734)
+        case .sand: KordiTheme.adaptive(light: 0x854627, dark: 0x854627)
         case .ocean: KordiTheme.adaptive(light: 0x2E6F7A, dark: 0x2D6872)
         }
     }
@@ -114,6 +114,30 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
         switch self {
         case .quiet: KordiTheme.adaptive(light: 0x1F3145, dark: 0xF5F8FC)
         case .midnight, .sand, .ocean: .white
+        }
+    }
+
+    var ownPersonMention: Color {
+        switch self {
+        case .quiet: KordiTheme.adaptive(light: 0x176B4D, dark: 0xADFFD7)
+        case .sand: Color(red: 120 / 255, green: 239 / 255, blue: 181 / 255)
+        case .midnight, .ocean: Color(red: 173 / 255, green: 255 / 255, blue: 215 / 255)
+        }
+    }
+
+    var ownAgentMention: Color {
+        switch self {
+        case .quiet: KordiTheme.adaptive(light: 0x245B9A, dark: 0xBFF5FF)
+        case .sand: Color(red: 153 / 255, green: 223 / 255, blue: 255 / 255)
+        case .midnight, .ocean: Color(red: 191 / 255, green: 245 / 255, blue: 255 / 255)
+        }
+    }
+
+    var ownReplyAccent: Color {
+        switch self {
+        case .quiet: KordiTheme.adaptive(light: 0x805500, dark: 0xFFF0A3)
+        case .sand: Color(red: 255 / 255, green: 223 / 255, blue: 128 / 255)
+        case .midnight, .ocean: Color(red: 255 / 255, green: 240 / 255, blue: 163 / 255)
         }
     }
 

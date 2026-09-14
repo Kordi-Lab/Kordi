@@ -3,9 +3,11 @@
   --app-message-bubble-stroke: transparent;
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-own);
+  --app-chat-mention-agent: var(--app-chat-mention-own-agent);
+  --app-chat-mention-person: var(--app-chat-mention-own-person);
   --app-message-meta: var(--app-chat-meta-own);
-  --app-markdown-link: var(--app-chat-mention-own);
-  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-own) 84%, var(--app-chat-bubble-user-text));
+  --app-markdown-link: var(--app-chat-mention-own-agent);
+  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-own-agent) 84%, var(--app-chat-bubble-user-text));
   border: 0;
   background: transparent;
   color: var(--app-chat-bubble-user-text);
@@ -20,6 +22,8 @@
   color: var(--app-chat-bubble-user-text);
 }
 
+body[data-kordi-chat-theme="sand"] .kordi-app.theme-light .app-chat-bubble-user,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="sand"] .app-chat-bubble-user,
 body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-user,
 .kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-user {
   --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
@@ -142,6 +146,22 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 .app-message-footer {
   color: var(--app-message-meta);
   opacity: 1;
+}
+
+/* Bubble colors take precedence over the global light/dark utility palette. */
+.kordi-app .app-chat-bubble-user [data-message-delivery-glyph]:not([data-message-delivery-glyph="exclamation"]) > * {
+  color: var(--app-chat-reply-own) !important;
+}
+
+.kordi-app .app-chat-bubble-user [data-message-delivery-status="read"] > [data-message-delivery-glyph] > *,
+.kordi-app .app-chat-bubble-user [data-message-delivery-status="responded"] > [data-message-delivery-glyph] > * {
+  color: var(--app-chat-mention-own-person) !important;
+}
+
+.kordi-app .app-chat-bubble-user .app-message-reply-line,
+.kordi-app .app-chat-bubble-user .app-message-reply-line:hover,
+.kordi-app .app-chat-bubble-user .app-message-reply-line :is(.app-message-reply-line-icon, .app-message-reply-count) {
+  color: var(--app-chat-reply-own) !important;
 }
 
 .app-support-contact-typing {

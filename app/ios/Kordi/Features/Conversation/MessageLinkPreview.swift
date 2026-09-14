@@ -76,7 +76,12 @@ final class LinkPreviewMetadataCache {
     }
 
     private static func fetch(_ url: URL) async -> LinkPreviewMetadataValue {
-        await withCheckedContinuation { continuation in
+#if DEBUG
+        if let metadata = PreviewData.themeContrastLinkMetadata(for: url) {
+            return LinkPreviewMetadataValue(metadata: metadata)
+        }
+#endif
+        return await withCheckedContinuation { continuation in
             let provider = LPMetadataProvider()
             let retention = LinkMetadataProviderRetention(provider)
             provider.timeout = 10
@@ -90,6 +95,8 @@ final class LinkPreviewMetadataCache {
 
 struct MessageLinkPreview: View {
     let url: URL
+    var foreground: Color = .primary
+    var secondaryForeground: Color = .secondary
     @State private var metadata: LPLinkMetadata?
     @State private var artwork: UIImage?
 
@@ -122,16 +129,16 @@ struct MessageLinkPreview: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(displayHost)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(secondaryForeground)
                     .lineLimit(1)
                 Text(displayTitle)
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(foreground)
                     .lineLimit(2)
                 if let displayPath {
                     Text(displayPath)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryForeground)
                         .lineLimit(1)
                 }
             }
@@ -140,7 +147,7 @@ struct MessageLinkPreview: View {
             .padding(.vertical, 10)
 
             ZStack {
-                Color.primary.opacity(0.05)
+                foreground.opacity(0.05)
                 if let artwork {
                     Image(uiImage: artwork)
                         .resizable()
@@ -149,17 +156,17 @@ struct MessageLinkPreview: View {
                 } else {
                     Image(systemName: "link")
                         .font(.title3.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(secondaryForeground)
                         .accessibilityHidden(true)
                 }
             }
             .frame(width: 88)
             .clipped()
         }
-        .background(Color.primary.opacity(0.035))
+        .background(foreground.opacity(0.035))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                .stroke(foreground.opacity(0.12), lineWidth: 1)
         }
     }
 

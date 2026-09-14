@@ -65,8 +65,8 @@
   overflow: hidden;
   place-items: center;
   border-radius: 3px;
-  background: color-mix(in oklab, currentColor 7%, transparent);
-  color: color-mix(in oklab, currentColor 72%, var(--utility-muted-text));
+  background: transparent;
+  color: inherit;
   vertical-align: -2px;
 }
 
@@ -78,13 +78,9 @@
 }
 
 .app-message-link-site-icon svg {
-  width: 11px;
-  height: 11px;
-  stroke-width: 1.9;
-}
-
-.app-message-link-site-icon[data-site-icon-state='ready'] {
-  background: transparent;
+  width: 13px;
+  height: 13px;
+  stroke-width: 2;
 }
 .app-agent-code-toolbar {
   border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
