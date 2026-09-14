@@ -4,28 +4,22 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
-### Fixed
-
-- Kept earlier Agent replies visible during follow-up tool calls and prevented
-  failed or cancelled replies from appearing again during history synchronization.
-  ([#1510](https://github.com/Kordi-Lab/Kordi/issues/1510))
-- Preserved locally generated group-Agent reasoning for its owner on Mac
-  through completion and synchronization, while keeping it hidden from peers.
-- Kept cross-device Agent requests, replies, and cancellation notices from appearing twice,
-  preserved selected-Agent names and delivery states, and restored iPhone processing feedback.
-- Kept ready Macs responsive to incoming Agent requests and prevented blank iPhone timelines
-  when sending after a long reply. ([#1533](https://github.com/Kordi-Lab/Kordi/issues/1533))
-
-## [0.0.2-beta.2] - 2026-09-13
+## [0.0.2-beta.2] - 2026-09-14
 
 ### Added
 
+- Let agents retrieve authorized historical chat images across local and Cloud
+  conversations, including later follow-ups.
+  ([#1532](https://github.com/Kordi-Lab/Kordi/pull/1532))
 - Added independent reactions and deletion for individual photos in iPhone
   messages. ([#1507])
 - Added owner-only macOS application automation for local agents. ([#1500])
 
 ### Changed
 
+- Improved mention, link, reply, and receipt contrast in chat themes on Mac and
+  iPhone, including the Sand palette and link cards.
+  ([#1543](https://github.com/Kordi-Lab/Kordi/pull/1543))
 - Reduced retained desktop chat and media state, reused loaded previews, and
   kept reading position steadier while loading older messages. ([#1496])
 - Refined iPhone message menus to preserve Markdown, emoji, expanded text, and
@@ -34,6 +28,37 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Fixed
 
+- Kept earlier Agent replies visible during follow-up tool calls and prevented
+  failed or cancelled replies from appearing again during history synchronization.
+  ([#1541](https://github.com/Kordi-Lab/Kordi/pull/1541))
+- Preserved locally generated group-Agent reasoning for its owner on Mac
+  through completion and synchronization, while keeping it hidden from peers.
+- Kept cross-device Agent requests, replies, and cancellation notices from appearing twice,
+  preserved selected-Agent names and delivery states, and restored iPhone processing feedback.
+- Kept ready Macs responsive to incoming Agent requests and prevented blank iPhone timelines
+  when sending after a long reply. ([#1533](https://github.com/Kordi-Lab/Kordi/issues/1533))
+- Preserved images in direct model requests and image-reading tool results for
+  local and Cloud agents, with explicit errors for unsupported or oversized files.
+  ([#1520](https://github.com/Kordi-Lab/Kordi/pull/1520),
+  [#1522](https://github.com/Kordi-Lab/Kordi/pull/1522))
+- Preserved synchronized attachment identity and deletion state, recovered eligible
+  historical images, and kept acknowledged Agent preparation visible across devices.
+  ([#1532](https://github.com/Kordi-Lab/Kordi/pull/1532))
+- Prevented the first group Agent request from rebuilding the desktop transcript,
+  and kept Processing motion steady in production builds.
+  ([#1541](https://github.com/Kordi-Lab/Kordi/pull/1541))
+- Kept desktop reading position stable during initial history loading.
+  ([#1531](https://github.com/Kordi-Lab/Kordi/pull/1531))
+- Improved macOS link-preview titles and thumbnails, and excluded archived chats
+  from global unread badges and message notifications.
+  ([#1527](https://github.com/Kordi-Lab/Kordi/pull/1527))
+- Aligned inline desktop emoji with adjacent text.
+  ([#1525](https://github.com/Kordi-Lab/Kordi/pull/1525))
+- Improved light-mode session selection contrast.
+  ([#1538](https://github.com/Kordi-Lab/Kordi/pull/1538))
+- Coordinated desktop sign-in transitions with native window resizing and workspace
+  layout. Further native flicker work remains tracked separately.
+  ([#1536](https://github.com/Kordi-Lab/Kordi/pull/1536))
 - Kept iPhone agent trajectories anchored throughout expansion, including short
   conversations, prevented details from overlapping their header, and stabilized
   short chats above the composer.

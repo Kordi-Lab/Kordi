@@ -10,9 +10,10 @@ test('native shell locks page scrolling at the document root', () => {
   const baseCss = readSource('../src/styles/base.css');
   const app = readSource('../src/App.jsx');
 
-  assert.match(baseCss, /body\.kordi-native-shell\s*\{[\s\S]*overflow:\s*hidden;/);
+  assert.match(baseCss, /body\.kordi-native-shell\s*\{[\s\S]*overflow:\s*clip;/);
   assert.match(baseCss, /body\.kordi-native-shell\s*\{[\s\S]*overscroll-behavior:\s*none;/);
   assert.match(baseCss, /html\.kordi-native-shell body #root\s*\{[\s\S]*background:\s*transparent;/);
+  assert.match(baseCss, /html\.kordi-native-shell\s*\{[^}]*overflow:\s*clip;/);
   assert.match(app, /document\.documentElement\.classList\.toggle\('kordi-native-shell'/);
   assert.match(app, /document\.body\.classList\.toggle\('kordi-native-shell'/);
 });
@@ -28,10 +29,12 @@ test('main app shell and chat transcript contain scroll to the intended axis', (
   const projectsPage = readSource('../src/pages/ProjectsPage.tsx');
 
   assert.match(appShellFrame, /kordi-app app-page-bg w-full min-w-0 max-w-full/);
-  assert.match(appShellFrame, /app-shell relative flex min-w-0 max-w-full flex-col overflow-hidden/);
-  assert.match(appShellFrame, /relative grid h-full min-w-0 flex-1 gap-0 overflow-hidden box-border/);
+  assert.match(appShellFrame, /app-shell relative flex min-h-0 min-w-0 max-w-full flex-col overflow-hidden/);
+  assert.match(appShellFrame, /relative grid min-h-0 min-w-0 flex-1 gap-0 overflow-hidden box-border/);
   assert.match(appShellFrame, /relative min-h-0 min-w-0 overflow-hidden/);
-  assert.match(appShellFrame, /grid h-full min-h-0 min-w-0/);
+  assert.match(appShellFrame, /app-shell-layout-grid grid min-h-0 min-w-0/);
+
+  assert.equal((appShellFrame.match(/gridTemplateRows: 'minmax\(0, 1fr\)'/g) ?? []).length, 2);
 
   assert.match(scrollArea, /overflow-y-auto/);
   assert.match(scrollArea, /overflow-x-hidden/);

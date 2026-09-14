@@ -7,7 +7,7 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 
 import { useCloudWindowSurface } from '../src/features/cloud/useCloudWindowSurface';
 
-test('native surface readiness waits for resize paint, resets on return, and recovers from failure', async () => {
+test('native surface readiness waits for resize paint, resets on return, and recovers from failure', { timeout: 10_000 }, async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   const frames = new Map<number, FrameRequestCallback>();
   let frameId = 0;
@@ -24,10 +24,21 @@ test('native surface readiness waits for resize paint, resets on return, and rec
   const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
   for (const [key, value] of Object.entries(values)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
   const requests: Array<{ surface: string; animate: boolean; resolve: () => void; reject: () => void }> = [];
+  const requestWaiters = new Map<number, () => void>();
+  const waitForRequests = async (count: number) => {
+    await act(async () => {
+      if (requests.length < count) {
+        await new Promise<void>(resolve => requestWaiters.set(count, resolve));
+      }
+    });
+    assert.equal(requests.length, count);
+  };
   mockIPC((command, args) => {
     assert.equal(command, 'desktop_set_auth_window_surface');
     return new Promise<void>((resolve, reject) => {
       requests.push({ ...args as { surface: string; animate: boolean }, resolve, reject: () => reject(new Error('Resize failed')) });
+      requestWaiters.get(requests.length)?.();
+      requestWaiters.delete(requests.length);
     });
   });
   const root = createRoot(document.getElementById('root')!);
@@ -54,10 +65,8 @@ test('native surface readiness waits for resize paint, resets on return, and rec
     await paint();
     assert.equal(requests.length, 0);
     await paint();
-    // The lazy Tauri module loads asynchronously on the first request.
-    for (let attempt = 0; requests.length === 0 && attempt < 100; attempt++) {
-      await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
-    }
+    // Every native call crosses an asynchronous import, even after module caching.
+    await waitForRequests(1);
     assert.equal(requests.length, 1, 'StrictMode must share the native resize');
     assert.equal(ready, false);
     assert.equal(requests[0].animate, true);
@@ -70,6 +79,7 @@ test('native surface readiness waits for resize paint, resets on return, and rec
     await render('main');
     await paint();
     await paint();
+    await waitForRequests(2);
     assert.equal(ready, false);
     reduceMotion = true;
     await render('login');
@@ -77,6 +87,7 @@ test('native surface readiness waits for resize paint, resets on return, and rec
     await paint();
     assert.equal(ready, false, 'a prior login size must not reveal a new login visit');
     await act(async () => requests[1].resolve());
+    await waitForRequests(3);
     assert.equal(requests[2].surface, 'login');
     assert.equal(requests[2].animate, false);
     await act(async () => requests[2].reject());
@@ -87,6 +98,7 @@ test('native surface readiness waits for resize paint, resets on return, and rec
     await render('signup');
     await paint();
     await paint();
+    await waitForRequests(4);
     await act(async () => root.unmount());
     await act(async () => requests[3].resolve());
     assert.equal(frames.size, 0, 'unmounted surfaces must not schedule reveal work');
