@@ -1,3 +1,4 @@
+import { PinMotionFixture } from './pinMotionFixture';
 import { createRef, useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
@@ -77,4 +78,4 @@ function Fixture() {
       </ChatPaneLayout>} />
   </>;
 }
-createRoot(document.getElementById('root')!).render(<Fixture />);
+createRoot(document.getElementById('root')!).render(new URLSearchParams(location.search).has('pin-motion') ? <PinMotionFixture /> : <Fixture />);

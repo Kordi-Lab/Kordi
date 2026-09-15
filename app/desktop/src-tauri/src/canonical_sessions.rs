@@ -103,9 +103,9 @@ pub(crate) use self::session_observation::{
 use self::title_policy::reconcile_session_title_metadata;
 
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
-// Version 3 certifies all previously unversioned chat projection migrations.
+// Version 4 adds the account-scoped pin event cache to existing installations.
 // Bump this whenever schema initialization gains a migration.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 mod database;
 mod database_jobs;

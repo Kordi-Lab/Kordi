@@ -17,6 +17,41 @@ private final class SubsessionReadURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+private final class PinHistoryReadURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let body: String
+        if request.url!.path.hasSuffix("/pin") {
+            body = #"{"pin":{"sessionId":"chat","sharedMessageId":null,"privateMessageId":null,"effectiveMessageId":null,"updatedAt":"2026-09-15T10:01:00Z"}}"#
+        } else if request.url!.query != nil {
+            body = #"{"events":[{"id":"pin","sequence":10,"sessionId":"chat","kind":"pinned","scope":"shared","messageId":"target","updatedByAccountId":"owner","updatedAt":"2026-09-15T10:00:00Z"}],"nextBefore":null}"#
+        } else {
+            body = #"{"events":[{"id":"unpin","sequence":11,"sessionId":"chat","kind":"unpinned","scope":"shared","messageId":null,"updatedByAccountId":"owner","updatedAt":"2026-09-15T10:01:00Z"}],"nextBefore":11}"#
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+struct PinHistoryReadTests {
+    @Test func freshClientsLoadBothHistoryPagesAfterUnpinning() async throws {
+        for _ in 0..<2 {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [PinHistoryReadURLProtocol.self]
+            let session = URLSession(configuration: configuration)
+            defer { session.invalidateAndCancel() }
+            let api = CloudAPIClient(session: session)
+            let pin = try await api.sessionPin(token: "synthetic", sessionId: "chat")
+            #expect(pin.effectiveMessageId == nil)
+            #expect(pin.history?.map(\.id) == ["pin", "unpin"])
+        }
+    }
+}
+
 struct SubsessionFailureTests {
     private func client(hangs: Bool) -> (CloudAPIClient, URLSession) {
         let configuration = URLSessionConfiguration.ephemeral
@@ -314,7 +349,19 @@ final class CloudModelDecodingTests: XCTestCase {
             [sessionPinEvent(messageId: "msg_stale", scope: "shared", updatedAt: "2026-08-17T12:00:01Z")],
             to: duplicate
         )
-        XCTAssertEqual(staleUpdate, privateUnpin)
+        XCTAssertEqual(staleUpdate[sessionId]?.effectiveMessageId, privateUnpin[sessionId]?.effectiveMessageId)
+        XCTAssertEqual(staleUpdate[sessionId]?.lastAction, privateUnpin[sessionId]?.lastAction)
+        XCTAssertEqual(privateUnpin[sessionId]?.history?.map(\.kind), ["pinned", "pinned", "unpinned"])
+        let legacyResponse = CloudSessionPin(sessionId: sessionId, sharedMessageId: nil, privateMessageId: nil,
+            effectiveMessageId: nil, updatedAt: nil).mergingHistory(from: privateUnpin[sessionId])
+        XCTAssertNil(legacyResponse.effectiveMessageId)
+        XCTAssertEqual(legacyResponse.history, privateUnpin[sessionId]?.history)
+        let canonical = privateUnpin[sessionId]!.history!.enumerated().map { index, event in
+            CloudPinHistoryEvent(id: "canonical-\(index)", sequence: Int64(index), sessionId: event.sessionId,
+                kind: event.kind, scope: event.scope, messageId: event.messageId,
+                updatedByAccountId: event.updatedByAccountId, updatedAt: event.updatedAt)
+        }
+        XCTAssertEqual(CloudPinHistoryEvent.merging([privateUnpin[sessionId]!.history!, canonical]), canonical)
 
         let bootstrap = AppModel.applyingSessionPinEvents([
             sessionPinEvent(
@@ -358,6 +405,68 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertTrue(sharedUnpinned)
         XCTAssertNil(model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId)
         XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.lastAction?.kind, "unpinned")
+        XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.history?.map(\.kind), ["pinned", "pinned", "unpinned", "unpinned"])
+    }
+
+    func testPendingPinHistoryKeepsImmediateRowsStableThroughSyncConfirmation() {
+        let pin = CloudPinHistoryEvent(id: "local-pin:pin", sessionId: "session:fixture", kind: "pinned", scope: "private", messageId: "target", updatedByAccountId: "owner", updatedAt: "2026-09-15T10:00:00.010Z")
+        let unpin = CloudPinHistoryEvent(id: "local-pin:unpin", sessionId: pin.sessionId, kind: "unpinned", scope: pin.scope, messageId: nil, updatedByAccountId: "owner", updatedAt: "2026-09-15T10:00:00.020Z")
+        let actions = [pin, unpin].map { PendingSessionPinAction(event: $0, knownIDs: []) }
+        XCTAssertEqual(PendingSessionPinAction.presentedHistory([], actions: actions).map(\.id), [pin.id, unpin.id])
+        let canonical = [pin, unpin].enumerated().map { index, event in
+            CloudPinHistoryEvent(id: "server-\(index)", sequence: Int64(index + 1), sessionId: event.sessionId,
+                kind: event.kind, scope: event.scope, messageId: event.messageId,
+                updatedByAccountId: event.updatedByAccountId, updatedAt: event.updatedAt)
+        }
+        let resolved = PendingSessionPinAction.resolving(actions, history: canonical)
+        XCTAssertEqual(resolved.compactMap(\.resolvedID), canonical.map(\.id))
+        XCTAssertEqual(PendingSessionPinAction.presentedHistory(canonical, actions: resolved).map(\.id), [pin.id, unpin.id])
+        XCTAssertEqual(PendingSessionPinAction.resolving(resolved, history: canonical), resolved)
+        XCTAssertTrue(PendingSessionPinAction.presentedHistory([], actions: []).isEmpty)
+        XCTAssertEqual(PendingSessionPinAction.confirming(actions, history: [], confirmedID: pin.id, authoritativeHistory: true).map(\.event.id), [unpin.id])
+        XCTAssertEqual(PendingSessionPinAction.confirming(actions, history: [], confirmedID: pin.id).map(\.event.id), [pin.id, unpin.id])
+    }
+
+    @MainActor
+    func testPinHistorySurvivesUnpinReplayAndSerializationRoundTrip() throws {
+        let pin = CloudPinHistoryEvent(id: "pin-event", sequence: 1, sessionId: "session:group", kind: "pinned", scope: "shared", messageId: "target", updatedByAccountId: "owner", updatedAt: "2026-09-15T10:00:00Z")
+        let unpin = CloudPinHistoryEvent(id: "unpin-event", sequence: 2, sessionId: pin.sessionId, kind: "unpinned", scope: "shared", messageId: nil, updatedByAccountId: "owner", updatedAt: "2026-09-15T10:01:00Z")
+        func delivery(_ history: CloudPinHistoryEvent) -> CloudSyncEvent {
+            let event = sessionPinEvent(messageId: history.messageId, scope: history.scope, updatedAt: history.updatedAt)
+            var payload = event.payload!
+            payload.pinHistoryEvent = history
+            return CloudSyncEvent(eventId: event.eventId, eventType: event.eventType, peerAccountId: event.peerAccountId, messageId: event.messageId, payload: payload, occurredAt: event.occurredAt)
+        }
+        let result = AppModel.applyingSessionPinEvents([delivery(pin), delivery(unpin)], to: [:])
+        XCTAssertNil(result[pin.sessionId]?.effectiveMessageId)
+        XCTAssertEqual(result[pin.sessionId]?.history, [pin, unpin])
+        let replayed = AppModel.applyingSessionPinEvents([delivery(pin), delivery(unpin)], to: result)
+        XCTAssertEqual(replayed[pin.sessionId]?.history, [pin, unpin])
+        XCTAssertNil(replayed[pin.sessionId]?.effectiveMessageId)
+        let data = try JSONEncoder().encode(replayed[pin.sessionId]!)
+        let reopened = try JSONDecoder().decode(CloudSessionPin.self, from: data)
+        XCTAssertEqual(reopened.history, [pin, unpin])
+        var stale = CloudSessionPin(sessionId: pin.sessionId, sharedMessageId: "target", privateMessageId: nil, effectiveMessageId: "target", updatedAt: pin.updatedAt)
+        stale.history = [pin]
+        XCTAssertNil(stale.mergingHistory(from: reopened).effectiveMessageId)
+        XCTAssertEqual(stale.mergingHistory(from: reopened).history, [pin, unpin])
+
+    }
+
+    func testPinWirePayloadRetainsEventIdentityAndTimelineInsertsBothActions() throws {
+        let pin = CloudPinHistoryEvent(id: "pin-event", sequence: 1, sessionId: "chat", kind: "pinned", scope: "shared", messageId: "target", updatedByAccountId: "owner", updatedAt: "2026-09-15T10:00:00Z")
+        let unpin = CloudPinHistoryEvent(id: "unpin-event", sequence: 2, sessionId: "chat", kind: "unpinned", scope: "shared", messageId: nil, updatedByAccountId: "owner", updatedAt: "2026-09-15T10:01:00Z")
+        let eventObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(pin))
+        let wire = try JSONDecoder().decode(CloudChatEventPayload.self, from: JSONSerialization.data(withJSONObject: ["pinHistoryEvent": eventObject]))
+        XCTAssertEqual(wire.pinHistoryEvent, pin)
+        func message(_ id: String, _ offset: TimeInterval) -> ChatMessage {
+            ChatMessage(id: id, conversationId: "chat", author: .person, authorName: "Peer", text: id, createdAt: pin.timestamp!.addingTimeInterval(offset), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+        }
+        let rows = PinHistoryTimeline.inserting([unpin, pin, pin], into: [message("before", -60), message("between", 30), message("after", 90)], conversationID: "chat", label: { $0.kind })
+        XCTAssertEqual(rows.map(\.id), ["before", "pin-history:pin-event", "between", "pin-history:unpin-event", "after"])
+        XCTAssertTrue(rows[1].isSystemNotice)
+        XCTAssertEqual(rows[1].createdAt, pin.timestamp)
+        XCTAssertEqual(rows[3].createdAt, unpin.timestamp)
     }
 
     private func sessionPinEvent(

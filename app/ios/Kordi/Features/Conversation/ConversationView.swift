@@ -252,6 +252,7 @@ struct ConversationView: View {
     @State private var forwardRequest: MessageForwardRequest?
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
+    @State private var unpinTarget: PinnedMessageItem?
     @State private var editTarget: ChatMessage?
     @State private var draftBeforeEditing = ""
     @State private var isEditingMessage = false
@@ -347,7 +348,7 @@ struct ConversationView: View {
     }
 
     private var allMessages: [ChatMessage] {
-        let current = ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+        let current = insertingPinHistory(into: ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation)))
         return pendingMessageDeletion?.retainingMessage(in: current) ?? current
     }
     private var threadProjection: MessageThreadProjection {
@@ -454,8 +455,6 @@ struct ConversationView: View {
             return PinnedMessageItem(message: message, scope: scope)
         }
         let pinnedMessageIDs = Set(pinnedMessages.map(\.message.id))
-        let pinActivityText = sessionPin.flatMap { pinActivityText(for: $0) }
-        let pinActivityID = "pin-activity:\(sessionPin?.lastAction?.updatedAt ?? pinActivityText ?? "")"
         let activeConversationCall = model.activeCall(for: conversation)
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
             == activeConversationCall?.id
@@ -465,10 +464,6 @@ struct ConversationView: View {
         )
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
         let newMessageCount = max(0, conversation.unreadCount)
-        let pinTargetPresentation = Binding(
-            get: { pinTarget != nil },
-            set: { if !$0 { pinTarget = nil } }
-        )
         let conversationTimeline = ScrollViewReader { proxy in
             let timelineContent = VStack(spacing: 0) {
                 if !coordinatorOwnsConversationCall,
@@ -496,23 +491,20 @@ struct ConversationView: View {
                         onJoin: { joinCall(activeCall) }
                     )
                 }
-                if !pinnedMessages.isEmpty {
-                    PinnedMessageBar(
-                        items: pinnedMessages,
-                        onOpen: { item in
-                            navigateToMessage(item.message.id, in: timeline, proxy: proxy)
-                        },
-                        onUnpin: { item in
-                            Task {
-                                _ = await model.unpin(
-                                    item.message,
-                                    in: conversation,
-                                    scope: item.scope
-                                )
-                            }
-                        }
-                    )
+                VStack(spacing: 0) {
+                    if !pinnedMessages.isEmpty {
+                        PinnedMessageBar(
+                            items: pinnedMessages,
+                            onOpen: { item in
+                                navigateToMessage(item.message.id, in: timeline, proxy: proxy)
+                            },
+                            onUnpin: { item in unpinTarget = item }
+                        )
+                        .transition(PinPresentationMotion.shelfTransition(reduceMotion: reduceMotion))
+                    }
                 }
+                .clipped()
+                .animation(hasRevealedInitialViewport ? PinPresentationMotion.animation(reduceMotion: reduceMotion) : nil, value: pinnedMessages.map(\.id))
                 GeometryReader { viewport in
                     ZStack {
                             ZStack(alignment: .bottomTrailing) {
@@ -623,15 +615,10 @@ struct ConversationView: View {
                                                 ))
                                             }
                                             .id(row.id)
-                                            .transition(.identity)
+                                            .transition(message.messageKind == "session_pin_activity"
+                                                ? PinPresentationMotion.noticeTransition(reduceMotion: reduceMotion) : .identity)
                                         }
                                     }
-
-                                        if let pinActivityText {
-                                            SystemNoticeRow(text: pinActivityText)
-                                                .padding(.vertical, 8)
-                                                .id(pinActivityID)
-                                        }
 
                                     Color.clear
                                         .frame(height: 1)
@@ -639,6 +626,8 @@ struct ConversationView: View {
                                         .id(bottomAnchorID)
                                 }
                                 .scrollTargetLayout()
+                                .animation(hasRevealedInitialViewport ? PinPresentationMotion.animation(reduceMotion: reduceMotion) : nil,
+                                    value: timeline.last(where: { $0.messageKind == "session_pin_activity" })?.id)
                                 .background(
                                     ConversationScrollCommandBridge(
                                         scrollPosition: scrollPosition,
@@ -930,23 +919,19 @@ struct ConversationView: View {
             }
             #endif
             .sensoryFeedback(.selection, trigger: messageActionFeedback)
-            .confirmationDialog(
-                "Pin this message?",
-                isPresented: pinTargetPresentation,
-                titleVisibility: .visible,
-                presenting: pinTarget
+            .alert(
+                "Unpin this message?",
+                isPresented: Binding(get: { unpinTarget != nil }, set: { if !$0 { unpinTarget = nil } }),
+                presenting: unpinTarget
             ) { target in
-                Button("Pin for me") {
-                    pinMessage(target, shared: false)
+                Button("Unpin", role: .destructive) {
+                    unpinTarget = nil
+                    let targetConversation = conversation
+                    Task { _ = await model.unpin(target.message, in: targetConversation, scope: target.scope) }
                 }
-                Button("Pin for everyone") {
-                    pinMessage(target, shared: true)
-                }
-                Button("Cancel", role: .cancel) {
-                    pinTarget = nil
-                }
-            } message: { _ in
-                Text("Pinned messages stay visible above this session on synced Kordi devices.")
+                Button("Cancel", role: .cancel) { unpinTarget = nil }
+            } message: { target in
+                Text(target.scope == "shared" ? "This will unpin it for everyone." : "This will unpin it only for you.")
             }
             let observedTimeline = presentedTimeline
             .onChange(of: timelineSnapshot, initial: true) { previous, current in
@@ -954,6 +939,14 @@ struct ConversationView: View {
                     previousLatestMessageID: previous.latestMessageID, proxy: proxy)
                 lastTimelineSnapshot = current
                 trajectoryViewport.retainMessageIDs(Set(timeline.map(model.timelineIdentity(for:))))
+            }
+            .onChange(of: stagedMessageIDs) { _, staged in
+                guard !staged.isEmpty else { return }
+                // Materialize the SwiftUI destination before native tail settling.
+                // A content-offset jump alone can leave lazy rows unrendered until a pan.
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
             }
             .onChange(of: pendingMentionCount) {
                 synchronizeReadPresentation()
@@ -984,7 +977,7 @@ struct ConversationView: View {
                     // Use one native content-bottom target. An identity scroll
                     // can execute after native positioning and undo it by the
                     // trailing sentinel/padding height, producing a second jump.
-                    scrollToBottom()
+                    scrollToBottom(animated: currentLatestMessage?.messageKind == "session_pin_activity")
                 }
             }
             .onChange(of: isExpressivePickerPresented) { _, isPresented in
@@ -1407,7 +1400,7 @@ struct ConversationView: View {
         }
 
         VStack(spacing: 0) {
-            if presentation.showsTimestamp {
+            if message.messageKind == "session_pin_activity" || presentation.showsTimestamp {
                 ConversationTimestampDivider(date: message.createdAt)
             }
 
@@ -1553,7 +1546,10 @@ struct ConversationView: View {
                     onUpdateDeletingAttachmentFrame: { frame in
                         guard pendingMessageDeletion?.message.id == message.id else { return }
                         deleteCaptureFrames.attachments[message.id] = frame
-                    }
+                    },
+                    isPinConfirmationPresented: pinTarget?.id == message.id,
+                    onDismissPinConfirmation: { if pinTarget?.id == message.id { pinTarget = nil } },
+                    onConfirmPin: { shared in pinMessage(message, shared: shared) }
                 )
                 .equatable()
                 .background(alignment: .bottomTrailing) {
@@ -1665,13 +1661,12 @@ struct ConversationView: View {
                     && !["voice", "sticker", "call"].contains(message.messageKind?.lowercased() ?? "")
                     && message.cloudMessageVersion != nil
                     && message.reactionTargetMessageId?.nonEmpty != nil,
-                allowsDelete: model.isPreviewMode
+                allowsDelete: message.isLocalFailedSend || (model.isPreviewMode
                     ? !message.isSystemNotice
                     : message.author != .agent
                         && !message.isSystemNotice
                         && message.deliveryState != .sending
-                        && message.deliveryState != .failed
-                        && message.reactionTargetMessageId?.nonEmpty != nil,
+                        && message.reactionTargetMessageId?.nonEmpty != nil),
                 deleteForEveryoneLabel: messageActionAttachment != nil
                     ? (conversation.kind == .group ? "Delete photo for everyone" : "Delete photo for me and \(conversation.displayName)")
                     : (conversation.kind == .group ? "Delete for everyone" : "Delete for me and \(conversation.displayName)"),
@@ -1735,7 +1730,8 @@ struct ConversationView: View {
                 },
                 onPin: {
                     if pinnedMessageIDs.contains(message.id) {
-                        Task { _ = await model.unpin(message, in: conversation) }
+                        let scope = model.sessionPinsByID[conversation.sessionId]?.privateMessageId == message.id ? "private" : "shared"
+                        unpinTarget = PinnedMessageItem(message: message, scope: scope)
                     } else {
                         pinTarget = message
                     }
@@ -1766,7 +1762,7 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onDelete: { forEveryone in
-                    deleteMessage(message, attachment: messageActionAttachment, forEveryone: forEveryone)
+                    deleteMessage(message, attachment: message.isLocalFailedSend ? nil : messageActionAttachment, forEveryone: forEveryone)
                 },
                 onSaveSticker: { attachment in
                     dismissMessageActions()
@@ -1989,7 +1985,7 @@ struct ConversationView: View {
 
     private func deleteMessage(_ target: ChatMessage, attachment: ChatAttachment? = nil, forEveryone: Bool) {
         guard pendingMessageDeletion == nil else { return }
-        var presentation = MessageDeletionPresentation(message: target, messages: allMessages, attachmentID: attachment?.id)
+        var presentation = MessageDeletionPresentation(message: target, messages: allMessages, attachmentID: target.isLocalFailedSend ? nil : attachment?.id)
         // The action is delivered after the menu's return animation. Capture is
         // deferred until the source has actually been restored on screen.
         presentation.isMenuDismissed = true
@@ -2001,7 +1997,7 @@ struct ConversationView: View {
         dismissMessageActions()
         Task {
             let succeeded: Bool
-            if let attachment {
+            if let attachment, !target.isLocalFailedSend {
                 succeeded = await model.deleteAttachment(attachment, from: target, forEveryone: forEveryone, in: conversation)
             } else {
                 succeeded = await model.deleteMessage(target, forEveryone: forEveryone, in: conversation)
@@ -2052,24 +2048,18 @@ struct ConversationView: View {
         }
     }
 
-    private func pinActivityText(for pin: CloudSessionPin) -> String? {
-        guard let action = pin.lastAction else { return nil }
-        let actor: String
-        if action.updatedByAccountId == model.account?.accountId {
-            actor = "You"
-        } else if let accountID = action.updatedByAccountId,
-                  let participant = conversation.groupParticipants.first(where: {
-                      $0.accountId == accountID
-                  }) {
-            actor = participant.displayName
-        } else if action.updatedByAccountId == conversation.peerAccountId {
-            actor = conversation.displayName
-        } else if action.scope == "private" {
-            actor = "You"
-        } else {
-            actor = "Someone"
+    private func insertingPinHistory(into messages: [ChatMessage]) -> [ChatMessage] {
+        let history = model.presentedPinHistory(for: conversation.sessionId).filter {
+            $0.scope == "shared" || $0.updatedByAccountId == model.account?.accountId
         }
-        return "\(actor) \(action.kind) a message"
+        return PinHistoryTimeline.inserting(history, into: messages, conversationID: conversation.id) { event in
+            let actor: String
+            if event.updatedByAccountId == model.account?.accountId { actor = "You" }
+            else if let participant = conversation.groupParticipants.first(where: { $0.accountId == event.updatedByAccountId }) { actor = participant.displayName }
+            else if event.updatedByAccountId == conversation.peerAccountId { actor = conversation.displayName }
+            else { actor = "Someone" }
+            return "\(actor) \(event.kind) a message"
+        }
     }
 
     private func openMentionProfile(accountID: String) {

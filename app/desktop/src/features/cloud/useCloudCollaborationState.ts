@@ -617,7 +617,7 @@ export function useCloudCollaborationState({
     syncCollaborationDiff: syncCloudCollaborationDiff,
   });
 
-  useCloudActiveSessionLifecycle({ account, activeConversationId, canMarkActiveConversationRead, canonicalState: canonicalSessionState, setCanonicalState: setCanonicalSessionState, client, markRead: markCloudSessionsRead, setPinsBySessionId: setCloudSessionPinsById });
+  const prepareCloudSessionPin = useCloudActiveSessionLifecycle({ account, activeConversationId, canMarkActiveConversationRead, canonicalState: canonicalSessionState, setCanonicalState: setCanonicalSessionState, client, markRead: markCloudSessionsRead, setPinsBySessionId: setCloudSessionPinsById, pinsBySessionId: cloudSessionPinsById });
   const cancelCloudAgentRequest = useCloudAgentRequestCancellation({
     account,
     client,
@@ -648,7 +648,7 @@ export function useCloudCollaborationState({
     sendCloudGroupControl,
     setCloudMessageReaction,
     recordCloudSessionFork,
-    updateCloudSessionPin,
+    updateCloudSessionPin, prepareCloudSessionPin,
     hideCloudSession, unhideCloudSession,
     setCloudSessionPinned, setCloudSessionMuted, setCloudSessionUnread, markCloudSessionsRead,
     setCloudGroupSpacePinned, setCloudGroupSpaceMuted, setCloudGroupSpaceArchived, deleteCloudSession,

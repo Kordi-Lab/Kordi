@@ -886,15 +886,39 @@ actor CloudAPIClient {
         )
     }
 
+    func sessionPinHistory(token: String, sessionId: String) async throws -> [CloudPinHistoryEvent] {
+        let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        var before: Int64?
+        var history: [CloudPinHistoryEvent] = []
+        repeat {
+            try Task.checkCancellation()
+            let page: CloudPinHistoryPage = try await send(
+                path: "/v1/cloud/sessions/\(escaped)/pin-history", method: "GET", token: token,
+                query: before.map { [URLQueryItem(name: "before", value: String($0))] } ?? [],
+                fallback: "Could not load pin history."
+            )
+            history = CloudPinHistoryEvent.merging([history, page.events])
+            let previous = before
+            before = page.nextBefore
+            if let before, before <= 0 || previous.map({ before >= $0 }) == true {
+                throw URLError(.cannotParseResponse)
+            }
+        } while before != nil
+        return history
+    }
+
     func sessionPin(token: String, sessionId: String) async throws -> CloudSessionPin {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        async let history = try? sessionPinHistory(token: token, sessionId: sessionId)
         let response: SessionPinResponse = try await send(
             path: "/v1/cloud/sessions/\(escaped)/pin",
             method: "GET",
             token: token,
             fallback: "Could not load the pinned message."
         )
-        return response.pin
+        var pin = response.pin
+        pin.history = await history
+        return pin
     }
 
     func updateSessionPin(
@@ -911,7 +935,9 @@ actor CloudAPIClient {
             body: UpdateSessionPinRequest(messageId: messageId, scope: scope),
             fallback: messageId == nil ? "Could not unpin the message." : "Could not pin the message."
         )
-        return response.pin
+        var pin = response.pin
+        pin.history = try? await sessionPinHistory(token: token, sessionId: sessionId)
+        return pin
     }
 
     func sessionActivity(token: String, sessionId: String) async throws -> CloudSessionActivity {
@@ -2400,6 +2426,7 @@ actor CloudAPIClient {
                 peerAccountId: nil,
                 messageId: event.payload.messageId,
                 payload: CloudSyncEventPayload(
+                    pinHistoryEvent: event.payload.pinHistoryEvent,
                         message: nil, messageIds: nil, messageId: event.payload.messageId,
                         readAt: nil, sessionId: event.payload.sessionId,
                         scope: event.payload.scope, updatedAt: event.payload.updatedAt,

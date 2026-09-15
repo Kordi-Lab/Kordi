@@ -1131,6 +1131,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     let clientMessageId: String?
     let conversationId: String
     let conversationSequence: Int64?
+    // Local outbox position; an empty anchor means the conversation start.
+    var localTimelineAnchorID: String?
     let author: MessageAuthor
     let authorName: String
     let senderOwnerName: String?
@@ -1177,10 +1179,17 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     var isSystemNotice: Bool {
-        isAgentModelChangeNotice
+        messageKind == "session_pin_activity" || isAgentModelChangeNotice
             || isGroupMemberJoinNotice
             || isTitleUpdateNotice
             || callActivity != nil
+    }
+
+    var isLocalFailedSend: Bool {
+        author == .me && deliveryState == .failed
+            && (conversationSequence ?? 0) <= 0
+            && reactionTargetMessageId?.nonEmpty == nil
+            && cloudMessageVersion == nil
     }
 
     var isEdited: Bool { editedAt != nil }
@@ -1208,6 +1217,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         clientMessageId: String? = nil,
         conversationId: String,
         conversationSequence: Int64? = nil,
+        localTimelineAnchorID: String? = nil,
         author: MessageAuthor,
         authorName: String,
         senderOwnerName: String? = nil,
@@ -1237,6 +1247,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.clientMessageId = clientMessageId
         self.conversationId = conversationId
         self.conversationSequence = conversationSequence
+        self.localTimelineAnchorID = localTimelineAnchorID
         self.author = author
         self.authorName = authorName
         self.senderOwnerName = senderOwnerName
@@ -1299,6 +1310,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, clientMessageId, conversationId, conversationSequence, author, authorName, senderOwnerName, text, createdAt, editedAt, cloudMessageVersion, deliveryState, errorMessage
+        case localTimelineAnchorID
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind, voiceMessage
         case agentExecution
@@ -1313,6 +1325,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         clientMessageId = try container.decodeIfPresent(String.self, forKey: .clientMessageId)
         conversationId = try container.decode(String.self, forKey: .conversationId)
         conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
+        localTimelineAnchorID = try container.decodeIfPresent(String.self, forKey: .localTimelineAnchorID)
         author = try container.decode(MessageAuthor.self, forKey: .author)
         authorName = try container.decode(String.self, forKey: .authorName)
         senderOwnerName = try container.decodeIfPresent(String.self, forKey: .senderOwnerName)
@@ -1388,5 +1401,27 @@ enum MentionAttention {
                 ?? (message.deliveryState != .read)
         }
         .sorted(by: ChatMessage.timelinePrecedes)
+    }
+}
+
+/// Pin events are independent history rows, never replacements for pin state.
+enum PinHistoryTimeline {
+    static func inserting(_ history: [CloudPinHistoryEvent], into messages: [ChatMessage], conversationID: String, label: (CloudPinHistoryEvent) -> String) -> [ChatMessage] {
+        let events = CloudPinHistoryEvent.merging([history]).compactMap { event -> ChatMessage? in
+            guard event.kind == "pinned" || event.kind == "unpinned", let date = event.timestamp else { return nil }
+            return ChatMessage(id: "pin-history:\(event.id)", conversationId: conversationID,
+                author: .person, authorName: "", text: label(event), createdAt: date,
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: nil, messageKind: "session_pin_activity")
+        }
+        var result: [ChatMessage] = []
+        var index = 0
+        for message in messages {
+            while index < events.count && events[index].createdAt < message.createdAt {
+                result.append(events[index]); index += 1
+            }
+            result.append(message)
+        }
+        result.append(contentsOf: events.dropFirst(index))
+        return result
     }
 }

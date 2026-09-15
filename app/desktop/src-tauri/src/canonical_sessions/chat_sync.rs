@@ -29,6 +29,8 @@ pub struct ChatSyncApplyRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSyncLocalState {
+    pub pin_events: Vec<Value>,
+    pub pin_cache_ready: bool,
     pub visibility: Option<Value>,
     pub account_id: String,
     pub cursor: Option<String>,
@@ -120,6 +122,7 @@ pub(crate) mod deletions;
 pub(super) use deletions::mark_message_deleted;
 mod message_reads;
 mod outbox;
+mod pins;
 mod projection;
 pub mod unread;
 mod unread_policy;
@@ -367,6 +370,7 @@ mod tests {
                 };
                 json!({
                     "stream_seq": index as i64 + 1,
+                    "event_id": format!("fixture-event-{index}"),
                     "protocol_version": 2,
                     "type": event_type,
                     "critical": true,

@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import type { PinActivity } from '@/pages/chatsPage.pinActivity';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { formatDesktopTranscriptTimeLabel } from '@/lib/time';
+import { revealPinActivity } from '@/pages/pinActivityMotion';
 import { ChevronDown, Pin, X } from 'lucide-react';
 
 import type { Message } from '@/kordi-app/types';
@@ -120,11 +123,24 @@ export function PinnedMessageBar({
   );
 }
 
-export function PinActivityNotice({ label }: { label: string }) {
+export function PinActivityNotice({ activity }: { activity: PinActivity }) {
+  const date = new Date(activity.timestampMs);
+  const noticeRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!activity.animate || !noticeRef.current) return;
+    const animation = revealPinActivity(noticeRef.current, activity.id);
+    return () => animation?.cancel();
+  }, [activity.animate, activity.id]);
   return (
-    <div className="flex justify-center px-2 py-2" data-pin-activity="true" role="status">
+    <div ref={noticeRef} className="flex min-h-[60px] flex-col items-center gap-1 px-2 py-2 text-center" data-pin-activity="true" role="status">
+      <time
+        dateTime={date.toISOString()}
+        className="text-[11px] leading-4 tabular-nums text-[color:var(--utility-muted-text)]"
+      >
+        {formatDesktopTranscriptTimeLabel(activity.timestampMs)}
+      </time>
       <span className="app-system-notice-text max-w-[min(100%,34rem)] truncate px-2.5 py-0.5 text-center text-[11px] leading-5 text-[color:var(--utility-muted-text)]">
-        {label}
+        {activity.label}
       </span>
     </div>
   );

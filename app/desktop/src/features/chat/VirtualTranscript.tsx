@@ -1,3 +1,4 @@
+import { useTranscriptViewportAnchor } from './useTranscriptViewportAnchor';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   useCallback,
@@ -9,7 +10,7 @@ import {
   type WheelEvent as ReactWheelEvent,
   type UIEvent,
 } from 'react';
-import { MemoizedTranscriptItemContent } from './TranscriptItemContent';
+import { TranscriptWindowRows } from './TranscriptItemContent';
 import { createTranscriptContentMeasure } from './transcriptContentMeasure';
 import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
 import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
@@ -21,7 +22,6 @@ import {
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
 import {
-  TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
 } from '@/features/chat/useVirtualTranscriptNavigation';
 import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP, transcriptLayoutMaxScrollTop } from '@/features/chat/virtualTranscriptLayout';
@@ -68,7 +68,7 @@ export function VirtualTranscript<Item>({
   onLoadOlder,
   emptyState,
   tail,
-  tailKey,
+  tailKey, passiveUpdateKey, messageContentKey,
   unreadCount = 0,
   navigationAccessory,
   animateLatestAppend = false, animateTailResize = false,
@@ -111,6 +111,8 @@ export function VirtualTranscript<Item>({
       || stableDisclosureAnchorRef.current !== null
   ));
 
+  const passiveViewport = useTranscriptViewportAnchor({ sessionKey, updateKey: passiveUpdateKey,
+    contentKey: `${messageContentKey ?? ''}|${String(tailKey ?? '')}`, viewportRef: internalScrollRef });
   const virtualizer = useVirtualizer({
     measureElement: contentMeasureRef.current,
     count: items.length,
@@ -124,12 +126,12 @@ export function VirtualTranscript<Item>({
     getItemKey: itemKeyAt,
     overscan: TRANSCRIPT_WINDOW_OVERSCAN,
     gap,
-    anchorTo: stableDisclosureActive || (animateTailResize && isAtTail) ? 'start' : 'end',
+    anchorTo: passiveViewport.preserving || stableDisclosureActive || (animateTailResize && isAtTail) ? 'start' : 'end',
     useFlushSync: false,
     directDomUpdates: true,
     directDomUpdatesMode: 'transform',
   });
-  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = stableDisclosureActive
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = passiveViewport.preserving || stableDisclosureActive
     ? preserveMeasuredDisclosurePosition
     : animateTailResize && isAtTail ? () => false : (virtualizer.scrollRect?.height ?? 0) > 0
       ? (item, delta, instance) => preserveMeasuredTranscriptRow(
@@ -158,7 +160,7 @@ export function VirtualTranscript<Item>({
   const { cancelTailLiftAnimation, cancelTailAlignment, handleUserWheel, scheduleTailAlignment } = useTranscriptTailAlignment({
     internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
     tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange, animateTailResize: animateTailResize && !stableDisclosureActive,
-    hasItems: items.length > 0, suspendTailResize: stableDisclosureActive,
+    hasItems: items.length > 0, suspendTailResize: stableDisclosureActive || passiveViewport.preserving,
   });
   const selectionViewportProps = useTranscriptSelectionViewportProps({ cancelTailAlignment, viewportRef: internalScrollRef, selectionMode, onSelectAllMessages, onCancelMessageSelection });
 
@@ -420,7 +422,16 @@ export function VirtualTranscript<Item>({
     const revealFromIndex = animateLatestAppend && latestItemAppended
       ? aligned?.itemCount
       : animateTailResize && measuredSizeChanged ? items.length : undefined;
-    if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
+    if (passiveViewport.preserving) {
+      cancelTailAlignment();
+      passiveViewport.restore();
+      const element = internalScrollRef.current;
+      if (element) {
+        const reachedTail = transcriptLayoutMaxScrollTop(element) - element.scrollTop <= Math.max(4, gap);
+        viewportWasAtTailRef.current = reachedTail;
+        setIsAtTail(reachedTail);
+      }
+    } else if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
       cancelTailAlignment();
       const element = internalScrollRef.current;
       if (element) {
@@ -450,14 +461,15 @@ export function VirtualTranscript<Item>({
       totalSize,
       viewportSize,
     };
-  }, [animateLatestAppend, animateTailResize, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
+  }, [passiveViewport, animateLatestAppend, animateTailResize, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   const scrollToLatest = useCallback(() => {
+    passiveViewport.release();
     viewportWasAtTailRef.current = true;
     setIsAtTail(true);
     if (items.length > 0) virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
     scheduleTailAlignment();
-  }, [items.length, scheduleTailAlignment, virtualizer]);
+  }, [passiveViewport, items.length, scheduleTailAlignment, virtualizer]);
 
   useEffect(() => {
     const element = internalScrollRef.current;
@@ -480,8 +492,9 @@ export function VirtualTranscript<Item>({
     virtualizer,
   });
   const scrollToNavigationIndex = useCallback((index: number) => {
+    passiveViewport.release();
     virtualizer.scrollToIndex(index, { align: 'center' });
-  }, [virtualizer]);
+  }, [passiveViewport, virtualizer]);
   const {
     navigationTargetIndex,
     pendingNavigationRequest,
@@ -542,25 +555,9 @@ export function VirtualTranscript<Item>({
             data-virtual-transcript-session-ready={sessionRevealed ? 'true' : 'false'}
             className="relative w-full overflow-y-clip"
           >
-            {virtualItems.map((virtualItem) => {
-              const item = items[virtualItem.index];
-              if (item === undefined) return null;
-              return (
-                <div
-                  key={virtualItem.key}
-                  ref={virtualizer.measureElement}
-                  data-index={virtualItem.index}
-                  data-transcript-window-item="true"
-                  className={`absolute left-0 top-0 w-full${
-                    virtualItem.index === navigationTargetIndex
-                      ? ` ${TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS}`
-                      : ''
-                  }`}
-                >
-                  <MemoizedTranscriptItemContent item={item} index={virtualItem.index} renderItem={renderItem} />
-                </div>
-              );
-            })}
+            <TranscriptWindowRows items={items} virtualItems={virtualItems}
+              measureElement={virtualizer.measureElement} navigationTargetIndex={navigationTargetIndex}
+              renderItem={renderItem} />
           </div>
         ) : emptyState}
         {tail}

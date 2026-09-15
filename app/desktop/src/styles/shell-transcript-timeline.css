@@ -403,3 +403,28 @@
     transform: none;
   }
 }
+
+/* The pin shelf opens as an accordion so the viewport can track each resize. */
+.app-pin-shelf {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-12px);
+  transition:
+    grid-template-rows var(--app-motion-base) var(--app-motion-ease),
+    opacity var(--app-motion-base) var(--app-motion-ease),
+    transform var(--app-motion-base) var(--app-motion-ease);
+}
+.app-pin-shelf[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0);
+}
+.app-pin-shelf-clip { min-height: 0; overflow: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .app-pin-shelf {
+    transform: none;
+    transition: opacity 100ms var(--app-motion-ease);
+  }
+}

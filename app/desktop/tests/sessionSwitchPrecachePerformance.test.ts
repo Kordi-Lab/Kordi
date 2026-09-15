@@ -46,7 +46,7 @@ test('canonical Cloud chat selection hydrates before exposing the new transcript
   const handlerEnd = source.indexOf('  const handleCreateChatSession = useCallback', handlerStart);
   const handler = source.slice(handlerStart, handlerEnd);
 
-  assert.match(handler, /await hydrateCanonicalSessionPage\(sessionId\);[\s\S]*setActiveConvId\(sessionId\)/);
+  assert.match(handler, /await Promise\.all\(\[hydrateCanonicalSessionPage\(sessionId\), prepareCloudSessionPin[\s\S]*setActiveConvId\(sessionId\)/);
 });
 
 test('sidebar traversal does not hydrate every session before selection', () => {
