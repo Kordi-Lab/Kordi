@@ -252,6 +252,7 @@ struct ConversationView: View {
     @State private var forwardRequest: MessageForwardRequest?
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
+    @State private var unpinTarget: PinnedMessageItem?
     @State private var editTarget: ChatMessage?
     @State private var draftBeforeEditing = ""
     @State private var isEditingMessage = false
@@ -501,13 +502,7 @@ struct ConversationView: View {
                             navigateToMessage(item.message.id, in: timeline, proxy: proxy)
                         },
                         onUnpin: { item in
-                            Task {
-                                _ = await model.unpin(
-                                    item.message,
-                                    in: conversation,
-                                    scope: item.scope
-                                )
-                            }
+                            unpinTarget = item
                         }
                     )
                 }
@@ -939,6 +934,20 @@ struct ConversationView: View {
                 }
             } message: { _ in
                 Text("Pinned messages stay visible above this session on synced Kordi devices.")
+            }
+            .alert(
+                "Unpin this message?",
+                isPresented: Binding(get: { unpinTarget != nil }, set: { if !$0 { unpinTarget = nil } }),
+                presenting: unpinTarget
+            ) { target in
+                Button("Unpin", role: .destructive) {
+                    unpinTarget = nil
+                    let targetConversation = conversation
+                    Task { _ = await model.unpin(target.message, in: targetConversation, scope: target.scope) }
+                }
+                Button("Cancel", role: .cancel) { unpinTarget = nil }
+            } message: { target in
+                Text(target.scope == "shared" ? "This will unpin it for everyone." : "This will unpin it only for you.")
             }
             let observedTimeline = presentedTimeline
             .onChange(of: timelineSnapshot, initial: true) { previous, current in
@@ -1724,7 +1733,8 @@ struct ConversationView: View {
                 },
                 onPin: {
                     if pinnedMessageIDs.contains(message.id) {
-                        Task { _ = await model.unpin(message, in: conversation) }
+                        let scope = model.sessionPinsByID[conversation.sessionId]?.privateMessageId == message.id ? "private" : "shared"
+                        unpinTarget = PinnedMessageItem(message: message, scope: scope)
                     } else {
                         pinTarget = message
                     }
