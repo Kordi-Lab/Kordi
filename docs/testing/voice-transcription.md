@@ -28,6 +28,9 @@ sends the saved audio with explicit failed/unavailable metadata. A fresh recorde
 handles the next draft, so its cancellation cannot cancel the outgoing transcript.
 Slide to cancel and slide to convert to text retain their separate behavior;
 conversion waits for recognized text before inserting it into the text composer.
+The transcript button opens an anchored popover containing recognized text or
+transcription status and retry controls. The voice bubble keeps its compact width
+and height while the popover is open; long transcripts scroll inside the popover.
 
 On macOS, click the microphone to start and click again to stop/send; holding and
 releasing remains supported. Transcription has visible progress in the composer,
@@ -75,6 +78,8 @@ conversations or production data as fixtures.
 - On iOS, release while speech permission or recognition is pending. Verify an
   outgoing bubble appears immediately, no review panel appears, and a second
   recording can start. Deny speech permission and verify the audio is still sent.
+- Open and dismiss the transcript popover for ready, failed, and pending voice
+  messages. Verify the bubble and surrounding messages keep their positions.
 - Deny microphone permission, then speech-recognition permission. Neither error
   may be sent as speech. A saved recording must remain available after a
   transcription failure.

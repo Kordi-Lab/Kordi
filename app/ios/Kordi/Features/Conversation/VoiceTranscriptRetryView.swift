@@ -1,5 +1,60 @@
 import SwiftUI
 
+struct VoiceTranscriptPopover: View {
+    @Environment(\.dismiss) private var dismiss
+    let voice: VoiceMessage
+    let onPrepare: (VoiceMessage) async -> URL?
+    let onUpdate: ((VoiceMessage) async -> Bool)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Voice transcript")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 4)
+                Button("Close", systemImage: "xmark") { dismiss() }
+                    .labelStyle(.iconOnly)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .buttonStyle(.plain)
+            }
+
+            if voice.spokenText.isEmpty {
+                Text(voice.transcriptionLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let onUpdate {
+                    VoiceTranscriptRetryView(voice: voice, onPrepare: onPrepare, onUpdate: onUpdate)
+                        .buttonStyle(.bordered)
+                        .tint(KordiTheme.signalBlue)
+                }
+            } else {
+                ViewThatFits(in: .vertical) {
+                    transcriptText
+                    ScrollView { transcriptText }
+                        .frame(height: 260)
+                }
+                .frame(maxHeight: 260)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 16)
+        .frame(width: 280)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var transcriptText: some View {
+        Text(voice.spokenText)
+            .font(.body)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
 struct VoiceTranscriptRetryView: View {
     let voice: VoiceMessage
     let onPrepare: (VoiceMessage) async -> URL?

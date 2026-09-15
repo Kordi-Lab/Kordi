@@ -604,7 +604,6 @@ struct VoiceMessageBubbleContent: View {
 
     @State private var playback = VoiceMessagePlayback()
     @State private var showsTranscript = false
-    @State private var showsFullTranscript = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -691,7 +690,18 @@ struct VoiceMessageBubbleContent: View {
                         .buttonStyle(.plain)
                         .contentShape(Rectangle().inset(by: -8))
                         .accessibilityLabel(showsTranscript ? "Hide voice transcript" : "Show voice transcript")
-                        .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
+                        .popover(
+                            isPresented: $showsTranscript,
+                            attachmentAnchor: .rect(.bounds),
+                            arrowEdge: .bottom
+                        ) {
+                            VoiceTranscriptPopover(
+                                voice: voiceMessage,
+                                onPrepare: onPrepare,
+                                onUpdate: onUpdateTranscript
+                            )
+                            .presentationCompactAdaptation(.popover)
+                        }
 
                         if reservesDeliveryStatus {
                             Color.clear
@@ -703,34 +713,9 @@ struct VoiceMessageBubbleContent: View {
                 }
             }
 
-            if showsTranscript {
-                Divider().opacity(0.35)
-                if voiceMessage.spokenText.isEmpty {
-                    Text(voiceMessage.transcriptionLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let onUpdateTranscript {
-                        VoiceTranscriptRetryView(voice: voiceMessage, onPrepare: onPrepare, onUpdate: onUpdateTranscript)
-                    }
-                } else {
-                    Text(voiceMessage.spokenText)
-                        .font(.body)
-                        .lineLimit(showsFullTranscript ? nil : 6)
-                    if voiceMessage.transcript.count > 320
-                        || voiceMessage.transcript.split(separator: "\n").count > 5 {
-                        Button(showsFullTranscript ? "Show less" : "Show full transcript") {
-                            showsFullTranscript.toggle()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(KordiTheme.signalBlue)
-                    }
-                }
-            }
         }
         .disabled(isActionPresented)
-        .frame(width: showsTranscript ? 280 : Self.compactWidth(durationMs: voiceMessage.durationMs))
-        .animation(.easeOut(duration: 0.16), value: showsTranscript)
+        .frame(width: Self.compactWidth(durationMs: voiceMessage.durationMs))
         .accessibilityElement(children: .contain)
     }
 
