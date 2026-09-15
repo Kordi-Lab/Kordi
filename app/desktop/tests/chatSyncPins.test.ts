@@ -66,6 +66,9 @@ test('bootstrap pin snapshots replace stale private and shared state', async () 
     }), { status: 200 }),
   });
   const result = await client.syncCloudEvents('token', '0', 500);
+  const cachedEvents = result.chat!.events!.filter(event => event.type === 'session.pin.updated');
+  assert.equal(cachedEvents.length, 2, 'Native bootstrap must cache both pin scopes with the messages');
+  assert.ok(cachedEvents.every(event => event.conversation_id === conversation.id));
   const pins = applyCloudSyncEventsToSessionPins({
     [sessionId]: {
       sessionId,
@@ -164,4 +167,17 @@ test('legacy sync retains separate notices through unpin responses, replay and s
   const remainingShared = mergePinSnapshot(pinned, { ...response, sharedMessageId: 'older-shared', effectiveMessageId: 'older-shared', updatedAt: '2026-09-14T10:00:00Z' });
   assert.equal(remainingShared.privateMessageId, null);
   assert.equal(remainingShared.sharedMessageId, 'older-shared');
+});
+
+
+test('a sync request cannot erase pin history loaded or changed while it was in flight', async () => {
+  const { mergePinSyncSnapshot } = await import('../src/features/cloud/cloudPinHistory');
+  const pin = { sessionId, sharedMessageId: 'target', privateMessageId: null, effectiveMessageId: 'target', updatedAt: '2026-09-15T10:00:00Z' };
+  const event = { id: 'event', sessionId, kind: 'pinned' as const, scope: 'shared' as const, messageId: 'target', updatedByAccountId: 'owner', updatedAt: pin.updatedAt };
+  const baseline = { [sessionId]: pin };
+  const unpinned = { ...pin, sharedMessageId: null, effectiveMessageId: null, updatedAt: null, history: [event] };
+  const merged = mergePinSyncSnapshot({ [sessionId]: unpinned }, baseline, baseline);
+  assert.equal(merged[sessionId].effectiveMessageId, null);
+  assert.deepEqual(merged[sessionId].history, [event]);
+  assert.deepEqual(mergePinSyncSnapshot({ [sessionId]: unpinned }, {}, {})[sessionId], unpinned);
 });

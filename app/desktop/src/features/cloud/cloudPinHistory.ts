@@ -32,3 +32,15 @@ export function mergePinSnapshot(current: CloudSessionPin | undefined, incoming:
   const state = incoming.history !== undefined && current && Number.isFinite(oldTime) && (!Number.isFinite(newTime) || newTime < oldTime) ? current : incoming;
   return { ...state, history: mergePinHistory(current?.history, incoming.history) };
 }
+
+export function mergePinSyncSnapshot(current: Record<string, CloudSessionPin>, incoming: Record<string, CloudSessionPin>, baseline: Record<string, CloudSessionPin>) {
+  const merged = { ...current };
+  for (const [id, pin] of Object.entries(incoming)) {
+    const existing = current[id];
+    const changedDuringRequest = existing !== baseline[id];
+    const newer = Date.parse(pin.updatedAt ?? '') > Date.parse(existing?.updatedAt ?? '');
+    const state = changedDuringRequest && existing && !newer ? existing : pin;
+    merged[id] = { ...state, history: mergePinHistory(existing?.history, pin.history) };
+  }
+  return merged;
+}

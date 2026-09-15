@@ -909,6 +909,7 @@ actor CloudAPIClient {
 
     func sessionPin(token: String, sessionId: String) async throws -> CloudSessionPin {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        async let history = try? sessionPinHistory(token: token, sessionId: sessionId)
         let response: SessionPinResponse = try await send(
             path: "/v1/cloud/sessions/\(escaped)/pin",
             method: "GET",
@@ -916,7 +917,7 @@ actor CloudAPIClient {
             fallback: "Could not load the pinned message."
         )
         var pin = response.pin
-        pin.history = try? await sessionPinHistory(token: token, sessionId: sessionId)
+        pin.history = await history
         return pin
     }
 

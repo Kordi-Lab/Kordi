@@ -1,5 +1,6 @@
 import { cloudOperationUuid } from '@/features/cloud/chatSyncMapping';
-import { mergePinHistory } from '@/features/cloud/cloudPinHistory';
+import { mergePinHistory, type CloudPinHistoryEvent } from '@/features/cloud/cloudPinHistory';
+import { remainingPendingPinActions, type PendingPinAction } from '@/pages/pendingPinActions';
 import { useCallback, useMemo, useState } from 'react';
 
 import { createPinActivity, type PinActivity } from '@/pages/chatsPage.pinActivity';
@@ -64,6 +65,7 @@ export function useChatPins({
   onUpdateCloudPin,
   onNavigateToMessage,
 }: UseChatPinsInput) {
+  const [pendingCloudActions, setPendingCloudActions] = useState<Record<string, PendingPinAction[]>>({});
   const [localPinIds, setLocalPinIds] = useState<Record<string, string | null>>({});
   const [localPinActivity, setLocalPinActivity] = useState<Record<string, PinActivity[]>>({});
   const [optimisticCloudPins, setOptimisticCloudPins] = useState<Record<string, CloudSessionPin>>({});
@@ -110,13 +112,21 @@ export function useChatPins({
   );
   const pinActivities = useMemo(() => {
     if (!usesCloudPins) return localPinActivity[pinScopeKey] ?? [];
-    return mergePinHistory(cloudPin?.history, optimisticCloudPin?.history).flatMap((event) => {
+    const history = mergePinHistory(cloudPin?.history, optimisticCloudPin?.history);
+    const pending = remainingPendingPinActions(pendingCloudActions[pinScopeKey] ?? [], history).map(action => action.event);
+    return mergePinHistory(history, pending).flatMap((event) => {
       if (event.scope === 'private' && event.updatedByAccountId !== currentAccountId) return [];
       const actor = pinActorLabel(conversation, event.updatedByAccountId, currentAccountId);
       const activity = createPinActivity(`pin-activity:${event.id}`, `${actor} ${event.kind} a message`, event.updatedAt);
       return activity ? [{ ...activity, sequence: event.sequence }] : [];
     });
-  }, [cloudPin?.history, optimisticCloudPin?.history, conversation, currentAccountId, localPinActivity, pinScopeKey, usesCloudPins]);
+  }, [cloudPin?.history, optimisticCloudPin?.history, pendingCloudActions, conversation, currentAccountId, localPinActivity, pinScopeKey, usesCloudPins]);
+
+  const pendingActions = pendingCloudActions[pinScopeKey];
+  if (pendingActions?.length) {
+    const remaining = remainingPendingPinActions(pendingActions, cloudPin?.history ?? []);
+    if (remaining.length !== pendingActions.length) setPendingCloudActions({ ...pendingCloudActions, [pinScopeKey]: remaining });
+  }
 
   const requestPin = useCallback((message: Message) => {
     setPinForEveryone(false);
@@ -182,6 +192,14 @@ export function useChatPins({
             updatedAt: lastAction.updatedAt,
             lastAction,
           };
+      const previousMessageId = scope === 'shared' ? base.sharedMessageId : base.privateMessageId;
+      if ((previousMessageId ?? null) === nextMessageId) return;
+      const event: CloudPinHistoryEvent = {
+        id: `local-pin:${cloudOperationUuid()}`, sessionId, kind: lastAction.kind, scope,
+        messageId: nextMessageId, updatedByAccountId: currentAccountId ?? '', updatedAt: lastAction.updatedAt!,
+      };
+      const knownIds = mergePinHistory(cloudPin?.history, base.history).map(item => item.id);
+      setPendingCloudActions(current => ({ ...current, [pinScopeKey]: [...(current[pinScopeKey] ?? []), { event, knownIds }] }));
       setOptimisticCloudPins((current) => ({ ...current, [pinScopeKey]: optimistic }));
       void onUpdateCloudPin({
         sessionId,
@@ -197,6 +215,7 @@ export function useChatPins({
           return next;
         });
       }).catch(() => {
+        setPendingCloudActions(current => ({ ...current, [pinScopeKey]: (current[pinScopeKey] ?? []).filter(action => action.event.id !== event.id) }));
         setOptimisticCloudPins((current) => {
           if (current[pinScopeKey] !== optimistic) return current;
           const next = { ...current };
@@ -223,7 +242,7 @@ export function useChatPins({
       }],
     }));
   }, [
-    activeCloudPin,
+    activeCloudPin, cloudPin?.history, currentAccountId,
     conversation.id,
     dialog,
     onUpdateCloudPin,

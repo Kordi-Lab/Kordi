@@ -1,3 +1,5 @@
+import { mergePinSyncSnapshot } from './cloudPinHistory';
+import { applyCloudSyncEventsToSessionPins } from './cloudDiffSync';
 import { cloudMessageDeletions } from './cloudMessageDeletions';
 import { useCloudRepairPolling } from './useCloudRepairPolling';
 import { createCloudHistoryRepair } from './cloudHistoryRepair';
@@ -94,6 +96,7 @@ export function useCloudMessageSync({
     stateRef: pinnedGroupSpaceIdsRef,
   } = stores.pinnedGroupSpaceIds;
   const pendingRequestRef = useRef<PendingCloudSyncRequest | null>(null);
+  const pinCacheReadyRef = useRef(true);
   const startupSnapshotContextRef = useRef<string | null>(null);
   const historyRepairRef = useRef(createCloudHistoryRepair());
 
@@ -133,7 +136,8 @@ export function useCloudMessageSync({
     let messagesByPeer = messagesRef.current;
     let sessionActivity = activityRef.current;
     let sessionForksById = forksRef.current;
-    let sessionPinsById = pinsRef.current;
+    const initialSessionPins = pinsRef.current;
+    let sessionPinsById = initialSessionPins;
     let sessionTitlesById = titlesRef.current;
     let cloudAgentsById = agentsRef.current;
     let hiddenSessionIds = hiddenSessionIdsRef.current;
@@ -252,9 +256,12 @@ export function useCloudMessageSync({
     setForks((current) => (
       cloudSessionForksByIdEqual(current, sessionForksById) ? current : sessionForksById
     ));
-    setPins((current) => (
-      JSON.stringify(current) === JSON.stringify(sessionPinsById) ? current : sessionPinsById
-    ));
+    pinCacheReadyRef.current = true;
+    setPins((current) => {
+      const merged = mergePinSyncSnapshot(current, sessionPinsById, initialSessionPins);
+      pinsRef.current = merged;
+      return JSON.stringify(current) === JSON.stringify(merged) ? current : merged;
+    });
     setTitles((current) => (
       JSON.stringify(current) === JSON.stringify(sessionTitlesById) ? current : sessionTitlesById
     ));
@@ -292,7 +299,14 @@ export function useCloudMessageSync({
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const local = await loadChatSyncLocalState(account.accountId);
     if (!local || !coordinator.isCurrentGeneration(generation)) return;
+    pinCacheReadyRef.current = local.pinCacheReady !== false;
     if (!local.visibility) return;
+    const cachedPins = applyCloudSyncEventsToSessionPins({}, (local.pinEvents ?? []).map(event => ({
+      eventId: event.event_id, eventType: event.type, peerAccountId: null, messageId: null,
+      occurredAt: event.occurred_at, payload: event.payload,
+    })));
+    pinsRef.current = mergePinSyncSnapshot(pinsRef.current, cachedPins, {});
+    setPins(current => mergePinSyncSnapshot(current, cachedPins, {}));
     commitCloudVisibility(account.accountId, storesRef.current, [{eventId:'cached-visibility',eventType:'session.visibility.snapshot',
       peerAccountId:null,messageId:null,occurredAt:'',payload:{visibility:local.visibility}}]);
     const conversationById = new Map(
@@ -335,7 +349,7 @@ export function useCloudMessageSync({
       return titles;
     }, {});
     setTitles((current) => ({ ...current, ...hydratedTitles }));
-  }, [account, coordinator, messagesRef, setMessages, setTitles]);
+  }, [account, coordinator, messagesRef, pinsRef, setMessages, setPins, setTitles]);
   const hydrateMissingChatHistory = useCallback(async (generation: number) => {
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const session = await loadSession();
@@ -398,7 +412,7 @@ export function useCloudMessageSync({
         // backfill then operate exclusively on the durable cursor stream.
         await Promise.all([hydrateChatLocalState(generation), refreshCloudAgents(generation).catch(() => {})]);
       }
-      await syncDiffOnceForGeneration(generation, request.mode === 'full' || !hasCachedCloudSessionVisibility(account?.accountId));
+      await syncDiffOnceForGeneration(generation, request.mode === 'full' || !pinCacheReadyRef.current || !hasCachedCloudSessionVisibility(account?.accountId));
       if (!coordinator.isCurrentGeneration(generation)) return;
       // The authoritative live cursor is caught up. Older transcript backfill
       // and unread publication must not hold up an incoming execution lease.

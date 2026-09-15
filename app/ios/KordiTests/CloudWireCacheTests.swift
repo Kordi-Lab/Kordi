@@ -28,14 +28,19 @@ final class CloudWireCacheTests: XCTestCase {
             createdAt: "2026-08-08T17:31:00Z"
         )
 
+        let pinEvent = CloudPinHistoryEvent(id: "pin", sessionId: "session:fixture", kind: "pinned", scope: "private", messageId: "target", updatedByAccountId: "acct-me", updatedAt: "2026-09-15T10:00:00Z")
+        let unpinEvent = CloudPinHistoryEvent(id: "unpin", sessionId: "session:fixture", kind: "unpinned", scope: "private", messageId: nil, updatedByAccountId: "acct-me", updatedAt: "2026-09-15T10:01:00Z")
+        let pin = CloudSessionPin(sessionId: "session:fixture", sharedMessageId: nil, privateMessageId: nil, effectiveMessageId: nil, updatedAt: unpinEvent.updatedAt, history: [pinEvent, unpinEvent])
         await cache.save(
             accountId: "acct-me",
             cursor: "842",
             messagesByPeer: ["acct-peer": [message]],
-            sessionForksById: [fork.forkSessionId: fork]
+            sessionForksById: [fork.forkSessionId: fork],
+            sessionPinsByID: [pin.sessionId: pin]
         )
         let restored = await cache.load(accountId: "acct-me")
 
+        XCTAssertEqual(restored?.sessionPinsByID?[pin.sessionId], pin)
         XCTAssertEqual(restored?.cursor, "842")
         XCTAssertEqual(restored?.messagesByPeer["acct-peer"], [message])
         XCTAssertEqual(restored?.messagesByPeer["acct-peer"]?.first?.messageKind, "call")

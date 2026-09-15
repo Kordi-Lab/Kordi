@@ -10,6 +10,7 @@ struct CloudWireSnapshot: Codable {
     let sessionForksById: [String: CloudSessionForkSummary]?
     let forkLineageVersion: Int?
     let savedAt: Date
+    var sessionPinsByID: [String: CloudSessionPin]? = nil
     var visibility: CloudSessionVisibility? = nil
     var messageProjectionVersion: Int? = nil
 }
@@ -61,7 +62,8 @@ actor CloudWireCache {
         cursor: String,
         messagesByPeer: [String: [CloudMessageDTO]],
         sessionForksById: [String: CloudSessionForkSummary]? = nil,
-        visibility: CloudSessionVisibility? = nil
+        visibility: CloudSessionVisibility? = nil,
+        sessionPinsByID: [String: CloudSessionPin]? = nil
     ) {
         guard let directory, let url = snapshotURL(accountId: accountId) else { return }
         do {
@@ -73,6 +75,7 @@ actor CloudWireCache {
                 sessionForksById: sessionForksById,
                 forkLineageVersion: CloudWireSnapshot.currentForkLineageVersion,
                 savedAt: Date(),
+                sessionPinsByID: sessionPinsByID,
                 visibility: visibility,
                 messageProjectionVersion: CloudWireSnapshot.currentMessageProjectionVersion
             )

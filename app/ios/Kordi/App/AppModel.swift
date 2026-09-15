@@ -425,11 +425,12 @@ final class AppModel: ObservableObject {
                         !hiddenCloudSessionIds.contains($0.sessionId) && !deletedCloudSessionIds.contains($0.sessionId)
                     }
                 }
+                sessionPinsByID = snapshot.sessionPinsByID ?? [:]
                 cloudMessagesByPeer = snapshot.messagesByPeer
                 sessionForksById = snapshot.sessionForksById ?? [:]
                 rebuildCloudMessageIndices()
                 applyLatestSyncedAgentModelChanges()
-                cloudSyncCursor = snapshot.cursor
+                cloudSyncCursor = snapshot.sessionPinsByID == nil ? "0" : snapshot.cursor
                 lastMessageSyncAt = snapshot.savedAt
                 hasHydratedWireSnapshot = snapshot.cursor != "0" && snapshot.visibility != nil
                 hasHydratedForkLineage = snapshot.sessionForksById != nil
@@ -1374,6 +1375,12 @@ final class AppModel: ObservableObject {
             )
             try Task.checkCancellation()
             guard self.token == token, self.account?.accountId == account.accountId else { return false }
+            let loadedPin = await fetchedPin
+            try Task.checkCancellation()
+            guard self.token == token, self.account?.accountId == account.accountId else { return false }
+            if let loadedPin {
+                sessionPinsByID[conversation.sessionId] = loadedPin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
+            }
             _ = await applyConversationHistoryPage(page, to: conversation, account: account, knownMessageIDs: knownMessageIDs)
             try Task.checkCancellation()
             guard self.token == token, self.account?.accountId == account.accountId else { return false }
@@ -1384,10 +1391,6 @@ final class AppModel: ObservableObject {
             await rebuildConversationCatalog()
             try Task.checkCancellation()
             guard self.token == token, self.account?.accountId == account.accountId else { return false }
-            if let pin = await fetchedPin {
-                guard self.token == token, self.account?.accountId == account.accountId else { return false }
-                sessionPinsByID[conversation.sessionId] = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
-            }
             if errorMessage == Self.cloudUnavailableMessage {
                 errorMessage = nil
             }
@@ -6730,7 +6733,8 @@ final class AppModel: ObservableObject {
             cursor: cloudSyncCursor,
             messagesByPeer: cloudMessagesByPeer,
             sessionForksById: hasHydratedForkLineage ? sessionForksById : nil,
-            visibility: hasHydratedSessionVisibility ? currentCloudSessionVisibility : nil
+            visibility: hasHydratedSessionVisibility ? currentCloudSessionVisibility : nil,
+            sessionPinsByID: sessionPinsByID
         )
     }
 
@@ -7221,11 +7225,12 @@ final class AppModel: ObservableObject {
         deviceReviewRequired = false
         if let snapshot = await wireCache.load(accountId: response.account.accountId) {
             if let visibility = snapshot.visibility { applyCloudSessionVisibility(visibility) }
+            sessionPinsByID = snapshot.sessionPinsByID ?? [:]
             cloudMessagesByPeer = snapshot.messagesByPeer
             sessionForksById = snapshot.sessionForksById ?? [:]
             rebuildCloudMessageIndices()
             applyLatestSyncedAgentModelChanges()
-            cloudSyncCursor = snapshot.cursor
+            cloudSyncCursor = snapshot.sessionPinsByID == nil ? "0" : snapshot.cursor
             lastMessageSyncAt = snapshot.savedAt
             hasHydratedWireSnapshot = snapshot.cursor != "0" && snapshot.visibility != nil
             hasHydratedForkLineage = snapshot.sessionForksById != nil

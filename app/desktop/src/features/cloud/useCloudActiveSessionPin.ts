@@ -1,6 +1,6 @@
 import { mergePinSnapshot } from './cloudPinHistory';
 import {
-  useEffect,
+  useEffect, useCallback, useLayoutEffect, useRef,
   useMemo,
   type Dispatch,
   type SetStateAction,
@@ -24,14 +24,30 @@ export function useCloudActiveSessionPin({
   activeConversationId,
   client,
   setPinsBySessionId,
+  pinsBySessionId,
 }: {
   account: CloudAccount | null;
   activeConversationId: string | null | undefined;
   client: CloudAuthClient;
+  pinsBySessionId: CloudSessionPinsById;
   setPinsBySessionId: Dispatch<
     SetStateAction<CloudSessionPinsById>
   >;
 }) {
+  const currentAccount = useRef(account?.accountId);
+  const pins = useRef(pinsBySessionId);
+  useLayoutEffect(() => { currentAccount.current = account?.accountId; pins.current = pinsBySessionId; });
+  const preparePin = useCallback(async (conversationId: string) => {
+    const sessionId = cloudSessionIdFromConversationId(conversationId)
+      || (conversationId.startsWith('session:') ? conversationId : null);
+    if (!account || !sessionId || pins.current[sessionId]) return;
+    const session = await loadSession();
+    if (!session?.token || session.accountId !== account.accountId) return;
+    const pin = await client.getCloudSessionPin(session.token, sessionId);
+    if (currentAccount.current !== account.accountId) return;
+    pins.current = { ...pins.current, [pin.sessionId]: mergePinSnapshot(pins.current[pin.sessionId], pin) };
+    setPinsBySessionId(current => ({ ...current, [pin.sessionId]: mergePinSnapshot(current[pin.sessionId], pin) }));
+  }, [account, client, setPinsBySessionId]);
   const activePinSessionId = useMemo(() => {
     const fromConversation = activeConversationId
       ? cloudSessionIdFromConversationId(activeConversationId)
@@ -76,4 +92,5 @@ export function useCloudActiveSessionPin({
     client,
     setPinsBySessionId,
   ]);
+  return preparePin;
 }

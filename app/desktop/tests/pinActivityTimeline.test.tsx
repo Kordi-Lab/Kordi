@@ -154,3 +154,41 @@ test('a completed local mutation cannot mask pin state arriving from another dev
     await act(async () => root.unmount()); host.remove();
   }
 });
+
+test('local pin feedback appears before delayed sync, reconciles once, and rolls back failed actions', async () => {
+  await installVirtualTranscriptHarness();
+  const { useChatPins } = await import('../src/pages/useChatPins');
+  type Pin = import('../src/features/cloud/authClient').CloudSessionPin;
+  const sessionId = 'session:group:pending-pin';
+  let state!: ReturnType<typeof useChatPins>;
+  let resolve!: (pin: Pin) => void;
+  let reject!: (error: Error) => void;
+  let applyPin!: (pin: Pin) => void;
+  const empty: Pin = { sessionId, sharedMessageId: null, privateMessageId: null, effectiveMessageId: null, updatedAt: null };
+  function Harness() {
+    const [cloudPin, setPin] = React.useState(empty);
+    applyPin = setPin;
+    state = useChatPins({ conversation: { id: sessionId, collaborationSources: [] } as unknown as import('../src/kordi-app/types').Conversation,
+      messages: [earlier], sessionId, isGroupSession: true, currentAccountId: 'owner', cloudPin,
+      onNavigateToMessage() {}, onUpdateCloudPin: () => new Promise<Pin>((yes, no) => { resolve = yes; reject = no; }),
+    });
+    return null;
+  }
+  const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Harness />));
+    await act(async () => state.requestPin(earlier));
+    await act(async () => state.dialog.confirm());
+    assert.equal(state.pinActivities.length, 1, 'Immediate feedback must not wait for a sync response');
+    const pinned = { ...empty, privateMessageId: earlier.id!, effectiveMessageId: earlier.id!, updatedAt: new Date().toISOString() };
+    await act(async () => { applyPin(pinned); resolve(pinned); });
+    assert.equal(state.pinActivities.length, 1, 'Legacy mutation response must not remove its notice');
+    await act(async () => applyPin({ ...pinned, history: [{ id: 'synced-event', sessionId, kind: 'pinned', scope: 'private', messageId: earlier.id!, updatedByAccountId: 'owner', updatedAt: pinned.updatedAt }] }));
+    assert.deepEqual(state.pinActivities.map(item => item.id), ['pin-activity:synced-event']);
+    await act(async () => state.requestUnpin(earlier, 'private'));
+    await act(async () => state.dialog.confirm());
+    assert.equal(state.pinActivities.length, 2);
+    await act(async () => reject(new Error('Synthetic offline failure')));
+    assert.deepEqual(state.pinActivities.map(item => item.label), ['You pinned a message']);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

@@ -864,6 +864,7 @@ export class CloudAuthClient {
   }
 
   async getCloudSessionPin(token: string, sessionId: string, signal?: AbortSignal): Promise<CloudSessionPin> {
+    const historyRequest = this.getCloudPinHistory(token, sessionId, signal).catch(() => undefined);
     const response = await this.send<{ pin: CloudSessionPin }>(
       `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin`,
       {
@@ -874,7 +875,7 @@ export class CloudAuthClient {
       'Could not load pinned message.',
     );
     if (!response?.pin) throw new Error('Empty response from cloud server.');
-    const history = await this.getCloudPinHistory(token, sessionId, signal).catch(() => undefined);
+    const history = await historyRequest;
     return history === undefined ? response.pin : { ...response.pin, history };
   }
 
