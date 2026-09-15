@@ -126,3 +126,14 @@ test('incremental pin events retain actor activity', async () => {
     updatedAt: '2026-08-10T07:20:02Z',
   });
 });
+
+test('live pin history keeps both actions and deduplicates replay independently of current pin state', () => {
+  const pin = { id: 'history-pin', sequence: 1, sessionId, kind: 'pinned', scope: 'shared', messageId: 'target', updatedByAccountId: 'acct_a', updatedAt: '2026-09-14T12:00:00Z' };
+  const unpin = { ...pin, id: 'history-unpin', sequence: 2, kind: 'unpinned', messageId: null, updatedAt: '2026-09-14T12:01:00Z' };
+  const events = [pin, unpin].map(action => ({ eventId: `delivery-${action.id}`, eventType: 'session.pin.updated', peerAccountId: sessionId, messageId: action.messageId, occurredAt: action.updatedAt, payload: { sessionId, messageId: action.messageId, scope: action.scope, updatedAt: action.updatedAt, updatedByAccountId: action.updatedByAccountId, pinHistoryEvent: action } }));
+  const first = applyCloudSyncEventsToSessionPins({}, events);
+  assert.equal(first[sessionId].effectiveMessageId, null);
+  assert.deepEqual(first[sessionId].history, [pin, unpin]);
+  assert.deepEqual(applyCloudSyncEventsToSessionPins(first, events)[sessionId].history, [pin, unpin]);
+  assert.equal(applyCloudSyncEventsToSessionPins(first, [events[0]])[sessionId].effectiveMessageId, null);
+});

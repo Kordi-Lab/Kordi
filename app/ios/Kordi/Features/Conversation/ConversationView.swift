@@ -347,7 +347,7 @@ struct ConversationView: View {
     }
 
     private var allMessages: [ChatMessage] {
-        let current = ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+        let current = insertingPinHistory(into: ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation)))
         return pendingMessageDeletion?.retainingMessage(in: current) ?? current
     }
     private var threadProjection: MessageThreadProjection {
@@ -454,8 +454,6 @@ struct ConversationView: View {
             return PinnedMessageItem(message: message, scope: scope)
         }
         let pinnedMessageIDs = Set(pinnedMessages.map(\.message.id))
-        let pinActivityText = sessionPin.flatMap { pinActivityText(for: $0) }
-        let pinActivityID = "pin-activity:\(sessionPin?.lastAction?.updatedAt ?? pinActivityText ?? "")"
         let activeConversationCall = model.activeCall(for: conversation)
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
             == activeConversationCall?.id
@@ -626,12 +624,6 @@ struct ConversationView: View {
                                             .transition(.identity)
                                         }
                                     }
-
-                                        if let pinActivityText {
-                                            SystemNoticeRow(text: pinActivityText)
-                                                .padding(.vertical, 8)
-                                                .id(pinActivityID)
-                                        }
 
                                     Color.clear
                                         .frame(height: 1)
@@ -1407,7 +1399,10 @@ struct ConversationView: View {
         }
 
         VStack(spacing: 0) {
-            if presentation.showsTimestamp {
+            if message.messageKind == "session_pin_activity" {
+                Text(message.createdAt.formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2).foregroundStyle(.secondary).padding(.top, 8)
+            } else if presentation.showsTimestamp {
                 ConversationTimestampDivider(date: message.createdAt)
             }
 
@@ -2049,24 +2044,18 @@ struct ConversationView: View {
         }
     }
 
-    private func pinActivityText(for pin: CloudSessionPin) -> String? {
-        guard let action = pin.lastAction else { return nil }
-        let actor: String
-        if action.updatedByAccountId == model.account?.accountId {
-            actor = "You"
-        } else if let accountID = action.updatedByAccountId,
-                  let participant = conversation.groupParticipants.first(where: {
-                      $0.accountId == accountID
-                  }) {
-            actor = participant.displayName
-        } else if action.updatedByAccountId == conversation.peerAccountId {
-            actor = conversation.displayName
-        } else if action.scope == "private" {
-            actor = "You"
-        } else {
-            actor = "Someone"
+    private func insertingPinHistory(into messages: [ChatMessage]) -> [ChatMessage] {
+        let history = (model.sessionPinsByID[conversation.sessionId]?.history ?? []).filter {
+            $0.scope == "shared" || $0.updatedByAccountId == model.account?.accountId
         }
-        return "\(actor) \(action.kind) a message"
+        return PinHistoryTimeline.inserting(history, into: messages, conversationID: conversation.id) { event in
+            let actor: String
+            if event.updatedByAccountId == model.account?.accountId { actor = "You" }
+            else if let participant = conversation.groupParticipants.first(where: { $0.accountId == event.updatedByAccountId }) { actor = participant.displayName }
+            else if event.updatedByAccountId == conversation.peerAccountId { actor = conversation.displayName }
+            else { actor = "Someone" }
+            return "\(actor) \(event.kind) a message"
+        }
     }
 
     private func openMentionProfile(accountID: String) {

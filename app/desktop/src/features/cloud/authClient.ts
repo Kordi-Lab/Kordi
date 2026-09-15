@@ -1,3 +1,4 @@
+import { mergePinHistory, type CloudPinHistoryEvent } from './cloudPinHistory';
 import { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLookup,type CloudProviderAuthSnapshot,type CloudProviderAuthSnapshotInput } from "./cloudAgentRuntimeTypes";
 // Cloud-edition HTTP client. Authentication and ancillary account features
 // remain under /v1/cloud; durable chat transport is exclusively /v2/chat.
@@ -841,17 +842,40 @@ export class CloudAuthClient {
     return this.sessionList.list(token);
   }
 
-  async getCloudSessionPin(token: string, sessionId: string): Promise<CloudSessionPin> {
+  async getCloudPinHistory(token: string, sessionId: string, signal?: AbortSignal): Promise<CloudPinHistoryEvent[]> {
+    let before: number | null = null;
+    const visited = new Set<number>();
+    let history: CloudPinHistoryEvent[] = [];
+    do {
+      const query = before === null ? '' : `?before=${before}`;
+      const page: { events: CloudPinHistoryEvent[]; nextBefore: number | null } = await this.send(
+        `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin-history${query}`,
+        { method: 'GET', signal, headers: { authorization: `Bearer ${token}` } },
+        'Could not load pin history.',
+      );
+      history = mergePinHistory(history, page.events);
+      before = page.nextBefore;
+      if (before !== null) {
+        if (!Number.isSafeInteger(before) || before <= 0 || visited.has(before)) throw new Error('Invalid pin history cursor.');
+        visited.add(before);
+      }
+    } while (before !== null);
+    return history;
+  }
+
+  async getCloudSessionPin(token: string, sessionId: string, signal?: AbortSignal): Promise<CloudSessionPin> {
     const response = await this.send<{ pin: CloudSessionPin }>(
       `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin`,
       {
         method: 'GET',
+        signal,
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not load pinned message.',
     );
     if (!response?.pin) throw new Error('Empty response from cloud server.');
-    return response.pin;
+    const history = await this.getCloudPinHistory(token, sessionId, signal).catch(() => undefined);
+    return history === undefined ? response.pin : { ...response.pin, history };
   }
 
   async updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; scope: 'private' | 'shared' }): Promise<CloudSessionPin> {
@@ -865,7 +889,8 @@ export class CloudAuthClient {
       'Could not update pinned message.',
     );
     if (!response?.pin) throw new Error('Empty response from cloud server.');
-    return response.pin;
+    const history = await this.getCloudPinHistory(token, sessionId).catch(() => undefined);
+    return history === undefined ? response.pin : { ...response.pin, history };
   }
 
   async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> { return this.chat.updateTitle(token, sessionId, input); }

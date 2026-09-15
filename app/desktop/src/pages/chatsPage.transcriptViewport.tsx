@@ -14,7 +14,7 @@ import type { Message } from '@/kordi-app/types';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
-import { insertPinActivity } from '@/pages/chatsPage.pinActivity';
+import { insertPinActivities } from '@/pages/chatsPage.pinActivity';
 import { PinActivityNotice } from '@/pages/chatsPage.pins';
 
 type TranscriptEntry = {
@@ -108,7 +108,7 @@ export function useChatTranscriptViewport({
     activeForkSourceTitle = null,
     messageForksByEntryId,
     pinnedMessageIds,
-    pinActivity,
+    pinActivities,
     densityMode = 'default',
     relatedAgentSessionStatusById,
   } = presentation;
@@ -163,12 +163,19 @@ export function useChatTranscriptViewport({
     () => collectConversationImageAttachments(transcriptMessages),
     [transcriptMessages],
   );
-  const timelineEntries = useMemo(() => insertPinActivity(transcriptEntries, pinActivity), [transcriptEntries, pinActivity]);
-  const activityIndex = timelineEntries.findIndex((entry) => 'pinActivity' in entry);
-  const previousEntry = activityIndex >= 0 ? timelineEntries[activityIndex - 1] : undefined;
-  const nextEntry = activityIndex >= 0 ? timelineEntries[activityIndex + 1] : undefined;
-  const beforeActivityIndex = previousEntry && 'message' in previousEntry ? previousEntry.originalIndex : -1;
-  const afterActivityIndex = nextEntry && 'message' in nextEntry ? nextEntry.originalIndex : -1;
+  const timelineEntries = useMemo(() => insertPinActivities(transcriptEntries, pinActivities), [transcriptEntries, pinActivities]);
+  const pinBoundaries = useMemo(() => {
+    const before = new Set<number>();
+    const after = new Set<number>();
+    timelineEntries.forEach((entry, index) => {
+      if (!('pinActivity' in entry)) return;
+      const previous = timelineEntries[index - 1];
+      const next = timelineEntries[index + 1];
+      if (previous && 'message' in previous) before.add(previous.originalIndex);
+      if (next && 'message' in next) after.add(next.originalIndex);
+    });
+    return { before, after };
+  }, [timelineEntries]);
   const latestMessage = transcriptMessages[transcriptMessages.length - 1];
   const animateTailResize = Boolean(latestMessage?.turn);
   const animateLatestAppend = animateTailResize || Boolean(
@@ -262,8 +269,8 @@ export function useChatTranscriptViewport({
             onSelectionDragEnter={onSelectionDragEnter}
             onSelectionDragEnd={onSelectionDragEnd}
             plainAgentResponse={plainAgentResponse}
-            isGroupedWithPrevious={idx !== afterActivityIndex && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, timeSeparators)}
-            isGroupedWithNext={idx !== beforeActivityIndex && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, timeSeparators)}
+            isGroupedWithPrevious={!pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, timeSeparators)}
+            isGroupedWithNext={!pinBoundaries.before.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, timeSeparators)}
           />}
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
@@ -301,8 +308,7 @@ export function useChatTranscriptViewport({
       )}
     />
   ), [
-    afterActivityIndex,
-    beforeActivityIndex,
+    pinBoundaries,
     timelineEntries,
     activeForkSourceSessionId,
     activeForkSourceTitle,

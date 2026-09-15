@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import React, { act, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createPinActivity, insertPinActivity } from '../src/pages/chatsPage.pinActivity';
+import { createPinActivity, insertPinActivities, type PinActivity } from '../src/pages/chatsPage.pinActivity';
 import type { Message } from '../src/kordi-app/types';
 import { installVirtualTranscriptHarness } from './support/virtualTranscriptHarness';
 
@@ -13,21 +13,21 @@ const entries = (messages: Message[]) => messages.map((message, originalIndex) =
 
 test('pin activity stays between earlier and later messages without changing their identities', () => {
   const before = entries([earlier]);
-  assert.deepEqual(insertPinActivity(before, activity), [before[0], { pinActivity: activity }]);
+  assert.deepEqual(insertPinActivities(before, [activity]), [before[0], { pinActivity: activity }]);
   const after = entries([earlier, later]);
-  const result = insertPinActivity(after, activity);
+  const result = insertPinActivities(after, [activity]);
   assert.deepEqual(result, [after[0], { pinActivity: activity }, after[1]]);
   assert.equal(result[0], after[0]);
   assert.equal(result[2], after[1]);
-  assert.deepEqual(insertPinActivity(entries([later]), activity), [{ pinActivity: activity }, entries([later])[0]]);
+  assert.deepEqual(insertPinActivities(entries([later]), [activity]), [{ pinActivity: activity }, entries([later])[0]]);
 });
 
 test('pin timestamps use the supplied event time and never invent a current time', () => {
   assert.equal(activity.timestampMs, Date.parse('2026-09-14T12:30:00Z'));
   assert.equal(createPinActivity('unknown', 'Someone pinned a message', null), null);
   assert.equal(createPinActivity('invalid', 'Someone pinned a message', 'invalid'), null);
-  assert.deepEqual(insertPinActivity(entries([earlier]), null), entries([earlier]));
-  assert.deepEqual(insertPinActivity([], activity), [{ pinActivity: activity }]);
+  assert.deepEqual(insertPinActivities(entries([earlier]), []), entries([earlier]));
+  assert.deepEqual(insertPinActivities([], [activity]), [{ pinActivity: activity }]);
 });
 
 test('the mounted transcript renders the pin with a timestamp before subsequently received messages', async () => {
@@ -35,10 +35,10 @@ test('the mounted transcript renders the pin with a timestamp before subsequentl
   const { useChatTranscriptViewport } = await import('../src/pages/chatsPage.transcriptViewport');
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 1800 });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => 80 });
-  function Transcript({ messages }: { messages: Message[] }) {
+  function Transcript({ messages, activities = [activity] }: { messages: Message[]; activities?: PinActivity[] }) {
     return useChatTranscriptViewport({
       viewport: { sessionKey: 'pin-fixture', scrollRef: useRef(null), messages, scrollClassName: '', emptyState: null, composer: null },
-      presentation: { liveTurnSender: 'Agent', shouldRenderLiveTurn: false, pinActivity: activity },
+      presentation: { liveTurnSender: 'Agent', shouldRenderLiveTurn: false, pinActivities: activities },
       actions: { onOpenSource() {}, onOpenArtifact() {}, onOpenAuthSettings() {}, onStopCollaborationAgentRequest() {}, onStopActiveTurn() {} },
       selection: {}, transcriptMessages: messages, transcriptEntries: entries(messages), transcriptTailKey: messages.at(-1)?.id ?? '',
     });
@@ -58,8 +58,99 @@ test('the mounted transcript renders the pin with a timestamp before subsequentl
     assert.ok(content.indexOf('Earlier message') < content.indexOf('You pinned a message'));
     assert.ok(content.indexOf('You pinned a message') < content.indexOf('Later message'));
     assert.equal(host.querySelectorAll('[data-pin-activity]').length, 1);
+    const unpin = { id: 'unpin-event', label: 'You unpinned a message', timestampMs: Date.parse('2026-09-14T13:30:00Z') };
+    const newest = { ...later, id: 'newest', text: 'Newest message', timestampMs: Date.parse('2026-09-14T14:00:00Z') };
+    await act(async () => { root.render(<Transcript messages={[earlier, later, newest]} activities={[activity, unpin, activity]} />); });
+    assert.equal(host.querySelectorAll('[data-pin-activity]').length, 2);
+    assert.equal(host.querySelector('[data-pin-activity]'), notice);
+    const updated = host.textContent!;
+    assert.ok(updated.indexOf('You pinned a message') < updated.indexOf('Later message'));
+    assert.ok(updated.indexOf('Later message') < updated.indexOf('You unpinned a message'));
+    assert.ok(updated.indexOf('You unpinned a message') < updated.indexOf('Newest message'));
+
   } finally {
     await act(async () => root.unmount());
     host.remove();
+  }
+});
+
+test('pin and unpin remain separate when events are replayed or snapshots arrive late', async () => {
+  const { mergePinHistory, mergePinSnapshot } = await import('../src/features/cloud/cloudPinHistory');
+  const pin = { id: 'event-pin', sequence: 10, sessionId: 'chat', kind: 'pinned' as const, scope: 'shared' as const, messageId: 'message', updatedByAccountId: 'owner', updatedAt: '2026-09-14T12:30:00Z' };
+  const unpin = { ...pin, id: 'event-unpin', sequence: 11, kind: 'unpinned' as const, messageId: null, updatedAt: '2026-09-14T13:30:00Z' };
+  assert.deepEqual(mergePinHistory([unpin, pin], [pin, unpin]), [pin, unpin]);
+  const current = { sessionId: 'chat', sharedMessageId: null, privateMessageId: null, effectiveMessageId: null, updatedAt: unpin.updatedAt, history: [unpin] };
+  const stale = { ...current, sharedMessageId: 'message', effectiveMessageId: 'message', updatedAt: pin.updatedAt, history: [pin] };
+  const merged = mergePinSnapshot(current, stale);
+  assert.equal(merged.effectiveMessageId, null);
+  assert.deepEqual(merged.history, [pin, unpin]);
+  const { insertPinActivities } = await import('../src/pages/chatsPage.pinActivity');
+  const actions = [pin, unpin].map(event => ({ id: event.id, label: event.kind, timestampMs: Date.parse(event.updatedAt), sequence: event.sequence }));
+  const last: Message = { ...later, id: 'last', timestampMs: Date.parse('2026-09-14T14:00:00Z') };
+  assert.deepEqual(insertPinActivities(entries([earlier, later, last]), [...actions, actions[0]]).map(row => 'pinActivity' in row ? row.pinActivity.id : row.message.id), ['earlier', 'event-pin', 'later', 'event-unpin', 'last']);
+});
+
+test('fresh clients load every history page even after the current pin is cleared', async () => {
+  const { CloudAuthClient } = await import('../src/features/cloud/authClient');
+  const pin = { id: 'event-pin', sequence: 10, sessionId: 'chat', kind: 'pinned' as const, scope: 'private' as const, messageId: 'message', updatedByAccountId: 'owner', updatedAt: '2026-09-14T12:30:00Z' };
+  const unpin = { ...pin, id: 'event-unpin', sequence: 11, kind: 'unpinned' as const, messageId: null, updatedAt: '2026-09-14T13:30:00Z' };
+  const paths: string[] = [];
+  const fetchImpl: typeof fetch = async (input) => {
+    const url = new URL(String(input));
+    paths.push(url.pathname + url.search);
+    const response = url.pathname.endsWith('/pin')
+      ? { pin: { sessionId: 'chat', sharedMessageId: null, privateMessageId: null, effectiveMessageId: null, updatedAt: unpin.updatedAt } }
+      : url.searchParams.has('before') ? { events: [pin], nextBefore: null } : { events: [unpin], nextBefore: 11 };
+    return new Response(JSON.stringify(response), { status: 200 });
+  };
+  for (let launch = 0; launch < 2; launch += 1) {
+    const client = new CloudAuthClient({ baseUrl: 'http://test.local', fetchImpl });
+    const state = await client.getCloudSessionPin('synthetic', 'chat');
+    assert.equal(state.effectiveMessageId, null);
+    assert.deepEqual(state.history, [pin, unpin]);
+  }
+  assert.equal(paths.filter(path => path.endsWith('before=11')).length, 2);
+});
+
+test('a completed local mutation cannot mask pin state arriving from another device', async () => {
+  await installVirtualTranscriptHarness();
+  const { useChatPins } = await import('../src/pages/useChatPins');
+  type PinState = import('../src/features/cloud/authClient').CloudSessionPin;
+  const sessionId = 'session:group:history-fixture';
+  const pin = { id: 'first', sequence: 1, sessionId, kind: 'pinned' as const, scope: 'private' as const, messageId: earlier.id!, updatedByAccountId: 'owner', updatedAt: '2026-01-01T10:00:00Z' };
+  const unpin = { ...pin, id: 'second', sequence: 2, kind: 'unpinned' as const, messageId: null, updatedAt: '2026-01-01T10:01:00Z' };
+  const remote = { ...pin, id: 'third', sequence: 3, updatedAt: '2026-01-01T10:02:00Z' };
+  let state: ReturnType<typeof useChatPins>;
+  let setRemote: () => void = () => {};
+  function Harness() {
+    const [cloudPin, setPin] = React.useState<PinState>({ sessionId, sharedMessageId: null, privateMessageId: null, effectiveMessageId: null, updatedAt: null, history: [] });
+    setRemote = () => setPin({ ...cloudPin, privateMessageId: earlier.id!, effectiveMessageId: earlier.id!, updatedAt: remote.updatedAt, history: [pin, unpin, remote] });
+    state = useChatPins({
+      conversation: { id: sessionId, collaborationSources: [], canonicalParticipants: [] } as unknown as import('../src/kordi-app/types').Conversation,
+      sessionId, messages: [earlier], isGroupSession: true, currentAccountId: 'owner', cloudPin,
+      onNavigateToMessage() {},
+      onUpdateCloudPin: async ({ messageId }) => {
+        const event = messageId ? pin : unpin;
+        const updated: PinState = { ...cloudPin, privateMessageId: messageId, effectiveMessageId: messageId, updatedAt: event.updatedAt, history: messageId ? [pin] : [pin, unpin] };
+        setPin(updated);
+        return updated;
+      },
+    });
+    return null;
+  }
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => { root.render(<Harness />); });
+    await act(async () => { state.requestPin(earlier); });
+    await act(async () => { state.dialog.confirm(); });
+    await act(async () => { state.requestUnpin(earlier, 'private'); });
+    await act(async () => { state.dialog.confirm(); });
+    assert.deepEqual(state!.pinActivities.map(event => event.label), ['You pinned a message', 'You unpinned a message']);
+    await act(async () => { setRemote(); });
+    assert.equal(state!.pinnedMessages.length, 1);
+    assert.equal(state!.pinActivities.length, 3);
+  } finally {
+    await act(async () => root.unmount()); host.remove();
   }
 });

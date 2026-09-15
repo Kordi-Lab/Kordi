@@ -1385,7 +1385,8 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             guard self.token == token, self.account?.accountId == account.accountId else { return false }
             if let pin = await fetchedPin {
-                sessionPinsByID[conversation.sessionId] = pin
+                guard self.token == token, self.account?.accountId == account.accountId else { return false }
+                sessionPinsByID[conversation.sessionId] = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
             }
             if errorMessage == Self.cloudUnavailableMessage {
                 errorMessage = nil
@@ -1394,7 +1395,8 @@ final class AppModel: ObservableObject {
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return false }
             if let pin = await fetchedPin {
-                sessionPinsByID[conversation.sessionId] = pin
+                guard self.token == token, self.account?.accountId == account.accountId else { return false }
+                sessionPinsByID[conversation.sessionId] = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
             }
             recordCloudConnectionFailure(error)
             return false
@@ -2107,7 +2109,9 @@ final class AppModel: ObservableObject {
                 messageId: message.id,
                 scope: shared ? "shared" : "private"
             )
-            sessionPinsByID[conversation.sessionId] = pin.recording(CloudSessionPinAction(
+            guard self.token == token else { return false }
+            let updatedPin = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
+            sessionPinsByID[conversation.sessionId] = updatedPin.recording(CloudSessionPinAction(
                 kind: "pinned",
                 scope: shared ? "shared" : "private",
                 messageId: message.id,
@@ -2141,7 +2145,9 @@ final class AppModel: ObservableObject {
                 messageId: nil,
                 scope: scope
             )
-            sessionPinsByID[conversation.sessionId] = pin.recording(CloudSessionPinAction(
+            guard self.token == token else { return false }
+            let updatedPin = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
+            sessionPinsByID[conversation.sessionId] = updatedPin.recording(CloudSessionPinAction(
                 kind: "unpinned",
                 scope: scope,
                 messageId: nil,
@@ -2406,6 +2412,11 @@ final class AppModel: ObservableObject {
 
     private func updatePreviewPin(messageId: String?, sessionId: String, scope: String) {
         let current = sessionPinsByID[sessionId]
+        let previous = scope == "shared" ? current?.sharedMessageId : current?.privateMessageId
+        guard previous != messageId else { return }
+        let event = CloudPinHistoryEvent(id: UUID().uuidString, sequence: (current?.history?.compactMap(\.sequence).max() ?? 0) + 1, sessionId: sessionId,
+            kind: messageId == nil ? "unpinned" : "pinned", scope: scope, messageId: messageId,
+            updatedByAccountId: account?.accountId ?? "preview", updatedAt: Date().ISO8601Format())
         let sharedMessageId = scope == "shared" ? messageId : current?.sharedMessageId
         let privateMessageId = scope == "private" ? messageId : current?.privateMessageId
         sessionPinsByID[sessionId] = CloudSessionPin(
@@ -2419,8 +2430,9 @@ final class AppModel: ObservableObject {
                 scope: scope,
                 messageId: messageId,
                 updatedByAccountId: account?.accountId,
-                updatedAt: Date().ISO8601Format()
-            )
+                updatedAt: event.updatedAt
+            ),
+            history: CloudPinHistoryEvent.merging([current?.history ?? [], [event]])
         )
     }
 
@@ -6673,11 +6685,13 @@ final class AppModel: ObservableObject {
                   let sessionId = payload.sessionId?.nonEmpty,
                   let scope = payload.scope?.nonEmpty?.lowercased(),
                   scope == "private" || scope == "shared" else { continue }
+            let history = CloudPinHistoryEvent.merging([pins[sessionId]?.history ?? [], payload.pinHistoryEvent.map { [$0] } ?? []])
+            if var existing = pins[sessionId] { existing.history = history; pins[sessionId] = existing }
             let updatedAt = payload.updatedAt?.nonEmpty ?? event.occurredAt.nonEmpty
             if !event.eventId.hasPrefix("bootstrap:session-pin:"),
                let currentUpdatedAt = pins[sessionId]?.updatedAt?.nonEmpty,
                let updatedAt,
-               updatedAt <= currentUpdatedAt {
+               updatedAt < currentUpdatedAt {
                 continue
             }
             let currentPin = pins[sessionId]
@@ -6697,7 +6711,8 @@ final class AppModel: ObservableObject {
                     messageId: messageId,
                     updatedByAccountId: payload.updatedByAccountId?.nonEmpty,
                     updatedAt: updatedAt
-                )
+                ),
+                history: history
             )
         }
         return pins

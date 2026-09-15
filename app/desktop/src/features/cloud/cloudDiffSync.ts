@@ -1,3 +1,4 @@
+import { mergePinHistory, type CloudPinHistoryEvent } from './cloudPinHistory';
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
 import {
@@ -265,10 +266,21 @@ export function applyCloudSyncEventsToSessionPins(
     const pin = normalizeCloudSessionPin({ ...payload, sessionId }, next[sessionId]);
     if (!pin) continue;
     const messageId = cleanText(payload?.messageId) || null;
+    const previous = next[sessionId];
+    if (!event.eventId.startsWith('bootstrap:session-pin:')
+        && Date.parse(pin.updatedAt ?? '') < Date.parse(previous?.updatedAt ?? '')) {
+      if (payload?.pinHistoryEvent) next = { ...next, [sessionId]: { ...previous,
+        history: mergePinHistory(previous.history, [payload.pinHistoryEvent as CloudPinHistoryEvent]),
+      } };
+      continue;
+    }
     next = {
       ...next,
       [sessionId]: {
         ...pin,
+        ...(next[sessionId]?.history || payload?.pinHistoryEvent ? {
+          history: mergePinHistory(next[sessionId]?.history, payload?.pinHistoryEvent ? [payload.pinHistoryEvent as CloudPinHistoryEvent] : []),
+        } : {}),
         lastAction: event.eventId.startsWith('bootstrap:session-pin:')
           ? null
           : {

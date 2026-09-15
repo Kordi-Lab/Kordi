@@ -4,6 +4,9 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+- Preserve pin and unpin actions as separate timestamped history entries synced
+  across macOS and iOS, with account-private and shared visibility.
+
 ## [0.0.2-beta.2] - 2026-09-14
 
 ### Added

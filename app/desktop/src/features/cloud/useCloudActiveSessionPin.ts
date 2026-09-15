@@ -1,3 +1,4 @@
+import { mergePinSnapshot } from './cloudPinHistory';
 import {
   useEffect,
   useMemo,
@@ -45,19 +46,21 @@ export function useCloudActiveSessionPin({
   useEffect(() => {
     if (!account || !activePinSessionId) return;
     let cancelled = false;
+    const controller = new AbortController();
     void loadSession()
       .then(async (session) => {
         if (!session?.token) return null;
         return client.getCloudSessionPin(
           session.token,
           activePinSessionId,
+          controller.signal,
         );
       })
       .then((pin) => {
         if (cancelled || !pin) return;
         setPinsBySessionId((current) => ({
           ...current,
-          [pin.sessionId]: pin,
+          [pin.sessionId]: mergePinSnapshot(current[pin.sessionId], pin),
         }));
       })
       .catch(() => {
@@ -65,6 +68,7 @@ export function useCloudActiveSessionPin({
       });
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     account,

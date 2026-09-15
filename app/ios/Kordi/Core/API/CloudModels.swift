@@ -231,6 +231,63 @@ struct CloudDeviceMutationResponse: Codable, Hashable {
     let affectedDeviceIds: [String]
 }
 
+struct CloudPinHistoryEvent: Codable, Hashable, Identifiable {
+    let id: String
+    let sequence: Int64?
+    let sessionId: String
+    let kind: String
+    let scope: String
+    let messageId: String?
+    let updatedByAccountId: String
+    let updatedAt: String
+    let timestamp: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, sequence, sessionId, kind, scope, messageId, updatedByAccountId, updatedAt
+    }
+
+    init(id: String, sequence: Int64? = nil, sessionId: String, kind: String, scope: String, messageId: String?, updatedByAccountId: String, updatedAt: String) {
+        self.id = id; self.sequence = sequence; self.sessionId = sessionId; self.kind = kind; self.scope = scope
+        self.messageId = messageId; self.updatedByAccountId = updatedByAccountId; self.updatedAt = updatedAt
+        timestamp = Self.parseTimestamp(updatedAt)
+    }
+
+    static func parseTimestamp(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(id: try values.decode(String.self, forKey: .id),
+            sequence: try values.decodeIfPresent(Int64.self, forKey: .sequence),
+            sessionId: try values.decode(String.self, forKey: .sessionId),
+            kind: try values.decode(String.self, forKey: .kind),
+            scope: try values.decode(String.self, forKey: .scope),
+            messageId: try values.decodeIfPresent(String.self, forKey: .messageId),
+            updatedByAccountId: try values.decode(String.self, forKey: .updatedByAccountId),
+            updatedAt: try values.decode(String.self, forKey: .updatedAt))
+    }
+
+    static func merging(_ groups: [[Self]]) -> [Self] {
+        var events: [String: Self] = [:]
+        for group in groups {
+            for event in group where !event.id.isEmpty && event.timestamp != nil && ["pinned", "unpinned"].contains(event.kind) && ["private", "shared"].contains(event.scope) { events[event.id] = event }
+        }
+        return events.values.sorted {
+            if $0.timestamp != $1.timestamp { return ($0.timestamp ?? .distantPast) < ($1.timestamp ?? .distantPast) }
+            if $0.sequence != $1.sequence { return ($0.sequence ?? 0) < ($1.sequence ?? 0) }
+            return $0.id < $1.id
+        }
+    }
+}
+
+struct CloudPinHistoryPage: Decodable {
+    let events: [CloudPinHistoryEvent]
+    let nextBefore: Int64?
+}
+
 struct CloudSessionPinAction: Codable, Hashable {
     let kind: String
     let scope: String
@@ -246,6 +303,17 @@ struct CloudSessionPin: Codable, Hashable {
     let effectiveMessageId: String?
     let updatedAt: String?
     var lastAction: CloudSessionPinAction? = nil
+    var history: [CloudPinHistoryEvent]? = nil
+
+    func mergingHistory(from current: Self?) -> Self {
+        var result = self
+        if let current, let old = current.updatedAt.flatMap(CloudPinHistoryEvent.parseTimestamp),
+           updatedAt.flatMap(CloudPinHistoryEvent.parseTimestamp).map({ $0 < old }) ?? true {
+            result = current
+        }
+        result.history = CloudPinHistoryEvent.merging([current?.history ?? [], history ?? []])
+        return result
+    }
 
     func recording(_ action: CloudSessionPinAction?) -> Self {
         Self(
@@ -254,7 +322,8 @@ struct CloudSessionPin: Codable, Hashable {
             privateMessageId: privateMessageId,
             effectiveMessageId: effectiveMessageId,
             updatedAt: updatedAt,
-            lastAction: action
+            lastAction: action,
+            history: history
         )
     }
 }
@@ -1260,6 +1329,7 @@ struct CloudChatCursor: Codable, Hashable {
 }
 
 struct CloudChatEventPayload: Codable, Hashable {
+    var pinHistoryEvent: CloudPinHistoryEvent? = nil
     let conversation: CloudChatConversation?
     let message: CloudChatMessage?
     let preferences: CloudChatPreferences?
@@ -1273,7 +1343,7 @@ struct CloudChatEventPayload: Codable, Hashable {
     let deviceId: String?
 
     enum CodingKeys: String, CodingKey {
-        case conversation, message, preferences, cursor, call
+        case conversation, message, preferences, cursor, call, pinHistoryEvent
         case sessionId, messageId, scope, updatedAt, updatedByAccountId
         case deviceId = "deviceId"
     }
@@ -1542,6 +1612,7 @@ struct CloudSyncEvent: Codable, Hashable {
 }
 
 struct CloudSyncEventPayload: Codable, Hashable {
+    var pinHistoryEvent: CloudPinHistoryEvent? = nil
     let message: CloudMessageDTO?
     let messageIds: [String]?
     let messageId: String?

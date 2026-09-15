@@ -30,7 +30,11 @@ pub(super) async fn bootstrap_session_pins(
         "SELECT visible_session.session_id, \
                 shared_pin.message_id AS shared_message_id, \
                 private_pin.message_id AS private_message_id, \
-                COALESCE(private_pin.updated_at, shared_pin.updated_at) AS updated_at \
+                COALESCE((SELECT history.payload->>'updatedAt' FROM cloud_session_pin_history history \
+                  JOIN cloud_chat_conversations conversation ON conversation.conversation_id = history.conversation_id \
+                  WHERE (conversation.legacy_session_id = visible_session.session_id OR conversation.conversation_id::text = visible_session.session_id) \
+                    AND (history.scope = 'shared' OR history.actor_account_id = $2) ORDER BY history.occurred_at DESC, history.sequence DESC LIMIT 1), \
+                  private_pin.updated_at, shared_pin.updated_at) AS updated_at \
          FROM UNNEST($1::text[]) AS visible_session(session_id) \
          LEFT JOIN cloud_session_shared_pins shared_pin ON shared_pin.session_id = visible_session.session_id \
          LEFT JOIN cloud_account_session_pins private_pin \

@@ -448,6 +448,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "add independently scoped attachment reactions and private visibility",
         sql: include_str!("../../migrations/0091_chat_attachment_actions.sql"),
     },
+    EmbeddedMigration {
+        version: 92,
+        description: "retain independently scoped pin and unpin history",
+        sql: include_str!("../../migrations/0092_session_pin_history.sql"),
+    },
+    EmbeddedMigration {
+        version: 93,
+        description: "recover retained pin history without blocking live capture",
+        sql: include_str!("../../migrations/0093_backfill_session_pin_history.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
