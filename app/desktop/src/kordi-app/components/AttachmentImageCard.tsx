@@ -224,7 +224,7 @@ export function AttachmentImageCard({
       ) : null}
       <img
         src={isAnimatedGif && !mediaActive && stillUrl ? stillUrl : previewUrl}
-        alt={attachment.altText?.trim() || attachment.name || (isSticker ? 'Sticker' : 'Attached image')}
+        alt={attachment.name || (isSticker ? 'Sticker' : 'Attached image')}
         draggable={false}
         data-attachment-image-loaded={String(imageLoaded)}
         className={cn(

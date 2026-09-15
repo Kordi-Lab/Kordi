@@ -265,7 +265,7 @@ test('setReaction restores a missing session-routed conversation before mutating
   assert.deepEqual(updated.reactions, [{ value: 'blob:blobwave', accountIds: ['acct_me'] }]);
 });
 
-test('sendMessage round-trips meme subtype and alt text in canonical attachment metadata', async () => {
+test('sendMessage round-trips the sticker subtype in canonical attachment metadata', async () => {
   let sentContent: Record<string, unknown> | null = null;
   const { fetchImpl } = recordingFetch((call) => {
     if (call.url.endsWith('/v2/chat/conversations')) {
@@ -283,7 +283,7 @@ test('sendMessage round-trips meme subtype and alt text in canonical attachment 
         kind: 'text',
         content: sentContent,
         reply_to_message_id: null,
-        attachment_ids: ['att_meme'],
+        attachment_ids: ['att_sticker'],
         version: 1,
         generation_status: null,
         provider_response_id: null,
@@ -296,15 +296,14 @@ test('sendMessage round-trips meme subtype and alt text in canonical attachment 
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
 
   const sent = await client.sendMessage('kordi_cs_xyz', 'acct_peer', '', {
-    sessionId: 'session-meme',
+    sessionId: 'session-sticker',
     accountId: 'acct_me',
-    clientMessageId: 'msg:canonical:meme:acct_peer',
+    clientMessageId: 'msg:canonical:sticker:acct_peer',
     attachments: [{
-      attachmentId: 'att_meme',
+      attachmentId: 'att_sticker',
       name: 'reaction.webp',
       kind: 'image',
-      subtype: 'meme',
-      altText: 'A character celebrates when the build turns green.',
+      subtype: 'sticker',
       mimeType: 'image/webp',
       sizeBytes: 1_024,
       widthPixels: 512,
@@ -313,12 +312,10 @@ test('sendMessage round-trips meme subtype and alt text in canonical attachment 
   });
 
   const metadata = (sentContent?.legacy_attachments as Array<Record<string, unknown>>)[0];
-  assert.equal(metadata?.subtype, 'meme');
-  assert.equal(metadata?.altText, 'A character celebrates when the build turns green.');
+  assert.equal(metadata?.subtype, 'sticker');
   assert.equal(metadata?.widthPixels, 512);
   assert.equal(metadata?.heightPixels, 384);
-  assert.equal(sent.attachments?.[0]?.subtype, 'meme');
-  assert.equal(sent.attachments?.[0]?.altText, 'A character celebrates when the build turns green.');
+  assert.equal(sent.attachments?.[0]?.subtype, 'sticker');
   assert.equal(sent.attachments?.[0]?.widthPixels, 512);
   assert.equal(sent.attachments?.[0]?.heightPixels, 384);
 });

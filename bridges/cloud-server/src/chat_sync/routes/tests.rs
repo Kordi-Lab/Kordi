@@ -44,7 +44,7 @@ fn durable_message_content_requires_schema_and_blocks() {
 }
 
 #[test]
-fn meme_attachments_require_accessible_supported_image_metadata() {
+fn retired_meme_attachments_stay_valid_without_rules_of_their_own() {
     let attachment_id = "att_meme".to_string();
     let request = |attachment| SendMessageRequest {
         client_message_id: Uuid::now_v7(),
@@ -68,9 +68,10 @@ fn meme_attachments_require_accessible_supported_image_metadata() {
 
     assert!(validate_message_request(&request(valid.clone())).is_ok());
 
+    // Alt text was the one meme-only rule; stored messages that lost it stay editable.
     let mut missing_alt = valid.clone();
     missing_alt["altText"] = json!("  ");
-    assert!(validate_message_request(&request(missing_alt)).is_err());
+    assert!(validate_message_request(&request(missing_alt)).is_ok());
 
     let mut unsupported_type = valid;
     unsupported_type["mimeType"] = json!("image/svg+xml");

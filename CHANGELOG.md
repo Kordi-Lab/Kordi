@@ -8,6 +8,9 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
   across macOS and iOS, with account-private and shared visibility.
 - Fixed sending saved stickers in Cloud chats, which the server rejected as an
   unsupported attachment subtype.
+- Removed the retired meme attachment feature, including its alt text and rights
+  confirmation fields, along with the unreachable public sticker, meme, and GIF
+  discovery code left behind when those grids were removed.
 
 ## [0.0.2-beta.2] - 2026-09-14
 

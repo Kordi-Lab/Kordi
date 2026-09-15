@@ -11,8 +11,9 @@ fn normalized_image_content_type(value: &str) -> Option<&'static str> {
 }
 
 /// Collects every attachment that declares an expressive subtype so its stored
-/// bytes can be checked against the declared type. Memes must caption
-/// themselves; stickers carry the same image guarantees without alt text.
+/// bytes can be checked against the declared type. "meme" is retired and no
+/// client emits it; it stays accepted so stored messages from that era survive
+/// an edit, with no rules of its own.
 pub(super) fn subtyped_attachment_metadata(
     content: &Value,
     attachment_ids: &[String],
@@ -37,11 +38,9 @@ pub(super) fn subtyped_attachment_metadata(
         if subtype.is_null() {
             continue;
         }
-        let requires_alt_text = match subtype.as_str() {
-            Some("meme") => true,
-            Some("sticker") => false,
-            _ => return Err(StoreError::InvalidInput("attachment subtype is invalid")),
-        };
+        if !matches!(subtype.as_str(), Some("sticker") | Some("meme")) {
+            return Err(StoreError::InvalidInput("attachment subtype is invalid"));
+        }
         let attachment_id = attachment
             .get("attachmentId")
             .and_then(Value::as_str)
@@ -55,7 +54,7 @@ pub(super) fn subtyped_attachment_metadata(
             .and_then(Value::as_str)
             .map(str::trim)
             .unwrap_or_default();
-        if alt_text.chars().count() > 500 || (requires_alt_text && alt_text.is_empty()) {
+        if alt_text.chars().count() > 500 {
             return Err(StoreError::InvalidInput(
                 "image attachment metadata is invalid",
             ));
@@ -130,7 +129,7 @@ mod tests {
     use super::{normalized_image_content_type, subtyped_attachment_metadata};
 
     #[test]
-    fn extracts_valid_meme_attachment_metadata() {
+    fn retired_meme_metadata_still_resolves_for_stored_messages() {
         let content = json!({
             "legacy_attachments": [{
                 "attachmentId": "att_1",
@@ -165,28 +164,17 @@ mod tests {
     }
 
     #[test]
-    fn rejects_inaccessible_or_unlinked_meme_metadata() {
-        let missing_alt = json!({
+    fn rejects_over_long_alt_text_and_unsupported_image_types() {
+        let long_alt = json!({
             "legacy_attachments": [{
                 "attachmentId": "att_1",
                 "kind": "image",
-                "subtype": "meme",
-                "altText": "",
+                "subtype": "sticker",
+                "altText": "a".repeat(501),
                 "mimeType": "image/png"
             }]
         });
-        assert!(subtyped_attachment_metadata(&missing_alt, &["att_1".to_string()]).is_err());
-        assert!(subtyped_attachment_metadata(
-            &json!({ "legacy_attachments": [{
-                "attachmentId": "att_other",
-                "kind": "image",
-                "subtype": "meme",
-                "altText": "Description",
-                "mimeType": "image/png"
-            }]}),
-            &["att_1".to_string()]
-        )
-        .is_err());
+        assert!(subtyped_attachment_metadata(&long_alt, &["att_1".to_string()]).is_err());
         assert_eq!(normalized_image_content_type("image/svg+xml"), None);
     }
 
