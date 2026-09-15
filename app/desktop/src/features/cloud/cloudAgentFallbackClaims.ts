@@ -165,7 +165,7 @@ function cloudGroupFallbackHistoryLine(
   ) return null;
   const text = message.senderKind === 'agent'
     ? message.text.trim()
-    : promptTextForCloudAgentMention(message.text).trim();
+    : promptTextForCloudAgentMention(message.text, message.voiceMessage).trim();
   if (!text) return null;
   const participantName = envelope.participants.find(
     (participant) => participant.accountId === message.senderAccountId,

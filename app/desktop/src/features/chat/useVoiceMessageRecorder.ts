@@ -1,3 +1,4 @@
+import { MAX_TRANSCRIPTION_ATTEMPTS, VOICE_TRANSCRIPT_LIMIT, voiceTranscriptionFailureStatus } from './voiceTranscription';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -5,7 +6,7 @@ import {
   sampleDesktopVoiceRecording,
   startDesktopVoiceRecording,
   stopDesktopVoiceRecording,
-  transcribeDesktopVoiceMessage,
+  transcribeDesktopVoiceMessageResult,
   trimDesktopVoiceMessage,
 } from '@/lib/desktopVoice';
 import type { AttachmentItem } from './composerController.types';
@@ -118,6 +119,7 @@ function voiceAttachment({
       durationMs,
       waveformSamples,
       transcript,
+      transcription: { status: 'pending', sourceVersion: crypto.randomUUID(), engine: 'apple-speech-v1', attempts: 0 },
       localPath: path,
     },
   };
@@ -170,20 +172,30 @@ export function useVoiceMessageRecorder() {
     if (!path || !attachment.voiceMessage || expectedGeneration !== generationRef.current) {
       return null;
     }
+    if ((attachment.voiceMessage.transcription?.attempts ?? 0) >= MAX_TRANSCRIPTION_ATTEMPTS) return null;
+    const voice = attachment.voiceMessage;
+    const transcription = {
+      sourceVersion: attachment.voiceMessage.transcription?.sourceVersion ?? crypto.randomUUID(),
+      engine: 'apple-speech-v1' as const,
+      attempts: (attachment.voiceMessage.transcription?.attempts ?? 0) + 1,
+      status: 'pending' as const,
+    };
     commit((current) => ({
       ...current,
       phase: current.phase === 'sending' ? 'sending' : 'review',
       transcriptionPhase: 'transcribing',
-      attachment,
+      transcript: '',
+      attachment: { ...attachment, voiceMessage: { ...voice, transcript: '', transcription } },
       error: null,
     }));
     try {
-      const transcript = (await transcribeDesktopVoiceMessage(path)).trim();
+      const { transcript, language } = await transcribeDesktopVoiceMessageResult(path);
       if (expectedGeneration !== generationRef.current) return null;
+      if (transcript.length > VOICE_TRANSCRIPT_LIMIT) throw new Error('The transcript exceeds the message limit. Trim the recording and retry.');
       if (!transcript) throw new Error('No recognizable speech was found in this recording.');
       const prepared = {
         ...attachment,
-        voiceMessage: { ...attachment.voiceMessage, transcript },
+        voiceMessage: { ...voice, transcript, transcription: { ...transcription, status: 'ready' as const, language } },
       };
       commit((current) => ({
         ...current,
@@ -195,28 +207,12 @@ export function useVoiceMessageRecorder() {
       return prepared;
     } catch (error) {
       if (expectedGeneration !== generationRef.current) return null;
-      if (stateRef.current.phase === 'sending' && attachment.voiceMessage) {
-        const prepared = {
-          ...attachment,
-          voiceMessage: {
-            ...attachment.voiceMessage,
-            transcript: 'Transcription unavailable.',
-          },
-        };
-        commit((current) => ({
-          ...current,
-          transcriptionPhase: 'error',
-          transcript: prepared.voiceMessage.transcript,
-          attachment: prepared,
-          error: null,
-        }));
-        return prepared;
-      }
       commit((current) => ({
         ...current,
         phase: 'review',
         transcriptionPhase: 'error',
-        attachment,
+        transcript: '',
+        attachment: { ...attachment, voiceMessage: { ...voice, transcript: '', transcription: { ...transcription, status: voiceTranscriptionFailureStatus(error) } } },
         error: error instanceof Error ? error.message : 'Unable to transcribe this voice message.',
       }));
       return null;
@@ -336,16 +332,16 @@ export function useVoiceMessageRecorder() {
   stopRef.current = stop;
 
   const setTrimRange = useCallback((startMs: number, endMs: number) => {
+    if (preparationPromiseRef.current) return;
     const durationMs = stateRef.current.durationMs;
     const start = Math.max(0, Math.min(durationMs - 250, Math.round(startMs)));
     const end = Math.max(start + 250, Math.min(durationMs, Math.round(endMs)));
     commit((current) => ({ ...current, trimStartMs: start, trimEndMs: end }));
   }, [commit]);
 
-  const discardReview = useCallback(() => commit(IDLE_STATE), [commit]);
+  const discardReview = reset;
 
-  const prepareForSend = useCallback(async () => {
-    if (preparationPromiseRef.current) await preparationPromiseRef.current;
+  const prepareForSendImpl = useCallback(async () => {
     const current = stateRef.current;
     const attachment = current.attachment;
     if (!attachment?.voiceMessage) return null;
@@ -357,7 +353,7 @@ export function useVoiceMessageRecorder() {
     }
     const sourcePath = attachment.localPath ?? attachment.path;
     if (!sourcePath) return null;
-    const preparationGeneration = generationRef.current;
+    const preparationGeneration = ++generationRef.current;
     try {
       const path = await trimDesktopVoiceMessage(
         sourcePath,
@@ -372,6 +368,7 @@ export function useVoiceMessageRecorder() {
         current.trimStartMs,
         current.trimEndMs,
       );
+      commit((value) => ({ ...value, durationMs, trimStartMs: 0, trimEndMs: durationMs, waveformSamples }));
       return await transcribeAttachment(voiceAttachment({
         path,
         sizeBytes: attachment.sizeBytes ?? 0,
@@ -389,6 +386,16 @@ export function useVoiceMessageRecorder() {
       return null;
     }
   }, [commit, transcribeAttachment]);
+
+  const prepareForSend = useCallback(() => {
+    if (preparationPromiseRef.current) return preparationPromiseRef.current;
+    const pending = prepareForSendImpl();
+    preparationPromiseRef.current = pending;
+    void pending.finally(() => {
+      if (preparationPromiseRef.current === pending) preparationPromiseRef.current = null;
+    });
+    return pending;
+  }, [prepareForSendImpl]);
 
   useEffect(() => () => {
     generationRef.current += 1;

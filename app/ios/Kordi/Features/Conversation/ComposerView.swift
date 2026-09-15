@@ -868,7 +868,7 @@ struct ComposerView: View {
     }
 
     private func finishVoiceRecordingAndSend() {
-        guard voiceRecorder.stop(autoSend: true) else {
+        guard voiceRecorder.phase == .review || voiceRecorder.stop(autoSend: true) else {
             rejectShortVoiceRecording()
             return
         }

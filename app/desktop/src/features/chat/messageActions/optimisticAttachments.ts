@@ -1,3 +1,4 @@
+import { voiceAgentText } from '../voiceTranscription';
 import type { Message } from '@/kordi-app/types';
 
 import type { AttachmentItem } from '../composerController.types';
@@ -76,6 +77,7 @@ export function retryAttachmentItemsFromMessage(message: Message): AttachmentIte
         durationMs: message.voiceMessage.durationMs,
         waveformSamples: message.voiceMessage.waveformSamples,
         transcript: message.voiceMessage.transcript,
+        transcription: message.voiceMessage.transcription,
         localPath: path,
       },
     }];
@@ -93,4 +95,9 @@ export function retryAttachmentItemsFromMessage(message: Message): AttachmentIte
   return retryAttachments.every((attachment): attachment is AttachmentItem => attachment !== null)
     ? retryAttachments
     : null;
+}
+
+export function voiceMessageAgentText(text: string, attachments: readonly AttachmentItem[]): string {
+  const voice = voiceMessageDraftFromAttachments(attachments);
+  return voice ? voiceAgentText(voice) : text;
 }

@@ -28,6 +28,7 @@ export function useVoiceComposer({
   focusComposer: () => void;
 }) {
   const recorder = useVoiceMessageRecorder();
+  const resetRecorder = recorder.reset;
   const [cancelArmed, setCancelArmed] = useState(false);
   const gestureRef = useRef<{
     pointerId: number;
@@ -37,6 +38,7 @@ export function useVoiceComposer({
     released: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
+  const sendingRef = useRef(false);
   const cleanupRef = useRef<() => void>(() => {});
   const prefetchesUpload = Boolean(
     cloudAccountId
@@ -44,33 +46,40 @@ export function useVoiceComposer({
   );
 
   const sendPrepared = useCallback(async () => {
-    const attachment = await recorder.prepareForSend();
-    const transcript = attachment?.voiceMessage?.transcript.trim();
-    if (!attachment || !transcript) return;
-    await onSend(transcript, [attachment]);
-    recorder.reset();
-    window.requestAnimationFrame(focusComposer);
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      const attachment = await recorder.prepareForSend();
+      const transcript = attachment?.voiceMessage?.transcript.trim();
+      if (!attachment || !transcript) return;
+      await onSend(transcript, [attachment]);
+      recorder.reset();
+      window.requestAnimationFrame(focusComposer);
+    } finally { sendingRef.current = false; }
   }, [focusComposer, onSend, recorder]);
 
   const finishAndSend = useCallback(async () => {
-    const attachment = await recorder.stop({
-      directSend: true,
-      onAttachmentReady: prefetchesUpload
-        ? (ready) => {
-            void uploadNativeCloudAttachment({
-              path: ready.path,
-              contentType: ready.mimeType,
-            }).catch(() => undefined);
-          }
-        : undefined,
-    });
-    const transcript = attachment?.voiceMessage?.transcript.trim();
-    if (!attachment || !transcript) {
-      recorder.discardReview();
-      return;
-    }
-    await onSend(transcript, [attachment]);
-    recorder.reset();
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    try {
+      const attachment = await recorder.stop({
+        directSend: true,
+        onAttachmentReady: prefetchesUpload
+          ? (ready) => {
+              void uploadNativeCloudAttachment({
+                path: ready.path,
+                contentType: ready.mimeType,
+              }).catch(() => undefined);
+            }
+          : undefined,
+      });
+      const transcript = attachment?.voiceMessage?.transcript.trim();
+      if (!attachment || !transcript) {
+        return;
+      }
+      await onSend(transcript, [attachment]);
+      recorder.reset();
+    } finally { sendingRef.current = false; }
   }, [onSend, prefetchesUpload, recorder]);
 
   const finishGesture = useCallback(async () => {
@@ -142,6 +151,7 @@ export function useVoiceComposer({
   }
 
   useEffect(() => () => cleanupRef.current(), []);
+  useEffect(() => () => resetRecorder(), [conversation.id, resetRecorder]);
 
   return {
     recorder,

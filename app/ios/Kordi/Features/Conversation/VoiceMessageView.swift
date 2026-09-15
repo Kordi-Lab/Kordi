@@ -350,6 +350,30 @@ struct VoiceRecordingComposer: View {
                         .frame(height: 58)
                         .accessibilityHidden(true)
                 }
+            } else if recorder.phase == .review {
+                VStack(spacing: 8) {
+                    VoiceDraftReview(recorder: recorder)
+                        .disabled(recorder.transcriptionPhase == .transcribing)
+                    HStack {
+                        Button("Discard", role: .destructive, action: onCancel)
+                            .frame(minHeight: 44)
+                        if recorder.transcriptionPhase == .transcribing {
+                            ProgressView("Transcribing")
+                        } else if recorder.transcriptionPhase == .failed {
+                            Button("Retry transcription", action: recorder.retryTranscription)
+                                .frame(minHeight: 44)
+                                .disabled(!recorder.canRetryTranscription)
+                        }
+                        Spacer()
+                        Button("Send", action: onSend)
+                            .frame(minHeight: 44)
+                            .disabled(recorder.transcriptionPhase != .ready)
+                    }
+                    if let error = recorder.errorMessage {
+                        Text(error).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
             } else {
                 failedControls
                     .frame(height: 56)
@@ -576,6 +600,7 @@ struct VoiceMessageBubbleContent: View {
     let isActionPresented: Bool
     let reservesDeliveryStatus: Bool
     let onPrepare: (VoiceMessage) async -> URL?
+    var onUpdateTranscript: ((VoiceMessage) async -> Bool)? = nil
 
     @State private var playback = VoiceMessagePlayback()
     @State private var showsTranscript = false
@@ -680,12 +705,15 @@ struct VoiceMessageBubbleContent: View {
 
             if showsTranscript {
                 Divider().opacity(0.35)
-                if voiceMessage.transcript.isEmpty {
-                    Text("Transcript unavailable")
+                if voiceMessage.spokenText.isEmpty {
+                    Text(voiceMessage.transcriptionLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let onUpdateTranscript {
+                        VoiceTranscriptRetryView(voice: voiceMessage, onPrepare: onPrepare, onUpdate: onUpdateTranscript)
+                    }
                 } else {
-                    Text(voiceMessage.transcript)
+                    Text(voiceMessage.spokenText)
                         .font(.body)
                         .lineLimit(showsFullTranscript ? nil : 6)
                     if voiceMessage.transcript.count > 320

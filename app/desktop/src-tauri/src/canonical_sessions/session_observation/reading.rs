@@ -45,7 +45,10 @@ fn read_message_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ObservedMessage
         message_id: row.get(0)?,
         sender: row.get(1)?,
         role: row.get(2)?,
-        text: row.get(3)?,
+        text: super::super::voice_context::message_text(
+            row.get(3)?,
+            row.get::<_, Option<String>>(6)?.as_deref(),
+        ),
         time_label: Some(row.get::<_, i64>(4)?.to_string()),
         sequence_num: row.get(5)?,
     })
@@ -59,7 +62,7 @@ pub(super) fn read_messages_from_sequence(
 ) -> Result<Vec<ObservedMessageRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, '', m.created_at_ms, m.sequence_num
+            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, '', m.created_at_ms, m.sequence_num, NULL AS content_json
              FROM session_messages m
              LEFT JOIN identities i ON i.id = m.sender_identity_id
              WHERE m.session_id = ?1 AND m.sequence_num >= ?2
@@ -82,7 +85,7 @@ pub(super) fn read_messages_by_ids(
     let mut rows = Vec::new();
     let mut stmt = conn
         .prepare(
-            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.created_at_ms, m.sequence_num
+            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.created_at_ms, m.sequence_num, m.content_json
              FROM session_messages m
              LEFT JOIN identities i ON i.id = m.sender_identity_id
              WHERE m.session_id = ?1 AND m.id = ?2",
@@ -111,7 +114,7 @@ pub(super) fn read_latest_messages(
     let mut stmt = conn
         .prepare(
             "SELECT * FROM (
-                 SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, '', m.created_at_ms, m.sequence_num
+                 SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, '', m.created_at_ms, m.sequence_num, NULL AS content_json
                  FROM session_messages m
                  LEFT JOIN identities i ON i.id = m.sender_identity_id
                  WHERE m.session_id = ?1 AND (?3 IS NULL OR m.sequence_num < ?3)

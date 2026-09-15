@@ -1,15 +1,17 @@
+import { VoiceWaveform } from './voiceWaveform';
+import { VoiceTranscriptRetry, type VoiceTranscriptRetryTarget } from './voiceTranscriptRetry';
+import { MAX_TRANSCRIPTION_ATTEMPTS, voiceTranscript, voiceTranscriptionLabel } from '@/features/chat/voiceTranscription';
 import { FileText, LoaderCircle, Pause, Play, RotateCcw, Send, Trash2 } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { displayVoiceWaveform, type VoiceMessageRecorderState } from '@/features/chat/useVoiceMessageRecorder';
+import { type VoiceMessageRecorderState } from '@/features/chat/useVoiceMessageRecorder';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { downloadCloudAttachmentToLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
 import type { MessageVoice } from '@/kordi-app/types/message';
 import { isNativeDesktopShell, readDesktopChatAttachment } from '@/lib/desktop';
 import { pauseDesktopVoiceMessage, playDesktopVoiceMessage, seekDesktopVoiceMessage, stopDesktopVoiceMessage } from '@/lib/desktopVoice';
-import { cn } from '@/lib/utils';
 
 const VOICE_PLAY_EVENT = 'kordi:voice-message-play';
 const MIN_PLAYABLE_VOICE_BYTES = 1_024;
@@ -17,29 +19,6 @@ const MIN_PLAYABLE_VOICE_BYTES = 1_024;
 function formatVoiceDuration(durationMs: number) {
   const seconds = Math.max(0, Math.round(durationMs / 1_000));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-function VoiceWaveform({ samples, progress = 0, live = false }: {
-  samples: readonly number[];
-  progress?: number;
-  live?: boolean;
-}) {
-  const values = displayVoiceWaveform(samples);
-  return (
-    <span className="app-voice-waveform" aria-hidden="true">
-      {values.map((sample, index) => (
-        <span
-          key={index}
-          className={cn(
-            'app-voice-waveform-bar',
-            index / values.length <= progress && 'app-voice-waveform-bar-played',
-          )}
-          style={{ height: `${Math.max(16, Math.min(100, sample * 100))}%` }}
-          data-live={live ? 'true' : undefined}
-        />
-      ))}
-    </span>
-  );
 }
 
 async function localVoiceSource(path: string | null | undefined) {
@@ -127,7 +106,7 @@ function VoiceDraftReview({ state, onTrimRange }: {
       <div className="app-voice-scrubber">
         <VoiceWaveform samples={state.waveformSamples} progress={progress} />
         <input
-          type="range"
+          type="range" disabled={state.transcriptionPhase === 'transcribing'}
           min="0"
           max="1"
           step="0.01"
@@ -138,7 +117,7 @@ function VoiceDraftReview({ state, onTrimRange }: {
         />
         <div className="app-voice-trim-controls">
           <input
-            type="range"
+            type="range" disabled={state.transcriptionPhase === 'transcribing'}
             min="0"
             max={state.durationMs}
             step="50"
@@ -148,7 +127,7 @@ function VoiceDraftReview({ state, onTrimRange }: {
             aria-valuetext={formatVoiceDuration(state.trimStartMs)}
           />
           <input
-            type="range"
+            type="range" disabled={state.transcriptionPhase === 'transcribing'}
             min="0"
             max={state.durationMs}
             step="50"
@@ -196,11 +175,11 @@ export function VoiceRecordingRail({
           {state.transcriptionPhase === 'transcribing' ? (
             <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-label="Preparing transcript" />
           ) : state.transcriptionPhase === 'error' ? (
-            <button type="button" className="app-button-quiet app-voice-control" onClick={onRetry} aria-label="Retry voice transcription" title="Retry transcription">
+            <button type="button" className="app-button-quiet app-voice-control" onClick={onRetry} disabled={(state.attachment?.voiceMessage?.transcription?.attempts ?? 0) >= MAX_TRANSCRIPTION_ATTEMPTS && state.trimStartMs <= 50 && state.trimEndMs >= state.durationMs - 50} aria-label="Retry voice transcription" title="Retry transcription">
               <RotateCcw className="h-4 w-4" />
             </button>
           ) : null}
-          <button type="button" className="app-voice-send-button" onClick={onSend} aria-label="Send voice message">
+          <button type="button" className="app-voice-send-button disabled:opacity-35" onClick={onSend} disabled={state.transcriptionPhase !== 'ready'} aria-label="Send voice message">
             <Send className="h-4 w-4" />
           </button>
         </>
@@ -217,7 +196,8 @@ export function VoiceRecordingRail({
   );
 }
 
-export function VoiceMessageContent({ voice, footer }: {
+export function VoiceMessageContent({ voice, footer, retryTarget }: {
+  retryTarget?: VoiceTranscriptRetryTarget;
   voice: MessageVoice;
   footer?: ReactNode;
 }) {
@@ -235,8 +215,7 @@ export function VoiceMessageContent({ voice, footer }: {
   const [showsTranscript, setShowsTranscript] = useState(false);
   const [showsFullTranscript, setShowsFullTranscript] = useState(false);
   const hasTranscript = Boolean(
-    voice.transcript.trim()
-      && voice.transcript.trim() !== 'Transcription unavailable.',
+    voiceTranscript(voice),
   );
   const progress = voice.durationMs > 0 ? Math.min(1, elapsedMs / voice.durationMs) : 0;
   const transcriptIsLong = voice.transcript.length > 320 || voice.transcript.split('\n').length > 5;
@@ -488,7 +467,10 @@ export function VoiceMessageContent({ voice, footer }: {
                 </button>
               ) : null}
             </>
-          ) : <div className="app-voice-transcript-unavailable">Transcript unavailable for this recording.</div>}
+          ) : <div className="app-voice-transcript-unavailable">
+            {voiceTranscriptionLabel(voice)}
+            {retryTarget && nativePlayback ? <VoiceTranscriptRetry key={`${retryTarget.messageId}:${retryTarget.version}:${voice.mediaId}`} voice={voice} target={retryTarget} /> : null}
+          </div>}
         </div>
       ) : null}
     </div>

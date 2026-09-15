@@ -61,6 +61,7 @@ struct MessageBubble: View, Equatable {
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
+    let onUpdateVoiceTranscript: (VoiceMessage) async -> Bool
     let onPrepareAttachment: (ChatAttachment) async -> URL?
     let onPrepareAttachmentPreview: (ChatAttachment) async -> UIImage?
     let onOpenVideo: (ChatAttachment, AVPlayer, UIImage?) -> Void
@@ -585,8 +586,10 @@ struct MessageBubble: View, Equatable {
                     voiceMessage: voiceMessage,
                     isActionPresented: isActionPresented,
                     reservesDeliveryStatus: message.author == .me,
-                    onPrepare: onPrepareVoiceMessage
+                    onPrepare: onPrepareVoiceMessage,
+                    onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil
                 )
+                .id("\(message.id):\(message.cloudMessageVersion ?? 0)")
             }
 
             if hasVisibleMessageText {

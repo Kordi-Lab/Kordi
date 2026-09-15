@@ -383,8 +383,8 @@ pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
     if !session_id.trim().starts_with("session:group:") {
         return Ok(None);
     }
-    let rows = query_as::<_, (String, DateTime<Utc>)>(
-        "SELECT message.content #>> '{blocks,0,text}', message.created_at
+    let rows = query_as::<_, (serde_json::Value, DateTime<Utc>)>(
+        "SELECT message.content, message.created_at
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_messages message
            ON message.conversation_id = conversation.conversation_id
@@ -397,7 +397,7 @@ pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().find_map(|(body, created_at)| {
-        let envelope = parse_cloud_group_envelope(&body)?;
+        let envelope = parse_cloud_group_envelope(&crate::chat_sync::voice::body_for_agent(&body))?;
         let message = envelope.message.as_ref()?;
         (envelope.kind == "group-message" && message.id == request_message_id)
             .then_some((envelope, created_at.to_rfc3339()))
@@ -430,8 +430,8 @@ pub(super) async fn latest_cloud_group_envelope_for_session(
     if !session_id.trim().starts_with("session:group:") {
         return Ok(None);
     }
-    let rows = query_as::<_, (String,)>(
-        "SELECT message.content #>> '{blocks,0,text}'
+    let rows = query_as::<_, (serde_json::Value,)>(
+        "SELECT message.content
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_messages message
            ON message.conversation_id = conversation.conversation_id
@@ -444,7 +444,7 @@ pub(super) async fn latest_cloud_group_envelope_for_session(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().find_map(|(body,)| {
-        let envelope = parse_cloud_group_envelope(&body)?;
+        let envelope = parse_cloud_group_envelope(&crate::chat_sync::voice::body_for_agent(&body))?;
         (envelope.kind == "group-message" && !envelope.participants.is_empty()).then_some(envelope)
     }))
 }

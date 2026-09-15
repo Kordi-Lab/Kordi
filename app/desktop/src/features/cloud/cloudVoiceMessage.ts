@@ -1,3 +1,4 @@
+import { parseVoiceTranscription, voiceTranscript } from '@/features/chat/voiceTranscription';
 import type { MessageVoiceDraft } from '@/kordi-app/types/message';
 
 import type { CloudMessageAttachment, CloudVoiceMessage } from './cloudAttachmentTypes';
@@ -23,7 +24,11 @@ export function cloudVoiceMessageMetadataOnly(value: unknown): CloudVoiceMessage
       )).slice(0, 96)
     : [];
   if (!mediaId || !mimeType || durationMs <= 0) return null;
-  return { mediaId, mimeType, durationMs, waveformSamples, transcript };
+  const transcription = parseVoiceTranscription(record.transcription);
+  const voice = { mediaId, mimeType, durationMs, waveformSamples, transcript,
+    ...(transcription ? { transcription } : {}),
+  };
+  return { ...voice, transcript: record.transcription && !transcription ? '' : voiceTranscript(voice) };
 }
 
 export function cloudVoiceAttachmentReference(
@@ -31,6 +36,10 @@ export function cloudVoiceAttachmentReference(
   attachment: Pick<CloudMessageAttachment, 'attachmentId'> | undefined,
 ) {
   return voiceMessage && attachment
-    ? { voiceMessage: { ...voiceMessage, mediaId: attachment.attachmentId } }
+    ? { voiceMessage: { ...voiceMessage, mediaId: attachment.attachmentId,
+        ...(voiceMessage.transcription ? { transcription: {
+          ...voiceMessage.transcription, sourceVersion: attachment.attachmentId,
+        } } : {}),
+      } }
     : {};
 }

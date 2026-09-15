@@ -1,3 +1,4 @@
+import { voiceAgentText } from '@/features/chat/voiceTranscription';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { useDesktopAgentReadiness, type CloudSelfAgentExecutionInput } from './useDesktopAgentReadiness';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
@@ -211,7 +212,7 @@ export function useCloudSelfAgentExecution({
 
         const lease = await acquireDesktopExecutionLease(client, session.token, {
           requestMessageId: request.messageId, sessionId, ownerAccountId: account.accountId,
-          requesterAccountId: account.accountId, prompt: cloudDirectMessageDisplayText(request.body),
+          requesterAccountId: account.accountId, prompt: (request.voiceMessage ? voiceAgentText(request.voiceMessage) : cloudDirectMessageDisplayText(request.body)),
           runtimeRoute: requestRoute ? { defaultModel: requestRoute.model, defaultAuthProvider: requestRoute.authProvider,
             defaultAuthChoice: requestRoute.authChoice, thinking: requestRoute.thinking } : undefined,
           idempotencyKey: `request:${request.messageId}`,
@@ -235,7 +236,7 @@ export function useCloudSelfAgentExecution({
             processedRequestIdsRef.current.delete(request.messageId);
             return;
           }
-          const prompt = cloudDirectMessageDisplayText(request.body).trim();
+          const prompt = (request.voiceMessage ? voiceAgentText(request.voiceMessage) : cloudDirectMessageDisplayText(request.body)).trim();
           if (!prompt) {
             processedRequestIdsRef.current.delete(request.messageId);
             return;

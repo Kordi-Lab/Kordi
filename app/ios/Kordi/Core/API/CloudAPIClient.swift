@@ -1209,6 +1209,38 @@ actor CloudAPIClient {
         return legacyMessage(from: message, conversation: conversation, viewerAccountId: accountId)
     }
 
+    func updateVoiceTranscript(
+        token: String,
+        sessionId: String,
+        messageId: String,
+        expectedVersion: Int,
+        voice: VoiceMessage
+    ) async throws -> CloudMessageDTO {
+        let accountId = try requireActiveAccountId()
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId]
+            ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(
+                code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.",
+                statusCode: 404
+            )
+        }
+        let response: ChatMessageResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages/\(escapedPath(messageId))/transcription",
+            method: "PUT",
+            token: token,
+            body: ChatUpdateVoiceTranscriptRequest(expected_version: expectedVersion, media_id: voice.mediaId, transcript: voice.transcript, transcription: voice.transcription),
+            fallback: "Could not update transcription. Refresh the message before retrying."
+        )
+        chatMessagesById[response.message.id] = response.message
+        return legacyMessage(
+            from: response.message,
+            conversation: conversation,
+            viewerAccountId: accountId
+        )
+    }
+
     func editMessage(
         token: String,
         sessionId: String,
@@ -3084,4 +3116,11 @@ private extension CloudChatConversation {
             preferences: preferences
         )
     }
+}
+
+private struct ChatUpdateVoiceTranscriptRequest: Encodable {
+    let expected_version: Int
+    let media_id: String
+    let transcript: String
+    let transcription: VoiceTranscription?
 }

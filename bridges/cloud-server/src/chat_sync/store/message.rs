@@ -5,12 +5,14 @@ use super::*;
 
 mod group_identity;
 mod mutations;
+mod voice;
 pub(super) use group_identity::normalize_stored_group_agent_identity;
 use group_identity::{
     apply_group_control_title, load_existing_group_message, lock_group_message_fingerprint,
     normalize_group_envelope,
 };
 pub use mutations::{delete_message, edit_message};
+pub use voice::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 
 pub(super) async fn fanout_message_sync_event(
     transaction: &mut Transaction<'_, Postgres>,

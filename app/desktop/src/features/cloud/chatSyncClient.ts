@@ -57,6 +57,12 @@ export class ChatSyncClient {
     return this.conversations.drainChatOutbox(token, accountId);
   }
 
+  updateVoiceTranscript(token: string, conversationId: string, messageId: string,
+    expectedVersion: number, mediaId: string, transcript: string,
+    transcription: import('@/features/chat/voiceTranscription').VoiceTranscription): Promise<CloudMessage> {
+    return this.conversations.updateVoiceTranscript(token, conversationId, messageId, expectedVersion, mediaId, transcript, transcription);
+  }
+
   editMessage(token: string, conversationId: string, messageId: string, expectedVersion: number, text: string): Promise<CloudMessage> {
     return this.conversations.editMessage(token, conversationId, messageId, expectedVersion, text);
   }

@@ -92,7 +92,7 @@ import {
 appendOptimisticCanonicalMessage,appendOptimisticCollaborationMessage,appendOptimisticOutboundMessage,
 failedPreparedCanonicalUserMessage,markOptimisticCanonicalMessageFailed,
 markOptimisticCanonicalMessageSending,markOptimisticCollaborationMessageSending,optimisticSessionTitleFromMessage,persistCanonicalUserMessage,prepareCanonicalQueuedMessage,prepareCanonicalUserMessage,
-retryAttachmentItemsFromMessage,voiceMessageSendFields,
+retryAttachmentItemsFromMessage,voiceMessageSendFields,voiceMessageAgentText,
 type PreparedCanonicalUserMessage
 } from './optimistic';
 import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
@@ -497,7 +497,7 @@ export function useChatMessageActions({
       if (queuedRow) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, queuedRow));
       const turn = await startDesktopChatMessage(
         message.sessionId,
-        message.text,
+        voiceMessageAgentText(message.text, message.attachments),
         attachmentPaths,
         message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId),
         message.contextMessages ?? [],
@@ -622,7 +622,7 @@ export function useChatMessageActions({
       await persistCanonicalUserMessage(preparedCanonicalMessage);
       const turn = await startDesktopChatMessage(
         targetConversationId,
-        text,
+        voiceMessageAgentText(text, attachments),
         attachmentPaths,
         runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
         contextMessages,

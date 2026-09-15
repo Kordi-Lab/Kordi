@@ -1104,6 +1104,7 @@ struct CloudChatBlock: Codable, Hashable {
     let durationMs: Int?
     let waveformSamples: [Double]?
     let transcript: String?
+    let transcription: VoiceTranscription?
 
     init(text: String) {
         type = "text"
@@ -1113,6 +1114,7 @@ struct CloudChatBlock: Codable, Hashable {
         durationMs = nil
         waveformSamples = nil
         transcript = nil
+        transcription = nil
     }
 
     init(voiceMessage: VoiceMessage) {
@@ -1123,6 +1125,7 @@ struct CloudChatBlock: Codable, Hashable {
         durationMs = voiceMessage.durationMs
         waveformSamples = voiceMessage.waveformSamples
         transcript = voiceMessage.transcript
+        transcription = voiceMessage.transcription?.bound(to: voiceMessage.mediaId)
     }
 
     var voiceMessage: VoiceMessage? {
@@ -1132,7 +1135,8 @@ struct CloudChatBlock: Codable, Hashable {
             mimeType: mimeType,
             durationMs: durationMs,
             waveformSamples: Array((waveformSamples ?? []).prefix(96)),
-            transcript: transcript ?? ""
+            transcript: transcript ?? "",
+            transcription: transcription
         )
     }
 }

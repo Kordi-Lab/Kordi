@@ -37,26 +37,43 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     private(set) var trimEndMs = 0
     private(set) var errorMessage: String?
 
+    private let speechTranscriber: ((URL) async throws -> String)?
+
+    init(speechTranscriber: ((URL) async throws -> String)? = nil) {
+        self.speechTranscriber = speechTranscriber
+        super.init()
+    }
+
     private var recorder: AVAudioRecorder?
     private var meterTimer: Timer?
     private var recordingURL: URL?
     private var preparedURL: URL?
     private var rawSamples: [Double] = []
-    private var recognitionTask: SFSpeechRecognitionTask?
+    private var recognitionOperation: VoiceSpeechOperation?
     private var preparationTask: Task<PendingVoiceMessage?, Never>?
     private var transcriptionTask: Task<Void, Never>?
     private var generation = 0
+    private var transcriptionAttempts = 0
+    private var transcriptionLanguage: String?
+    private var sourceVersion = UUID().uuidString.lowercased()
     private var preparedTrimStartMs = 0
     private var preparedTrimEndMs = 0
 
+    var canRetryTranscription: Bool {
+        transcriptionPhase == .failed && (transcriptionAttempts < VoiceTranscription.maximumAttempts
+            || preparedTrimStartMs != trimStartMs || preparedTrimEndMs != trimEndMs)
+    }
+
     var isVisible: Bool {
-        phase == .recording || phase == .paused || phase == .failed
+        phase == .recording || phase == .paused || phase == .review || phase == .failed
     }
 
     @discardableResult
     func start(locked: Bool = true) async -> Bool {
         guard phase == .idle || phase == .failed else { return false }
         cancel(removeFile: true)
+        transcriptionAttempts = 0
+        sourceVersion = UUID().uuidString.lowercased()
         let startGeneration = generation
         do {
             guard await AVAudioApplication.requestRecordPermission() else {
@@ -152,6 +169,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     }
 
     func setTrim(startMs: Int, endMs: Int) {
+        guard transcriptionPhase != .transcribing else { return }
         let start = max(0, min(durationMs - 250, startMs))
         let end = max(start + 250, min(durationMs, endMs))
         trimStartMs = start
@@ -159,7 +177,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     }
 
     func retryTranscription() {
-        guard phase == .review, let recordingURL else { return }
+        guard phase == .review, canRetryTranscription, let recordingURL else { return }
         beginPreparation(url: recordingURL, startMs: trimStartMs, endMs: trimEndMs)
     }
 
@@ -169,9 +187,9 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         if needsNewRange {
             beginPreparation(url: recordingURL, startMs: trimStartMs, endMs: trimEndMs)
         }
-        if let preparationTask {
-            return await preparationTask.value
-        }
+        if let preparationTask { _ = await preparationTask.value }
+        await transcriptionTask?.value
+        guard transcriptionPhase == .ready else { return nil }
         return pendingMessage
     }
 
@@ -181,21 +199,21 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         return transcript.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
     }
 
-    func resolvedMessageForSend(_ pending: PendingVoiceMessage) async -> PendingVoiceMessage? {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("kordi-voice-transcription-\(UUID().uuidString.lowercased()).m4a")
+    func transcribeExisting(_ voice: VoiceMessage, url: URL) async -> VoiceMessage {
+        guard voice.spokenText.isEmpty else { return voice }
+        let attempts = (voice.transcription?.attempts ?? 0) + 1
+        guard attempts <= VoiceTranscription.maximumAttempts else { return voice }
         do {
-            try pending.attachment.data.write(to: url, options: .atomic)
-            defer { try? FileManager.default.removeItem(at: url) }
             let text = try await transcribe(url: url)
-            return PendingVoiceMessage(
-                attachment: pending.attachment,
-                durationMs: pending.durationMs,
-                waveformSamples: pending.waveformSamples,
-                transcript: text
-            )
+            return VoiceMessage(mediaId: voice.mediaId, mimeType: voice.mimeType,
+                durationMs: voice.durationMs, waveformSamples: voice.waveformSamples, transcript: text,
+                transcription: VoiceTranscription(status: .ready, sourceVersion: voice.mediaId,
+                    engine: "apple-speech-v1", language: transcriptionLanguage, attempts: attempts))
         } catch {
-            return pending
+            return VoiceMessage(mediaId: voice.mediaId, mimeType: voice.mimeType,
+                durationMs: voice.durationMs, waveformSamples: voice.waveformSamples, transcript: "",
+                transcription: VoiceTranscription(status: Self.failureStatus(error), sourceVersion: voice.mediaId,
+                    engine: "apple-speech-v1", attempts: attempts))
         }
     }
 
@@ -208,6 +226,8 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         durationMs = 0
         waveformSamples = []
         transcript = ""
+        transcriptionAttempts = 0
+        sourceVersion = UUID().uuidString.lowercased()
         pendingMessage = nil
         reviewURL = nil
         trimStartMs = 0
@@ -219,8 +239,8 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         generation += 1
         recorder?.stop()
         recorder = nil
-        recognitionTask?.cancel()
-        recognitionTask = nil
+        recognitionOperation?.cancel()
+        recognitionOperation = nil
         preparationTask?.cancel()
         preparationTask = nil
         transcriptionTask?.cancel()
@@ -254,9 +274,21 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     @discardableResult
     private func beginPreparation(url: URL, startMs: Int, endMs: Int) -> Task<PendingVoiceMessage?, Never> {
         preparationTask?.cancel()
-        recognitionTask?.cancel()
+        recognitionOperation?.cancel()
         transcriptionTask?.cancel()
+        generation += 1
         let preparationGeneration = generation
+        let sameRange = preparedTrimStartMs == startMs && preparedTrimEndMs == endMs
+        let previous = sameRange ? pendingMessage : nil
+        preparedTrimStartMs = startMs
+        preparedTrimEndMs = endMs
+        if !sameRange {
+            transcriptionAttempts = 0
+            sourceVersion = UUID().uuidString.lowercased()
+        }
+        transcriptionAttempts += 1
+        let attempts = transcriptionAttempts
+        let version = sourceVersion
         transcriptionPhase = .transcribing
         errorMessage = nil
         pendingMessage = nil
@@ -281,7 +313,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
                     )
                     : originalWaveform
                 let pending = PendingVoiceMessage(
-                    attachment: PendingAttachment(
+                    attachment: previous?.attachment ?? PendingAttachment(
                         id: UUID().uuidString.lowercased(),
                         name: "Voice message.m4a",
                         kind: .file,
@@ -291,7 +323,9 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
                     ),
                     durationMs: preparedDurationMs,
                     waveformSamples: preparedWaveform,
-                    transcript: ""
+                    transcript: "",
+                    transcription: VoiceTranscription(status: .pending, sourceVersion: version,
+                        engine: "apple-speech-v1", attempts: attempts)
                 )
                 guard preparationGeneration == generation else { return nil }
                 preparedURL = outputURL
@@ -309,14 +343,23 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
                             attachment: pending.attachment,
                             durationMs: pending.durationMs,
                             waveformSamples: pending.waveformSamples,
-                            transcript: text
+                            transcript: text,
+                            transcription: VoiceTranscription(status: .ready, sourceVersion: version,
+                                engine: "apple-speech-v1", language: transcriptionLanguage, attempts: attempts)
                         )
                         transcriptionPhase = .ready
                     } catch is CancellationError {
                         return
                     } catch {
                         guard preparationGeneration == generation else { return }
+                        transcript = ""
+                        pendingMessage = PendingVoiceMessage(attachment: pending.attachment,
+                            durationMs: pending.durationMs, waveformSamples: pending.waveformSamples,
+                            transcript: "", transcription: VoiceTranscription(status: Self.failureStatus(error),
+                                sourceVersion: version, engine: "apple-speech-v1", attempts: attempts))
                         transcriptionPhase = .failed
+                        errorMessage = (error as? LocalizedError)?.errorDescription
+                            ?? "Unable to transcribe this recording. Retry or record another message."
                     }
                 }
                 return pending
@@ -351,6 +394,12 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     }
 
     private func transcribe(url: URL) async throws -> String {
+        if let speechTranscriber {
+            let text = try await speechTranscriber(url).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { throw VoiceMessageError.noSpeech }
+            guard text.count <= 20_000 else { throw VoiceMessageError.transcriptTooLong }
+            return text
+        }
         guard await speechAuthorization() == .authorized else {
             throw VoiceMessageError.speechPermission
         }
@@ -365,7 +414,14 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
                 continue
             }
             do {
-                return try await transcribe(url: url, recognizer: recognizer)
+                try Task.checkCancellation()
+                let text = try await transcribe(url: url, recognizer: recognizer)
+                try Task.checkCancellation()
+                guard text.count <= 20_000 else { throw VoiceMessageError.transcriptTooLong }
+                transcriptionLanguage = identifier
+                return text
+            } catch is CancellationError {
+                throw CancellationError()
             } catch {
                 lastError = error
             }
@@ -380,29 +436,18 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         let request = SFSpeechURLRecognitionRequest(url: url)
         request.shouldReportPartialResults = false
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-        return try await withCheckedThrowingContinuation { continuation in
-            var completed = false
-            recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-                Task { @MainActor [weak self] in
-                    guard !completed else { return }
-                    if let error {
-                        completed = true
-                        self?.recognitionTask = nil
-                        continuation.resume(throwing: error)
-                        return
-                    }
-                    guard let result, result.isFinal else { return }
-                    completed = true
-                    self?.recognitionTask = nil
-                    let text = result.bestTranscription.formattedString
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    if text.isEmpty {
-                        continuation.resume(throwing: VoiceMessageError.noSpeech)
-                    } else {
-                        continuation.resume(returning: text)
-                    }
-                }
-            }
+        let operation = VoiceSpeechOperation()
+        recognitionOperation = operation
+        defer {
+            if recognitionOperation === operation { recognitionOperation = nil }
+        }
+        return try await operation.run(recognizer: recognizer, request: request)
+    }
+
+    private static func failureStatus(_ error: Error) -> VoiceTranscription.Status {
+        switch error as? VoiceMessageError {
+        case .speechPermission, .onDeviceUnavailable: .unavailable
+        default: .failed
         }
     }
 
@@ -474,6 +519,7 @@ private enum VoiceMessageError: LocalizedError {
     case recordingFailed
     case trimmingFailed
     case noSpeech
+    case transcriptTooLong
 
     var errorDescription: String? {
         switch self {
@@ -487,6 +533,8 @@ private enum VoiceMessageError: LocalizedError {
             "Kordi could not start the voice recording."
         case .trimmingFailed:
             "Kordi could not trim this voice message."
+        case .transcriptTooLong:
+            "The transcript exceeds the message limit. Trim the recording and retry."
         case .noSpeech:
             "No recognizable speech was found. Try again or record another message."
         }

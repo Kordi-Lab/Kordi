@@ -1,3 +1,4 @@
+import type { VoiceTranscription } from '@/features/chat/voiceTranscription';
 import type { LivePhoto } from '@/features/chat/livePhotos';
 export type CloudMessageAttachment = {
   livePhoto?: LivePhoto | null;
@@ -36,6 +37,7 @@ export type CloudVoiceMessage = {
   durationMs: number;
   waveformSamples: number[];
   transcript: string;
+  transcription?: VoiceTranscription;
   localPath?: string | null;
 };
 

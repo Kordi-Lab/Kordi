@@ -138,7 +138,7 @@ export function useCloudDirectAgentExecution({
           body: cloudDirectMessageDisplayText(message.body),
         };
         const prompt = promptTextForCloudAgentMention(
-          directDisplayMessage.body,
+          directDisplayMessage.body, message.voiceMessage,
         );
         const contextMessages = [
           ...cloudAgentContextMessagesFromDefinition(

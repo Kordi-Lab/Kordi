@@ -1,3 +1,4 @@
+import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
@@ -82,6 +83,9 @@ export function chatTextContent(
         durationMs: voiceMessage.durationMs,
         waveformSamples: voiceMessage.waveformSamples,
         transcript: voiceMessage.transcript,
+        ...(voiceMessage.transcription ? { transcription: {
+          ...voiceMessage.transcription, sourceVersion: voiceMessage.mediaId,
+        } } : {}),
       }] : []),
     ],
     legacy_attachments: voiceMessage ? [] : attachments,
@@ -102,21 +106,7 @@ function voiceMessageFromChatContent(content: unknown): CloudVoiceMessage | null
     if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
     const block = value as Record<string, unknown>;
     if (block.type !== 'voice') continue;
-    const mediaId = typeof block.mediaId === 'string' ? block.mediaId.trim() : '';
-    const mimeType = typeof block.mimeType === 'string' ? block.mimeType.trim() : '';
-    const transcript = typeof block.transcript === 'string' ? block.transcript.trim() : '';
-    const durationMs = typeof block.durationMs === 'number' && Number.isFinite(block.durationMs)
-      ? Math.max(0, Math.round(block.durationMs))
-      : 0;
-    const waveformSamples = Array.isArray(block.waveformSamples)
-      ? block.waveformSamples.flatMap((sample) => (
-          typeof sample === 'number' && Number.isFinite(sample)
-            ? [Math.max(0, Math.min(1, sample))]
-            : []
-        )).slice(0, 96)
-      : [];
-    if (!mediaId || !mimeType || durationMs <= 0) return null;
-    return { mediaId, mimeType, durationMs, waveformSamples, transcript };
+    return cloudVoiceMessageMetadataOnly(block);
   }
   return null;
 }

@@ -277,6 +277,21 @@ export class ChatSyncConversationClient {
     );
   }
 
+  async updateVoiceTranscript(token: string, conversationId: string, messageId: string,
+    expectedVersion: number, mediaId: string, transcript: string,
+    transcription: import('@/features/chat/voiceTranscription').VoiceTranscription): Promise<CloudMessage> {
+    const conversation = await this.mutationConversation(token, conversationId);
+    const response = await this.state.send<{ message: ChatSyncMessage }>(
+      `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/messages/${encodeURIComponent(messageId)}/transcription`,
+      { method: 'PUT', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ expected_version: expectedVersion, media_id: mediaId, transcript, transcription }) },
+      'Could not update voice transcription. Refresh the message before retrying.',
+    );
+    if (!response?.message) throw new Error('Empty response from chat sync server.');
+    this.state.retainMessages([response.message]);
+    return cloudMessageFromChatSync(response.message, conversation, conversation.preferences.account_id);
+  }
+
   async deleteMessage(
     token: string,
     conversationId: string,

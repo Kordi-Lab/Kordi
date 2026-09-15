@@ -132,7 +132,7 @@ export async function respondToCloudGroupAgentMention(
   const lease = await acquireDesktopExecutionLease(runtime.client, session.token, {
     requestMessageId: cloudMessage.messageId, sessionId: envelope.groupId,
     ownerAccountId: account.accountId, requesterAccountId: message.senderAccountId,
-    prompt: promptTextForCloudAgentMention(message.text),
+    prompt: promptTextForCloudAgentMention(message.text, cloudMessage.voiceMessage),
     idempotencyKey: `shared:${message.id}:${account.accountId}`,
     runtimeRoute: requestedRoute ? { defaultModel: requestedRoute.model, defaultAuthProvider: requestedRoute.authProvider, defaultAuthChoice: requestedRoute.authChoice, thinking: requestedRoute.thinking } : undefined,
   });
@@ -178,7 +178,7 @@ export async function respondToCloudGroupAgentMention(
     startedTurn = await startDesktopSharedChatMessage(
       message.id,
       cloudGroupAgentRequestRuntimeSessionId(runtimeSessionId, message.id),
-      promptTextForCloudAgentMention(message.text),
+      promptTextForCloudAgentMention(message.text, cloudMessage.voiceMessage),
       mappedAttachments
         .map((attachment) => attachment.localPath?.trim() || '')
         .filter(Boolean),

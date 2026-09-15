@@ -2052,7 +2052,8 @@ final class AppModel: ObservableObject {
                 ),
                 durationMs: voiceMessage.durationMs,
                 waveformSamples: voiceMessage.waveformSamples,
-                transcript: voiceMessage.transcript
+                transcript: voiceMessage.transcript,
+                transcription: voiceMessage.transcription
             )
         } catch {
             errorMessage = userFacing(error, fallback: "Could not prepare this voice message for forwarding.")
@@ -3004,6 +3005,24 @@ final class AppModel: ObservableObject {
             allowsPreviewFallback: false,
             prefersOriginal: false
         )
+    }
+
+    func updateVoiceTranscript(_ voice: VoiceMessage, message: ChatMessage) async -> Bool {
+        guard message.author == .me, let token, let account,
+              let version = message.cloudMessageVersion,
+              message.voiceMessage?.mediaId == voice.mediaId else { return false }
+        let expectedAccount = account.accountId
+        do {
+            let updated = try await api.updateVoiceTranscript(token: token,
+                sessionId: message.conversationId, messageId: message.id,
+                expectedVersion: version, voice: voice)
+            guard self.account?.accountId == expectedAccount, self.token == token else { return false }
+            mergeCloudMessage(updated, peerHint: nil)
+            return true
+        } catch {
+            errorMessage = "Could not update transcription. Refresh the message before retrying."
+            return false
+        }
     }
 
     func prepareVoiceMessageForPresentation(_ voiceMessage: VoiceMessage) async -> URL? {
