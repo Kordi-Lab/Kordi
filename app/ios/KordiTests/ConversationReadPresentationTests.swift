@@ -90,6 +90,13 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
         let editor = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UITextView }.first)
         let scroll = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UIScrollView }
             .filter { !($0 is UITextView) }.max { $0.contentSize.height < $1.contentSize.height })
+        // Cold simulator launches can outlast the fixed layout settling delay.
+        // Wait for the initial positioning contract before exercising the keyboard.
+        for _ in 0..<200 {
+            if abs(bottomGap(scroll)) <= 14 { break }
+            try await Task.sleep(for: .milliseconds(20))
+            controller.view.layoutIfNeeded()
+        }
         XCTAssertLessThanOrEqual(abs(bottomGap(scroll)), 14, "Chat must start at latest")
         XCTAssertTrue(scroll.keyboardDismissMode == .interactive || scroll.keyboardDismissMode == .interactiveWithAccessory)
         let closedHeight = scroll.bounds.height

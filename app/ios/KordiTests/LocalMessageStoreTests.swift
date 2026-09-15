@@ -548,6 +548,19 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
+    func testIndividualMessageRecordsPreserveAnchorUpdatesAndClearing() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        var draft = message(id: "draft", conversationID: "chat", text: "Unsent", author: .me)
+        draft.deliveryState = .failed
+        let anchors: [String?] = ["first", "second", "", nil]
+        for anchor in anchors {
+            draft.localTimelineAnchorID = anchor
+            store.saveMessages([draft], conversationId: "chat", accountId: "account")
+            XCTAssertEqual(store.loadMessages(accountId: "account", conversationId: "chat").first?.localTimelineAnchorID, anchor)
+            XCTAssertEqual(store.loadMessagePage(accountId: "account", conversationId: "chat", limit: 64).messages.first?.localTimelineAnchorID, anchor)
+        }
+    }
+
     func testRemovingFailedDraftClearsCachedRowsAndLatestPageOnlyForItsAccount() throws {
         let store = try LocalMessageStore(inMemory: true)
         var failed = message(id: "failed", conversationID: "chat", text: "Unsent", author: .me)

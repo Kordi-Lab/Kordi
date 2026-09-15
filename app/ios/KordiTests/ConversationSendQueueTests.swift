@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Kordi
 
 @MainActor
@@ -167,6 +169,76 @@ final class ConversationSendQueueTests: XCTestCase {
         let removed = await model.deleteMessage(failed, forEveryone: false, in: orderingConversation())
         XCTAssertFalse(removed)
         XCTAssertEqual(model.messages(for: orderingConversation()).first?.deliveryState, .sending)
+    }
+
+    func testSendingWithKeyboardAfterFailureKeepsNewBubbleVisibleWithoutScrolling() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        defer {
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let conversation = orderingConversation()
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        var messages = (0..<40).map { index in
+            orderingMessage("history-\(index)", sequence: Int64(index + 1), time: Double(100 + index), state: .delivered)
+        }
+        messages.append(orderingMessage("old-failure", time: 135.5, state: .failed))
+        store.saveMessages(messages, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        let controller = UIHostingController(rootView:
+            MainTabView(initialPath: [.conversation(conversation)])
+                .environmentObject(model)
+                .environmentObject(KordiCallCoordinator())
+                .environmentObject(KordiNotificationCoordinator())
+                .environment(\.kordiChatTheme, .sand)
+        )
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+            window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
+        }
+        func descendants(_ view: UIView) -> [UIView] { [view] + view.subviews.flatMap(descendants) }
+        func waitFor(_ condition: () -> Bool) async throws {
+            for _ in 0..<250 {
+                controller.view.layoutIfNeeded()
+                if condition() { return }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTFail("Synthetic conversation did not finish presenting")
+            throw NSError(domain: "ConversationPresentationTest", code: 1)
+        }
+        try await waitFor { ConversationMotionProbeRegistry.send != nil && model.messages(for: conversation).count == 41 }
+        let editor = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UITextView }.first)
+        let scroll = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UIScrollView }
+            .filter { !($0 is UITextView) }.max { $0.contentSize.height < $1.contentSize.height })
+        let closedHeight = scroll.bounds.height
+        XCTAssertTrue(editor.becomeFirstResponder())
+        try await waitFor { scroll.bounds.height < closedHeight - 100 }
+        ConversationMotionProbeRegistry.setDraft?("Synthetic send after failure")
+        await Task.yield()
+        ConversationMotionProbeRegistry.send?()
+        try await waitFor { model.messages(for: conversation).contains { $0.text == "Synthetic send after failure" && $0.deliveryState == .read } }
+        let sent = try XCTUnwrap(model.messages(for: conversation).first { $0.text == "Synthetic send after failure" })
+        let probeID = "bubble-" + (sent.clientMessageId ?? sent.id)
+        try await waitFor {
+            guard let frame = ConversationMotionProbeRegistry.frame(for: probeID, in: window) else { return false }
+            let viewport = scroll.convert(scroll.bounds, to: window)
+            return frame.height > 0 && frame.intersects(viewport) && frame.maxY <= viewport.maxY + 14
+        }
+        let ordered = model.messages(for: conversation).map(\.id)
+        XCTAssertLessThan(try XCTUnwrap(ordered.firstIndex(of: "old-failure")), try XCTUnwrap(ordered.firstIndex(of: sent.id)))
+        XCTAssertLessThanOrEqual(abs(scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.contentOffset.y - scroll.bounds.height), 14)
     }
 
     private func orderingConversation(kind: ConversationKind = .person) -> ConversationSummary {
