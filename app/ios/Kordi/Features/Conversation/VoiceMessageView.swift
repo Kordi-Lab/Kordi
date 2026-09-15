@@ -367,7 +367,7 @@ struct VoiceRecordingComposer: View {
                         Spacer()
                         Button("Send", action: onSend)
                             .frame(minHeight: 44)
-                            .disabled(recorder.transcriptionPhase != .ready)
+                            .disabled(recorder.pendingMessage == nil)
                     }
                     if let error = recorder.errorMessage {
                         Text(error).font(.caption).foregroundStyle(.secondary)

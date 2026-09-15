@@ -20,13 +20,21 @@ bulk migration. Agent history reads interpret their current voice metadata.
 
 ## Recording and retry
 
-macOS and iOS retain failed recordings in the composer for retry, playback, or
-discard. On macOS, click the microphone to start and click again to stop/send;
-holding and releasing remains supported. Transcription has visible progress in the composer. Once the prepared recording
-is handed to the message sender, the composer clears immediately; sending, sent,
-and delivery failure belong to the message bubble and its retry controls. A late
-delivery result cannot reset the next recording. A failed recording can be
-dismissed to return to the composer. Sending a newly recorded message waits for a successful transcript.
+On iOS, releasing Hold to Talk immediately hands the recording to the outgoing
+message bubble. The composer clears without a review, trim, or second Send step.
+Audio upload and the existing recognition task run concurrently; the bubble stays
+pending until they resolve. Recognition failure or denied speech permission still
+sends the saved audio with explicit failed/unavailable metadata. A fresh recorder
+handles the next draft, so its cancellation cannot cancel the outgoing transcript.
+Slide to cancel and slide to convert to text retain their separate behavior;
+conversion waits for recognized text before inserting it into the text composer.
+
+On macOS, click the microphone to start and click again to stop/send; holding and
+releasing remains supported. Transcription has visible progress in the composer,
+and failed recordings remain available for retry, playback, or discard. Sending
+waits for a successful transcript. Once handed to the sender, the composer clears.
+On both platforms, sending, sent, and delivery failure belong to the message
+bubble and its retry controls. A late delivery result cannot reset the next draft.
 There are at most three transcription attempts per source/range. A successful
 result is reused for send retries; repeated Send presses cannot duplicate the
 recording. Cancelling or replacing a recording discards pending results. iOS
@@ -43,8 +51,7 @@ successful update requests are idempotent. A cached successful transcript is
 not recomputed after an update-network failure. A different successful transcript
 cannot overwrite an already-ready result through this retry endpoint.
 
-The server accepts explicit failed/unavailable metadata for compatible clients;
-the recording composers keep failed new recordings locally until recovery.
+The server accepts explicit failed/unavailable metadata for compatible clients.
 Imported generic audio files are not automatically transcribed by this stage.
 Only typed voice messages within the existing 60-second audio contract expose
 retry. Browser-only clients show status and playback; native macOS/iOS perform
@@ -65,6 +72,9 @@ conversations or production data as fixtures.
 
 - Record a short instruction, release, and verify the same words reach an agent
   with a transcript-only notice on macOS and iOS.
+- On iOS, release while speech permission or recognition is pending. Verify an
+  outgoing bubble appears immediately, no review panel appears, and a second
+  recording can start. Deny speech permission and verify the audio is still sent.
 - Deny microphone permission, then speech-recognition permission. Neither error
   may be sent as speech. A saved recording must remain available after a
   transcription failure.

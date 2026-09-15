@@ -65,7 +65,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     }
 
     var isVisible: Bool {
-        phase == .recording || phase == .paused || phase == .review || phase == .failed
+        phase == .recording || phase == .paused || (phase == .review && !shouldAutoSend) || phase == .failed
     }
 
     @discardableResult
@@ -158,14 +158,25 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
             cancel()
             return false
         }
+        prepareRecording(at: url, durationMs: durationMs,
+            waveformSamples: Self.downsample(rawSamples), autoSend: autoSend)
+        return true
+    }
+
+    func prepareRecording(at url: URL, durationMs: Int, waveformSamples: [Double], autoSend: Bool) {
+        recordingURL = url
+        self.durationMs = durationMs
+        self.waveformSamples = waveformSamples
         shouldAutoSend = autoSend
-        waveformSamples = Self.downsample(rawSamples)
         trimStartMs = 0
         trimEndMs = durationMs
         reviewURL = url
         phase = .review
         beginPreparation(url: url, startMs: 0, endMs: durationMs)
-        return true
+    }
+
+    func restoreReview() {
+        shouldAutoSend = false
     }
 
     func setTrim(startMs: Int, endMs: Int) {
@@ -187,10 +198,22 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         if needsNewRange {
             beginPreparation(url: recordingURL, startMs: trimStartMs, endMs: trimEndMs)
         }
+        let preparationGeneration = generation
         if let preparationTask { _ = await preparationTask.value }
-        await transcriptionTask?.value
-        guard transcriptionPhase == .ready else { return nil }
+        guard preparationGeneration == generation else { return nil }
         return pendingMessage
+    }
+
+    // The outgoing message owns this recorder after the composer receives a new one.
+    // Reuse the recognition already in flight and keep its audio alive until it finishes.
+    func finishTranscriptionForSend(_ pending: PendingVoiceMessage) async -> PendingVoiceMessage? {
+        let sendGeneration = generation
+        await transcriptionTask?.value
+        guard generation == sendGeneration,
+              pendingMessage?.attachment.id == pending.attachment.id else { return nil }
+        let resolved = pendingMessage
+        cancel()
+        return resolved
     }
 
     func prepareTranscript() async -> String? {
@@ -457,6 +480,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         meterTimer?.invalidate()
         meterTimer = nil
         if preserveReview {
+            shouldAutoSend = false
             phase = .review
             transcriptionPhase = .failed
         } else {

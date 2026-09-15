@@ -2676,23 +2676,42 @@ struct ConversationView: View {
     private func sendVoiceMessage() async {
         guard !isSending else { return }
         isSending = true
-        defer { isSending = false }
-        guard let pending = await voiceRecorder.prepareForSend() else { return }
+        let sendingRecorder = voiceRecorder
+        guard let pending = await sendingRecorder.prepareForSend() else {
+            sendingRecorder.restoreReview()
+            isSending = false
+            return
+        }
         let message = pending.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingMention = resolvedMentionTarget(in: message)
-        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
+        guard canSendWithCurrentAuthentication(mention: outgoingMention) else {
+            sendingRecorder.restoreReview()
+            isSending = false
+            return
+        }
         let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         replySource = nil
         selectedMention = nil
-        voiceRecorder.cancel()
+        voiceRecorder = VoiceMessageRecorder()
+        let resolvedVoiceMessage = Task { @MainActor in
+            await sendingRecorder.finishTranscriptionForSend(pending)
+        }
         await model.send(
             message,
             voiceMessage: pending,
+            resolvedVoiceMessage: resolvedVoiceMessage,
             replyingTo: outgoingReply,
             mentioning: outgoingMention,
             messageAction: scopedThreadMessageAction,
             agentContext: companionContext?.referenceText,
-            to: conversation
+            to: conversation,
+            onStaged: { messageID in
+                if let messageID {
+                    stagedMessageIDs = Array((stagedMessageIDs + [messageID]).suffix(32))
+                    scrollToBottom()
+                }
+                isSending = false
+            }
         )
     }
 

@@ -872,10 +872,7 @@ struct ComposerView: View {
             rejectShortVoiceRecording()
             return
         }
-        Task {
-            guard await voiceRecorder.prepareForSend() != nil else { return }
-            onSendVoice()
-        }
+        onSendVoice()
     }
 
     private func convertVoiceRecordingToText() {

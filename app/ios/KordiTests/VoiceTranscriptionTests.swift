@@ -66,4 +66,94 @@ struct VoiceTranscriptionTests {
         let decoded = try JSONDecoder().decode(CloudChatContent.self, from: JSONEncoder().encode(content))
         #expect(decoded.voiceMessage == original)
     }
+
+    @Test func releaseHandsOffAudioBeforeRecognitionCompletesAndReusesItsTask() async throws {
+        let (speech, completion) = AsyncStream<String>.makeStream()
+        var calls = 0
+        let recorder = VoiceMessageRecorder(speechTranscriber: { _ in
+            calls += 1
+            for await text in speech { return text }
+            throw CancellationError()
+        })
+        let url = try recordingFixture()
+        defer { recorder.cancel(); completion.finish() }
+        recorder.prepareRecording(at: url, durationMs: 2_000, waveformSamples: [0.2], autoSend: true)
+        #expect(!recorder.isVisible)
+
+        // Release the gate after a deadline so a regression reports a failure instead of hanging.
+        var exceededDeadline = false
+        let deadline = Task {
+            try await Task.sleep(for: .seconds(2))
+            exceededDeadline = true
+            completion.yield("Deadline fallback")
+        }
+        defer { deadline.cancel() }
+        let pending = try #require(await recorder.prepareForSend())
+        #expect(!exceededDeadline)
+        #expect(pending.transcription?.status == .pending)
+        #expect(pending.transcript.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: url.path))
+
+        let outgoing = Task { await recorder.finishTranscriptionForSend(pending) }
+        let nextRecorder = VoiceMessageRecorder()
+        nextRecorder.cancel()
+        completion.yield("Meet at noon.")
+        let resolved = try #require(await outgoing.value)
+        #expect(resolved.attachment == pending.attachment)
+        #expect(resolved.transcript == "Meet at noon.")
+        #expect(resolved.transcription?.status == .ready)
+        #expect(resolved.transcription?.attempts == 1)
+        #expect(calls == 1)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(recorder.phase == .idle)
+        #expect(nextRecorder.phase == .idle)
+    }
+
+    @Test func transcriptionFailureStillHandsOffTheOriginalAudio() async throws {
+        struct RecognitionFailed: Error {}
+        let recorder = VoiceMessageRecorder(speechTranscriber: { _ in throw RecognitionFailed() })
+        defer { recorder.cancel() }
+        recorder.prepareRecording(at: try recordingFixture(), durationMs: 2_000,
+            waveformSamples: [0.2], autoSend: true)
+        let pending = try #require(await recorder.prepareForSend())
+        let resolved = try #require(await recorder.finishTranscriptionForSend(pending))
+        #expect(resolved.attachment == pending.attachment)
+        #expect(!resolved.attachment.data.isEmpty)
+        #expect(resolved.transcript.isEmpty)
+        #expect(resolved.transcription?.status == .failed)
+        #expect(resolved.transcription?.attempts == 1)
+    }
+
+    @Test func convertToTextStillWaitsForTheTranscript() async throws {
+        let recorder = VoiceMessageRecorder(speechTranscriber: { _ in "Converted words." })
+        defer { recorder.cancel() }
+        recorder.prepareRecording(at: try recordingFixture(), durationMs: 2_000,
+            waveformSamples: [0.2], autoSend: false)
+        #expect(recorder.isVisible)
+        #expect(await recorder.prepareTranscript() == "Converted words.")
+    }
+
+    @Test func cancelledRecordingCannotResurrectAPendingSend() async throws {
+        let (speech, completion) = AsyncStream<String>.makeStream()
+        let recorder = VoiceMessageRecorder(speechTranscriber: { _ in
+            for await text in speech { return text }
+            throw CancellationError()
+        })
+        defer { recorder.cancel(); completion.finish() }
+        recorder.prepareRecording(at: try recordingFixture(), durationMs: 2_000,
+            waveformSamples: [0.2], autoSend: true)
+        let pending = try #require(await recorder.prepareForSend())
+        recorder.cancel()
+        completion.yield("Late words.")
+        #expect(await recorder.finishTranscriptionForSend(pending) == nil)
+        #expect(recorder.pendingMessage == nil)
+        #expect(recorder.phase == .idle)
+    }
+
+    private func recordingFixture() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("voice-handoff-test-\(UUID().uuidString).m4a")
+        try Data([1, 2, 3, 4]).write(to: url)
+        return url
+    }
 }
