@@ -103,7 +103,9 @@ export function useChatPins({
           ? pinnedMessageCandidateIds(candidate, conversation.id).includes(normalizedId)
           : chatMessageActionId(candidate) === normalizedId
       ));
-      return message ? [{ message, scope }] : [];
+      // The pin exists independently of whether its target is in the loaded page.
+      // Keep the shelf and navigation available while that older message hydrates.
+      return [{ message: message ?? { id: normalizedId, role: 'system', sender: '', text: 'Pinned message', time: '' }, scope }];
     });
   }, [activeCloudPin, conversation.id, localPinIds, messages, pinScopeKey, usesCloudPins]);
   const pinnedMessageIds = useMemo(

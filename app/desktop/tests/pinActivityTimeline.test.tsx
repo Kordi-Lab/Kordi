@@ -190,5 +190,8 @@ test('local pin feedback appears before delayed sync, reconciles once, and rolls
     assert.equal(state.pinActivities.length, 2);
     await act(async () => reject(new Error('Synthetic offline failure')));
     assert.deepEqual(state.pinActivities.map(item => item.label), ['You pinned a message']);
+    await act(async () => applyPin({ ...pinned, privateMessageId: 'older-unloaded-target', effectiveMessageId: 'older-unloaded-target' }));
+    assert.equal(state.pinnedMessages.length, 1, 'A known pin must not wait for its target page before showing the shelf');
+    assert.equal(state.pinnedMessages[0].message.id, 'older-unloaded-target');
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
