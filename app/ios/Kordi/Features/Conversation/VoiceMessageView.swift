@@ -596,11 +596,13 @@ private struct VoiceTrimControl: View {
 }
 
 struct VoiceMessageBubbleContent: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let voiceMessage: VoiceMessage
     let isActionPresented: Bool
     let reservesDeliveryStatus: Bool
     let onPrepare: (VoiceMessage) async -> URL?
     var onUpdateTranscript: ((VoiceMessage) async -> Bool)? = nil
+    var onExpansionChange: (Bool) -> Void = { _ in }
 
     @State private var playback = VoiceMessagePlayback()
     @State private var showsTranscript = false
@@ -681,7 +683,7 @@ struct VoiceMessageBubbleContent: View {
                         .accessibilityLabel("Playback speed \(playback.speed.formatted()) times")
 
                         Button {
-                            showsTranscript.toggle()
+                            toggleTranscript()
                         } label: {
                             Image(systemName: "text.bubble")
                                 .font(.caption2)
@@ -690,18 +692,7 @@ struct VoiceMessageBubbleContent: View {
                         .buttonStyle(.plain)
                         .contentShape(Rectangle().inset(by: -8))
                         .accessibilityLabel(showsTranscript ? "Hide voice transcript" : "Show voice transcript")
-                        .popover(
-                            isPresented: $showsTranscript,
-                            attachmentAnchor: .rect(.bounds),
-                            arrowEdge: .bottom
-                        ) {
-                            VoiceTranscriptPopover(
-                                voice: voiceMessage,
-                                onPrepare: onPrepare,
-                                onUpdate: onUpdateTranscript
-                            )
-                            .presentationCompactAdaptation(.popover)
-                        }
+                        .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
 
                         if reservesDeliveryStatus {
                             Color.clear
@@ -712,11 +703,31 @@ struct VoiceMessageBubbleContent: View {
                     .frame(height: 20)
                 }
             }
+            .transaction { $0.animation = nil }
 
+            VoiceTranscriptDetails(voice: voiceMessage, onPrepare: onPrepare, onUpdate: onUpdateTranscript)
+                .padding(.trailing, reservesDeliveryStatus ? 18 : 0)
+                .frame(height: showsTranscript ? nil : 0, alignment: .top)
+                .clipped()
+                .opacity(showsTranscript ? 1 : 0)
+                .allowsHitTesting(showsTranscript)
+                .accessibilityHidden(!showsTranscript)
         }
         .disabled(isActionPresented)
         .frame(width: Self.compactWidth(durationMs: voiceMessage.durationMs))
         .accessibilityElement(children: .contain)
+        .onAppear { if showsTranscript { onExpansionChange(true) } }
+        .onDisappear { if showsTranscript { onExpansionChange(false) } }
+    }
+
+    private func toggleTranscript() {
+        let expanded = !showsTranscript
+        if expanded { onExpansionChange(true) }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
+            showsTranscript = expanded
+        } completion: {
+            if !expanded && !showsTranscript { onExpansionChange(false) }
+        }
     }
 
     static func compactWidth(durationMs: Int) -> CGFloat {

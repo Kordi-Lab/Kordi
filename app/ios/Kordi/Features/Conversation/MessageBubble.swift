@@ -67,7 +67,7 @@ struct MessageBubble: View, Equatable {
     let onOpenVideo: (ChatAttachment, AVPlayer, UIImage?) -> Void
     let onAddAttachmentToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
-    let onAgentExecutionExpansionChange: (Bool) -> Void
+    let onContentExpansionChange: (Bool) -> Void
     var usesOverlayPhotoPreview = false
     var presentedActionAttachmentID: String? = nil
     var onPrepareActionImage: (UIImage?) -> Void = { _ in }
@@ -595,7 +595,7 @@ struct MessageBubble: View, Equatable {
                     messageID: message.id,
                     execution: execution,
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(execution: execution, responseText: message.text),
-                    onExpansionChange: onAgentExecutionExpansionChange
+                    onExpansionChange: onContentExpansionChange
                 )
             }
 
@@ -605,9 +605,10 @@ struct MessageBubble: View, Equatable {
                     isActionPresented: isActionPresented,
                     reservesDeliveryStatus: message.author == .me,
                     onPrepare: onPrepareVoiceMessage,
-                    onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil
+                    onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil,
+                    onExpansionChange: onContentExpansionChange
                 )
-                .id("\(message.id):\(message.cloudMessageVersion ?? 0)")
+                .id("\(message.id):\(voiceMessage.mediaId)")
             }
 
             if hasVisibleMessageText {

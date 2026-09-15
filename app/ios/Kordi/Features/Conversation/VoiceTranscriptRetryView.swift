@@ -1,57 +1,47 @@
 import SwiftUI
 
-struct VoiceTranscriptPopover: View {
-    @Environment(\.dismiss) private var dismiss
+struct VoiceTranscriptDetails: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let voice: VoiceMessage
     let onPrepare: (VoiceMessage) async -> URL?
     let onUpdate: ((VoiceMessage) async -> Bool)?
+    @State private var showsFullTranscript = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Voice transcript")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 4)
-                Button("Close", systemImage: "xmark") { dismiss() }
-                    .labelStyle(.iconOnly)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-                    .buttonStyle(.plain)
-            }
-
-            if voice.spokenText.isEmpty {
-                Text(voice.transcriptionLabel)
+        VStack(alignment: .leading, spacing: 2) {
+            if !voice.spokenText.isEmpty {
+                Text(voice.spokenText)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .lineLimit(showsFullTranscript ? nil : 6)
+                    .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                if let onUpdate {
-                    VoiceTranscriptRetryView(voice: voice, onPrepare: onPrepare, onUpdate: onUpdate)
-                        .buttonStyle(.bordered)
-                        .tint(KordiTheme.signalBlue)
+                if voice.spokenText.count > 160 || voice.spokenText.contains("\n") {
+                    Button(showsFullTranscript ? "Less" : "More") {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+                            showsFullTranscript.toggle()
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(KordiTheme.signalBlue)
+                    .frame(minHeight: 28)
                 }
+            } else if voice.transcription?.status == .pending {
+                Text("Transcribing…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(minHeight: 28)
+            } else if let onUpdate {
+                VoiceTranscriptRetryView(voice: voice, onPrepare: onPrepare, onUpdate: onUpdate)
             } else {
-                ViewThatFits(in: .vertical) {
-                    transcriptText
-                    ScrollView { transcriptText }
-                        .frame(height: 260)
-                }
-                .frame(maxHeight: 260)
+                Text("Failed")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(minHeight: 28)
+                    .accessibilityLabel(voice.transcriptionLabel)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 16)
-        .frame(width: 280)
-        .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var transcriptText: some View {
-        Text(voice.spokenText)
-            .font(.body)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -60,32 +50,38 @@ struct VoiceTranscriptRetryView: View {
     let onPrepare: (VoiceMessage) async -> URL?
     let onUpdate: (VoiceMessage) async -> Bool
     @State private var busy = false
-    @State private var completed = false
     @State private var cached: VoiceMessage?
-    @State private var notice: String?
 
     var body: some View {
-        VStack(alignment: .leading) {
-            Button(busy ? "Transcribing…" : "Retry transcription") {
-                guard !busy else { return }
-                busy = true
-                Task {
-                    defer { busy = false }
-                    if cached == nil {
-                        guard let url = await onPrepare(voice) else {
-                            notice = "Audio is unavailable. Refresh the message before retrying."
-                            return
+        HStack(spacing: 6) {
+            Text(busy ? "Transcribing…" : "Failed")
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(busy ? "Transcribing voice message" : voice.transcriptionLabel)
+            if !busy {
+                Text("·").foregroundStyle(.tertiary).accessibilityHidden(true)
+                Button("Retry") {
+                    guard !busy else { return }
+                    busy = true
+                    Task {
+                        defer { busy = false }
+                        if cached == nil {
+                            guard let url = await onPrepare(voice) else { return }
+                            cached = await VoiceMessageRecorder().transcribeExisting(voice, url: url)
                         }
-                        cached = await VoiceMessageRecorder().transcribeExisting(voice, url: url)
+                        guard let cached, !Task.isCancelled else { return }
+                        if await onUpdate(cached) { self.cached = nil }
                     }
-                    guard let cached, !Task.isCancelled else { return }
-                    completed = await onUpdate(cached)
-                    notice = completed ? cached.transcriptionLabel : "Could not update transcription. Refresh and retry."
                 }
+                .fontWeight(.semibold)
+                .buttonStyle(.plain)
+                .foregroundStyle(KordiTheme.signalBlue)
+                .frame(minHeight: 28)
+                .contentShape(Rectangle().inset(by: -8))
+                .accessibilityLabel("Retry transcription")
+                .disabled((voice.transcription?.attempts ?? 0) >= VoiceTranscription.maximumAttempts)
             }
-            .frame(minHeight: 44)
-            .disabled(busy || completed || (voice.transcription?.attempts ?? 0) >= VoiceTranscription.maximumAttempts)
-            if let notice { Text(notice).font(.caption).foregroundStyle(.secondary) }
         }
+        .font(.caption)
+        .frame(minHeight: 28, alignment: .leading)
     }
 }

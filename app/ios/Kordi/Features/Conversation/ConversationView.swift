@@ -1535,7 +1535,7 @@ struct ConversationView: View {
                     onOpenBackgroundSession: { session in
                         selectedBackgroundSession = session
                     },
-                    onAgentExecutionExpansionChange: { expanded in
+                    onContentExpansionChange: { expanded in
                         updateTrajectoryExpansion(row.id, expanded: expanded, viewportHeight: viewportFrame.height)
                     },
                     usesOverlayPhotoPreview: messageActionMessage?.id == message.id && messageActionImage != nil,
