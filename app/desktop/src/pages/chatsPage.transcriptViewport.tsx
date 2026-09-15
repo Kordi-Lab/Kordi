@@ -186,9 +186,13 @@ export function useChatTranscriptViewport({
     ),
   );
 
+  const passiveUpdateKey = JSON.stringify([pinnedMessageIds ?? [], pinActivities?.map(event => event.id) ?? []]);
+  const messageContentKey = `${transcriptEntries.length}:${latestMessage?.id ?? ''}`;
   return useMemo(() => (
     <VirtualTranscript
       items={timelineEntries}
+      passiveUpdateKey={passiveUpdateKey}
+      messageContentKey={messageContentKey}
       estimateSize={(entry) => 'pinActivity' in entry ? 48 : estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]))}
       sessionKey={sessionKey}
       scrollRef={scrollRef}
@@ -308,6 +312,7 @@ export function useChatTranscriptViewport({
       )}
     />
   ), [
+    passiveUpdateKey, messageContentKey,
     pinBoundaries,
     timelineEntries,
     activeForkSourceSessionId,
