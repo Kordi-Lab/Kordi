@@ -1,7 +1,7 @@
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
 import { deriveSessionTitle } from '@/features/chat/sessionTitlePolicy';
-import { attachmentOnlyMessagePreview, messageCanAppearInPreview, safePreviewText } from '@/features/chat/participantConversationState';
+import { attachmentOnlyMessagePreview, messageCanAppearInPreview, safePreviewText, voiceMessagePreview } from '@/features/chat/participantConversationState';
 import { blobEmojiPlainText } from '@/features/emoji/blobEmoji';
 import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
@@ -125,7 +125,7 @@ export function truncateInlineText(value: string, maxChars = 96) {
 }
 
 export function buildMessagePreview(message: Message) {
-  const text = safePreviewText(message.text);
+  const text = voiceMessagePreview(message) ?? safePreviewText(message.text);
   if (text.length > 0) return blobEmojiPlainText(text);
 
   const agentResponseText = safePreviewText(message.turn?.assistantText);

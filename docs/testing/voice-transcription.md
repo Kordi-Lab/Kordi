@@ -20,6 +20,13 @@ bulk migration. Agent history reads interpret their current voice metadata.
 
 ## Recording and retry
 
+Group envelopes reference the recording through `voiceMessage.mediaId` without
+repeating it as a generic file attachment. The transport still associates the
+uploaded audio with the message for playback and access checks. Desktop projections
+also suppress a duplicate attachment with that media ID in older cached messages.
+Session previews use recognized text or "Voice message", with no file thumbnail.
+Other file attachments remain visible.
+
 On iOS, releasing Hold to Talk immediately hands the recording to the outgoing
 message bubble. The composer clears without a review, trim, or second Send step.
 Audio upload and the existing recognition task run concurrently; the bubble stays

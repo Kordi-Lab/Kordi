@@ -7,6 +7,14 @@ function cleanText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+export function withoutVoiceAttachment<T extends { attachmentId?: string | null }>(
+  attachments: T[] | undefined,
+  voice: { mediaId?: string | null } | null | undefined,
+): T[] | undefined {
+  const mediaId = voice?.mediaId?.trim();
+  return mediaId ? attachments?.filter((attachment) => attachment.attachmentId !== mediaId) : attachments;
+}
+
 export function cloudVoiceDraftMetadataOnly(value: unknown): (MessageVoiceDraft & { mediaId: string | null }) | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;

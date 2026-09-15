@@ -20,6 +20,7 @@ import {
   type PreviewDownloadClient,
 } from './cloudAttachmentPreviewDownload';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
+import { withoutVoiceAttachment } from './cloudVoiceMessage';
 
 export { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 export { recoverCloudAttachmentPreview } from './cloudAttachmentPreviewRecovery';
@@ -181,6 +182,10 @@ export function cloudVoiceMessageToMessageVoice(voice: CloudVoiceMessage) {
     ...voice,
     localPath: voice.localPath ?? cachedCloudAttachmentLocalPath(voice.mediaId),
   };
+}
+
+export function cloudMessageAttachmentsForPresentation(attachments: CloudMessageAttachment[] | undefined, voice?: CloudVoiceMessage | null) {
+  return (withoutVoiceAttachment(attachments, voice) ?? []).map(cloudMessageAttachmentToMessageAttachment);
 }
 
 export async function loadVisibleCloudAttachmentPreview(input: {

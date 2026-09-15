@@ -2,6 +2,22 @@ import XCTest
 @testable import Kordi
 
 final class VoiceMessageTests: XCTestCase {
+    func testGroupEnvelopeDoesNotRepeatVoiceAudioAsAFileAttachment() throws {
+        let audio = CloudMessageAttachment(attachmentId: "voice-audio", name: "Voice message.m4a",
+            kind: "file", mimeType: "audio/mp4", sizeBytes: 1024, downloadUrl: nil, previewUrl: nil)
+        let document = CloudMessageAttachment(attachmentId: "notes", name: "Notes.pdf",
+            kind: "file", mimeType: "application/pdf", sizeBytes: 512, downloadUrl: nil, previewUrl: nil)
+        let voice = VoiceMessage(mediaId: audio.attachmentId, mimeType: "audio/mp4", durationMs: 2000,
+            waveformSamples: [0.2], transcript: "")
+        let payload = CloudGroupMessagePayload(id: "voice-message", senderAccountId: "sender", text: "",
+            createdAtMs: 1, senderKind: "human", senderDisplayName: "Sender", deliveryState: "complete",
+            replyToMessageId: nil, requestId: nil, attachments: [audio, document],
+            messageKind: "voice", voiceMessage: voice)
+        let decoded = try JSONDecoder().decode(CloudGroupMessagePayload.self, from: JSONEncoder().encode(payload))
+        XCTAssertEqual(decoded.attachments?.map(\.attachmentId), [document.attachmentId])
+        XCTAssertEqual(decoded.voiceMessage?.mediaId, audio.attachmentId)
+    }
+
     @MainActor
     func testWaveformDownsamplingKeepsRealPeaks() {
         XCTAssertEqual(

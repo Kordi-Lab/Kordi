@@ -118,7 +118,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         self.deliveryState = deliveryState
         self.replyToMessageId = replyToMessageId
         self.requestId = requestId
-        self.attachments = attachments
+        self.attachments = attachments?.filter { $0.attachmentId != voiceMessage?.mediaId }
         self.mentions = mentions
         self.forkSnapshot = forkSnapshot
         self.messageAction = messageAction

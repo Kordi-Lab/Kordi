@@ -4,7 +4,7 @@ import { loadSession } from './session';
 import { parseCloudGroupControl } from './cloudGroupMessages';
 import { parseCloudAgentResponse } from './cloudAgentMessages';
 import { cloudDirectMessageDisplayText, cloudDirectMessageAction } from './cloudDirectMessages';
-import { cloudMessageAttachmentToMessageAttachment, cloudVoiceMessageToMessageVoice } from './cloudAttachments';
+import { cloudMessageAttachmentsForPresentation, cloudVoiceMessageToMessageVoice } from './cloudAttachments';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT } from '@/lib/desktopChatSync';
 
@@ -68,7 +68,7 @@ export function threadMessage(message:CloudMessage, conversation:Conversation, a
     time:new Date(message.createdAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}),timestampMs:Date.parse(message.createdAt),
     messageAction:group?.messageAction??agent?.messageAction??cloudDirectMessageAction(message.body)??undefined,
     replyToMessageId:group?.replyToMessageId??agent?.requestId??undefined,
-    attachments:(message.attachments??[]).map(cloudMessageAttachmentToMessageAttachment),
+    attachments:cloudMessageAttachmentsForPresentation(message.attachments, message.voiceMessage),
     voiceMessage:message.voiceMessage?cloudVoiceMessageToMessageVoice(message.voiceMessage):undefined,
   };
 }
