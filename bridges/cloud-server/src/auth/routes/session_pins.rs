@@ -1,13 +1,19 @@
 use super::*;
 
+type PinSummaryRow = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
 pub(super) async fn cloud_session_pin_summary(
     pool: &PgPool,
     account_id: &str,
     session_id: &str,
 ) -> Result<CloudSessionPinSummary, sqlx_core::error::Error> {
-    let (shared_message_id, shared_updated_at, private_message_id, private_updated_at, history_updated_at): (
-        Option<String>, Option<String>, Option<String>, Option<String>, Option<String>,
-    ) = query_as(
+    let (shared_message_id, shared_updated_at, private_message_id, private_updated_at, history_updated_at) = query_as::<_, PinSummaryRow>(
         "SELECT shared.message_id, shared.updated_at, private.message_id, private.updated_at, \
           (SELECT history.payload->>'updatedAt' FROM cloud_session_pin_history history \
            JOIN cloud_chat_conversations conversation ON conversation.conversation_id = history.conversation_id \
