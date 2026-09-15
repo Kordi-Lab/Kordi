@@ -55,25 +55,34 @@ export function useVoiceComposer({
       && (isCloudCollaborationConversationId(conversation.id) || conversation.directness === 'group'),
   );
 
+  const handOff = useCallback((attachment: AttachmentItem, operation: symbol) => {
+    const transcript = attachment.voiceMessage?.transcript.trim();
+    if (!transcript || sendingRef.current !== operation) return;
+    let delivery: Promise<void> | void;
+    try {
+      delivery = onSend(transcript, [attachment]);
+    } catch {
+      // No handoff occurred. Keep the recording if the caller rejects synchronously.
+      recorder.recoverSend(attachment.id);
+      return;
+    }
+    // The message sender owns its optimistic bubble, delivery status, and retry.
+    // Release this draft immediately; a late result must never reset a new recording.
+    recorder.reset();
+    sendingRef.current = null;
+    window.requestAnimationFrame(focusComposer);
+    void Promise.resolve(delivery).catch(() => {});
+  }, [focusComposer, onSend, recorder]);
+
   const sendPrepared = useCallback(async () => {
     if (sendingRef.current) return;
     const operation = Symbol();
     sendingRef.current = operation;
     try {
       const attachment = await recorder.prepareForSend();
-      const transcript = attachment?.voiceMessage?.transcript.trim();
-      if (!attachment || !transcript || sendingRef.current !== operation) return;
-      recorder.beginSend(attachment.id);
-      try {
-        await onSend(transcript, [attachment]);
-        if (sendingRef.current === operation) recorder.reset();
-      } catch {
-        if (sendingRef.current === operation) recorder.recoverSend(attachment.id);
-        return;
-      }
-      if (sendingRef.current === operation) window.requestAnimationFrame(focusComposer);
+      if (attachment) handOff(attachment, operation);
     } finally { if (sendingRef.current === operation) sendingRef.current = null; }
-  }, [focusComposer, onSend, recorder]);
+  }, [handOff, recorder]);
 
   const finishAndSend = useCallback(async () => {
     if (sendingRef.current) return;
@@ -81,7 +90,6 @@ export function useVoiceComposer({
     sendingRef.current = operation;
     try {
       const attachment = await recorder.stop({
-        directSend: true,
         onAttachmentReady: prefetchesUpload
           ? (ready) => {
               void uploadNativeCloudAttachment({
@@ -91,20 +99,9 @@ export function useVoiceComposer({
             }
           : undefined,
       });
-      const transcript = attachment?.voiceMessage?.transcript.trim();
-      if (!attachment || !transcript || sendingRef.current !== operation) {
-        return;
-      }
-      recorder.beginSend(attachment.id);
-      try {
-        await onSend(transcript, [attachment]);
-        if (sendingRef.current === operation) recorder.reset();
-      } catch {
-        if (sendingRef.current === operation) recorder.recoverSend(attachment.id);
-        return;
-      }
+      if (attachment) handOff(attachment, operation);
     } finally { if (sendingRef.current === operation) sendingRef.current = null; }
-  }, [onSend, prefetchesUpload, recorder]);
+  }, [handOff, prefetchesUpload, recorder]);
 
   const finishGesture = useCallback(async () => {
     const gesture = gestureRef.current;
@@ -183,7 +180,7 @@ export function useVoiceComposer({
 
   return {
     recorder: { ...recorder, reset: cancelRecording },
-    surfaceActive: ['recording', 'review', 'error', 'sending'].includes(recorder.state.phase),
+    surfaceActive: ['recording', 'review', 'error'].includes(recorder.state.phase),
     recording: recorder.state.phase === 'recording',
     cancelArmed,
     suppressClickRef,

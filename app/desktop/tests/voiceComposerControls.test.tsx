@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
-import { act, createElement } from 'react';
+import { act, createElement, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { useVoiceComposer } from '../src/pages/chatsPage.voiceComposer';
@@ -22,6 +22,8 @@ test('mouse click records, pending transcription is visible, and cancel or faile
   let failSend = false;
   let releaseTranscript: ((value: string) => void) | undefined;
   let sends = 0;
+  let deferDelivery = false;
+  let finishDelivery: ((failed: boolean) => void) | undefined;
   mockIPC(command => {
     if (command === 'desktop_voice_record_start') {
       starts += 1;
@@ -40,12 +42,26 @@ test('mouse click records, pending transcription is visible, and cancel or faile
   const root = createRoot(document.getElementById('root')!);
   let voice!: ReturnType<typeof useVoiceComposer>;
   function Probe() {
+    const [deliveryStatus, setDeliveryStatus] = useState('');
     voice = useVoiceComposer({ conversation: { id: 'synthetic-conversation' } as Conversation,
-      cloudAccountId: null, focusComposer: () => {}, onSend: async () => {
+      cloudAccountId: null, focusComposer: () => {}, onSend: () => {
         if (failSend) throw new Error('Synthetic network failure');
         sends += 1;
+        if (deferDelivery) {
+          setDeliveryStatus('Sending message');
+          return new Promise<void>((resolve, reject) => {
+            finishDelivery = failed => {
+              setDeliveryStatus(failed ? 'Message failed' : 'Message sent');
+              if (failed) reject(new Error('Synthetic transport failure'));
+              else resolve();
+            };
+          });
+        }
+        setDeliveryStatus('Message sent');
+        return Promise.resolve();
       } });
     return createElement('div', null,
+      createElement('div', { 'data-message-bubble': true }, deliveryStatus),
       createElement(VoiceComposerControls, { voice, hasSendableDraft: false, validationError: null,
         activeLiveTurnIsRunning: false, onSend: () => {} }),
       voice.surfaceActive ? createElement(VoiceRecordingSurface, { voice }) : null);
@@ -100,6 +116,19 @@ test('mouse click records, pending transcription is visible, and cancel or faile
     await act(async () => { oldTranscript?.('Late cancelled speech'); await settle(); });
     assert.equal(sends, 1);
     assert.equal(voice.recorder.state.phase, 'idle');
+    deferDelivery = true;
+    await tapToRecord();
+    await act(async () => { button('Stop and send voice message').click(); await settle(); });
+    assert.equal(voice.surfaceActive, false, 'upload progress belongs to the outgoing bubble');
+    assert.equal(document.querySelector('.app-voice-recording-rail'), null);
+    assert.equal(button('Record voice message').disabled, false);
+    assert.equal(document.querySelector('[data-message-bubble]')?.textContent, 'Sending message');
+    await tapToRecord();
+    await act(async () => { finishDelivery?.(true); await settle(); });
+    assert.equal(document.querySelector('[data-message-bubble]')?.textContent, 'Message failed');
+    assert.equal(voice.recorder.state.phase, 'recording', 'late delivery failure must not replace the next draft');
+    await act(async () => { button('Cancel voice recording').click(); });
+    deferDelivery = false;
     const heldMic = button('Record voice message');
     await act(async () => {
       heldMic.dispatchEvent(new dom.window.PointerEvent('pointerdown', { bubbles: true, pointerId: 2, button: 0, clientY: 100 }));
@@ -111,7 +140,7 @@ test('mouse click records, pending transcription is visible, and cancel or faile
       heldMic.click();
       await settle();
     });
-    assert.equal(sends, 2, 'holding and releasing still sends the recording');
+    assert.equal(sends, 3, 'holding and releasing still sends the recording');
     assert.equal(voice.recorder.state.phase, 'idle');
     failStart = true;
     await act(async () => { button('Record voice message').click(); await settle(); });

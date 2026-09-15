@@ -61,7 +61,7 @@ test('recorder retains failure for bounded retry, deduplicates success, and igno
   function Probe() { recorder = useVoiceMessageRecorder(); return null; }
   try {
     await act(async () => root.render(createElement(Probe)));
-    await act(async () => { await recorder.start(); await recorder.stop({ directSend: true }); });
+    await act(async () => { await recorder.start(); await recorder.stop(); });
     assert.equal(recorder.state.phase, 'review');
     assert.equal(recorder.state.transcript, '');
     assert.equal(recorder.state.attachment?.voiceMessage?.transcription?.status, 'unavailable');
@@ -90,7 +90,7 @@ test('recorder retains failure for bounded retry, deduplicates success, and igno
     assert.equal(recorder.state.phase, 'idle');
     assert.equal(recorder.state.attachment, null);
     outcome = 'permission';
-    await act(async () => { await recorder.start(); await recorder.stop({ directSend: true }); });
+    await act(async () => { await recorder.start(); await recorder.stop(); });
     await act(async () => { await recorder.prepareForSend(); await recorder.prepareForSend(); });
     const boundedCalls = calls;
     await act(async () => { await recorder.prepareForSend(); });

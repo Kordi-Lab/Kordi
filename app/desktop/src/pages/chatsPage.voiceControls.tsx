@@ -78,7 +78,7 @@ export function VoiceComposerControls({
             }
             onSend();
           }}
-          disabled={Boolean(validationError) || recorder.state.phase === 'sending'}
+          disabled={Boolean(validationError)}
           data-composer-send={hasSendableDraft ? 'true' : undefined}
           title={!hasSendableDraft
             ? voice.recording ? 'Click to stop and send' : 'Click to record, or hold and release to send'

@@ -24,7 +24,7 @@ function Fixture() {
   const active = mode !== 'Idle';
   const ref = useVoiceComposerLayout(active);
   const state: VoiceMessageRecorderState = { ...initial, trimStartMs: range[0], trimEndMs: range[1],
-    phase: mode === 'Recording' ? 'recording' : mode === 'Pending' ? 'sending' : 'review',
+    phase: mode === 'Recording' ? 'recording' : 'review',
     transcriptionPhase: mode === 'Pending' ? 'transcribing' : mode === 'Retry' ? 'error' : 'ready',
     error: mode === 'Retry' ? 'Retry' : null,
     attachment: mode === 'Recording' ? null : initial.attachment,

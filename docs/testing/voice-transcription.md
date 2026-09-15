@@ -22,8 +22,11 @@ bulk migration. Agent history reads interpret their current voice metadata.
 
 macOS and iOS retain failed recordings in the composer for retry, playback, or
 discard. On macOS, click the microphone to start and click again to stop/send;
-holding and releasing remains supported. Transcription and sending have visible
-progress, and a failed recording can be dismissed to return to the composer. Sending a newly recorded message waits for a successful transcript.
+holding and releasing remains supported. Transcription has visible progress in the composer. Once the prepared recording
+is handed to the message sender, the composer clears immediately; sending, sent,
+and delivery failure belong to the message bubble and its retry controls. A late
+delivery result cannot reset the next recording. A failed recording can be
+dismissed to return to the composer. Sending a newly recorded message waits for a successful transcript.
 There are at most three transcription attempts per source/range. A successful
 result is reused for send retries; repeated Send presses cannot duplicate the
 recording. Cancelling or replacing a recording discards pending results. iOS

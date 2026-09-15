@@ -16,10 +16,9 @@ export const VOICE_CANCEL_SWIPE_PX = 64;
 const VOICE_RECORDING_TOO_SHORT_ERROR = 'Voice recording must be at least one second.';
 export type VoiceGestureIntent = 'hold' | 'cancel';
 type VoiceStopOptions = {
-  directSend?: boolean;
   onAttachmentReady?: (attachment: AttachmentItem) => void;
 };
-type RecorderPhase = 'idle' | 'recording' | 'sending' | 'review' | 'error';
+type RecorderPhase = 'idle' | 'recording' | 'review' | 'error';
 type TranscriptionPhase = 'idle' | 'transcribing' | 'ready' | 'error';
 
 export type VoiceMessageRecorderState = {
@@ -182,7 +181,7 @@ export function useVoiceMessageRecorder() {
     };
     commit((current) => ({
       ...current,
-      phase: current.phase === 'sending' ? 'sending' : 'review',
+      phase: 'review',
       transcriptionPhase: 'transcribing',
       transcript: '',
       attachment: { ...attachment, voiceMessage: { ...voice, transcript: '', transcription } },
@@ -270,7 +269,7 @@ export function useVoiceMessageRecorder() {
   }, [commit, stopSampling]);
 
   const stop = useCallback(async (
-    { directSend = false, onAttachmentReady }: VoiceStopOptions = {},
+    { onAttachmentReady }: VoiceStopOptions = {},
   ) => {
     if (stateRef.current.phase !== 'recording' || !activeRef.current) {
       return stateRef.current.attachment;
@@ -280,7 +279,7 @@ export function useVoiceMessageRecorder() {
     const stopGeneration = generationRef.current;
     commit((current) => ({
       ...current,
-      phase: directSend ? 'sending' : 'review',
+      phase: 'review',
       transcriptionPhase: 'transcribing',
     }));
     try {
@@ -333,10 +332,6 @@ export function useVoiceMessageRecorder() {
 
   const lock = useCallback(() => {
     if (stateRef.current.phase === 'recording') commit((current) => ({ ...current, locked: true }));
-  }, [commit]);
-
-  const beginSend = useCallback((attachmentId: string) => {
-    if (stateRef.current.attachment?.id === attachmentId) commit((current) => ({ ...current, phase: 'sending', error: null }));
   }, [commit]);
 
   const recoverSend = useCallback((attachmentId: string) => {
@@ -427,7 +422,6 @@ export function useVoiceMessageRecorder() {
     discardReview,
     setTrimRange,
     lock,
-    beginSend,
     recoverSend,
     prepareForSend,
   };
