@@ -183,7 +183,7 @@ export function useVoiceComposer({
 
   return {
     recorder: { ...recorder, reset: cancelRecording },
-    surfaceActive: ['review', 'error', 'sending'].includes(recorder.state.phase),
+    surfaceActive: ['recording', 'review', 'error', 'sending'].includes(recorder.state.phase),
     recording: recorder.state.phase === 'recording',
     cancelArmed,
     suppressClickRef,

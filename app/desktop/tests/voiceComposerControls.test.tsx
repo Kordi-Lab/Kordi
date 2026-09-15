@@ -90,7 +90,7 @@ test('mouse click records, pending transcription is visible, and cancel or faile
     failSend = true;
     await act(async () => { button('Stop and send voice message').click(); await settle(); });
     assert.equal(voice.recorder.state.phase, 'review');
-    assert.match(document.body.textContent ?? '', /Could not send/);
+    assert.match(document.body.textContent ?? '', /Send failed/);
     assert.equal(button('Send voice message').disabled, false);
     const transcriptionCount = transcripts;
     failSend = false;

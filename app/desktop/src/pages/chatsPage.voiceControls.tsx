@@ -22,6 +22,7 @@ export function VoiceComposerControls({
   onSend: () => void;
 }) {
   const recorder = voice.recorder;
+  if (voice.surfaceActive) return null;
   return (
     <>
       {voice.recording && !recorder.state.locked ? (
@@ -99,7 +100,7 @@ export function VoiceRecordingSurface({ voice }: { voice: VoiceComposerControlle
     <VoiceRecordingRail
       state={recorder.state}
       onCancel={recorder.reset}
-      onSend={() => { void voice.sendPrepared(); }}
+      onSend={() => { void (voice.recording ? voice.finishAndSend() : voice.sendPrepared()); }}
       onRetry={() => {
         if (recorder.state.attachment) void recorder.prepareForSend();
         else void recorder.start();

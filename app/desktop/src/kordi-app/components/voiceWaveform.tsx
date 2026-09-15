@@ -1,12 +1,13 @@
 import { displayVoiceWaveform } from '@/features/chat/useVoiceMessageRecorder';
 import { cn } from '@/lib/utils';
 
-export function VoiceWaveform({ samples, progress = 0, live = false }: {
+export function VoiceWaveform({ samples, progress = 0, live = false, count = 36 }: {
+  count?: number;
   samples: readonly number[];
   progress?: number;
   live?: boolean;
 }) {
-  const values = displayVoiceWaveform(samples);
+  const values = displayVoiceWaveform(samples, count);
   return (
     <span className="app-voice-waveform" aria-hidden="true">
       {values.map((sample, index) => (
