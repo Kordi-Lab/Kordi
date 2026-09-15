@@ -7,6 +7,7 @@ import { cleanupVirtualTranscriptHarness, installVirtualTranscriptHarness, rende
 let shelfHeight = 0;
 before(async () => {
   await installVirtualTranscriptHarness();
+  globalThis.MutationObserver = window.MutationObserver;
   HTMLElement.prototype.getBoundingClientRect = function () {
     const viewport = this.closest<HTMLElement>('[data-virtual-transcript-scroll]');
     const start = this.matches('[data-transcript-row-key]') ? virtualRowStart(this) : 0;
@@ -16,14 +17,14 @@ before(async () => {
 });
 afterEach(cleanupVirtualTranscriptHarness);
 
-function view(items: ReturnType<typeof rows>, passiveKey: string, messageKey = 'same-messages') {
+function view(items: ReturnType<typeof rows>, passiveKey: string, messageKey = items[items.length - 1]?.id ?? '') {
   return <VirtualTranscript items={items} sessionKey="pin-scroll" getItemKey={item => item.id}
     renderItem={item => <div data-test-row-height={item.height} data-message-id={item.id}>{item.id}</div>}
     estimateSize={item => item.height} scrollStyle={{ height: 600 - shelfHeight }}
-    passiveUpdateKey={passiveKey} messageContentKey={messageKey} />;
+    passiveUpdateKey={passiveKey} messageContentKey={messageKey} animateLatestAppend={['pin', 'unpin'].includes(items[items.length - 1]?.id ?? '')} />;
 }
 
-test('pin and unpin preserve visible messages across notice insertion, measurement and shelf changes', async () => {
+test('pin and unpin follow the latest timeline while shelf-only changes preserve the reading position', async () => {
   shelfHeight = 0;
   const messages = rows('message-', 0, 25);
   const root = await render(view(messages, 'none'));
@@ -41,7 +42,7 @@ test('pin and unpin preserve visible messages across notice insertion, measureme
   await root.rerender(view(pinned, 'pin'));
   await act(async () => { triggerObservedResize?.(viewport); });
   await flush();
-  assert.equal(anchor.getBoundingClientRect().top, before, 'Pin shelf and new notice must not move the visible message');
+  assert.ok(viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1, 'A new pin event must follow into view like other system activity');
   const notice = root.host.querySelector<HTMLElement>('[data-message-id="pin"]');
   assert.ok(notice);
   {
@@ -49,17 +50,12 @@ test('pin and unpin preserve visible messages across notice insertion, measureme
     await act(async () => { triggerObservedResize?.(notice.closest('[data-transcript-row-key]')!); });
     await flush();
   }
-  assert.equal(anchor.getBoundingClientRect().top, before, 'Late notice measurement must retain the anchor');
+  assert.ok(viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1, 'Late notice measurement must keep the entire new event visible');
   shelfHeight = 0;
   await root.rerender(view([...pinned, { id: 'unpin', height: 58 }], 'unpin'));
   await act(async () => { triggerObservedResize?.(viewport); });
   await flush();
-  assert.equal(anchor.getBoundingClientRect().top, before, 'Removing the shelf and adding unpin must preserve the same message');
-  const latest = root.host.querySelector<HTMLButtonElement>('[data-transcript-latest-button]');
-  assert.ok(latest, 'New notices below the viewport remain reachable');
-  await act(async () => latest.click());
-  await flush();
-  assert.ok(viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1, 'Explicit latest navigation releases the preserved anchor');
+  assert.ok(viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= 1, 'Unpin follows into view after removing the shelf');
   await act(async () => viewport.scrollTo({ top: viewport.scrollTop - 100 }));
   const readingTop = viewport.scrollTop;
   await root.rerender(view([...pinned, { id: 'unpin', height: 58 }, { id: 'message-new', height: 50 }], 'unpin', 'new-message'));

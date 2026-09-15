@@ -181,3 +181,20 @@ test('a sync request cannot erase pin history loaded or changed while it was in 
   assert.deepEqual(merged[sessionId].history, [event]);
   assert.deepEqual(mergePinSyncSnapshot({ [sessionId]: unpinned }, {}, {})[sessionId], unpinned);
 });
+
+test('re-login restores cached actions before a current-pin bootstrap without erasing their history', () => {
+  const actions = ['pinned', 'unpinned'].map((kind, index) => ({
+    eventId: `retained-${index}`, eventType: 'session.pin.updated', peerAccountId: sessionId,
+    messageId: kind === 'pinned' ? 'target' : null, occurredAt: `2026-09-15T10:0${index}:00Z`,
+    payload: { sessionId, scope: 'private', messageId: kind === 'pinned' ? 'target' : null,
+      updatedByAccountId: 'owner', updatedAt: `2026-09-15T10:0${index}:00Z` },
+  }));
+  const restoredAfterLogin = applyCloudSyncEventsToSessionPins({}, actions);
+  const currentPinOnly = { eventId: `bootstrap:session-pin:${sessionId}:private`, eventType: 'session.pin.updated',
+    peerAccountId: null, messageId: null, occurredAt: '2026-09-15T11:00:00Z',
+    payload: { sessionId, scope: 'private', messageId: null, updatedAt: '2026-09-15T11:00:00Z' } };
+  const refreshed = applyCloudSyncEventsToSessionPins(restoredAfterLogin, [currentPinOnly]);
+  assert.equal(refreshed[sessionId].effectiveMessageId, null);
+  assert.deepEqual(refreshed[sessionId].history?.map(event => event.kind), ['pinned', 'unpinned']);
+  assert.deepEqual(refreshed[sessionId].history?.map(event => event.updatedAt), actions.map(event => event.occurredAt));
+});

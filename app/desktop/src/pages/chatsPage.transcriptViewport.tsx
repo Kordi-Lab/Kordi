@@ -178,7 +178,9 @@ export function useChatTranscriptViewport({
   }, [timelineEntries]);
   const latestMessage = transcriptMessages[transcriptMessages.length - 1];
   const animateTailResize = Boolean(latestMessage?.turn);
-  const animateLatestAppend = animateTailResize || Boolean(
+  const latestEntry = timelineEntries[timelineEntries.length - 1];
+  const latestPinActivityId = latestEntry && 'pinActivity' in latestEntry ? latestEntry.pinActivity.id : '';
+  const animateLatestAppend = Boolean(latestPinActivityId) || animateTailResize || Boolean(
     latestMessage
     && shouldAnimateHumanMessageEntry(
       transcriptMessageIsOwnHuman(latestMessage),
@@ -186,8 +188,8 @@ export function useChatTranscriptViewport({
     ),
   );
 
-  const passiveUpdateKey = JSON.stringify([pinnedMessageIds ?? [], pinActivities?.map(event => event.id) ?? []]);
-  const messageContentKey = `${transcriptEntries.length}:${latestMessage?.id ?? ''}`;
+  const passiveUpdateKey = JSON.stringify(pinnedMessageIds ?? []);
+  const messageContentKey = `${transcriptEntries.length}:${latestMessage?.id ?? ''}:${latestPinActivityId}`;
   return useMemo(() => (
     <VirtualTranscript
       items={timelineEntries}
