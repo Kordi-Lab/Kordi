@@ -274,7 +274,7 @@ export function ChatMainWorkspace({
                 activeForkSourceTitle: models.fork.sourceTitle,
                 messageForksByEntryId: models.fork.forksByEntryId,
                 pinnedMessageIds: models.pins.pinnedMessageIds,
-                pinActivityLabel: models.pins.pinActivityLabel,
+                pinActivity: models.pins.pinActivity,
                 relatedAgentSessionStatusById: presentation.relatedAgentSessionStatusById,
               }}
               actions={{

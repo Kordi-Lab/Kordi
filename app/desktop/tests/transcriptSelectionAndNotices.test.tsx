@@ -51,13 +51,14 @@ test('multi-pin shelf is folded by default and single pins keep their controls v
 
 test('pin activity uses the transcript system-notice treatment', () => {
   const markup = renderToStaticMarkup(createElement(PinActivityNotice, {
-    label: 'Alice unpinned a message',
+    activity: { id: 'pin-event', label: 'Alice unpinned a message', timestampMs: Date.parse('2026-09-14T12:30:00Z') },
   }));
 
   assert.match(markup, /data-pin-activity="true"/);
   assert.match(markup, /role="status"/);
   assert.match(markup, /app-system-notice-text/);
   assert.match(markup, /Alice unpinned a message/);
+  assert.match(markup, /<time dateTime="2026-09-14T12:30:00.000Z"/);
 });
 
 test('pin and unpin confirmation dialogs use compact clear copy', () => {

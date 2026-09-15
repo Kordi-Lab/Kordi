@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { createPinActivity, type PinActivity } from '@/pages/chatsPage.pinActivity';
+
 import type { CloudSessionPin } from '@/features/cloud/authClient';
 import {
   isCloudCollaborationConversationId,
@@ -60,7 +62,7 @@ export function useChatPins({
   onNavigateToMessage,
 }: UseChatPinsInput) {
   const [localPinIds, setLocalPinIds] = useState<Record<string, string | null>>({});
-  const [localPinActivity, setLocalPinActivity] = useState<Record<string, string>>({});
+  const [localPinActivity, setLocalPinActivity] = useState<Record<string, PinActivity>>({});
   const [optimisticCloudPins, setOptimisticCloudPins] = useState<Record<string, CloudSessionPin>>({});
   const [dialog, setDialog] = useState<PinDialog | null>(null);
   const [pinForEveryone, setPinForEveryone] = useState(false);
@@ -108,13 +110,17 @@ export function useChatPins({
     () => [...new Set(pinnedMessages.map(({ message }) => chatMessageActionId(message)).filter(Boolean))],
     [pinnedMessages],
   );
-  const pinActivityLabel = useMemo(() => {
+  const pinActivity = useMemo(() => {
     const action = activeCloudPin?.lastAction;
     if (!usesCloudPins || !action) return localPinActivity[conversation.id] ?? null;
     const actor = action.actorLabel?.trim()
       || pinActorLabel(conversation, action.updatedByAccountId, currentAccountId);
-    return `${actor} ${action.kind} a message`;
-  }, [activeCloudPin, conversation, currentAccountId, localPinActivity, usesCloudPins]);
+    return createPinActivity(
+      `pin-activity:${sessionId}:${action.scope}:${action.kind}:${action.updatedAt}`,
+      `${actor} ${action.kind} a message`,
+      action.updatedAt,
+    );
+  }, [activeCloudPin, conversation, currentAccountId, localPinActivity, sessionId, usesCloudPins]);
 
   const requestPin = useCallback((message: Message) => {
     setPinForEveryone(false);
@@ -203,9 +209,14 @@ export function useChatPins({
       ...current,
       [conversation.id]: dialog.mode === 'pin' ? messageId : null,
     }));
+    const timestampMs = Date.now();
     setLocalPinActivity((current) => ({
       ...current,
-      [conversation.id]: `You ${dialog.mode === 'pin' ? 'pinned' : 'unpinned'} a message`,
+      [conversation.id]: {
+        id: `pin-activity:${conversation.id}:${timestampMs}`,
+        label: `You ${dialog.mode === 'pin' ? 'pinned' : 'unpinned'} a message`,
+        timestampMs,
+      },
     }));
   }, [
     activeCloudPin,
@@ -220,7 +231,7 @@ export function useChatPins({
   return {
     pinnedMessageIds,
     pinnedMessages,
-    pinActivityLabel,
+    pinActivity,
     requestPin,
     requestUnpin,
     openPinnedMessage,

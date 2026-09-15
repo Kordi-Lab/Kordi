@@ -14,6 +14,7 @@ import type { Message } from '@/kordi-app/types';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
+import { insertPinActivity } from '@/pages/chatsPage.pinActivity';
 import { PinActivityNotice } from '@/pages/chatsPage.pins';
 
 type TranscriptEntry = {
@@ -107,7 +108,7 @@ export function useChatTranscriptViewport({
     activeForkSourceTitle = null,
     messageForksByEntryId,
     pinnedMessageIds,
-    pinActivityLabel,
+    pinActivity,
     densityMode = 'default',
     relatedAgentSessionStatusById,
   } = presentation;
@@ -162,6 +163,12 @@ export function useChatTranscriptViewport({
     () => collectConversationImageAttachments(transcriptMessages),
     [transcriptMessages],
   );
+  const timelineEntries = useMemo(() => insertPinActivity(transcriptEntries, pinActivity), [transcriptEntries, pinActivity]);
+  const activityIndex = timelineEntries.findIndex((entry) => 'pinActivity' in entry);
+  const previousEntry = activityIndex >= 0 ? timelineEntries[activityIndex - 1] : undefined;
+  const nextEntry = activityIndex >= 0 ? timelineEntries[activityIndex + 1] : undefined;
+  const beforeActivityIndex = previousEntry && 'message' in previousEntry ? previousEntry.originalIndex : -1;
+  const afterActivityIndex = nextEntry && 'message' in nextEntry ? nextEntry.originalIndex : -1;
   const latestMessage = transcriptMessages[transcriptMessages.length - 1];
   const animateTailResize = Boolean(latestMessage?.turn);
   const animateLatestAppend = animateTailResize || Boolean(
@@ -174,8 +181,8 @@ export function useChatTranscriptViewport({
 
   return useMemo(() => (
     <VirtualTranscript
-      items={transcriptEntries}
-      estimateSize={(entry) => estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]))}
+      items={timelineEntries}
+      estimateSize={(entry) => 'pinActivity' in entry ? 48 : estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]))}
       sessionKey={sessionKey}
       scrollRef={scrollRef}
       scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}
@@ -185,7 +192,7 @@ export function useChatTranscriptViewport({
       onTailChange={onTranscriptScroll}
       navigationRequest={navigationRequest}
       onNavigationHandled={onNavigationHandled}
-      findNavigationIndex={(entry, messageId) => transcriptWindowMessageMatchesId(
+      findNavigationIndex={(entry, messageId) => 'message' in entry && transcriptWindowMessageMatchesId(
         entry.message,
         messageId,
         entry.originalIndex,
@@ -197,8 +204,11 @@ export function useChatTranscriptViewport({
       onSelectAllMessages={onSelectAllMessages}
       animateLatestAppend={animateLatestAppend}
       animateTailResize={animateTailResize}
-      getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
-      renderItem={({ message: msg, originalIndex: idx }) => (
+      getItemKey={(entry) => 'pinActivity' in entry ? entry.pinActivity.id : transcriptMessageRenderKey(entry.message, entry.originalIndex)}
+      renderItem={(entry) => {
+        if ('pinActivity' in entry) return <PinActivityNotice activity={entry.pinActivity} />;
+        const { message: msg, originalIndex: idx } = entry;
+        return (
         <div data-incoming-sequence={!msg.isOwnMessage && msg.role!=='user'?msg.conversationSequence:undefined}>
           {timeSeparators[idx] ? (
             <div
@@ -252,8 +262,8 @@ export function useChatTranscriptViewport({
             onSelectionDragEnter={onSelectionDragEnter}
             onSelectionDragEnd={onSelectionDragEnd}
             plainAgentResponse={plainAgentResponse}
-            isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, timeSeparators)}
-            isGroupedWithNext={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, timeSeparators)}
+            isGroupedWithPrevious={idx !== afterActivityIndex && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, timeSeparators)}
+            isGroupedWithNext={idx !== beforeActivityIndex && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, timeSeparators)}
           />}
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
@@ -272,12 +282,12 @@ export function useChatTranscriptViewport({
             </div>
           ) : null}
         </div>
-      )}
-      emptyState={transcriptMessages.length === 0 ? emptyState : null}
-      tailKey={`${transcriptTailKey}:${pinActivityLabel ?? ''}`}
+        );
+      }}
+      emptyState={timelineEntries.length === 0 ? emptyState : null}
+      tailKey={transcriptTailKey}
       tail={(
         <div className="space-y-1">
-          {pinActivityLabel ? <PinActivityNotice label={pinActivityLabel} /> : null}
           {queuedMessages.map((message) => (
             <QueuedMessageBubble
               key={message.id}
@@ -291,6 +301,9 @@ export function useChatTranscriptViewport({
       )}
     />
   ), [
+    afterActivityIndex,
+    beforeActivityIndex,
+    timelineEntries,
     activeForkSourceSessionId,
     activeForkSourceTitle,
     animateLatestAppend,
@@ -341,7 +354,6 @@ export function useChatTranscriptViewport({
     pinnedMessageIds,
     plainAgentResponse,
     presentation.firstUnreadMessageId,
-    pinActivityLabel,
     queuedMessages,
     relatedAgentSessionStatusById,
     scrollClassName,
@@ -349,7 +361,6 @@ export function useChatTranscriptViewport({
     selectedMessageIds,
     selectionMode,
     sessionKey,
-    transcriptEntries,
     syncedQueuedIds,
     transcriptMessages,
     timeSeparators,

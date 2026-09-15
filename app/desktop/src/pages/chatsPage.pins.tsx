@@ -1,3 +1,4 @@
+import type { PinActivity } from '@/pages/chatsPage.pinActivity';
 import { useState } from 'react';
 import { ChevronDown, Pin, X } from 'lucide-react';
 
@@ -120,11 +121,18 @@ export function PinnedMessageBar({
   );
 }
 
-export function PinActivityNotice({ label }: { label: string }) {
+export function PinActivityNotice({ activity }: { activity: PinActivity }) {
+  const date = new Date(activity.timestampMs);
   return (
-    <div className="flex justify-center px-2 py-2" data-pin-activity="true" role="status">
+    <div className="flex flex-col items-center gap-1 px-2 py-2 text-center" data-pin-activity="true" role="status">
+      <time
+        dateTime={date.toISOString()}
+        className="text-[10px] tabular-nums text-[color:var(--utility-muted-text)]"
+      >
+        {date.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+      </time>
       <span className="app-system-notice-text max-w-[min(100%,34rem)] truncate px-2.5 py-0.5 text-center text-[11px] leading-5 text-[color:var(--utility-muted-text)]">
-        {label}
+        {activity.label}
       </span>
     </div>
   );
