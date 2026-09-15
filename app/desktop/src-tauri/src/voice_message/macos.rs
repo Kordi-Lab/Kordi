@@ -1,5 +1,6 @@
 mod playback;
 mod recording;
+mod recording_file;
 mod speech;
 
 pub(super) use playback::{pause, play, sample, seek, stop};

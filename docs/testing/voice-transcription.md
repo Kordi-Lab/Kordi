@@ -21,7 +21,9 @@ bulk migration. Agent history reads interpret their current voice metadata.
 ## Recording and retry
 
 macOS and iOS retain failed recordings in the composer for retry, playback, or
-discard. Sending a newly recorded message waits for a successful transcript.
+discard. On macOS, click the microphone to start and click again to stop/send;
+holding and releasing remains supported. Transcription and sending have visible
+progress, and a failed recording can be dismissed to return to the composer. Sending a newly recorded message waits for a successful transcript.
 There are at most three transcription attempts per source/range. A successful
 result is reused for send retries; repeated Send presses cannot duplicate the
 recording. Cancelling or replacing a recording discards pending results. iOS
@@ -44,6 +46,14 @@ Imported generic audio files are not automatically transcribed by this stage.
 Only typed voice messages within the existing 60-second audio contract expose
 retry. Browser-only clients show status and playback; native macOS/iOS perform
 transcription. There is no background server transcription service.
+
+## Native Mac encoding
+
+The Mac recorder lets the AAC encoder select a bitrate compatible with the input
+sample rate and channel count. A fixed 64 kbit/s setting rejects 16 kHz mono
+headset input before recording starts. Native tests write and decode two seconds
+of synthetic audio for that format and common 8/24/44.1/48 kHz mono/stereo inputs.
+They use the production file-creation path without microphone capture.
 
 ## Validation
 

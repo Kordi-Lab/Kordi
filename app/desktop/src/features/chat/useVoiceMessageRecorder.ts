@@ -248,7 +248,7 @@ export function useVoiceMessageRecorder() {
             waveformSamples: downsampleVoiceWaveform(samplesRef.current.slice(-48)),
           }));
           if (sample.durationMs >= MAX_VOICE_MESSAGE_DURATION_MS) {
-            void stopRef.current({ directSend: true });
+            void stopRef.current();
           }
         }).catch(() => {}).finally(() => {
           samplingRef.current = false;
@@ -331,6 +331,20 @@ export function useVoiceMessageRecorder() {
 
   stopRef.current = stop;
 
+  const lock = useCallback(() => {
+    if (stateRef.current.phase === 'recording') commit((current) => ({ ...current, locked: true }));
+  }, [commit]);
+
+  const beginSend = useCallback((attachmentId: string) => {
+    if (stateRef.current.attachment?.id === attachmentId) commit((current) => ({ ...current, phase: 'sending', error: null }));
+  }, [commit]);
+
+  const recoverSend = useCallback((attachmentId: string) => {
+    if (stateRef.current.attachment?.id === attachmentId) commit((current) => ({
+      ...current, phase: 'review', error: 'Could not send this voice message. Your recording is saved; try sending again.',
+    }));
+  }, [commit]);
+
   const setTrimRange = useCallback((startMs: number, endMs: number) => {
     if (preparationPromiseRef.current) return;
     const durationMs = stateRef.current.durationMs;
@@ -412,6 +426,9 @@ export function useVoiceMessageRecorder() {
     reset,
     discardReview,
     setTrimRange,
+    lock,
+    beginSend,
+    recoverSend,
     prepareForSend,
   };
 }

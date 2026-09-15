@@ -1,7 +1,7 @@
 import { VoiceWaveform } from './voiceWaveform';
 import { VoiceTranscriptRetry, type VoiceTranscriptRetryTarget } from './voiceTranscriptRetry';
 import { MAX_TRANSCRIPTION_ATTEMPTS, voiceTranscript, voiceTranscriptionLabel } from '@/features/chat/voiceTranscription';
-import { FileText, LoaderCircle, Pause, Play, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { FileText, LoaderCircle, Pause, Play, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -159,7 +159,8 @@ export function VoiceRecordingRail({
   onRetry: () => void;
   onTrimRange: (startMs: number, endMs: number) => void;
 }) {
-  const phaseLabel = state.phase === 'review'
+  const sending = state.phase === 'sending' && state.transcriptionPhase === 'ready';
+  const phaseLabel = sending ? 'Sending voice message' : state.phase === 'review' || state.phase === 'sending'
       ? state.transcriptionPhase === 'transcribing' ? 'Preparing voice message' : 'Voice message ready to review'
       : state.phase === 'error' ? 'Voice recording failed' : 'Recording voice message';
 
@@ -168,27 +169,33 @@ export function VoiceRecordingRail({
       <span className="sr-only" role="status" aria-live="polite">{phaseLabel}</span>
       {state.attachment ? (
         <>
-          <button type="button" className="app-button-quiet app-voice-control" onClick={onCancel} aria-label="Delete voice recording" title="Delete recording">
+          <button type="button" className="app-button-quiet app-voice-control" onClick={onCancel} disabled={sending} aria-label="Delete voice recording" title="Delete recording">
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
           <VoiceDraftReview state={state} onTrimRange={onTrimRange} />
-          {state.transcriptionPhase === 'transcribing' ? (
-            <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-label="Preparing transcript" />
+          {state.transcriptionPhase === 'transcribing' || sending ? (
+            <span className="flex items-center gap-2 text-xs" role="status">
+              <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              {sending ? 'Sending…' : 'Transcribing…'}
+            </span>
           ) : state.transcriptionPhase === 'error' ? (
             <button type="button" className="app-button-quiet app-voice-control" onClick={onRetry} disabled={(state.attachment?.voiceMessage?.transcription?.attempts ?? 0) >= MAX_TRANSCRIPTION_ATTEMPTS && state.trimStartMs <= 50 && state.trimEndMs >= state.durationMs - 50} aria-label="Retry voice transcription" title="Retry transcription">
               <RotateCcw className="h-4 w-4" />
             </button>
           ) : null}
-          <button type="button" className="app-voice-send-button disabled:opacity-35" onClick={onSend} disabled={state.transcriptionPhase !== 'ready'} aria-label="Send voice message">
+          <button type="button" className="app-voice-send-button disabled:opacity-35" onClick={onSend} disabled={state.transcriptionPhase !== 'ready' || sending} aria-label="Send voice message">
             <Send className="h-4 w-4" />
           </button>
         </>
       ) : (
         <>
-          <div className="app-error-text min-w-0 flex-1">{state.error}</div>
-          <button type="button" className="app-button-quiet app-voice-control" onClick={onRetry} aria-label="Record voice message again">
-            <RotateCcw className="h-4 w-4" />
+          <button type="button" className="app-button-quiet app-voice-control" onClick={onCancel} aria-label="Dismiss voice recording">
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
+          <div className="app-error-text min-w-0 flex-1">{state.error ?? 'Saving voice recording…'}</div>
+          {state.error ? <button type="button" className="app-button-quiet app-voice-control" onClick={onRetry} aria-label="Record voice message again">
+            <RotateCcw className="h-4 w-4" />
+          </button> : <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-label="Saving voice recording" />}
         </>
       )}
       {state.error && state.attachment ? <div className="app-voice-inline-error">{state.error}</div> : null}

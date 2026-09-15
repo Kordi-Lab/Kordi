@@ -36,10 +36,20 @@ export function useVoiceComposer({
     intent: VoiceGestureIntent;
     recorderStarted: boolean;
     released: boolean;
+    startedAt: number;
+    tap: boolean;
   } | null>(null);
   const suppressClickRef = useRef(false);
-  const sendingRef = useRef(false);
+  const sendingRef = useRef<symbol | null>(null);
   const cleanupRef = useRef<() => void>(() => {});
+  const cancelRecording = useCallback(() => {
+    sendingRef.current = null;
+    cleanupRef.current();
+    gestureRef.current = null;
+    suppressClickRef.current = false;
+    setCancelArmed(false);
+    resetRecorder();
+  }, [resetRecorder]);
   const prefetchesUpload = Boolean(
     cloudAccountId
       && (isCloudCollaborationConversationId(conversation.id) || conversation.directness === 'group'),
@@ -47,20 +57,28 @@ export function useVoiceComposer({
 
   const sendPrepared = useCallback(async () => {
     if (sendingRef.current) return;
-    sendingRef.current = true;
+    const operation = Symbol();
+    sendingRef.current = operation;
     try {
       const attachment = await recorder.prepareForSend();
       const transcript = attachment?.voiceMessage?.transcript.trim();
-      if (!attachment || !transcript) return;
-      await onSend(transcript, [attachment]);
-      recorder.reset();
-      window.requestAnimationFrame(focusComposer);
-    } finally { sendingRef.current = false; }
+      if (!attachment || !transcript || sendingRef.current !== operation) return;
+      recorder.beginSend(attachment.id);
+      try {
+        await onSend(transcript, [attachment]);
+        if (sendingRef.current === operation) recorder.reset();
+      } catch {
+        if (sendingRef.current === operation) recorder.recoverSend(attachment.id);
+        return;
+      }
+      if (sendingRef.current === operation) window.requestAnimationFrame(focusComposer);
+    } finally { if (sendingRef.current === operation) sendingRef.current = null; }
   }, [focusComposer, onSend, recorder]);
 
   const finishAndSend = useCallback(async () => {
     if (sendingRef.current) return;
-    sendingRef.current = true;
+    const operation = Symbol();
+    sendingRef.current = operation;
     try {
       const attachment = await recorder.stop({
         directSend: true,
@@ -74,12 +92,18 @@ export function useVoiceComposer({
           : undefined,
       });
       const transcript = attachment?.voiceMessage?.transcript.trim();
-      if (!attachment || !transcript) {
+      if (!attachment || !transcript || sendingRef.current !== operation) {
         return;
       }
-      await onSend(transcript, [attachment]);
-      recorder.reset();
-    } finally { sendingRef.current = false; }
+      recorder.beginSend(attachment.id);
+      try {
+        await onSend(transcript, [attachment]);
+        if (sendingRef.current === operation) recorder.reset();
+      } catch {
+        if (sendingRef.current === operation) recorder.recoverSend(attachment.id);
+        return;
+      }
+    } finally { if (sendingRef.current === operation) sendingRef.current = null; }
   }, [onSend, prefetchesUpload, recorder]);
 
   const finishGesture = useCallback(async () => {
@@ -88,6 +112,7 @@ export function useVoiceComposer({
     gestureRef.current = null;
     setCancelArmed(false);
     if (gesture.intent === 'cancel') recorder.reset();
+    else if (gesture.tap) recorder.lock();
     else await finishAndSend();
   }, [finishAndSend, recorder]);
 
@@ -101,6 +126,8 @@ export function useVoiceComposer({
       intent: 'hold' as VoiceGestureIntent,
       recorderStarted: false,
       released: false,
+      startedAt: performance.now(),
+      tap: false,
     };
     gestureRef.current = gesture;
     setCancelArmed(false);
@@ -120,6 +147,7 @@ export function useVoiceComposer({
       if (voiceGestureIntent(nextEvent.clientY - gesture.startY) === 'cancel') {
         gesture.intent = 'cancel';
       }
+      gesture.tap = performance.now() - gesture.startedAt < 300;
       gesture.released = true;
       cleanup();
       void finishGesture();
@@ -151,11 +179,11 @@ export function useVoiceComposer({
   }
 
   useEffect(() => () => cleanupRef.current(), []);
-  useEffect(() => () => resetRecorder(), [conversation.id, resetRecorder]);
+  useEffect(() => () => cancelRecording(), [conversation.id, cancelRecording]);
 
   return {
-    recorder,
-    surfaceActive: recorder.state.phase === 'review' || recorder.state.phase === 'error',
+    recorder: { ...recorder, reset: cancelRecording },
+    surfaceActive: ['review', 'error', 'sending'].includes(recorder.state.phase),
     recording: recorder.state.phase === 'recording',
     cancelArmed,
     suppressClickRef,
