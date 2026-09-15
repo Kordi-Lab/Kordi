@@ -548,6 +548,35 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
+    func testIndividualMessageRecordsPreserveAnchorUpdatesAndClearing() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        var draft = message(id: "draft", conversationID: "chat", text: "Unsent", author: .me)
+        draft.deliveryState = .failed
+        let anchors: [String?] = ["first", "second", "", nil]
+        for anchor in anchors {
+            draft.localTimelineAnchorID = anchor
+            store.saveMessages([draft], conversationId: "chat", accountId: "account")
+            XCTAssertEqual(store.loadMessages(accountId: "account", conversationId: "chat").first?.localTimelineAnchorID, anchor)
+            XCTAssertEqual(store.loadMessagePage(accountId: "account", conversationId: "chat", limit: 64).messages.first?.localTimelineAnchorID, anchor)
+        }
+    }
+
+    func testRemovingFailedDraftClearsCachedRowsAndLatestPageOnlyForItsAccount() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        var failed = message(id: "failed", conversationID: "chat", text: "Unsent", author: .me)
+        failed.deliveryState = .failed
+        failed.localTimelineAnchorID = "before"
+        let other = message(id: "other", conversationID: "chat", text: "Delivered")
+        for account in ["account-a", "account-b"] {
+            store.saveMessages([failed, other], conversationId: "chat", accountId: account)
+        }
+        XCTAssertEqual(store.loadMessages(accountId: "account-a", conversationId: "chat").first(where: { $0.id == "failed" })?.localTimelineAnchorID, "before")
+        store.deleteMessages([failed.id], accountId: "account-a")
+        XCTAssertEqual(store.loadMessages(accountId: "account-a", conversationId: "chat").map(\.id), ["other"])
+        XCTAssertEqual(store.loadMessagePage(accountId: "account-a", conversationId: "chat", limit: 64).messages.map(\.id), ["other"])
+        XCTAssertTrue(store.loadMessages(accountId: "account-b", conversationId: "chat").contains(where: { $0.id == failed.id }))
+    }
+
     private func message(
         id: String,
         conversationID: String,

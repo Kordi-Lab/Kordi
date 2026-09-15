@@ -1722,6 +1722,7 @@ final class AppModel: ObservableObject {
             id: localId,
             clientMessageId: clientMessageId,
             conversationId: conversation.id,
+            localTimelineAnchorID: ConversationMessageOrdering.anchorForSend(in: messagesByConversation[conversation.id] ?? [], retrying: retryMessage),
             author: .me,
             authorName: "You",
             text: text,
@@ -2369,6 +2370,24 @@ final class AppModel: ObservableObject {
         forEveryone: Bool,
         in conversation: ConversationSummary
     ) async -> Bool {
+        if message.isLocalFailedSend {
+            guard !forEveryone,
+                  let current = messagesByConversation[conversation.id]?.first(where: { $0.id == message.id }),
+                  current.isLocalFailedSend else { return false }
+            let inheritedAnchor = ConversationMessageOrdering.anchorForSend(
+                in: messagesByConversation[conversation.id] ?? [], retrying: current)
+            let removedAliases = Set([current.id, current.clientMessageId].compactMap { $0 })
+            messagesByConversation[conversation.id] = messagesByConversation[conversation.id]?.map { row in
+                var row = row
+                if let anchor = row.localTimelineAnchorID, removedAliases.contains(anchor) {
+                    row.localTimelineAnchorID = inheritedAnchor
+                }
+                return row
+            }
+            clearPendingSendMetadata(current.id)
+            removeCloudMessages([current.id])
+            return true
+        }
         guard let messageId = previewMode
             ? message.id.nonEmpty
             : message.reactionTargetMessageId?.nonEmpty ?? message.id.nonEmpty else {
@@ -2662,6 +2681,7 @@ final class AppModel: ObservableObject {
                     clientMessageId: message.clientMessageId,
                     conversationId: conversation.id,
                     conversationSequence: message.conversationSequence,
+                    localTimelineAnchorID: message.localTimelineAnchorID,
                     author: message.author,
                     authorName: message.authorName,
                     senderOwnerName: message.senderOwnerName,

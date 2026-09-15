@@ -940,6 +940,14 @@ struct ConversationView: View {
                 lastTimelineSnapshot = current
                 trajectoryViewport.retainMessageIDs(Set(timeline.map(model.timelineIdentity(for:))))
             }
+            .onChange(of: stagedMessageIDs) { _, staged in
+                guard !staged.isEmpty else { return }
+                // Materialize the SwiftUI destination before native tail settling.
+                // A content-offset jump alone can leave lazy rows unrendered until a pan.
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { proxy.scrollTo(bottomAnchorID, anchor: .bottom) }
+            }
             .onChange(of: pendingMentionCount) {
                 synchronizeReadPresentation()
             }
@@ -1650,13 +1658,12 @@ struct ConversationView: View {
                     && !["voice", "sticker", "call"].contains(message.messageKind?.lowercased() ?? "")
                     && message.cloudMessageVersion != nil
                     && message.reactionTargetMessageId?.nonEmpty != nil,
-                allowsDelete: model.isPreviewMode
+                allowsDelete: message.isLocalFailedSend || (model.isPreviewMode
                     ? !message.isSystemNotice
                     : message.author != .agent
                         && !message.isSystemNotice
                         && message.deliveryState != .sending
-                        && message.deliveryState != .failed
-                        && message.reactionTargetMessageId?.nonEmpty != nil,
+                        && message.reactionTargetMessageId?.nonEmpty != nil),
                 deleteForEveryoneLabel: messageActionAttachment != nil
                     ? (conversation.kind == .group ? "Delete photo for everyone" : "Delete photo for me and \(conversation.displayName)")
                     : (conversation.kind == .group ? "Delete for everyone" : "Delete for me and \(conversation.displayName)"),
@@ -1752,7 +1759,7 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onDelete: { forEveryone in
-                    deleteMessage(message, attachment: messageActionAttachment, forEveryone: forEveryone)
+                    deleteMessage(message, attachment: message.isLocalFailedSend ? nil : messageActionAttachment, forEveryone: forEveryone)
                 },
                 onSaveSticker: { attachment in
                     dismissMessageActions()
@@ -1975,7 +1982,7 @@ struct ConversationView: View {
 
     private func deleteMessage(_ target: ChatMessage, attachment: ChatAttachment? = nil, forEveryone: Bool) {
         guard pendingMessageDeletion == nil else { return }
-        var presentation = MessageDeletionPresentation(message: target, messages: allMessages, attachmentID: attachment?.id)
+        var presentation = MessageDeletionPresentation(message: target, messages: allMessages, attachmentID: target.isLocalFailedSend ? nil : attachment?.id)
         // The action is delivered after the menu's return animation. Capture is
         // deferred until the source has actually been restored on screen.
         presentation.isMenuDismissed = true
@@ -1987,7 +1994,7 @@ struct ConversationView: View {
         dismissMessageActions()
         Task {
             let succeeded: Bool
-            if let attachment {
+            if let attachment, !target.isLocalFailedSend {
                 succeeded = await model.deleteAttachment(attachment, from: target, forEveryone: forEveryone, in: conversation)
             } else {
                 succeeded = await model.deleteMessage(target, forEveryone: forEveryone, in: conversation)

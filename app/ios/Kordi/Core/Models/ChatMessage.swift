@@ -1128,6 +1128,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     let clientMessageId: String?
     let conversationId: String
     let conversationSequence: Int64?
+    // Local outbox position; an empty anchor means the conversation start.
+    var localTimelineAnchorID: String?
     let author: MessageAuthor
     let authorName: String
     let senderOwnerName: String?
@@ -1180,6 +1182,13 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             || callActivity != nil
     }
 
+    var isLocalFailedSend: Bool {
+        author == .me && deliveryState == .failed
+            && (conversationSequence ?? 0) <= 0
+            && reactionTargetMessageId?.nonEmpty == nil
+            && cloudMessageVersion == nil
+    }
+
     var isEdited: Bool { editedAt != nil }
 
     var quotedReplyMessageId: String? {
@@ -1205,6 +1214,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         clientMessageId: String? = nil,
         conversationId: String,
         conversationSequence: Int64? = nil,
+        localTimelineAnchorID: String? = nil,
         author: MessageAuthor,
         authorName: String,
         senderOwnerName: String? = nil,
@@ -1234,6 +1244,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.clientMessageId = clientMessageId
         self.conversationId = conversationId
         self.conversationSequence = conversationSequence
+        self.localTimelineAnchorID = localTimelineAnchorID
         self.author = author
         self.authorName = authorName
         self.senderOwnerName = senderOwnerName
@@ -1296,6 +1307,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, clientMessageId, conversationId, conversationSequence, author, authorName, senderOwnerName, text, createdAt, editedAt, cloudMessageVersion, deliveryState, errorMessage
+        case localTimelineAnchorID
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind, voiceMessage
         case agentExecution
@@ -1310,6 +1322,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         clientMessageId = try container.decodeIfPresent(String.self, forKey: .clientMessageId)
         conversationId = try container.decode(String.self, forKey: .conversationId)
         conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
+        localTimelineAnchorID = try container.decodeIfPresent(String.self, forKey: .localTimelineAnchorID)
         author = try container.decode(MessageAuthor.self, forKey: .author)
         authorName = try container.decode(String.self, forKey: .authorName)
         senderOwnerName = try container.decodeIfPresent(String.self, forKey: .senderOwnerName)

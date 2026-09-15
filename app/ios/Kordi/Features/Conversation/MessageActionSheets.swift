@@ -1012,11 +1012,11 @@ struct MessageActionOverlay: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
                 if isConfirmingDelete {
-                    if message.author == .me {
+                    if message.author == .me && !message.isLocalFailedSend {
                         deleteChoiceButton(deleteForEveryoneLabel) { onDelete(true) }
                         Divider().padding(.horizontal, 14)
                     }
-                    deleteChoiceButton(mediaAttachment == nil ? "Delete for me" : "Delete photo for me") { onDelete(false) }
+                    deleteChoiceButton(message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete for me" : "Delete photo for me") { onDelete(false) }
                 } else {
                     if mediaAttachment != nil {
                         actionButton("Review", systemImage: "eye", action: onReviewAttachment)
@@ -1078,7 +1078,7 @@ struct MessageActionOverlay: View {
                     actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
                     if allowsDelete {
                         actionButton(
-                            mediaAttachment == nil ? "Delete" : "Delete photo",
+                            message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete" : "Delete photo",
                             systemImage: "trash",
                             role: .destructive,
                             dismissesMenu: false,
