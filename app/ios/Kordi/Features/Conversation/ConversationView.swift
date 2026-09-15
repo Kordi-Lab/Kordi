@@ -464,10 +464,6 @@ struct ConversationView: View {
         )
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
         let newMessageCount = max(0, conversation.unreadCount)
-        let pinTargetPresentation = Binding(
-            get: { pinTarget != nil },
-            set: { if !$0 { pinTarget = nil } }
-        )
         let conversationTimeline = ScrollViewReader { proxy in
             let timelineContent = VStack(spacing: 0) {
                 if !coordinatorOwnsConversationCall,
@@ -917,24 +913,6 @@ struct ConversationView: View {
             }
             #endif
             .sensoryFeedback(.selection, trigger: messageActionFeedback)
-            .confirmationDialog(
-                "Pin this message?",
-                isPresented: pinTargetPresentation,
-                titleVisibility: .visible,
-                presenting: pinTarget
-            ) { target in
-                Button("Pin for me") {
-                    pinMessage(target, shared: false)
-                }
-                Button("Pin for everyone") {
-                    pinMessage(target, shared: true)
-                }
-                Button("Cancel", role: .cancel) {
-                    pinTarget = nil
-                }
-            } message: { _ in
-                Text("Pinned messages stay visible above this session on synced Kordi devices.")
-            }
             .alert(
                 "Unpin this message?",
                 isPresented: Binding(get: { unpinTarget != nil }, set: { if !$0 { unpinTarget = nil } }),
@@ -1551,7 +1529,10 @@ struct ConversationView: View {
                     onUpdateDeletingAttachmentFrame: { frame in
                         guard pendingMessageDeletion?.message.id == message.id else { return }
                         deleteCaptureFrames.attachments[message.id] = frame
-                    }
+                    },
+                    isPinConfirmationPresented: pinTarget?.id == message.id,
+                    onDismissPinConfirmation: { if pinTarget?.id == message.id { pinTarget = nil } },
+                    onConfirmPin: { shared in pinMessage(message, shared: shared) }
                 )
                 .equatable()
                 .background(alignment: .bottomTrailing) {

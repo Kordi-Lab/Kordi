@@ -37,7 +37,12 @@ export function mergePinSyncSnapshot(current: Record<string, CloudSessionPin>, i
   const merged = { ...current };
   for (const [id, pin] of Object.entries(incoming)) {
     const existing = current[id];
-    const changedDuringRequest = existing !== baseline[id];
+    // Polling and state reads can replace an object without changing either pin.
+    // Legacy empty-pin reads also return a null timestamp. Neither constitutes
+    // a competing edit that should suppress a live update from another device.
+    const before = baseline[id];
+    const changedDuringRequest = (existing?.sharedMessageId ?? null) !== (before?.sharedMessageId ?? null)
+      || (existing?.privateMessageId ?? null) !== (before?.privateMessageId ?? null);
     const newer = Date.parse(pin.updatedAt ?? '') > Date.parse(existing?.updatedAt ?? '');
     const state = changedDuringRequest && existing && !newer ? existing : pin;
     merged[id] = { ...state, history: mergePinHistory(existing?.history, pin.history) };

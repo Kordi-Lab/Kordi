@@ -198,3 +198,23 @@ test('re-login restores cached actions before a current-pin bootstrap without er
   assert.deepEqual(refreshed[sessionId].history?.map(event => event.kind), ['pinned', 'unpinned']);
   assert.deepEqual(refreshed[sessionId].history?.map(event => event.updatedAt), actions.map(event => event.occurredAt));
 });
+
+test('a concurrent empty-pin refresh cannot hide a pin received from another device', async () => {
+  const { mergePinSyncSnapshot } = await import('../src/features/cloud/cloudPinHistory');
+  const empty = { sessionId, sharedMessageId: null, privateMessageId: null, effectiveMessageId: null, updatedAt: '2026-09-15T10:00:00Z' };
+  const baseline = { [sessionId]: empty };
+  const refreshed = { [sessionId]: { ...empty, updatedAt: null, history: [] } };
+  for (const scope of ['shared', 'private'] as const) {
+    const incoming = applyCloudSyncEventsToSessionPins(baseline, [{
+      eventId: `phone-${scope}`, eventType: 'session.pin.updated', peerAccountId: sessionId,
+      messageId: 'phone-target', occurredAt: '2026-09-15T10:01:00Z',
+      payload: { sessionId, scope, messageId: 'phone-target', updatedByAccountId: 'owner', updatedAt: '2026-09-15T10:01:00Z' },
+    }]);
+    for (const before of [baseline, {}]) {
+      const pin = mergePinSyncSnapshot(refreshed, incoming, before)[sessionId];
+      assert.equal(pin.effectiveMessageId, 'phone-target', 'The shelf and receipt must advance together');
+      assert.equal(pin.history?.at(-1)?.kind, 'pinned');
+      assert.equal(pin[scope === 'shared' ? 'sharedMessageId' : 'privateMessageId'], 'phone-target');
+    }
+  }
+});
