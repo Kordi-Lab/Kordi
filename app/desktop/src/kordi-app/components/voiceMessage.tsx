@@ -262,7 +262,6 @@ export function VoiceMessageContent({ voice, footer, retryTarget }: {
               {playbackError ? 'Unavailable' : formatVoiceDuration(playing ? elapsedMs : voice.durationMs)}
             </span>
             <div className="app-voice-meta-actions">
-              {footer ? <div className="app-voice-inline-footer">{footer}</div> : null}
               <button
                 type="button"
                 className="app-voice-transcript-trigger"
@@ -273,6 +272,7 @@ export function VoiceMessageContent({ voice, footer, retryTarget }: {
               >
                 <FileText className="h-3 w-3" aria-hidden="true" />
               </button>
+              {footer ? <div className="app-voice-inline-footer">{footer}</div> : null}
             </div>
           </div>
         </div>
