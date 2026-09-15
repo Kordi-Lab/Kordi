@@ -491,17 +491,20 @@ struct ConversationView: View {
                         onJoin: { joinCall(activeCall) }
                     )
                 }
-                if !pinnedMessages.isEmpty {
-                    PinnedMessageBar(
-                        items: pinnedMessages,
-                        onOpen: { item in
-                            navigateToMessage(item.message.id, in: timeline, proxy: proxy)
-                        },
-                        onUnpin: { item in
-                            unpinTarget = item
-                        }
-                    )
+                VStack(spacing: 0) {
+                    if !pinnedMessages.isEmpty {
+                        PinnedMessageBar(
+                            items: pinnedMessages,
+                            onOpen: { item in
+                                navigateToMessage(item.message.id, in: timeline, proxy: proxy)
+                            },
+                            onUnpin: { item in unpinTarget = item }
+                        )
+                        .transition(PinPresentationMotion.shelfTransition(reduceMotion: reduceMotion))
+                    }
                 }
+                .clipped()
+                .animation(hasRevealedInitialViewport ? PinPresentationMotion.animation(reduceMotion: reduceMotion) : nil, value: pinnedMessages.map(\.id))
                 GeometryReader { viewport in
                     ZStack {
                             ZStack(alignment: .bottomTrailing) {
@@ -612,7 +615,8 @@ struct ConversationView: View {
                                                 ))
                                             }
                                             .id(row.id)
-                                            .transition(.identity)
+                                            .transition(message.messageKind == "session_pin_activity"
+                                                ? PinPresentationMotion.noticeTransition(reduceMotion: reduceMotion) : .identity)
                                         }
                                     }
 
@@ -622,6 +626,8 @@ struct ConversationView: View {
                                         .id(bottomAnchorID)
                                 }
                                 .scrollTargetLayout()
+                                .animation(hasRevealedInitialViewport ? PinPresentationMotion.animation(reduceMotion: reduceMotion) : nil,
+                                    value: timeline.last(where: { $0.messageKind == "session_pin_activity" })?.id)
                                 .background(
                                     ConversationScrollCommandBridge(
                                         scrollPosition: scrollPosition,

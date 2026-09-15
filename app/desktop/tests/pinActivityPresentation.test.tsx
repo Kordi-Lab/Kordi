@@ -13,7 +13,7 @@ test('pin notices use compact chat times and animate only once without changing 
     return { cancel() {} } as Animation;
   };
   const style = document.createElement('style');
-  style.textContent = '[data-pin-activity] { --app-motion-fast: .18s; --app-motion-ease: cubic-bezier(0.22, 1, 0.36, 1); }';
+  style.textContent = '[data-pin-activity] { --app-motion-base: .22s; --app-motion-ease: cubic-bezier(0.22, 1, 0.36, 1); }';
   document.head.append(style);
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
   const today = new Date(); today.setHours(13, 5, 0, 0);
@@ -22,8 +22,8 @@ test('pin notices use compact chat times and animate only once without changing 
     await act(async () => root.render(<PinActivityNotice activity={activity} />));
     const row = host.querySelector('[data-pin-activity]');
     assert.equal(row?.querySelector('time')?.textContent, '13:05');
-    assert.deepEqual(calls[0].frames, [{ opacity: 0 }, { opacity: 1 }]);
-    assert.equal(calls[0].options.duration, 180);
+    assert.deepEqual(calls[0].frames, [{ opacity: 0, transform: 'translateY(25%)' }, { opacity: 1, transform: 'translateY(0)' }]);
+    assert.equal(calls[0].options.duration, 220);
     assert.equal(calls[0].options.delay ?? 0, 0);
     assert.equal(calls[0].options.easing?.replace(/\s/g, ''), 'cubic-bezier(0.22,1,0.36,1)');
     await act(async () => root.render(<PinActivityNotice activity={{ ...activity, timestampMs: activity.timestampMs + 1000 }} />));
