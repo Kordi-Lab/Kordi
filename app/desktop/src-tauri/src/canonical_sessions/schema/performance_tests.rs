@@ -174,3 +174,34 @@ fn benchmark_repeated_sync_database_opens() {
         assert_eq!(writes, if legacy { 800 } else { 0 });
     }
 }
+
+#[test]
+fn version_three_upgrade_adds_pin_cache_without_resetting_messages_or_cursor() {
+    let conn = Connection::open_in_memory().unwrap();
+    initialize_schema(&conn).unwrap();
+    conn.execute_batch(
+        "DROP TABLE chat_sync_pin_events;
+         UPDATE canonical_schema_meta SET value='3' WHERE key='version';
+         INSERT INTO chat_sync_state VALUES ('fixture','retained-cursor',42,1);
+         INSERT INTO chat_sync_messages(account_id,message_id,conversation_id,conversation_sequence,version,snapshot_json,updated_at_ms,client_message_id,message_kind)
+         VALUES ('fixture','retained-message','conversation',1,1,'{\"body\":\"Retained message\"}',1,'client','text');",
+    ).unwrap();
+    initialize_schema(&conn).unwrap();
+    assert!(table_exists(&conn, "chat_sync_pin_events").unwrap());
+    assert!(schema_is_current(&conn).unwrap());
+    let retained: (String, String, i64) = conn.query_row(
+        "SELECT m.snapshot_json,s.cursor,s.last_stream_seq FROM chat_sync_messages m JOIN chat_sync_state s ON s.account_id=m.account_id WHERE m.message_id='retained-message'",
+        [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+    ).unwrap();
+    assert_eq!(
+        retained,
+        (
+            "{\"body\":\"Retained message\"}".into(),
+            "retained-cursor".into(),
+            42
+        )
+    );
+    let writes = conn.total_changes();
+    initialize_schema(&conn).unwrap();
+    assert_eq!(conn.total_changes(), writes);
+}

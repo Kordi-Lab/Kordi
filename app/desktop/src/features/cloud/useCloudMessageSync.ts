@@ -96,7 +96,6 @@ export function useCloudMessageSync({
     stateRef: pinnedGroupSpaceIdsRef,
   } = stores.pinnedGroupSpaceIds;
   const pendingRequestRef = useRef<PendingCloudSyncRequest | null>(null);
-  const pinCacheReadyRef = useRef(true);
   const startupSnapshotContextRef = useRef<string | null>(null);
   const historyRepairRef = useRef(createCloudHistoryRepair());
 
@@ -256,7 +255,6 @@ export function useCloudMessageSync({
     setForks((current) => (
       cloudSessionForksByIdEqual(current, sessionForksById) ? current : sessionForksById
     ));
-    pinCacheReadyRef.current = true;
     setPins((current) => {
       const merged = mergePinSyncSnapshot(current, sessionPinsById, initialSessionPins);
       pinsRef.current = merged;
@@ -299,7 +297,6 @@ export function useCloudMessageSync({
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const local = await loadChatSyncLocalState(account.accountId);
     if (!local || !coordinator.isCurrentGeneration(generation)) return;
-    pinCacheReadyRef.current = local.pinCacheReady !== false;
     if (!local.visibility) return;
     const cachedPins = applyCloudSyncEventsToSessionPins({}, (local.pinEvents ?? []).map(event => ({
       eventId: event.event_id, eventType: event.type, peerAccountId: null, messageId: null,
@@ -412,7 +409,7 @@ export function useCloudMessageSync({
         // backfill then operate exclusively on the durable cursor stream.
         await Promise.all([hydrateChatLocalState(generation), refreshCloudAgents(generation).catch(() => {})]);
       }
-      await syncDiffOnceForGeneration(generation, request.mode === 'full' || !pinCacheReadyRef.current || !hasCachedCloudSessionVisibility(account?.accountId));
+      await syncDiffOnceForGeneration(generation, request.mode === 'full' || !hasCachedCloudSessionVisibility(account?.accountId));
       if (!coordinator.isCurrentGeneration(generation)) return;
       // The authoritative live cursor is caught up. Older transcript backfill
       // and unread publication must not hold up an incoming execution lease.

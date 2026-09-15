@@ -430,7 +430,7 @@ final class AppModel: ObservableObject {
                 sessionForksById = snapshot.sessionForksById ?? [:]
                 rebuildCloudMessageIndices()
                 applyLatestSyncedAgentModelChanges()
-                cloudSyncCursor = snapshot.sessionPinsByID == nil ? "0" : snapshot.cursor
+                cloudSyncCursor = snapshot.cursor
                 lastMessageSyncAt = snapshot.savedAt
                 hasHydratedWireSnapshot = snapshot.cursor != "0" && snapshot.visibility != nil
                 hasHydratedForkLineage = snapshot.sessionForksById != nil
@@ -7230,7 +7230,7 @@ final class AppModel: ObservableObject {
             sessionForksById = snapshot.sessionForksById ?? [:]
             rebuildCloudMessageIndices()
             applyLatestSyncedAgentModelChanges()
-            cloudSyncCursor = snapshot.sessionPinsByID == nil ? "0" : snapshot.cursor
+            cloudSyncCursor = snapshot.cursor
             lastMessageSyncAt = snapshot.savedAt
             hasHydratedWireSnapshot = snapshot.cursor != "0" && snapshot.visibility != nil
             hasHydratedForkLineage = snapshot.sessionForksById != nil
