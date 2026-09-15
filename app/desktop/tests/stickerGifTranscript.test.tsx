@@ -67,3 +67,22 @@ test('upload failures override stale pending delivery status', () => {
     kind: 'failed', label: 'Upload request failed',
   });
 });
+
+test('a synced sticker renders from the message kind when the wire carried no subtype', () => {
+  // The Cloud server rejects a "sticker" attachment subtype, so neither Mac nor
+  // iPhone puts one on the wire. The message kind is the only signal that
+  // survives a round trip, and it has to be enough on its own.
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      ...imageMessage,
+      messageKind: 'sticker',
+      attachments: [{
+        ...imageMessage.attachments![0],
+        previewUrl: 'data:image/png;base64,sticker-preview',
+      }],
+    },
+  }));
+
+  assert.match(markup, /data-attachment-sticker="true"/);
+  assert.doesNotMatch(markup, /data-attachment-image-preview-trigger="true"/);
+});

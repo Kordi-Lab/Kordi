@@ -44,7 +44,7 @@ fn durable_message_content_requires_schema_and_blocks() {
 }
 
 #[test]
-fn meme_attachments_require_accessible_supported_image_metadata() {
+fn retired_meme_attachments_stay_valid_without_rules_of_their_own() {
     let attachment_id = "att_meme".to_string();
     let request = |attachment| SendMessageRequest {
         client_message_id: Uuid::now_v7(),
@@ -68,11 +68,77 @@ fn meme_attachments_require_accessible_supported_image_metadata() {
 
     assert!(validate_message_request(&request(valid.clone())).is_ok());
 
+    // Alt text was the one meme-only rule; stored messages that lost it stay editable.
     let mut missing_alt = valid.clone();
     missing_alt["altText"] = json!("  ");
-    assert!(validate_message_request(&request(missing_alt)).is_err());
+    assert!(validate_message_request(&request(missing_alt)).is_ok());
 
     let mut unsupported_type = valid;
     unsupported_type["mimeType"] = json!("image/svg+xml");
     assert!(validate_message_request(&request(unsupported_type)).is_err());
+}
+
+#[test]
+fn sticker_attachments_ride_the_image_pipeline_without_alt_text() {
+    let attachment_id = "att_sticker".to_string();
+    let request = |attachment| SendMessageRequest {
+        client_message_id: Uuid::now_v7(),
+        kind: "text".to_string(),
+        content: json!({
+            "schema": 1,
+            "blocks": [],
+            "legacy_attachments": [attachment]
+        }),
+        reply_to_message_id: None,
+        attachment_ids: vec![attachment_id.clone()],
+    };
+    let valid = json!({
+        "attachmentId": attachment_id,
+        "name": "wave.webp",
+        "kind": "image",
+        "subtype": "sticker",
+        "mimeType": "image/webp"
+    });
+
+    assert!(validate_message_request(&request(valid.clone())).is_ok());
+
+    let mut animated = valid.clone();
+    animated["mimeType"] = json!("image/gif");
+    assert!(validate_message_request(&request(animated)).is_ok());
+
+    let mut unknown_attachment = valid.clone();
+    unknown_attachment["attachmentId"] = json!("att_other");
+    assert!(validate_message_request(&request(unknown_attachment)).is_err());
+
+    let mut unsupported_type = valid.clone();
+    unsupported_type["mimeType"] = json!("image/svg+xml");
+    assert!(validate_message_request(&request(unsupported_type)).is_err());
+
+    let mut as_file = valid;
+    as_file["kind"] = json!("file");
+    assert!(validate_message_request(&request(as_file)).is_err());
+}
+
+#[test]
+fn unknown_attachment_subtypes_stay_rejected() {
+    let attachment_id = "att_image".to_string();
+    let request = SendMessageRequest {
+        client_message_id: Uuid::now_v7(),
+        kind: "text".to_string(),
+        content: json!({
+            "schema": 1,
+            "blocks": [],
+            "legacy_attachments": [{
+                "attachmentId": attachment_id,
+                "name": "clip.png",
+                "kind": "image",
+                "subtype": "collage",
+                "mimeType": "image/png"
+            }]
+        }),
+        reply_to_message_id: None,
+        attachment_ids: vec![attachment_id.clone()],
+    };
+
+    assert!(validate_message_request(&request).is_err());
 }

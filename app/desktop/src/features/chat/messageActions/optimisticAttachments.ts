@@ -8,12 +8,7 @@ export function toOptimisticAttachments(attachments: AttachmentItem[]) {
     kind: attachment.kind,
     ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
     ...(attachment.livePhotoFiles ? { livePhotoFiles: attachment.livePhotoFiles } : {}),
-    ...(attachment.subtype === 'sticker'
-      ? { subtype: 'sticker' as const }
-      : attachment.subtype === 'meme' ? {
-          subtype: 'meme' as const,
-          altText: attachment.altText ?? null,
-        } : {}),
+    ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const } : {}),
     name: attachment.name,
     formatLabel: attachment.formatLabel,
     previewUrl: attachment.previewUrl,

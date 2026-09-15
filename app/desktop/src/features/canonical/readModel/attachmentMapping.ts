@@ -28,12 +28,7 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
     const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
     const attachment: MessageAttachment = {
       kind,
-      ...(record.subtype === 'sticker' && kind === 'image'
-        ? { subtype: 'sticker' as const }
-        : record.subtype === 'meme' && kind === 'image' ? {
-            subtype: 'meme' as const,
-            altText: stringValue(record.altText) ?? null,
-          } : {}),
+      ...(record.subtype === 'sticker' && kind === 'image' ? { subtype: 'sticker' as const } : {}),
       name,
       formatLabel: stringValue(record.formatLabel) ?? null,
       previewUrl: stringValue(record.previewUrl) ?? null,

@@ -277,12 +277,6 @@ export function ChatThreadPanel({
                         ...current,
                         [rootId]: (current[rootId] ?? []).filter((attachment) => attachment.id !== id),
                       }))}
-                      onUpdate={(id, update) => setAttachmentsByRoot((current) => ({
-                        ...current,
-                        [rootId]: (current[rootId] ?? []).map((attachment) => (
-                          attachment.id === id ? { ...attachment, ...update } : attachment
-                        )),
-                      }))}
                     />
                     <textarea
                       ref={textareaRef}
@@ -332,7 +326,6 @@ export function ChatThreadPanel({
                   <VoiceComposerControls
                     voice={voice}
                     hasSendableDraft={Boolean(draft.trim() || attachments.length)}
-                    validationError={null}
                     activeLiveTurnIsRunning={false}
                     onSend={() => { void send(); }}
                   />
