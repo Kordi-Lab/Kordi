@@ -24,4 +24,3 @@ export function VoiceWaveform({ samples, progress = 0, live = false, count = 36 
     </span>
   );
 }
-

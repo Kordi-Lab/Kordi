@@ -83,3 +83,19 @@ Automated coverage is in the desktop voice tests, iOS VoiceTranscriptionTests,
 Cloud voice metadata unit tests, and the database-backed chat-sync voice test.
 Deterministic tests verify state, identity, authorization, and model-visible text.
 They do not establish live recognition accuracy or a provider semantic benchmark.
+
+## Group transport regression
+
+The group envelope parser uses the shared portable voice parser for both drafts
+and uploaded messages. Transcription status, source version, engine/settings
+revision, locale, and attempt count survive outbox persistence and restoration,
+upload completion, eager sends, wire serialization, and incoming history reads.
+Local filesystem paths are excluded. Legacy messages without metadata retain
+their transcript; malformed or stale metadata cannot become spoken content.
+
+`voiceGroupTransport.test.tsx` covers all four states across the complete client
+round trip, upload reuse, eager binding, stale metadata, and legacy compatibility.
+A synthetic check against the isolated development API also verified persisted
+metadata and peer history for all four states, versioned/idempotent retry, sender
+authorization, and stale-version rejection. Its accounts, group, and audio object
+were removed after verification. The check used synthetic accounts and generated audio.

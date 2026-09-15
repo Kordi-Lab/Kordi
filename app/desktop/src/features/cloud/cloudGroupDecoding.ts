@@ -1,3 +1,4 @@
+import { cloudVoiceDraftMetadataOnly } from './cloudVoiceMessage';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { MessageVoiceDraft } from '@/kordi-app/types/message';
 
@@ -31,28 +32,7 @@ export function cloudGroupMessageRuntimeFields(candidate: Record<string, unknown
   forkSnapshot?: boolean;
 } {
   const structuredContent = candidate.structuredContent;
-  const voice = candidate.voiceMessage && typeof candidate.voiceMessage === 'object' && !Array.isArray(candidate.voiceMessage)
-    ? candidate.voiceMessage as Record<string, unknown>
-    : null;
-  const durationMs = voice && typeof voice.durationMs === 'number' && Number.isFinite(voice.durationMs)
-    ? Math.max(0, Math.round(voice.durationMs))
-    : 0;
-  const waveformSamples = voice && Array.isArray(voice.waveformSamples)
-    ? voice.waveformSamples.flatMap((sample) => (
-        typeof sample === 'number' && Number.isFinite(sample)
-          ? [Math.max(0, Math.min(1, sample))]
-          : []
-      )).slice(0, 96)
-    : [];
-  const mimeType = cleanText(voice?.mimeType);
-  const voiceMessage = voice && mimeType && durationMs > 0 ? {
-    mediaId: cleanText(voice.mediaId) || null,
-    mimeType,
-    durationMs,
-    waveformSamples,
-    transcript: cleanText(voice.transcript),
-    localPath: cleanText(voice.localPath) || null,
-  } : null;
+  const voiceMessage = cloudVoiceDraftMetadataOnly(candidate.voiceMessage);
   return {
     ...(candidate.forkSnapshot === true ? { forkSnapshot: true } : {}),
     agentRuntimeRoute: runtimeRoute(candidate.agentRuntimeRoute),
