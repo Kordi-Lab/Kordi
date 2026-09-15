@@ -63,6 +63,16 @@ export function cloudOperationUuid(value?: string | null): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+// Sticker identity rides the message kind, never an attachment subtype. iOS
+// strips it the same way in Core/API/CloudAPIClient.swift; keeping the two
+// clients on one wire shape is what makes a sticker sent from either device
+// decode on the other.
+function wireAttachment(attachment: SendCloudMessageAttachmentInput) {
+  if (attachment.subtype !== 'sticker') return attachment;
+  const { subtype: _sticker, ...ordinaryAttachment } = attachment;
+  return ordinaryAttachment;
+}
+
 export function chatTextContent(
   body: string,
   attachments: SendCloudMessageAttachmentInput[],
@@ -88,7 +98,7 @@ export function chatTextContent(
         } } : {}),
       }] : []),
     ],
-    legacy_attachments: voiceMessage ? [] : attachments,
+    legacy_attachments: voiceMessage ? [] : attachments.map(wireAttachment),
     ...(canonicalHistory ? {
       canonical_history: {
         local_message_id: canonicalHistory.localMessageId,

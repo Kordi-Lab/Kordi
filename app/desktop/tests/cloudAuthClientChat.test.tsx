@@ -265,7 +265,7 @@ test('setReaction restores a missing session-routed conversation before mutating
   assert.deepEqual(updated.reactions, [{ value: 'blob:blobwave', accountIds: ['acct_me'] }]);
 });
 
-test('sendMessage round-trips the sticker subtype in canonical attachment metadata', async () => {
+test('sendMessage keeps the sticker subtype off the wire, matching iOS', async () => {
   let sentContent: Record<string, unknown> | null = null;
   const { fetchImpl } = recordingFetch((call) => {
     if (call.url.endsWith('/v2/chat/conversations')) {
@@ -312,10 +312,11 @@ test('sendMessage round-trips the sticker subtype in canonical attachment metada
   });
 
   const metadata = (sentContent?.legacy_attachments as Array<Record<string, unknown>>)[0];
-  assert.equal(metadata?.subtype, 'sticker');
+  // The server rejects a "sticker" subtype, and iOS omits it too
+  // (Core/API/CloudAPIClient.swift). The message kind carries the identity.
+  assert.equal(metadata?.subtype, undefined);
   assert.equal(metadata?.widthPixels, 512);
   assert.equal(metadata?.heightPixels, 384);
-  assert.equal(sent.attachments?.[0]?.subtype, 'sticker');
   assert.equal(sent.attachments?.[0]?.widthPixels, 512);
   assert.equal(sent.attachments?.[0]?.heightPixels, 384);
 });
