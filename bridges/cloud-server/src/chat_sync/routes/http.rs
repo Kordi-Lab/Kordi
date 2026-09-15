@@ -246,6 +246,12 @@ fn validate_voice_message(
     })
 }
 
+#[derive(Clone, Copy)]
+enum AttachmentSubtype {
+    Meme,
+    Sticker,
+}
+
 fn validate_attachment_metadata(
     content: &serde_json::Map<String, serde_json::Value>,
     attachment_ids: &[String],
@@ -296,13 +302,17 @@ fn validate_attachment_metadata(
         if subtype.is_null() {
             continue;
         }
-        if subtype.as_str() != Some("meme") {
-            return Err(MessageValidationError {
-                status: StatusCode::BAD_REQUEST,
-                code: "INVALID_ATTACHMENT_SUBTYPE",
-                message: "The attachment subtype is not supported.",
-            });
-        }
+        let subtype = match subtype.as_str() {
+            Some("meme") => AttachmentSubtype::Meme,
+            Some("sticker") => AttachmentSubtype::Sticker,
+            _ => {
+                return Err(MessageValidationError {
+                    status: StatusCode::BAD_REQUEST,
+                    code: "INVALID_ATTACHMENT_SUBTYPE",
+                    message: "The attachment subtype is not supported.",
+                })
+            }
+        };
         let attachment_id = attachment
             .get("attachmentId")
             .and_then(serde_json::Value::as_str)
@@ -322,20 +332,34 @@ fn validate_attachment_metadata(
             mime_type.to_ascii_lowercase().as_str(),
             "image/png" | "image/jpeg" | "image/jpg" | "image/gif" | "image/webp"
         );
-        if attachment_id.is_empty()
-            || !attachment_ids
+        // Stickers and memes ride the same authorized image pipeline. Only memes
+        // must caption themselves, so alt text stays optional for stickers.
+        let image_metadata_valid = !attachment_id.is_empty()
+            && attachment_ids
                 .iter()
                 .any(|value| value.trim() == attachment_id)
-            || attachment.get("kind").and_then(serde_json::Value::as_str) != Some("image")
-            || alt_text.is_empty()
-            || alt_text.chars().count() > 500
-            || !supported_mime
-        {
-            return Err(MessageValidationError {
-                status: StatusCode::BAD_REQUEST,
-                code: "INVALID_MEME_ATTACHMENT",
-                message: "Meme attachments require a supported image, a matching attachment ID, and alt text of 500 characters or fewer.",
-            });
+            && attachment.get("kind").and_then(serde_json::Value::as_str) == Some("image")
+            && alt_text.chars().count() <= 500
+            && supported_mime;
+        match subtype {
+            AttachmentSubtype::Meme => {
+                if !image_metadata_valid || alt_text.is_empty() {
+                    return Err(MessageValidationError {
+                        status: StatusCode::BAD_REQUEST,
+                        code: "INVALID_MEME_ATTACHMENT",
+                        message: "Meme attachments require a supported image, a matching attachment ID, and alt text of 500 characters or fewer.",
+                    });
+                }
+            }
+            AttachmentSubtype::Sticker => {
+                if !image_metadata_valid {
+                    return Err(MessageValidationError {
+                        status: StatusCode::BAD_REQUEST,
+                        code: "INVALID_STICKER_ATTACHMENT",
+                        message: "Sticker attachments require a supported image, a matching attachment ID, and alt text of 500 characters or fewer.",
+                    });
+                }
+            }
         }
     }
     Ok(())

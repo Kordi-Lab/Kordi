@@ -1,6 +1,6 @@
 use super::*;
 
-fn normalized_meme_content_type(value: &str) -> Option<&'static str> {
+fn normalized_image_content_type(value: &str) -> Option<&'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
         "image/png" => Some("image/png"),
         "image/jpeg" | "image/jpg" => Some("image/jpeg"),
@@ -10,7 +10,10 @@ fn normalized_meme_content_type(value: &str) -> Option<&'static str> {
     }
 }
 
-pub(super) fn meme_attachment_metadata(
+/// Collects every attachment that declares an expressive subtype so its stored
+/// bytes can be checked against the declared type. Memes must caption
+/// themselves; stickers carry the same image guarantees without alt text.
+pub(super) fn subtyped_attachment_metadata(
     content: &Value,
     attachment_ids: &[String],
 ) -> Result<Vec<(String, &'static str)>, StoreError> {
@@ -23,7 +26,7 @@ pub(super) fn meme_attachment_metadata(
     let attachments = attachments
         .as_array()
         .ok_or(StoreError::InvalidInput("attachment metadata is invalid"))?;
-    let mut memes = Vec::new();
+    let mut images = Vec::new();
     for attachment in attachments {
         let attachment = attachment
             .as_object()
@@ -34,51 +37,55 @@ pub(super) fn meme_attachment_metadata(
         if subtype.is_null() {
             continue;
         }
-        if subtype.as_str() != Some("meme") {
-            return Err(StoreError::InvalidInput("attachment subtype is invalid"));
-        }
+        let requires_alt_text = match subtype.as_str() {
+            Some("meme") => true,
+            Some("sticker") => false,
+            _ => return Err(StoreError::InvalidInput("attachment subtype is invalid")),
+        };
         let attachment_id = attachment
             .get("attachmentId")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| attachment_ids.iter().any(|candidate| candidate == value))
             .ok_or(StoreError::InvalidInput(
-                "meme attachment metadata is invalid",
+                "image attachment metadata is invalid",
             ))?;
-        attachment
+        let alt_text = attachment
             .get("altText")
             .and_then(Value::as_str)
             .map(str::trim)
-            .filter(|value| !value.is_empty() && value.chars().count() <= 500)
-            .ok_or(StoreError::InvalidInput(
-                "meme attachment metadata is invalid",
-            ))?;
+            .unwrap_or_default();
+        if alt_text.chars().count() > 500 || (requires_alt_text && alt_text.is_empty()) {
+            return Err(StoreError::InvalidInput(
+                "image attachment metadata is invalid",
+            ));
+        }
         if attachment.get("kind").and_then(Value::as_str) != Some("image") {
             return Err(StoreError::InvalidInput(
-                "meme attachment metadata is invalid",
+                "image attachment metadata is invalid",
             ));
         }
         let mime_type = attachment
             .get("mimeType")
             .and_then(Value::as_str)
-            .and_then(normalized_meme_content_type)
+            .and_then(normalized_image_content_type)
             .ok_or(StoreError::InvalidInput(
-                "meme attachment metadata is invalid",
+                "image attachment metadata is invalid",
             ))?;
-        memes.push((attachment_id.to_string(), mime_type));
+        images.push((attachment_id.to_string(), mime_type));
     }
-    Ok(memes)
+    Ok(images)
 }
 
-pub(super) async fn validate_meme_attachment_bytes(
+pub(super) async fn validate_subtyped_attachment_bytes(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
-    memes: &[(String, &'static str)],
+    images: &[(String, &'static str)],
 ) -> Result<(), StoreError> {
-    if memes.is_empty() {
+    if images.is_empty() {
         return Ok(());
     }
-    let ids = memes.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+    let ids = images.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
     let rows: Vec<(String, Option<String>, Option<String>)> = query_as(
         "SELECT attachment_id, content_type, detected_content_type FROM cloud_attachments \
          WHERE attachment_id = ANY($1) AND owner_account_id = $2 AND finalized_at IS NOT NULL",
@@ -87,29 +94,29 @@ pub(super) async fn validate_meme_attachment_bytes(
     .bind(account_id)
     .fetch_all(&mut **transaction)
     .await?;
-    if rows.len() != memes.len() {
+    if rows.len() != images.len() {
         return Err(StoreError::InvalidInput(
-            "meme attachment content is invalid",
+            "image attachment content is invalid",
         ));
     }
-    for (attachment_id, metadata_type) in memes {
+    for (attachment_id, metadata_type) in images {
         let Some((_, declared_type, detected_type)) = rows
             .iter()
             .find(|(stored_attachment_id, _, _)| stored_attachment_id == attachment_id)
         else {
             return Err(StoreError::InvalidInput(
-                "meme attachment content is invalid",
+                "image attachment content is invalid",
             ));
         };
         let declared_type = declared_type
             .as_deref()
-            .and_then(normalized_meme_content_type);
+            .and_then(normalized_image_content_type);
         let detected_type = detected_type
             .as_deref()
-            .and_then(normalized_meme_content_type);
+            .and_then(normalized_image_content_type);
         if declared_type != Some(*metadata_type) || detected_type != Some(*metadata_type) {
             return Err(StoreError::InvalidInput(
-                "meme attachment content is invalid",
+                "image attachment content is invalid",
             ));
         }
     }
@@ -120,7 +127,7 @@ pub(super) async fn validate_meme_attachment_bytes(
 mod tests {
     use serde_json::json;
 
-    use super::{meme_attachment_metadata, normalized_meme_content_type};
+    use super::{normalized_image_content_type, subtyped_attachment_metadata};
 
     #[test]
     fn extracts_valid_meme_attachment_metadata() {
@@ -135,8 +142,25 @@ mod tests {
         });
         let attachments = vec!["att_1".to_string()];
         assert_eq!(
-            meme_attachment_metadata(&content, &attachments).unwrap(),
+            subtyped_attachment_metadata(&content, &attachments).unwrap(),
             vec![("att_1".to_string(), "image/jpeg")]
+        );
+    }
+
+    #[test]
+    fn extracts_sticker_attachment_metadata_without_alt_text() {
+        let content = json!({
+            "legacy_attachments": [{
+                "attachmentId": "att_1",
+                "kind": "image",
+                "subtype": "sticker",
+                "mimeType": "image/webp"
+            }]
+        });
+        let attachments = vec!["att_1".to_string()];
+        assert_eq!(
+            subtyped_attachment_metadata(&content, &attachments).unwrap(),
+            vec![("att_1".to_string(), "image/webp")]
         );
     }
 
@@ -151,8 +175,8 @@ mod tests {
                 "mimeType": "image/png"
             }]
         });
-        assert!(meme_attachment_metadata(&missing_alt, &["att_1".to_string()]).is_err());
-        assert!(meme_attachment_metadata(
+        assert!(subtyped_attachment_metadata(&missing_alt, &["att_1".to_string()]).is_err());
+        assert!(subtyped_attachment_metadata(
             &json!({ "legacy_attachments": [{
                 "attachmentId": "att_other",
                 "kind": "image",
@@ -163,6 +187,39 @@ mod tests {
             &["att_1".to_string()]
         )
         .is_err());
-        assert_eq!(normalized_meme_content_type("image/svg+xml"), None);
+        assert_eq!(normalized_image_content_type("image/svg+xml"), None);
+    }
+
+    #[test]
+    fn rejects_unlinked_or_unsupported_sticker_metadata() {
+        let unlinked = json!({
+            "legacy_attachments": [{
+                "attachmentId": "att_other",
+                "kind": "image",
+                "subtype": "sticker",
+                "mimeType": "image/png"
+            }]
+        });
+        assert!(subtyped_attachment_metadata(&unlinked, &["att_1".to_string()]).is_err());
+
+        let unsupported_type = json!({
+            "legacy_attachments": [{
+                "attachmentId": "att_1",
+                "kind": "image",
+                "subtype": "sticker",
+                "mimeType": "image/svg+xml"
+            }]
+        });
+        assert!(subtyped_attachment_metadata(&unsupported_type, &["att_1".to_string()]).is_err());
+
+        let unknown_subtype = json!({
+            "legacy_attachments": [{
+                "attachmentId": "att_1",
+                "kind": "image",
+                "subtype": "collage",
+                "mimeType": "image/png"
+            }]
+        });
+        assert!(subtyped_attachment_metadata(&unknown_subtype, &["att_1".to_string()]).is_err());
     }
 }
