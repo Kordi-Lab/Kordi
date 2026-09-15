@@ -158,6 +158,7 @@ test('a completed local mutation cannot mask pin state arriving from another dev
 test('local pin feedback appears before delayed sync, reconciles once, and rolls back failed actions', async () => {
   await installVirtualTranscriptHarness();
   const { useChatPins } = await import('../src/pages/useChatPins');
+  const { PinActivityNotice } = await import('../src/pages/chatsPage.pins');
   type Pin = import('../src/features/cloud/authClient').CloudSessionPin;
   const sessionId = 'session:group:pending-pin';
   let state!: ReturnType<typeof useChatPins>;
@@ -172,7 +173,7 @@ test('local pin feedback appears before delayed sync, reconciles once, and rolls
       messages: [earlier], sessionId, isGroupSession: true, currentAccountId: 'owner', cloudPin,
       onNavigateToMessage() {}, onUpdateCloudPin: () => new Promise<Pin>((yes, no) => { resolve = yes; reject = no; }),
     });
-    return null;
+    return <>{state.pinActivities.map(activity => <PinActivityNotice key={activity.id} activity={activity} />)}</>;
   }
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
   try {
@@ -180,11 +181,14 @@ test('local pin feedback appears before delayed sync, reconciles once, and rolls
     await act(async () => state.requestPin(earlier));
     await act(async () => state.dialog.confirm());
     assert.equal(state.pinActivities.length, 1, 'Immediate feedback must not wait for a sync response');
+    const localId = state.pinActivities[0].id;
+    const localRow = host.querySelector('[data-pin-activity]');
     const pinned = { ...empty, privateMessageId: earlier.id!, effectiveMessageId: earlier.id!, updatedAt: new Date().toISOString() };
     await act(async () => { applyPin(pinned); resolve(pinned); });
     assert.equal(state.pinActivities.length, 1, 'Legacy mutation response must not remove its notice');
     await act(async () => applyPin({ ...pinned, history: [{ id: 'synced-event', sessionId, kind: 'pinned', scope: 'private', messageId: earlier.id!, updatedByAccountId: 'owner', updatedAt: pinned.updatedAt }] }));
-    assert.deepEqual(state.pinActivities.map(item => item.id), ['pin-activity:synced-event']);
+    assert.deepEqual(state.pinActivities.map(item => item.id), [localId]);
+    assert.equal(host.querySelector('[data-pin-activity]'), localRow, 'Server confirmation must update the same row without restarting its entrance');
     await act(async () => state.requestUnpin(earlier, 'private'));
     await act(async () => state.dialog.confirm());
     assert.equal(state.pinActivities.length, 2);

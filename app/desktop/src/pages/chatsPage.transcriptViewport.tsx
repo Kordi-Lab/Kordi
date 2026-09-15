@@ -14,7 +14,7 @@ import type { Message } from '@/kordi-app/types';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
-import { insertPinActivities } from '@/pages/chatsPage.pinActivity';
+import { insertPinActivities, PIN_ACTIVITY_ESTIMATED_HEIGHT } from '@/pages/chatsPage.pinActivity';
 import { PinActivityNotice } from '@/pages/chatsPage.pins';
 
 type TranscriptEntry = {
@@ -193,7 +193,7 @@ export function useChatTranscriptViewport({
       items={timelineEntries}
       passiveUpdateKey={passiveUpdateKey}
       messageContentKey={messageContentKey}
-      estimateSize={(entry) => 'pinActivity' in entry ? 48 : estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]))}
+      estimateSize={(entry) => 'pinActivity' in entry ? PIN_ACTIVITY_ESTIMATED_HEIGHT : estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]))}
       sessionKey={sessionKey}
       scrollRef={scrollRef}
       scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}

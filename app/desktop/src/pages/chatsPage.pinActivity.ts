@@ -5,7 +5,10 @@ export type PinActivity = {
   sequence?: number;
   label: string;
   timestampMs: number;
+  animate?: boolean;
 };
+
+export const PIN_ACTIVITY_ESTIMATED_HEIGHT = 60;
 
 export type MessageTimelineEntry = { message: Message; originalIndex: number };
 export type PinActivityTimelineEntry = { pinActivity: PinActivity };

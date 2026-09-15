@@ -1,6 +1,6 @@
 import { cloudOperationUuid } from '@/features/cloud/chatSyncMapping';
 import { mergePinHistory, type CloudPinHistoryEvent } from '@/features/cloud/cloudPinHistory';
-import { remainingPendingPinActions, type PendingPinAction } from '@/pages/pendingPinActions';
+import { remainingPendingPinActions, resolvePendingPinActions, type PendingPinAction } from '@/pages/pendingPinActions';
 import { useCallback, useMemo, useState } from 'react';
 
 import { createPinActivity, type PinActivity } from '@/pages/chatsPage.pinActivity';
@@ -115,19 +115,22 @@ export function useChatPins({
   const pinActivities = useMemo(() => {
     if (!usesCloudPins) return localPinActivity[pinScopeKey] ?? [];
     const history = mergePinHistory(cloudPin?.history, optimisticCloudPin?.history);
-    const pending = remainingPendingPinActions(pendingCloudActions[pinScopeKey] ?? [], history).map(action => action.event);
+    const actions = resolvePendingPinActions(pendingCloudActions[pinScopeKey] ?? [], history);
+    const aliases = new Map(actions.flatMap(action => action.resolvedId ? [[action.resolvedId, action.event.id] as const] : []));
+    const pending = remainingPendingPinActions(actions, history).map(action => action.event);
     return mergePinHistory(history, pending).flatMap((event) => {
       if (event.scope === 'private' && event.updatedByAccountId !== currentAccountId) return [];
       const actor = pinActorLabel(conversation, event.updatedByAccountId, currentAccountId);
-      const activity = createPinActivity(`pin-activity:${event.id}`, `${actor} ${event.kind} a message`, event.updatedAt);
-      return activity ? [{ ...activity, sequence: event.sequence }] : [];
+      const presentationId = aliases.get(event.id) ?? event.id;
+      const activity = createPinActivity(`pin-activity:${presentationId}`, `${actor} ${event.kind} a message`, event.updatedAt);
+      return activity ? [{ ...activity, sequence: event.sequence, animate: presentationId.startsWith('local-pin:') }] : [];
     });
   }, [cloudPin?.history, optimisticCloudPin?.history, pendingCloudActions, conversation, currentAccountId, localPinActivity, pinScopeKey, usesCloudPins]);
 
   const pendingActions = pendingCloudActions[pinScopeKey];
   if (pendingActions?.length) {
-    const remaining = remainingPendingPinActions(pendingActions, cloudPin?.history ?? []);
-    if (remaining.length !== pendingActions.length) setPendingCloudActions({ ...pendingCloudActions, [pinScopeKey]: remaining });
+    const resolved = resolvePendingPinActions(pendingActions, cloudPin?.history ?? []);
+    if (resolved.some((action, index) => action !== pendingActions[index])) setPendingCloudActions({ ...pendingCloudActions, [pinScopeKey]: resolved });
   }
 
   const requestPin = useCallback((message: Message) => {
@@ -238,6 +241,7 @@ export function useChatPins({
       ...current,
       [pinScopeKey]: [...(current[pinScopeKey] ?? []), {
         id: activityId,
+        animate: true,
         label: `You ${dialog.mode === 'pin' ? 'pinned' : 'unpinned'} a message`,
         timestampMs,
         sequence: (current[pinScopeKey]?.slice(-1)[0]?.sequence ?? 0) + 1,
