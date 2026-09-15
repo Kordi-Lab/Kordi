@@ -26,7 +26,7 @@ extension VoiceMessage {
         if !spokenText.isEmpty { return "Transcript ready." }
         switch transcription?.status {
         case .pending: return "Transcription pending."
-        case .failed: return "Transcription failed. Audio is preserved."
+        case .failed: return "Transcription failed."
         default: return "Transcript unavailable for this recording."
         }
     }

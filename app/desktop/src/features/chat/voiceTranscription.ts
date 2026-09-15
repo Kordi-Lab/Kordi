@@ -29,7 +29,7 @@ export function voiceTranscriptionStatus(voice: Voice): VoiceTranscription['stat
 export function voiceTranscriptionLabel(voice: Voice): string {
   switch (voiceTranscriptionStatus(voice)) {
     case 'pending': return 'Transcription pending.';
-    case 'failed': return 'Transcription failed. Audio is preserved.';
+    case 'failed': return 'Transcription failed.';
     case 'unavailable': return 'Transcript unavailable for this recording.';
     case 'ready': return 'Transcript ready.';
   }

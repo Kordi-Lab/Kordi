@@ -45,7 +45,7 @@ export function VoiceTranscriptRetry({ voice, target }: { voice: MessageVoice; t
         target.messageId, target.version, voice.mediaId, cached.current.transcript, cached.current.transcription);
       setCompleted(true);
       setNotice(cached.current.transcription.status === 'ready'
-        ? 'Transcript updated.' : 'Transcription failed. Audio is preserved.');
+        ? 'Transcript updated.' : 'Transcription failed.');
     } catch {
       setNotice('Could not update transcription. Refresh the message before retrying.');
     } finally {
