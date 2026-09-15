@@ -251,3 +251,152 @@ async fn multiple_live_executors_require_drain_without_losing_history() {
     .unwrap();
     assert_eq!(active, vec![("new-run".into(), false)]);
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_91_retains_pin_actions_and_captures_rolling_writes() {
+    let pool = fixture(91).await;
+    let conversation = Uuid::new_v4();
+    let session_id = format!("session:group:{conversation}");
+    query("INSERT INTO cloud_chat_conversations(conversation_id,kind,created_by_account_id,client_operation_id,creation_fingerprint,legacy_session_id) VALUES($1,'group','fixture-owner',$1,'pin-history-fixture',$2)")
+        .bind(conversation).bind(&session_id).execute(&pool).await.unwrap();
+    query("INSERT INTO cloud_chat_conversation_members(conversation_id,account_id) VALUES($1,'fixture-owner'),($1,'fixture-peer')")
+        .bind(conversation).execute(&pool).await.unwrap();
+    let mut transaction = pool.begin().await.unwrap();
+    for (scope, target, time) in [
+        ("shared", Some("target"), "2026-09-14T12:00:00Z"),
+        ("private", Some("private-target"), "2026-09-14T12:01:00Z"),
+        ("shared", None, "2026-09-14T12:02:00Z"),
+        ("private", None, "2026-09-14T12:03:00Z"),
+    ] {
+        let recipients = if scope == "shared" {
+            vec!["fixture-owner".into(), "fixture-peer".into()]
+        } else {
+            vec!["fixture-owner".into()]
+        };
+        store::append_user_sync_events_in_transaction(&mut transaction, &recipients, "session.pin.updated", Some(conversation),
+            &json!({"sessionId":session_id,"scope":scope,"messageId":target,"updatedByAccountId":"fixture-owner","updatedAt":time})).await.unwrap();
+    }
+    transaction.commit().await.unwrap();
+    // Exercise the real rollout boundary: capture is installed before historical backfill.
+    let capture = EMBEDDED_MIGRATIONS
+        .iter()
+        .find(|migration| migration.version == 92)
+        .unwrap();
+    let mut transaction = pool.begin().await.unwrap();
+    sqlx_core::raw_sql::raw_sql(capture.sql)
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    query("INSERT INTO cloud_schema_versions(version,description) VALUES(92,$1)")
+        .bind(capture.description)
+        .execute(&mut *transaction)
+        .await
+        .unwrap();
+    transaction.commit().await.unwrap();
+    let mut transaction = pool.begin().await.unwrap();
+    let between = json!({"sessionId":session_id,"scope":"shared","messageId":"between","updatedByAccountId":"fixture-owner","updatedAt":"2026-09-14T12:04:00Z"});
+    store::append_user_sync_events_in_transaction(
+        &mut transaction,
+        &["fixture-owner".into(), "fixture-peer".into()],
+        "session.pin.updated",
+        Some(conversation),
+        &between,
+    )
+    .await
+    .unwrap();
+    query("INSERT INTO cloud_session_shared_pins(session_id,message_id,updated_by_account_id,updated_at) VALUES($1,'between','fixture-owner','2026-09-14T12:04:00Z')").bind(&session_id).execute(&mut *transaction).await.unwrap();
+    transaction.commit().await.unwrap();
+    let before: Vec<(Value,)> = query_as("SELECT to_jsonb(event) FROM cloud_chat_user_sync_events event ORDER BY account_id,stream_seq").fetch_all(&pool).await.unwrap();
+    let (first, second) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    first.unwrap();
+    second.unwrap();
+    latest_version(&pool).await;
+    let after: Vec<(Value,)> = query_as("SELECT to_jsonb(event) FROM cloud_chat_user_sync_events event ORDER BY account_id,stream_seq").fetch_all(&pool).await.unwrap();
+    assert_eq!(
+        before, after,
+        "migration must not rewrite existing journal records"
+    );
+    let history: Vec<(Value,)> = query_as(
+        "SELECT payload FROM cloud_session_pin_history WHERE conversation_id=$1 ORDER BY occurred_at, sequence",
+    )
+    .bind(conversation)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        history.len(),
+        5,
+        "shared fanout represents a single history entry"
+    );
+    assert_eq!(history[0].0["updatedAt"], "2026-09-14T12:00:00Z");
+    assert_eq!(history[3].0["updatedAt"], "2026-09-14T12:03:00Z");
+    let private_count: (i64,) = query_as("SELECT COUNT(*) FROM cloud_session_pin_history WHERE conversation_id=$1 AND scope='private' AND actor_account_id='fixture-owner'").bind(conversation).fetch_one(&pool).await.unwrap();
+    assert_eq!(private_count.0, 2);
+    let snapshot = store::bootstrap(&pool, "fixture-owner").await.unwrap();
+    let pin = snapshot
+        .session_pins
+        .iter()
+        .find(|pin| pin.session_id == session_id)
+        .unwrap();
+    assert_eq!(pin.updated_at.as_deref(), Some("2026-09-14T12:04:00Z"));
+
+    let payload = json!({"sessionId":session_id,"scope":"shared","messageId":"next","updatedByAccountId":"fixture-owner","updatedAt":"2026-09-14T12:05:00Z"});
+    let mut transaction = pool.begin().await.unwrap();
+    store::append_user_sync_events_in_transaction(
+        &mut transaction,
+        &["fixture-owner".into(), "fixture-peer".into()],
+        "session.pin.updated",
+        Some(conversation),
+        &payload,
+    )
+    .await
+    .unwrap();
+    transaction.commit().await.unwrap();
+    let count: (i64,) =
+        query_as("SELECT COUNT(*) FROM cloud_session_pin_history WHERE conversation_id=$1")
+            .bind(conversation)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        count.0, 6,
+        "older server writes after the upgrade must still be captured"
+    );
+    let delivered: Vec<(Value,)> = query_as("SELECT payload->'pinHistoryEvent' FROM cloud_chat_user_sync_events WHERE payload->>'updatedAt'='2026-09-14T12:05:00Z'").fetch_all(&pool).await.unwrap();
+    assert_eq!(delivered.len(), 2);
+    assert_eq!(delivered[0], delivered[1]);
+    apply_migrations(&pool).await.unwrap();
+    let repeated: (i64,) =
+        query_as("SELECT COUNT(*) FROM cloud_session_pin_history WHERE conversation_id=$1")
+            .bind(conversation)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(repeated.0, 6);
+    // New replicas assign an independent ID even if wall-clock timestamps repeat.
+    for target in [Some("repeat"), None, Some("repeat")] {
+        let mut transaction = pool.begin().await.unwrap();
+        let payload = json!({"pinHistoryId":Uuid::now_v7(),"sessionId":session_id,"scope":"shared","messageId":target,"updatedByAccountId":"fixture-owner","updatedAt":"2026-09-14T12:06:00Z"});
+        store::append_user_sync_events_in_transaction(
+            &mut transaction,
+            &["fixture-owner".into(), "fixture-peer".into()],
+            "session.pin.updated",
+            Some(conversation),
+            &payload,
+        )
+        .await
+        .unwrap();
+        transaction.commit().await.unwrap();
+    }
+    let distinct_actions: (i64,) =
+        query_as("SELECT COUNT(*) FROM cloud_session_pin_history WHERE conversation_id=$1")
+            .bind(conversation)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        distinct_actions.0, 9,
+        "separate pin/unpin/pin operations must survive identical timestamps"
+    );
+}

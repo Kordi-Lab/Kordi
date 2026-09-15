@@ -247,6 +247,10 @@ pub fn routes_with_config(
             get(get_cloud_session_pin).put(update_cloud_session_pin),
         )
         .route(
+            "/v1/cloud/sessions/:source_session_id/pin-history",
+            get(get_cloud_session_pin_history),
+        )
+        .route(
             "/v1/cloud/sessions/:source_session_id",
             delete(delete_cloud_session),
         )

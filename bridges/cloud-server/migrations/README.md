@@ -28,3 +28,19 @@ change nor rolling back a server image recreates it. Follow
 obtain separate production deployment authorization after rehearsal passes.
 
 The current server exposes only the canonical chat protocol at `/v2/chat`.
+
+Versions 92 and 93 separate mutable pin state from durable pin/unpin history. They recover
+only actual actions in the retained sync journal, deduplicating shared fanout
+copies and preserving their original timestamps and audience. Actions already
+removed by journal retention cannot be reconstructed from the current pin.
+A database trigger records future actions atomically with sync events, including
+writes from older server replicas during rolling updates or rollback. History
+survives sync-journal retention; conversation/account deletion still cascades.
+
+Migration 92 installs capture before migration 93 backfills retained records,
+so backfill needs no global sync-write lock and leaves no capture gap. Rehearse
+the upgrade against an isolated database and take
+a verified backup before an explicitly authorized production rollout. Deploy the
+server before updating the macOS/iOS clients. The history API is membership-gated,
+paged, and filters private actions to the actor account; existing pin-state APIs
+and older clients remain compatible.

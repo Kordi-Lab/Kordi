@@ -73,6 +73,9 @@ struct MessageBubble: View, Equatable {
     var deletingAttachmentID: String? = nil
     var hidesDeletingAttachment = false
     var onUpdateDeletingAttachmentFrame: (CGRect) -> Void = { _ in }
+    var isPinConfirmationPresented = false
+    var onDismissPinConfirmation: () -> Void = {}
+    var onConfirmPin: (Bool) -> Void = { _ in }
     @State private var isRetrying = false
     @State private var actionFrame = CGRect.zero
     @State private var didAutomaticallyPresentActions = false
@@ -126,6 +129,7 @@ struct MessageBubble: View, Equatable {
             && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
             && lhs.backgroundSessions == rhs.backgroundSessions
             && lhs.fullScreenVideoAttachmentID == rhs.fullScreenVideoAttachmentID
+            && lhs.isPinConfirmationPresented == rhs.isPinConfirmationPresented
     }
 
     var body: some View {
@@ -185,6 +189,20 @@ struct MessageBubble: View, Equatable {
                 }
 
                 messageSurface
+                    .confirmationDialog(
+                        "Pin this message?",
+                        isPresented: Binding(
+                            get: { isPinConfirmationPresented },
+                            set: { if !$0 { onDismissPinConfirmation() } }
+                        ),
+                        titleVisibility: .visible
+                    ) {
+                        Button("Pin for me") { onConfirmPin(false) }
+                        Button("Pin for everyone") { onConfirmPin(true) }
+                        Button("Cancel", role: .cancel) { onDismissPinConfirmation() }
+                    } message: {
+                        Text("Pinned messages stay visible above this session on synced Kordi devices.")
+                    }
                     .overlay(alignment: .bottomTrailing) {
                         if !usesDetachedImageGroup { deliveryStatus }
                     }

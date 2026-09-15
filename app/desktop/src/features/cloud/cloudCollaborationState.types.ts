@@ -101,6 +101,7 @@ export type UseCloudCollaborationStateResult = {
     forkSessionId: string;
     parentMessageId?: string | null;
   }) => Promise<void>;
+  prepareCloudSessionPin?: (sessionId: string) => Promise<void>;
   updateCloudSessionPin: (input: {
     sessionId: string;
     messageId: string | null;

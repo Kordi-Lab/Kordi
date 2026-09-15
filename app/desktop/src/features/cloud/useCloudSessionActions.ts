@@ -1,5 +1,7 @@
+import { mergePinSnapshot } from './cloudPinHistory';
 import {
   useCallback,
+  useLayoutEffect,
   useRef,
   type Dispatch,
   type MutableRefObject,
@@ -90,6 +92,8 @@ export function useCloudSessionActions({
   stores: CloudSessionActionStores;
   syncCollaborationDiff: () => Promise<void>;
 }) {
+  const pinAccountRef = useRef(account?.accountId);
+  useLayoutEffect(() => { pinAccountRef.current = account?.accountId; }, [account?.accountId]);
   const activityRef = stores.activity.valueRef;
   const setActivity = stores.activity.setValue;
   const setForksById = stores.forks.setById;
@@ -285,9 +289,10 @@ export function useCloudSessionActions({
         scope: input.scope,
       },
     );
+    if (pinAccountRef.current !== account.accountId) throw new Error('Cloud account changed.');
     setPinsById((current) => ({
       ...current,
-      [pin.sessionId]: pin,
+      [pin.sessionId]: mergePinSnapshot(current[pin.sessionId], pin),
     }));
     void syncCollaborationDiff();
     return pin;

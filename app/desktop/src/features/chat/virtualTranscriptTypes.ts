@@ -37,6 +37,8 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   emptyState?: ReactNode;
   tail?: ReactNode;
   tailKey?: string | number;
+  passiveUpdateKey?: string;
+  messageContentKey?: string;
   unreadCount?: number;
   navigationAccessory?: ReactNode;
   animateLatestAppend?: boolean;

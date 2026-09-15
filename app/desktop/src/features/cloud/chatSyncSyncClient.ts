@@ -35,7 +35,13 @@ export class ChatSyncSyncClient {
           events: [{ stream_seq: bootstrap.last_stream_seq, event_id: `bootstrap:visibility:${bootstrap.last_stream_seq}`,
             protocol_version: 2, type: 'session.visibility.snapshot', critical: true,
             conversation_id: null, entity_id: null, entity_version: null, occurred_at: bootstrap.server_time,
-            payload: { visibility: bootstrap.session_visibility } }],
+            payload: { visibility: bootstrap.session_visibility } }, ...events.filter(event => event.eventType === 'session.pin.updated').map(event => ({
+              stream_seq: bootstrap.last_stream_seq, event_id: event.eventId,
+              protocol_version: 2 as const, type: event.eventType, critical: true,
+              conversation_id: bootstrap.conversations.find(conversation => (conversation.legacy_session_id ?? conversation.id) === (event.payload as { sessionId?: string } | null)?.sessionId)?.id ?? null,
+              entity_id: null, entity_version: null, occurred_at: event.occurredAt ?? bootstrap.server_time,
+              payload: (event.payload ?? {}) as Record<string, unknown>,
+            }))],
         },
       };
     }
