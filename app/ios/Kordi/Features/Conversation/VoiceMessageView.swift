@@ -601,6 +601,9 @@ struct VoiceMessageBubbleContent: View {
     let isActionPresented: Bool
     let reservesDeliveryStatus: Bool
     let onPrepare: (VoiceMessage) async -> URL?
+    var deliveryState: MessageDeliveryState? = nil
+    var readByCount: Int? = nil
+    var deliveryTint: Color? = nil
     var onUpdateTranscript: ((VoiceMessage) async -> Bool)? = nil
     var onExpansionChange: (Bool) -> Void = { _ in }
 
@@ -695,9 +698,12 @@ struct VoiceMessageBubbleContent: View {
                         .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
 
                         if reservesDeliveryStatus {
-                            Color.clear
-                                .frame(width: 14, height: 1)
-                                .accessibilityHidden(true)
+                            if let deliveryState {
+                                MessageDeliveryGlyph(state: deliveryState, readByCount: readByCount, tint: deliveryTint)
+                                    .allowsHitTesting(false)
+                            } else {
+                                Color.clear.frame(width: 16, height: 14).accessibilityHidden(true)
+                            }
                         }
                     }
                     .frame(height: 20)
@@ -706,7 +712,6 @@ struct VoiceMessageBubbleContent: View {
             .transaction { $0.animation = nil }
 
             VoiceTranscriptDetails(voice: voiceMessage, onPrepare: onPrepare, onUpdate: onUpdateTranscript)
-                .padding(.trailing, reservesDeliveryStatus ? 18 : 0)
                 .frame(height: showsTranscript ? nil : 0, alignment: .top)
                 .clipped()
                 .opacity(showsTranscript ? 1 : 0)

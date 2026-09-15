@@ -455,7 +455,7 @@ struct MessageBubble: View, Equatable {
 
     @ViewBuilder
     private var deliveryStatus: some View {
-        if message.author == .me, !isCallActivity, !message.isEdited,
+        if message.author == .me, message.voiceMessage == nil, !isCallActivity, !message.isEdited,
            message.agentQueuePosition == nil {
             if showsMediaDeliveryStatus {
                 mediaDeliveryStatusOverlay
@@ -539,7 +539,7 @@ struct MessageBubble: View, Equatable {
                 .padding(.leading, message.voiceMessage == nil ? 12 : 10)
                 .padding(
                     .trailing,
-                    message.author == .me
+                    message.voiceMessage != nil ? 8 : message.author == .me
                         ? message.isEdited
                             ? (message.voiceMessage == nil ? 12 : 10)
                             : (message.voiceMessage == nil ? 30 : 26)
@@ -605,6 +605,9 @@ struct MessageBubble: View, Equatable {
                     isActionPresented: isActionPresented,
                     reservesDeliveryStatus: message.author == .me,
                     onPrepare: onPrepareVoiceMessage,
+                    deliveryState: message.author == .me && !message.isEdited && message.agentQueuePosition == nil ? message.deliveryState : nil,
+                    readByCount: message.readByCount,
+                    deliveryTint: bubbleDeliveryColor,
                     onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil,
                     onExpansionChange: onContentExpansionChange
                 )
