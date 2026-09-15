@@ -106,6 +106,21 @@ test('native group history recovery has one owner and no orphaned timeout work',
   assert.doesNotMatch(recoverySource, /Promise\.race/);
 });
 
+test('cloud group replay does not start a duplicate native recovery job while one is already in flight', () => {
+  const replaySource = cloudGroupReplaySource();
+  const recoverStart = replaySource.indexOf('const recoverNativeHistory = async () => {');
+  const recoverEnd = replaySource.indexOf('return cache.nativeHistoryRecovered;', recoverStart);
+  assert.notEqual(recoverStart, -1, 'expected a recoverNativeHistory closure');
+  assert.notEqual(recoverEnd, -1, 'expected recoverNativeHistory to report cache.nativeHistoryRecovered');
+  const recoverBlock = replaySource.slice(recoverStart, recoverEnd);
+
+  assert.match(
+    recoverBlock,
+    /if \(!cache\.nativeHistoryRecovery\) \{[\s\S]*const recovery = recoverNativeCloudGroupHistory\(/,
+    'a new native recovery job must only be created when no job is already tracked in the cache',
+  );
+});
+
 test('cloud group replay skips durable message history before entering the coordinator', () => {
   const replaySource = cloudGroupReplaySource();
 
