@@ -897,7 +897,7 @@ function MessageBubbleView({
                     msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
-               : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'px-2.5 py-1.5' : '',
+               : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'pl-2.5 py-1.5' : '',
           !hasOnlyBorderlessMediaAttachments && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
         )}
         >
