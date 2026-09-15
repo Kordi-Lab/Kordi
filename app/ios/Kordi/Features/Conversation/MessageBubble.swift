@@ -605,7 +605,7 @@ struct MessageBubble: View, Equatable {
                     isActionPresented: isActionPresented,
                     reservesDeliveryStatus: message.author == .me,
                     onPrepare: onPrepareVoiceMessage,
-                    deliveryState: message.author == .me && !message.isEdited && message.agentQueuePosition == nil ? message.deliveryState : nil,
+                    deliveryState: message.author == .me && message.agentQueuePosition == nil ? message.deliveryState : nil,
                     readByCount: message.readByCount,
                     deliveryTint: bubbleDeliveryColor,
                     onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil,
@@ -685,7 +685,7 @@ struct MessageBubble: View, Equatable {
                 }
             }
 
-            if message.isEdited {
+            if message.isEdited && message.voiceMessage == nil {
                 HStack(spacing: 2) {
                     Spacer(minLength: 0)
                     Text("edited", comment: "Message metadata indicating that its text was changed after sending.")

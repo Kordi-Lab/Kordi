@@ -13,7 +13,7 @@ function messageTimeAttributes(msg: Message) {
 }
 
 export function MessageEditedLabel({ msg }: { msg: Message }) {
-  if (!msg.editedAt) return null;
+  if (!msg.editedAt || msg.voiceMessage) return null;
   return (
     <span className="app-message-edited-label shrink-0 whitespace-nowrap" data-message-edited-label="true">
       edited
