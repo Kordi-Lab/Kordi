@@ -21,7 +21,7 @@ import {
   delegationTerminalStatus,
   directCollaborationSourceEventForOutreachDuplicate,
   isProcessingPlaceholderText,
-  mapCanonicalMessage,
+  mapCanonicalMessageCached,
   ownerScopedAgentName,
   processingAgentMessage,
   stringValue,
@@ -720,10 +720,26 @@ function buildTaskActivitiesBySessionId(
   return activities;
 }
 
+// Identities rarely change while messages arrive, and the per-message view
+// model cache keys on this table. Rebuilding it per pass would retire every
+// cached message, so it is derived once per identity list.
+const identityIndexes = new WeakMap<
+  CanonicalSessionState['identities'],
+  Map<string, CanonicalIdentity>
+>();
+
+function identityIndex(identities: CanonicalSessionState['identities']) {
+  const cached = identityIndexes.get(identities);
+  if (cached) return cached;
+  const index = new Map(identities.map((identity) => [identity.id, identity]));
+  identityIndexes.set(identities, index);
+  return index;
+}
+
 export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | null): CanonicalIndexes {
   if (!canonicalState) return emptyIndexes();
 
-  const identityById = new Map(canonicalState.identities.map((identity) => [identity.id, identity]));
+  const identityById = identityIndex(canonicalState.identities);
   const sessionById = new Map(canonicalState.sessions.map((session) => [session.id, session]));
   const presenceByIdentityId = new Map(canonicalState.presence.map((presence) => [presence.identityId, presence]));
 
@@ -998,7 +1014,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         && !delegatedOutreachDirectSources.has(duplicatedDirectLegacyCollaborationSource)) {
         return [];
       }
-      const mapped = mapCanonicalMessage(
+      const mapped = mapCanonicalMessageCached(
         displaySourceMessage,
         identityById,
         canonicalState.profile.humanIdentityId,
