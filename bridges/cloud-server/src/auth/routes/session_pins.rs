@@ -263,6 +263,14 @@ pub(super) async fn update_cloud_session_pin(
         }
     };
 
+    if !participants.contains(&session.account_id) {
+        return err(
+            "not_a_participant",
+            "Conversation membership is required.",
+            StatusCode::FORBIDDEN,
+        );
+    }
+
     let updated_at = Utc::now().to_rfc3339();
     let write_result = if scope == "shared" {
         if let Some(message_id) = message_id.as_deref() {

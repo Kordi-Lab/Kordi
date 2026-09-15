@@ -12,7 +12,7 @@ export function resolvePendingPinActions(actions: readonly PendingPinAction[], h
       && candidate.updatedByAccountId === event.updatedByAccountId);
     if (!canonical) return action;
     claimed.add(canonical.id);
-    return { ...action, resolvedId: canonical.id };
+    return { ...action, knownIds: [], resolvedId: canonical.id };
   });
 }
 

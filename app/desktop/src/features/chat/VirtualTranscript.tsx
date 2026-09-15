@@ -10,7 +10,7 @@ import {
   type WheelEvent as ReactWheelEvent,
   type UIEvent,
 } from 'react';
-import { MemoizedTranscriptItemContent } from './TranscriptItemContent';
+import { TranscriptWindowRows } from './TranscriptItemContent';
 import { createTranscriptContentMeasure } from './transcriptContentMeasure';
 import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
 import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
@@ -22,7 +22,6 @@ import {
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
 import {
-  TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
 } from '@/features/chat/useVirtualTranscriptNavigation';
 import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP, transcriptLayoutMaxScrollTop } from '@/features/chat/virtualTranscriptLayout';
@@ -556,26 +555,9 @@ export function VirtualTranscript<Item>({
             data-virtual-transcript-session-ready={sessionRevealed ? 'true' : 'false'}
             className="relative w-full overflow-y-clip"
           >
-            {virtualItems.map((virtualItem) => {
-              const item = items[virtualItem.index];
-              if (item === undefined) return null;
-              return (
-                <div
-                  key={virtualItem.key}
-                  ref={virtualizer.measureElement}
-                  data-index={virtualItem.index}
-                  data-transcript-row-key={String(virtualItem.key)}
-                  data-transcript-window-item="true"
-                  className={`absolute left-0 top-0 w-full${
-                    virtualItem.index === navigationTargetIndex
-                      ? ` ${TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS}`
-                      : ''
-                  }`}
-                >
-                  <MemoizedTranscriptItemContent item={item} index={virtualItem.index} renderItem={renderItem} />
-                </div>
-              );
-            })}
+            <TranscriptWindowRows items={items} virtualItems={virtualItems}
+              measureElement={virtualizer.measureElement} navigationTargetIndex={navigationTargetIndex}
+              renderItem={renderItem} />
           </div>
         ) : emptyState}
         {tail}

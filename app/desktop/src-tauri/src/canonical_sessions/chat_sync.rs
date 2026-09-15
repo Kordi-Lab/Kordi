@@ -370,6 +370,7 @@ mod tests {
                 };
                 json!({
                     "stream_seq": index as i64 + 1,
+                    "event_id": format!("fixture-event-{index}"),
                     "protocol_version": 2,
                     "type": event_type,
                     "critical": true,

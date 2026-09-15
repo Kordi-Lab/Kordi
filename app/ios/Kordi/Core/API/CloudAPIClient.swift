@@ -889,7 +889,6 @@ actor CloudAPIClient {
     func sessionPinHistory(token: String, sessionId: String) async throws -> [CloudPinHistoryEvent] {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
         var before: Int64?
-        var visited = Set<Int64>()
         var history: [CloudPinHistoryEvent] = []
         repeat {
             try Task.checkCancellation()
@@ -899,8 +898,9 @@ actor CloudAPIClient {
                 fallback: "Could not load pin history."
             )
             history = CloudPinHistoryEvent.merging([history, page.events])
+            let previous = before
             before = page.nextBefore
-            if let before, before <= 0 || !visited.insert(before).inserted {
+            if let before, before <= 0 || previous.map({ before >= $0 }) == true {
                 throw URLError(.cannotParseResponse)
             }
         } while before != nil

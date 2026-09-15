@@ -2124,7 +2124,7 @@ final class AppModel: ObservableObject {
                 updatedByAccountId: account?.accountId,
                 updatedAt: pin.updatedAt
             ))
-            reconcilePendingPinActions(sessionID: conversation.sessionId)
+            reconcilePendingPinActions(sessionID: conversation.sessionId, confirmedID: pendingID, authoritativeHistory: pin.history != nil)
             scheduleRealtimeSyncWake()
             return true
         } catch {
@@ -2165,7 +2165,7 @@ final class AppModel: ObservableObject {
                 updatedByAccountId: account?.accountId,
                 updatedAt: pin.updatedAt
             ))
-            reconcilePendingPinActions(sessionID: conversation.sessionId)
+            reconcilePendingPinActions(sessionID: conversation.sessionId, confirmedID: pendingID, authoritativeHistory: pin.history != nil)
             scheduleRealtimeSyncWake()
             return true
         } catch {
@@ -2445,9 +2445,10 @@ final class AppModel: ObservableObject {
         return event.id
     }
 
-    private func reconcilePendingPinActions(sessionID: String) {
+    private func reconcilePendingPinActions(sessionID: String, confirmedID: String? = nil, authoritativeHistory: Bool = false) {
         guard let current = pendingSessionPinActions[sessionID], !current.isEmpty else { return }
-        let next = PendingSessionPinAction.resolving(current, history: sessionPinsByID[sessionID]?.history ?? [])
+        let next = PendingSessionPinAction.confirming(current, history: sessionPinsByID[sessionID]?.history ?? [],
+            confirmedID: confirmedID, authoritativeHistory: authoritativeHistory)
         if next != current { pendingSessionPinActions[sessionID] = next }
     }
 

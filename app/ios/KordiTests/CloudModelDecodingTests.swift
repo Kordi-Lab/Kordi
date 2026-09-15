@@ -423,6 +423,8 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(PendingSessionPinAction.presentedHistory(canonical, actions: resolved).map(\.id), [pin.id, unpin.id])
         XCTAssertEqual(PendingSessionPinAction.resolving(resolved, history: canonical), resolved)
         XCTAssertTrue(PendingSessionPinAction.presentedHistory([], actions: []).isEmpty)
+        XCTAssertEqual(PendingSessionPinAction.confirming(actions, history: [], confirmedID: pin.id, authoritativeHistory: true).map(\.event.id), [unpin.id])
+        XCTAssertEqual(PendingSessionPinAction.confirming(actions, history: [], confirmedID: pin.id).map(\.event.id), [pin.id, unpin.id])
     }
 
     @MainActor

@@ -400,11 +400,14 @@ mod tests {
 
     #[test]
     fn blob_emoji_debug_cache_accepts_only_literal_loopback_http() {
-        assert!(validated_remote_image_url_for_policy(
-            "http://127.0.0.1:17185/assets/blob.webp",
-            &BLOB_EMOJI_CACHE_POLICY,
-        )
-        .is_ok_and(|(_, debug_loopback)| debug_loopback));
+        assert_eq!(
+            validated_remote_image_url_for_policy(
+                "http://127.0.0.1:17185/assets/blob.webp",
+                &BLOB_EMOJI_CACHE_POLICY,
+            )
+            .is_ok_and(|(_, debug_loopback)| debug_loopback),
+            cfg!(debug_assertions)
+        );
         for url in [
             "http://localhost:17185/assets/blob.webp",
             "http://192.168.1.20/assets/blob.webp",

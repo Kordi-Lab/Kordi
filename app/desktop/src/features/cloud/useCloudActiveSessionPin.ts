@@ -1,4 +1,4 @@
-import { mergePinSnapshot } from './cloudPinHistory';
+import { mergePinSnapshot, mergePinSyncSnapshot } from './cloudPinHistory';
 import {
   useEffect, useCallback, useLayoutEffect, useRef,
   useMemo,
@@ -43,8 +43,8 @@ export function useCloudActiveSessionPin({
     if (!account || !sessionId || pins.current[sessionId]) return;
     const session = await loadSession();
     if (!session?.token || session.accountId !== account.accountId) return;
-    const pin = await client.getCloudSessionPin(session.token, sessionId);
-    if (currentAccount.current !== account.accountId) return;
+    const pin = await client.getCloudSessionPinState(session.token, sessionId);
+    if (currentAccount.current !== account.accountId || pins.current[sessionId]) return;
     pins.current = { ...pins.current, [pin.sessionId]: mergePinSnapshot(pins.current[pin.sessionId], pin) };
     setPinsBySessionId(current => ({ ...current, [pin.sessionId]: mergePinSnapshot(current[pin.sessionId], pin) }));
   }, [account, client, setPinsBySessionId]);
@@ -61,11 +61,12 @@ export function useCloudActiveSessionPin({
 
   useEffect(() => {
     if (!account || !activePinSessionId) return;
+    const baseline = pins.current;
     let cancelled = false;
     const controller = new AbortController();
     void loadSession()
       .then(async (session) => {
-        if (!session?.token) return null;
+        if (!session?.token || session.accountId !== account.accountId) return null;
         return client.getCloudSessionPin(
           session.token,
           activePinSessionId,
@@ -74,10 +75,7 @@ export function useCloudActiveSessionPin({
       })
       .then((pin) => {
         if (cancelled || !pin) return;
-        setPinsBySessionId((current) => ({
-          ...current,
-          [pin.sessionId]: mergePinSnapshot(current[pin.sessionId], pin),
-        }));
+        setPinsBySessionId(current => mergePinSyncSnapshot(current, { [pin.sessionId]: pin }, baseline));
       })
       .catch(() => {
         // Best effort. Cursor sync also applies pin updates.

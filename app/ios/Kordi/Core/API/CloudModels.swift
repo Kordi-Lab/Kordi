@@ -314,6 +314,12 @@ struct PendingSessionPinAction: Hashable {
         }
     }
 
+    static func confirming(_ actions: [Self], history: [CloudPinHistoryEvent], confirmedID: String? = nil, authoritativeHistory: Bool = false) -> [Self] {
+        resolving(actions, history: history).filter {
+            !authoritativeHistory || $0.event.id != confirmedID || $0.resolvedID != nil
+        }
+    }
+
     static func presentedHistory(_ history: [CloudPinHistoryEvent], actions: [Self]) -> [CloudPinHistoryEvent] {
         let resolved = resolving(actions, history: history)
         let aliases = Dictionary(uniqueKeysWithValues: resolved.compactMap { action in

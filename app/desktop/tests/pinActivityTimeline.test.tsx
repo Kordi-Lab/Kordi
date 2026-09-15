@@ -197,5 +197,11 @@ test('local pin feedback appears before delayed sync, reconciles once, and rolls
     await act(async () => applyPin({ ...pinned, privateMessageId: 'older-unloaded-target', effectiveMessageId: 'older-unloaded-target' }));
     assert.equal(state.pinnedMessages.length, 1, 'A known pin must not wait for its target page before showing the shelf');
     assert.equal(state.pinnedMessages[0].message.id, 'older-unloaded-target');
+    await act(async () => applyPin(empty));
+    await act(async () => state.requestPin(earlier));
+    await act(async () => state.dialog.confirm());
+    assert.equal(state.pinActivities.length, 1);
+    await act(async () => { applyPin({ ...pinned, history: [] }); resolve({ ...pinned, history: [] }); });
+    assert.equal(state.pinActivities.length, 0, 'Authoritative no-op confirmation removes the temporary notice');
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

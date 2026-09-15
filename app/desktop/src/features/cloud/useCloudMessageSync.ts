@@ -9,7 +9,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
+import { cloudCachedSessionTitles } from './cloudCachedSessionTitles';
+import { cloudMessageFromChatSync } from './authClient';
 import type { CloudMessage } from './authClient';
 import { chatEventsRequireDirectoryBootstrap, publishCloudDeviceEvents } from './cloudDeviceEvents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
@@ -25,7 +26,6 @@ import {
 import { syncCloudDiffOnce } from './cloudDiffSync';
 import { hasCachedCloudSessionVisibility } from './cloudDiffSync';
 import { commitCloudVisibility } from './cloudVisibilitySnapshot';
-import type { CloudSessionTitlesById } from './cloudDiffSync';
 import { mergeCloudSessionActivity } from './cloudSessionActivity';
 import type {
   CloudMessageSyncController,
@@ -328,23 +328,7 @@ export function useCloudMessageSync({
       hydratedMessages,
     );
     setMessages((current) => mergeCloudMessagesByPeerSnapshot(current, hydratedMessages));
-    const hydratedTitles = local.conversations.reduce<CloudSessionTitlesById>((titles, conversation) => {
-      const sessionId = conversation.legacy_session_id ?? conversation.id;
-      const title = chatSyncSessionTitle(conversation);
-      if (!title) return titles;
-      titles[sessionId] = {
-        sessionId,
-        title,
-        titleSource: conversation.preferences.personal_title ? 'manual' as const : 'external' as const,
-        titleRevision: conversation.version,
-        titlePolicyVersion: 1,
-        titleGeneratedFromMessageId: null,
-        updatedAtMs: Date.parse(conversation.updated_at) || Date.now(),
-        updatedByAccountId: conversation.created_by_account_id,
-        updatedAt: conversation.updated_at,
-      };
-      return titles;
-    }, {});
+    const hydratedTitles = cloudCachedSessionTitles(local.conversations);
     setTitles((current) => ({ ...current, ...hydratedTitles }));
   }, [account, coordinator, messagesRef, pinsRef, setMessages, setPins, setTitles]);
   const hydrateMissingChatHistory = useCallback(async (generation: number) => {

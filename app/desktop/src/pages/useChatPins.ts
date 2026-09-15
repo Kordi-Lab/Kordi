@@ -210,7 +210,12 @@ export function useChatPins({
         sessionId,
         messageId: nextMessageId,
         scope,
-      }).then(() => {
+      }).then((pin) => {
+        // A complete server history also confirms no-op writes. Do not leave
+        // a temporary notice behind when another device already made the change.
+        if (pin.history !== undefined && remainingPendingPinActions([{ event, knownIds }], pin.history).length > 0) {
+          setPendingCloudActions(current => ({ ...current, [pinScopeKey]: (current[pinScopeKey] ?? []).filter(action => action.event.id !== event.id) }));
+        }
         // The parent store already has the authoritative response. Do not retain
         // a client-clock timestamp that could mask later updates from another device.
         setOptimisticCloudPins((current) => {
