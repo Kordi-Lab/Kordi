@@ -275,6 +275,14 @@ struct CloudPinHistoryEvent: Codable, Hashable, Identifiable {
         for group in groups {
             for event in group where !event.id.isEmpty && event.timestamp != nil && ["pinned", "unpinned"].contains(event.kind) && ["private", "shared"].contains(event.scope) { events[event.id] = event }
         }
+        let canonical = events.values.filter { !$0.id.hasPrefix("legacy-pin:") }
+        events = events.filter { _, event in
+            !event.id.hasPrefix("legacy-pin:") || !canonical.contains { other in
+                other.sessionId == event.sessionId && other.kind == event.kind && other.scope == event.scope
+                    && other.messageId == event.messageId && other.updatedByAccountId == event.updatedByAccountId
+                    && other.timestamp == event.timestamp
+            }
+        }
         return events.values.sorted {
             if $0.timestamp != $1.timestamp { return ($0.timestamp ?? .distantPast) < ($1.timestamp ?? .distantPast) }
             if $0.sequence != $1.sequence { return ($0.sequence ?? 0) < ($1.sequence ?? 0) }
@@ -307,7 +315,8 @@ struct CloudSessionPin: Codable, Hashable {
 
     func mergingHistory(from current: Self?) -> Self {
         var result = self
-        if let current, let old = current.updatedAt.flatMap(CloudPinHistoryEvent.parseTimestamp),
+        // Legacy responses timestamp the remaining pin rather than the unpin action.
+        if history != nil, let current, let old = current.updatedAt.flatMap(CloudPinHistoryEvent.parseTimestamp),
            updatedAt.flatMap(CloudPinHistoryEvent.parseTimestamp).map({ $0 < old }) ?? true {
             result = current
         }

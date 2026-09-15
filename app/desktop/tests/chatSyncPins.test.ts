@@ -137,3 +137,31 @@ test('live pin history keeps both actions and deduplicates replay independently 
   assert.deepEqual(applyCloudSyncEventsToSessionPins(first, events)[sessionId].history, [pin, unpin]);
   assert.equal(applyCloudSyncEventsToSessionPins(first, [events[0]])[sessionId].effectiveMessageId, null);
 });
+
+test('legacy sync retains separate notices through unpin responses, replay and server upgrade', async () => {
+  const { mergePinHistory, mergePinSnapshot } = await import('../src/features/cloud/cloudPinHistory');
+  const events = ['pinned', 'unpinned'].map((kind, index) => ({
+    eventId: `legacy-${index}`, eventType: 'session.pin.updated', peerAccountId: sessionId,
+    occurredAt: `2026-09-15T10:0${index}:00Z`, messageId: kind === 'pinned' ? 'target' : null,
+    payload: { sessionId, scope: 'private', messageId: kind === 'pinned' ? 'target' : null,
+      updatedByAccountId: 'acct_a', updatedAt: `2026-09-15T10:0${index}:00Z` },
+  }));
+  const pinned = applyCloudSyncEventsToSessionPins({}, [events[0]])[sessionId];
+  const client = new CloudAuthClient({ baseUrl: 'http://fixture', fetchImpl: async url =>
+    String(url).endsWith('/pin-history') ? new Response('', { status: 404 })
+      : Response.json({ pin: { sessionId, sharedMessageId: null, privateMessageId: null, effectiveMessageId: null, updatedAt: null } }) });
+  const response = await client.updateCloudSessionPin('fixture', sessionId, { messageId: null, scope: 'private' });
+  const cleared = mergePinSnapshot(pinned, response);
+  assert.equal(cleared.effectiveMessageId, null, 'Legacy unpin response must clear the pin');
+  const synced = applyCloudSyncEventsToSessionPins({ [sessionId]: cleared }, events)[sessionId];
+  assert.deepEqual(synced.history?.map(event => event.kind), ['pinned', 'unpinned']);
+  assert.deepEqual(synced.history?.map(event => event.updatedAt), events.map(event => event.occurredAt));
+  assert.equal(applyCloudSyncEventsToSessionPins({ [sessionId]: synced }, events)[sessionId].history?.length, 2);
+  const canonical = synced.history!.map((event, index) => ({ ...event, id: `canonical-${index}`, sequence: index + 1 }));
+  assert.deepEqual(mergePinHistory(synced.history, canonical), canonical);
+  assert.deepEqual(mergePinHistory(canonical, synced.history), canonical);
+  assert.equal(mergePinHistory(canonical, [{ ...canonical[0], id: 'another-action' }]).length, 3);
+  const remainingShared = mergePinSnapshot(pinned, { ...response, sharedMessageId: 'older-shared', effectiveMessageId: 'older-shared', updatedAt: '2026-09-14T10:00:00Z' });
+  assert.equal(remainingShared.privateMessageId, null);
+  assert.equal(remainingShared.sharedMessageId, 'older-shared');
+});

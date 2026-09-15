@@ -6685,7 +6685,12 @@ final class AppModel: ObservableObject {
                   let sessionId = payload.sessionId?.nonEmpty,
                   let scope = payload.scope?.nonEmpty?.lowercased(),
                   scope == "private" || scope == "shared" else { continue }
-            let history = CloudPinHistoryEvent.merging([pins[sessionId]?.history ?? [], payload.pinHistoryEvent.map { [$0] } ?? []])
+            let legacyEvent: CloudPinHistoryEvent? = event.eventId.hasPrefix("bootstrap:session-pin:") ? nil : CloudPinHistoryEvent(
+                id: "legacy-pin:\(event.eventId)", sessionId: sessionId,
+                kind: payload.messageId?.nonEmpty == nil ? "unpinned" : "pinned", scope: scope,
+                messageId: payload.messageId?.nonEmpty, updatedByAccountId: payload.updatedByAccountId ?? "",
+                updatedAt: payload.updatedAt?.nonEmpty ?? event.occurredAt)
+            let history = CloudPinHistoryEvent.merging([pins[sessionId]?.history ?? [], (payload.pinHistoryEvent ?? legacyEvent).map { [$0] } ?? []])
             if var existing = pins[sessionId] { existing.history = history; pins[sessionId] = existing }
             let updatedAt = payload.updatedAt?.nonEmpty ?? event.occurredAt.nonEmpty
             if !event.eventId.hasPrefix("bootstrap:session-pin:"),

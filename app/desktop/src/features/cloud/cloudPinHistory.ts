@@ -15,12 +15,20 @@ export function mergePinHistory(...groups: readonly (readonly CloudPinHistoryEve
   for (const group of groups) for (const event of group ?? []) {
     if (event.id && ['pinned', 'unpinned'].includes(event.kind) && ['private', 'shared'].includes(event.scope) && Number.isFinite(Date.parse(event.updatedAt))) byId.set(event.id, event);
   }
+  const canonical = [...byId.values()].filter(event => !event.id.startsWith('legacy-pin:'));
+  for (const event of byId.values()) {
+    if (event.id.startsWith('legacy-pin:') && canonical.some(other =>
+      other.sessionId === event.sessionId && other.kind === event.kind && other.scope === event.scope
+      && other.messageId === event.messageId && other.updatedByAccountId === event.updatedByAccountId
+      && Date.parse(other.updatedAt) === Date.parse(event.updatedAt))) byId.delete(event.id);
+  }
   return [...byId.values()].sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt) || (a.sequence ?? 0) - (b.sequence ?? 0) || a.id.localeCompare(b.id));
 }
 
 export function mergePinSnapshot(current: CloudSessionPin | undefined, incoming: CloudSessionPin): CloudSessionPin {
   const oldTime = Date.parse(current?.updatedAt ?? '');
   const newTime = Date.parse(incoming.updatedAt ?? '');
-  const state = current && Number.isFinite(oldTime) && (!Number.isFinite(newTime) || newTime < oldTime) ? current : incoming;
+  // Legacy servers timestamp the remaining pin, not the unpin operation.
+  const state = incoming.history !== undefined && current && Number.isFinite(oldTime) && (!Number.isFinite(newTime) || newTime < oldTime) ? current : incoming;
   return { ...state, history: mergePinHistory(current?.history, incoming.history) };
 }

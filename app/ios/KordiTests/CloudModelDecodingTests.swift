@@ -349,7 +349,19 @@ final class CloudModelDecodingTests: XCTestCase {
             [sessionPinEvent(messageId: "msg_stale", scope: "shared", updatedAt: "2026-08-17T12:00:01Z")],
             to: duplicate
         )
-        XCTAssertEqual(staleUpdate, privateUnpin)
+        XCTAssertEqual(staleUpdate[sessionId]?.effectiveMessageId, privateUnpin[sessionId]?.effectiveMessageId)
+        XCTAssertEqual(staleUpdate[sessionId]?.lastAction, privateUnpin[sessionId]?.lastAction)
+        XCTAssertEqual(privateUnpin[sessionId]?.history?.map(\.kind), ["pinned", "pinned", "unpinned"])
+        let legacyResponse = CloudSessionPin(sessionId: sessionId, sharedMessageId: nil, privateMessageId: nil,
+            effectiveMessageId: nil, updatedAt: nil).mergingHistory(from: privateUnpin[sessionId])
+        XCTAssertNil(legacyResponse.effectiveMessageId)
+        XCTAssertEqual(legacyResponse.history, privateUnpin[sessionId]?.history)
+        let canonical = privateUnpin[sessionId]!.history!.enumerated().map { index, event in
+            CloudPinHistoryEvent(id: "canonical-\(index)", sequence: Int64(index), sessionId: event.sessionId,
+                kind: event.kind, scope: event.scope, messageId: event.messageId,
+                updatedByAccountId: event.updatedByAccountId, updatedAt: event.updatedAt)
+        }
+        XCTAssertEqual(CloudPinHistoryEvent.merging([privateUnpin[sessionId]!.history!, canonical]), canonical)
 
         let bootstrap = AppModel.applyingSessionPinEvents([
             sessionPinEvent(

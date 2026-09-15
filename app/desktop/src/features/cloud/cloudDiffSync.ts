@@ -267,10 +267,18 @@ export function applyCloudSyncEventsToSessionPins(
     if (!pin) continue;
     const messageId = cleanText(payload?.messageId) || null;
     const previous = next[sessionId];
+    const historyEvent = payload?.pinHistoryEvent as CloudPinHistoryEvent | undefined
+      ?? (!event.eventId.startsWith('bootstrap:session-pin:') ? {
+        id: `legacy-pin:${event.eventId}`, sessionId,
+        kind: messageId ? 'pinned' : 'unpinned',
+        scope: cleanText(payload?.scope) === 'shared' ? 'shared' : 'private',
+        messageId, updatedByAccountId: cleanText(payload?.updatedByAccountId),
+        updatedAt: cleanText(payload?.updatedAt) || event.occurredAt,
+      } : undefined);
     if (!event.eventId.startsWith('bootstrap:session-pin:')
         && Date.parse(pin.updatedAt ?? '') < Date.parse(previous?.updatedAt ?? '')) {
-      if (payload?.pinHistoryEvent) next = { ...next, [sessionId]: { ...previous,
-        history: mergePinHistory(previous.history, [payload.pinHistoryEvent as CloudPinHistoryEvent]),
+      if (historyEvent) next = { ...next, [sessionId]: { ...previous,
+        history: mergePinHistory(previous.history, [historyEvent]),
       } };
       continue;
     }
@@ -278,8 +286,8 @@ export function applyCloudSyncEventsToSessionPins(
       ...next,
       [sessionId]: {
         ...pin,
-        ...(next[sessionId]?.history || payload?.pinHistoryEvent ? {
-          history: mergePinHistory(next[sessionId]?.history, payload?.pinHistoryEvent ? [payload.pinHistoryEvent as CloudPinHistoryEvent] : []),
+        ...(next[sessionId]?.history || historyEvent ? {
+          history: mergePinHistory(next[sessionId]?.history, historyEvent ? [historyEvent] : []),
         } : {}),
         lastAction: event.eventId.startsWith('bootstrap:session-pin:')
           ? null
