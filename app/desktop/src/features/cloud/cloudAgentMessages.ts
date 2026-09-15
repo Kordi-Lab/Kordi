@@ -1,3 +1,5 @@
+import { voiceAgentText } from '@/features/chat/voiceTranscription';
+import type { CloudVoiceMessage } from './cloudAttachmentTypes';
 import type { CloudAccount, CloudMessage } from './authClient';
 import {
   parseCloudAgentBackgroundSessions,
@@ -314,7 +316,8 @@ export function cloudMessageMentionsNamedAgent(text: string, ownerOrAgentName: s
   ].filter(Boolean)));
 }
 
-export function promptTextForCloudAgentMention(text: string): string {
+export function promptTextForCloudAgentMention(text: string, voice?: (Omit<CloudVoiceMessage, 'mediaId'> & { mediaId?: string | null }) | null): string {
+  if (voice) return voiceAgentText({ ...voice, transcript: promptTextForCloudAgentMention(voice.transcript) });
   // Match complete handles, never the prefix of a path or an email address.
   const withoutMentions = text.replace(
     /(^|[\s([{])@([\p{L}\p{N}._'-]+)(?=\s|$)/gu,
@@ -333,6 +336,7 @@ function cloudMessageCreatedAtMs(message: CloudMessage): number {
 function cloudContextMessageText(message: CloudMessage): string | null {
   if (message.messageKind === 'agent-model-change') return null;
   if (parseCloudAgentCancel(message.body) || isCloudGroupControlMessage(message.body)) return null;
+  if (message.voiceMessage) return voiceAgentText(message.voiceMessage);
   const response = parseCloudAgentResponse(message.body);
   return (response?.text ?? message.body).trim() || null;
 }

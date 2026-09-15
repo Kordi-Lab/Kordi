@@ -468,3 +468,6 @@ async fn retention_advances_the_cursor_floor_before_replay_rows_are_deleted() {
     assert_eq!(bootstrap.conversations.len(), 1);
     assert_eq!(bootstrap.latest_messages.len(), 1);
 }
+
+#[path = "chat_sync_e2e/voice_transcription.rs"]
+mod voice_transcription;

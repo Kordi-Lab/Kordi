@@ -49,7 +49,7 @@ import {
   selectVisibleCloudAgentResponses,
 } from './cloudAgentResponseSelection';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
-import { cloudMessageAttachmentToMessageAttachment,cloudVoiceMessageToMessageVoice } from './cloudAttachments';
+import { cloudMessageAttachmentsForPresentation,cloudVoiceMessageToMessageVoice } from './cloudAttachments';
 import {
   cloudDirectPersonMessagesForPeer,
   cloudGroupControlMessageIds,
@@ -200,7 +200,7 @@ export function cloudMessageToCollaborationMessage(
       options.cancelledRequestIds?.has(message.messageId) === true,
     ),
     detail: undefined,
-    attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
+    attachments: cloudMessageAttachmentsForPresentation(message.attachments, message.voiceMessage),
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
     messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, cloudMessageVersion: message.version ?? null, editedAt: message.editedAt ?? null, reactions: message.reactions ?? [],

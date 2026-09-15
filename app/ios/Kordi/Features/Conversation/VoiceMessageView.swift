@@ -350,6 +350,30 @@ struct VoiceRecordingComposer: View {
                         .frame(height: 58)
                         .accessibilityHidden(true)
                 }
+            } else if recorder.phase == .review {
+                VStack(spacing: 8) {
+                    VoiceDraftReview(recorder: recorder)
+                        .disabled(recorder.transcriptionPhase == .transcribing)
+                    HStack {
+                        Button("Discard", role: .destructive, action: onCancel)
+                            .frame(minHeight: 44)
+                        if recorder.transcriptionPhase == .transcribing {
+                            ProgressView("Transcribing")
+                        } else if recorder.transcriptionPhase == .failed {
+                            Button("Retry transcription", action: recorder.retryTranscription)
+                                .frame(minHeight: 44)
+                                .disabled(!recorder.canRetryTranscription)
+                        }
+                        Spacer()
+                        Button("Send", action: onSend)
+                            .frame(minHeight: 44)
+                            .disabled(recorder.pendingMessage == nil)
+                    }
+                    if let error = recorder.errorMessage {
+                        Text(error).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
             } else {
                 failedControls
                     .frame(height: 56)
@@ -572,14 +596,19 @@ private struct VoiceTrimControl: View {
 }
 
 struct VoiceMessageBubbleContent: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let voiceMessage: VoiceMessage
     let isActionPresented: Bool
     let reservesDeliveryStatus: Bool
     let onPrepare: (VoiceMessage) async -> URL?
+    var deliveryState: MessageDeliveryState? = nil
+    var readByCount: Int? = nil
+    var deliveryTint: Color? = nil
+    var onUpdateTranscript: ((VoiceMessage) async -> Bool)? = nil
+    var onExpansionChange: (Bool) -> Void = { _ in }
 
     @State private var playback = VoiceMessagePlayback()
     @State private var showsTranscript = false
-    @State private var showsFullTranscript = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -657,7 +686,7 @@ struct VoiceMessageBubbleContent: View {
                         .accessibilityLabel("Playback speed \(playback.speed.formatted()) times")
 
                         Button {
-                            showsTranscript.toggle()
+                            toggleTranscript()
                         } label: {
                             Image(systemName: "text.bubble")
                                 .font(.caption2)
@@ -669,41 +698,41 @@ struct VoiceMessageBubbleContent: View {
                         .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
 
                         if reservesDeliveryStatus {
-                            Color.clear
-                                .frame(width: 14, height: 1)
-                                .accessibilityHidden(true)
+                            if let deliveryState {
+                                MessageDeliveryGlyph(state: deliveryState, readByCount: readByCount, tint: deliveryTint)
+                                    .allowsHitTesting(false)
+                            } else {
+                                Color.clear.frame(width: 16, height: 14).accessibilityHidden(true)
+                            }
                         }
                     }
                     .frame(height: 20)
                 }
             }
+            .transaction { $0.animation = nil }
 
-            if showsTranscript {
-                Divider().opacity(0.35)
-                if voiceMessage.transcript.isEmpty {
-                    Text("Transcript unavailable")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text(voiceMessage.transcript)
-                        .font(.body)
-                        .lineLimit(showsFullTranscript ? nil : 6)
-                    if voiceMessage.transcript.count > 320
-                        || voiceMessage.transcript.split(separator: "\n").count > 5 {
-                        Button(showsFullTranscript ? "Show less" : "Show full transcript") {
-                            showsFullTranscript.toggle()
-                        }
-                        .font(.caption.weight(.semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(KordiTheme.signalBlue)
-                    }
-                }
-            }
+            VoiceTranscriptDetails(voice: voiceMessage, onPrepare: onPrepare, onUpdate: onUpdateTranscript)
+                .frame(height: showsTranscript ? nil : 0, alignment: .top)
+                .clipped()
+                .opacity(showsTranscript ? 1 : 0)
+                .allowsHitTesting(showsTranscript)
+                .accessibilityHidden(!showsTranscript)
         }
         .disabled(isActionPresented)
-        .frame(width: showsTranscript ? 280 : Self.compactWidth(durationMs: voiceMessage.durationMs))
-        .animation(.easeOut(duration: 0.16), value: showsTranscript)
+        .frame(width: Self.compactWidth(durationMs: voiceMessage.durationMs))
         .accessibilityElement(children: .contain)
+        .onAppear { if showsTranscript { onExpansionChange(true) } }
+        .onDisappear { if showsTranscript { onExpansionChange(false) } }
+    }
+
+    private func toggleTranscript() {
+        let expanded = !showsTranscript
+        if expanded { onExpansionChange(true) }
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
+            showsTranscript = expanded
+        } completion: {
+            if !expanded && !showsTranscript { onExpansionChange(false) }
+        }
     }
 
     static func compactWidth(durationMs: Int) -> CGFloat {

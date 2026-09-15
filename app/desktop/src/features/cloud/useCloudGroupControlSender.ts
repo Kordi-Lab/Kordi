@@ -1,3 +1,4 @@
+import { cloudVoiceAttachmentReference } from './cloudVoiceMessage';
 import { cloudGroupMessageWithAgentTarget } from './cloudGroupAgentTarget';
 import { useCallback } from 'react';
 import {
@@ -165,12 +166,7 @@ export function useCloudGroupControlSender({
                   groupMessageAttachments,
                 )
               : input.message.attachments,
-            ...(input.message.voiceMessage && groupMessageAttachments[0] ? {
-              voiceMessage: {
-                ...input.message.voiceMessage,
-                mediaId: groupMessageAttachments[0].attachmentId,
-              },
-            } : {}),
+            ...cloudVoiceAttachmentReference(input.message.voiceMessage, groupMessageAttachments[0]),
           }
         : null;
       const message = draftMessage ? cloudGroupMessageWithAgentTarget(draftMessage, participants) : null;

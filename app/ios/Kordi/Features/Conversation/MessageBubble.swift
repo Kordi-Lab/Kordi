@@ -61,12 +61,13 @@ struct MessageBubble: View, Equatable {
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
+    let onUpdateVoiceTranscript: (VoiceMessage) async -> Bool
     let onPrepareAttachment: (ChatAttachment) async -> URL?
     let onPrepareAttachmentPreview: (ChatAttachment) async -> UIImage?
     let onOpenVideo: (ChatAttachment, AVPlayer, UIImage?) -> Void
     let onAddAttachmentToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
-    let onAgentExecutionExpansionChange: (Bool) -> Void
+    let onContentExpansionChange: (Bool) -> Void
     var usesOverlayPhotoPreview = false
     var presentedActionAttachmentID: String? = nil
     var onPrepareActionImage: (UIImage?) -> Void = { _ in }
@@ -454,7 +455,7 @@ struct MessageBubble: View, Equatable {
 
     @ViewBuilder
     private var deliveryStatus: some View {
-        if message.author == .me, !isCallActivity, !message.isEdited,
+        if message.author == .me, message.voiceMessage == nil, !isCallActivity, !message.isEdited,
            message.agentQueuePosition == nil {
             if showsMediaDeliveryStatus {
                 mediaDeliveryStatusOverlay
@@ -538,7 +539,7 @@ struct MessageBubble: View, Equatable {
                 .padding(.leading, message.voiceMessage == nil ? 12 : 10)
                 .padding(
                     .trailing,
-                    message.author == .me
+                    message.voiceMessage != nil ? 8 : message.author == .me
                         ? message.isEdited
                             ? (message.voiceMessage == nil ? 12 : 10)
                             : (message.voiceMessage == nil ? 30 : 26)
@@ -594,7 +595,7 @@ struct MessageBubble: View, Equatable {
                     messageID: message.id,
                     execution: execution,
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(execution: execution, responseText: message.text),
-                    onExpansionChange: onAgentExecutionExpansionChange
+                    onExpansionChange: onContentExpansionChange
                 )
             }
 
@@ -603,8 +604,14 @@ struct MessageBubble: View, Equatable {
                     voiceMessage: voiceMessage,
                     isActionPresented: isActionPresented,
                     reservesDeliveryStatus: message.author == .me,
-                    onPrepare: onPrepareVoiceMessage
+                    onPrepare: onPrepareVoiceMessage,
+                    deliveryState: message.author == .me && message.agentQueuePosition == nil ? message.deliveryState : nil,
+                    readByCount: message.readByCount,
+                    deliveryTint: bubbleDeliveryColor,
+                    onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil,
+                    onExpansionChange: onContentExpansionChange
                 )
+                .id("\(message.id):\(voiceMessage.mediaId)")
             }
 
             if hasVisibleMessageText {
@@ -678,7 +685,7 @@ struct MessageBubble: View, Equatable {
                 }
             }
 
-            if message.isEdited {
+            if message.isEdited && message.voiceMessage == nil {
                 HStack(spacing: 2) {
                     Spacer(minLength: 0)
                     Text("edited", comment: "Message metadata indicating that its text was changed after sending.")

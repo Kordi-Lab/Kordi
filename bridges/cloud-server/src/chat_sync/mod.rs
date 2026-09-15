@@ -12,3 +12,5 @@ pub mod store;
 pub mod visibility;
 
 pub const PROTOCOL_VERSION: i32 = 2;
+
+pub(crate) mod voice;

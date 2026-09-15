@@ -1,4 +1,4 @@
-import { ArrowUp, Mic, Send } from 'lucide-react';
+import { ArrowUp, Mic, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { VoiceRecordingRail } from '@/kordi-app/components/voiceMessage';
@@ -22,9 +22,10 @@ export function VoiceComposerControls({
   onSend: () => void;
 }) {
   const recorder = voice.recorder;
+  if (voice.surfaceActive) return null;
   return (
     <>
-      {voice.recording ? (
+      {voice.recording && !recorder.state.locked ? (
         <span
           className={cn(
             'app-voice-swipe-notice',
@@ -44,6 +45,12 @@ export function VoiceComposerControls({
         )} aria-live="off">
           {formatVoiceRecordingDuration(recorder.state.durationMs)}
         </span>
+      ) : null}
+      {voice.recording && recorder.state.locked ? (
+        <Button className="app-button-quiet h-10 w-10 shrink-0 rounded-full p-0" onClick={recorder.reset}
+          aria-label="Cancel voice recording" title="Cancel recording">
+          <X className="h-4 w-4" aria-hidden="true" />
+        </Button>
       ) : null}
       {!voice.surfaceActive ? (
         <Button
@@ -71,14 +78,14 @@ export function VoiceComposerControls({
             }
             onSend();
           }}
-          disabled={Boolean(validationError) || recorder.state.phase === 'sending'}
+          disabled={Boolean(validationError)}
           data-composer-send={hasSendableDraft ? 'true' : undefined}
           title={!hasSendableDraft
-            ? 'Hold to record · release to send · swipe up to cancel'
+            ? voice.recording ? 'Click to stop and send' : 'Click to record, or hold and release to send'
             : validationError ?? (activeLiveTurnIsRunning
               ? 'Queue message for this session'
               : 'Send message')}
-          aria-label={!hasSendableDraft ? 'Record voice message' : 'Send message'}
+          aria-label={!hasSendableDraft ? voice.recording ? 'Stop and send voice message' : 'Record voice message' : 'Send message'}
         >
           {!hasSendableDraft ? <Mic className="h-4 w-4" /> : <Send className="h-4 w-4" />}
         </Button>
@@ -93,7 +100,7 @@ export function VoiceRecordingSurface({ voice }: { voice: VoiceComposerControlle
     <VoiceRecordingRail
       state={recorder.state}
       onCancel={recorder.reset}
-      onSend={() => { void voice.sendPrepared(); }}
+      onSend={() => { void (voice.recording ? voice.finishAndSend() : voice.sendPrepared()); }}
       onRetry={() => {
         if (recorder.state.attachment) void recorder.prepareForSend();
         else void recorder.start();

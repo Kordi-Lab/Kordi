@@ -1,3 +1,4 @@
+import { voiceAgentText } from '@/features/chat/voiceTranscription';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type { CloudAccount } from './authClient';
 import {
@@ -96,7 +97,7 @@ export function cloudGroupNativeContextMessages({
         message.deliveryState === 'processing'
         || isCloudAgentProcessingPlaceholderText(message.text)
       ) return [];
-      const text = message.text.trim();
+      const text = message.voiceMessage ? voiceAgentText(message.voiceMessage) : message.text.trim();
       if (!text) return [];
       const participantName = envelope.participants.find(
         (participant) =>

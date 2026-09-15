@@ -226,6 +226,7 @@ mod live_photo_validation;
 mod members;
 mod meme_validation;
 mod message;
+pub use message::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 mod pin_snapshots;
 mod reaction;
 mod support;

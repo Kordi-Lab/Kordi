@@ -9,21 +9,27 @@ export function desktopVoiceTranscriptionLocales(
     'zh-TW',
     'zh-HK',
     'en-US',
-  ])];
+  ])].slice(0, 8);
 }
 
-export async function transcribeDesktopVoiceMessage(path: string, locale?: string) {
+export async function transcribeDesktopVoiceMessageResult(path: string, locale?: string) {
   const locales = desktopVoiceTranscriptionLocales(locale ? [locale] : undefined);
   let lastError: Error | null = null;
   for (const candidate of locales) {
     try {
-      return await invokeDesktop<string>('desktop_voice_transcribe', { path, locale: candidate });
+      const transcript = (await invokeDesktop<string>('desktop_voice_transcribe', { path, locale: candidate })).trim();
+      if (!transcript) throw new Error('No recognizable speech was found.');
+      return { transcript, language: candidate };
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (lastError.message.includes('Allow Kordi')) throw lastError;
     }
   }
   throw lastError ?? new Error('No speech detected.');
+}
+
+export async function transcribeDesktopVoiceMessage(path: string, locale?: string) {
+  return (await transcribeDesktopVoiceMessageResult(path, locale)).transcript;
 }
 
 export function trimDesktopVoiceMessage(path: string, startMs: number, endMs: number) {

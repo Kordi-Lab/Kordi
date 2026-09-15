@@ -1,9 +1,9 @@
 use block2::{RcBlock, StackBlock};
 use objc2::rc::{autoreleasepool, Retained};
 use objc2::runtime::{AnyObject, Bool};
-use objc2::{class, msg_send, AnyThread};
-use objc2_avf_audio::{AVAudioEngine, AVAudioFile, AVAudioPCMBuffer, AVAudioTime};
-use objc2_foundation::{NSDictionary, NSString, NSURL};
+use objc2::{class, msg_send};
+use objc2_avf_audio::{AVAudioEngine, AVAudioPCMBuffer, AVAudioTime};
+use objc2_foundation::NSString;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
@@ -108,35 +108,13 @@ pub(in crate::voice_message) fn record_start() -> Result<String, String> {
         .into_owned();
     autoreleasepool(|_| unsafe {
         microphone_authorized()?;
-        let path_string = NSString::from_str(&path);
-        let url = NSURL::fileURLWithPath(&path_string);
         let engine = AVAudioEngine::new();
         let input = engine.inputNode();
         let format = input.outputFormatForBus(0);
         if format.sampleRate() <= 0.0 || format.channelCount() == 0 {
             return Err("This Mac has no available microphone input.".to_string());
         }
-        let settings: *mut AnyObject = msg_send![class!(NSMutableDictionary), dictionary];
-        for (key, value) in [
-            ("AVFormatIDKey", 0x6161_6320u32 as f64),
-            ("AVSampleRateKey", format.sampleRate()),
-            ("AVNumberOfChannelsKey", format.channelCount() as f64),
-            ("AVEncoderBitRateKey", 64_000.0),
-            ("AVEncoderAudioQualityKey", 96.0),
-        ] {
-            let key = NSString::from_str(key);
-            let number: *mut AnyObject = msg_send![class!(NSNumber), numberWithDouble: value];
-            let _: () = msg_send![settings, setObject: number, forKey: &*key];
-        }
-        let settings = &*(settings as *const NSDictionary<NSString, AnyObject>);
-        let file = AVAudioFile::initForWriting_settings_commonFormat_interleaved_error(
-            AVAudioFile::alloc(),
-            &url,
-            settings,
-            format.commonFormat(),
-            format.isInterleaved(),
-        )
-        .map_err(|_| "The native Mac recorder could not create an audio file.".to_string())?;
+        let file = super::recording_file::create(&path, &format)?;
         let level = Arc::new(AtomicU32::new(0));
         let write_failed = Arc::new(AtomicBool::new(false));
         let callback_level = level.clone();

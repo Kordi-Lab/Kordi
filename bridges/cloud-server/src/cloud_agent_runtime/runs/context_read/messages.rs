@@ -88,8 +88,8 @@ pub(super) async fn read(
             .saturating_add((limit / 2) as i64 + 1);
     }
     let scan_limit = if search { 256 } else { limit as i64 + 1 };
-    let rows:Vec<(String,String,String,i64,String)>=query_as(
-        "SELECT message_id::text,sender_account_id,COALESCE(content #>> '{blocks,0,text}',''),conversation_sequence,created_at::text
+    let rows:Vec<(String,String,Value,i64,String)>=query_as(
+        "SELECT message_id::text,sender_account_id,content,conversation_sequence,created_at::text
          FROM cloud_chat_messages m WHERE conversation_id=$1 AND deleted_at IS NULL AND conversation_sequence<$2
          AND (NOT $3 OR message_id::text=ANY($4))
          AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id=ANY($5))
@@ -113,6 +113,7 @@ pub(super) async fn read(
             break;
         }
         next = Some(sequence);
+        let body = crate::chat_sync::voice::body_for_agent(&body);
         let Some((sender, kind, text)) = visible_message(&sender, &body) else {
             continue;
         };

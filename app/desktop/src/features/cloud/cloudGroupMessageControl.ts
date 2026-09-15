@@ -10,6 +10,7 @@ import type {
 } from '@/kordi-app/types';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
+import { withoutVoiceAttachment } from './cloudVoiceMessage';
 import {
   cloudAgentCanonicalIdentityId,
   cloudAgentDisplayName,
@@ -181,7 +182,7 @@ export async function applyCloudGroupMessageControl({
   const cloudAttachments = cloudMessage.attachments?.length
     ? cloudMessage.attachments
     : message.attachments ?? [];
-  const mappedAttachments = cloudAttachments.map((attachment) => {
+  const mappedAttachments = (withoutVoiceAttachment(cloudAttachments, message.voiceMessage) ?? []).map((attachment) => {
     const mapped = cloudMessageAttachmentToMessageAttachment(attachment);
     return message.messageKind === 'sticker' && mapped.kind === 'image'
       ? { ...mapped, subtype: 'sticker' as const }

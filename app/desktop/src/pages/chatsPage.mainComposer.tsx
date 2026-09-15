@@ -1,3 +1,4 @@
+import { useVoiceComposerLayout } from './useVoiceComposerLayout';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -143,6 +144,7 @@ export function MainComposer({
     focusComposer: () => composerInputRef.current?.focus(),
   });
   const voiceSurfaceActive = voice.surfaceActive;
+  const voiceLayoutRef = useVoiceComposerLayout(voiceSurfaceActive);
   const video = useVideoMessageRecorder({
     conversationId: conversation.id,
     onSend,
@@ -163,7 +165,7 @@ export function MainComposer({
   }
 
   return (
-    <div className="shrink-0 px-5 pb-4 pt-3">
+    <div ref={voiceLayoutRef} className="shrink-0 px-5 pb-4 pt-3">
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <MessageSelectionBar
           count={selectedMessageCount}

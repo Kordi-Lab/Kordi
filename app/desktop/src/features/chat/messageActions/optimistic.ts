@@ -20,7 +20,7 @@ import { composerMessageAction } from '../messageActionMetadata';
 import { optimisticSessionTitle } from '../sessionTitlePolicy';
 import { optimisticAttachmentContent } from './optimisticAttachments';
 
-export { retryAttachmentItemsFromMessage, toOptimisticAttachments, voiceMessageDraftFromAttachments, voiceMessageSendFields } from './optimisticAttachments';
+export { retryAttachmentItemsFromMessage, toOptimisticAttachments, voiceMessageDraftFromAttachments, voiceMessageSendFields, voiceMessageAgentText } from './optimisticAttachments';
 
 export function collaborationAttachmentTransportFields(attachments: AttachmentItem[]) {
   return {

@@ -214,11 +214,6 @@ fn validate_voice_message(
                 .get("durationMs")
                 .and_then(serde_json::Value::as_u64)
                 .unwrap_or_default();
-            let transcript = voice
-                .get("transcript")
-                .and_then(serde_json::Value::as_str)
-                .map(str::trim)
-                .unwrap_or_default();
             let waveform = voice
                 .get("waveformSamples")
                 .and_then(serde_json::Value::as_array);
@@ -228,8 +223,9 @@ fn validate_voice_message(
                     "audio/mp4" | "audio/m4a" | "audio/x-m4a" | "audio/aac"
                 )
                 && (1..=60_000).contains(&duration_ms)
-                && !transcript.is_empty()
-                && transcript.chars().count() <= 20_000
+                && crate::chat_sync::voice::valid_transcription(&serde_json::Value::Object(
+                    (*voice).clone(),
+                ))
                 && waveform.is_some_and(|samples| {
                     !samples.is_empty()
                         && samples.len() <= 96
@@ -246,7 +242,7 @@ fn validate_voice_message(
     Err(MessageValidationError {
         status: StatusCode::BAD_REQUEST,
         code: "INVALID_VOICE_MESSAGE",
-        message: "Voice messages require one finalized audio item, a transcript, a duration of at most 60 seconds, and bounded waveform samples.",
+        message: "Voice messages require one finalized audio item, a transcript or explicit transcription status, a duration of at most 60 seconds, and bounded waveform samples.",
     })
 }
 

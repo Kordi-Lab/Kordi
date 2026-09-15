@@ -102,9 +102,9 @@ pub(super) async fn fallback_prompt_for_claim(
         &input.request_message_id,
     )
     .await?;
-    let mut chat_rows = query_as::<_, (String, String, String, String)>(
+    let mut chat_rows = query_as::<_, (String, String, String, serde_json::Value)>(
         "SELECT message.message_id::text, message.client_message_id::text, message.sender_account_id,
-                message.content #>> '{blocks,0,text}'
+                message.content
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_messages message
            ON message.conversation_id = conversation.conversation_id
@@ -116,6 +116,17 @@ pub(super) async fn fallback_prompt_for_claim(
     .bind(&input.session_id)
     .fetch_all(pool)
     .await?;
+    let mut chat_rows = chat_rows
+        .drain(..)
+        .map(|(id, client_id, sender, content)| {
+            (
+                id,
+                client_id,
+                sender,
+                crate::chat_sync::voice::body_for_agent(&content),
+            )
+        })
+        .collect::<Vec<_>>();
     let prompt = if !chat_rows.is_empty() {
         chat_rows.reverse();
         let reply_action = crate::cloud_agent_runtime::shared_threads::reply_thread_action(

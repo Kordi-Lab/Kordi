@@ -21,6 +21,10 @@ fn log_mutation_timing(operation: &str, started: Instant, response: &Response) {
 pub(super) fn routes() -> Router<Arc<ServerState>> {
     Router::new()
         .route(
+            "/v2/chat/conversations/:conversation_id/messages/:message_id/transcription",
+            put(update_voice_transcript),
+        )
+        .route(
             "/v2/chat/conversations/:conversation_id/messages/:message_id/reactions",
             put(add_reaction).delete(remove_reaction),
         )
@@ -28,6 +32,26 @@ pub(super) fn routes() -> Router<Arc<ServerState>> {
             "/v2/chat/conversations/:conversation_id/messages/:message_id",
             patch(edit_message).delete(delete_message),
         )
+}
+
+async fn update_voice_transcript(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path((conversation_id, message_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<store::UpdateVoiceTranscriptRequest>,
+) -> Response {
+    match store::update_voice_transcript(
+        state.db_pool(),
+        &session.account_id,
+        conversation_id,
+        message_id,
+        request,
+    )
+    .await
+    {
+        Ok(message) => Json(MessageResponse { message }).into_response(),
+        Err(error) => store_error("update voice transcript", error),
+    }
 }
 
 pub(super) async fn edit_message(

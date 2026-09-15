@@ -736,7 +736,7 @@ function MessageBubbleView({
         ) : (
           <>
             <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>
-              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
+              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} retryTarget={isOwnHumanMessage && msg.reactionConversationId && msg.reactionTargetMessageId && msg.cloudMessageVersion ? { conversationId: msg.reactionConversationId, messageId: msg.reactionTargetMessageId, version: msg.cloudMessageVersion } : undefined} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
               {hasAttachments && !hasDetachedImageGroup ? (
                 <AttachmentPreview
                   msg={msg}
@@ -897,7 +897,7 @@ function MessageBubbleView({
                     msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
-               : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'px-2.5 py-1.5' : '',
+               : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'pl-2.5 py-1.5' : '',
           !hasOnlyBorderlessMediaAttachments && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
         )}
         >

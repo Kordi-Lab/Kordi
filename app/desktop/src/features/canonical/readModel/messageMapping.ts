@@ -5,7 +5,7 @@ import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
-import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
+import { cloudVoiceMessageMetadataOnly, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import type {
@@ -459,7 +459,7 @@ export function mapCanonicalMessage(
     messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
     voiceMessage,
     detail: stringValue(content.detail),
-    attachments: canonicalAttachments(content.attachments),
+    attachments: withoutVoiceAttachment(canonicalAttachments(content.attachments), voiceMessage),
     mentions,
     replyToMessageId: replyToMessageId ?? undefined,
     replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,

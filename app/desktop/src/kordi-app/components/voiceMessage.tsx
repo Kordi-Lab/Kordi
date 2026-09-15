@@ -1,223 +1,24 @@
-import { FileText, LoaderCircle, Pause, Play, RotateCcw, Send, Trash2 } from 'lucide-react';
+export { VoiceRecordingRail } from './voiceRecordingRail';
+import { formatVoiceDuration, localVoiceSource } from './voiceAudioSource';
+import { VoiceWaveform } from './voiceWaveform';
+import { VoiceTranscriptRetry, type VoiceTranscriptRetryTarget } from './voiceTranscriptRetry';
+import { voiceTranscript, voiceTranscriptionLabel } from '@/features/chat/voiceTranscription';
+import { FileText, LoaderCircle, Pause, Play, RotateCcw } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { displayVoiceWaveform, type VoiceMessageRecorderState } from '@/features/chat/useVoiceMessageRecorder';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { downloadCloudAttachmentToLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
 import type { MessageVoice } from '@/kordi-app/types/message';
 import { isNativeDesktopShell, readDesktopChatAttachment } from '@/lib/desktop';
 import { pauseDesktopVoiceMessage, playDesktopVoiceMessage, seekDesktopVoiceMessage, stopDesktopVoiceMessage } from '@/lib/desktopVoice';
-import { cn } from '@/lib/utils';
 
 const VOICE_PLAY_EVENT = 'kordi:voice-message-play';
 const MIN_PLAYABLE_VOICE_BYTES = 1_024;
 
-function formatVoiceDuration(durationMs: number) {
-  const seconds = Math.max(0, Math.round(durationMs / 1_000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
-function VoiceWaveform({ samples, progress = 0, live = false }: {
-  samples: readonly number[];
-  progress?: number;
-  live?: boolean;
-}) {
-  const values = displayVoiceWaveform(samples);
-  return (
-    <span className="app-voice-waveform" aria-hidden="true">
-      {values.map((sample, index) => (
-        <span
-          key={index}
-          className={cn(
-            'app-voice-waveform-bar',
-            index / values.length <= progress && 'app-voice-waveform-bar-played',
-          )}
-          style={{ height: `${Math.max(16, Math.min(100, sample * 100))}%` }}
-          data-live={live ? 'true' : undefined}
-        />
-      ))}
-    </span>
-  );
-}
-
-async function localVoiceSource(path: string | null | undefined) {
-  if (!path) return null;
-  const bytes = await readDesktopChatAttachment(path);
-  if (bytes.length < MIN_PLAYABLE_VOICE_BYTES) {
-    throw new Error('Voice message audio is unavailable.');
-  }
-  return URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: 'audio/mp4' }));
-}
-
-function VoiceDraftReview({ state, onTrimRange }: {
-  state: VoiceMessageRecorderState;
-  onTrimRange: (startMs: number, endMs: number) => void;
-}) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const objectUrlRef = useRef<string | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [elapsedMs, setElapsedMs] = useState(state.trimStartMs);
-  const [speed, setSpeed] = useState(1);
-  const [source, setSource] = useState<string | null>(null);
-  const path = state.attachment?.localPath ?? state.attachment?.path;
-  const trimDurationMs = Math.max(1, state.trimEndMs - state.trimStartMs);
-  const progress = Math.max(0, Math.min(1, (elapsedMs - state.trimStartMs) / trimDurationMs));
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (audio) audio.playbackRate = speed;
-  }, [speed]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void localVoiceSource(path).then((nextSource) => {
-      if (cancelled || !nextSource) return;
-      objectUrlRef.current = nextSource;
-      setSource(nextSource);
-    }).catch(() => {});
-    return () => {
-      cancelled = true;
-      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-      objectUrlRef.current = null;
-    };
-  }, [path]);
-
-  function togglePlayback() {
-    const audio = audioRef.current;
-    if (!audio || !source) return;
-    if (audio.currentTime * 1_000 < state.trimStartMs || audio.currentTime * 1_000 >= state.trimEndMs) {
-      audio.currentTime = state.trimStartMs / 1_000;
-    }
-    if (audio.paused) void audio.play();
-    else audio.pause();
-  }
-
-  function seek(value: number) {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.currentTime = (state.trimStartMs + value * trimDurationMs) / 1_000;
-    setElapsedMs(audio.currentTime * 1_000);
-  }
-
-  return (
-    <div className="app-voice-draft-review">
-      <audio
-        ref={audioRef}
-        preload="metadata"
-        src={source ?? undefined}
-        onPlay={() => setPlaying(true)}
-        onPause={() => setPlaying(false)}
-        onEnded={() => { setPlaying(false); setElapsedMs(state.trimStartMs); }}
-        onTimeUpdate={(event) => {
-          const next = event.currentTarget.currentTime * 1_000;
-          if (next >= state.trimEndMs) {
-            event.currentTarget.pause();
-            event.currentTarget.currentTime = state.trimStartMs / 1_000;
-            setElapsedMs(state.trimStartMs);
-          } else {
-            setElapsedMs(next);
-          }
-        }}
-      />
-      <button type="button" className="app-voice-play-button" onClick={togglePlayback} disabled={!source} aria-label={playing ? 'Pause voice recording preview' : 'Play voice recording preview'}>
-        {playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current" />}
-      </button>
-      <div className="app-voice-scrubber">
-        <VoiceWaveform samples={state.waveformSamples} progress={progress} />
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={progress}
-          onChange={(event) => seek(Number(event.target.value))}
-          aria-label="Voice recording preview position"
-          aria-valuetext={`${formatVoiceDuration(elapsedMs - state.trimStartMs)} of ${formatVoiceDuration(trimDurationMs)}`}
-        />
-        <div className="app-voice-trim-controls">
-          <input
-            type="range"
-            min="0"
-            max={state.durationMs}
-            step="50"
-            value={state.trimStartMs}
-            onChange={(event) => onTrimRange(Number(event.target.value), state.trimEndMs)}
-            aria-label="Trim voice message start"
-            aria-valuetext={formatVoiceDuration(state.trimStartMs)}
-          />
-          <input
-            type="range"
-            min="0"
-            max={state.durationMs}
-            step="50"
-            value={state.trimEndMs}
-            onChange={(event) => onTrimRange(state.trimStartMs, Number(event.target.value))}
-            aria-label="Trim voice message end"
-            aria-valuetext={formatVoiceDuration(state.trimEndMs)}
-          />
-        </div>
-      </div>
-      <button type="button" className="app-voice-speed" onClick={() => setSpeed((value) => value === 1 ? 1.5 : value === 1.5 ? 2 : 1)} aria-label={`Playback speed ${speed} times`}>
-        {speed}×
-      </button>
-      <span className="app-voice-duration tabular-nums">{formatVoiceDuration(trimDurationMs)}</span>
-    </div>
-  );
-}
-
-export function VoiceRecordingRail({
-  state,
-  onCancel,
-  onSend,
-  onRetry,
-  onTrimRange,
-}: {
-  state: VoiceMessageRecorderState;
-  onCancel: () => void;
-  onSend: () => void;
-  onRetry: () => void;
-  onTrimRange: (startMs: number, endMs: number) => void;
-}) {
-  const phaseLabel = state.phase === 'review'
-      ? state.transcriptionPhase === 'transcribing' ? 'Preparing voice message' : 'Voice message ready to review'
-      : state.phase === 'error' ? 'Voice recording failed' : 'Recording voice message';
-
-  return (
-    <div className="app-voice-recording-rail">
-      <span className="sr-only" role="status" aria-live="polite">{phaseLabel}</span>
-      {state.attachment ? (
-        <>
-          <button type="button" className="app-button-quiet app-voice-control" onClick={onCancel} aria-label="Delete voice recording" title="Delete recording">
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <VoiceDraftReview state={state} onTrimRange={onTrimRange} />
-          {state.transcriptionPhase === 'transcribing' ? (
-            <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-label="Preparing transcript" />
-          ) : state.transcriptionPhase === 'error' ? (
-            <button type="button" className="app-button-quiet app-voice-control" onClick={onRetry} aria-label="Retry voice transcription" title="Retry transcription">
-              <RotateCcw className="h-4 w-4" />
-            </button>
-          ) : null}
-          <button type="button" className="app-voice-send-button" onClick={onSend} aria-label="Send voice message">
-            <Send className="h-4 w-4" />
-          </button>
-        </>
-      ) : (
-        <>
-          <div className="app-error-text min-w-0 flex-1">{state.error}</div>
-          <button type="button" className="app-button-quiet app-voice-control" onClick={onRetry} aria-label="Record voice message again">
-            <RotateCcw className="h-4 w-4" />
-          </button>
-        </>
-      )}
-      {state.error && state.attachment ? <div className="app-voice-inline-error">{state.error}</div> : null}
-    </div>
-  );
-}
-
-export function VoiceMessageContent({ voice, footer }: {
+export function VoiceMessageContent({ voice, footer, retryTarget }: {
+  retryTarget?: VoiceTranscriptRetryTarget;
   voice: MessageVoice;
   footer?: ReactNode;
 }) {
@@ -235,8 +36,7 @@ export function VoiceMessageContent({ voice, footer }: {
   const [showsTranscript, setShowsTranscript] = useState(false);
   const [showsFullTranscript, setShowsFullTranscript] = useState(false);
   const hasTranscript = Boolean(
-    voice.transcript.trim()
-      && voice.transcript.trim() !== 'Transcription unavailable.',
+    voiceTranscript(voice),
   );
   const progress = voice.durationMs > 0 ? Math.min(1, elapsedMs / voice.durationMs) : 0;
   const transcriptIsLong = voice.transcript.length > 320 || voice.transcript.split('\n').length > 5;
@@ -462,7 +262,6 @@ export function VoiceMessageContent({ voice, footer }: {
               {playbackError ? 'Unavailable' : formatVoiceDuration(playing ? elapsedMs : voice.durationMs)}
             </span>
             <div className="app-voice-meta-actions">
-              {footer ? <div className="app-voice-inline-footer">{footer}</div> : null}
               <button
                 type="button"
                 className="app-voice-transcript-trigger"
@@ -473,6 +272,7 @@ export function VoiceMessageContent({ voice, footer }: {
               >
                 <FileText className="h-3 w-3" aria-hidden="true" />
               </button>
+              {footer ? <div className="app-voice-inline-footer">{footer}</div> : null}
             </div>
           </div>
         </div>
@@ -488,7 +288,10 @@ export function VoiceMessageContent({ voice, footer }: {
                 </button>
               ) : null}
             </>
-          ) : <div className="app-voice-transcript-unavailable">Transcript unavailable for this recording.</div>}
+          ) : <div className="app-voice-transcript-unavailable">
+            {voiceTranscriptionLabel(voice)}
+            {retryTarget && nativePlayback ? <VoiceTranscriptRetry key={`${retryTarget.messageId}:${retryTarget.version}:${voice.mediaId}`} voice={voice} target={retryTarget} /> : null}
+          </div>}
         </div>
       ) : null}
     </div>

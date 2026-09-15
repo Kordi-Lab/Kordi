@@ -1,3 +1,4 @@
+import type { VoiceTranscription } from '@/features/chat/voiceTranscription';
 import type { LivePhoto, LivePhotoFiles } from '@/features/chat/livePhotos';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 
@@ -185,6 +186,7 @@ export type MessageVoice = {
   durationMs: number;
   waveformSamples: number[];
   transcript: string;
+  transcription?: VoiceTranscription;
   localPath?: string | null;
 };
 

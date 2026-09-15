@@ -368,7 +368,7 @@ fn message_snippets(
     let like = escaped_like_contains(query);
     let mut stmt = conn
         .prepare(
-            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.content_text, m.created_at_ms
+            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.content_text, m.created_at_ms, m.content_json
              FROM session_messages m
              LEFT JOIN identities i ON i.id = m.sender_identity_id
              WHERE m.session_id = ?1 AND lower(m.content_text) LIKE ?2 ESCAPE '\\'
@@ -381,7 +381,13 @@ fn message_snippets(
             Ok(SessionObservationSnippet {
                 message_id: row.get(0)?,
                 sender: row.get(1)?,
-                text: truncate_text(&row.get::<_, String>(2)?, MAX_SEARCH_SNIPPET_TEXT_CHARS),
+                text: truncate_text(
+                    &super::voice_context::message_text(
+                        row.get(2)?,
+                        row.get::<_, Option<String>>(4)?.as_deref(),
+                    ),
+                    MAX_SEARCH_SNIPPET_TEXT_CHARS,
+                ),
                 time_label: Some(row.get::<_, i64>(3)?.to_string()),
             })
         })

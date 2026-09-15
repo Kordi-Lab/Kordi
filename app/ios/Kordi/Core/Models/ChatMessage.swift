@@ -417,6 +417,7 @@ struct VoiceMessage: Codable, Hashable {
     let durationMs: Int
     let waveformSamples: [Double]
     let transcript: String
+    var transcription: VoiceTranscription? = nil
 }
 
 struct PendingVoiceMessage: Hashable, @unchecked Sendable {
@@ -424,6 +425,7 @@ struct PendingVoiceMessage: Hashable, @unchecked Sendable {
     let durationMs: Int
     let waveformSamples: [Double]
     let transcript: String
+    var transcription: VoiceTranscription? = nil
 
     func voiceMessage(mediaId: String) -> VoiceMessage {
         VoiceMessage(
@@ -431,7 +433,8 @@ struct PendingVoiceMessage: Hashable, @unchecked Sendable {
             mimeType: attachment.mimeType ?? "audio/mp4",
             durationMs: durationMs,
             waveformSamples: waveformSamples,
-            transcript: transcript
+            transcript: transcript,
+            transcription: transcription?.bound(to: mediaId)
         )
     }
 }

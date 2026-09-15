@@ -1,5 +1,10 @@
 import type { Conversation, Message } from '@/kordi-app/types';
 import { isMp4VideoAttachment } from './attachmentMediaGallery';
+import { voiceTranscript } from './voiceTranscription';
+
+export function voiceMessagePreview(message: Pick<Message, 'voiceMessage'>): string | null {
+  return message.voiceMessage ? voiceTranscript(message.voiceMessage) || 'Voice message' : null;
+}
 
 function cleanText(value?: string | null) {
   return value?.trim() ?? '';
@@ -38,9 +43,9 @@ export type AttachmentOnlyMessagePreview = {
 };
 
 export function attachmentOnlyMessagePreview(
-  message: Pick<Message, 'text' | 'turn' | 'attachments' | 'messageKind'> | undefined,
+  message: Pick<Message, 'text' | 'turn' | 'attachments' | 'messageKind' | 'voiceMessage'> | undefined,
 ): AttachmentOnlyMessagePreview | null {
-  if (!message) return null;
+  if (!message || message.voiceMessage) return null;
   if (safePreviewText(message.text) || safePreviewText(message.turn?.assistantText)) {
     return null;
   }
@@ -88,7 +93,7 @@ export function latestParticipantSpacePreviewMessage(conversation: Conversation)
   for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
     const message = conversation.messages[index];
     if (!message || !messageCanAppearInPreview(message)) continue;
-    const preview = safePreviewText(message.text)
+    const preview = voiceMessagePreview(message) || safePreviewText(message.text)
       || safePreviewText(message.turn?.assistantText)
       || attachmentOnlyMessagePreview(message)?.label;
     if (preview) return { message, preview };

@@ -30,6 +30,7 @@ mod sanitization;
 mod schema;
 mod session_observation;
 mod side_sessions;
+mod voice_context;
 pub(crate) use side_sessions::initialize_private_side_session;
 #[cfg(test)]
 mod tests;
