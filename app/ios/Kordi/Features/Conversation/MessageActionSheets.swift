@@ -311,7 +311,20 @@ struct PinnedMessageItem: Identifiable, Equatable {
     var scopeDescription: String { scope == "shared" ? "for everyone" : "only for you" }
 }
 
+enum PinPresentationMotion {
+    static func animation(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: 0.1) : .timingCurve(0.23, 1, 0.32, 1, duration: 0.24)
+    }
+    static func shelfTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+    }
+    static func noticeTransition(reduceMotion: Bool) -> AnyTransition {
+        reduceMotion ? .opacity : .offset(y: 15).combined(with: .opacity)
+    }
+}
+
 struct PinnedMessageBar: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let items: [PinnedMessageItem]
     let onOpen: (PinnedMessageItem) -> Void
     let onUnpin: (PinnedMessageItem) -> Void
@@ -347,7 +360,7 @@ struct PinnedMessageBar: View {
             if !items.isEmpty {
                 if isCollapsible {
                     Button {
-                        withAnimation(.easeOut(duration: 0.16)) {
+                        withAnimation(PinPresentationMotion.animation(reduceMotion: reduceMotion)) {
                             isExpanded.toggle()
                         }
                     } label: {
@@ -388,6 +401,7 @@ struct PinnedMessageBar: View {
                         .overlay(alignment: .bottom) {
                             if item.id != items.last?.id { Divider().padding(.leading, 14) }
                         }
+                        .transition(PinPresentationMotion.shelfTransition(reduceMotion: reduceMotion))
                     }
                 }
             }

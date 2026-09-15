@@ -17,6 +17,9 @@ test('cloud contact and agent selection never opens a local Agent runtime', asyn
   const loaded: string[] = [];
   const refreshed: string[] = [];
   const hydrated: string[] = [];
+  const prepared: string[] = [];
+  let releasePin: (() => void) | undefined;
+  let pinPending: Promise<void> | undefined;
   let selected = '';
   let error: string | null = 'Previous loading error';
   let actions!: ReturnType<typeof useDesktopSessionController>;
@@ -27,6 +30,7 @@ test('cloud contact and agent selection never opens a local Agent runtime', asyn
       desktopChatState: null, desktopSessionRenameDraft: '', selectProjectSession: noop,
       refreshDesktopChat: async id => { if (id) refreshed.push(id); },
       hydrateCanonicalSessionPage: async id => { hydrated.push(id); },
+      prepareCloudSessionPin: async id => { prepared.push(id); await pinPending; },
       isDesktopSessionTranscriptCached: () => false,
       preloadDesktopSessionTranscript: async id => {
         loaded.push(id);
@@ -60,9 +64,14 @@ test('cloud contact and agent selection never opens a local Agent runtime', asyn
       assert.deepEqual(refreshed, [], 'Cloud IDs must not reach native session activation');
       assert.deepEqual(hydrated, [], 'Conversation IDs must not be passed as canonical session IDs');
     }
-    await act(async () => {
-      await actions.handleSelectChatSession('session:direct-person:example:peer');
-    });
+    pinPending = new Promise<void>(resolve => { releasePin = resolve; });
+    let selection: Promise<void>;
+    await act(async () => { selection = actions.handleSelectChatSession('session:direct-person:example:peer'); });
+    assert.ok(prepared.includes('session:direct-person:example:peer'));
+    assert.ok(hydrated.includes('session:direct-person:example:peer'), 'Pins and messages start loading together');
+    assert.notEqual(selected, 'session:direct-person:example:peer', 'Cold session publishes with its pin state ready');
+    await act(async () => { releasePin!(); await selection; });
+    pinPending = undefined;
     assert.deepEqual(hydrated, ['session:direct-person:example:peer']);
     assert.deepEqual(loaded, []);
     await act(async () => { await actions.handleSelectChatSession('local-session'); });

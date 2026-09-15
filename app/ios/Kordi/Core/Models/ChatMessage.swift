@@ -1176,7 +1176,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     var isSystemNotice: Bool {
-        isAgentModelChangeNotice
+        messageKind == "session_pin_activity" || isAgentModelChangeNotice
             || isGroupMemberJoinNotice
             || isTitleUpdateNotice
             || callActivity != nil
@@ -1398,5 +1398,27 @@ enum MentionAttention {
                 ?? (message.deliveryState != .read)
         }
         .sorted(by: ChatMessage.timelinePrecedes)
+    }
+}
+
+/// Pin events are independent history rows, never replacements for pin state.
+enum PinHistoryTimeline {
+    static func inserting(_ history: [CloudPinHistoryEvent], into messages: [ChatMessage], conversationID: String, label: (CloudPinHistoryEvent) -> String) -> [ChatMessage] {
+        let events = CloudPinHistoryEvent.merging([history]).compactMap { event -> ChatMessage? in
+            guard event.kind == "pinned" || event.kind == "unpinned", let date = event.timestamp else { return nil }
+            return ChatMessage(id: "pin-history:\(event.id)", conversationId: conversationID,
+                author: .person, authorName: "", text: label(event), createdAt: date,
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: nil, messageKind: "session_pin_activity")
+        }
+        var result: [ChatMessage] = []
+        var index = 0
+        for message in messages {
+            while index < events.count && events[index].createdAt < message.createdAt {
+                result.append(events[index]); index += 1
+            }
+            result.append(message)
+        }
+        result.append(contentsOf: events.dropFirst(index))
+        return result
     }
 }

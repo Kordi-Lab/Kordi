@@ -1,3 +1,4 @@
+import { CloudPinClient } from './cloudPinClient';
 import { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLookup,type CloudProviderAuthSnapshot,type CloudProviderAuthSnapshotInput } from "./cloudAgentRuntimeTypes";
 // Cloud-edition HTTP client. Authentication and ancillary account features
 // remain under /v1/cloud; durable chat transport is exclusively /v2/chat.
@@ -338,6 +339,7 @@ export class CloudAuthClient {
   private readonly expressiveMedia: CloudExpressiveMediaClient;
   private readonly identity: CloudIdentityAuthClient;
   private readonly sessionList: CloudSessionListClient;
+  private readonly pins: CloudPinClient;
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
@@ -357,6 +359,7 @@ export class CloudAuthClient {
     this.expressiveMedia = new CloudExpressiveMediaClient(
       (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
     );
+    this.pins = new CloudPinClient((path, init, fallback) => this.send(path, init, fallback));
     this.sessionList = new CloudSessionListClient(
       (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
     );
@@ -841,32 +844,10 @@ export class CloudAuthClient {
     return this.sessionList.list(token);
   }
 
-  async getCloudSessionPin(token: string, sessionId: string): Promise<CloudSessionPin> {
-    const response = await this.send<{ pin: CloudSessionPin }>(
-      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin`,
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not load pinned message.',
-    );
-    if (!response?.pin) throw new Error('Empty response from cloud server.');
-    return response.pin;
-  }
-
-  async updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; scope: 'private' | 'shared' }): Promise<CloudSessionPin> {
-    const response = await this.send<{ pin: CloudSessionPin }>(
-      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin`,
-      {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ messageId: input.messageId, scope: input.scope }),
-      },
-      'Could not update pinned message.',
-    );
-    if (!response?.pin) throw new Error('Empty response from cloud server.');
-    return response.pin;
-  }
+  getCloudPinHistory(token: string, sessionId: string, signal?: AbortSignal) { return this.pins.getCloudPinHistory(token, sessionId, signal); }
+  getCloudSessionPinState(token: string, sessionId: string, signal?: AbortSignal) { return this.pins.getState(token, sessionId, signal); }
+  getCloudSessionPin(token: string, sessionId: string, signal?: AbortSignal) { return this.pins.getCloudSessionPin(token, sessionId, signal); }
+  updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; scope: 'private' | 'shared' }) { return this.pins.updateCloudSessionPin(token, sessionId, input); }
 
   async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> { return this.chat.updateTitle(token, sessionId, input); }
 

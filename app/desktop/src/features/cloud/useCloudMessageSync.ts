@@ -1,3 +1,5 @@
+import { mergePinSyncSnapshot } from './cloudPinHistory';
+import { applyCloudSyncEventsToSessionPins } from './cloudDiffSync';
 import { cloudMessageDeletions } from './cloudMessageDeletions';
 import { useCloudRepairPolling } from './useCloudRepairPolling';
 import { createCloudHistoryRepair } from './cloudHistoryRepair';
@@ -7,7 +9,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
+import { cloudCachedSessionTitles } from './cloudCachedSessionTitles';
+import { cloudMessageFromChatSync } from './authClient';
 import type { CloudMessage } from './authClient';
 import { chatEventsRequireDirectoryBootstrap, publishCloudDeviceEvents } from './cloudDeviceEvents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
@@ -23,7 +26,6 @@ import {
 import { syncCloudDiffOnce } from './cloudDiffSync';
 import { hasCachedCloudSessionVisibility } from './cloudDiffSync';
 import { commitCloudVisibility } from './cloudVisibilitySnapshot';
-import type { CloudSessionTitlesById } from './cloudDiffSync';
 import { mergeCloudSessionActivity } from './cloudSessionActivity';
 import type {
   CloudMessageSyncController,
@@ -133,7 +135,8 @@ export function useCloudMessageSync({
     let messagesByPeer = messagesRef.current;
     let sessionActivity = activityRef.current;
     let sessionForksById = forksRef.current;
-    let sessionPinsById = pinsRef.current;
+    const initialSessionPins = pinsRef.current;
+    let sessionPinsById = initialSessionPins;
     let sessionTitlesById = titlesRef.current;
     let cloudAgentsById = agentsRef.current;
     let hiddenSessionIds = hiddenSessionIdsRef.current;
@@ -252,9 +255,11 @@ export function useCloudMessageSync({
     setForks((current) => (
       cloudSessionForksByIdEqual(current, sessionForksById) ? current : sessionForksById
     ));
-    setPins((current) => (
-      JSON.stringify(current) === JSON.stringify(sessionPinsById) ? current : sessionPinsById
-    ));
+    setPins((current) => {
+      const merged = mergePinSyncSnapshot(current, sessionPinsById, initialSessionPins);
+      pinsRef.current = merged;
+      return JSON.stringify(current) === JSON.stringify(merged) ? current : merged;
+    });
     setTitles((current) => (
       JSON.stringify(current) === JSON.stringify(sessionTitlesById) ? current : sessionTitlesById
     ));
@@ -293,6 +298,12 @@ export function useCloudMessageSync({
     const local = await loadChatSyncLocalState(account.accountId);
     if (!local || !coordinator.isCurrentGeneration(generation)) return;
     if (!local.visibility) return;
+    const cachedPins = applyCloudSyncEventsToSessionPins({}, (local.pinEvents ?? []).map(event => ({
+      eventId: event.event_id, eventType: event.type, peerAccountId: null, messageId: null,
+      occurredAt: event.occurred_at, payload: event.payload,
+    })));
+    pinsRef.current = mergePinSyncSnapshot(pinsRef.current, cachedPins, {});
+    setPins(current => mergePinSyncSnapshot(current, cachedPins, {}));
     commitCloudVisibility(account.accountId, storesRef.current, [{eventId:'cached-visibility',eventType:'session.visibility.snapshot',
       peerAccountId:null,messageId:null,occurredAt:'',payload:{visibility:local.visibility}}]);
     const conversationById = new Map(
@@ -317,25 +328,9 @@ export function useCloudMessageSync({
       hydratedMessages,
     );
     setMessages((current) => mergeCloudMessagesByPeerSnapshot(current, hydratedMessages));
-    const hydratedTitles = local.conversations.reduce<CloudSessionTitlesById>((titles, conversation) => {
-      const sessionId = conversation.legacy_session_id ?? conversation.id;
-      const title = chatSyncSessionTitle(conversation);
-      if (!title) return titles;
-      titles[sessionId] = {
-        sessionId,
-        title,
-        titleSource: conversation.preferences.personal_title ? 'manual' as const : 'external' as const,
-        titleRevision: conversation.version,
-        titlePolicyVersion: 1,
-        titleGeneratedFromMessageId: null,
-        updatedAtMs: Date.parse(conversation.updated_at) || Date.now(),
-        updatedByAccountId: conversation.created_by_account_id,
-        updatedAt: conversation.updated_at,
-      };
-      return titles;
-    }, {});
+    const hydratedTitles = cloudCachedSessionTitles(local.conversations);
     setTitles((current) => ({ ...current, ...hydratedTitles }));
-  }, [account, coordinator, messagesRef, setMessages, setTitles]);
+  }, [account, coordinator, messagesRef, pinsRef, setMessages, setPins, setTitles]);
   const hydrateMissingChatHistory = useCallback(async (generation: number) => {
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const session = await loadSession();

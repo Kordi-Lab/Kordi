@@ -150,6 +150,7 @@ export function useKordiAppRuntimeActions({
     selectProjectSession,
     refreshDesktopChat,
     hydrateCanonicalSessionPage,
+    prepareCloudSessionPin: foundation.cloud.prepareCloudSessionPin,
     isDesktopSessionTranscriptCached,
     preloadDesktopSessionTranscript,
     shouldAutoFollowChatRef,

@@ -1,3 +1,4 @@
+import { PinnedMessageShelf } from './PinnedMessageShelf';
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
 import {
@@ -31,7 +32,6 @@ import {
 } from '@/pages/chatsPage.header';
 import {
   PinMessageDialog,
-  PinnedMessageBar,
 } from '@/pages/chatsPage.pins';
 import {
   ChatComposerShell,
@@ -241,8 +241,7 @@ export function ChatMainWorkspace({
               />
             ) : null}
 
-            {models.pins.pinnedMessages.length > 0 ? (
-              <PinnedMessageBar
+            <PinnedMessageShelf
                 key={activeConv.id}
                 items={models.pins.pinnedMessages}
                 onOpenMessage={models.pins.openPinnedMessage}
@@ -250,7 +249,6 @@ export function ChatMainWorkspace({
                   models.pins.requestUnpin(message, scope);
                 }}
               />
-            ) : null}
 
             <SupportReportSubmissionProvider
               accountId={supportAccountId}
@@ -274,7 +272,7 @@ export function ChatMainWorkspace({
                 activeForkSourceTitle: models.fork.sourceTitle,
                 messageForksByEntryId: models.fork.forksByEntryId,
                 pinnedMessageIds: models.pins.pinnedMessageIds,
-                pinActivityLabel: models.pins.pinActivityLabel,
+                pinActivities: models.pins.pinActivities,
                 relatedAgentSessionStatusById: presentation.relatedAgentSessionStatusById,
               }}
               actions={{

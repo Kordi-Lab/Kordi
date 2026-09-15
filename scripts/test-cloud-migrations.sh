@@ -38,6 +38,7 @@ else
   migration_database_url() { printf 'postgresql://postgres@127.0.0.1:%s/%s\n' "$port" "$1"; }
 fi
 tests=(
+  upgrade_from_91_retains_pin_actions_and_captures_rolling_writes
   upgrade_from_75_preserves_history_and_new_identity_guards
   upgrade_from_digest_76_preserves_existing_report_and_calendar
   upgrade_from_88_retains_old_and_new_upsert_compatibility

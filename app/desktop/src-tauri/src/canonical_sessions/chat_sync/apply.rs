@@ -130,6 +130,8 @@ pub(super) fn load_state(
         &direct_conversation_ids,
     );
     Ok(ChatSyncLocalState {
+        pin_events: super::pins::load_pin_events(conn, account_id)?,
+        pin_cache_ready: super::pins::pin_cache_ready(conn, account_id)?,
         visibility: super::visibility::load_visibility(conn, account_id)?,
         account_id: account_id.to_string(),
         cursor: cursor.cursor,
@@ -283,6 +285,7 @@ pub(super) fn apply_on_connection(
     for event in &request.events {
         apply_event(&tx, account_id, event)?;
     }
+    super::pins::apply_pin_events(&tx, account_id, &request.events, request.bootstrap)?;
     super::visibility::apply_visibility_events(
         &tx,
         account_id,

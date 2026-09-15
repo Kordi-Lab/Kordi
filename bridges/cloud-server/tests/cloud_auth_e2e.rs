@@ -210,3 +210,7 @@ mod public_identity;
 mod session_and_presence;
 #[path = "cloud_auth_e2e/session_list_actions.rs"]
 mod session_list_actions;
+#[path = "cloud_auth_e2e/session_list_fixtures.rs"]
+mod session_list_fixtures;
+#[path = "cloud_auth_e2e/session_pin_history.rs"]
+mod session_pin_history;

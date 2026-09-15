@@ -51,6 +51,7 @@ type UseDesktopSessionControllerArgs = {
   desktopSessionRenameDraft: string;
   selectProjectSession: (projectId: string, sessionId: string) => void;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
+  prepareCloudSessionPin?: (sessionId: string) => Promise<void>;
   hydrateCanonicalSessionPage: (sessionId: string) => Promise<unknown>;
   isDesktopSessionTranscriptCached: (sessionId: string) => boolean;
   preloadDesktopSessionTranscript: (sessionId: string) => Promise<boolean>;
@@ -76,7 +77,7 @@ export function useDesktopSessionController({
   desktopSessionRenameDraft,
   selectProjectSession,
   refreshDesktopChat,
-  hydrateCanonicalSessionPage,
+  hydrateCanonicalSessionPage, prepareCloudSessionPin,
   isDesktopSessionTranscriptCached,
   preloadDesktopSessionTranscript,
   shouldAutoFollowChatRef,
@@ -101,7 +102,7 @@ export function useDesktopSessionController({
         isLegacyCanonicalCollaborationSessionId(sessionId)
         || isCanonicalCloudSessionId(sessionId)
       ) {
-        await hydrateCanonicalSessionPage(sessionId);
+        await Promise.all([hydrateCanonicalSessionPage(sessionId), prepareCloudSessionPin?.(sessionId).catch(() => {})]);
         return true;
       }
       if (isLocalDraftChatConversationId(sessionId) || sessionId.startsWith('bridge:') || isCloudCollaborationConversationId(sessionId)) return true;
@@ -113,7 +114,7 @@ export function useDesktopSessionController({
     } catch {
       return false;
     }
-  }, [desktopChatState, hydrateCanonicalSessionPage, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat]);
+  }, [desktopChatState, prepareCloudSessionPin, hydrateCanonicalSessionPage, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat]);
 
   const handleSelectChatSession = useCallback(async (sessionId: string) => {
     const requestId = selectionRequestIdRef.current + 1;
@@ -133,7 +134,7 @@ export function useDesktopSessionController({
     ) {
       setDesktopChatError(null);
       try {
-        await hydrateCanonicalSessionPage(sessionId);
+        await Promise.all([hydrateCanonicalSessionPage(sessionId), prepareCloudSessionPin?.(sessionId).catch(() => {})]);
       } catch (error) {
         if (selectionRequestIdRef.current !== requestId) return;
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
@@ -147,6 +148,8 @@ export function useDesktopSessionController({
       || sessionId.startsWith('bridge:')
       || isCloudCollaborationConversationId(sessionId)
     ) {
+      await prepareCloudSessionPin?.(sessionId).catch(() => {});
+      if (selectionRequestIdRef.current !== requestId) return;
       setActiveConvId(sessionId);
       setDesktopChatError(null);
       return;
@@ -168,7 +171,7 @@ export function useDesktopSessionController({
       setActiveConvId(sessionId);
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
     }
-  }, [hydrateCanonicalSessionPage, isDesktopSessionTranscriptCached, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
+  }, [prepareCloudSessionPin, hydrateCanonicalSessionPage, isDesktopSessionTranscriptCached, isNativeShell, preloadDesktopSessionTranscript, refreshDesktopChat, setActiveConvId, setChatComposerAttachments, setDesktopChatError, setPendingUserChatMessage, shouldAutoFollowChatRef]);
 
   const handleCreateChatSession = useCallback(async () => {
     if (!isNativeShell) return;

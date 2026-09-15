@@ -1,3 +1,4 @@
+import type { PinActivity } from '@/pages/chatsPage.pinActivity';
 import type {
   ComponentProps,
   Dispatch,
@@ -278,7 +279,7 @@ export type ChatSessionPanePresentation = {
     Array<{ sessionId: string; title: string; updatedAtLabel?: string }>
   >;
   pinnedMessageIds?: readonly string[];
-  pinActivityLabel?: string | null;
+  pinActivities?: readonly PinActivity[];
   densityMode?: TranscriptDensityMode;
   relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
 };
