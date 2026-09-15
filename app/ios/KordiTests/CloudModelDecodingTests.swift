@@ -408,6 +408,23 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.history?.map(\.kind), ["pinned", "pinned", "unpinned", "unpinned"])
     }
 
+    func testPendingPinHistoryKeepsImmediateRowsStableThroughSyncConfirmation() {
+        let pin = CloudPinHistoryEvent(id: "local-pin:pin", sessionId: "session:fixture", kind: "pinned", scope: "private", messageId: "target", updatedByAccountId: "owner", updatedAt: "2026-09-15T10:00:00.010Z")
+        let unpin = CloudPinHistoryEvent(id: "local-pin:unpin", sessionId: pin.sessionId, kind: "unpinned", scope: pin.scope, messageId: nil, updatedByAccountId: "owner", updatedAt: "2026-09-15T10:00:00.020Z")
+        let actions = [pin, unpin].map { PendingSessionPinAction(event: $0, knownIDs: []) }
+        XCTAssertEqual(PendingSessionPinAction.presentedHistory([], actions: actions).map(\.id), [pin.id, unpin.id])
+        let canonical = [pin, unpin].enumerated().map { index, event in
+            CloudPinHistoryEvent(id: "server-\(index)", sequence: Int64(index + 1), sessionId: event.sessionId,
+                kind: event.kind, scope: event.scope, messageId: event.messageId,
+                updatedByAccountId: event.updatedByAccountId, updatedAt: event.updatedAt)
+        }
+        let resolved = PendingSessionPinAction.resolving(actions, history: canonical)
+        XCTAssertEqual(resolved.compactMap(\.resolvedID), canonical.map(\.id))
+        XCTAssertEqual(PendingSessionPinAction.presentedHistory(canonical, actions: resolved).map(\.id), [pin.id, unpin.id])
+        XCTAssertEqual(PendingSessionPinAction.resolving(resolved, history: canonical), resolved)
+        XCTAssertTrue(PendingSessionPinAction.presentedHistory([], actions: []).isEmpty)
+    }
+
     @MainActor
     func testPinHistorySurvivesUnpinReplayAndSerializationRoundTrip() throws {
         let pin = CloudPinHistoryEvent(id: "pin-event", sequence: 1, sessionId: "session:group", kind: "pinned", scope: "shared", messageId: "target", updatedByAccountId: "owner", updatedAt: "2026-09-15T10:00:00Z")

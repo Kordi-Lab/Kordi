@@ -221,6 +221,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
+    @Published private(set) var pendingSessionPinActions: [String: [PendingSessionPinAction]] = [:]
     @Published private(set) var sessionPinsByID: [String: CloudSessionPin] = [:]
     @Published private(set) var providerAuthSnapshot: CloudProviderAuthSnapshot?
     @Published private(set) var providerAuthSnapshots: [String: CloudProviderAuthSnapshot] = [:]
@@ -575,6 +576,7 @@ final class AppModel: ObservableObject {
         callSnapshotGeneration = 0
         sessionActivityByID = [:]
         sessionPinsByID = [:]
+        pendingSessionPinActions = [:]
         providerAuthSnapshot = nil
         providerAuthSnapshots = [:]
         devices = []
@@ -2105,6 +2107,7 @@ final class AppModel: ObservableObject {
             return true
         }
         guard let token else { return false }
+        let pendingID = beginPendingPinAction(sessionID: conversation.sessionId, messageID: message.id, scope: shared ? "shared" : "private")
         do {
             let pin = try await api.updateSessionPin(
                 token: token,
@@ -2121,8 +2124,12 @@ final class AppModel: ObservableObject {
                 updatedByAccountId: account?.accountId,
                 updatedAt: pin.updatedAt
             ))
+            reconcilePendingPinActions(sessionID: conversation.sessionId)
+            scheduleRealtimeSyncWake()
             return true
         } catch {
+            guard self.token == token else { return false }
+            if let pendingID { pendingSessionPinActions[conversation.sessionId]?.removeAll { $0.event.id == pendingID } }
             errorMessage = userFacing(error, fallback: "Could not pin this message.")
             return false
         }
@@ -2141,6 +2148,7 @@ final class AppModel: ObservableObject {
             return true
         }
         guard let token else { return false }
+        let pendingID = beginPendingPinAction(sessionID: conversation.sessionId, messageID: nil, scope: scope)
         do {
             let pin = try await api.updateSessionPin(
                 token: token,
@@ -2157,8 +2165,12 @@ final class AppModel: ObservableObject {
                 updatedByAccountId: account?.accountId,
                 updatedAt: pin.updatedAt
             ))
+            reconcilePendingPinActions(sessionID: conversation.sessionId)
+            scheduleRealtimeSyncWake()
             return true
         } catch {
+            guard self.token == token else { return false }
+            if let pendingID { pendingSessionPinActions[conversation.sessionId]?.removeAll { $0.event.id == pendingID } }
             errorMessage = userFacing(error, fallback: "Could not unpin this message.")
             return false
         }
@@ -2411,6 +2423,32 @@ final class AppModel: ObservableObject {
         return accountsByReaction
             .map { MessageReaction(value: $0.key, accountIds: $0.value.sorted()) }
             .sorted { $0.value < $1.value }
+    }
+
+    func presentedPinHistory(for sessionID: String) -> [CloudPinHistoryEvent] {
+        PendingSessionPinAction.presentedHistory(sessionPinsByID[sessionID]?.history ?? [],
+            actions: pendingSessionPinActions[sessionID] ?? [])
+    }
+
+    private func beginPendingPinAction(sessionID: String, messageID: String?, scope: String) -> String? {
+        guard let account else { return nil }
+        let pin = sessionPinsByID[sessionID]
+        let previous = scope == "shared" ? pin?.sharedMessageId : pin?.privateMessageId
+        guard previous != messageID else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let event = CloudPinHistoryEvent(id: "local-pin:" + UUID().uuidString, sessionId: sessionID,
+            kind: messageID == nil ? "unpinned" : "pinned", scope: scope, messageId: messageID,
+            updatedByAccountId: account.accountId, updatedAt: formatter.string(from: Date()))
+        pendingSessionPinActions[sessionID, default: []].append(PendingSessionPinAction(event: event,
+            knownIDs: Set(pin?.history?.map(\.id) ?? [])))
+        return event.id
+    }
+
+    private func reconcilePendingPinActions(sessionID: String) {
+        guard let current = pendingSessionPinActions[sessionID], !current.isEmpty else { return }
+        let next = PendingSessionPinAction.resolving(current, history: sessionPinsByID[sessionID]?.history ?? [])
+        if next != current { pendingSessionPinActions[sessionID] = next }
     }
 
     private func updatePreviewPin(messageId: String?, sessionId: String, scope: String) {
@@ -5836,6 +5874,7 @@ final class AppModel: ObservableObject {
                         applyCloudSyncEvents(pendingEvents)
                         let hasDirectoryChanges = pendingEvents.contains {
                             $0.eventType != "message.upsert"
+                                && $0.eventType != "session.pin.updated"
                                 && $0.eventType != "message.read"
                                 && $0.eventType != "provider-auth.updated"
                         }
@@ -6521,6 +6560,7 @@ final class AppModel: ObservableObject {
     private func applyCloudSyncEvents(_ events: [CloudSyncEvent]) {
         guard let accountId = account?.accountId else { return }
         sessionPinsByID = Self.applyingSessionPinEvents(events, to: sessionPinsByID)
+        for sessionID in Array(pendingSessionPinActions.keys) { reconcilePendingPinActions(sessionID: sessionID) }
         var upsertsByPeer: [String: [CloudMessageDTO]] = [:]
         var readUpdatesByPeer: [String: [String: String]] = [:]
         var deletedMessageIds = Set<String>()

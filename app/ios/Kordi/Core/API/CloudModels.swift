@@ -291,6 +291,44 @@ struct CloudPinHistoryEvent: Codable, Hashable, Identifiable {
     }
 }
 
+/// A local action is visible immediately; its row identity survives server confirmation.
+struct PendingSessionPinAction: Hashable {
+    let event: CloudPinHistoryEvent
+    var knownIDs: Set<String>
+    var resolvedID: String? = nil
+
+    static func resolving(_ actions: [Self], history: [CloudPinHistoryEvent]) -> [Self] {
+        var claimed = Set(actions.compactMap(\.resolvedID))
+        return actions.map { action in
+            guard action.resolvedID == nil, let match = history.first(where: { event in
+                !action.knownIDs.contains(event.id) && !claimed.contains(event.id)
+                    && event.kind == action.event.kind && event.scope == action.event.scope
+                    && event.messageId == action.event.messageId
+                    && event.updatedByAccountId == action.event.updatedByAccountId
+            }) else { return action }
+            claimed.insert(match.id)
+            var resolved = action
+            resolved.resolvedID = match.id
+            resolved.knownIDs = []
+            return resolved
+        }
+    }
+
+    static func presentedHistory(_ history: [CloudPinHistoryEvent], actions: [Self]) -> [CloudPinHistoryEvent] {
+        let resolved = resolving(actions, history: history)
+        let aliases = Dictionary(uniqueKeysWithValues: resolved.compactMap { action in
+            action.resolvedID.map { ($0, action.event.id) }
+        })
+        let canonical = history.map { event in
+            guard let id = aliases[event.id] else { return event }
+            return CloudPinHistoryEvent(id: id, sequence: event.sequence, sessionId: event.sessionId,
+                kind: event.kind, scope: event.scope, messageId: event.messageId,
+                updatedByAccountId: event.updatedByAccountId, updatedAt: event.updatedAt)
+        }
+        return CloudPinHistoryEvent.merging([canonical, resolved.filter { $0.resolvedID == nil }.map(\.event)])
+    }
+}
+
 struct CloudPinHistoryPage: Decodable {
     let events: [CloudPinHistoryEvent]
     let nextBefore: Int64?

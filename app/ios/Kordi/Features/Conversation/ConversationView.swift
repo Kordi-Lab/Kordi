@@ -976,7 +976,7 @@ struct ConversationView: View {
                     // Use one native content-bottom target. An identity scroll
                     // can execute after native positioning and undo it by the
                     // trailing sentinel/padding height, producing a second jump.
-                    scrollToBottom()
+                    scrollToBottom(animated: currentLatestMessage?.messageKind == "session_pin_activity")
                 }
             }
             .onChange(of: isExpressivePickerPresented) { _, isPresented in
@@ -1399,10 +1399,7 @@ struct ConversationView: View {
         }
 
         VStack(spacing: 0) {
-            if message.messageKind == "session_pin_activity" {
-                Text(message.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption2).foregroundStyle(.secondary).padding(.top, 8)
-            } else if presentation.showsTimestamp {
+            if message.messageKind == "session_pin_activity" || presentation.showsTimestamp {
                 ConversationTimestampDivider(date: message.createdAt)
             }
 
@@ -2045,7 +2042,7 @@ struct ConversationView: View {
     }
 
     private func insertingPinHistory(into messages: [ChatMessage]) -> [ChatMessage] {
-        let history = (model.sessionPinsByID[conversation.sessionId]?.history ?? []).filter {
+        let history = model.presentedPinHistory(for: conversation.sessionId).filter {
             $0.scope == "shared" || $0.updatedByAccountId == model.account?.accountId
         }
         return PinHistoryTimeline.inserting(history, into: messages, conversationID: conversation.id) { event in
