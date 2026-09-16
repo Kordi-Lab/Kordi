@@ -112,6 +112,21 @@ fn message_text(content: &Value) -> String {
     out
 }
 
+/// Parses the text form Postgres gives for a `timestamptz` cast
+/// (`2026-09-16 18:34:00+00`), which is not quite RFC 3339: the space and the
+/// short `+00` offset both need normalizing.
+fn parse_pg_timestamp(value: &str) -> Option<DateTime<chrono::FixedOffset>> {
+    let mut text = value.trim().replacen(' ', "T", 1);
+    let tail = text.len().saturating_sub(3);
+    if text.len() >= 3
+        && matches!(text.as_bytes()[tail], b'+' | b'-')
+        && text[tail + 1..].chars().all(|c| c.is_ascii_digit())
+    {
+        text.push_str(":00");
+    }
+    DateTime::parse_from_rfc3339(&text).ok()
+}
+
 fn encode_pip_message(text: &str) -> String {
     let payload = json!({"schemaVersion": 1, "kind": "message", "text": text, "mentions": []});
     format!(
@@ -349,10 +364,7 @@ async fn build_input(
         .bind(&event_id)
         .fetch_all(pool)
         .await?;
-        if let Some(start) = start_at
-            .as_deref()
-            .and_then(|value| DateTime::parse_from_rfc3339(&value.replace(' ', "T")).ok())
-        {
+        if let Some(start) = start_at.as_deref().and_then(parse_pg_timestamp) {
             let remaining = start.with_timezone(&Utc) - Utc::now();
             let fired = |key: &str| candidate.hooks_fired.get(key).is_some();
             if remaining > chrono::Duration::zero() {
@@ -658,6 +670,15 @@ mod tests {
         assert_eq!(backoff_seconds(4), 7_200);
         assert_eq!(backoff_seconds(5), 43_200);
         assert_eq!(backoff_seconds(50), 43_200);
+    }
+
+    #[test]
+    fn postgres_timestamp_text_parses() {
+        let parsed = parse_pg_timestamp("2026-09-16 18:34:00+00").expect("pg text");
+        assert_eq!(parsed.to_rfc3339(), "2026-09-16T18:34:00+00:00");
+        assert!(parse_pg_timestamp("2026-09-19T12:30:00+03:00").is_some());
+        assert!(parse_pg_timestamp("2026-09-16 18:34:00.123456+02").is_some());
+        assert!(parse_pg_timestamp("Saturday").is_none());
     }
 
     #[test]
