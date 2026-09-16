@@ -60,6 +60,37 @@ struct PlanCardParticipant: Codable, Hashable, Identifiable {
     }
 }
 
+/// One choice on a polling card, with the account ids that voted for it.
+struct PlanCardOption: Codable, Hashable, Identifiable {
+    let id: String
+    let label: String
+    let startAt: String?
+    let endAt: String?
+    let location: String?
+    let votes: [String]
+
+    init(id: String, label: String, startAt: String? = nil, endAt: String? = nil, location: String? = nil, votes: [String] = []) {
+        self.id = id
+        self.label = label
+        self.startAt = startAt
+        self.endAt = endAt
+        self.location = location
+        self.votes = votes
+    }
+
+    enum CodingKeys: String, CodingKey { case id, label, startAt, endAt, location, votes }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        label = try container.decode(String.self, forKey: .label)
+        startAt = try? container.decodeIfPresent(String.self, forKey: .startAt)
+        endAt = try? container.decodeIfPresent(String.self, forKey: .endAt)
+        location = try? container.decodeIfPresent(String.self, forKey: .location)
+        votes = (try? container.decodeIfPresent([String].self, forKey: .votes)) ?? []
+    }
+}
+
 /// Snapshot of a shared plan card as carried by a Pip message. The server
 /// keeps the live card; every action returns the new snapshot.
 struct PlanCard: Codable, Hashable {
@@ -72,9 +103,10 @@ struct PlanCard: Codable, Hashable {
     let location: String?
     let unresolvedFields: [String]
     let participants: [PlanCardParticipant]
+    let options: [PlanCardOption]
 
     enum CodingKeys: String, CodingKey {
-        case eventId, revision, state, title, startAt, endAt, location, unresolvedFields, participants
+        case eventId, revision, state, title, startAt, endAt, location, unresolvedFields, participants, options
     }
 
     init(from decoder: Decoder) throws {
@@ -88,6 +120,15 @@ struct PlanCard: Codable, Hashable {
         location = try container.decodeIfPresent(String.self, forKey: .location)
         unresolvedFields = (try? container.decodeIfPresent([String].self, forKey: .unresolvedFields)) ?? []
         participants = (try? container.decodeIfPresent([PlanCardParticipant].self, forKey: .participants)) ?? []
+        options = (try? container.decodeIfPresent([PlanCardOption].self, forKey: .options)) ?? []
+    }
+
+    /// Voting is open while the card polls between concrete options.
+    var isPolling: Bool { state == .polling && !options.isEmpty }
+
+    /// The option with the most votes, if anyone has voted yet.
+    var leadingOption: PlanCardOption? {
+        options.filter { !$0.votes.isEmpty }.max { $0.votes.count < $1.votes.count }
     }
 
     var startDate: Date? {
@@ -117,14 +158,21 @@ struct PlanCardAction: Encodable, Hashable {
     var confirmedBy: String? = nil
     var canceledBy: String? = nil
     var reason: String? = nil
+    var optionId: String? = nil
 
     static func rsvp(_ card: PlanCard, accountId: String, going: Bool) -> PlanCardAction {
         PlanCardAction(action: "rsvp", eventId: card.eventId, revision: card.revision,
                        participantId: accountId, rsvp: going ? "yes" : "no")
     }
 
-    static func confirm(_ card: PlanCard, accountId: String) -> PlanCardAction {
-        PlanCardAction(action: "confirm", eventId: card.eventId, revision: card.revision, confirmedBy: accountId)
+    static func vote(_ card: PlanCard, accountId: String, optionId: String) -> PlanCardAction {
+        PlanCardAction(action: "vote", eventId: card.eventId, revision: card.revision,
+                       participantId: accountId, optionId: optionId)
+    }
+
+    static func confirm(_ card: PlanCard, accountId: String, optionId: String? = nil) -> PlanCardAction {
+        PlanCardAction(action: "confirm", eventId: card.eventId, revision: card.revision,
+                       confirmedBy: accountId, optionId: optionId)
     }
 }
 

@@ -158,8 +158,9 @@ export type SendCloudMessageOptions = {
 };
 
 export type PlanCardActionRequest =
-  | { action: 'rsvp'; eventId: string; revision: number; participantId: string; rsvp: 'yes' | 'no'; note?: string }
-  | { action: 'confirm'; eventId: string; revision: number; confirmedBy: string }
+  | { action: 'rsvp'; eventId: string; participantId: string; rsvp: 'yes' | 'no'; note?: string }
+  | { action: 'vote'; eventId: string; participantId: string; optionId: string }
+  | { action: 'confirm'; eventId: string; revision: number; confirmedBy: string; optionId?: string }
   | { action: 'cancel'; eventId: string; revision: number; canceledBy: string; reason?: string };
 
 export type CloudMessage = {

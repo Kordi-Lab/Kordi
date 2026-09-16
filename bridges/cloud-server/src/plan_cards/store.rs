@@ -6,8 +6,8 @@ use sqlx_postgres::{PgConnection, PgPool, Postgres};
 use uuid::Uuid;
 
 use super::models::{
-    PlanCardParticipantStatus, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp, PlanCardState,
-    PlanCardStoreError,
+    PlanCardOption, PlanCardParticipantStatus, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp,
+    PlanCardState, PlanCardStoreError,
 };
 
 async fn require_active_member(
@@ -42,7 +42,16 @@ type PlanCardRowTuple = (
     serde_json::Value,
     serde_json::Value,
     Option<String>,
+    serde_json::Value,
 );
+
+fn options_from_json(value: serde_json::Value) -> Vec<PlanCardOption> {
+    serde_json::from_value(value).unwrap_or_default()
+}
+
+fn options_to_json(options: &[PlanCardOption]) -> serde_json::Value {
+    serde_json::to_value(options).unwrap_or_else(|_| serde_json::Value::Array(Vec::new()))
+}
 
 /// Postgres renders `timestamptz::text` as `2026-09-16 18:34:00+00`, which is
 /// not RFC 3339. Accept that form and proper RFC 3339 alike.
@@ -75,7 +84,7 @@ async fn fetch_row(
     let card: Option<PlanCardRowTuple> = query_as(
         "SELECT event_id, conversation_id, revision, state, title, \
                 start_at::text, end_at::text, location, \
-                unresolved_fields, source_message_ids, note \
+                unresolved_fields, source_message_ids, note, options \
          FROM cloud_plan_cards WHERE event_id = $1",
     )
     .bind(event_id)
@@ -93,6 +102,7 @@ async fn fetch_row(
         unresolved_fields,
         source_message_ids,
         note,
+        options,
     )) = card
     else {
         return Ok(None);
@@ -131,6 +141,7 @@ async fn fetch_row(
         unresolved_fields: json_string_array(unresolved_fields),
         source_message_ids: json_string_array(source_message_ids),
         participants,
+        options: options_from_json(options),
         note,
     }))
 }
@@ -188,7 +199,7 @@ pub async fn propose(
             "UPDATE cloud_plan_cards SET \
                 title = $3, start_at = $4::timestamptz, end_at = $5::timestamptz, \
                 location = $6, state = $7, unresolved_fields = $8, \
-                source_message_ids = $9, revision = revision + 1, updated_at = now() \
+                source_message_ids = $9, options = $11, revision = revision + 1, updated_at = now() \
              WHERE event_id = $1 AND revision = $2 AND conversation_id = $10 \
                AND state NOT IN ('confirmed', 'canceled') \
              RETURNING event_id",
@@ -215,6 +226,7 @@ pub async fn propose(
                 .collect(),
         ))
         .bind(args.conversation_id)
+        .bind(options_to_json(&args.options))
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -250,8 +262,8 @@ pub async fn propose(
         query(
             "INSERT INTO cloud_plan_cards ( \
                 event_id, conversation_id, state, title, start_at, end_at, location, \
-                unresolved_fields, source_message_ids, revision, created_by_account_id \
-             ) VALUES ($1, $2, $3, $4, $5::timestamptz, $6::timestamptz, $7, $8, $9, 1, $10)",
+                unresolved_fields, source_message_ids, revision, created_by_account_id, options \
+             ) VALUES ($1, $2, $3, $4, $5::timestamptz, $6::timestamptz, $7, $8, $9, 1, $10, $11)",
         )
         .bind(&event_id)
         .bind(args.conversation_id)
@@ -275,6 +287,7 @@ pub async fn propose(
                 .collect(),
         ))
         .bind(acting_account_id)
+        .bind(options_to_json(&args.options))
         .execute(&mut *tx)
         .await?;
         event_id
@@ -316,10 +329,12 @@ async fn lock_event(
     Ok(())
 }
 
+/// Records one participant's answer. An answer is that person's own state,
+/// so it applies at any revision: a member pressing a button on an older
+/// snapshot must never be told to refresh first.
 pub async fn rsvp(
     pool: &PgPool,
     event_id: &str,
-    revision: i64,
     account_id: &str,
     response: PlanCardRsvp,
     note: Option<&str>,
@@ -327,14 +342,16 @@ pub async fn rsvp(
     let mut tx = pool.begin().await?;
     lock_event(&mut tx, event_id).await?;
 
-    let current: Option<(Uuid, i64)> =
-        query_as("SELECT conversation_id, revision FROM cloud_plan_cards WHERE event_id = $1")
+    let current: Option<(Uuid, String)> =
+        query_as("SELECT conversation_id, state FROM cloud_plan_cards WHERE event_id = $1")
             .bind(event_id)
             .fetch_optional(&mut *tx)
             .await?;
-    let (conversation_id, current_revision) = current.ok_or(PlanCardStoreError::NotFound)?;
-    if current_revision != revision {
-        return Err(PlanCardStoreError::RevisionConflict);
+    let (conversation_id, state) = current.ok_or(PlanCardStoreError::NotFound)?;
+    if state == "canceled" {
+        return Err(PlanCardStoreError::InvalidTransition(
+            "cannot respond to a canceled plan".to_string(),
+        ));
     }
     require_active_member(&mut *tx, conversation_id, account_id).await?;
 
@@ -362,23 +379,88 @@ pub async fn rsvp(
     Ok(row)
 }
 
+/// Records one participant's vote for an option while the card is polling.
+/// A participant holds one vote at a time; voting again moves it. Like an
+/// RSVP, a vote applies at any revision.
+pub async fn vote(
+    pool: &PgPool,
+    event_id: &str,
+    account_id: &str,
+    option_id: &str,
+) -> Result<PlanCardRow, PlanCardStoreError> {
+    let mut tx = pool.begin().await?;
+    lock_event(&mut tx, event_id).await?;
+
+    let current: Option<(Uuid, String, serde_json::Value)> = query_as(
+        "SELECT conversation_id, state, options FROM cloud_plan_cards WHERE event_id = $1",
+    )
+    .bind(event_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let (conversation_id, state, options) = current.ok_or(PlanCardStoreError::NotFound)?;
+    if state != "polling" {
+        return Err(PlanCardStoreError::InvalidTransition(
+            "votes are only open while the plan is polling".to_string(),
+        ));
+    }
+    require_active_member(&mut *tx, conversation_id, account_id).await?;
+    let participant: Option<(i32,)> = query_as(
+        "SELECT 1 FROM cloud_plan_card_participants WHERE event_id = $1 AND account_id = $2",
+    )
+    .bind(event_id)
+    .bind(account_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    if participant.is_none() {
+        return Err(PlanCardStoreError::NotAParticipant);
+    }
+    let mut options = options_from_json(options);
+    if !options.iter().any(|option| option.id == option_id) {
+        return Err(PlanCardStoreError::InvalidTransition(format!(
+            "unknown option {option_id}"
+        )));
+    }
+    for option in &mut options {
+        option.votes.retain(|voter| voter != account_id);
+        if option.id == option_id {
+            option.votes.push(account_id.to_string());
+        }
+    }
+    query(
+        "UPDATE cloud_plan_cards SET options = $1, revision = revision + 1, updated_at = now() \
+         WHERE event_id = $2",
+    )
+    .bind(options_to_json(&options))
+    .bind(event_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let row = require_row(&mut tx, event_id).await?;
+    tx.commit().await?;
+    Ok(row)
+}
+
+/// Locks the plan in. With `option_id`, the chosen option's time and place
+/// become the card's own, so a poll resolves into one concrete plan.
 pub async fn confirm(
     pool: &PgPool,
     event_id: &str,
     revision: i64,
     confirmed_by: &str,
+    option_id: Option<&str>,
     note: Option<&str>,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
     let mut tx = pool.begin().await?;
     lock_event(&mut tx, event_id).await?;
 
-    let current: Option<(Uuid, String, i64)> = query_as(
-        "SELECT conversation_id, state, revision FROM cloud_plan_cards WHERE event_id = $1",
+    let current: Option<(Uuid, String, i64, serde_json::Value)> = query_as(
+        "SELECT conversation_id, state, revision, options FROM cloud_plan_cards WHERE event_id = $1",
     )
     .bind(event_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let (conversation_id, state, current_revision) = current.ok_or(PlanCardStoreError::NotFound)?;
+    let (conversation_id, state, current_revision, options) =
+        current.ok_or(PlanCardStoreError::NotFound)?;
     require_active_member(&mut *tx, conversation_id, confirmed_by).await?;
 
     match state.as_str() {
@@ -400,13 +482,35 @@ pub async fn confirm(
     if current_revision != revision {
         return Err(PlanCardStoreError::RevisionConflict);
     }
+    let chosen = match option_id {
+        Some(option_id) => Some(
+            options_from_json(options)
+                .into_iter()
+                .find(|option| option.id == option_id)
+                .ok_or_else(|| {
+                    PlanCardStoreError::InvalidTransition(format!("unknown option {option_id}"))
+                })?,
+        ),
+        None => None,
+    };
 
     query(
         "UPDATE cloud_plan_cards SET state = 'confirmed', revision = revision + 1, \
-            note = $1, updated_at = now() WHERE event_id = $2",
+            note = $1, \
+            start_at = COALESCE($3::timestamptz, start_at), \
+            end_at = COALESCE($4::timestamptz, end_at), \
+            location = COALESCE($5, location), \
+            unresolved_fields = CASE WHEN $3::timestamptz IS NULL THEN unresolved_fields \
+                                ELSE (SELECT COALESCE(jsonb_agg(field), '[]'::jsonb) \
+                                      FROM jsonb_array_elements(unresolved_fields) field \
+                                      WHERE field <> '\"time\"'::jsonb) END, \
+            updated_at = now() WHERE event_id = $2",
     )
     .bind(note)
     .bind(event_id)
+    .bind(chosen.as_ref().and_then(|option| option.start_at.clone()))
+    .bind(chosen.as_ref().and_then(|option| option.end_at.clone()))
+    .bind(chosen.as_ref().and_then(|option| option.location.clone()))
     .execute(&mut *tx)
     .await?;
 

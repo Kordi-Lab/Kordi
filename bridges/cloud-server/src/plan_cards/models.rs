@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PlanCardState {
@@ -67,6 +67,24 @@ impl Serialize for PlanCardRsvp {
     }
 }
 
+/// One choice on a polling card: a candidate time or place the group can
+/// vote on. `votes` holds the account ids that chose it; a participant votes
+/// for one option at a time.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanCardOption {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub votes: Vec<String>,
+}
+
 /// A participant as the propose caller supplied them: identity plus whether
 /// they organize the plan. Their RSVP always starts `pending`, except the
 /// organizer, who starts `yes` — they proposed it.
@@ -107,6 +125,8 @@ pub struct PlanCardRow {
     #[serde(skip)]
     pub source_message_ids: Vec<String>,
     pub participants: Vec<PlanCardParticipantStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<PlanCardOption>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
@@ -123,6 +143,7 @@ pub struct PlanCardProposeArgs {
     pub unresolved_fields: Vec<String>,
     pub participants: Vec<PlanCardParticipantInput>,
     pub source_message_ids: Vec<String>,
+    pub options: Vec<PlanCardOption>,
 }
 
 #[derive(Debug)]

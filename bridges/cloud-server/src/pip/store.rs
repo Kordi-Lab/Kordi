@@ -118,8 +118,9 @@ fn message_text(content: &Value) -> String {
 /// short `+00` offset both need normalizing.
 pub(crate) use crate::plan_cards::store::parse_pg_timestamp;
 
-fn encode_pip_message(text: &str) -> String {
-    let payload = json!({"schemaVersion": 1, "kind": "message", "text": text, "mentions": []});
+fn encode_pip_message_with_mentions(text: &str, mentions: Vec<Value>) -> String {
+    let payload =
+        json!({"schemaVersion": 1, "kind": "message", "text": text, "mentions": mentions});
     format!(
         "kordi-cloud-message:{}",
         URL_SAFE_NO_PAD.encode(payload.to_string().as_bytes())
@@ -138,7 +139,71 @@ type CardRow = (
     Option<String>,
     Option<String>,
     Value,
+    Value,
 );
+
+/// `@Handle` for a member: the display name without spaces, which is what the
+/// clients' mention parsers match a token against.
+pub(crate) fn mention_handle(display_name: &str) -> String {
+    display_name
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect()
+}
+
+/// Resolves `@Handle` tokens in Pip's text to member mentions in the shape
+/// the clients render and notify on. Unknown handles stay plain text.
+pub(crate) fn resolve_mentions(text: &str, members: &[(String, String)]) -> Vec<Value> {
+    let mut mentions = Vec::new();
+    let mut utf16_offset = 0usize;
+    let mut chars = text.char_indices().peekable();
+    let mut previous: Option<char> = None;
+    while let Some((byte_index, c)) = chars.next() {
+        if c == '@' && previous.is_none_or(|p| !p.is_alphanumeric()) {
+            let start_utf16 = utf16_offset;
+            let mut handle = String::new();
+            let mut token_utf16 = c.len_utf16();
+            while let Some((_, next)) = chars.peek() {
+                if next.is_alphanumeric() {
+                    handle.push(*next);
+                    token_utf16 += next.len_utf16();
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+            utf16_offset += token_utf16;
+            previous = handle.chars().last().or(Some(c));
+            if handle.is_empty() {
+                continue;
+            }
+            let matched: Vec<&(String, String)> = members
+                .iter()
+                .filter(|(_, display_name)| {
+                    mention_handle(display_name).eq_ignore_ascii_case(&handle)
+                })
+                .collect();
+            // An ambiguous handle must never pick a member by position.
+            if let [(account_id, display_name)] = matched.as_slice() {
+                mentions.push(json!({
+                    "label": mention_handle(display_name),
+                    "targetKind": "person",
+                    "targetIdentityId": account_id,
+                    "humanId": account_id,
+                    "displayText": format!("@{handle}"),
+                    "displayLabel": display_name,
+                    "startUtf16": start_utf16,
+                    "lengthUtf16": token_utf16,
+                }));
+            }
+            let _ = byte_index;
+            continue;
+        }
+        utf16_offset += c.len_utf16();
+        previous = Some(c);
+    }
+    mentions
+}
 
 struct Candidate {
     conversation_id: Uuid,
@@ -178,6 +243,13 @@ pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core
                AND s.retry_after <= now()
                AND (
                  c.latest_message_sequence > s.seen_sequence
+                 OR EXISTS (
+                   SELECT 1 FROM cloud_plan_cards card
+                   WHERE card.conversation_id = c.conversation_id
+                     AND card.state IN ('polling', 'awaiting_confirmation', 'confirmed')
+                     AND card.revision > COALESCE((s.hooks_fired->>'card_seen_revision')::bigint, 0)
+                     AND card.updated_at <= now() - interval '45 seconds'
+                 )
                  OR EXISTS (
                    SELECT 1 FROM cloud_plan_cards card
                    WHERE card.conversation_id = c.conversation_id
@@ -329,7 +401,7 @@ async fn build_input(
 
     let card: Option<CardRow> = query_as(
         "SELECT event_id, revision, state, title, start_at::text, end_at::text, location,
-                    unresolved_fields
+                    unresolved_fields, options
              FROM cloud_plan_cards
              WHERE conversation_id = $1 AND state <> 'canceled'
              ORDER BY updated_at DESC LIMIT 1",
@@ -346,7 +418,32 @@ async fn build_input(
         }));
     }
     let mut open_card = Value::Null;
-    if let Some((event_id, revision, state, title, start_at, end_at, location, unresolved)) = card {
+    if let Some((
+        event_id,
+        revision,
+        state,
+        title,
+        start_at,
+        end_at,
+        location,
+        unresolved,
+        options,
+    )) = card
+    {
+        let seen_revision = candidate
+            .hooks_fired
+            .get("card_seen_revision")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        if revision > seen_revision {
+            hooks.push(json!({
+                "name": "card_changed",
+                "key": format!("card_seen_revision"),
+                "eventId": event_id,
+                "revision": revision,
+                "detail": "Members responded or voted on the card since your last look.",
+            }));
+        }
         let participants: Vec<(String, String, bool, String)> = query_as(
             "SELECT account_id, display_name, organizer, rsvp
              FROM cloud_plan_card_participants WHERE event_id = $1
@@ -381,6 +478,7 @@ async fn build_input(
             "endAt": end_at,
             "location": location,
             "unresolvedFields": unresolved,
+            "options": options,
             "participants": participants.into_iter().map(|(account_id, display_name, organizer, rsvp)| json!({
                 "participantId": account_id,
                 "displayName": display_name,
@@ -416,12 +514,16 @@ async fn build_input(
             "kind": kind,
             "title": group_title.or(shared_title),
         },
-        "members": members.into_iter().map(|(account_id, display_name, role)| json!({
-            "participantId": account_id,
-            "displayName": display_name.unwrap_or_else(|| "Member".to_string()),
-            "role": role,
-            "isPip": account_id == config.account_id,
-        })).collect::<Vec<_>>(),
+        "members": members.into_iter().map(|(account_id, display_name, role)| {
+            let display_name = display_name.unwrap_or_else(|| "Member".to_string());
+            json!({
+                "participantId": account_id,
+                "displayName": display_name,
+                "handle": format!("@{}", mention_handle(&display_name)),
+                "role": role,
+                "isPip": account_id == config.account_id,
+            })
+        }).collect::<Vec<_>>(),
         "openCard": open_card,
         "messages": messages,
         "hooks": hooks,
@@ -439,7 +541,7 @@ async fn plan_card_block(
 ) -> Result<Option<Value>, sqlx_core::Error> {
     let card: Option<CardRow> = query_as(
         "SELECT event_id, revision, state, title, start_at::text, end_at::text, location,
-                unresolved_fields
+                unresolved_fields, options
          FROM cloud_plan_cards
          WHERE conversation_id = $1 AND updated_at >= $2::timestamptz
          ORDER BY updated_at DESC LIMIT 1",
@@ -448,7 +550,8 @@ async fn plan_card_block(
     .bind(since)
     .fetch_optional(pool)
     .await?;
-    let Some((event_id, revision, state, title, start_at, end_at, location, unresolved)) = card
+    let Some((event_id, revision, state, title, start_at, end_at, location, unresolved, options)) =
+        card
     else {
         return Ok(None);
     };
@@ -476,6 +579,7 @@ async fn plan_card_block(
         "endAt": rfc3339(end_at),
         "location": location,
         "unresolvedFields": unresolved,
+        "options": options,
         "participants": participants.into_iter().map(|(account_id, display_name, organizer, rsvp)| json!({
             "participantId": account_id,
             "displayName": display_name,
@@ -498,6 +602,7 @@ pub(crate) fn card_block_from_row(row: &PlanCardRow) -> Value {
         "endAt": row.end_at,
         "location": row.location,
         "unresolvedFields": row.unresolved_fields,
+        "options": serde_json::to_value(&row.options).unwrap_or_else(|_| json!([])),
         "participants": row.participants.iter().map(|participant| json!({
             "participantId": participant.account_id,
             "displayName": participant.display_name,
@@ -613,7 +718,20 @@ pub async fn complete(
         (None, false) => None,
     };
     if let Some(text) = text {
-        let mut blocks = vec![json!({"type": "text", "text": encode_pip_message(&text)})];
+        let members: Vec<(String, String)> = query_as(
+            "SELECT member.account_id, COALESCE(account.display_name, 'Member')
+             FROM cloud_chat_conversation_members member
+             JOIN cloud_accounts account ON account.account_id = member.account_id
+             WHERE member.conversation_id = $1 AND member.membership_state = 'active'",
+        )
+        .bind(run.conversation_id)
+        .fetch_all(pool)
+        .await?;
+        let mentions = resolve_mentions(&text, &members);
+        let mut blocks = vec![json!({
+            "type": "text",
+            "text": encode_pip_message_with_mentions(&text, mentions),
+        })];
         if let Some(block) = card_block {
             blocks.push(block);
         }
@@ -661,6 +779,18 @@ pub async fn complete(
             }
         }
     }
+
+    // The card as it stands after this run, so member votes during the run
+    // are seen and Pip's own tool calls never wake the next sweep.
+    let card_revision: Option<(i64,)> = query_as(
+        "SELECT revision FROM cloud_plan_cards
+         WHERE conversation_id = $1 AND state <> 'canceled'
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(run.conversation_id)
+    .fetch_optional(pool)
+    .await?;
+    hooks["card_seen_revision"] = json!(card_revision.map(|row| row.0).unwrap_or(0));
 
     let now = Utc::now().to_rfc3339();
     let mut tx = pool.begin().await?;
@@ -834,7 +964,7 @@ mod tests {
 
     #[test]
     fn cloud_envelopes_decode_to_their_text() {
-        let encoded = encode_pip_message("Ramen at 12:30 works");
+        let encoded = encode_pip_message_with_mentions("Ramen at 12:30 works", Vec::new());
         assert_eq!(decode_cloud_text(&encoded), "Ramen at 12:30 works");
         assert_eq!(decode_cloud_text("plain"), "plain");
         assert_eq!(decode_cloud_text("kordi-cloud-message:!!notbase64"), "");

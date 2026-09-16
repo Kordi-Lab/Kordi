@@ -3,20 +3,13 @@ import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { defaultCloudAuthClient, type PlanCardActionRequest } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
-import type { MessagePlanCard } from '@/kordi-app/types/message';
+import type { MessagePlanCard, MessagePlanCardOption } from '@/kordi-app/types/message';
 
 const STATE_LABEL: Record<MessagePlanCard['state'], string> = {
-  polling: 'Choosing',
+  polling: 'Vote',
   awaiting_confirmation: 'Leaning yes',
   confirmed: 'Confirmed',
   canceled: 'Canceled',
-};
-
-const STATE_CLASS: Record<MessagePlanCard['state'], string> = {
-  polling: 'app-plan-card-pill-polling',
-  awaiting_confirmation: 'app-plan-card-pill-await',
-  confirmed: 'app-plan-card-pill-confirmed',
-  canceled: 'app-plan-card-pill-canceled',
 };
 
 function formatWhen(startAt?: string | null, endAt?: string | null): string | null {
@@ -37,10 +30,19 @@ function initials(name: string): string {
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('') || '?';
 }
 
+function leadingOption(options: MessagePlanCardOption[]): MessagePlanCardOption | null {
+  let best: MessagePlanCardOption | null = null;
+  for (const option of options) {
+    if (option.votes.length === 0) continue;
+    if (!best || option.votes.length > best.votes.length) best = option;
+  }
+  return best;
+}
+
 /**
- * A shared plan card posted by Pip. State comes from the message snapshot; the
- * buttons act for the signed-in member through the plan-card route, and the
- * next Pip message carries the updated snapshot.
+ * The shared plan card Pip manages for a chat. The snapshot comes from Pip's
+ * message; buttons act for the signed-in member, and the card refreshes for
+ * everyone through the same message. Pip decides in chat what happens next.
  */
 export function PlanCardContent({
   card,
@@ -66,11 +68,15 @@ export function PlanCardContent({
   const view = localState && localState.revision > card.revision ? localState : card;
   const accountId = ownAccountId ?? sessionAccountId;
   const self = accountId ? view.participants.find((participant) => participant.participantId === accountId) : undefined;
+  const options = view.options ?? [];
+  const polling = view.state === 'polling' && options.length > 0;
   const isOpen = view.state !== 'canceled';
-  const canRespond = Boolean(self) && isOpen;
-  const canConfirm = Boolean(self?.organizer) && view.state === 'awaiting_confirmation';
+  const canRespond = Boolean(self) && isOpen && !polling;
+  const leading = polling ? leadingOption(options) : null;
+  const canConfirm = Boolean(self?.organizer) && (view.state === 'awaiting_confirmation' || (polling && leading !== null));
   const when = formatWhen(view.startAt, view.endAt);
   const going = view.participants.filter((participant) => participant.rsvp === 'yes').length;
+  const nameOf = (participantId: string) => view.participants.find((participant) => participant.participantId === participantId)?.displayName ?? 'Member';
 
   const act = async (label: string, request: PlanCardActionRequest) => {
     if (busy) return;
@@ -85,59 +91,90 @@ export function PlanCardContent({
       const updated = await defaultCloudAuthClient().planCardAction(session.token, request);
       setLocalState(updated);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not update the plan card.');
+      setLocalState(null);
+      setNotice(error instanceof Error ? error.message : 'Could not update the plan.');
     } finally {
       setBusy(null);
     }
   };
 
   return (
-    <div className="app-plan-card" data-kordi-copy-surface="message" data-plan-card-state={view.state}>
+    <section className="app-plan-card" data-kordi-copy-surface="message" data-plan-card-state={view.state} aria-label={`Plan: ${view.title}`}>
       <div className="app-plan-card-head">
-        <span className={cn('app-plan-card-pill', STATE_CLASS[view.state])}>{STATE_LABEL[view.state]}</span>
-        {view.state === 'confirmed' && view.participants.length > 0 ? (
-          <span className="app-plan-card-count">{going} going</span>
-        ) : null}
+        <CalendarClock size={14} aria-hidden className="app-plan-card-icon" />
+        <div className="app-plan-card-heading">
+          <div className={cn('app-plan-card-title', view.state === 'canceled' && 'line-through opacity-60')}>{view.title}</div>
+          <div className="app-plan-card-meta">
+            {when ? <span>{when}</span> : null}
+            {view.location ? <span><MapPin size={11} aria-hidden /> {view.location}</span> : null}
+            {view.unresolvedFields.length > 0 && !polling ? <span className="app-plan-card-unresolved">still open: {view.unresolvedFields.join(', ')}</span> : null}
+          </div>
+        </div>
+        <span className={cn('app-plan-card-state', `app-plan-card-state-${view.state}`)}>
+          {view.state === 'confirmed' && view.participants.length > 0 ? `${going} going` : STATE_LABEL[view.state]}
+        </span>
       </div>
-      <div className={cn('app-plan-card-title', view.state === 'canceled' && 'line-through opacity-60')}>{view.title}</div>
-      <div className="app-plan-card-meta">
-        {when ? <span><CalendarClock size={13} aria-hidden /> {when}</span> : null}
-        {view.location ? <span><MapPin size={13} aria-hidden /> {view.location}</span> : null}
-        {view.unresolvedFields.length > 0 ? (
-          <span className="app-plan-card-unresolved">unresolved: {view.unresolvedFields.join(', ')}</span>
-        ) : null}
-      </div>
-      <div className="app-plan-card-people" aria-label="Participants">
-        {view.participants.map((participant) => (
-          <span
-            key={participant.participantId}
-            className={cn('app-plan-card-person', `app-plan-card-person-${participant.rsvp}`)}
-            title={`${participant.displayName}${participant.organizer ? ' (organizer)' : ''}: ${participant.rsvp}`}
-          >
-            <span className="app-plan-card-avatar">{initials(participant.displayName)}</span>
-            <span className="app-plan-card-person-name">{participant.displayName}</span>
-          </span>
-        ))}
-      </div>
+
+      {polling ? (
+        <div className="app-plan-card-options" role="group" aria-label="Options">
+          {options.map((option) => {
+            const mine = accountId ? option.votes.includes(accountId) : false;
+            return (
+              <div key={option.id} className={cn('app-plan-card-option', mine && 'app-plan-card-option-mine')}>
+                <button
+                  type="button"
+                  className="app-plan-card-option-vote"
+                  disabled={Boolean(busy) || !self}
+                  aria-pressed={mine}
+                  onClick={() => { void act(`vote:${option.id}`, { action: 'vote', eventId: view.eventId, participantId: accountId ?? '', optionId: option.id }); }}
+                >
+                  <span className="app-plan-card-option-mark" aria-hidden>{mine ? <Check size={11} /> : null}</span>
+                  <span className="app-plan-card-option-label">{option.label}</span>
+                  <span className="app-plan-card-option-count">{option.votes.length}</span>
+                </button>
+                {option.votes.length > 0 ? (
+                  <div className="app-plan-card-option-voters" aria-label={option.votes.map(nameOf).join(', ')}>
+                    {option.votes.map((voter) => <span key={voter} className="app-plan-card-avatar" title={nameOf(voter)}>{initials(nameOf(voter))}</span>)}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="app-plan-card-people" aria-label="Participants">
+          {view.participants.map((participant) => (
+            <span
+              key={participant.participantId}
+              className={cn('app-plan-card-person', `app-plan-card-person-${participant.rsvp}`)}
+              title={`${participant.displayName}${participant.organizer ? ' (organizer)' : ''}: ${participant.rsvp}`}
+            >
+              <span className="app-plan-card-avatar">{initials(participant.displayName)}</span>
+              <span className="app-plan-card-person-name">{participant.displayName}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       {canRespond || canConfirm ? (
         <div className="app-plan-card-actions">
           {canRespond ? (
             <>
               <button
                 type="button"
-                className={cn('app-plan-card-button', self?.rsvp === 'yes' && 'app-plan-card-button-active')}
+                className={cn('app-plan-card-button', self?.rsvp === 'no' && 'app-plan-card-button-active')}
                 disabled={Boolean(busy)}
-                onClick={() => { void act('yes', { action: 'rsvp', eventId: view.eventId, revision: view.revision, participantId: accountId ?? '', rsvp: 'yes' }); }}
+                onClick={() => { void act('no', { action: 'rsvp', eventId: view.eventId, participantId: accountId ?? '', rsvp: 'no' }); }}
               >
-                <Check size={13} aria-hidden /> I'm in
+                <X size={12} aria-hidden /> Can't make it
               </button>
               <button
                 type="button"
-                className={cn('app-plan-card-button', self?.rsvp === 'no' && 'app-plan-card-button-active')}
+                className={cn('app-plan-card-button', self?.rsvp === 'yes' ? 'app-plan-card-button-active' : 'app-plan-card-button-primary')}
                 disabled={Boolean(busy)}
-                onClick={() => { void act('no', { action: 'rsvp', eventId: view.eventId, revision: view.revision, participantId: accountId ?? '', rsvp: 'no' }); }}
+                onClick={() => { void act('yes', { action: 'rsvp', eventId: view.eventId, participantId: accountId ?? '', rsvp: 'yes' }); }}
               >
-                <X size={13} aria-hidden /> Can't make it
+                <Check size={12} aria-hidden /> I'm in
               </button>
             </>
           ) : null}
@@ -146,14 +183,14 @@ export function PlanCardContent({
               type="button"
               className="app-plan-card-button app-plan-card-button-primary"
               disabled={Boolean(busy)}
-              onClick={() => { void act('confirm', { action: 'confirm', eventId: view.eventId, revision: view.revision, confirmedBy: accountId ?? '' }); }}
+              onClick={() => { void act('confirm', { action: 'confirm', eventId: view.eventId, revision: view.revision, confirmedBy: accountId ?? '', ...(leading ? { optionId: leading.id } : {}) }); }}
             >
-              Confirm for everyone
+              {leading ? `Confirm ${leading.label}` : 'Confirm for everyone'}
             </button>
           ) : null}
         </div>
       ) : null}
       {notice ? <div className="app-plan-card-notice" role="status">{notice}</div> : null}
-    </div>
+    </section>
   );
 }

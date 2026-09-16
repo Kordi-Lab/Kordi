@@ -91,6 +91,7 @@ async fn full_lifecycle_against_real_postgres() {
                 participant(&riya, "Riya", false),
             ],
             source_message_ids: vec!["msg_1".to_string()],
+            options: Vec::new(),
         },
     )
     .await
@@ -130,6 +131,7 @@ async fn full_lifecycle_against_real_postgres() {
             unresolved_fields: vec![],
             participants: vec![participant(&outsider, "Outsider", true)],
             source_message_ids: vec![],
+            options: Vec::new(),
         },
     )
     .await
@@ -160,6 +162,7 @@ async fn full_lifecycle_against_real_postgres() {
                 participant(&riya, "Riya", false),
             ],
             source_message_ids: vec!["msg_1".to_string(), "msg_2".to_string()],
+            options: Vec::new(),
         },
     )
     .await
@@ -188,6 +191,7 @@ async fn full_lifecycle_against_real_postgres() {
             unresolved_fields: vec![],
             participants: vec![participant(&jordan, "Jordan", true)],
             source_message_ids: vec![],
+            options: Vec::new(),
         },
     )
     .await
@@ -198,15 +202,22 @@ async fn full_lifecycle_against_real_postgres() {
     ));
 
     // Confirm.
-    let confirmed = store::confirm(&pool, &updated.event_id, updated.revision, &jordan, None)
-        .await
-        .expect("confirm succeeds");
+    let confirmed = store::confirm(
+        &pool,
+        &updated.event_id,
+        updated.revision,
+        &jordan,
+        None,
+        None,
+    )
+    .await
+    .expect("confirm succeeds");
     assert_eq!(confirmed.revision, 3);
     assert!(matches!(confirmed.state, PlanCardState::Confirmed));
 
     // Confirming again at a now-stale revision is a harmless no-op, not an
     // error — this is the idempotency retries depend on.
-    let confirmed_again = store::confirm(&pool, &confirmed.event_id, 1, &jordan, None)
+    let confirmed_again = store::confirm(&pool, &confirmed.event_id, 1, &jordan, None, None)
         .await
         .expect("re-confirming is a no-op, not an error");
     assert_eq!(
@@ -219,7 +230,6 @@ async fn full_lifecycle_against_real_postgres() {
     let declined = store::rsvp(
         &pool,
         &confirmed.event_id,
-        confirmed_again.revision,
         &riya,
         PlanCardRsvp::No,
         Some("Riya can't make it — lunch is still on for the rest of you"),
@@ -251,7 +261,6 @@ async fn full_lifecycle_against_real_postgres() {
     let not_participant = store::rsvp(
         &pool,
         &declined.event_id,
-        declined.revision,
         &outsider,
         PlanCardRsvp::Yes,
         None,
@@ -300,9 +309,16 @@ async fn full_lifecycle_against_real_postgres() {
     ));
 
     // Confirm again after reopening, then cancel.
-    let reconfirmed = store::confirm(&pool, &reopened.event_id, reopened.revision, &jordan, None)
-        .await
-        .expect("reconfirm succeeds");
+    let reconfirmed = store::confirm(
+        &pool,
+        &reopened.event_id,
+        reopened.revision,
+        &jordan,
+        None,
+        None,
+    )
+    .await
+    .expect("reconfirm succeeds");
     let canceled = store::cancel(
         &pool,
         &reconfirmed.event_id,
@@ -315,10 +331,16 @@ async fn full_lifecycle_against_real_postgres() {
     assert!(matches!(canceled.state, PlanCardState::Canceled));
 
     // A confirmed plan can never be confirmed again after cancellation.
-    let cannot_confirm_canceled =
-        store::confirm(&pool, &canceled.event_id, canceled.revision, &jordan, None)
-            .await
-            .unwrap_err();
+    let cannot_confirm_canceled = store::confirm(
+        &pool,
+        &canceled.event_id,
+        canceled.revision,
+        &jordan,
+        None,
+        None,
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(
         cannot_confirm_canceled,
         super::models::PlanCardStoreError::InvalidTransition(_)
@@ -362,6 +384,7 @@ async fn full_lifecycle_against_real_postgres() {
             unresolved_fields: vec![],
             participants: vec![participant(&maya, "Maya", true)],
             source_message_ids: vec![],
+            options: Vec::new(),
         },
     )
     .await

@@ -32,6 +32,7 @@ export function messageSnapshotKey(msg: Message) {
     msg.reactionConversationId ?? '',
     msg.reactionTargetMessageId ?? '',
     msg.cloudMessageVersion ?? '',
+    msg.planCard ? [msg.planCard.eventId, msg.planCard.revision, ...(msg.planCard.options ?? []).map((option) => option.votes.join('+'))].join(':') : '',
     msg.editedAt ?? '',
     msg.reactions?.map((reaction) => [reaction.value, reaction.accountIds.join(',')].join(':')).join('|') ?? '',
     msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? '', JSON.stringify(msg.sourceMessage.mentions ?? [])].join(':') : '',

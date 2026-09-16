@@ -19,73 +19,75 @@ struct PlanCardView: View {
         return card
     }
     private var me: PlanCardParticipant? { view.participant(ownAccountId) }
-    private var canRespond: Bool { me != nil && view.state != .canceled && onAction != nil }
-    private var canConfirm: Bool { (me?.organizer ?? false) && view.state == .awaitingConfirmation && onAction != nil }
+    private var canRespond: Bool { me != nil && view.state != .canceled && !view.isPolling && onAction != nil }
+    private var canConfirm: Bool {
+        guard me?.organizer ?? false, onAction != nil else { return false }
+        return view.state == .awaitingConfirmation || (view.isPolling && view.leadingOption != nil)
+    }
+    private var stateLabel: String {
+        if view.state == .confirmed, !view.participants.isEmpty { return "\(view.goingCount) going" }
+        return view.isPolling ? "Vote" : view.state.label
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(view.state.label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(stateTint.opacity(0.16), in: Capsule())
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(view.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .strikethrough(view.state == .canceled)
+                        .foregroundStyle(view.state == .canceled ? .secondary : .primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let meta = metaLine {
+                        Text(meta)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 6)
+                Text(stateLabel)
+                    .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(stateTint)
-                Spacer(minLength: 0)
-                if view.state == .confirmed, !view.participants.isEmpty {
-                    Text("\(view.goingCount) going")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
+                    .monospacedDigit()
             }
-            Text(view.title)
-                .font(.system(size: 15, weight: .semibold))
-                .strikethrough(view.state == .canceled)
-                .foregroundStyle(view.state == .canceled ? .secondary : .primary)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 3) {
-                if let when = whenLabel {
-                    Label(when, systemImage: "calendar.badge.clock")
-                }
-                if let location = view.location, !location.isEmpty {
-                    Label(location, systemImage: "mappin.and.ellipse")
-                }
-                if !view.unresolvedFields.isEmpty {
-                    Text("unresolved: \(view.unresolvedFields.joined(separator: ", "))")
-                        .foregroundStyle(Color(red: 0.71, green: 0.40, blue: 0.05))
-                }
+            if view.isPolling {
+                optionsList
+            } else {
+                participantsRow
             }
-            .font(.system(size: 12.5))
-            .foregroundStyle(.secondary)
-            participantsRow
             if canRespond || canConfirm {
                 HStack(spacing: 6) {
+                    Spacer(minLength: 0)
                     if canRespond, let accountId = ownAccountId {
-                        actionButton("I'm in", systemImage: "checkmark", active: me?.rsvp == .yes) {
-                            await perform(.rsvp(view, accountId: accountId, going: true))
-                        }
                         actionButton("Can't make it", systemImage: "xmark", active: me?.rsvp == .no) {
                             await perform(.rsvp(view, accountId: accountId, going: false))
                         }
+                        actionButton("I'm in", systemImage: "checkmark", active: me?.rsvp == .yes, primary: me?.rsvp != .yes) {
+                            await perform(.rsvp(view, accountId: accountId, going: true))
+                        }
                     }
                     if canConfirm, let accountId = ownAccountId {
-                        actionButton("Confirm for everyone", systemImage: nil, active: false, primary: true) {
-                            await perform(.confirm(view, accountId: accountId))
+                        let leading = view.isPolling ? view.leadingOption : nil
+                        actionButton(leading.map { "Confirm \($0.label)" } ?? "Confirm for everyone", systemImage: nil, active: false, primary: true) {
+                            await perform(.confirm(view, accountId: accountId, optionId: leading?.id))
                         }
                     }
                 }
-                .padding(.top, 2)
             }
             if let notice {
                 Text(notice)
-                    .font(.caption2)
+                    .font(.system(size: 11))
                     .foregroundStyle(.red)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .frame(minWidth: 220, maxWidth: 320, alignment: .leading)
+        .frame(minWidth: 230, maxWidth: 340, alignment: .leading)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.primary.opacity(0.08)))
         .accessibilityElement(children: .contain)
@@ -96,10 +98,66 @@ struct PlanCardView: View {
         }
     }
 
+    private var metaLine: String? {
+        var parts: [String] = []
+        if let when = whenLabel { parts.append(when) }
+        if let location = view.location, !location.isEmpty { parts.append(location) }
+        if !view.isPolling, !view.unresolvedFields.isEmpty {
+            parts.append("still open: \(view.unresolvedFields.joined(separator: ", "))")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private var optionsList: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(view.options) { option in
+                let mine = ownAccountId.map { option.votes.contains($0) } ?? false
+                Button {
+                    guard let accountId = ownAccountId, me != nil else { return }
+                    Task { await perform(.vote(view, accountId: accountId, optionId: option.id)) }
+                } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            Circle().strokeBorder(mine ? Color.accentColor : Color.secondary.opacity(0.6), lineWidth: 1)
+                            if mine {
+                                Circle().fill(Color.accentColor)
+                                Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
+                            }
+                        }
+                        .frame(width: 14, height: 14)
+                        Text(option.label)
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        HStack(spacing: -4) {
+                            ForEach(option.votes, id: \.self) { voter in
+                                Text(initials(name(of: voter)))
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .frame(width: 16, height: 16)
+                                    .background(Color.secondary.opacity(0.18), in: Circle())
+                            }
+                        }
+                        Text("\(option.votes.count)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(mine ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(mine ? Color.accentColor : Color.primary.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .disabled(busy || me == nil || onAction == nil)
+                .accessibilityLabel("\(option.label), \(option.votes.count) votes\(mine ? ", your vote" : "")")
+            }
+        }
+    }
+
     private var participantsRow: some View {
         FlowLayout(spacing: 6) {
             ForEach(view.participants) { participant in
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     ZStack {
                         Circle()
                             .fill(participant.rsvp == .yes ? Color.green : Color.secondary.opacity(0.18))
@@ -108,12 +166,12 @@ struct PlanCardView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Text(initials(participant.displayName))
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(participant.rsvp == .yes ? .white : .primary)
                     }
-                    .frame(width: 22, height: 22)
+                    .frame(width: 18, height: 18)
                     Text(participant.displayName)
-                        .font(.system(size: 12))
+                        .font(.system(size: 11.5))
                         .strikethrough(participant.rsvp == .no)
                         .opacity(participant.rsvp == .no ? 0.7 : 1)
                 }
@@ -132,19 +190,19 @@ struct PlanCardView: View {
         Button {
             Task { await action() }
         } label: {
-            HStack(spacing: 5) {
-                if let systemImage { Image(systemName: systemImage).font(.system(size: 11, weight: .semibold)) }
+            HStack(spacing: 4) {
+                if let systemImage { Image(systemName: systemImage).font(.system(size: 10, weight: .semibold)) }
                 Text(title)
             }
-            .font(.system(size: 12, weight: .medium))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .font(.system(size: 11, weight: primary ? .semibold : .medium))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
             .background(
                 primary ? Color.accentColor : (active ? Color.accentColor.opacity(0.14) : Color.clear),
-                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(primary || active ? Color.accentColor : Color.primary.opacity(0.12))
             )
             .foregroundStyle(primary ? Color.white : Color.primary)
@@ -161,8 +219,13 @@ struct PlanCardView: View {
         if let updated = await onAction(action) {
             current = updated
         } else {
-            notice = "Could not update the plan card."
+            current = nil
+            notice = "Could not update the plan. Try again."
         }
+    }
+
+    private func name(of accountId: String) -> String {
+        view.participants.first { $0.participantId == accountId }?.displayName ?? "Member"
     }
 
     private var stateTint: Color {

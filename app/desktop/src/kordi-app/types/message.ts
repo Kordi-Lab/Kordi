@@ -203,6 +203,15 @@ export type MessagePlanCardParticipant = {
 
 /** A shared plan card snapshot carried by a Pip message. The server keeps the
  * live card; each Pip message carries the state at the time it was posted. */
+export type MessagePlanCardOption = {
+  id: string;
+  label: string;
+  startAt?: string | null;
+  endAt?: string | null;
+  location?: string | null;
+  votes: string[];
+};
+
 export type MessagePlanCard = {
   eventId: string;
   revision: number;
@@ -213,6 +222,8 @@ export type MessagePlanCard = {
   location?: string | null;
   unresolvedFields: string[];
   participants: MessagePlanCardParticipant[];
+  /** Concrete choices while the card is polling; each carries the voters' account ids. */
+  options?: MessagePlanCardOption[];
 };
 
 export type TranscriptLoadingPlaceholder = {

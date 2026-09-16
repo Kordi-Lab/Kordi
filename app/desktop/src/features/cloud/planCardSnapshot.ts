@@ -1,4 +1,4 @@
-import type { MessagePlanCard, MessagePlanCardParticipant } from '@/kordi-app/types/message';
+import type { MessagePlanCard, MessagePlanCardOption, MessagePlanCardParticipant } from '@/kordi-app/types/message';
 
 const PLAN_CARD_STATES = new Set(['polling', 'awaiting_confirmation', 'confirmed', 'canceled']);
 
@@ -30,6 +30,23 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
       }];
     })
     : [];
+  const options: MessagePlanCardOption[] = Array.isArray(block.options)
+    ? block.options.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return [];
+      const option = entry as Record<string, unknown>;
+      const id = typeof option.id === 'string' ? option.id : '';
+      const label = typeof option.label === 'string' ? option.label : '';
+      if (!id || !label) return [];
+      return [{
+        id,
+        label,
+        startAt: typeof option.startAt === 'string' ? option.startAt : null,
+        endAt: typeof option.endAt === 'string' ? option.endAt : null,
+        location: typeof option.location === 'string' ? option.location : null,
+        votes: Array.isArray(option.votes) ? option.votes.filter((voter): voter is string => typeof voter === 'string') : [],
+      }];
+    })
+    : [];
   return {
     eventId,
     revision,
@@ -42,6 +59,7 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
       ? block.unresolvedFields.filter((field): field is string => typeof field === 'string')
       : [],
     participants,
+    options,
   };
 }
 

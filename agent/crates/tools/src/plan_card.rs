@@ -50,6 +50,38 @@ pub struct PlanCardParticipantStatus {
     pub rsvp: PlanCardRsvp,
 }
 
+/// A vote option as the caller proposes it. Ids are optional; the server
+/// assigns them in order when they are missing.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanCardOptionInput {
+    #[serde(default)]
+    pub id: Option<String>,
+    pub label: String,
+    #[serde(default)]
+    pub start_at: Option<String>,
+    #[serde(default)]
+    pub end_at: Option<String>,
+    #[serde(default)]
+    pub location: Option<String>,
+}
+
+/// A vote option with the account ids that chose it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanCardOption {
+    pub id: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(default)]
+    pub votes: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanCardSummary {
@@ -66,6 +98,8 @@ pub struct PlanCardSummary {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unresolved_fields: Vec<String>,
     pub participants: Vec<PlanCardParticipantStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<PlanCardOption>,
     /// Human-readable audit note describing the effect of the call that
     /// produced this summary, e.g. "Riya declined; the plan stayed confirmed
     /// for the rest of the group." Surfaced to the model for its own
@@ -99,13 +133,19 @@ pub struct PlanCardProposeRequest {
     pub participants: Vec<PlanCardParticipant>,
     #[serde(default)]
     pub source_message_ids: Vec<String>,
+    /// Concrete choices for a polling card. Members vote on the card; confirm
+    /// with `option_id` resolves the poll into the card's own time and place.
+    #[serde(default)]
+    pub options: Vec<PlanCardOptionInput>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanCardRsvpRequest {
     pub event_id: String,
-    pub revision: u64,
+    /// Accepted for compatibility; an answer applies at any revision.
+    #[serde(default)]
+    pub revision: Option<u64>,
     pub participant_id: String,
     pub rsvp: PlanCardRsvp,
     #[serde(default)]
@@ -118,6 +158,21 @@ pub struct PlanCardConfirmRequest {
     pub event_id: String,
     pub revision: u64,
     pub confirmed_by: String,
+    /// The winning option of a poll; its time and place become the card's.
+    #[serde(default)]
+    pub option_id: Option<String>,
+}
+
+/// One participant's vote for an option while the card is polling. A
+/// participant holds one vote at a time; voting again moves it.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanCardVoteRequest {
+    pub event_id: String,
+    #[serde(default)]
+    pub revision: Option<u64>,
+    pub participant_id: String,
+    pub option_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -146,6 +201,7 @@ pub struct PlanCardCancelRequest {
 pub enum PlanCardRequest {
     Propose(PlanCardProposeRequest),
     Rsvp(PlanCardRsvpRequest),
+    Vote(PlanCardVoteRequest),
     Confirm(PlanCardConfirmRequest),
     Reopen(PlanCardReopenRequest),
     Cancel(PlanCardCancelRequest),
@@ -223,7 +279,7 @@ impl Tool for PlanCardTool {
     }
 
     fn description(&self) -> &str {
-        "Turns a concrete group-chat plan (an event, meetup, or scheduling proposal) into a shared, stateful card instead of a one-off chat message. Use propose when the group has converged on a concrete title/time/place worth tracking: state='polling' if agreement still looks incomplete or details are unresolved, state='awaitingConfirmation' if a single option looks settled but has not been explicitly confirmed. Use rsvp to record one participant's yes/no without changing the card's overall state — a single non-organizer decline never cancels the plan; the card simply reflects that participant as declined while staying confirmed for everyone else. Use confirm only after explicit agreement (usually the organizer) to lock the card in; confirming an already-confirmed card at its current revision is a harmless no-op, never a duplicate. Use reopen to move a confirmed card back to awaitingConfirmation when new information — several declines, a scheduling conflict raised in chat — makes continuing genuinely unclear; always ask the group before calling confirm again. Use cancel only for a real end to the plan: the organizer canceling, or the group clearly agreeing to call it off. Never use cancel for a single attendee's decline — that is rsvp. Every call after propose requires the exact revision last seen for that card; a stale or repeated call is rejected rather than forking the card, so retries are always safe. This tool never reads or writes anyone's personal calendar."
+        "Turns a concrete group-chat plan (an event, meetup, or scheduling proposal) into a shared, stateful card instead of a one-off chat message. Use propose when the group has converged on a concrete title/time/place worth tracking: state='polling' if agreement still looks incomplete or details are unresolved, state='awaitingConfirmation' if a single option looks settled but has not been explicitly confirmed. Use rsvp to record one participant's yes/no without changing the card's overall state — a single non-organizer decline never cancels the plan; the card simply reflects that participant as declined while staying confirmed for everyone else. Use confirm only after explicit agreement (usually the organizer) to lock the card in; confirming an already-confirmed card at its current revision is a harmless no-op, never a duplicate. Use reopen to move a confirmed card back to awaitingConfirmation when new information — several declines, a scheduling conflict raised in chat — makes continuing genuinely unclear; always ask the group before calling confirm again. Use cancel only for a real end to the plan: the organizer canceling, or the group clearly agreeing to call it off. Never use cancel for a single attendee's decline — that is rsvp. Use options on a polling propose to open a vote between 2 to 4 concrete choices; members vote on the card, and vote records one participant's choice from what they said. confirm with optionId resolves the poll into that option's time and place. confirm, reopen, and cancel require the exact revision last seen for that card; a stale call is rejected rather than forking the card. rsvp and vote apply at any revision. Confirming a plan adds it to every attending member's Kordi calendar automatically; this tool never reads calendars."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -232,8 +288,28 @@ impl Tool for PlanCardTool {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["propose", "rsvp", "confirm", "reopen", "cancel"],
+                    "enum": ["propose", "rsvp", "vote", "confirm", "reopen", "cancel"],
                     "description": "Which plan-card operation to perform."
+                },
+                "options": {
+                    "type": "array",
+                    "description": "For a polling propose: 2 to 4 concrete choices the group votes on.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": { "type": "string", "description": "Optional stable id; assigned in order when omitted." },
+                            "label": { "type": "string", "description": "Short choice text, e.g. 'Fri 7pm at Jordan's'." },
+                            "startAt": { "type": "string", "description": "Optional RFC3339 start for this choice." },
+                            "endAt": { "type": "string", "description": "Optional RFC3339 end for this choice." },
+                            "location": { "type": "string" }
+                        },
+                        "required": ["label"],
+                        "additionalProperties": false
+                    }
+                },
+                "optionId": {
+                    "type": "string",
+                    "description": "For vote: the option chosen. For confirm: the winning option whose time and place become the plan's."
                 },
                 "conversationId": {
                     "type": "string",
@@ -253,7 +329,7 @@ impl Tool for PlanCardTool {
                 },
                 "revision": {
                     "type": "number",
-                    "description": "Revision this call was read at. Required for rsvp, confirm, reopen, and cancel; a mismatch means the card changed and this call is rejected."
+                    "description": "Revision this call was read at. Required for confirm, reopen, and cancel; a mismatch means the card changed and this call is rejected. Optional for rsvp and vote."
                 },
                 "title": {
                     "type": "string",
@@ -302,7 +378,7 @@ impl Tool for PlanCardTool {
                 },
                 "participantId": {
                     "type": "string",
-                    "description": "Required for rsvp: whose response this is."
+                    "description": "Required for rsvp and vote: whose response or vote this is."
                 },
                 "rsvp": {
                     "type": "string",
@@ -417,6 +493,11 @@ fn validate_request(request: &PlanCardRequest) -> KordiResult<()> {
             }
             Ok(())
         }
+        PlanCardRequest::Vote(request) => {
+            require_non_empty(&request.event_id, "eventId")?;
+            require_non_empty(&request.participant_id, "participantId")?;
+            require_non_empty(&request.option_id, "optionId")
+        }
         PlanCardRequest::Confirm(request) => {
             require_non_empty(&request.event_id, "eventId")?;
             require_non_empty(&request.confirmed_by, "confirmedBy")
@@ -459,6 +540,14 @@ fn render_summary(summary: &PlanCardSummary) -> String {
         lines.push(format!(
             "Unresolved: {}",
             summary.unresolved_fields.join(", ")
+        ));
+    }
+    for option in &summary.options {
+        lines.push(format!(
+            "* {} [{}]: {} vote(s)",
+            option.label,
+            option.id,
+            option.votes.len()
         ));
     }
     for participant in &summary.participants {
@@ -512,6 +601,7 @@ mod tests {
             end_at: None,
             location: Some("Ramen Izakaya, 5th St".to_string()),
             unresolved_fields: Vec::new(),
+            options: Vec::new(),
             participants: vec![
                 PlanCardParticipantStatus {
                     participant_id: "jordan".to_string(),

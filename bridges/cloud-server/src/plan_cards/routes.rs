@@ -18,8 +18,8 @@ use crate::{
 };
 
 use super::models::{
-    PlanCardParticipantInput, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp, PlanCardState,
-    PlanCardStoreError,
+    PlanCardOption, PlanCardParticipantInput, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp,
+    PlanCardState, PlanCardStoreError,
 };
 use super::store;
 
@@ -40,6 +40,22 @@ pub(crate) struct WireParticipant {
     display_name: String,
     #[serde(default)]
     organizer: bool,
+}
+
+/// A vote option as a caller supplies it. Ids are optional; missing ones are
+/// assigned in order so the model can send plain labels.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct WireOption {
+    #[serde(default)]
+    id: Option<String>,
+    label: String,
+    #[serde(default)]
+    start_at: Option<String>,
+    #[serde(default)]
+    end_at: Option<String>,
+    #[serde(default)]
+    location: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -65,16 +81,32 @@ pub(crate) enum Request {
         participants: Vec<WireParticipant>,
         #[serde(default, rename = "sourceMessageIds")]
         source_message_ids: Vec<String>,
+        #[serde(default)]
+        options: Vec<WireOption>,
     },
     Rsvp {
         #[serde(rename = "eventId")]
         event_id: String,
-        revision: i64,
+        // Accepted for compatibility; an answer applies at any revision.
+        #[serde(default)]
+        #[allow(dead_code)]
+        revision: Option<i64>,
         #[serde(rename = "participantId")]
         participant_id: String,
         rsvp: String,
         #[serde(default)]
         note: Option<String>,
+    },
+    Vote {
+        #[serde(rename = "eventId")]
+        event_id: String,
+        #[serde(default)]
+        #[allow(dead_code)]
+        revision: Option<i64>,
+        #[serde(rename = "participantId")]
+        participant_id: String,
+        #[serde(rename = "optionId")]
+        option_id: String,
     },
     Confirm {
         #[serde(rename = "eventId")]
@@ -82,6 +114,8 @@ pub(crate) enum Request {
         revision: i64,
         #[serde(rename = "confirmedBy")]
         confirmed_by: String,
+        #[serde(default, rename = "optionId")]
+        option_id: Option<String>,
     },
     Reopen {
         #[serde(rename = "eventId")]
@@ -233,6 +267,23 @@ pub(crate) async fn dispatch_row(
     actor: &Actor,
     request: Request,
 ) -> Result<PlanCardRow, Response> {
+    let row = apply(pool, actor, request).await?;
+    // A confirmed plan lives on each attending member's Kordi calendar; a
+    // decline or cancellation takes it off again. Never fails the action.
+    if let Err(error) = super::calendar::sync_plan(pool, &row).await {
+        eprintln!(
+            "[pip] Could not sync plan {} to calendars: {error}",
+            row.event_id
+        );
+    }
+    Ok(row)
+}
+
+async fn apply(
+    pool: &sqlx_postgres::PgPool,
+    actor: &Actor,
+    request: Request,
+) -> Result<PlanCardRow, Response> {
     match request {
         Request::Propose {
             conversation_id,
@@ -246,6 +297,7 @@ pub(crate) async fn dispatch_row(
             unresolved_fields,
             participants,
             source_message_ids,
+            options,
         } => {
             let Ok(conversation_id) = Uuid::parse_str(&conversation_id) else {
                 return Err(error(
@@ -303,6 +355,37 @@ pub(crate) async fn dispatch_row(
                     return Err(error("invalid_end_at", message, StatusCode::BAD_REQUEST))
                 }
             };
+            let mut normalized_options = Vec::with_capacity(options.len());
+            for (index, option) in options.into_iter().enumerate() {
+                let label = option.label.trim().to_string();
+                if label.is_empty() {
+                    return Err(error(
+                        "invalid_options",
+                        "Every option needs a label.",
+                        StatusCode::BAD_REQUEST,
+                    ));
+                }
+                let start_at = match normalize_instant(option.start_at.as_deref()) {
+                    Ok(value) => value,
+                    Err(message) => {
+                        return Err(error("invalid_start_at", message, StatusCode::BAD_REQUEST))
+                    }
+                };
+                let end_at = match normalize_instant(option.end_at.as_deref()) {
+                    Ok(value) => value,
+                    Err(message) => {
+                        return Err(error("invalid_end_at", message, StatusCode::BAD_REQUEST))
+                    }
+                };
+                normalized_options.push(PlanCardOption {
+                    id: blank_to_none(option.id).unwrap_or_else(|| format!("opt_{}", index + 1)),
+                    label,
+                    start_at,
+                    end_at,
+                    location: blank_to_none(option.location),
+                    votes: Vec::new(),
+                });
+            }
             let args = PlanCardProposeArgs {
                 conversation_id,
                 existing_event_id,
@@ -322,14 +405,32 @@ pub(crate) async fn dispatch_row(
                     })
                     .collect(),
                 source_message_ids,
+                options: normalized_options,
             };
             store::propose(pool, &actor.account_id, args)
                 .await
                 .map_err(store_error)
         }
+        Request::Vote {
+            event_id,
+            revision: _,
+            participant_id,
+            option_id,
+        } => {
+            if !may_act_for(pool, actor, &participant_id).await {
+                return Err(error(
+                    "plan_card_forbidden",
+                    "You can only cast your own vote.",
+                    StatusCode::FORBIDDEN,
+                ));
+            }
+            store::vote(pool, &event_id, &participant_id, option_id.trim())
+                .await
+                .map_err(store_error)
+        }
         Request::Rsvp {
             event_id,
-            revision,
+            revision: _,
             participant_id,
             rsvp,
             note,
@@ -358,21 +459,15 @@ pub(crate) async fn dispatch_row(
                 ));
             }
             let note = blank_to_none(note);
-            store::rsvp(
-                pool,
-                &event_id,
-                revision,
-                &participant_id,
-                rsvp,
-                note.as_deref(),
-            )
-            .await
-            .map_err(store_error)
+            store::rsvp(pool, &event_id, &participant_id, rsvp, note.as_deref())
+                .await
+                .map_err(store_error)
         }
         Request::Confirm {
             event_id,
             revision,
             confirmed_by,
+            option_id,
         } => {
             if !may_act_for(pool, actor, &confirmed_by).await {
                 return Err(error(
@@ -381,9 +476,17 @@ pub(crate) async fn dispatch_row(
                     StatusCode::FORBIDDEN,
                 ));
             }
-            store::confirm(pool, &event_id, revision, &confirmed_by, None)
-                .await
-                .map_err(store_error)
+            let option_id = blank_to_none(option_id);
+            store::confirm(
+                pool,
+                &event_id,
+                revision,
+                &confirmed_by,
+                option_id.as_deref(),
+                None,
+            )
+            .await
+            .map_err(store_error)
         }
         Request::Reopen {
             event_id,
