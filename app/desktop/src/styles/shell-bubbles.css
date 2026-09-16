@@ -494,21 +494,35 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 .app-plan-card-state-canceled { color: #b23b3b; }
 .app-plan-card-state-polling { color: #4c5fd5; }
 .app-plan-card-options { display: flex; flex-direction: column; gap: 4px; }
-.app-plan-card-option { display: flex; align-items: center; gap: 6px; }
+.app-plan-card-option { position: relative; display: flex; flex-direction: column; }
 .app-plan-card-option-vote {
-  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
-  padding: 5px 8px; border-radius: 9px; border: 1px solid var(--app-divider, var(--app-chat-bubble-peer-border));
+  position: relative; overflow: hidden; isolation: isolate;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0;
+  padding: 6px 9px; border-radius: 9px; border: 1px solid var(--app-divider, var(--app-chat-bubble-peer-border));
   background: transparent; color: inherit; font-size: 12px; line-height: 16px; text-align: left; cursor: pointer;
 }
-.app-plan-card-option-vote:hover:not(:disabled) { background: color-mix(in oklab, var(--app-chat-accent) 8%, transparent); }
+.app-plan-card-option-fill {
+  position: absolute; inset: 0 auto 0 0; z-index: -1;
+  background: color-mix(in oklab, var(--app-chat-meta-peer) 14%, transparent);
+  transition: width 240ms ease;
+}
+.app-plan-card-option-mine .app-plan-card-option-fill { background: color-mix(in oklab, var(--app-chat-accent) 18%, transparent); }
+.app-plan-card-option-vote:hover:not(:disabled) { border-color: color-mix(in oklab, var(--app-chat-accent) 55%, var(--app-divider, var(--app-chat-bubble-peer-border))); }
 .app-plan-card-option-vote:disabled { cursor: default; }
 .app-plan-card-option-vote:focus-visible { outline: 2px solid var(--app-chat-accent); outline-offset: 1px; }
-.app-plan-card-option-mine .app-plan-card-option-vote { border-color: var(--app-chat-accent); background: color-mix(in oklab, var(--app-chat-accent) 12%, transparent); }
+.app-plan-card-option-mine .app-plan-card-option-vote { border-color: var(--app-chat-accent); }
 .app-plan-card-option-mark { width: 14px; height: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: 1px solid var(--app-chat-meta-peer); }
 .app-plan-card-option-mine .app-plan-card-option-mark { border-color: var(--app-chat-accent); background: var(--app-chat-accent); color: var(--app-chat-accent-text); }
 .app-plan-card-option-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.app-plan-card-option-count { font-size: 11px; color: var(--utility-muted-text, var(--app-chat-meta-peer)); font-variant-numeric: tabular-nums; }
-.app-plan-card-option-voters { display: flex; gap: 2px; flex: none; }
+.app-plan-card-option-percent { flex: none; min-width: 3ch; text-align: right; font-size: 11px; font-weight: 500; color: var(--utility-muted-text, var(--app-chat-meta-peer)); font-variant-numeric: tabular-nums; }
+.app-plan-card-voters {
+  display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; padding: 6px 9px;
+  border-radius: 9px; border: 1px solid var(--app-divider, var(--app-chat-bubble-peer-border));
+  background: var(--app-main-muted-bg, var(--app-chat-bubble-peer-bg)); font-size: 11.5px;
+}
+.app-plan-card-voter { display: inline-flex; align-items: center; gap: 5px; }
+.app-plan-card-voters-empty { color: var(--utility-muted-text, var(--app-chat-meta-peer)); }
+@media (prefers-reduced-motion: reduce) { .app-plan-card-option-fill { transition: none; } }
 .app-plan-card-people { display: flex; flex-wrap: wrap; gap: 4px 8px; }
 .app-plan-card-person { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; }
 .app-plan-card-avatar {

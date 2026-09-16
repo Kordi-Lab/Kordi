@@ -73,7 +73,7 @@ struct PlanCardView: View {
                     }
                     if canConfirm, let accountId = ownAccountId {
                         let leading = view.isPolling ? view.leadingOption : nil
-                        actionButton(leading.map { "Confirm \($0.label)" } ?? "Confirm for everyone", systemImage: nil, active: false, primary: true) {
+                        actionButton("Confirm", systemImage: nil, active: false, primary: true) {
                             await perform(.confirm(view, accountId: accountId, optionId: leading?.id))
                         }
                     }
@@ -108,10 +108,17 @@ struct PlanCardView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    private var totalVotes: Int { view.options.reduce(0) { $0 + $1.votes.count } }
+
+    private func percent(_ option: PlanCardOption) -> Int {
+        totalVotes == 0 ? 0 : Int((Double(option.votes.count) / Double(totalVotes) * 100).rounded())
+    }
+
     private var optionsList: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(view.options) { option in
                 let mine = ownAccountId.map { option.votes.contains($0) } ?? false
+                let share = percent(option)
                 Button {
                     guard let accountId = ownAccountId, me != nil else { return }
                     Task { await perform(.vote(view, accountId: accountId, optionId: option.id)) }
@@ -131,27 +138,40 @@ struct PlanCardView: View {
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 4)
-                        HStack(spacing: -4) {
-                            ForEach(option.votes, id: \.self) { voter in
-                                Text(initials(name(of: voter)))
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .frame(width: 16, height: 16)
-                                    .background(Color.secondary.opacity(0.18), in: Circle())
-                            }
-                        }
-                        Text("\(option.votes.count)")
-                            .font(.system(size: 11))
+                        Text("\(share)%")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(mine ? Color.accentColor.opacity(0.12) : Color.clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(alignment: .leading) {
+                        GeometryReader { proxy in
+                            (mine ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.14))
+                                .frame(width: proxy.size.width * CGFloat(share) / 100)
+                                .animation(.easeOut(duration: 0.24), value: share)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(mine ? Color.accentColor : Color.primary.opacity(0.12)))
+                    .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .disabled(busy || me == nil || onAction == nil)
-                .accessibilityLabel("\(option.label), \(option.votes.count) votes\(mine ? ", your vote" : "")")
+                .contextMenu {
+                    if option.votes.isEmpty {
+                        Text("No votes yet")
+                    } else {
+                        Section("\(option.votes.count) \(option.votes.count == 1 ? "vote" : "votes")") {
+                            ForEach(option.votes, id: \.self) { voter in
+                                Label(name(of: voter), systemImage: voter == ownAccountId ? "person.fill.checkmark" : "person")
+                            }
+                        }
+                    }
+                }
+                .accessibilityLabel("\(option.label), \(share) percent\(mine ? ", your vote" : "")")
+                .accessibilityHint("Touch and hold to see who voted")
             }
         }
     }

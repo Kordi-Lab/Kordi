@@ -1,5 +1,5 @@
 import { CalendarClock, Check, MapPin, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { defaultCloudAuthClient, type PlanCardActionRequest } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
@@ -63,6 +63,20 @@ export function PlanCardContent({
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localState, setLocalState] = useState<MessagePlanCard | null>(null);
+  const [votersFor, setVotersFor] = useState<string | null>(null);
+  const optionsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!votersFor) return;
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !optionsRef.current?.contains(event.target as Node)) setVotersFor(null);
+    };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [votersFor]);
   // A click updates the card at once; a newer snapshot from the transcript
   // then takes over, so the card never sticks on an old local result.
   const view = localState && localState.revision > card.revision ? localState : card;
@@ -77,6 +91,8 @@ export function PlanCardContent({
   const when = formatWhen(view.startAt, view.endAt);
   const going = view.participants.filter((participant) => participant.rsvp === 'yes').length;
   const nameOf = (participantId: string) => view.participants.find((participant) => participant.participantId === participantId)?.displayName ?? 'Member';
+  const totalVotes = options.reduce((sum, option) => sum + option.votes.length, 0);
+  const percentOf = (option: MessagePlanCardOption) => (totalVotes === 0 ? 0 : Math.round((option.votes.length / totalVotes) * 100));
 
   const act = async (label: string, request: PlanCardActionRequest) => {
     if (busy) return;
@@ -116,9 +132,10 @@ export function PlanCardContent({
       </div>
 
       {polling ? (
-        <div className="app-plan-card-options" role="group" aria-label="Options">
+        <div className="app-plan-card-options" role="group" aria-label="Options" ref={optionsRef}>
           {options.map((option) => {
             const mine = accountId ? option.votes.includes(accountId) : false;
+            const percent = percentOf(option);
             return (
               <div key={option.id} className={cn('app-plan-card-option', mine && 'app-plan-card-option-mine')}>
                 <button
@@ -126,15 +143,28 @@ export function PlanCardContent({
                   className="app-plan-card-option-vote"
                   disabled={Boolean(busy) || !self}
                   aria-pressed={mine}
+                  title="Right-click to see who voted"
                   onClick={() => { void act(`vote:${option.id}`, { action: 'vote', eventId: view.eventId, participantId: accountId ?? '', optionId: option.id }); }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setVotersFor((current) => (current === option.id ? null : option.id));
+                  }}
                 >
+                  <span className="app-plan-card-option-fill" style={{ width: `${percent}%` }} aria-hidden />
                   <span className="app-plan-card-option-mark" aria-hidden>{mine ? <Check size={11} /> : null}</span>
                   <span className="app-plan-card-option-label">{option.label}</span>
-                  <span className="app-plan-card-option-count">{option.votes.length}</span>
+                  <span className="app-plan-card-option-percent">{percent}%</span>
                 </button>
-                {option.votes.length > 0 ? (
-                  <div className="app-plan-card-option-voters" aria-label={option.votes.map(nameOf).join(', ')}>
-                    {option.votes.map((voter) => <span key={voter} className="app-plan-card-avatar" title={nameOf(voter)}>{initials(nameOf(voter))}</span>)}
+                {votersFor === option.id ? (
+                  <div className="app-plan-card-voters" role="dialog" aria-label={`Votes for ${option.label}`}>
+                    {option.votes.length === 0 ? (
+                      <span className="app-plan-card-voters-empty">No votes yet</span>
+                    ) : option.votes.map((voter) => (
+                      <span key={voter} className="app-plan-card-voter">
+                        <span className="app-plan-card-avatar">{initials(nameOf(voter))}</span>
+                        {nameOf(voter)}
+                      </span>
+                    ))}
                   </div>
                 ) : null}
               </div>
@@ -183,9 +213,10 @@ export function PlanCardContent({
               type="button"
               className="app-plan-card-button app-plan-card-button-primary"
               disabled={Boolean(busy)}
+              title={leading ? `Confirm ${leading.label} for everyone` : 'Confirm for everyone'}
               onClick={() => { void act('confirm', { action: 'confirm', eventId: view.eventId, revision: view.revision, confirmedBy: accountId ?? '', ...(leading ? { optionId: leading.id } : {}) }); }}
             >
-              {leading ? `Confirm ${leading.label}` : 'Confirm for everyone'}
+              Confirm
             </button>
           ) : null}
         </div>
