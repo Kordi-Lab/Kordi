@@ -30,6 +30,12 @@ export type CalendarEvent = {
   timezone?: string | null;
   recurrence?: CalendarRecurrence | null; seriesId?: string | null; seriesFingerprint?: string | null;
   confirmSingleOccurrence?: boolean;
+  /** Server write time, read-only. Used to settle edits made on both sides between syncs. */
+  updatedAt?: string | null;
 };
+/** An event read from the device calendar store. `externalUid` is the stable device identity. */
+export type DeviceCalendarEvent = CalendarEvent & { externalUid: string; deviceId: string; calendarId: string; modifiedAt?: string | null };
+export type DeviceCalendarAccess = 'granted' | 'writeOnly' | 'denied' | 'restricted' | 'notDetermined' | 'unavailable';
+export type CalendarSyncResult = { saved: CalendarEvent[]; conflicts: string[]; skipped: string[]; deleted: string[]; deleteConflicts: string[]; capacity: number };
 export type CalendarRecurrence = { frequency: 'daily' | 'weekly' | 'monthly' | 'yearly'; interval: number; weekdays: number[]; timezone: string; count?: number | null; until?: string | null };
-export type CalendarConnection = { id: string; title: string; color?: string };
+export type CalendarConnection = { id: string; title: string; color?: string; allowsModifications?: boolean };

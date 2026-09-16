@@ -334,3 +334,162 @@ pub(super) async fn postgres_reply_context(
         .iter()
         .any(|source| source.id == original.to_string()));
 }
+
+fn device_event(id: &str, uid: &str, title: &str) -> CalendarEvent {
+    serde_json::from_value(json!({"id":id,"title":title,"startAt":"2026-10-25T09:00:00Z","endAt":"2026-10-25T09:30:00Z","sourceIds":[],"description":"","externalUid":uid,"revision":0})).unwrap()
+}
+
+#[test]
+fn sync_requests_require_device_identity_and_unique_ids() {
+    use super::sync_routes::{validate_sync_request, SyncRequest};
+    let mut empty = SyncRequest::default();
+    assert!(validate_sync_request(&mut empty).is_err());
+    let mut valid = SyncRequest {
+        upserts: vec![device_event("calendar-a", "device:a", "Standup")],
+        deletes: vec![super::series_routes::ExpectedEvent {
+            id: "calendar-b".into(),
+            revision: 2,
+        }],
+    };
+    assert!(validate_sync_request(&mut valid).is_ok());
+    assert_eq!(valid.upserts[0].start_at, "2026-10-25T09:00:00+00:00");
+    let mut missing_uid = SyncRequest {
+        upserts: vec![device_event("calendar-a", "", "Standup")],
+        deletes: vec![],
+    };
+    assert!(validate_sync_request(&mut missing_uid).is_err());
+    let mut duplicate = SyncRequest {
+        upserts: vec![device_event("calendar-a", "device:a", "Standup")],
+        deletes: vec![super::series_routes::ExpectedEvent {
+            id: "calendar-a".into(),
+            revision: 1,
+        }],
+    };
+    assert!(validate_sync_request(&mut duplicate).is_err());
+    let mut series = SyncRequest {
+        upserts: vec![event()],
+        deletes: vec![],
+    };
+    series.upserts[0].external_uid = Some("device:series".into());
+    assert!(validate_sync_request(&mut series).is_err());
+    let mut unrevised_delete = SyncRequest {
+        upserts: vec![],
+        deletes: vec![super::series_routes::ExpectedEvent {
+            id: "calendar-a".into(),
+            revision: 0,
+        }],
+    };
+    assert!(validate_sync_request(&mut unrevised_delete).is_err());
+}
+
+#[test]
+fn updated_at_is_read_only() {
+    let parsed: CalendarEvent = serde_json::from_value(json!({"id":"e","title":"T","startAt":"2026-10-25T09:00:00Z","updatedAt":"2020-01-01T00:00:00Z"})).unwrap();
+    assert!(
+        parsed.updated_at.is_none(),
+        "clients never set the server write time"
+    );
+    assert!(!serde_json::to_string(&parsed)
+        .unwrap()
+        .contains("updatedAt"));
+}
+
+pub(super) async fn postgres_sync_contract(pool: &sqlx_postgres::PgPool, account: &str) {
+    use super::sync_routes::{sync, SyncRequest};
+    let state = std::sync::Arc::new(crate::server::ServerState::new(
+        pool.clone(),
+        crate::events::EventBus::noop(),
+    ));
+    let session = crate::auth::routes::CloudSession {
+        account_id: account.into(),
+        token_id: "test".into(),
+        device_id: "test".into(),
+    };
+    let first = SyncRequest {
+        upserts: vec![
+            device_event("calendar-sync-a", "device:sync-a", "Standup"),
+            device_event("calendar-sync-b", "device:sync-b", "Review"),
+        ],
+        deletes: vec![],
+    };
+    let response = sync(
+        State(state.clone()),
+        Extension(session.clone()),
+        Json(first),
+    )
+    .await;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["saved"].as_array().unwrap().len(), 2);
+    assert_eq!(body["saved"][0]["revision"], json!(1));
+    assert!(body["saved"][0]["updatedAt"].is_string());
+    let events = super::store::calendar(pool, account).await.unwrap();
+    let saved_a = events
+        .iter()
+        .find(|e| e.id == "calendar-sync-a")
+        .unwrap()
+        .clone();
+    assert!(saved_a.updated_at.is_some());
+    // A repeated revision-0 insert is a conflict, not a duplicate; a matching revision updates in place.
+    let mut renamed = device_event("calendar-sync-a", "device:sync-a", "Standup (moved)");
+    renamed.revision = saved_a.revision;
+    let second = SyncRequest {
+        upserts: vec![
+            device_event("calendar-sync-b", "device:sync-b", "Review"),
+            renamed,
+        ],
+        deletes: vec![super::series_routes::ExpectedEvent {
+            id: "calendar-sync-missing".into(),
+            revision: 99,
+        }],
+    };
+    let response = sync(
+        State(state.clone()),
+        Extension(session.clone()),
+        Json(second),
+    )
+    .await;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let body: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(body["conflicts"], json!(["calendar-sync-b"]));
+    assert_eq!(body["deleteConflicts"], json!(["calendar-sync-missing"]));
+    assert_eq!(body["saved"].as_array().unwrap().len(), 1);
+    assert_eq!(body["saved"][0]["title"], json!("Standup (moved)"));
+    assert_eq!(body["saved"][0]["revision"], json!(2));
+    let events = super::store::calendar(pool, account).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .filter(|e| e.id.starts_with("calendar-sync-"))
+            .count(),
+        2
+    );
+    let b = events.iter().find(|e| e.id == "calendar-sync-b").unwrap();
+    let third = SyncRequest {
+        upserts: vec![],
+        deletes: vec![
+            super::series_routes::ExpectedEvent {
+                id: "calendar-sync-b".into(),
+                revision: b.revision,
+            },
+            super::series_routes::ExpectedEvent {
+                id: "calendar-sync-a".into(),
+                revision: 2,
+            },
+        ],
+    };
+    let response = sync(State(state), Extension(session), Json(third)).await;
+    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    let events = super::store::calendar(pool, account).await.unwrap();
+    assert!(!events.iter().any(|e| e.id.starts_with("calendar-sync-")));
+}

@@ -92,6 +92,8 @@ struct DigestCalendarEvent: Codable, Identifiable, Equatable, Sendable {
     var seriesId: String? = nil
     var seriesFingerprint: String? = nil
     var confirmSingleOccurrence: Bool? = nil
+    /// Server write time, read-only. Used to settle edits made on both sides between syncs.
+    var updatedAt: String? = nil
 }
 struct DigestRecurrence: Codable, Equatable, Sendable {
     var frequency: String

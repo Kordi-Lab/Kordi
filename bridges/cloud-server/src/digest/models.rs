@@ -113,6 +113,9 @@ pub struct CalendarEvent {
     pub confirm_single_occurrence: Option<bool>,
     #[serde(default)]
     pub revision: i64,
+    /// Server write time. Read-only: clients cannot set it and it is never stored in the payload.
+    #[serde(default, skip_deserializing, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
 }
 
 pub fn validate_output(output: &Output, input: &Input) -> Result<(), &'static str> {

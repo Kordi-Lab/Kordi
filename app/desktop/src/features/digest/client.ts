@@ -1,7 +1,7 @@
 import { cloudApiBaseUrl } from '@/features/cloud/authClient';
 import { normalizeCalendarEvent } from './calendarImport';
 import { loadSession } from '@/features/cloud/session';
-import type { CalendarEvent, DigestResponse } from './types';
+import type { CalendarEvent, CalendarSyncResult, DigestResponse } from './types';
 
 async function request<T>(accountId: string, path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
   const session = await loadSession();
@@ -43,6 +43,7 @@ export const digestClient = {
   saveEvent: (accountId: string, event: CalendarEvent) => request<CalendarEvent>(accountId, `calendar/events/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
   previewSeries: (accountId: string, event: CalendarEvent, signal?: AbortSignal) => request<{events: CalendarEvent[]}>(accountId, 'calendar/series/preview', 'POST', normalizeCalendarEvent(event), signal),
   saveSeries: (accountId: string, event: CalendarEvent) => request<{events: CalendarEvent[]}>(accountId, `calendar/series/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
+  sync: (accountId: string, changes: { upserts: CalendarEvent[]; deletes: { id: string; revision: number }[] }, signal?: AbortSignal) => request<CalendarSyncResult>(accountId, 'calendar/sync', 'POST', { upserts: changes.upserts.map(normalizeCalendarEvent), deletes: changes.deletes }, signal),
   removeEvent: (accountId: string, event: CalendarEvent, signal?: AbortSignal) => request<void>(accountId, `calendar/events/${encodeURIComponent(event.id)}?revision=${event.revision}`, 'DELETE', undefined, signal),
   removeSeries: (accountId: string, id: string, events: CalendarEvent[], signal?: AbortSignal) => request<void>(accountId, `calendar/series/${encodeURIComponent(id)}`, 'DELETE', {events:events.map(event=>({id:event.id,revision:event.revision}))}, signal),
   feedback: (accountId: string, id: string, dismissed: boolean, signal?: AbortSignal) => request<void>(accountId, `digest/items/${encodeURIComponent(id)}/feedback`, 'PUT', { dismissed }, signal),
