@@ -64,8 +64,25 @@ provider costs a handful of calls per day, not thousands.
 
 ## Validation
 
-Unit coverage: `cargo test -p kordi-cloud-server --lib pip::` and
-`cargo test -p kordi-cloud-agent-runner --lib pip::`. Manual validation uses
-the isolated development backend with synthetic accounts and a fresh group;
-record the sweep, the card rows, and Pip's posted messages for the proposal,
-partial decline, organizer cancellation, ambiguity, and reminder cases.
+Unit coverage: `cargo test -p kordi-cloud-server --lib pip::`,
+`cargo test -p kordi-cloud-server --lib plan_cards::` and
+`cargo test -p kordi-cloud-agent-runner --lib pip::`.
+
+Validated on the isolated development backend (2026-09-16) with two synthetic
+accounts in a fresh group, a Kordi-operated key, and no @-mention anywhere:
+
+| Step | Messages | Pip's action | Card |
+| --- | --- | --- | --- |
+| Proposal | organizer proposes two options, peer picks one, organizer locks it | propose, then confirm; posts one message | revision 3, `confirmed`, organizer yes, peer pending |
+| Partial decline | peer: "I can't make it on Saturday anymore" | rsvp no on the peer's behalf; posts one message | revision 4, still `confirmed`, peer no |
+| Organizer cancels | organizer: "cancel lunch for everyone" | cancel; posts one message | revision 5, `canceled` |
+
+Every step produced exactly one cloud run, about 20 seconds after the last
+message; no run failed and Pip's own messages did not queue a further run.
+Manual runner calls also confirmed that a member's own call may not act for
+another member while Pip's run may, inside its own conversation only.
+
+Two failure modes found and fixed during validation: the model sends optional
+strings as `""` (an empty `existingEventId` is now a new card, not a missing
+one), and it may send ambiguous times (`startAt`/`endAt` now require an RFC
+3339 offset and return a 400 that explains the format).
