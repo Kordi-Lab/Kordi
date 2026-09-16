@@ -494,6 +494,21 @@ pub async fn confirm(
         None => None,
     };
 
+    // Voting for the winning option is itself a way of saying "I'm in": mark
+    // those voters as attending, but never downgrade an explicit "no".
+    if let Some(option) = &chosen {
+        if !option.votes.is_empty() {
+            query(
+                "UPDATE cloud_plan_card_participants SET rsvp = 'yes', responded_at = now() \
+                 WHERE event_id = $1 AND rsvp = 'pending' AND account_id = ANY($2)",
+            )
+            .bind(event_id)
+            .bind(&option.votes)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
     query(
         "UPDATE cloud_plan_cards SET state = 'confirmed', revision = revision + 1, \
             note = $1, \

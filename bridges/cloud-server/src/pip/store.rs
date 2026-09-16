@@ -372,16 +372,23 @@ async fn build_input(
     .await?;
     let (kind, shared_title, group_title) = conversation.unwrap_or_default();
 
-    let members: Vec<(String, Option<String>, String)> = query_as(
-        "SELECT member.account_id, account.display_name, member.role
+    let members: Vec<(String, Option<String>, String, Option<String>)> = query_as(
+        "SELECT member.account_id, account.display_name, member.role, digest.timezone
          FROM cloud_chat_conversation_members member
          JOIN cloud_accounts account ON account.account_id = member.account_id
+         LEFT JOIN cloud_account_digests digest ON digest.account_id = member.account_id
          WHERE member.conversation_id = $1 AND member.membership_state = 'active'
          ORDER BY member.joined_at ASC",
     )
     .bind(candidate.conversation_id)
     .fetch_all(pool)
     .await?;
+    let member_timezone = |account_id: &str| -> Option<String> {
+        members
+            .iter()
+            .find(|(id, _, _, _)| id == account_id)
+            .and_then(|(_, _, _, timezone)| timezone.clone())
+    };
 
     let messages: Vec<MessageRow> = query_as(
         "SELECT message.message_id::text, message.conversation_sequence, message.sender_account_id,
@@ -418,6 +425,7 @@ async fn build_input(
         }));
     }
     let mut open_card = Value::Null;
+    let mut organizer_account_id: Option<String> = None;
     if let Some((
         event_id,
         revision,
@@ -452,6 +460,10 @@ async fn build_input(
         .bind(&event_id)
         .fetch_all(pool)
         .await?;
+        organizer_account_id = participants
+            .iter()
+            .find(|(_, _, organizer, _)| *organizer)
+            .map(|(account_id, _, _, _)| account_id.clone());
         if let Some(start) = start_at.as_deref().and_then(parse_pg_timestamp) {
             let remaining = start.with_timezone(&Utc) - Utc::now();
             let fired = |key: &str| candidate.hooks_fired.get(key).is_some();
@@ -488,6 +500,17 @@ async fn build_input(
         });
     }
 
+    // Prefer the open card's organizer's timezone, since that's whose "now"
+    // the plan is really being scheduled around; fall back to whichever
+    // member happens to have one on file.
+    let organizer_timezone = organizer_account_id
+        .and_then(|account_id| member_timezone(&account_id))
+        .or_else(|| {
+            members
+                .iter()
+                .find_map(|(_, _, _, timezone)| timezone.clone())
+        });
+
     let messages: Vec<Value> = messages
         .into_iter()
         .rev()
@@ -514,7 +537,7 @@ async fn build_input(
             "kind": kind,
             "title": group_title.or(shared_title),
         },
-        "members": members.into_iter().map(|(account_id, display_name, role)| {
+        "members": members.into_iter().map(|(account_id, display_name, role, timezone)| {
             let display_name = display_name.unwrap_or_else(|| "Member".to_string());
             json!({
                 "participantId": account_id,
@@ -522,8 +545,10 @@ async fn build_input(
                 "handle": format!("@{}", mention_handle(&display_name)),
                 "role": role,
                 "isPip": account_id == config.account_id,
+                "timezone": timezone,
             })
         }).collect::<Vec<_>>(),
+        "organizerTimezone": organizer_timezone,
         "openCard": open_card,
         "messages": messages,
         "hooks": hooks,

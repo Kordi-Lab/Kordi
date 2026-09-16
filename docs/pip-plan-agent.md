@@ -46,6 +46,7 @@ the card, never in Pip's chat lines.
 | Genuinely unclear whether a confirmed plan stands | asks one question and `reopen`s the card |
 | 24 hours and 2 hours before start | one reminder each, while the card is open |
 
+Confirming with an option marks everyone who voted for it as attending.
 Confirming adds the plan to every attending member's Kordi calendar
 (`bridges/cloud-server/src/plan_cards/calendar.rs`), keyed by the card so
 later changes update the same entry; a decline or a cancellation removes it.
