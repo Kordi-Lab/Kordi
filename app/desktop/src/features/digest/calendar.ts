@@ -1,4 +1,4 @@
-import type { CalendarEvent, CalendarConnection } from './types';
+import type { CalendarEvent, CalendarConnection, DeviceCalendarAccess, DeviceCalendarEvent } from './types';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
 export function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
@@ -59,10 +59,47 @@ export async function connectedCalendars():Promise<CalendarConnection[]> {
   const {invoke}=await import('@tauri-apps/api/core');
   return invoke('desktop_digest_calendars');
 }
-export async function readDeviceEvents(calendarIds:string[],from:string,to:string):Promise<CalendarEvent[]> {
+export async function readDeviceEvents(calendarIds:string[],from:string,to:string):Promise<DeviceCalendarEvent[]> {
   const {invoke}=await import('@tauri-apps/api/core');
   return invoke('desktop_digest_calendar_events',{calendarIds,from,to});
 }
+/** Current calendar permission. `request` prompts only while the system still reports "not determined". */
+export async function deviceCalendarAccess(request:boolean):Promise<DeviceCalendarAccess> {
+  if(!isNativeDesktopShell())return 'unavailable';
+  const {invoke}=await import('@tauri-apps/api/core');
+  return invoke('desktop_digest_calendar_access',{request});
+}
+/** `deviceStartAt` is where the device copy starts now; with `event.externalUid` it pins one occurrence of a repeating event. */
+export async function writeDeviceEvent(event:CalendarEvent,options:{deviceId?:string|null;calendarId?:string|null;deviceStartAt?:string|null}={}):Promise<{deviceId:string;externalUid:string}> {
+  const {invoke}=await import('@tauri-apps/api/core');
+  return invoke('desktop_digest_calendar_write',{event,deviceId:options.deviceId??null,calendarId:options.calendarId??null,deviceStartAt:options.deviceStartAt??null});
+}
+export type DeviceEventTarget={deviceId:string;externalUid:string;startAt:string};
+export async function deleteDeviceEvent(target:DeviceEventTarget):Promise<void> {
+  const {invoke}=await import('@tauri-apps/api/core');
+  await invoke('desktop_digest_calendar_delete',{deviceId:target.deviceId,externalUid:target.externalUid,startAt:target.startAt});
+}
+export const DEVICE_CALENDAR_CHANGED_EVENT='digest-calendar-changed';
+/** Starts the native change observer once and forwards every store change to `onChange`. */
+export async function watchDeviceCalendar(onChange:()=>void):Promise<()=>void> {
+  if(!isNativeDesktopShell())return()=>{};
+  const [{listen},{invoke}]=await Promise.all([import('@tauri-apps/api/event'),import('@tauri-apps/api/core')]);
+  const unlisten=await listen(DEVICE_CALENDAR_CHANGED_EVENT,()=>onChange());
+  await invoke('desktop_digest_calendar_observe');
+  return unlisten;
+}
+/** Device notes often carry HTML from meeting invitations. Show them as readable plain text. */
+export function plainEventNotes(text:string):string {
+  if(!/<\/?[a-z][^>]*>/i.test(text))return text.trim();
+  return text
+    .replace(/<br\s*\/?>/gi,'\n')
+    .replace(/<\/(p|div|li|tr|h[1-6])\s*>/gi,'\n')
+    .replace(/<li[^>]*>/gi,'• ')
+    .replace(/<[^>]+>/g,'')
+    .replace(/&nbsp;/g,' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&amp;/g,'&')
+    .replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+}
+export const CALENDAR_PRIVACY_SETTINGS_URL='x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars';
 export async function syncReminders(accountId:string,events:CalendarEvent[],requestPermission=false):Promise<string>{
   if(!isNativeDesktopShell())return 'unavailable';
   const {invoke}=await import('@tauri-apps/api/core');
@@ -80,4 +117,12 @@ export async function fetchCalendarLink(value:string):Promise<string>{
   while(true){const {value,done}=await reader.read();if(done)break;length+=value.length;if(length>1_000_000){await reader.cancel();throw new Error('Choose a calendar smaller than 1 MB.');}chunks.push(value);}
   const bytes=new Uint8Array(length);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}
   return new TextDecoder('utf-8',{fatal:true}).decode(bytes);
+}
+
+export function syncedAgoLabel(lastSyncedAt: string | null, now = Date.now()): string {
+  if (!lastSyncedAt) return '';
+  const seconds = Math.max(0, Math.round((now - Date.parse(lastSyncedAt)) / 1000));
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
+  return new Date(lastSyncedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }

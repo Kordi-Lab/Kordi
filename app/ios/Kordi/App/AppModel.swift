@@ -201,6 +201,7 @@ final class AppModel: ObservableObject {
     let rollingDigestRead = DigestReadCoordinator<RollingDigestResponse>()
     let digestCalendarRead = DigestReadCoordinator<DigestCalendarResponse>()
     let digestWarmup = DigestWarmupCoordinator()
+    let digestCalendarSync = DigestCalendarSyncCoordinator()
     @Published private(set) var contacts: [CloudContact] = []
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []

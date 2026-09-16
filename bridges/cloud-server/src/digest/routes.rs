@@ -23,6 +23,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route("/v1/cloud/digest/items/:id/feedback", put(feedback))
         .route("/v1/cloud/digest/items/:id/task", post(task))
         .route("/v1/cloud/calendar/events", get(events))
+        .route("/v1/cloud/calendar/sync", post(super::sync_routes::sync))
         .route("/v1/cloud/calendar/read", post(super::chat_calendar::route))
         .route(
             "/v1/cloud/calendar/series/preview",
@@ -259,16 +260,15 @@ pub(super) async fn save_event(
             _ => {}
         }
     }
-    let row:Result<Option<(Value,i64)>,_>=query_as("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,$2,$3 WHERE $4=0 ON CONFLICT(account_id,event_id) DO UPDATE SET payload=cloud_calendar_events.payload || $3,revision=cloud_calendar_events.revision+1,updated_at=now() WHERE cloud_calendar_events.revision=$4 RETURNING payload,revision")
-        .bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(&mut *tx).await;
-    // Existing rows with an expected revision use an explicit update.
-    let row=match row {Ok(None) if event.revision>0=>query_as("UPDATE cloud_calendar_events SET payload=cloud_calendar_events.payload || $3,revision=revision+1,updated_at=now() WHERE account_id=$1 AND event_id=$2 AND revision=$4 RETURNING payload,revision").bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(&mut *tx).await,other=>other};
+    let row = store::upsert_event(&mut tx, &session.account_id, &event).await;
     match row {
         Ok(Some((mut value, revision))) => {
             if tx.commit().await.is_err() {
                 return failed();
             }
             value["revision"] = json!(revision);
+            value["updatedAt"] =
+                json!(chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
             Json(value).into_response()
         }
         Ok(None) => error(
@@ -279,7 +279,7 @@ pub(super) async fn save_event(
         Err(_) => failed(),
     }
 }
-async fn valid_timezone(
+pub(super) async fn valid_timezone(
     pool: &sqlx_postgres::PgPool,
     zone: &str,
 ) -> Result<bool, sqlx_core::Error> {

@@ -3,6 +3,7 @@ import { CLOUD_SESSION_CHANGED_EVENT, CLOUD_SESSION_SIGNED_OUT_EVENT } from '@/f
 import { digestClient } from './client';
 import type { CalendarEvent, DigestResponse } from './types';
 import { feedbackState, removedEventsState } from './optimistic';
+import { DIGEST_CALENDAR_SERVER_CHANGED_EVENT, notifyCalendarSync } from './calendarSync';
 
 export type DigestState = {
   digest: DigestResponse | null;
@@ -31,6 +32,7 @@ export class DigestStore {
   private pending: Promise<DigestResponse | null> | null = null;
   private queued: Promise<DigestResponse | null> | null = null;
   private lastCompletedAt = 0;
+  private calendarSignature = '';
   private disposed = false;
 
   constructor(private readonly accountId: string, private readonly now = Date.now) {}
@@ -151,7 +153,13 @@ export class DigestStore {
       return value;
     }).catch(error => { report('digest', error); throw error; });
     const calendar = digestClient.calendar(this.accountId, signal).then(value => {
-      if (!signal.aborted && revision === this.readRevision) this.publish({ events: value.events, calendarLoaded: true, calendarError: null });
+      if (signal.aborted || revision !== this.readRevision) return;
+      const signature = value.events.map(event => `${event.id}:${event.revision}`).sort().join('|');
+      const changed = this.base.calendarLoaded && signature !== this.calendarSignature;
+      this.calendarSignature = signature;
+      this.publish({ events: value.events, calendarLoaded: true, calendarError: null });
+      // Another device or an agent changed the account calendar: let the device sync pick it up now.
+      if (changed) notifyCalendarSync(DIGEST_CALENDAR_SERVER_CHANGED_EVENT, this.accountId);
     }).catch(error => { report('calendar', error); throw error; });
     this.pending = Promise.allSettled([digest, calendar]).then(results => {
       const failure = results.find(result => result.status === 'rejected');

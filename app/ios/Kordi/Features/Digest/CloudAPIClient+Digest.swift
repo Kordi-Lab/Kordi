@@ -24,6 +24,12 @@ extension CloudAPIClient {
     func previewDigestSeries(token: String, event: DigestCalendarEvent) async throws -> DigestCalendarResponse {
         try await send(path: "/v1/cloud/calendar/series/preview", method: "POST", token: token, body: try event.normalizedForSave(), fallback: "Could not preview the series.")
     }
+    func syncDigestCalendar(token: String, upserts: [DigestCalendarEvent], deletes: [DigestCalendarEvent]) async throws -> DigestCalendarSyncResult {
+        struct Expected: Encodable { let id: String; let revision: Int64 }
+        struct Changes: Encodable { let upserts: [DigestCalendarEvent]; let deletes: [Expected] }
+        let body = Changes(upserts: try upserts.map { try $0.normalizedForSave() }, deletes: deletes.map { Expected(id: $0.id, revision: $0.revision) })
+        return try await send(path: "/v1/cloud/calendar/sync", method: "POST", token: token, body: body, fallback: "Could not sync the calendar.")
+    }
     func removeDigestEvent(token: String, event: DigestCalendarEvent) async throws {
         let id = event.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? event.id
         try await sendWithoutResponse(path: "/v1/cloud/calendar/events/\(id)", method: "DELETE", token: token, query: [URLQueryItem(name: "revision", value: String(event.revision))], fallback: "Could not remove the event.")

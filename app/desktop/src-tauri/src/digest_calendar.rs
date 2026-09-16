@@ -5,9 +5,11 @@ use sha2::{Digest, Sha256};
 static REMINDER_QUEUE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceCalendar {
     id: String,
     title: String,
+    allows_modifications: bool,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +27,13 @@ pub struct CalendarEvent {
     pub source_ids: Vec<String>,
     pub external_uid: Option<String>,
     pub revision: i64,
+    /// Device-store identity and metadata. Present only on events read from the device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calendar_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
 }
 
 #[tauri::command]
@@ -173,16 +182,97 @@ pub async fn clear_reminders(account_id: Option<String>) {
 }
 
 #[cfg(target_os = "macos")]
-mod native {
+pub(crate) mod native {
     use super::*;
     use objc2::{rc::Retained, runtime::Bool, sel, AnyThread};
-    use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEventStore};
+    use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEvent, EKEventStore};
     use objc2_foundation::{NSArray, NSDate, NSError, NSObjectProtocol};
     use std::time::Duration;
-    fn store() -> Retained<EKEventStore> {
+    pub(crate) fn store() -> Retained<EKEventStore> {
         unsafe { EKEventStore::init(EKEventStore::alloc()) }
     }
-    fn access(store: &EKEventStore) -> Result<(), String> {
+    /// Stable identity for a device event. Occurrences of a repeating event share the item
+    /// identifier, so the original occurrence date tells them apart and survives a reschedule.
+    pub(crate) fn external_uid(event: &EKEvent) -> String {
+        let base = unsafe {
+            event
+                .calendarItemExternalIdentifier()
+                .unwrap_or_else(|| event.calendarItemIdentifier())
+        }
+        .to_string();
+        if unsafe { event.hasRecurrenceRules() || event.isDetached() } {
+            if let Some(date) = unsafe { event.occurrenceDate() } {
+                return format!(
+                    "device:{base}:occurrence:{}",
+                    date.timeIntervalSince1970() as i64
+                );
+            }
+        }
+        format!("device:{base}")
+    }
+    fn map_event(e: &EKEvent) -> Result<CalendarEvent, String> {
+        unsafe {
+            let start =
+                chrono::DateTime::from_timestamp(e.startDate().timeIntervalSince1970() as i64, 0)
+                    .ok_or("Invalid event start.")?;
+            let end =
+                chrono::DateTime::from_timestamp(e.endDate().timeIntervalSince1970() as i64, 0)
+                    .ok_or("Invalid event end.")?;
+            let all_day = e.isAllDay();
+            let (start_at, end_at) = if all_day {
+                // The device store ends an all-day event late on its last day; Kordi stores the exclusive next date.
+                let start_local = start.with_timezone(&chrono::Local);
+                let end_local = end.with_timezone(&chrono::Local);
+                let mut last = end_local.date_naive();
+                if end_local.time() != chrono::NaiveTime::MIN {
+                    last = last.succ_opt().unwrap_or(last);
+                }
+                if last <= start_local.date_naive() {
+                    last = start_local.date_naive().succ_opt().unwrap_or(last);
+                }
+                (
+                    format!("{}T00:00:00Z", start_local.date_naive()),
+                    format!("{last}T00:00:00Z"),
+                )
+            } else {
+                (
+                    start.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                    end.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+                )
+            };
+            let uid = external_uid(e);
+            let title = e.title().to_string();
+            Ok(CalendarEvent {
+                id: format!("calendar-{}", hex::encode(Sha256::digest(uid.as_bytes()))),
+                title: if title.trim().is_empty() {
+                    "Event".into()
+                } else {
+                    title
+                },
+                start_at,
+                end_at: Some(end_at),
+                all_day,
+                description: e
+                    .notes()
+                    .map(|n| n.to_string())
+                    .unwrap_or_default()
+                    .chars()
+                    .take(5000)
+                    .collect(),
+                source_ids: vec![],
+                external_uid: Some(uid),
+                revision: 0,
+                reminder_at: None,
+                device_id: e.eventIdentifier().map(|s| s.to_string()),
+                calendar_id: e.calendar().map(|c| c.calendarIdentifier().to_string()),
+                modified_at: e.lastModifiedDate().and_then(|d| {
+                    chrono::DateTime::from_timestamp(d.timeIntervalSince1970() as i64, 0)
+                        .map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+                }),
+            })
+        }
+    }
+    pub(crate) fn access(store: &EKEventStore) -> Result<(), String> {
         unsafe {
             if EKEventStore::authorizationStatusForEntityType(EKEntityType::Event)
                 == EKAuthorizationStatus::FullAccess
@@ -219,6 +309,7 @@ mod native {
                 DeviceCalendar {
                     id: c.calendarIdentifier().to_string(),
                     title: c.title().to_string(),
+                    allows_modifications: c.allowsContentModifications(),
                 }
             })
             .collect())
@@ -262,56 +353,7 @@ mod native {
         if events.len() > 1000 {
             return Err("More than 1,000 events. Choose fewer calendars.".into());
         }
-        events
-            .iter()
-            .map(|e| unsafe {
-                let start = chrono::DateTime::from_timestamp(
-                    e.startDate().timeIntervalSince1970() as i64,
-                    0,
-                )
-                .ok_or("Invalid event start.")?;
-                let end =
-                    chrono::DateTime::from_timestamp(e.endDate().timeIntervalSince1970() as i64, 0)
-                        .ok_or("Invalid event end.")?;
-                let all_day = e.isAllDay();
-                let format = |date: chrono::DateTime<chrono::Utc>| {
-                    if all_day {
-                        format!(
-                            "{}T00:00:00Z",
-                            date.with_timezone(&chrono::Local).date_naive()
-                        )
-                    } else {
-                        date.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-                    }
-                };
-                let start_at = format(start);
-                let end_at = format(end);
-                let uid = format!(
-                    "device:{}:{}",
-                    e.calendarItemExternalIdentifier()
-                        .unwrap_or_else(|| e.calendarItemIdentifier()),
-                    start_at
-                );
-                Ok(CalendarEvent {
-                    id: format!("calendar-{}", hex::encode(Sha256::digest(uid.as_bytes()))),
-                    title: e.title().to_string(),
-                    start_at,
-                    end_at: Some(end_at),
-                    all_day,
-                    description: e
-                        .notes()
-                        .map(|n| n.to_string())
-                        .unwrap_or_default()
-                        .chars()
-                        .take(5000)
-                        .collect(),
-                    source_ids: vec![],
-                    external_uid: Some(uid),
-                    revision: 0,
-                    reminder_at: None,
-                })
-            })
-            .collect()
+        events.iter().map(|e| map_event(&e)).collect()
     }
 }
 

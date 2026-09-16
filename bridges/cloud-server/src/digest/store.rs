@@ -25,17 +25,37 @@ pub async fn initialize_preferences(
 }
 
 pub async fn calendar(pool: &PgPool, account: &str) -> Result<Vec<CalendarEvent>> {
-    let rows:Vec<(Value,i64)>=query_as("SELECT payload,revision FROM cloud_calendar_events WHERE account_id=$1 ORDER BY (payload->>'startAt')::timestamptz,event_id LIMIT 1000").bind(account).fetch_all(pool).await?;
+    let rows:Vec<(Value,i64,chrono::DateTime<Utc>)>=query_as("SELECT payload,revision,updated_at FROM cloud_calendar_events WHERE account_id=$1 ORDER BY (payload->>'startAt')::timestamptz,event_id LIMIT 1000").bind(account).fetch_all(pool).await?;
     let mut events = Vec::new();
-    for (value, revision) in rows {
+    for (value, revision, updated_at) in rows {
         if let Ok(mut event) = serde_json::from_value::<CalendarEvent>(value) {
             if authorized(pool, account, &event.source_ids).await? {
                 event.revision = revision;
+                event.updated_at =
+                    Some(updated_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
                 events.push(event);
             }
         }
     }
     Ok(events)
+}
+
+/// Inserts a revision-0 event or updates an existing row whose revision matches.
+/// Returns `None` when the expected revision no longer matches (or a new event already exists).
+pub async fn upsert_event(
+    tx: &mut sqlx_postgres::PgConnection,
+    account: &str,
+    event: &CalendarEvent,
+) -> Result<Option<(Value, i64)>> {
+    let value = serde_json::to_value(event).unwrap();
+    let row:Option<(Value,i64)>=query_as("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,$2,$3 WHERE $4=0 ON CONFLICT(account_id,event_id) DO UPDATE SET payload=cloud_calendar_events.payload || $3,revision=cloud_calendar_events.revision+1,updated_at=now() WHERE cloud_calendar_events.revision=$4 RETURNING payload,revision")
+        .bind(account).bind(&event.id).bind(&value).bind(event.revision).fetch_optional(&mut *tx).await?;
+    if row.is_none() && event.revision > 0 {
+        // Existing rows with an expected revision use an explicit update.
+        return query_as("UPDATE cloud_calendar_events SET payload=cloud_calendar_events.payload || $3,revision=revision+1,updated_at=now() WHERE account_id=$1 AND event_id=$2 AND revision=$4 RETURNING payload,revision")
+            .bind(account).bind(&event.id).bind(&value).bind(event.revision).fetch_optional(&mut *tx).await;
+    }
+    Ok(row)
 }
 
 pub async fn input(

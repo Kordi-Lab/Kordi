@@ -130,6 +130,7 @@ final class DigestReadCoordinator<Value> {
 
 extension AppModel {
     func scheduleDigestWarmup() {
+        startDigestCalendarSync()
         guard phase == .signedIn, let (_, token, accountId) = try? digestContext() else { return }
         digestWarmup.schedule(scope: [accountId, token, Locale.current.identifier, TimeZone.current.identifier]) { [weak self] in
             guard let self, self.phase == .signedIn,
@@ -144,6 +145,7 @@ extension AppModel {
 
     func resetDigestReads() {
         digestWarmup.reset()
+        digestCalendarSync.stop()
         invalidateDigestReads()
         digestMutationTasks.values.forEach { $0.task.cancel() }
         digestMutationTasks = [:]
@@ -198,7 +200,12 @@ extension AppModel {
             try Task.checkCancellation()
             let (_, currentToken, currentAccount) = try self.digestContext()
             guard currentToken == token, currentAccount == accountId else { throw CancellationError() }
-            if self.digestCalendarSnapshot != response { self.digestCalendarSnapshot = response }
+            if self.digestCalendarSnapshot != response {
+                // Another device or an agent changed the account calendar: let the device sync pick it up now.
+                let changedAfterFirstRead = self.digestCalendarSnapshot != nil
+                self.digestCalendarSnapshot = response
+                if changedAfterFirstRead { self.digestCalendarSync.requestSync() }
+            }
             var mutations = self.digestMutationState
             mutations.reconcile(calendar: response)
             if mutations != self.digestMutationState { self.digestMutationState = mutations }

@@ -1,6 +1,8 @@
 import {useLayoutEffect,useMemo,useRef,useState,type ReactNode,type MouseEvent} from 'react';
 import {AnimatePresence,motion,useReducedMotion} from 'framer-motion';
-import { CalendarPlus, ChevronLeft, ChevronRight, FileUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileUp, Settings2 } from 'lucide-react';
+import type { CalendarSyncStatus } from './calendarSyncRunner';
+import { CalendarSyncLine } from './CalendarSyncLine';
 import { dateKey, eventOnDay, monthDays } from './calendar';
 import type { CalendarEvent, DigestItem, DigestSource } from './types';
 import { calendarProposalAvailable, isPendingCalendarProposal, proposalLabel, proposalSeries } from './calendarProposal';
@@ -72,12 +74,12 @@ function DigestMonth({ month, selectedDay, events, candidates, onMonth, onDay, o
   </section>;
 }
 
-export function DigestAgenda({ day, events, candidates, sources, people, evidence, onEvent, onCandidate, onConnect, onImport, digestStatus, calendarStatus }: {
+export function DigestAgenda({ day, events, candidates, sources, people, evidence, onEvent, onCandidate, sync, onCalendarSettings, onOpenPrivacy, onRetrySync, onImport, digestStatus, calendarStatus }: {
   day: string; events: CalendarEvent[]; candidates: DigestItem[];
   sources: DigestSource[];
   people: (item: DigestItem) => ReactNode; evidence: (item: DigestItem) => ReactNode;
   onEvent: (event: CalendarEvent) => void; onCandidate: (item: DigestItem) => void;
-  onConnect: () => void; onImport: () => void;
+  sync: CalendarSyncStatus; onCalendarSettings: () => void; onOpenPrivacy: () => void; onRetrySync: () => void; onImport: () => void;
   digestStatus?: ReactNode; calendarStatus?: ReactNode;
 }) {
   const scheduled = events.filter(event => eventOnDay(event, day));
@@ -103,7 +105,8 @@ export function DigestAgenda({ day, events, candidates, sources, people, evidenc
     </section>
     <section className="digest-calendar-connections">
       <h2>Your calendars</h2>
-      <button onClick={onConnect}><CalendarPlus size={16} strokeWidth={1.6} aria-hidden="true"/> Connect calendars</button>
+      <CalendarSyncLine sync={sync} onOpenPrivacy={onOpenPrivacy} onRetry={onRetrySync}/>
+      {sync.phase!=='unavailable'&&<button onClick={onCalendarSettings}><Settings2 size={16} strokeWidth={1.6} aria-hidden="true"/> Calendar settings</button>}
       <button onClick={onImport}><FileUp size={16} strokeWidth={1.6} aria-hidden="true"/> Import ICS</button>
     </section>
   </aside>;

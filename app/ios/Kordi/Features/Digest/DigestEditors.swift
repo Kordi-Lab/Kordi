@@ -19,6 +19,7 @@ struct DigestEventEditor: View {
     @State private var reminder: Int
     @State private var error: String?
     @State private var busy = false
+    @State private var confirmRemove = false
     @State private var recurrence: DigestRecurrence?
     @State private var preview = DigestSeriesPreview()
     @State private var previewRetry = 0
@@ -121,16 +122,28 @@ struct DigestEventEditor: View {
                 Section("Related people") { DigestPeopleView(sourceIds: event.sourceIds, ownerAccountId: nil, sources: sources, accountId: accountId, contacts: contacts) }
                 DigestSourceMessages(sourceIds: event.sourceIds, sources: sources)
             }
-            if event.sourceIds.isEmpty && !event.description.isEmpty { Section("Context") { Text(event.description).textSelection(.enabled) } }
+            if event.sourceIds.isEmpty && !event.description.isEmpty { Section("Context") { Text(DigestCalendarSync.plainNotes(event.description)).textSelection(.enabled) } }
             if let error { Section { Text(error).foregroundStyle(.red) } }
             if proposal?.calendarAction != "delete" {
                 Button(recurrence != nil && event.revision == 0 ? "Confirm series" : proposal?.calendarAction == "update" ? "Confirm change" : event.revision == 0 ? "Add to calendar" : "Save event") { Task { await submit() } }.disabled(busy || !hasStart || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (needsPreview && !ready))
-                if event.revision > 0 { Button("Remove event", role: .destructive) { Task { await removeReviewedEvent() } }.disabled(busy) }
+                if event.revision > 0 {
+                    Button("Remove event", role: .destructive) { confirmRemove = true }.disabled(busy)
+                        .confirmationDialog("Remove \"\(event.title)\"?", isPresented: $confirmRemove, titleVisibility: .visible) {
+                            Button("Remove event", role: .destructive) { Task { await removeReviewedEvent() } }
+                            Button("Keep event", role: .cancel) {}
+                        } message: { Text(removesFromDevice ? "It is removed from your Kordi calendar and from your device calendar." : "It is removed from your Kordi calendar.") }
+                }
             }
         }.navigationTitle(event.revision == 0 ? "Review calendar event" : "Edit event").navigationBarTitleDisplayMode(.inline)
             .task(id: PreviewID(accountId: accountId, event: request, retry: previewRetry)) {
                 await preview.update(request, accountId: accountId) { event in try await model.previewDigestCalendarSeries(event) }
             }
+    }
+    /// True only when this iPhone synced the event from a calendar it can change.
+    private var removesFromDevice: Bool {
+        guard let uid = event.externalUid, uid.hasPrefix(DigestCalendarSync.devicePrefix),
+              let calendarId = DigestCalendarSyncStorage.baseline(accountId: accountId)[uid]?.calendarId else { return false }
+        return model.digestCalendarSync.status.calendars.first { $0.id == calendarId }?.allowsModifications == true
     }
     private func removeReviewedEvent() async {
         busy = true; defer { busy = false }
