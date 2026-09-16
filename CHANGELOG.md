@@ -11,6 +11,8 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
   same way iPhone does, carrying the identity in the message kind, and keeps
   synced stickers at their compact size instead of re-rendering them as
   full-size images.
+- Fixed image and sticker attachments flashing when a send completes; the
+  decoded preview now stays on screen while its uploaded replacement loads.
 - Removed the retired meme attachment feature, including its alt text and rights
   confirmation fields, along with the unreachable public sticker, meme, and GIF
   discovery code left behind when those grids were removed.
