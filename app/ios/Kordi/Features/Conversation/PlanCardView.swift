@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// A shared plan card inside a Pip message. Buttons act for the signed-in
-/// member; the returned snapshot replaces the displayed one until the next
-/// Pip message arrives with the server's version.
+/// A plan card posted by Pip. The same card type shows either the vote
+/// between options or the calendar card for the plan itself; buttons act for
+/// the signed-in member and the returned snapshot shows at once, until the
+/// transcript carries a newer one.
 struct PlanCardView: View {
     let card: PlanCard
     let ownAccountId: String?
@@ -11,16 +12,13 @@ struct PlanCardView: View {
     @State private var current: PlanCard?
     @State private var busy = false
     @State private var notice: String?
+    @State private var peopleSheet: PlanCardPeopleSheet.Content?
 
-    // A tap updates the card at once; a newer snapshot from the transcript
-    // then takes over, so the card never sticks on an old local result.
     private var view: PlanCard {
         if let current, current.revision > card.revision { return current }
         return card
     }
     private var me: PlanCardParticipant? { view.participant(ownAccountId) }
-    /// The vote and the calendar card are separate messages; the message's own
-    /// card decides which one this is.
     private var isVote: Bool { card.cardView == .vote }
     private var votingOpen: Bool { isVote && view.isPolling }
     private var canRespond: Bool { !isVote && me != nil && view.state != .canceled && onAction != nil }
@@ -31,100 +29,282 @@ struct PlanCardView: View {
     private var onCalendar: Bool {
         !isVote && view.state == .confirmed && me?.rsvp == .yes && view.startAt != nil
     }
-    private var stateLabel: String {
-        if isVote {
-            return votingOpen ? "Vote" : view.state == .canceled ? "Canceled" : "Decided"
-        }
-        if view.state == .confirmed, !view.participants.isEmpty { return "\(view.goingCount) going" }
-        return view.state == .polling ? "Planning" : view.state.label
-    }
-    private var voterCount: Int { Set(view.options.flatMap(\.votes)).count }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: isVote ? "checklist" : view.state == .confirmed ? "calendar.badge.checkmark" : "calendar.badge.clock")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(view.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .strikethrough(view.state == .canceled)
-                        .foregroundStyle(view.state == .canceled ? .secondary : .primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let meta = metaLine {
-                        Text(meta)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer(minLength: 6)
-                Text(stateLabel)
-                    .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(stateTint)
-                    .monospacedDigit()
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            header
             if isVote {
-                optionsList
+                voteBody
             } else {
-                participantsRow
-            }
-            if canRespond || canConfirm {
-                HStack(spacing: 6) {
-                    Spacer(minLength: 0)
-                    if canRespond, let accountId = ownAccountId {
-                        actionButton("Can't make it", systemImage: "xmark", active: me?.rsvp == .no) {
-                            await perform(.rsvp(view, accountId: accountId, going: false))
-                        }
-                        actionButton("I'm in", systemImage: "checkmark", active: me?.rsvp == .yes, primary: me?.rsvp != .yes) {
-                            await perform(.rsvp(view, accountId: accountId, going: true))
-                        }
-                    }
-                    if canConfirm, let accountId = ownAccountId {
-                        let leading = view.isPolling ? view.leadingOption : nil
-                        actionButton("Confirm", systemImage: nil, active: false, primary: true) {
-                            await perform(.confirm(view, accountId: accountId, optionId: leading?.id))
-                        }
-                    }
-                }
-            }
-            if onCalendar {
-                Label("On your calendar", systemImage: "calendar.badge.checkmark")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color(red: 0.12, green: 0.54, blue: 0.37))
+                eventBody
             }
             if let notice {
-                Text(notice)
-                    .font(.system(size: 11))
+                Label(notice, systemImage: "exclamationmark.circle")
+                    .font(.system(size: 12))
                     .foregroundStyle(.red)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(minWidth: 230, maxWidth: 340, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.primary.opacity(0.08)))
+        .padding(12)
+        .frame(minWidth: 250, maxWidth: 300, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
+        .shadow(color: .black.opacity(0.06), radius: 10, y: 3)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Plan card, \(view.state.label), \(view.title)")
+        .accessibilityLabel("\(isVote ? "Vote" : "Plan"), \(view.title), \(statusLabel)")
         .onChange(of: card) { _, latest in
-            // A newer server snapshot wins over an optimistic local one.
             if let current, latest.revision >= current.revision { self.current = nil }
+        }
+        .sheet(item: $peopleSheet) { content in
+            PlanCardPeopleSheet(content: content, ownAccountId: ownAccountId)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 
-    private var metaLine: String? {
+    // MARK: Header
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: headerSymbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(isVote ? "Vote" : "Plan")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 6)
+                    Text(statusLabel)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(tint.opacity(0.14), in: Capsule())
+                        .fixedSize()
+                }
+                Text(view.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(view.state == .canceled ? .secondary : .primary)
+                    .strikethrough(view.state == .canceled)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var headerSymbol: String {
+        if isVote { return "checklist" }
+        switch view.state {
+        case .confirmed: return "calendar.badge.checkmark"
+        case .canceled: return "calendar.badge.exclamationmark"
+        default: return "calendar"
+        }
+    }
+
+    private var statusLabel: String {
         if isVote {
-            return voterCount == 0 ? "No votes yet" : "\(voterCount) of \(view.participants.count) voted"
+            return votingOpen ? "Voting" : view.state == .canceled ? "Canceled" : "Decided"
         }
-        var parts: [String] = []
-        if let when = whenLabel { parts.append(when) }
-        if let location = view.location, !location.isEmpty { parts.append(location) }
-        if !view.unresolvedFields.isEmpty {
-            parts.append("still open: \(view.unresolvedFields.joined(separator: ", "))")
+        switch view.state {
+        case .confirmed: return "Confirmed"
+        case .awaitingConfirmation: return "Almost set"
+        case .polling: return "Planning"
+        case .canceled: return "Canceled"
+        case .unknown: return "Plan"
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private var tint: Color {
+        if isVote {
+            return votingOpen ? Color(red: 0.36, green: 0.36, blue: 0.86) : view.state == .canceled ? .red : Color(red: 0.13, green: 0.60, blue: 0.38)
+        }
+        switch view.state {
+        case .confirmed: return Color(red: 0.13, green: 0.60, blue: 0.38)
+        case .awaitingConfirmation: return Color(red: 0.85, green: 0.47, blue: 0.02)
+        case .canceled: return .red
+        default: return Color(red: 0.36, green: 0.36, blue: 0.86)
+        }
+    }
+
+    // MARK: Calendar card
+
+    @ViewBuilder
+    private var eventBody: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if let start = view.startDate {
+                detailRow("calendar", "\(start.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))) · \(timeLabel(start))")
+            }
+            if let location = view.location, !location.isEmpty {
+                detailRow("mappin.and.ellipse", location)
+            }
+            if !view.unresolvedFields.isEmpty {
+                detailRow("questionmark.circle", "Still open: \(view.unresolvedFields.joined(separator: ", "))")
+            }
+        }
+
+        if !view.participants.isEmpty {
+            Divider().opacity(0.6)
+            attendees
+        }
+
+        if canRespond, let accountId = ownAccountId {
+            HStack(spacing: 8) {
+                responseButton(
+                    title: "Can't make it",
+                    symbol: "xmark",
+                    selected: me?.rsvp == .no,
+                    selectedTint: .red,
+                    prominent: false
+                ) {
+                    await perform(.rsvp(view, accountId: accountId, going: false))
+                }
+                responseButton(
+                    title: me?.rsvp == .yes ? "You're in" : "I'm in",
+                    symbol: "checkmark",
+                    selected: me?.rsvp == .yes,
+                    selectedTint: Color(red: 0.13, green: 0.60, blue: 0.38),
+                    prominent: true
+                ) {
+                    await perform(.rsvp(view, accountId: accountId, going: true))
+                }
+            }
+        }
+
+        if canConfirm, let accountId = ownAccountId {
+            primaryButton("Confirm plan") {
+                await perform(.confirm(view, accountId: accountId))
+            }
+        }
+
+        if onCalendar {
+            Label("On your calendar", systemImage: "calendar.badge.checkmark")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color(red: 0.13, green: 0.60, blue: 0.38))
+        }
+    }
+
+    private func detailRow(_ symbol: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary.opacity(0.85))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func timeLabel(_ start: Date) -> String {
+        let startText = start.formatted(date: .omitted, time: .shortened)
+        guard let end = view.endAt.flatMap(Self.parseDate) else { return startText }
+        return "\(startText) – \(end.formatted(date: .omitted, time: .shortened))"
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    /// Scales to any group size: a few avatars with short counts on the card,
+    /// and the full, searchable list in a sheet.
+    private var attendees: some View {
+        let going = view.participants.filter { $0.rsvp == .yes }
+        let declined = view.participants.filter { $0.rsvp == .no }
+        let waiting = view.participants.filter { $0.rsvp == .pending }
+        let shown = Array((going + waiting + declined).prefix(4))
+        let hidden = view.participants.count - shown.count
+        return Button {
+            peopleSheet = .attendees(title: view.title, going: going, declined: declined, waiting: waiting)
+        } label: {
+            HStack(spacing: 8) {
+                HStack(spacing: -6) {
+                    ForEach(shown) { participant in
+                        attendeeAvatar(participant)
+                    }
+                    if hidden > 0 {
+                        Text("+\(Self.compactCount(hidden))")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 22, minHeight: 22)
+                            .padding(.horizontal, hidden > 9 ? 3 : 0)
+                            .background(Color(uiColor: .systemGray5), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2))
+                    }
+                }
+                Text(countsLine(going: going.count, declined: declined.count, waiting: waiting.count))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(countsLine(going: going.count, declined: declined.count, waiting: waiting.count))
+        .accessibilityHint("Shows everyone and their answer")
+    }
+
+    private func countsLine(going: Int, declined: Int, waiting: Int) -> String {
+        var parts = ["\(Self.compactCount(going)) going"]
+        if declined > 0 { parts.append("\(Self.compactCount(declined)) can't") }
+        if waiting > 0 { parts.append("\(Self.compactCount(waiting)) no reply") }
+        return parts.joined(separator: " · ")
+    }
+
+    static func compactCount(_ value: Int) -> String {
+        value >= 1_000 ? String(format: "%.1fk", Double(value) / 1_000).replacingOccurrences(of: ".0k", with: "k") : "\(value)"
+    }
+
+    private func attendeeAvatar(_ participant: PlanCardParticipant) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            Text(initials(participant.displayName))
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(participant.rsvp == .yes ? Color.white : Color.primary.opacity(0.7))
+                .frame(width: 22, height: 22)
+                .background(
+                    participant.rsvp == .yes ? Color(red: 0.13, green: 0.60, blue: 0.38) : Color(uiColor: .systemGray5),
+                    in: Circle()
+                )
+                .overlay(Circle().strokeBorder(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2))
+                .opacity(participant.rsvp == .no ? 0.5 : 1)
+        }
+    }
+
+    // MARK: Vote card
+
+    @ViewBuilder
+    private var voteBody: some View {
+        Text(voteCaption)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .padding(.top, -4)
+
+        VStack(spacing: 6) {
+            ForEach(view.options) { option in
+                optionRow(option)
+            }
+        }
+
+        if canConfirm, let accountId = ownAccountId, let leading = view.leadingOption {
+            primaryButton("Confirm top choice") {
+                await perform(.confirm(view, accountId: accountId, optionId: leading.id))
+            }
+        }
+    }
+
+    private var voteCaption: String {
+        let voters = Set(view.options.flatMap(\.votes)).count
+        let total = view.participants.count
+        return voters == 0 ? "No votes yet" : "\(Self.compactCount(voters)) of \(Self.compactCount(total)) voted"
     }
 
     private var totalVotes: Int { view.options.reduce(0) { $0 + $1.votes.count } }
@@ -133,125 +313,128 @@ struct PlanCardView: View {
         totalVotes == 0 ? 0 : Int((Double(option.votes.count) / Double(totalVotes) * 100).rounded())
     }
 
-    private var optionsList: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(view.options) { option in
-                let mine = ownAccountId.map { option.votes.contains($0) } ?? false
-                let share = percent(option)
-                let winner = !votingOpen && view.state == .confirmed && view.leadingOption?.id == option.id
-                Button {
-                    guard let accountId = ownAccountId, me != nil else { return }
-                    Task { await perform(.vote(view, accountId: accountId, optionId: option.id)) }
-                } label: {
-                    HStack(spacing: 8) {
-                        ZStack {
-                            Circle().strokeBorder(mine ? Color.accentColor : Color.secondary.opacity(0.6), lineWidth: 1)
-                            if mine {
-                                Circle().fill(Color.accentColor)
-                                Image(systemName: "checkmark").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
-                            }
-                        }
-                        .frame(width: 14, height: 14)
-                        Text(option.label)
-                            .font(.system(size: 12, weight: winner ? .semibold : .regular))
-                            .lineLimit(3)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 4)
-                        Text("\(share)%")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(alignment: .leading) {
-                        GeometryReader { proxy in
-                            (mine ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.14))
-                                .frame(width: proxy.size.width * CGFloat(share) / 100)
-                                .animation(.easeOut(duration: 0.24), value: share)
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(mine ? Color.accentColor : Color.primary.opacity(0.12)))
-                    .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    private func optionRow(_ option: PlanCardOption) -> some View {
+        let mine = ownAccountId.map { option.votes.contains($0) } ?? false
+        let share = percent(option)
+        let winner = !votingOpen && view.state == .confirmed && view.leadingOption?.id == option.id
+        let accent = winner ? Color(red: 0.13, green: 0.60, blue: 0.38) : Color(red: 0.36, green: 0.36, blue: 0.86)
+        return HStack(spacing: 9) {
+            ZStack {
+                Circle()
+                    .strokeBorder(mine || winner ? accent : Color.secondary.opacity(0.5), lineWidth: 1.5)
+                if mine || winner {
+                    Circle().fill(accent).padding(0.5)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
-                .disabled(busy || me == nil || onAction == nil || !votingOpen)
-                .contextMenu {
-                    if option.votes.isEmpty {
-                        Text("No votes yet")
-                    } else {
-                        Section("\(option.votes.count) \(option.votes.count == 1 ? "vote" : "votes")") {
-                            ForEach(option.votes, id: \.self) { voter in
-                                Label(name(of: voter), systemImage: voter == ownAccountId ? "person.fill.checkmark" : "person")
-                            }
-                        }
-                    }
-                }
-                .accessibilityLabel("\(option.label), \(share) percent\(mine ? ", your vote" : "")")
-                .accessibilityHint("Touch and hold to see who voted")
             }
+            .frame(width: 18, height: 18)
+            Text(option.label)
+                .font(.system(size: 13, weight: winner ? .semibold : .regular))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 6)
+            Text("\(share)%")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(mine || winner ? accent : .secondary)
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(alignment: .leading) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Color(uiColor: .tertiarySystemFill)
+                    accent.opacity(mine || winner ? 0.20 : 0.10)
+                        .frame(width: proxy.size.width * CGFloat(share) / 100)
+                        .animation(.easeOut(duration: 0.25), value: share)
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(mine || winner ? accent.opacity(0.7) : Color.clear, lineWidth: 1.5)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .opacity(busy ? 0.6 : 1)
+        .onTapGesture {
+            guard votingOpen, !busy, let accountId = ownAccountId, me != nil, onAction != nil else { return }
+            Task { await perform(.vote(view, accountId: accountId, optionId: option.id)) }
+        }
+        .onLongPressGesture(minimumDuration: 0.35) {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            peopleSheet = .voters(option: option.label, voters: voters(of: option))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("\(option.label), \(share) percent\(mine ? ", your vote" : "")\(winner ? ", chosen" : "")")
+        .accessibilityAction(named: "See who voted") {
+            peopleSheet = .voters(option: option.label, voters: voters(of: option))
         }
     }
 
-    private var participantsRow: some View {
-        FlowLayout(spacing: 6) {
-            ForEach(view.participants) { participant in
-                HStack(spacing: 4) {
-                    ZStack {
-                        Circle()
-                            .fill(participant.rsvp == .yes ? Color.green : Color.secondary.opacity(0.18))
-                        if participant.rsvp == .no {
-                            Circle().strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [3]))
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(initials(participant.displayName))
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(participant.rsvp == .yes ? .white : .primary)
-                    }
-                    .frame(width: 18, height: 18)
-                    Text(participant.displayName)
-                        .font(.system(size: 11.5))
-                        .strikethrough(participant.rsvp == .no)
-                        .opacity(participant.rsvp == .no ? 0.7 : 1)
-                }
-                .accessibilityLabel("\(participant.displayName)\(participant.organizer ? ", organizer" : ""), \(participant.rsvp.rawValue)")
-            }
+    private func voters(of option: PlanCardOption) -> [PlanCardParticipant] {
+        let byId = Dictionary(uniqueKeysWithValues: view.participants.map { ($0.participantId, $0) })
+        return option.votes.map { id in
+            byId[id] ?? PlanCardParticipant(participantId: id, displayName: "Member", organizer: false, rsvp: .pending)
         }
     }
 
-    private func actionButton(
-        _ title: String,
-        systemImage: String?,
-        active: Bool,
-        primary: Bool = false,
+    // MARK: Buttons
+
+    private func responseButton(
+        title: String,
+        symbol: String,
+        selected: Bool,
+        selectedTint: Color,
+        prominent: Bool,
         action: @escaping () async -> Void
     ) -> some View {
-        Button {
+        let accent = Color.accentColor
+        let foreground: Color = selected ? selectedTint : (prominent ? .white : .primary)
+        let background: Color = selected ? selectedTint.opacity(0.14) : (prominent ? accent : Color(uiColor: .tertiarySystemFill))
+        return Button {
             Task { await action() }
         } label: {
-            HStack(spacing: 4) {
-                if let systemImage { Image(systemName: systemImage).font(.system(size: 10, weight: .semibold)) }
-                Text(title)
-            }
-            .font(.system(size: 11, weight: primary ? .semibold : .medium))
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(
-                primary ? Color.accentColor : (active ? Color.accentColor.opacity(0.14) : Color.clear),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(primary || active ? Color.accentColor : Color.primary.opacity(0.12))
-            )
-            .foregroundStyle(primary ? Color.white : Color.primary)
+            Label(title, systemImage: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(foreground)
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .background(background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(selected ? selectedTint.opacity(0.45) : Color.clear, lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
         .disabled(busy)
+        .opacity(busy ? 0.6 : 1)
     }
+
+    private func primaryButton(_ title: String, action: @escaping () async -> Void) -> some View {
+        Button {
+            Task { await action() }
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+        .opacity(busy ? 0.6 : 1)
+    }
+
+    // MARK: Helpers
 
     private func perform(_ action: PlanCardAction) async {
         guard !busy, let onAction else { return }
@@ -267,24 +450,97 @@ struct PlanCardView: View {
     }
 
     private func name(of accountId: String) -> String {
-        view.participants.first { $0.participantId == accountId }?.displayName ?? "Member"
+        if accountId == ownAccountId { return "You" }
+        return view.participants.first { $0.participantId == accountId }?.displayName ?? "Member"
     }
 
-    private var stateTint: Color {
-        switch view.state {
-        case .polling: Color(red: 0.30, green: 0.37, blue: 0.84)
-        case .awaitingConfirmation: Color(red: 0.71, green: 0.40, blue: 0.05)
-        case .confirmed: Color(red: 0.12, green: 0.54, blue: 0.37)
-        case .canceled: Color(red: 0.70, green: 0.23, blue: 0.23)
-        case .unknown: Color.secondary
+    private func initials(_ name: String) -> String {
+        let parts = name.split(separator: " ").prefix(2)
+        let letters = parts.compactMap { $0.first }.map { String($0).uppercased() }
+        return letters.isEmpty ? "?" : letters.joined()
+    }
+}
+
+/// Everyone on a plan, or everyone who chose an option, in a searchable list
+/// that stays fast for groups of any size.
+struct PlanCardPeopleSheet: View {
+    enum Content: Identifiable {
+        case attendees(title: String, going: [PlanCardParticipant], declined: [PlanCardParticipant], waiting: [PlanCardParticipant])
+        case voters(option: String, voters: [PlanCardParticipant])
+
+        var id: String {
+            switch self {
+            case .attendees(let title, _, _, _): return "attendees:\(title)"
+            case .voters(let option, _): return "voters:\(option)"
+            }
         }
     }
 
-    private var whenLabel: String? {
-        guard let start = view.startDate else { return nil }
-        let day = start.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-        let time = start.formatted(date: .omitted, time: .shortened)
-        return "\(day) · \(time)"
+    let content: Content
+    let ownAccountId: String?
+    @State private var query = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var sections: [(String, [PlanCardParticipant])] {
+        switch content {
+        case .attendees(_, let going, let declined, let waiting):
+            return [("Going", going), ("Can't make it", declined), ("No reply", waiting)]
+        case .voters(_, let voters):
+            return [("Voted", voters)]
+        }
+    }
+
+    private var title: String {
+        switch content {
+        case .attendees(let title, _, _, _): return title
+        case .voters(let option, _): return option
+        }
+    }
+
+    private func filtered(_ people: [PlanCardParticipant]) -> [PlanCardParticipant] {
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return people }
+        return people.filter { $0.displayName.localizedCaseInsensitiveContains(needle) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(sections, id: \.0) { section in
+                    let people = filtered(section.1)
+                    if !people.isEmpty {
+                        Section("\(section.0) · \(PlanCardView.compactCount(section.1.count))") {
+                            ForEach(people) { person in
+                                HStack(spacing: 10) {
+                                    Text(initials(person.displayName))
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 30, height: 30)
+                                        .background(Color(uiColor: .systemGray5), in: Circle())
+                                    Text(person.participantId == ownAccountId ? "\(person.displayName) (you)" : person.displayName)
+                                        .font(.system(size: 15))
+                                    Spacer()
+                                    if person.organizer {
+                                        Text("Organizer")
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .searchable(text: $query, prompt: "Search people")
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
     }
 
     private func initials(_ name: String) -> String {

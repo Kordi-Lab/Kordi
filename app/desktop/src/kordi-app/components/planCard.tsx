@@ -1,5 +1,5 @@
-import { CalendarCheck, CalendarClock, Check, MapPin, Vote, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { CalendarCheck, CalendarClock, Check, ChevronRight, MapPin, Vote, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { defaultCloudAuthClient, type PlanCardActionRequest } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
@@ -64,12 +64,13 @@ export function PlanCardContent({
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localState, setLocalState] = useState<MessagePlanCard | null>(null);
-  const [votersFor, setVotersFor] = useState<string | null>(null);
-  const optionsRef = useRef<HTMLDivElement | null>(null);
+  // Which people list is open: `attendees`, or `voters:<optionId>`.
+  const [panel, setPanel] = useState<string | null>(null);
+  const cardRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
-    if (!votersFor) return;
+    if (!panel) return;
     const close = (event: MouseEvent | KeyboardEvent) => {
-      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !optionsRef.current?.contains(event.target as Node)) setVotersFor(null);
+      if (event instanceof KeyboardEvent ? event.key === 'Escape' : !cardRef.current?.contains(event.target as Node)) setPanel(null);
     };
     window.addEventListener('mousedown', close);
     window.addEventListener('keydown', close);
@@ -77,7 +78,7 @@ export function PlanCardContent({
       window.removeEventListener('mousedown', close);
       window.removeEventListener('keydown', close);
     };
-  }, [votersFor]);
+  }, [panel]);
   // A click updates the card at once; a newer snapshot from the transcript
   // then takes over, so the card never sticks on an old local result.
   const view = localState && localState.revision > card.revision ? { ...localState, view: card.view } : card;
@@ -119,7 +120,7 @@ export function PlanCardContent({
   };
 
   return (
-    <section className={cn('app-plan-card', isVote ? 'app-plan-card-vote' : 'app-plan-card-event')} data-kordi-copy-surface="message" data-plan-card-state={view.state} data-plan-card-view={isVote ? 'vote' : 'event'} aria-label={`${isVote ? 'Vote' : 'Plan'}: ${view.title}`}>
+    <section ref={cardRef} className={cn('app-plan-card', isVote ? 'app-plan-card-vote' : 'app-plan-card-event')} data-kordi-copy-surface="message" data-plan-card-state={view.state} data-plan-card-view={isVote ? 'vote' : 'event'} aria-label={`${isVote ? 'Vote' : 'Plan'}: ${view.title}`}>
       <div className="app-plan-card-head">
         {isVote
           ? <Vote size={14} aria-hidden className="app-plan-card-icon" />
@@ -148,7 +149,7 @@ export function PlanCardContent({
       </div>
 
       {isVote ? (
-        <div className="app-plan-card-options" role="group" aria-label="Options" ref={optionsRef}>
+        <div className="app-plan-card-options" role="group" aria-label="Options">
           {options.map((option) => {
             const mine = accountId ? option.votes.includes(accountId) : false;
             const percent = percentOf(option);
@@ -164,7 +165,7 @@ export function PlanCardContent({
                   onClick={() => { void act(`vote:${option.id}`, { action: 'vote', eventId: view.eventId, participantId: accountId ?? '', optionId: option.id }); }}
                   onContextMenu={(event) => {
                     event.preventDefault();
-                    setVotersFor((current) => (current === option.id ? null : option.id));
+                    setPanel((current) => (current === `voters:${option.id}` ? null : `voters:${option.id}`));
                   }}
                 >
                   <span className="app-plan-card-option-fill" style={{ width: `${percent}%` }} aria-hidden />
@@ -172,35 +173,24 @@ export function PlanCardContent({
                   <span className="app-plan-card-option-label">{option.label}</span>
                   <span className="app-plan-card-option-percent">{percent}%</span>
                 </button>
-                {votersFor === option.id ? (
-                  <div className="app-plan-card-voters" role="dialog" aria-label={`Votes for ${option.label}`}>
-                    {option.votes.length === 0 ? (
-                      <span className="app-plan-card-voters-empty">No votes yet</span>
-                    ) : option.votes.map((voter) => (
-                      <span key={voter} className="app-plan-card-voter">
-                        <span className="app-plan-card-avatar">{initials(nameOf(voter))}</span>
-                        {nameOf(voter)}
-                      </span>
-                    ))}
-                  </div>
+                {panel === `voters:${option.id}` ? (
+                  <PlanCardPeopleList
+                    label={`Votes for ${option.label}`}
+                    ownAccountId={accountId}
+                    sections={[{ title: 'Voted', people: option.votes.map((voter) => ({ id: voter, name: nameOf(voter), organizer: false })) }]}
+                  />
                 ) : null}
               </div>
             );
           })}
         </div>
       ) : (
-        <div className="app-plan-card-people" aria-label="Participants">
-          {view.participants.map((participant) => (
-            <span
-              key={participant.participantId}
-              className={cn('app-plan-card-person', `app-plan-card-person-${participant.rsvp}`)}
-              title={`${participant.displayName}${participant.organizer ? ' (organizer)' : ''}: ${participant.rsvp}`}
-            >
-              <span className="app-plan-card-avatar">{initials(participant.displayName)}</span>
-              <span className="app-plan-card-person-name">{participant.displayName}</span>
-            </span>
-          ))}
-        </div>
+        <PlanCardAttendees
+          participants={view.participants}
+          ownAccountId={accountId}
+          open={panel === 'attendees'}
+          onToggle={() => setPanel((current) => (current === 'attendees' ? null : 'attendees'))}
+        />
       )}
 
       {canRespond || canConfirm ? (
@@ -241,5 +231,111 @@ export function PlanCardContent({
       {onCalendar ? <div className="app-plan-card-calendar-note"><CalendarCheck size={11} aria-hidden /> On your calendar</div> : null}
       {notice ? <div className="app-plan-card-notice" role="status">{notice}</div> : null}
     </section>
+  );
+}
+
+function compactCount(value: number): string {
+  if (value < 1000) return String(value);
+  return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+}
+
+type PeopleSection = { title: string; people: { id: string; name: string; organizer: boolean }[] };
+
+const PEOPLE_RENDER_LIMIT = 200;
+
+/**
+ * Everyone on a plan, or everyone who chose an option. Stays small for any
+ * group size: a scrolling list with search, rendering at most a few hundred
+ * matches at a time.
+ */
+function PlanCardPeopleList({ label, sections, ownAccountId }: { label: string; sections: PeopleSection[]; ownAccountId?: string | null }) {
+  const [query, setQuery] = useState('');
+  const total = sections.reduce((sum, section) => sum + section.people.length, 0);
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase();
+    const matched = sections.map((section) => ({
+      ...section,
+      count: section.people.length,
+      all: needle ? section.people.filter((person) => person.name.toLocaleLowerCase().includes(needle)) : section.people,
+    }));
+    // Render at most PEOPLE_RENDER_LIMIT rows across all sections, in order.
+    const offsets = matched.map((_, index) => matched.slice(0, index).reduce((sum, section) => sum + section.all.length, 0));
+    return matched.map((section, index) => ({
+      ...section,
+      matches: section.all.length,
+      shown: section.all.slice(0, Math.max(0, PEOPLE_RENDER_LIMIT - offsets[index])),
+    }));
+  }, [query, sections]);
+  const hiddenMatches = filtered.reduce((sum, section) => sum + section.matches - section.shown.length, 0);
+  return (
+    <div className="app-plan-card-people-list" role="dialog" aria-label={label}>
+      {total > 8 ? (
+        <input
+          className="app-plan-card-people-search"
+          type="search"
+          placeholder={`Search ${compactCount(total)} people`}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label="Search people"
+        />
+      ) : null}
+      <div className="app-plan-card-people-scroll">
+        {total === 0 ? <div className="app-plan-card-people-empty">No one yet</div> : null}
+        {filtered.map((section) => (section.shown.length === 0 ? null : (
+          <div key={section.title} className="app-plan-card-people-section">
+            <div className="app-plan-card-people-heading">{section.title} · {compactCount(section.count)}</div>
+            {section.shown.map((person) => (
+              <div key={person.id} className="app-plan-card-people-row">
+                <span className="app-plan-card-avatar">{initials(person.name)}</span>
+                <span className="app-plan-card-people-name">{person.name}{person.id === ownAccountId ? ' (you)' : ''}</span>
+                {person.organizer ? <span className="app-plan-card-people-role">Organizer</span> : null}
+              </div>
+            ))}
+          </div>
+        )))}
+        {hiddenMatches > 0 ? <div className="app-plan-card-people-empty">{compactCount(hiddenMatches)} more; search to narrow down</div> : null}
+      </div>
+    </div>
+  );
+}
+
+/** A few avatars and short counts on the card; the full list opens on click. */
+function PlanCardAttendees({ participants, ownAccountId, open, onToggle }: {
+  participants: MessagePlanCard['participants'];
+  ownAccountId?: string | null;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const going = participants.filter((participant) => participant.rsvp === 'yes');
+  const declined = participants.filter((participant) => participant.rsvp === 'no');
+  const waiting = participants.filter((participant) => participant.rsvp === 'pending');
+  const shown = [...going, ...waiting, ...declined].slice(0, 4);
+  const hidden = participants.length - shown.length;
+  const counts = [`${compactCount(going.length)} going`, ...(declined.length ? [`${compactCount(declined.length)} can't`] : []), ...(waiting.length ? [`${compactCount(waiting.length)} no reply`] : [])].join(' · ');
+  const toPeople = (list: typeof participants) => list.map((participant) => ({ id: participant.participantId, name: participant.displayName, organizer: participant.organizer }));
+  return (
+    <div className="app-plan-card-attendees-wrap">
+      <button type="button" className="app-plan-card-attendees" onClick={onToggle} aria-expanded={open}>
+        <span className="app-plan-card-avatar-stack" aria-hidden>
+          {shown.map((participant) => (
+            <span key={participant.participantId} className={cn('app-plan-card-avatar', `app-plan-card-avatar-${participant.rsvp}`)}>{initials(participant.displayName)}</span>
+          ))}
+          {hidden > 0 ? <span className="app-plan-card-avatar app-plan-card-avatar-more">+{compactCount(hidden)}</span> : null}
+        </span>
+        <span className="app-plan-card-attendees-counts">{counts}</span>
+        <ChevronRight size={12} aria-hidden className={cn('app-plan-card-attendees-chevron', open && 'rotate-90')} />
+      </button>
+      {open ? (
+        <PlanCardPeopleList
+          label="People on this plan"
+          ownAccountId={ownAccountId}
+          sections={[
+            { title: 'Going', people: toPeople(going) },
+            { title: "Can't make it", people: toPeople(declined) },
+            { title: 'No reply', people: toPeople(waiting) },
+          ]}
+        />
+      ) : null}
+    </div>
   );
 }

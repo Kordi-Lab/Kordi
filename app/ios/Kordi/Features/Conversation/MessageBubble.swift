@@ -435,6 +435,15 @@ struct MessageBubble: View, Equatable {
                     .zIndex(isActionPresented && actionAttachment != nil ? 1 : 0)
                 captionSurface
             }
+        } else if usesStandalonePlanCard, let planCard = message.planCard {
+            VStack(alignment: .leading, spacing: 6) {
+                if showAuthor && message.author == .person {
+                    authorHeader
+                        .padding(.leading, 4)
+                }
+                PlanCardView(card: planCard, ownAccountId: ownAccountId, onAction: onPlanCardAction)
+                    .id("\(message.id):plan:\(planCard.eventId)")
+            }
         } else if usesBorderlessVideoSurface {
             VStack(spacing: 7) {
                 ForEach(message.attachments) { attachment in
@@ -566,24 +575,40 @@ struct MessageBubble: View, Equatable {
         return 248
     }
 
+    private var authorHeader: some View {
+        HStack(spacing: 6) {
+            Text(message.authorName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(chatTheme.accent)
+                .lineLimit(1)
+            if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatarSeed) {
+                Text(KordiPipIdentity.tag)
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 0.941, green: 0.706, blue: 0.161).opacity(0.18), in: Capsule())
+                    .foregroundStyle(Color(red: 0.353, green: 0.239, blue: 0.0))
+            }
+        }
+    }
+
+    /// A message that is only a plan card shows the card on its own, without
+    /// a chat bubble behind it.
+    private var usesStandalonePlanCard: Bool {
+        message.planCard != nil
+            && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && message.attachments.isEmpty
+            && message.voiceMessage == nil
+            && visibleReplySource == nil
+            && visibleForwardSource == nil
+            && Self.agentExecutionForDisplay(message) == nil
+    }
+
     @ViewBuilder
     private var bubbleContents: some View {
         VStack(alignment: .leading, spacing: 7) {
             if showAuthor && message.author == .person {
-                HStack(spacing: 6) {
-                    Text(message.authorName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(chatTheme.accent)
-                        .lineLimit(1)
-                    if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatarSeed) {
-                        Text(KordiPipIdentity.tag)
-                            .font(.caption2.weight(.medium))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color(red: 0.941, green: 0.706, blue: 0.161).opacity(0.18), in: Capsule())
-                            .foregroundStyle(Color(red: 0.353, green: 0.239, blue: 0.0))
-                    }
-                }
+                authorHeader
             }
 
             if let source = visibleForwardSource {
