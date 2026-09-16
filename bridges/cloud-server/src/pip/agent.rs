@@ -5,9 +5,7 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
-use crate::avatars::{
-    generated_avatar_marker, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION, HUMAN_AVATAR_STYLE,
-};
+use crate::avatars::{generated_avatar_marker, AGENT_AVATAR_STYLE, AVATAR_RENDERER_VERSION};
 
 use super::config::{PendingPipConfig, PipConfig, PipConfigError};
 use super::prompt::PIP_SYSTEM_PROMPT;
@@ -19,7 +17,9 @@ pub async fn bootstrap_pip_agent(
     pending: PendingPipConfig,
 ) -> Result<PipConfig, PipConfigError> {
     let now = Utc::now().to_rfc3339();
-    let account_avatar_url = generated_avatar_marker(HUMAN_AVATAR_STYLE, &pending.account_id, 1);
+    // Pip is not a person: give its account the agent avatar style so it never
+    // renders as a human face in member lists or message rows.
+    let account_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &pending.account_id, 1);
     let agent_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &pending.agent_id, 1);
 
     let existing_by_email: Option<(String,)> =
@@ -44,6 +44,10 @@ pub async fn bootstrap_pip_agent(
          ON CONFLICT (account_id) DO UPDATE
          SET display_name = EXCLUDED.display_name,
              primary_email = COALESCE(cloud_accounts.primary_email, EXCLUDED.primary_email),
+             avatar_url = EXCLUDED.avatar_url,
+             avatar_style = EXCLUDED.avatar_style,
+             avatar_version = cloud_accounts.avatar_version + 1,
+             avatar_updated_at = EXCLUDED.avatar_updated_at,
              updated_at = EXCLUDED.updated_at",
     )
     .bind(&pending.account_id)
@@ -51,7 +55,7 @@ pub async fn bootstrap_pip_agent(
     .bind(&pending.owner_email)
     .bind(&account_avatar_url)
     .bind(&now)
-    .bind(HUMAN_AVATAR_STYLE)
+    .bind(AGENT_AVATAR_STYLE)
     .bind(AVATAR_RENDERER_VERSION)
     .execute(pool)
     .await?;
