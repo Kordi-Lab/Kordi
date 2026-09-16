@@ -10,6 +10,7 @@ mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
 mod digest_calendar;
+mod digest_calendar_sync;
 mod link_preview;
 mod media_preview_window;
 mod menu_bar;
@@ -245,10 +246,10 @@ pub fn run() {
             digest_calendar::desktop_digest_fetch_ics,
             digest_calendar::desktop_digest_calendar_events,
             digest_calendar::desktop_digest_reminders,
-            digest_calendar::desktop_digest_calendar_access,
-            digest_calendar::desktop_digest_calendar_write,
-            digest_calendar::desktop_digest_calendar_delete,
-            digest_calendar::desktop_digest_calendar_observe,
+            digest_calendar_sync::desktop_digest_calendar_access,
+            digest_calendar_sync::desktop_digest_calendar_write,
+            digest_calendar_sync::desktop_digest_calendar_delete,
+            digest_calendar_sync::desktop_digest_calendar_observe,
             message_notification::desktop_request_notification_permission,
             message_notification::desktop_show_message_notification,
             project::desktop_project_settings,
