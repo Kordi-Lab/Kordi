@@ -1,12 +1,13 @@
+import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
+import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 import {
   normalizeCloudMessageReactions,
   normalizeCloudReaderAccountIds,
 } from './cloudMessageMerge';
 import { IndexedDbCloudMessageCacheStore } from './indexedDbCloudMessageCacheStore';
-import { cloudMessageAttachmentMetadataOnly } from './cloudMessageCacheAttachments';
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
-export { cloudMessageAttachmentMetadataOnly } from './cloudMessageCacheAttachments';
+import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 export {
   CLOUD_MESSAGES_INDEXED_DB_NAME,
   IndexedDbCloudMessageCacheStore,
@@ -58,10 +59,41 @@ type ActiveWrite = {
 
 const cleanText = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 
+export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessageAttachment | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const attachmentId = cleanText(record.attachmentId);
+  const name = cleanText(record.name);
+  const kind = record.kind === 'image' ? 'image' : record.kind === 'file' ? 'file' : null;
+  if (!attachmentId || !name || !kind) return null;
+  const mimeType = cleanText(record.mimeType) || null;
+  const sizeBytes = typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) && record.sizeBytes >= 0
+    ? record.sizeBytes
+    : null;
+  const previewAttachmentId = cleanText(record.previewAttachmentId);
+  const previewUrl = safeCloudAttachmentPreviewUrl(
+    typeof record.previewUrl === 'string' ? record.previewUrl : null,
+  );
+  return {
+    attachmentId,
+    name,
+    kind,
+    ...(record.subtype === 'sticker' && kind === 'image' ? { subtype: 'sticker' as const }
+      : record.subtype === 'meme' && kind === 'image'
+        ? { subtype: 'meme' as const, altText: typeof record.altText === 'string' ? record.altText : null }
+        : {}),
+    mimeType,
+    sizeBytes,
+    ...(normalizedImagePixelDimensions(record.widthPixels, record.heightPixels) ?? {}),
+    ...(normalizedLivePhoto(record.livePhoto) ? { livePhoto: normalizedLivePhoto(record.livePhoto) } : {}),
+    ...(previewAttachmentId ? { previewAttachmentId } : {}),
+    ...(previewUrl ? { previewUrl } : {}),
+  };
+}
 
 export function cloudMessageMetadataOnly(message: CloudMessage): CloudMessage {
   const attachments = (message.attachments ?? [])
-    .map((attachment) => cloudMessageAttachmentMetadataOnly(attachment, message.messageKind))
+    .map(cloudMessageAttachmentMetadataOnly)
     .filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
   const voiceMessage = cloudVoiceMessageMetadataOnly(message.voiceMessage);
   const {
@@ -86,16 +118,13 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const createdAt = cleanText(record.createdAt);
   if (!messageId || !fromAccountId || !toAccountId || !createdAt) return null;
   if (fromAccountId !== accountId && toAccountId !== accountId) return null;
-  const cachedMessageKind = cleanText(record.messageKind);
   const attachments = Array.isArray(record.attachments)
-    ? record.attachments
-      .map((attachment) => cloudMessageAttachmentMetadataOnly(attachment, cachedMessageKind))
-      .filter((item): item is CloudMessageAttachment => Boolean(item))
+    ? record.attachments.map(cloudMessageAttachmentMetadataOnly).filter((item): item is CloudMessageAttachment => Boolean(item))
     : [];
   const sessionId = cleanText(record.sessionId);
   const conversationId = cleanText(record.conversationId);
   const clientMessageId = cleanText(record.clientMessageId);
-  const messageKind = cachedMessageKind;
+  const messageKind = cleanText(record.messageKind);
   const voiceMessage = cloudVoiceMessageMetadataOnly(record.voiceMessage);
   const canonicalHistoryLocalMessageId = cleanText(record.canonicalHistoryLocalMessageId);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)

@@ -440,6 +440,7 @@ mod tests {
             session_observation: None,
             task_operator: None,
             schedule_task: None,
+            plan_card: None,
             execution_mode: ToolExecutionMode::Interactive,
             request_approval: None,
         };

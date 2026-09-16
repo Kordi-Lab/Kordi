@@ -163,7 +163,8 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
   return {
     kind: attachment.kind,
     ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
-    ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const } : {}),
+    ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
+      : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
     name: attachment.name,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
@@ -309,7 +310,8 @@ export async function resolveForwardAttachmentItems({
       name: attachment.name,
       kind: attachment.kind,
       ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
-      ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const } : {}),
+      ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
+        : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
       mimeType: attachment.mimeType ?? null,
       sizeBytes: attachment.sizeBytes ?? null,
       widthPixels: attachment.widthPixels ?? null,

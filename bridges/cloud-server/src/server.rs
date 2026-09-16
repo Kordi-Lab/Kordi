@@ -147,6 +147,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
         .merge(crate::scheduled_tasks::routes::routes(state.clone()))
         .merge(crate::digest::routes(state.clone()))
+        .merge(crate::plan_cards::routes(state.clone()))
         .merge(crate::support::routes(state.clone()))
         .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)

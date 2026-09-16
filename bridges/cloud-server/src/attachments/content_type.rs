@@ -66,7 +66,7 @@ mod tests {
     };
 
     #[test]
-    fn detects_supported_image_signatures() {
+    fn detects_supported_meme_image_signatures() {
         assert_eq!(
             detected_raster_content_type(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]),
             Some("image/png")
@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_only_supported_image_types() {
+    fn normalizes_only_supported_meme_image_types() {
         assert_eq!(
             normalized_supported_raster_content_type(" IMAGE/JPG "),
             Some("image/jpeg")

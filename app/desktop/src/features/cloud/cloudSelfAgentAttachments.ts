@@ -20,7 +20,8 @@ export function selfAgentMessageAttachments(content: unknown): AttachmentItem[] 
     return {
       id: `local-attachment-${index}`, path,
       attachmentId: typeof attachment.attachmentId === 'string' ? attachment.attachmentId : null,
-      subtype: attachment.subtype === 'sticker' ? 'sticker' : null,
+      subtype: attachment.subtype === 'sticker' || attachment.subtype === 'meme' ? attachment.subtype : null,
+      altText: typeof attachment.altText === 'string' ? attachment.altText : null,
       livePhoto: normalizedLivePhoto(attachment.livePhoto), livePhotoFiles: normalizedLivePhotoFiles(attachment.livePhotoFiles),
       ...(normalizedImagePixelDimensions(attachment.widthPixels, attachment.heightPixels) ?? {}),
       name: typeof attachment.name === 'string' ? attachment.name : 'Attachment',
@@ -43,7 +44,7 @@ export async function uploadSelfAgentMessageAttachments(
   for (const attachment of operation.attachments) {
     if (attachment.attachmentId) {
       uploaded.push({ attachmentId: attachment.attachmentId, name: attachment.name, kind: attachment.kind,
-        subtype: attachment.subtype, mimeType: attachment.mimeType,
+        subtype: attachment.subtype, altText: attachment.altText, mimeType: attachment.mimeType,
         sizeBytes: attachment.sizeBytes, widthPixels: attachment.widthPixels, heightPixels: attachment.heightPixels,
         ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}) });
       continue;

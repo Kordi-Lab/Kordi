@@ -1,5 +1,7 @@
 #[path = "calendar_runtime.rs"]
 mod calendar_runtime;
+#[path = "plan_card_runtime.rs"]
+mod plan_card_runtime;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -175,6 +177,7 @@ pub(super) async fn prepare_desktop_session_for_send(
         kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
     )));
     let calendar = calendar_runtime::build(runtime, context_session_id);
+    runtime.set_plan_card_runtime(plan_card_runtime::build());
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

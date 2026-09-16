@@ -265,7 +265,7 @@ test('setReaction restores a missing session-routed conversation before mutating
   assert.deepEqual(updated.reactions, [{ value: 'blob:blobwave', accountIds: ['acct_me'] }]);
 });
 
-test('sendMessage keeps the sticker subtype off the wire, matching iOS', async () => {
+test('sendMessage round-trips meme subtype and alt text in canonical attachment metadata', async () => {
   let sentContent: Record<string, unknown> | null = null;
   const { fetchImpl } = recordingFetch((call) => {
     if (call.url.endsWith('/v2/chat/conversations')) {
@@ -283,7 +283,7 @@ test('sendMessage keeps the sticker subtype off the wire, matching iOS', async (
         kind: 'text',
         content: sentContent,
         reply_to_message_id: null,
-        attachment_ids: ['att_sticker'],
+        attachment_ids: ['att_meme'],
         version: 1,
         generation_status: null,
         provider_response_id: null,
@@ -296,14 +296,15 @@ test('sendMessage keeps the sticker subtype off the wire, matching iOS', async (
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
 
   const sent = await client.sendMessage('kordi_cs_xyz', 'acct_peer', '', {
-    sessionId: 'session-sticker',
+    sessionId: 'session-meme',
     accountId: 'acct_me',
-    clientMessageId: 'msg:canonical:sticker:acct_peer',
+    clientMessageId: 'msg:canonical:meme:acct_peer',
     attachments: [{
-      attachmentId: 'att_sticker',
+      attachmentId: 'att_meme',
       name: 'reaction.webp',
       kind: 'image',
-      subtype: 'sticker',
+      subtype: 'meme',
+      altText: 'A character celebrates when the build turns green.',
       mimeType: 'image/webp',
       sizeBytes: 1_024,
       widthPixels: 512,
@@ -312,11 +313,12 @@ test('sendMessage keeps the sticker subtype off the wire, matching iOS', async (
   });
 
   const metadata = (sentContent?.legacy_attachments as Array<Record<string, unknown>>)[0];
-  // The server rejects a "sticker" subtype, and iOS omits it too
-  // (Core/API/CloudAPIClient.swift). The message kind carries the identity.
-  assert.equal(metadata?.subtype, undefined);
+  assert.equal(metadata?.subtype, 'meme');
+  assert.equal(metadata?.altText, 'A character celebrates when the build turns green.');
   assert.equal(metadata?.widthPixels, 512);
   assert.equal(metadata?.heightPixels, 384);
+  assert.equal(sent.attachments?.[0]?.subtype, 'meme');
+  assert.equal(sent.attachments?.[0]?.altText, 'A character celebrates when the build turns green.');
   assert.equal(sent.attachments?.[0]?.widthPixels, 512);
   assert.equal(sent.attachments?.[0]?.heightPixels, 384);
 });

@@ -1,3 +1,4 @@
+use crate::plan_card::PlanCardRuntime;
 use crate::schedule_task::ScheduleTaskRuntime;
 use crate::task_operator::models::{TaskOperatorRuntimeRequest, TaskOperatorRuntimeResponse};
 use async_trait::async_trait;
@@ -353,6 +354,7 @@ pub struct ToolContext {
     pub session_observation: Option<SessionObservationRuntime>,
     pub task_operator: Option<TaskOperatorRuntime>,
     pub schedule_task: Option<ScheduleTaskRuntime>,
+    pub plan_card: Option<PlanCardRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
 }

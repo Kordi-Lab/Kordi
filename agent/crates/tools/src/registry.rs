@@ -22,6 +22,7 @@ pub fn builtin_tools() -> Vec<Box<dyn Tool>> {
         Box::new(crate::web_fetch::WebFetchTool),
         Box::new(crate::browser_fetch::BrowserFetchTool),
         Box::new(crate::reach_out::ReachOutTool),
+        Box::new(crate::plan_card::PlanCardTool),
         Box::new(crate::reflection_tool::ReflectionTool),
     ]
 }
@@ -119,6 +120,11 @@ mod tests {
         assert_eq!(reach_out.layer, ToolLayer::Operator);
         assert_eq!(reach_out.risk, ToolRiskLevel::Medium);
         assert!(!reach_out.supports_parallel);
+
+        let plan_card = metadata_for("plan_card");
+        assert_eq!(plan_card.layer, ToolLayer::Operator);
+        assert_eq!(plan_card.risk, ToolRiskLevel::Medium);
+        assert!(!plan_card.supports_parallel);
 
         let reflection = metadata_for("reflection");
         assert_eq!(reflection.layer, ToolLayer::Reflection);

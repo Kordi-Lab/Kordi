@@ -133,12 +133,6 @@ for (const progress of [false, true]) {
   test(`late small row growth keeps the visible tail still (${progress ? 'Agent' : 'Human'})`, async ({ page }) => {
     await page.goto(`/tests/visual/transcriptEntry.html${progress ? '?progress=1' : ''}`);
     await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
-    // Session readiness does not wait for motion. The fixture's tail receives
-    // its media dimensions after first paint, and under progress motion that
-    // lift is still animating when a loaded runner reaches this point. Let it
-    // settle so the samples measure only the late growth under test.
-    await page.waitForFunction(() => [...document.querySelectorAll('[data-transcript-window-item="true"]')]
-      .every(row => row.getAnimations().every(animation => animation.playState !== 'running')));
     const samples = await page.evaluate(async () => {
       const row = document.querySelector<HTMLElement>('[data-message-id="first-199"]')!;
       const samples = [row.getBoundingClientRect().top];

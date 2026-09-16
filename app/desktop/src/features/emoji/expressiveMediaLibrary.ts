@@ -21,6 +21,13 @@ export {
   expressiveMediaFileError, expressiveMediaKindForFile, type ExpressiveMediaKind,
 } from './expressiveMediaFile';
 
+export type ProviderMediaSelection = {
+  providerMediaId: string;
+  mediaKind: ExpressiveMediaKind;
+  title: string;
+  mediaUrl: string;
+};
+
 export type ExpressiveMediaLibraryItem = {
   id: string;
   kind: ExpressiveMediaKind;
@@ -426,4 +433,59 @@ export function expressiveMediaAttachment(item: ExpressiveMediaLibraryItem): Att
     widthPixels: item.widthPixels ?? null,
     heightPixels: item.heightPixels ?? null,
   };
+}
+
+export async function providerMediaAttachment(
+  selection: ProviderMediaSelection,
+  options: {
+    fetchFile?: FetchMediaFile;
+    storeFile?: StoreMediaFile;
+  } = {},
+): Promise<AttachmentItem> {
+  let mediaUrl: URL;
+  try {
+    mediaUrl = new URL(selection.mediaUrl);
+  } catch {
+    throw new Error('That result does not use a trusted media URL. Try another result.');
+  }
+  if (mediaUrl.protocol !== 'https:' || mediaUrl.hostname !== 'upload.wikimedia.org') {
+    throw new Error('That result does not use a trusted media URL. Try another result.');
+  }
+
+  const response = await (options.fetchFile ?? fetch)(selection.mediaUrl, { redirect: 'error' });
+  if (!response.ok) throw new Error('Unable to download that media. Try another result.');
+  const blob = await response.blob();
+  const mimeType = blob.type.trim().toLocaleLowerCase();
+  const allowedMimeTypes = selection.mediaKind === 'gif'
+    ? GIF_MIME_TYPES
+    : STICKER_MIME_TYPES;
+  if (!allowedMimeTypes.has(mimeType)) {
+    throw new Error('That result is not a supported image. Try another result.');
+  }
+  if (blob.size > EXPRESSIVE_MEDIA_MAX_BYTES) {
+    throw new Error('That result is larger than the 2 MB attachment limit. Try another result.');
+  }
+  const safeTitle = selection.title.trim().replace(/[^A-Za-z0-9 _-]+/g, '').trim();
+  const extension = mimeType === 'image/webp'
+    ? 'webp'
+    : mimeType === 'image/png'
+      ? 'png'
+      : mimeType === 'image/jpeg'
+        ? 'jpg'
+        : 'gif';
+  const fallbackTitle = selection.mediaKind === 'sticker' ? 'Public sticker' : 'Public GIF';
+  const name = `${safeTitle || fallbackTitle}.${extension}`;
+  const data = Array.from(new Uint8Array(await blob.arrayBuffer()));
+  const path = await (options.storeFile ?? storeDesktopChatAttachment)(name, data);
+  const item: ExpressiveMediaLibraryItem = {
+    id: `provider:${selection.providerMediaId}:${path}`,
+    kind: selection.mediaKind,
+    name,
+    path,
+    mimeType,
+    sizeBytes: blob.size,
+    ...((await imagePixelDimensionsFromBlob(blob)) ?? {}),
+    createdAtMs: Date.now(),
+  };
+  return expressiveMediaAttachment(item);
 }

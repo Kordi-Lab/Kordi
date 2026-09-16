@@ -11,7 +11,9 @@ import type {
 import type { CloudAccount, CloudSessionPin } from '@/features/cloud/authClient';
 import type {
   AttachmentItem,
+  AttachmentItemUpdate,
   ComposerConfigTargetOverride,
+  SaveDesktopAttachmentOptions,
 } from '@/features/chat/composerController.types';
 import type {
   ComposerAuthOption,
@@ -121,10 +123,16 @@ export type ChatsPageComposer = {
   acceptChatMentionTarget: (option: ComposerMentionOption) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: ChatAttachment[];
-  saveDesktopAttachments: (files: File[]) => Promise<ChatAttachment[]>;
+  saveDesktopAttachments: (
+    files: File[],
+    options?: SaveDesktopAttachmentOptions,
+  ) => Promise<ChatAttachment[]>;
   saveDesktopAttachmentPaths: (paths?: string[]) => Promise<ChatAttachment[]>;
   removeChatComposerAttachment: (id: string) => void;
-  updateChatComposerAttachment: (id: string, update: ChatAttachment) => void;
+  updateChatComposerAttachment: (
+    id: string,
+    update: AttachmentItemUpdate,
+  ) => void;
   chatComposerText: string;
   updateChatComposerDraft: (
     value: string,

@@ -94,7 +94,7 @@ spec:
   restartPolicy: Never
   containers:
     - name: mc
-      image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+      image: minio/mc:RELEASE.2024-11-21T17-21-54Z
       env:
         - name: ACCESS_KEY
           valueFrom:

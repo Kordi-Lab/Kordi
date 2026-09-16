@@ -1,5 +1,6 @@
 import { normalizedLivePhotoFiles, type LivePhotoFiles } from './livePhotos';
-import type { AttachmentItem } from './composerController.types';
+import type { AttachmentItem, AttachmentItemUpdate } from './composerController.types';
+import type { SaveDesktopAttachmentOptions } from './composerController.types';
 import { attachmentVideoUrl, isMp4VideoAttachment } from './attachmentMediaGallery';
 import { videoPreviewFromSource } from './composerVideoPreview';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
@@ -12,6 +13,7 @@ import {
   imagePixelDimensionsFromUrl,
   normalizedImagePixelDimensions,
 } from '@/lib/imageDimensions';
+import { isSupportedMemeImage } from './memeAttachments';
 
 export const CHAT_COMPOSER_ATTACHMENTS_STORAGE_KEY = 'kordi.chatComposerAttachments.v1';
 export const MAX_CHAT_ATTACHMENT_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
@@ -35,6 +37,8 @@ type StoredComposerAttachment = {
   widthPixels?: number | null;
   heightPixels?: number | null;
   subtype?: AttachmentItem['subtype'];
+  altText?: string | null;
+  memeRightsConfirmed?: boolean;
 };
 
 function extensionFromName(name: string) {
@@ -249,7 +253,10 @@ export async function composerAttachmentItemFromStoredPath({
   };
 }
 
-export async function composerAttachmentItemFromFile(file: File): Promise<AttachmentItem> {
+export async function composerAttachmentItemFromFile(
+  file: File,
+  options: SaveDesktopAttachmentOptions = {},
+): Promise<AttachmentItem> {
   if (file.size > MAX_CHAT_ATTACHMENT_SIZE_BYTES) {
     throw new Error('Attachments must be 2 GiB or smaller.');
   }
@@ -259,6 +266,10 @@ export async function composerAttachmentItemFromFile(file: File): Promise<Attach
   const mimeType = file.type || undefined;
   const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
   const name = friendlyAttachmentName(file.name || 'attachment.bin', kind);
+  const subtype = options.subtype === 'meme' ? 'meme' : null;
+  if (subtype && !isSupportedMemeImage({ kind, mimeType, name })) {
+    throw new Error('Memes must be PNG, JPEG, GIF, or WebP images.');
+  }
   const stored = await storeDesktopChatAttachmentFile(file, name);
   const path = stored.path;
   const isVideo = isMp4VideoAttachment({ kind, name, mimeType });
@@ -285,20 +296,33 @@ export async function composerAttachmentItemFromFile(file: File): Promise<Attach
     playbackUrl,
     sizeBytes: file.size,
     ...(dimensions ?? {}),
+    ...(subtype ? { subtype, altText: '', memeRightsConfirmed: false } : {}),
   };
 }
 
 export function updatedComposerAttachment(
   attachment: AttachmentItem,
-  update: AttachmentItem,
+  update: AttachmentItemUpdate,
 ): AttachmentItem {
-  if (attachment.previewUrl?.startsWith('blob:') && attachment.previewUrl !== update.previewUrl) {
-    URL.revokeObjectURL(attachment.previewUrl);
+  if ('path' in update) {
+    if (attachment.previewUrl?.startsWith('blob:') && attachment.previewUrl !== update.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+    if (attachment.playbackUrl?.startsWith('blob:') && attachment.playbackUrl !== update.playbackUrl) {
+      URL.revokeObjectURL(attachment.playbackUrl);
+    }
+    return update;
   }
-  if (attachment.playbackUrl?.startsWith('blob:') && attachment.playbackUrl !== update.playbackUrl) {
-    URL.revokeObjectURL(attachment.playbackUrl);
+  if (update.subtype === 'meme') {
+    return {
+      ...attachment,
+      subtype: 'meme',
+      altText: update.altText ?? attachment.altText ?? '',
+      memeRightsConfirmed: update.memeRightsConfirmed ?? attachment.memeRightsConfirmed ?? false,
+    };
   }
-  return update;
+  const { subtype: _subtype, altText: _altText, memeRightsConfirmed: _rights, ...ordinaryAttachment } = attachment;
+  return ordinaryAttachment;
 }
 
 function storedAttachmentFromRecord(record: Record<string, unknown>): AttachmentItem | null {
@@ -312,7 +336,10 @@ function storedAttachmentFromRecord(record: Record<string, unknown>): Attachment
   const mimeType = typeof record.mimeType === 'string' ? record.mimeType : null;
   const sizeBytes = typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null;
   const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
-  const subtype = kind === 'image' && record.subtype === 'sticker' ? record.subtype : null;
+  const subtype = kind === 'image' && (record.subtype === 'meme' || record.subtype === 'sticker')
+    ? record.subtype
+    : null;
+  const altText = typeof record.altText === 'string' ? record.altText : null;
 
   return {
     id,
@@ -326,7 +353,13 @@ function storedAttachmentFromRecord(record: Record<string, unknown>): Attachment
     previewUrl: null,
     sizeBytes,
     ...(dimensions ?? {}),
-    ...(subtype ? { subtype } : {}),
+    ...(subtype === 'sticker'
+      ? { subtype }
+      : subtype === 'meme' ? {
+          subtype,
+          altText,
+          memeRightsConfirmed: record.memeRightsConfirmed === true,
+        } : {}),
   };
 }
 
@@ -358,6 +391,8 @@ export function serializeStoredComposerAttachments(attachments: AttachmentItem[]
     widthPixels: attachment.widthPixels ?? null,
     heightPixels: attachment.heightPixels ?? null,
     subtype: attachment.subtype ?? null,
+    altText: attachment.altText ?? null,
+    memeRightsConfirmed: attachment.memeRightsConfirmed === true,
   }));
   return JSON.stringify(serializable);
 }

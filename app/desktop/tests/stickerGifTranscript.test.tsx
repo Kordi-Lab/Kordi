@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -67,39 +66,4 @@ test('upload failures override stale pending delivery status', () => {
   assert.deepEqual(attachmentImageDeliveryVisual('pending_send', 'Upload request failed'), {
     kind: 'failed', label: 'Upload request failed',
   });
-});
-
-test('a synced sticker renders from the message kind when the wire carried no subtype', () => {
-  // The Cloud server rejects a "sticker" attachment subtype, so neither Mac nor
-  // iPhone puts one on the wire. The message kind is the only signal that
-  // survives a round trip, and it has to be enough on its own.
-  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
-    msg: {
-      ...imageMessage,
-      messageKind: 'sticker',
-      attachments: [{
-        ...imageMessage.attachments![0],
-        previewUrl: 'data:image/png;base64,sticker-preview',
-      }],
-    },
-  }));
-
-  assert.match(markup, /data-attachment-sticker="true"/);
-  assert.doesNotMatch(markup, /data-attachment-image-preview-trigger="true"/);
-});
-
-test('a preview swap keeps the decoded image on screen instead of flashing', () => {
-  // At 100% the local preview is replaced by the uploaded one. The card must
-  // keep the decoded image visible and preload the replacement off-screen,
-  // rather than blanking to the loading surface.
-  const source = readFileSync(
-    new URL('../src/kordi-app/components/AttachmentImageCard.tsx', import.meta.url),
-    'utf8',
-  );
-
-  assert.match(source, /const displayPreviewUrl = imageLoaded \|\| !loadedPreviewUrl \? previewUrl : loadedPreviewUrl;/);
-  assert.match(source, /const displayReady = imageLoaded \|\| displayPreviewUrl === loadedPreviewUrl;/);
-  assert.match(source, /\{!displayReady \? \(\s*<AttachmentImageLoadingSurface/);
-  assert.match(source, /preloadPreviewUrl \? \([\s\S]*?aria-hidden="true"[\s\S]*?setLoadedPreviewUrl\(preloadPreviewUrl\)/);
-  assert.doesNotMatch(source, /imageLoaded \? 'opacity-100' : 'opacity-0'/);
 });

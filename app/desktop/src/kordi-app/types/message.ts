@@ -66,7 +66,8 @@ export type MessageAttachment = {
   livePhotoFiles?: LivePhotoFiles;
   livePhoto?: LivePhoto | null;
   kind: 'image' | 'file';
-  subtype?: 'sticker' | null;
+  subtype?: 'meme' | 'sticker' | null;
+  altText?: string | null;
   name: string;
   formatLabel?: string | null;
   previewUrl?: string | null;
@@ -83,7 +84,8 @@ export type MessageAttachment = {
 export type DesktopChatAttachment = {
   livePhoto?: LivePhoto | null;
   kind: 'image' | 'file';
-  subtype?: 'sticker' | null;
+  subtype?: 'meme' | 'sticker' | null;
+  altText?: string | null;
   name: string;
   formatLabel?: string | null;
   previewUrl?: string | null;

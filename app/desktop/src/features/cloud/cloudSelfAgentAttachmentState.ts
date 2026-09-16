@@ -9,7 +9,7 @@ function portable(value: unknown) {
   const a = record(value);
   return { attachmentId: a.attachmentId ?? null, name: a.name, kind: a.kind,
     mimeType: a.mimeType ?? null, sizeBytes: a.sizeBytes ?? null, subtype: a.subtype ?? null,
-    widthPixels: a.widthPixels ?? null, heightPixels: a.heightPixels ?? null,
+    altText: a.altText ?? null, widthPixels: a.widthPixels ?? null, heightPixels: a.heightPixels ?? null,
     livePhoto: a.livePhoto ?? null, previewAttachmentId: a.previewAttachmentId ?? null };
 }
 

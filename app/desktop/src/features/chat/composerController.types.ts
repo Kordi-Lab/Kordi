@@ -45,7 +45,15 @@ export type AttachmentItem = MessageAttachment & {
   playbackUrl?: string;
   livePhotoFiles?: LivePhotoFiles;
   expressiveMedia?: boolean;
+  memeRightsConfirmed?: boolean;
   voiceMessage?: MessageVoiceDraft;
+};
+export type AttachmentItemUpdate = AttachmentItem | Pick<
+  AttachmentItem,
+  'subtype' | 'altText' | 'memeRightsConfirmed'
+>;
+export type SaveDesktopAttachmentOptions = {
+  subtype?: MessageAttachment['subtype'];
 };
 export type MinimalModelOption = {
   value: string;

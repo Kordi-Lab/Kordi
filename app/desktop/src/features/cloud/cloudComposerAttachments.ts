@@ -130,6 +130,10 @@ export async function uploadComposerAttachments({
         name: attachment.name,
         kind,
         ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const } : {}),
+        ...(attachment.subtype === 'meme' ? {
+          subtype: 'meme' as const,
+          altText: attachment.altText?.trim() || null,
+        } : {}),
         mimeType,
         sizeBytes: attachment.sizeBytes ?? summary.sizeBytes,
         ...(attachment.widthPixels && attachment.heightPixels ? {

@@ -11,11 +11,13 @@ import {
 export function VoiceComposerControls({
   voice,
   hasSendableDraft,
+  validationError,
   activeLiveTurnIsRunning,
   onSend,
 }: {
   voice: VoiceComposerController;
   hasSendableDraft: boolean;
+  validationError: string | null;
   activeLiveTurnIsRunning: boolean;
   onSend: () => void;
 }) {
@@ -76,12 +78,13 @@ export function VoiceComposerControls({
             }
             onSend();
           }}
+          disabled={Boolean(validationError)}
           data-composer-send={hasSendableDraft ? 'true' : undefined}
           title={!hasSendableDraft
             ? voice.recording ? 'Click to stop and send' : 'Click to record, or hold and release to send'
-            : activeLiveTurnIsRunning
+            : validationError ?? (activeLiveTurnIsRunning
               ? 'Queue message for this session'
-              : 'Send message'}
+              : 'Send message')}
           aria-label={!hasSendableDraft ? voice.recording ? 'Stop and send voice message' : 'Record voice message' : 'Send message'}
         >
           {!hasSendableDraft ? <Mic className="h-4 w-4" /> : <Send className="h-4 w-4" />}

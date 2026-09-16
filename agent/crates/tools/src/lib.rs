@@ -14,6 +14,7 @@ pub mod local_app;
 pub mod ls;
 pub mod metadata;
 pub(crate) mod path;
+pub mod plan_card;
 pub mod plan_tool;
 pub mod reach_out;
 pub mod read;
@@ -34,6 +35,11 @@ pub mod web_search;
 pub mod write;
 
 pub use metadata::{ToolDefinition, ToolLayer, ToolMetadata, ToolRiskLevel};
+pub use plan_card::{
+    PlanCardCancelRequest, PlanCardConfirmRequest, PlanCardFn, PlanCardFuture, PlanCardParticipant,
+    PlanCardParticipantStatus, PlanCardProposeRequest, PlanCardReopenRequest, PlanCardRequest,
+    PlanCardRsvp, PlanCardRsvpRequest, PlanCardRuntime, PlanCardState, PlanCardSummary,
+};
 pub use registry::builtin_tools;
 pub use registry_plan::{ToolRegistryPlan, ToolRegistryPlanEntry};
 pub use schedule_task::{

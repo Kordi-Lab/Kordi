@@ -45,6 +45,7 @@ export function AttachmentImageLightbox({
   const [liveControls, setLiveControls] = useState<HTMLDivElement | null>(null);
   const instructionId = useId();
   const imageName = attachment.name?.trim() || 'Attached image';
+  const imageDescription = attachment.altText?.trim() || imageName;
   const presentedSource = useRef<string | null>(null);
   const presentDecodedImage = useCallback(() => {
     const image = imageRef.current;
@@ -106,7 +107,7 @@ export function AttachmentImageLightbox({
         <img
           ref={imageRef}
           src={previewUrl}
-          alt={imageName}
+          alt={imageDescription}
           className="app-attachment-image-lightbox-image"
           data-attachment-image-zoom={zoom}
           style={{ transform: `scale(${zoom})` }}

@@ -87,13 +87,6 @@ export function AttachmentImageCard({
     previewUrl && (previewUrl.startsWith('data:image/') || attachmentImageWasReady(previewUrl) || attachmentImageWasReady(readinessKey)) ? previewUrl : null
   ));
   const imageLoaded = Boolean(previewUrl && (loadedPreviewUrl === previewUrl || attachmentImageWasReady(previewUrl) || attachmentImageWasReady(readinessKey)));
-  // A send swaps the local preview for the uploaded one the moment it lands.
-  // Both show the same picture, so keep the decoded one on screen until its
-  // replacement has decoded too; dropping to the loading surface for that swap
-  // reads as a flash at 100%.
-  const displayPreviewUrl = imageLoaded || !loadedPreviewUrl ? previewUrl : loadedPreviewUrl;
-  const displayReady = imageLoaded || displayPreviewUrl === loadedPreviewUrl;
-  const preloadPreviewUrl = previewUrl && previewUrl !== displayPreviewUrl ? previewUrl : null;
   useLayoutEffect(() => {
     if (!resourceId || !remotePreviewUrl || previewLeaseRef.current) return;
     const resource = cachedCloudAttachmentPreviewResource(resourceId);
@@ -223,34 +216,20 @@ export function AttachmentImageCard({
   );
   const imageContent = previewUrl ? (
     <>
-      {!displayReady ? (
+      {!imageLoaded ? (
         <AttachmentImageLoadingSurface
           className={cn('absolute inset-0', loadingSurfaceClassName)}
           transparent={isSticker}
         />
       ) : null}
-      {preloadPreviewUrl ? (
-        <img
-          src={preloadPreviewUrl}
-          alt=""
-          aria-hidden="true"
-          className="pointer-events-none absolute h-px w-px opacity-0"
-          onLoad={(event) => {
-            const { naturalWidth, naturalHeight } = event.currentTarget;
-            markAttachmentImageReady(preloadPreviewUrl, naturalWidth, naturalHeight);
-            if (readinessKey) markAttachmentImageReady(readinessKey, naturalWidth, naturalHeight);
-            setLoadedPreviewUrl(preloadPreviewUrl);
-          }}
-        />
-      ) : null}
       <img
-        src={isAnimatedGif && !mediaActive && stillUrl ? stillUrl : displayPreviewUrl ?? previewUrl}
-        alt={attachment.name || (isSticker ? 'Sticker' : 'Attached image')}
+        src={isAnimatedGif && !mediaActive && stillUrl ? stillUrl : previewUrl}
+        alt={attachment.altText?.trim() || attachment.name || (isSticker ? 'Sticker' : 'Attached image')}
         draggable={false}
-        data-attachment-image-loaded={String(displayReady)}
+        data-attachment-image-loaded={String(imageLoaded)}
         className={cn(
           'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
-          displayReady ? 'opacity-100' : 'opacity-0',
+          imageLoaded ? 'opacity-100' : 'opacity-0',
           reservedSize
             ? 'h-full w-full max-w-full rounded-[16px] object-contain'
             : intrinsicSingleImage

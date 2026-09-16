@@ -294,8 +294,15 @@ export function ComposerImageEditor({
         name: requestedOutput.name,
       });
       const file = new File([blob], output.name, { type: output.mimeType });
-      const replacement = await composerAttachmentItemFromFile(file);
+      const replacement = await composerAttachmentItemFromFile(
+        file,
+        attachment.subtype === 'meme' ? { subtype: 'meme' } : {},
+      );
       replacement.id = attachment.id;
+      if (attachment.subtype === 'meme') {
+        replacement.altText = attachment.altText ?? '';
+        replacement.memeRightsConfirmed = attachment.memeRightsConfirmed === true;
+      }
       await onSave(replacement);
       onClose();
     } catch (finishError) {

@@ -11,7 +11,10 @@ import {
   friendlyAttachmentName,
   updatedComposerAttachment,
 } from '@/features/chat/composerAttachments';
-import type { AttachmentItem } from '@/features/chat/composerController.types';
+import type {
+  AttachmentItemUpdate,
+  SaveDesktopAttachmentOptions,
+} from '@/features/chat/composerController.types';
 import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
 import { hasKnownTranscriptContent, transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
@@ -137,13 +140,16 @@ export function ChatCompanionWorkspace({
       return [...current, ...saved.filter((attachment) => !seen.has(attachment.path))];
     });
   };
-  const saveAttachments = async (files: File[]) => {
+  const saveAttachments = async (
+    files: File[],
+    options: SaveDesktopAttachmentOptions = {},
+  ) => {
     if (conversation?.agentSubsessionId) { setAttachmentError('This session supports text messages.'); return []; }
     if (!shell.isNativeShell || files.length === 0) return [];
     try {
       setAttachmentError(null);
       const saved = await Promise.all(
-        files.map((file) => composerAttachmentItemFromFile(file)),
+        files.map((file) => composerAttachmentItemFromFile(file, options)),
       );
       appendAttachments(saved);
       return saved;
@@ -183,7 +189,7 @@ export function ChatCompanionWorkspace({
       return current.filter((attachment) => attachment.id !== id);
     });
   };
-  const updateAttachment = (id: string, update: AttachmentItem) => {
+  const updateAttachment = (id: string, update: AttachmentItemUpdate) => {
     updateCompanionAttachments((current) => current.map((attachment) => (
       attachment.id === id ? updatedComposerAttachment(attachment, update) : attachment
     )));

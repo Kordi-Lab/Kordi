@@ -20,11 +20,23 @@ import {
   expressiveMediaFileError,
   expressiveMediaKindForFile,
   GIF_FILE_ACCEPT,
+  providerMediaAttachment,
   readExpressiveMediaLibrary,
   STICKER_FILE_ACCEPT,
   writeExpressiveMediaLibrary,
   type ExpressiveMediaLibraryItem,
 } from '../src/features/emoji/expressiveMediaLibrary';
+import {
+  filterPublicMemeTemplates,
+  normalizePublicStickerQuery,
+  parsePublicMemeTemplates,
+  publicStickerSearchUrl,
+} from '../src/features/emoji/publicMemeTemplates';
+import {
+  normalizePublicGifQuery,
+  parsePublicGifSearchResponse,
+  publicGifSearchUrl,
+} from '../src/features/emoji/publicGifSearch';
 
 test('emoji insertion preserves the requested caret position', () => {
   assert.deepEqual(
@@ -70,7 +82,7 @@ test('composer uses the shared Emoji picker and private sticker and GIF librarie
   assert.match(picker, /sendMedia\(expressiveMediaAttachment\(item\)\)/);
   assert.match(picker, /async function sendMedia[\s\S]*?if \(mediaSendPendingRef\.current\) return;[\s\S]*?setIsOpen\(false\);[\s\S]*?await onSendMedia\(attachment\)/);
   assert.doesNotMatch(picker, /emoji-picker-react|EmojiStyle/);
-  assert.doesNotMatch(picker, /Public Stickers|Public GIFs/);
+  assert.doesNotMatch(picker, /PublicMemeGrid|PublicGifGrid|Public Stickers|Public GIFs/);
 });
 
 test('Blob Emoji assets are content addressed and excluded from the desktop bundle', () => {
@@ -95,6 +107,208 @@ test('Blob Emoji tokens keep images for rich surfaces and readable notification 
   assert.equal(parts.filter((part) => part.type === 'emoji').length, 1);
   assert.equal(blobEmojiPlainText('Hi :blob:blobwave:'), 'Hi Emoji');
   assert.equal(blobEmojiPlainText(':blob:not-real:'), ':blob:not-real:');
+});
+
+test('public GIF fallback searches Commons without a key and keeps reusable licenses only', () => {
+  const searchUrl = new URL(publicGifSearchUrl('happy dance'));
+  assert.equal(searchUrl.hostname, 'commons.wikimedia.org');
+  assert.equal(searchUrl.searchParams.get('origin'), '*');
+  assert.match(searchUrl.searchParams.get('gsrsearch') ?? '', /happy dance filemime:image\/gif/);
+  assert.equal(normalizePublicGifQuery(''), 'funny');
+
+  const results = parsePublicGifSearchResponse({
+    query: {
+      pages: [
+        {
+          pageid: 2,
+          index: 2,
+          title: 'File:Public dance.gif',
+          imageinfo: [{
+            mime: 'image/gif',
+            size: 2048,
+            url: 'https://upload.wikimedia.org/wikipedia/commons/public-dance.gif',
+            thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/public-dance.gif',
+            extmetadata: { LicenseShortName: { value: 'Public domain' } },
+          }],
+        },
+        {
+          pageid: 1,
+          index: 1,
+          title: 'File:Zero dance.gif',
+          imageinfo: [{
+            mime: 'image/gif',
+            size: 4096,
+            url: 'https://upload.wikimedia.org/wikipedia/commons/zero-dance.gif',
+            extmetadata: { LicenseShortName: { value: 'CC0' } },
+          }],
+        },
+        {
+          pageid: 3,
+          index: 3,
+          title: 'File:Needs attribution.gif',
+          imageinfo: [{
+            mime: 'image/gif',
+            size: 1024,
+            url: 'https://upload.wikimedia.org/wikipedia/commons/attribution.gif',
+            extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' } },
+          }],
+        },
+        {
+          pageid: 4,
+          index: 4,
+          title: 'File:Untrusted.gif',
+          imageinfo: [{
+            mime: 'image/gif',
+            size: 1024,
+            url: 'https://example.com/untrusted.gif',
+            extmetadata: { LicenseShortName: { value: 'CC0' } },
+          }],
+        },
+        {
+          pageid: 5,
+          index: 5,
+          title: 'File:Too large.gif',
+          imageinfo: [{
+            mime: 'image/gif',
+            size: 3 * 1024 * 1024,
+            url: 'https://upload.wikimedia.org/wikipedia/commons/too-large.gif',
+            extmetadata: { LicenseShortName: { value: 'CC0' } },
+          }],
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(results.map((result) => result.id), ['1', '2']);
+  assert.equal(results[0]?.title, 'Zero dance');
+  assert.equal(results[0]?.previewUrl, results[0]?.mediaUrl);
+});
+
+test('public sticker search uses keyless Commons results with reusable licenses', () => {
+  const searchUrl = new URL(publicStickerSearchUrl('surprised cat'));
+  assert.equal(searchUrl.hostname, 'commons.wikimedia.org');
+  assert.equal(searchUrl.searchParams.get('origin'), '*');
+  assert.match(searchUrl.searchParams.get('gsrsearch') ?? '', /surprised cat filetype:bitmap/);
+  assert.equal(normalizePublicStickerQuery(''), 'reaction');
+
+  const templates = parsePublicMemeTemplates({ query: { pages: [{
+    pageid: 42,
+    index: 1,
+    title: 'File:Surprised cat.png',
+    imageinfo: [{
+      mime: 'image/png',
+      size: 4096,
+      url: 'https://upload.wikimedia.org/wikipedia/commons/surprised-cat.png',
+      thumburl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/surprised-cat.png',
+      extmetadata: { LicenseShortName: { value: 'CC0' } },
+    }],
+  }, {
+    pageid: 43,
+    index: 2,
+    title: 'File:Unlicensed cat.jpg',
+    imageinfo: [{
+      mime: 'image/jpeg',
+      size: 4096,
+      url: 'https://upload.wikimedia.org/wikipedia/commons/unlicensed-cat.jpg',
+      extmetadata: { LicenseShortName: { value: 'CC BY-SA 4.0' } },
+    }],
+  }] } });
+
+  assert.equal(templates.length, 1);
+  assert.equal(templates[0]?.imageUrl, 'https://upload.wikimedia.org/wikipedia/commons/surprised-cat.png');
+  assert.equal(filterPublicMemeTemplates(templates, 'surprised')[0]?.id, '42');
+  assert.deepEqual(filterPublicMemeTemplates(templates, 'doge'), []);
+});
+
+test('public sticker results download as immediate image attachments', async () => {
+  let storedName = '';
+  let requestedRedirect: RequestRedirect | undefined;
+  const originalWindow = Reflect.get(globalThis, 'window');
+  Reflect.set(globalThis, 'window', {
+    __TAURI_INTERNALS__: {
+      convertFileSrc: (path: string) => `asset://${path}`,
+    },
+  });
+  try {
+    const attachment = await providerMediaAttachment({
+      providerMediaId: 'wikimedia-sticker:42',
+      mediaKind: 'sticker',
+      title: 'Surprised Cat',
+      mediaUrl: 'https://upload.wikimedia.org/wikipedia/commons/surprised-cat.jpg',
+    }, {
+      fetchFile: async (_input, init) => {
+        requestedRedirect = init?.redirect;
+        return {
+        ok: true,
+        blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' }),
+        };
+      },
+      storeFile: async (name) => {
+        storedName = name;
+        return '/stored/ancient-aliens-guy.jpg';
+      },
+    });
+
+    assert.equal(storedName, 'Surprised Cat.jpg');
+    assert.equal(requestedRedirect, 'error');
+    assert.equal(attachment.mimeType, 'image/jpeg');
+    assert.match(attachment.id, /^provider:wikimedia-sticker:42:/);
+  } finally {
+    if (originalWindow === undefined) Reflect.deleteProperty(globalThis, 'window');
+    else Reflect.set(globalThis, 'window', originalWindow);
+  }
+});
+
+test('public media rejects untrusted hosts and unsupported MIME types', async () => {
+  let requested = false;
+  await assert.rejects(
+    providerMediaAttachment({
+      providerMediaId: 'untrusted:1',
+      mediaKind: 'sticker',
+      title: 'Untrusted sticker',
+      mediaUrl: 'https://example.com/sticker.png',
+    }, {
+      fetchFile: async () => {
+        requested = true;
+        return {
+          ok: true,
+          blob: async () => new Blob([], { type: 'image/png' }),
+        };
+      },
+    }),
+    /trusted media URL/,
+  );
+  assert.equal(requested, false);
+
+  await assert.rejects(
+    providerMediaAttachment({
+      providerMediaId: 'wikimedia:svg',
+      mediaKind: 'sticker',
+      title: 'Vector sticker',
+      mediaUrl: 'https://upload.wikimedia.org/wikipedia/commons/vector.svg',
+    }, {
+      fetchFile: async () => ({
+        ok: true,
+        blob: async () => new Blob([], { type: 'image/svg+xml' }),
+      }),
+    }),
+    /not a supported image/,
+  );
+
+  await assert.rejects(
+    providerMediaAttachment({
+      providerMediaId: 'wikimedia:not-gif',
+      mediaKind: 'gif',
+      title: 'Static image',
+      mediaUrl: 'https://upload.wikimedia.org/wikipedia/commons/static.png',
+    }, {
+      fetchFile: async () => ({
+        ok: true,
+        blob: async () => new Blob([], { type: 'image/png' }),
+      }),
+    }),
+    /not a supported image/,
+  );
 });
 
 test('expressive picker uses a dense five-column scrollable popover', () => {
@@ -170,7 +384,7 @@ test('existing message media can be copied directly into My Stickers', async () 
   assert.deepEqual(readExpressiveMediaLibrary(storage), [item]);
 });
 
-test('saved expressive media honors the attachment size limit', async () => {
+test('saved and public expressive media honor the attachment size limit', async () => {
   let stored = false;
   await assert.rejects(
     addMediaToExpressiveMediaLibrary({
@@ -188,6 +402,24 @@ test('saved expressive media honors the attachment size limit', async () => {
     /smaller than 2 MB/,
   );
   assert.equal(stored, false);
+
+  await assert.rejects(
+    providerMediaAttachment({
+      providerMediaId: 'wikimedia:large',
+      mediaKind: 'gif',
+      title: 'Large GIF',
+      mediaUrl: 'https://upload.wikimedia.org/large.gif',
+    }, {
+      fetchFile: async () => ({
+        ok: true,
+        blob: async () => new Blob(
+          [new Uint8Array(EXPRESSIVE_MEDIA_MAX_BYTES + 1)],
+          { type: 'image/gif' },
+        ),
+      }),
+    }),
+    /2 MB attachment limit/,
+  );
 });
 
 test('My Stickers and My GIFs persist as a media library instead of composer drafts', () => {

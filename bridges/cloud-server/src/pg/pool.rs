@@ -458,6 +458,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "recover retained pin history without blocking live capture",
         sql: include_str!("../../migrations/0093_backfill_session_pin_history.sql"),
     },
+    EmbeddedMigration {
+        version: 94,
+        description: "shared plan cards for group-chat coordination",
+        sql: include_str!("../../migrations/0094_plan_cards.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
