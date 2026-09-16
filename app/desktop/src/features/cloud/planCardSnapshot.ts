@@ -44,3 +44,34 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
     participants,
   };
 }
+
+/**
+ * The newest snapshot of every card in a transcript, by event. Pip reposts the
+ * card whenever it changes, so older messages carry stale copies; rendering
+ * each of them with the newest state keeps every button at the current
+ * revision.
+ */
+export function latestPlanCardsByEvent(
+  messages: readonly { planCard?: MessagePlanCard | null }[],
+): Map<string, MessagePlanCard> {
+  const latest = new Map<string, MessagePlanCard>();
+  for (const message of messages) {
+    const card = message.planCard;
+    if (!card) continue;
+    const known = latest.get(card.eventId);
+    if (!known || known.revision < card.revision) latest.set(card.eventId, card);
+  }
+  return latest;
+}
+
+/** Returns the same message when its card is already the newest snapshot. */
+export function withLatestPlanCard<T extends { planCard?: MessagePlanCard | null }>(
+  message: T,
+  latest: Map<string, MessagePlanCard>,
+): T {
+  const card = message.planCard;
+  if (!card) return message;
+  const newest = latest.get(card.eventId);
+  if (!newest || newest.revision <= card.revision) return message;
+  return { ...message, planCard: newest };
+}

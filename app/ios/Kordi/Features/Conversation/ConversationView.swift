@@ -418,11 +418,12 @@ struct ConversationView: View {
                 isInitialViewportRevealed: hasRevealedInitialViewport
             )
         )
+        let latestPlanCards = PlanCard.latestByEvent(in: timeline)
         let visibleTimelineRows = visibleTimeline.enumerated().map { offset, message in
             ConversationTimelineRow(
                 id: model.timelineIdentity(for: message),
                 offset: offset,
-                message: message
+                message: message.withLatestPlanCard(latestPlanCards)
             )
         }
         let firstVisibleTimelineIdentity = visibleTimelineRows.first?.id

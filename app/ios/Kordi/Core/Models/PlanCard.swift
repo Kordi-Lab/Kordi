@@ -127,3 +127,31 @@ struct PlanCardAction: Encodable, Hashable {
         PlanCardAction(action: "confirm", eventId: card.eventId, revision: card.revision, confirmedBy: accountId)
     }
 }
+
+extension PlanCard {
+    /// The newest snapshot of every card in a timeline, by event. Pip reposts
+    /// the card whenever it changes, so older messages carry stale copies.
+    static func latestByEvent(in messages: [ChatMessage]) -> [String: PlanCard] {
+        var latest: [String: PlanCard] = [:]
+        for message in messages {
+            guard let card = message.planCard else { continue }
+            if let known = latest[card.eventId], known.revision >= card.revision { continue }
+            latest[card.eventId] = card
+        }
+        return latest
+    }
+}
+
+extension ChatMessage {
+    /// The same message with its card replaced by the newest snapshot, so
+    /// every copy in the transcript shows the current state and its buttons
+    /// act at the current revision.
+    func withLatestPlanCard(_ latest: [String: PlanCard]) -> ChatMessage {
+        guard let card = planCard, let newest = latest[card.eventId], newest.revision > card.revision else {
+            return self
+        }
+        var copy = self
+        copy.planCard = newest
+        return copy
+    }
+}
