@@ -7,7 +7,7 @@
 //! provider costs at most a handful of calls per day.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sqlx_core::query::query;
@@ -115,17 +115,7 @@ fn message_text(content: &Value) -> String {
 /// Parses the text form Postgres gives for a `timestamptz` cast
 /// (`2026-09-16 18:34:00+00`), which is not quite RFC 3339: the space and the
 /// short `+00` offset both need normalizing.
-fn parse_pg_timestamp(value: &str) -> Option<DateTime<chrono::FixedOffset>> {
-    let mut text = value.trim().replacen(' ', "T", 1);
-    let tail = text.len().saturating_sub(3);
-    if text.len() >= 3
-        && matches!(text.as_bytes()[tail], b'+' | b'-')
-        && text[tail + 1..].chars().all(|c| c.is_ascii_digit())
-    {
-        text.push_str(":00");
-    }
-    DateTime::parse_from_rfc3339(&text).ok()
-}
+pub(crate) use crate::plan_cards::store::parse_pg_timestamp;
 
 fn encode_pip_message(text: &str) -> String {
     let payload = json!({"schemaVersion": 1, "kind": "message", "text": text, "mentions": []});

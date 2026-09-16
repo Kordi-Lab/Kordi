@@ -20,9 +20,8 @@ struct PlanCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(view.state.label.uppercased())
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .tracking(0.4)
+                Text(view.state.label)
+                    .font(.system(size: 11, weight: .semibold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(stateTint.opacity(0.16), in: Capsule())

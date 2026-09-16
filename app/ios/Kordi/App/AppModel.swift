@@ -5627,6 +5627,7 @@ final class AppModel: ObservableObject {
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             voiceMessage: message.voiceMessage,
+            planCard: message.planCard,
             agentExecution: ownerExecution ?? CloudMessageCodec.agentWaitingExecution(
                 deliveryState: CloudMessageCodec.isAgentExecutionClaim(message.body)
                     ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
@@ -5679,6 +5680,7 @@ final class AppModel: ObservableObject {
                     reactionTargetMessageId: wire.messageId,
                     messageKind: wire.messageKind,
                     voiceMessage: wire.voiceMessage,
+                    planCard: wire.planCard,
                     reactions: wire.reactions,
                     attachmentReactions: wire.attachmentReactions
                 )
@@ -5806,6 +5808,7 @@ final class AppModel: ObservableObject {
                 mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),
                 messageKind: payload.messageKind,
                 voiceMessage: payload.voiceMessage ?? wire.voiceMessage,
+                planCard: wire.planCard,
                 agentExecution: author == .agent ? CloudMessageCodec.agentWaitingExecution(
                     deliveryState: payload.deliveryState == "processing" ? .processing : nil,
                     updatedAtMs: payload.createdAtMs
@@ -6757,6 +6760,7 @@ final class AppModel: ObservableObject {
                     attachments: message.attachments,
                     messageKind: message.messageKind,
                     voiceMessage: message.voiceMessage,
+                    planCard: message.planCard,
                     conversationId: message.conversationId,
                     conversationSequence: message.conversationSequence,
                     version: message.version,

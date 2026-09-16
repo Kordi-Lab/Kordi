@@ -489,7 +489,7 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 }
 .app-plan-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .app-plan-card-pill {
-  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  font-size: 11px; font-weight: 600;
   padding: 2px 8px; border-radius: 999px; line-height: 16px;
 }
 .app-plan-card-pill-polling { background: color-mix(in oklab, #4c5fd5 16%, transparent); color: #4c5fd5; }
@@ -526,7 +526,7 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 
 .app-sender-tag {
   display: inline-block; margin-left: 6px; vertical-align: 1px;
-  font-family: ui-monospace, "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase;
+  font-size: 10.5px; font-weight: 500; letter-spacing: .01em;
   padding: 1px 6px; border-radius: 999px; background: #fff4d6; color: #5a3d00;
 }
 :root[data-theme="dark"] .app-sender-tag, .dark .app-sender-tag { background: #3a2c0c; color: #fff1c9; }

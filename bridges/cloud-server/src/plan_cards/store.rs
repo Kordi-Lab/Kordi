@@ -1,3 +1,4 @@
+use chrono::DateTime;
 use sqlx_core::executor::Executor;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
@@ -42,6 +43,30 @@ type PlanCardRowTuple = (
     serde_json::Value,
     Option<String>,
 );
+
+/// Postgres renders `timestamptz::text` as `2026-09-16 18:34:00+00`, which is
+/// not RFC 3339. Accept that form and proper RFC 3339 alike.
+pub(crate) fn parse_pg_timestamp(value: &str) -> Option<DateTime<chrono::FixedOffset>> {
+    let mut text = value.trim().replacen(' ', "T", 1);
+    let tail = text.len().saturating_sub(3);
+    if text.len() >= 3
+        && matches!(text.as_bytes()[tail], b'+' | b'-')
+        && text[tail + 1..].chars().all(|c| c.is_ascii_digit())
+    {
+        text.push_str(":00");
+    }
+    DateTime::parse_from_rfc3339(&text).ok()
+}
+
+/// Card instants leave the store as RFC 3339 so iOS and desktop parse them
+/// the same way whether they arrived in a message block or an action reply.
+fn rfc3339_instant(value: Option<String>) -> Option<String> {
+    value.map(|raw| {
+        parse_pg_timestamp(&raw)
+            .map(|instant| instant.to_rfc3339())
+            .unwrap_or(raw)
+    })
+}
 
 async fn fetch_row(
     conn: &mut PgConnection,
@@ -100,8 +125,8 @@ async fn fetch_row(
         revision,
         state: PlanCardState::from_db_str(&state).unwrap_or(PlanCardState::Polling),
         title,
-        start_at,
-        end_at,
+        start_at: rfc3339_instant(start_at),
+        end_at: rfc3339_instant(end_at),
         location,
         unresolved_fields: json_string_array(unresolved_fields),
         source_message_ids: json_string_array(source_message_ids),

@@ -576,9 +576,8 @@ struct MessageBubble: View, Equatable {
                         .foregroundStyle(chatTheme.accent)
                         .lineLimit(1)
                     if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatarSeed) {
-                        Text(KordiPipIdentity.tag.uppercased())
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                            .tracking(0.4)
+                        Text(KordiPipIdentity.tag)
+                            .font(.caption2.weight(.medium))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Color(red: 0.941, green: 0.706, blue: 0.161).opacity(0.18), in: Capsule())
