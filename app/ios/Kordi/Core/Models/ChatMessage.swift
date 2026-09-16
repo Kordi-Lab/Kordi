@@ -1152,6 +1152,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var messageAction: MessageActionMetadata?
     var messageKind: String?
     var voiceMessage: VoiceMessage?
+    var planCard: PlanCard? = nil
     var agentExecution: AgentExecutionSnapshot?
     // Derived from pending requests, never from transport delivery receipts.
     var agentQueuePosition: Int? = nil
@@ -1238,6 +1239,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         mentions: [MessageMention] = [],
         messageKind: String? = nil,
         voiceMessage: VoiceMessage? = nil,
+        planCard: PlanCard? = nil,
         agentExecution: AgentExecutionSnapshot? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
         reactions: [MessageReaction] = [],
@@ -1267,6 +1269,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.messageAction = messageAction
         self.messageKind = messageKind
         self.voiceMessage = voiceMessage
+        self.planCard = planCard
         self.agentExecution = agentExecution
         self.backgroundAgentSessions = backgroundAgentSessions
         self.mentions = mentions

@@ -1470,6 +1470,9 @@ struct ConversationView: View {
                             viewportFrame: viewportFrame
                         )
                     },
+                    onPlanCardAction: { action in
+                        await model.performPlanCardAction(action)
+                    },
                     onUpdateActionFrame: { frame in
                         updateMessageActionFrame(for: message.id, frame: frame, viewportFrame: viewportFrame)
                     },

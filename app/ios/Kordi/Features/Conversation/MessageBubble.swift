@@ -52,6 +52,7 @@ struct MessageBubble: View, Equatable {
     let onRetry: () async -> Void
     let onSelect: () -> Void
     let onOpenActions: (CGRect, ChatAttachment?) -> Void
+    var onPlanCardAction: ((PlanCardAction) async -> PlanCard?)? = nil
     let onUpdateActionFrame: (CGRect) -> Void
     let actionPreviewScroll: MessageActionPreviewScroll?
     let onReactToAttachment: (ChatAttachment, String) -> Void
@@ -612,6 +613,11 @@ struct MessageBubble: View, Equatable {
                     onExpansionChange: onContentExpansionChange
                 )
                 .id("\(message.id):\(voiceMessage.mediaId)")
+            }
+
+            if let planCard = message.planCard {
+                PlanCardView(card: planCard, ownAccountId: ownAccountId, onAction: onPlanCardAction)
+                    .id("\(message.id):plan:\(planCard.eventId)")
             }
 
             if hasVisibleMessageText {

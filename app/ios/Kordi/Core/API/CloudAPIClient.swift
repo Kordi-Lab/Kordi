@@ -1158,6 +1158,17 @@ actor CloudAPIClient {
         return legacyMessage(from: response.message, conversation: conversation, viewerAccountId: accountId)
     }
 
+    /// Acts on a shared plan card as the signed-in member.
+    func planCardAction(token: String, action: PlanCardAction) async throws -> PlanCard {
+        try await send(
+            path: "/v1/cloud/plan_cards",
+            method: "POST",
+            token: token,
+            body: action,
+            fallback: "Could not update the plan card."
+        )
+    }
+
     func setReaction(
         token: String,
         sessionId: String,
@@ -2245,6 +2256,7 @@ actor CloudAPIClient {
             attachments: message.content.legacyAttachments,
             messageKind: message.kind,
             voiceMessage: message.content.voiceMessage,
+            planCard: message.content.planCard,
             conversationId: conversation.id,
             conversationSequence: message.conversationSequence,
             version: message.version,

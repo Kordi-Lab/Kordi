@@ -167,6 +167,7 @@ enum CloudDirectMessageProjector {
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             voiceMessage: message.voiceMessage,
+            planCard: message.planCard,
             agentExecution: visibleOwnerExecution ?? CloudMessageCodec.agentWaitingExecution(
                 deliveryState: CloudMessageCodec.isAgentExecutionClaim(message.body)
                     ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),

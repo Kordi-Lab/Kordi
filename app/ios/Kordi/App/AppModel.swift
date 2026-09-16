@@ -2178,6 +2178,18 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Applies a plan-card action for the signed-in member and returns the
+    /// server's snapshot, or nil after surfacing the error.
+    func performPlanCardAction(_ action: PlanCardAction) async -> PlanCard? {
+        guard !previewMode, let token else { return nil }
+        do {
+            return try await api.planCardAction(token: token, action: action)
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not update the plan card.")
+            return nil
+        }
+    }
+
     func toggleReaction(
         _ reaction: String,
         on message: ChatMessage,
