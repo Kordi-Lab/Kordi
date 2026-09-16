@@ -246,6 +246,14 @@ pub(crate) async fn dispatch(
                     StatusCode::BAD_REQUEST,
                 );
             }
+            let start_at = match normalize_instant(start_at.as_deref()) {
+                Ok(value) => value,
+                Err(message) => return error("invalid_start_at", message, StatusCode::BAD_REQUEST),
+            };
+            let end_at = match normalize_instant(end_at.as_deref()) {
+                Ok(value) => value,
+                Err(message) => return error("invalid_end_at", message, StatusCode::BAD_REQUEST),
+            };
             let args = PlanCardProposeArgs {
                 conversation_id,
                 existing_event_id,
@@ -370,6 +378,21 @@ pub(crate) async fn dispatch(
     }
 }
 
+/// Optional instants must be RFC 3339 with an explicit offset so the card's
+/// time is unambiguous for every participant. Blank means unknown.
+pub(crate) fn normalize_instant(value: Option<&str>) -> Result<Option<String>, &'static str> {
+    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    match chrono::DateTime::parse_from_rfc3339(raw) {
+        Ok(instant) => Ok(Some(instant.to_rfc3339())),
+        Err(_) => Err(
+            "startAt and endAt must be RFC 3339 timestamps with a timezone offset, \
+             for example 2026-09-20T12:30:00+03:00. Leave them out when the time is not known yet.",
+        ),
+    }
+}
+
 /// Wire `state` arrives camelCase (`awaitingConfirmation`); the store speaks
 /// the DB's snake_case (`awaiting_confirmation`).
 fn to_snake_case(value: &str) -> String {
@@ -383,4 +406,21 @@ fn to_snake_case(value: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod instant_tests {
+    use super::normalize_instant;
+
+    #[test]
+    fn instants_require_an_offset() {
+        assert_eq!(normalize_instant(None).unwrap(), None);
+        assert_eq!(normalize_instant(Some("  ")).unwrap(), None);
+        assert_eq!(
+            normalize_instant(Some("2026-09-20T12:30:00+03:00")).unwrap(),
+            Some("2026-09-20T12:30:00+03:00".to_string())
+        );
+        assert!(normalize_instant(Some("2026-09-20T12:30:00")).is_err());
+        assert!(normalize_instant(Some("Saturday 12:30")).is_err());
+    }
 }
