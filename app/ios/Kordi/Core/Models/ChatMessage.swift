@@ -1281,6 +1281,27 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         actionSource(sessionId: conversationId)
     }
 
+    /// The card of a message that also carries text, as its own card-only
+    /// message shown just before the text.
+    func planCardPart() -> ChatMessage {
+        ChatMessage(
+            id: "\(id)#plan-card",
+            conversationId: conversationId,
+            conversationSequence: conversationSequence,
+            author: author,
+            authorName: authorName,
+            senderOwnerName: senderOwnerName,
+            text: "",
+            createdAt: createdAt,
+            cloudMessageVersion: cloudMessageVersion,
+            deliveryState: deliveryState,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: messageKind,
+            planCard: planCard
+        )
+    }
+
     func actionSource(sessionId: String) -> MessageActionSource {
         let normalized = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         let preview = normalized.count <= 220

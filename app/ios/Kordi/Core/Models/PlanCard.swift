@@ -220,12 +220,20 @@ struct PlanCardTranscriptResolution {
     static func apply(to messages: [ChatMessage]) -> [ChatMessage] {
         let resolution = PlanCardTranscriptResolution(messages: messages)
         guard !resolution.isEmpty else { return messages }
-        return messages.compactMap { message in
+        return messages.flatMap { message -> [ChatMessage] in
             let resolved = resolution.resolve(message)
+            let hasText = !resolved.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             let emptiedCardCopy = message.planCard != nil && resolved.planCard == nil
-                && resolved.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && resolved.attachments.isEmpty && resolved.voiceMessage == nil
-            return emptiedCardCopy ? nil : resolved
+                && !hasText && resolved.attachments.isEmpty && resolved.voiceMessage == nil
+            if emptiedCardCopy { return [] }
+            // A card and Pip's words are always two messages, even when an
+            // older message stored them together.
+            if resolved.planCard != nil, hasText {
+                var words = resolved
+                words.planCard = nil
+                return [resolved.planCardPart(), words]
+            }
+            return [resolved]
         }
     }
 

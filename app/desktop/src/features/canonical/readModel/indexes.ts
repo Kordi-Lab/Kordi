@@ -1022,9 +1022,31 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         : inheritedDesktopForkSnapshot(sessionById.get(sessionId), displaySourceMessage)
           ? { ...mappedWithReadStatus, isForkSnapshot: true }
           : mappedWithReadStatus;
+      const sortPosition = messageSortById.get(message.id) ?? messageSortPosition(message);
+      // A card and Pip's words are always two messages, even when an older
+      // message stored them together: the card first, then the text.
+      if (displayMessage.planCard && displayMessage.text.trim()) {
+        const cardPart: Message = {
+          ...displayMessage,
+          id: `${displayMessage.id ?? message.id}#plan-card`,
+          entryId: `${displayMessage.entryId ?? message.id}#plan-card`,
+          text: '',
+          mentions: undefined,
+          replyToMessageId: undefined,
+          replyAliasIds: undefined,
+          messageAction: undefined,
+          sourceMessage: undefined,
+          reactionTargetMessageId: undefined,
+          reactions: undefined,
+        };
+        return [
+          { message: cardPart, ...sortPosition, tieBreakAtMs: message.createdAtMs - 1 },
+          { message: { ...displayMessage, planCard: null }, ...sortPosition, tieBreakAtMs: message.createdAtMs },
+        ];
+      }
       return [{
         message: displayMessage,
-        ...(messageSortById.get(message.id) ?? messageSortPosition(message)),
+        ...sortPosition,
         tieBreakAtMs: message.createdAtMs,
       }];
     });
