@@ -342,3 +342,24 @@ struct DigestCalendarSyncOccurrenceTests {
         #expect(DigestCalendarSync.plainNotes("<p>Join Zoom<br/>64.211.144.160 (Brazil)<br>Meeting ID: 929&nbsp;2747</p><br>———</p>") == "Join Zoom\n64.211.144.160 (Brazil)\nMeeting ID: 929 2747\n\n———")
     }
 }
+
+struct DigestMonthGridGroupingTests {
+    @Test func groupingByDayMatchesThePerDayRuleForTimedAllDayAndMultiDayEvents() throws {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = try #require(TimeZone(identifier: "America/New_York"))
+        let events = [
+            DigestCalendarEvent(id: "timed", title: "Timed", startAt: "2026-09-17T13:00:00Z", endAt: "2026-09-17T13:30:00Z", allDay: false),
+            DigestCalendarEvent(id: "late", title: "Crosses midnight locally", startAt: "2026-09-18T03:30:00Z", endAt: "2026-09-18T05:00:00Z", allDay: false),
+            DigestCalendarEvent(id: "fraction", title: "Fractional", startAt: "2026-09-19T10:00:00.250Z", endAt: nil, allDay: false),
+            DigestCalendarEvent(id: "allday", title: "All day", startAt: "2026-09-20T00:00:00Z", endAt: "2026-09-22T00:00:00Z", allDay: true),
+            DigestCalendarEvent(id: "single", title: "Single all day", startAt: "2026-09-25T00:00:00Z", endAt: nil, allDay: true),
+            DigestCalendarEvent(id: "bad", title: "Unparseable", startAt: "not a date", endAt: nil, allDay: false),
+        ]
+        let days = DigestDate.monthDays(containing: try #require(DigestDate.parse("2026-09-15T12:00:00Z")), calendar: calendar)
+        let grouped = DigestDate.eventsByDay(events, days: days, calendar: calendar)
+        for day in days {
+            let expected = events.filter { DigestDate.event($0, occursOn: day, calendar: calendar) }.map(\.id)
+            #expect((grouped[DigestDate.key(day, calendar: calendar)] ?? []).map(\.id) == expected, "day \(DigestDate.key(day, calendar: calendar))")
+        }
+        #expect(DigestDate.parse("2026-09-19T10:00:00.250Z") != nil && DigestDate.parse("2026-09-19T10:00:00+03:00") != nil && DigestDate.parse("nope") == nil)
+    }
+}

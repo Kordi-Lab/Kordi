@@ -20,9 +20,13 @@ struct DigestMonthGrid: View {
                 ForEach(["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], id: \.self) { day in
                     Text(day).font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.bottom, 4)
                 }
-                ForEach(DigestDate.monthDays(containing: month), id: \.self) { day in
-                    let proposed = proposals(on: day)
-                    let matching = events.filter { event in DigestDate.event(event, occursOn: day) && !proposed.contains { $0.calendarCancellationTargets(event) } }
+                let days = DigestDate.monthDays(containing: month)
+                // One pass over the events per render; a synced calendar can hold hundreds of events.
+                let byDay = DigestDate.eventsByDay(events, days: days)
+                ForEach(days, id: \.self) { day in
+                    let proposed = candidates.isEmpty ? [] : proposals(on: day)
+                    let onDay = byDay[DigestDate.key(day)] ?? []
+                    let matching = proposed.isEmpty ? onDay : onDay.filter { event in !proposed.contains { $0.calendarCancellationTargets(event) } }
                     let selected = Calendar.current.isDate(day, inSameDayAs: selectedDay)
                     let inMonth = Calendar.current.isDate(day, equalTo: month, toGranularity: .month)
                     Button { selectedDay = day } label: {
