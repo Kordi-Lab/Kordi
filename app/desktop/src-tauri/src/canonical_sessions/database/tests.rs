@@ -1,3 +1,4 @@
+use super::super::SCHEMA_VERSION;
 use super::*;
 use crate::test_support::ScopedKordiStorageRoot;
 
@@ -143,27 +144,36 @@ fn an_open_connection_cannot_acquire_a_replacement_files_cache_identity() {
 #[test]
 #[cfg(unix)]
 fn reused_connections_skip_the_schema_check() {
-    // Sync applies many rows, and each one opens the database. Re-validating the
-    // schema on a connection that already passed costs two queries per open, so
-    // a reused handle must not repeat that work.
+    // Sync applies many rows, and each one opens the database. The schema was
+    // migrated and validated when the connection was first opened, so a handle
+    // coming back from the pool must not repeat that check. Stamping a version
+    // this build does not support makes the check observable: a cold open
+    // refuses the database, while a pooled reopen never looks at it.
     let storage = ScopedKordiStorageRoot::new("canonical-schema-recheck");
     let path = storage.root().join("test.sqlite3");
     let cache = cache();
     drop(open_with_cache(&path, &cache).unwrap());
 
-    let conn = open_with_cache(&path, &cache).unwrap();
-    // sqlite_master reads are how the schema check inspects the database, so a
-    // reused open should not add any.
-    let reads: i64 = conn
-        .query_row(
-            "SELECT count(*) FROM sqlite_master WHERE name = 'canonical_schema_meta'",
-            [],
-            |row| row.get(0),
+    Connection::open(&path)
+        .unwrap()
+        .execute(
+            "UPDATE canonical_schema_meta SET value = ?1 WHERE key = 'version'",
+            [(SCHEMA_VERSION + 1).to_string()],
         )
         .unwrap();
-    assert_eq!(reads, 1, "expected the migrated schema to be present");
+
+    let reused = open_with_cache(&path, &cache);
     assert!(
-        conn.schema_validated,
-        "a connection reused from the pool must be marked schema-validated"
+        reused.is_ok(),
+        "a pooled connection must not revalidate the schema: {:?}",
+        reused.as_ref().err()
+    );
+    drop(reused);
+
+    let cold = open_with_cache(&path, &self::cache());
+    assert!(
+        matches!(&cold, Err(error) if error.contains("newer version")),
+        "a cold open must still validate the schema, got {:?}",
+        cold.as_ref().err()
     );
 }

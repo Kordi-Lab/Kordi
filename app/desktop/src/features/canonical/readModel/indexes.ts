@@ -21,11 +21,11 @@ import {
   delegationTerminalStatus,
   directCollaborationSourceEventForOutreachDuplicate,
   isProcessingPlaceholderText,
-  mapCanonicalMessageCached,
   ownerScopedAgentName,
   processingAgentMessage,
   stringValue,
 } from './messageMapping';
+import { identityIndex, mapCanonicalMessageCached } from './messageMappingCache';
 import { selfAgentMirrorDuplicateIds } from './selfAgentMirrorDedup';
 
 export type CanonicalIndexes = {
@@ -718,22 +718,6 @@ function buildTaskActivitiesBySessionId(
     activities.set(sessionId, sessionActivities.sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.id.localeCompare(right.id)));
   }
   return activities;
-}
-
-// Identities rarely change while messages arrive, and the per-message view
-// model cache keys on this table. Rebuilding it per pass would retire every
-// cached message, so it is derived once per identity list.
-const identityIndexes = new WeakMap<
-  CanonicalSessionState['identities'],
-  Map<string, CanonicalIdentity>
->();
-
-function identityIndex(identities: CanonicalSessionState['identities']) {
-  const cached = identityIndexes.get(identities);
-  if (cached) return cached;
-  const index = new Map(identities.map((identity) => [identity.id, identity]));
-  identityIndexes.set(identities, index);
-  return index;
 }
 
 export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | null): CanonicalIndexes {

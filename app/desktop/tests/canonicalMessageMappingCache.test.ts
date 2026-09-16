@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import {
   mapCanonicalMessageCached,
-} from '../src/features/canonical/readModel/messageMapping';
+} from '../src/features/canonical/readModel/messageMappingCache';
 import type { CanonicalIdentity, CanonicalSessionMessage } from '../src/kordi-app/types';
 
 function message(
@@ -147,4 +147,21 @@ test('the recorded context map still behaves like a map', () => {
     'the mapper should read the caller map through its own accessor',
   );
   assert.equal(replyTargets.size, 1, 'wrapping must not disturb the caller map');
+});
+
+test('a context map that appears later still retires a result mapped without it', () => {
+  // The recorder stands in an empty map when the caller passes none, so a
+  // table that shows up on a later pass is compared like any other read.
+  const identityById = identities();
+  const row = message({ parentMessageId: 'm0' });
+
+  const first = mapCanonicalMessageCached(row, identityById, 'human:me', {});
+  const second = mapCanonicalMessageCached(row, identityById, 'human:me', {
+    visibleReplyTargetByMessageId: new Map([['m0', 'visible-a']]),
+  });
+
+  assert.ok(first && second, 'expected both calls to map');
+  assert.equal(first.replyToMessageId, 'm0', 'without a reply table the parent id is the target');
+  assert.notEqual(first, second, 'a reply table that appears later must retire the earlier result');
+  assert.equal(second.replyToMessageId, 'visible-a');
 });
