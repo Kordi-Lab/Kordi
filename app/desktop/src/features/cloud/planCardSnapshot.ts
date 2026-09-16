@@ -64,14 +64,27 @@ export function latestPlanCardsByEvent(
   return latest;
 }
 
-/** Returns the same message when its card is already the newest snapshot. */
-export function withLatestPlanCard<T extends { planCard?: MessagePlanCard | null }>(
-  message: T,
-  latest: Map<string, MessagePlanCard>,
-): T {
-  const card = message.planCard;
-  if (!card) return message;
-  const newest = latest.get(card.eventId);
-  if (!newest || newest.revision <= card.revision) return message;
-  return { ...message, planCard: newest };
+/**
+ * One card per plan in a transcript. Every message that carries a card keeps
+ * only its text, except the newest one, which renders the newest snapshot so
+ * the card sits next to the latest activity and its buttons act at the
+ * current revision. Messages without a card come back unchanged.
+ */
+export function resolveTranscriptPlanCards<T extends { id?: string; planCard?: MessagePlanCard | null }>(
+  messages: readonly T[],
+): T[] {
+  const latest = latestPlanCardsByEvent(messages);
+  if (latest.size === 0) return [...messages];
+  // The newest message carrying each card, by position in the transcript.
+  const holder = new Map<string, number>();
+  messages.forEach((message, index) => {
+    if (message.planCard) holder.set(message.planCard.eventId, index);
+  });
+  return messages.map((message, index) => {
+    const card = message.planCard;
+    if (!card) return message;
+    if (holder.get(card.eventId) !== index) return { ...message, planCard: null };
+    const newest = latest.get(card.eventId);
+    return !newest || newest.revision <= card.revision ? message : { ...message, planCard: newest };
+  });
 }

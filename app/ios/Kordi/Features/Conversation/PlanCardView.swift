@@ -12,7 +12,12 @@ struct PlanCardView: View {
     @State private var busy = false
     @State private var notice: String?
 
-    private var view: PlanCard { current ?? card }
+    // A tap updates the card at once; a newer snapshot from the transcript
+    // then takes over, so the card never sticks on an old local result.
+    private var view: PlanCard {
+        if let current, current.revision > card.revision { return current }
+        return card
+    }
     private var me: PlanCardParticipant? { view.participant(ownAccountId) }
     private var canRespond: Bool { me != nil && view.state != .canceled && onAction != nil }
     private var canConfirm: Bool { (me?.organizer ?? false) && view.state == .awaitingConfirmation && onAction != nil }

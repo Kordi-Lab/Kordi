@@ -61,7 +61,9 @@ export function PlanCardContent({
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localState, setLocalState] = useState<MessagePlanCard | null>(null);
-  const view = localState ?? card;
+  // A click updates the card at once; a newer snapshot from the transcript
+  // then takes over, so the card never sticks on an old local result.
+  const view = localState && localState.revision > card.revision ? localState : card;
   const accountId = ownAccountId ?? sessionAccountId;
   const self = accountId ? view.participants.find((participant) => participant.participantId === accountId) : undefined;
   const isOpen = view.state !== 'canceled';

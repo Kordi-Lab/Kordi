@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { latestPlanCardsByEvent, withLatestPlanCard } from '@/features/cloud/planCardSnapshot';
+import { resolveTranscriptPlanCards } from '@/features/cloud/planCardSnapshot';
 import { Split } from 'lucide-react';
 
 import { shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
@@ -96,12 +96,9 @@ export function useChatTranscriptViewport({
     const entries = sourceTranscriptEntries.filter(({ message }) => ![message.id, message.entryId, ...(message.replyAliasIds ?? [])].some((id) => id && queuedIds.has(id))
       && !queuedIds.has(message.replyToMessageId ?? '')
       && !(message.turn?.status === 'queued' && !message.turn.completed));
-    const latestPlanCards = latestPlanCardsByEvent(entries.map(({ message }) => message));
-    if (latestPlanCards.size === 0) return entries;
-    return entries.map((entry) => {
-      const message = withLatestPlanCard(entry.message, latestPlanCards);
-      return message === entry.message ? entry : { ...entry, message };
-    });
+    if (!entries.some(({ message }) => message.planCard)) return entries;
+    const resolved = resolveTranscriptPlanCards<Message>(entries.map(({ message }) => message));
+    return entries.map((entry, index) => (resolved[index] === entry.message ? entry : { ...entry, message: resolved[index] }));
   }, [queuedMessages, sourceTranscriptEntries]);
   const syncedQueuedIds = useMemo(
     () => queuedTranscriptRequestIds(sourceTranscriptEntries.map(({ message }) => message)),
