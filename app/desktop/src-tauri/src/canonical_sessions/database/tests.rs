@@ -139,3 +139,31 @@ fn an_open_connection_cannot_acquire_a_replacement_files_cache_identity() {
         matches!(connection_cache_key(&original, &path), Err(error) if error.contains("changed"))
     );
 }
+
+#[test]
+#[cfg(unix)]
+fn reused_connections_skip_the_schema_check() {
+    // Sync applies many rows, and each one opens the database. Re-validating the
+    // schema on a connection that already passed costs two queries per open, so
+    // a reused handle must not repeat that work.
+    let storage = ScopedKordiStorageRoot::new("canonical-schema-recheck");
+    let path = storage.root().join("test.sqlite3");
+    let cache = cache();
+    drop(open_with_cache(&path, &cache).unwrap());
+
+    let conn = open_with_cache(&path, &cache).unwrap();
+    // sqlite_master reads are how the schema check inspects the database, so a
+    // reused open should not add any.
+    let reads: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name = 'canonical_schema_meta'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(reads, 1, "expected the migrated schema to be present");
+    assert!(
+        conn.schema_validated,
+        "a connection reused from the pool must be marked schema-validated"
+    );
+}

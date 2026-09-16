@@ -25,6 +25,10 @@ pub(crate) struct DatabaseConnection {
     conn: Option<Connection>,
     key: Option<CacheKey>,
     cache: ConnectionCache,
+    // A pooled handle already migrated and validated this database, so the
+    // schema check is redundant for it. Sync opens the database once per row,
+    // and that check costs two queries every time.
+    pub(super) schema_validated: bool,
 }
 
 impl Deref for DatabaseConnection {
@@ -55,6 +59,9 @@ impl Drop for DatabaseConnection {
                 .as_ref()
                 != Some(&key)
         {
+            return;
+        }
+        if !self.schema_validated {
             return;
         }
         if let Ok(mut idle) = self.cache.lock() {
@@ -171,12 +178,18 @@ fn open_with_cache(path: &Path, cache: &ConnectionCache) -> Result<DatabaseConne
         )
         .map_err(|err| err.to_string())?;
     }
-    initialize_schema(&conn)?;
+    // Only a cold open needs migration and validation. Pooled handles were
+    // validated before they were returned, and foreign_keys is a connection
+    // setting that survives with the handle.
+    if !reused {
+        initialize_schema(&conn)?;
+    }
     let key = connection_cache_key(&conn, &normalized)?;
     Ok(DatabaseConnection {
         conn: Some(conn),
         key,
         cache: cache.clone(),
+        schema_validated: true,
     })
 }
 
