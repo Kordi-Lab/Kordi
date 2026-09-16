@@ -148,85 +148,30 @@ async fn handle(
         account_id: session.account_id.clone(),
         on_behalf_of_conversation: None,
     };
-    let change = MemberChange::from_request(&request);
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
-            // A member's vote must reach everyone, not only the device that
-            // pressed the button: Pip reposts the fresh card at once, with no
-            // model call, so every transcript shows the same snapshot.
-            if let (Some(pip), Some(change)) = (state.pip(), change) {
-                let text = change.describe(&row);
-                if let Err(error) = crate::pip::store::post_member_update(
+            // A member's response belongs on the card, not in the chat: Pip's
+            // message that carries this card is refreshed in place for
+            // everyone, with no new line and no model run.
+            if let Some(pip) = state.pip() {
+                match crate::pip::store::refresh_card_message(
                     state.db_pool(),
                     &pip.config().account_id,
                     &row,
-                    &text,
                 )
                 .await
                 {
-                    eprintln!("[pip] Could not post the plan card update: {error}");
+                    Ok(true) => {}
+                    Ok(false) => eprintln!(
+                        "[pip] No Pip message carries plan card {} yet; the next run will post it",
+                        row.event_id
+                    ),
+                    Err(error) => eprintln!("[pip] Could not refresh the plan card: {error}"),
                 }
             }
             Json(row).into_response()
         }
         Err(response) => response,
-    }
-}
-
-/// What a signed-in member just did to a card, in the words Pip uses to tell
-/// the group. Proposals are left to Pip's own runs.
-enum MemberChange {
-    Rsvp { participant_id: String, going: bool },
-    Confirm { account_id: String },
-    Reopen { reason: String },
-    Cancel { account_id: String },
-}
-
-impl MemberChange {
-    fn from_request(request: &Request) -> Option<Self> {
-        match request {
-            Request::Propose { .. } => None,
-            Request::Rsvp {
-                participant_id,
-                rsvp,
-                ..
-            } => Some(Self::Rsvp {
-                participant_id: participant_id.clone(),
-                going: rsvp == "yes",
-            }),
-            Request::Confirm { confirmed_by, .. } => Some(Self::Confirm {
-                account_id: confirmed_by.clone(),
-            }),
-            Request::Reopen { reason, .. } => Some(Self::Reopen {
-                reason: reason.trim().to_string(),
-            }),
-            Request::Cancel { canceled_by, .. } => Some(Self::Cancel {
-                account_id: canceled_by.clone(),
-            }),
-        }
-    }
-
-    fn describe(&self, row: &PlanCardRow) -> String {
-        let name = |account_id: &str| {
-            row.participants
-                .iter()
-                .find(|participant| participant.account_id == account_id)
-                .map(|participant| participant.display_name.clone())
-                .unwrap_or_else(|| "A member".to_string())
-        };
-        match self {
-            Self::Rsvp {
-                participant_id,
-                going: true,
-            } => format!("{} is in.", name(participant_id)),
-            Self::Rsvp {
-                participant_id,
-                going: false,
-            } => format!("{} can't make it.", name(participant_id)),
-            Self::Confirm { account_id } => format!("{} confirmed the plan.", name(account_id)),
-            Self::Reopen { reason } => format!("The plan is open again: {reason}"),
-            Self::Cancel { account_id } => format!("{} canceled the plan.", name(account_id)),
-        }
     }
 }
 

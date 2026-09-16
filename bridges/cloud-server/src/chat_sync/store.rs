@@ -241,7 +241,7 @@ pub use cursors::{advance_delivery_cursor, advance_read_cursor, bootstrap, histo
 pub use members::{accept_invited_conversation_member, add_conversation_members};
 pub use message::{
     conversation_id_for_session, delete_message, edit_message, load_message_snapshot,
-    replace_message_snapshot, send_message,
+    refresh_server_message_content, replace_message_snapshot, send_message,
 };
 pub(crate) use message::{replace_server_message_in_transaction, send_message_in_transaction};
 use reaction::reactions_by_message;

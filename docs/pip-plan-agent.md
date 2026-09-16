@@ -65,9 +65,10 @@ confirm button. Card instants are always RFC 3339 with an offset, whether
 they arrive in a block or as the reply to an action.
 
 A member's button press goes to `POST /v1/cloud/plan_cards` as that member.
-After a successful change the route posts a one-line Pip message ("Riya is
-in.") with the fresh card and moves Pip's cursor past it, so every device
-shows the same snapshot and no model run is spent on a vote.
+After a successful change the route refreshes the card inside Pip's newest
+message that carries it, in place and without an edit marker, so every
+device shows the response on the card itself. No chat line and no model run
+is spent on a vote; Pip's own messages stay reserved for guiding the group.
 
 A transcript shows one card per plan. Only the newest message carrying a
 card renders it, at the newest snapshot known for that plan; every earlier

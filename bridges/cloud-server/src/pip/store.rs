@@ -507,49 +507,51 @@ pub(crate) fn card_block_from_row(row: &PlanCardRow) -> Value {
     })
 }
 
-/// Posts a short Pip message carrying the card after a member changed it
-/// from a client. No model run is involved, and Pip's cursor moves past the
-/// message so the change does not wake a sweep.
-pub(crate) async fn post_member_update(
+/// Keeps the card in Pip's newest message current after a member changed it
+/// from a client. The message is refreshed in place, so the group sees the
+/// vote on the card itself, with no new chat line and no model run. Returns
+/// false when no Pip message carries this card yet.
+pub(crate) async fn refresh_card_message(
     pool: &PgPool,
     pip_account_id: &str,
     row: &PlanCardRow,
-    text: &str,
-) -> Result<(), sqlx_core::Error> {
+) -> Result<bool, sqlx_core::Error> {
     let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
-        return Ok(());
+        return Ok(false);
     };
-    let request = SendMessageRequest {
-        client_message_id: Uuid::new_v5(
-            &Uuid::NAMESPACE_OID,
-            format!("{}:{}:member", row.event_id, row.revision).as_bytes(),
-        ),
-        kind: "text".to_string(),
-        content: json!({
-            "schema": 1,
-            "blocks": [
-                {"type": "text", "text": encode_pip_message(text)},
-                card_block_from_row(row),
-            ],
-            "legacy_attachments": [],
-        }),
-        reply_to_message_id: None,
-        attachment_ids: Vec::new(),
-    };
-    let outcome =
-        crate::chat_sync::store::send_message(pool, pip_account_id, conversation_id, request)
-            .await
-            .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-    query(
-        "UPDATE cloud_pip_conversation_state
-         SET seen_sequence = GREATEST(seen_sequence, $2), updated_at = now()
-         WHERE conversation_id = $1",
+    let probe = json!([{"type": "plan_card", "eventId": row.event_id}]);
+    let holder: Option<(Uuid, Value)> = query_as(
+        "SELECT message_id, content FROM cloud_chat_messages
+         WHERE conversation_id = $1 AND sender_account_id = $2 AND deleted_at IS NULL
+           AND content->'blocks' @> $3::jsonb
+         ORDER BY conversation_sequence DESC LIMIT 1",
     )
     .bind(conversation_id)
-    .bind(outcome.value.conversation_sequence)
-    .execute(pool)
+    .bind(pip_account_id)
+    .bind(&probe)
+    .fetch_optional(pool)
     .await?;
-    Ok(())
+    let Some((message_id, mut content)) = holder else {
+        return Ok(false);
+    };
+    if let Some(blocks) = content.get_mut("blocks").and_then(Value::as_array_mut) {
+        for block in blocks.iter_mut() {
+            if block.get("type").and_then(Value::as_str) == Some("plan_card")
+                && block.get("eventId").and_then(Value::as_str) == Some(row.event_id.as_str())
+            {
+                *block = card_block_from_row(row);
+            }
+        }
+    }
+    crate::chat_sync::store::refresh_server_message_content(
+        pool,
+        pip_account_id,
+        message_id,
+        content,
+    )
+    .await
+    .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    Ok(true)
 }
 
 struct ActiveRun {
