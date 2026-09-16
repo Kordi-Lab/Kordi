@@ -1,4 +1,5 @@
 import type { Conversation } from './types/conversation';
+import type { MessagePlanCard } from '@/kordi-app/types/message';
 export type { Conversation } from './types/conversation';
 import type { DesktopChatSessionSummary } from '@/features/chat/desktopChatSessionSummary';
 import type { CollaborationMessageDirection } from '@/features/collaboration/messages';
@@ -812,6 +813,7 @@ export type DesktopCollaborationConversationMessage = {
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
   messageKind?: string | null; voiceMessage?: Message['voiceMessage']; readReceiptSummary?: Message['readReceiptSummary'];
+  planCard?: MessagePlanCard | null;
   localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; cloudMessageVersion?: number | null; editedAt?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
 };
 export type DesktopCollaborationSessionThreadMessage = {

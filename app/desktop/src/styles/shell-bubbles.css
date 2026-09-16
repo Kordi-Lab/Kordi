@@ -472,3 +472,54 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 .app-queued-message-text {
   color: rgba(255, 251, 235, 0.96);
 }
+
+/* --- Pip plan card --- */
+.app-plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 232px;
+  max-width: 320px;
+  margin-top: 6px;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: var(--app-chat-bubble-peer-bg);
+  border: 1px solid var(--app-chat-bubble-peer-border);
+  color: var(--app-chat-bubble-peer-text);
+}
+.app-plan-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.app-plan-card-pill {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px; line-height: 16px;
+}
+.app-plan-card-pill-polling { background: color-mix(in oklab, #4c5fd5 16%, transparent); color: #4c5fd5; }
+.app-plan-card-pill-await { background: color-mix(in oklab, #b5670c 16%, transparent); color: #b5670c; }
+.app-plan-card-pill-confirmed { background: color-mix(in oklab, #1e8a5f 16%, transparent); color: #1e8a5f; }
+.app-plan-card-pill-canceled { background: color-mix(in oklab, #b23b3b 16%, transparent); color: #b23b3b; }
+.app-plan-card-count { font-size: 11px; color: var(--app-chat-meta-peer); font-variant-numeric: tabular-nums; }
+.app-plan-card-title { font-size: 15px; font-weight: 600; line-height: 1.25; text-wrap: balance; }
+.app-plan-card-meta { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--app-chat-meta-peer); }
+.app-plan-card-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+.app-plan-card-unresolved { color: #b5670c; font-size: 11.5px; }
+.app-plan-card-people { display: flex; flex-wrap: wrap; gap: 6px; }
+.app-plan-card-person { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.app-plan-card-avatar {
+  width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; background: color-mix(in oklab, var(--app-chat-meta-peer) 25%, transparent);
+  color: var(--app-chat-bubble-peer-text);
+}
+.app-plan-card-person-yes .app-plan-card-avatar { background: #1e8a5f; color: #fff; }
+.app-plan-card-person-no .app-plan-card-avatar { background: transparent; border: 1px dashed var(--app-chat-meta-peer); opacity: 0.7; }
+.app-plan-card-person-no .app-plan-card-person-name { text-decoration: line-through; opacity: 0.7; }
+.app-plan-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.app-plan-card-button {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500;
+  padding: 6px 10px; border-radius: 9px; border: 1px solid var(--app-chat-bubble-peer-border);
+  background: transparent; color: inherit; cursor: pointer;
+}
+.app-plan-card-button:hover:not(:disabled) { background: color-mix(in oklab, var(--app-chat-accent) 10%, transparent); }
+.app-plan-card-button:disabled { opacity: 0.55; cursor: default; }
+.app-plan-card-button:focus-visible { outline: 2px solid var(--app-chat-accent); outline-offset: 1px; }
+.app-plan-card-button-active { border-color: var(--app-chat-accent); background: color-mix(in oklab, var(--app-chat-accent) 14%, transparent); }
+.app-plan-card-button-primary { background: var(--app-chat-accent); color: var(--app-chat-accent-text); border-color: var(--app-chat-accent); }
+.app-plan-card-notice { font-size: 11.5px; color: #b23b3b; }

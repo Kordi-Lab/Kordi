@@ -438,9 +438,66 @@ async fn build_input(
     }))
 }
 
+/// The current card of a conversation as a `plan_card` message block, so
+/// clients can render the card inline with Pip's message. `None` when the
+/// conversation has no card or the card was not touched since `since`.
+async fn plan_card_block(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    since: &str,
+) -> Result<Option<Value>, sqlx_core::Error> {
+    let card: Option<CardRow> = query_as(
+        "SELECT event_id, revision, state, title, start_at::text, end_at::text, location,
+                unresolved_fields
+         FROM cloud_plan_cards
+         WHERE conversation_id = $1 AND updated_at >= $2::timestamptz
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(conversation_id)
+    .bind(since)
+    .fetch_optional(pool)
+    .await?;
+    let Some((event_id, revision, state, title, start_at, end_at, location, unresolved)) = card
+    else {
+        return Ok(None);
+    };
+    let participants: Vec<(String, String, bool, String)> = query_as(
+        "SELECT account_id, display_name, organizer, rsvp
+         FROM cloud_plan_card_participants WHERE event_id = $1
+         ORDER BY organizer DESC, display_name ASC",
+    )
+    .bind(&event_id)
+    .fetch_all(pool)
+    .await?;
+    let rfc3339 = |value: Option<String>| {
+        value
+            .as_deref()
+            .and_then(parse_pg_timestamp)
+            .map(|instant| instant.to_rfc3339())
+    };
+    Ok(Some(json!({
+        "type": "plan_card",
+        "eventId": event_id,
+        "revision": revision,
+        "state": state,
+        "title": title,
+        "startAt": rfc3339(start_at),
+        "endAt": rfc3339(end_at),
+        "location": location,
+        "unresolvedFields": unresolved,
+        "participants": participants.into_iter().map(|(account_id, display_name, organizer, rsvp)| json!({
+            "participantId": account_id,
+            "displayName": display_name,
+            "organizer": organizer,
+            "rsvp": rsvp,
+        })).collect::<Vec<_>>(),
+    })))
+}
+
 struct ActiveRun {
     conversation_id: Uuid,
     owner_account_id: String,
+    created_at: String,
     input: Value,
 }
 
@@ -449,8 +506,8 @@ async fn active_run(
     run_id: &str,
     runner_id: &str,
 ) -> Result<Option<ActiveRun>, sqlx_core::Error> {
-    let row: Option<(String, Uuid, String)> = query_as(
-        "SELECT run.prompt, state.conversation_id, run.owner_account_id
+    let row: Option<(String, Uuid, String, String)> = query_as(
+        "SELECT run.prompt, state.conversation_id, run.owner_account_id, run.created_at
          FROM cloud_agent_fallback_runs run
          JOIN cloud_pip_conversation_state state ON state.active_run_id = run.run_id
          WHERE run.run_id = $1 AND run.claimed_by = $2 AND run.status IN ('leased', 'running')",
@@ -459,13 +516,14 @@ async fn active_run(
     .bind(runner_id)
     .fetch_optional(pool)
     .await?;
-    Ok(
-        row.map(|(prompt, conversation_id, owner_account_id)| ActiveRun {
+    Ok(row.map(
+        |(prompt, conversation_id, owner_account_id, created_at)| ActiveRun {
             conversation_id,
             owner_account_id,
+            created_at,
             input: serde_json::from_str(&prompt).unwrap_or(Value::Null),
-        }),
-    )
+        },
+    ))
 }
 
 /// Records a finished run: posts Pip's message (if any) into the conversation
@@ -488,13 +546,23 @@ pub async fn complete(
 
     let mut response_message_id: Option<String> = None;
     let mut posted_sequence: Option<i64> = None;
-    if let Some(text) = message {
+    let card_block = plan_card_block(pool, run.conversation_id, &run.created_at).await?;
+    let text = match (message, card_block.is_some()) {
+        (Some(text), _) => Some(text.to_string()),
+        (None, true) => Some("Plan card updated.".to_string()),
+        (None, false) => None,
+    };
+    if let Some(text) = text {
+        let mut blocks = vec![json!({"type": "text", "text": encode_pip_message(&text)})];
+        if let Some(block) = card_block {
+            blocks.push(block);
+        }
         let request = SendMessageRequest {
             client_message_id: Uuid::new_v5(&Uuid::NAMESPACE_OID, run_id.as_bytes()),
             kind: "text".to_string(),
             content: json!({
                 "schema": 1,
-                "blocks": [{"type": "text", "text": encode_pip_message(text)}],
+                "blocks": blocks,
                 "legacy_attachments": [],
             }),
             reply_to_message_id: None,

@@ -1,4 +1,5 @@
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
+import type { MessagePlanCard, MessagePlanCardParticipant } from '@/kordi-app/types/message';
 import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
@@ -96,6 +97,53 @@ export function chatTextContent(
       },
     } : {}),
   };
+}
+
+const PLAN_CARD_STATES = new Set(['polling', 'awaiting_confirmation', 'confirmed', 'canceled']);
+
+function planCardFromChatContent(content: unknown): MessagePlanCard | null {
+  if (!content || typeof content !== 'object') return null;
+  const blocks = (content as { blocks?: unknown }).blocks;
+  if (!Array.isArray(blocks)) return null;
+  for (const value of blocks) {
+    if (!value || typeof value !== 'object') continue;
+    const block = value as Record<string, unknown>;
+    if (block.type !== 'plan_card') continue;
+    const eventId = typeof block.eventId === 'string' ? block.eventId : '';
+    const title = typeof block.title === 'string' ? block.title : '';
+    const state = typeof block.state === 'string' && PLAN_CARD_STATES.has(block.state) ? block.state : null;
+    const revision = typeof block.revision === 'number' ? block.revision : null;
+    if (!eventId || !title || !state || revision === null) continue;
+    const participants = Array.isArray(block.participants)
+      ? block.participants.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object') return [];
+        const participant = entry as Record<string, unknown>;
+        const participantId = typeof participant.participantId === 'string' ? participant.participantId : '';
+        if (!participantId) return [];
+        const rsvp: MessagePlanCardParticipant['rsvp'] = participant.rsvp === 'yes' || participant.rsvp === 'no' ? participant.rsvp : 'pending';
+        return [{
+          participantId,
+          displayName: typeof participant.displayName === 'string' && participant.displayName.trim() ? participant.displayName : 'Member',
+          organizer: participant.organizer === true,
+          rsvp,
+        }];
+      })
+      : [];
+    return {
+      eventId,
+      revision,
+      state: state as MessagePlanCard['state'],
+      title,
+      startAt: typeof block.startAt === 'string' ? block.startAt : null,
+      endAt: typeof block.endAt === 'string' ? block.endAt : null,
+      location: typeof block.location === 'string' ? block.location : null,
+      unresolvedFields: Array.isArray(block.unresolvedFields)
+        ? block.unresolvedFields.filter((field): field is string => typeof field === 'string')
+        : [],
+      participants,
+    };
+  }
+  return null;
 }
 
 function voiceMessageFromChatContent(content: unknown): CloudVoiceMessage | null {
@@ -354,6 +402,7 @@ export function cloudMessageFromChatSync(
     sessionId: conversation.legacy_session_id ?? conversation.id,
     attachments: attachmentsFromChatContent(message.content),
     voiceMessage: voiceMessageFromChatContent(message.content),
+    planCard: planCardFromChatContent(message.content),
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
     clientMessageId: message.client_message_id,

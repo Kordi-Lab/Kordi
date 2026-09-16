@@ -1,4 +1,5 @@
 import { CloudPinClient } from './cloudPinClient';
+import type { MessagePlanCard } from '@/kordi-app/types/message';
 import { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLookup,type CloudProviderAuthSnapshot,type CloudProviderAuthSnapshotInput } from "./cloudAgentRuntimeTypes";
 // Cloud-edition HTTP client. Authentication and ancillary account features
 // remain under /v1/cloud; durable chat transport is exclusively /v2/chat.
@@ -156,6 +157,11 @@ export type SendCloudMessageOptions = {
   sharedTitle?: string | null;
 };
 
+export type PlanCardActionRequest =
+  | { action: 'rsvp'; eventId: string; revision: number; participantId: string; rsvp: 'yes' | 'no'; note?: string }
+  | { action: 'confirm'; eventId: string; revision: number; confirmedBy: string }
+  | { action: 'cancel'; eventId: string; revision: number; canceledBy: string; reason?: string };
+
 export type CloudMessage = {
   messageId: string;
   fromAccountId: string;
@@ -168,6 +174,7 @@ export type CloudMessage = {
   direction: CloudMessageDirection;
   sessionId?: string | null;
   attachments?: CloudMessageAttachment[]; voiceMessage?: CloudVoiceMessage | null;
+  planCard?: MessagePlanCard | null;
   conversationId?: string | null;
   conversationSequence?: number | null;
   clientMessageId?: string | null;
@@ -661,6 +668,21 @@ export class CloudAuthClient {
     );
     if (!response) throw new Error('Empty response from cloud server.');
     return response.request;
+  }
+
+  /** Acts on a shared plan card as the signed-in member. */
+  async planCardAction(token: string, request: PlanCardActionRequest): Promise<MessagePlanCard> {
+    const response = await this.send<MessagePlanCard>(
+      '/v1/cloud/plan_cards',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(request),
+      },
+      'Could not update the plan card.',
+    );
+    if (!response) throw new Error('Empty response from cloud server.');
+    return { ...response, unresolvedFields: response.unresolvedFields ?? [], participants: response.participants ?? [] };
   }
 
   async listContactRequests(token: string): Promise<CloudContactRequest[]> {
