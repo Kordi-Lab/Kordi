@@ -59,7 +59,10 @@ type ActiveWrite = {
 
 const cleanText = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 
-export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessageAttachment | null {
+export function cloudMessageAttachmentMetadataOnly(
+  value: unknown,
+  messageKind?: string | null,
+): CloudMessageAttachment | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const attachmentId = cleanText(record.attachmentId);
@@ -78,7 +81,11 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
     attachmentId,
     name,
     kind,
-    ...(record.subtype === 'sticker' && kind === 'image' ? { subtype: 'sticker' as const } : {}),
+    // Rows cached before the subtype left the wire carry none, so fall back to
+    // the message kind rather than re-rendering them as full-size images.
+    ...((record.subtype === 'sticker' || messageKind === 'sticker') && kind === 'image'
+      ? { subtype: 'sticker' as const }
+      : {}),
     mimeType,
     sizeBytes,
     ...(normalizedImagePixelDimensions(record.widthPixels, record.heightPixels) ?? {}),
@@ -90,7 +97,7 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
 
 export function cloudMessageMetadataOnly(message: CloudMessage): CloudMessage {
   const attachments = (message.attachments ?? [])
-    .map(cloudMessageAttachmentMetadataOnly)
+    .map((attachment) => cloudMessageAttachmentMetadataOnly(attachment, message.messageKind))
     .filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
   const voiceMessage = cloudVoiceMessageMetadataOnly(message.voiceMessage);
   const {
@@ -115,13 +122,16 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const createdAt = cleanText(record.createdAt);
   if (!messageId || !fromAccountId || !toAccountId || !createdAt) return null;
   if (fromAccountId !== accountId && toAccountId !== accountId) return null;
+  const cachedMessageKind = cleanText(record.messageKind);
   const attachments = Array.isArray(record.attachments)
-    ? record.attachments.map(cloudMessageAttachmentMetadataOnly).filter((item): item is CloudMessageAttachment => Boolean(item))
+    ? record.attachments
+      .map((attachment) => cloudMessageAttachmentMetadataOnly(attachment, cachedMessageKind))
+      .filter((item): item is CloudMessageAttachment => Boolean(item))
     : [];
   const sessionId = cleanText(record.sessionId);
   const conversationId = cleanText(record.conversationId);
   const clientMessageId = cleanText(record.clientMessageId);
-  const messageKind = cleanText(record.messageKind);
+  const messageKind = cachedMessageKind;
   const voiceMessage = cloudVoiceMessageMetadataOnly(record.voiceMessage);
   const canonicalHistoryLocalMessageId = cleanText(record.canonicalHistoryLocalMessageId);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)

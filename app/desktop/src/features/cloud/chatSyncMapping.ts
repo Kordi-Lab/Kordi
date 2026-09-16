@@ -251,7 +251,14 @@ function groupMessageBody(
   });
 }
 
-function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] {
+// The wire carries no sticker subtype, so restore it from the message kind the
+// way iOS does in Core/API/CloudDirectMessageProjector.swift. Sizing, height
+// estimation, and styling all read the subtype, and a synced message that lost
+// it would re-render a 180px sticker as a 464px image card.
+function attachmentsFromChatContent(
+  content: unknown,
+  messageKind?: string | null,
+): CloudMessageAttachment[] {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
   const attachments = (content as { legacy_attachments?: unknown }).legacy_attachments;
   if (!Array.isArray(attachments)) return [];
@@ -267,7 +274,9 @@ function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] 
       attachmentId,
       name,
       kind,
-      ...(record.subtype === 'sticker' && kind === 'image' ? { subtype: 'sticker' as const } : {}),
+      ...((record.subtype === 'sticker' || messageKind === 'sticker') && kind === 'image'
+        ? { subtype: 'sticker' as const }
+        : {}),
       mimeType: typeof record.mimeType === 'string' ? record.mimeType : null,
       sizeBytes: typeof record.sizeBytes === 'number' ? record.sizeBytes : null,
       ...(dimensions ?? {}),
@@ -357,7 +366,7 @@ export function cloudMessageFromChatSync(
     ...(outgoing && conversation.kind === 'group' ? { readByAccountIds } : {}),
     direction: outgoing ? 'outgoing' : 'incoming',
     sessionId: conversation.legacy_session_id ?? conversation.id,
-    attachments: attachmentsFromChatContent(message.content),
+    attachments: attachmentsFromChatContent(message.content, message.kind),
     voiceMessage: voiceMessageFromChatContent(message.content),
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
