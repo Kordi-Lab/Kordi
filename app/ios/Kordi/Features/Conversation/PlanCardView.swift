@@ -127,7 +127,9 @@ struct PlanCardView: View {
                         .frame(width: 14, height: 14)
                         Text(option.label)
                             .font(.system(size: 12))
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 4)
                         HStack(spacing: -4) {
                             ForEach(option.votes, id: \.self) { voter in

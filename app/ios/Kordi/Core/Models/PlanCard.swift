@@ -177,15 +177,18 @@ struct PlanCardAction: Encodable, Hashable {
 }
 
 /// One card per plan in a transcript: the newest message carrying a card
-/// renders the newest snapshot, every earlier copy keeps only its text.
+/// renders the newest snapshot, every earlier copy keeps only its text. A
+/// canceled plan also collapses once a newer plan appears after it.
 struct PlanCardTranscriptResolution {
     private var latest: [String: PlanCard] = [:]
     private var holderMessageID: [String: String] = [:]
+    private var newestEventID: String?
 
     init(messages: [ChatMessage]) {
         for message in messages {
             guard let card = message.planCard else { continue }
             holderMessageID[card.eventId] = message.id
+            newestEventID = card.eventId
             if let known = latest[card.eventId], known.revision >= card.revision { continue }
             latest[card.eventId] = card
         }
@@ -196,9 +199,11 @@ struct PlanCardTranscriptResolution {
     func resolve(_ message: ChatMessage) -> ChatMessage {
         guard let card = message.planCard else { return message }
         var copy = message
-        if holderMessageID[card.eventId] != message.id {
+        let newest = latest[card.eventId] ?? card
+        if holderMessageID[card.eventId] != message.id
+            || (newest.state == .canceled && newestEventID != card.eventId) {
             copy.planCard = nil
-        } else if let newest = latest[card.eventId], newest.revision > card.revision {
+        } else if newest.revision > card.revision {
             copy.planCard = newest
         } else {
             return message

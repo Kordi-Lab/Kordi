@@ -95,13 +95,17 @@ export function resolveTranscriptPlanCards<T extends { id?: string; planCard?: M
   if (latest.size === 0) return [...messages];
   // The newest message carrying each card, by position in the transcript.
   const holder = new Map<string, number>();
+  let newestEventId: string | null = null;
   messages.forEach((message, index) => {
-    if (message.planCard) holder.set(message.planCard.eventId, index);
+    if (!message.planCard) return;
+    holder.set(message.planCard.eventId, index);
+    newestEventId = message.planCard.eventId;
   });
   return messages.map((message, index) => {
     const card = message.planCard;
     if (!card) return message;
-    if (holder.get(card.eventId) !== index) return { ...message, planCard: null };
+    const canceledAndSuperseded = (latest.get(card.eventId) ?? card).state === 'canceled' && newestEventId !== card.eventId;
+    if (holder.get(card.eventId) !== index || canceledAndSuperseded) return { ...message, planCard: null };
     const newest = latest.get(card.eventId);
     return !newest || newest.revision <= card.revision ? message : { ...message, planCard: newest };
   });
