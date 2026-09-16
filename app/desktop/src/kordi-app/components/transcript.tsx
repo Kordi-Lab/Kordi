@@ -57,6 +57,7 @@ import { RequestReplyLine,SourceMessageQuote,ThreadReplyLine } from './transcrip
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { VoiceMessageContent } from './voiceMessage';
 import { PlanCardContent } from './planCard';
+import { isPipAvatarUrl, KORDI_PIP_TAG } from '@/features/pip/pipIdentity';
 export { MessageContextMenuContent } from './messageContextMenuContent';
 export type { MessageContextMenuActionHandlers } from './messageContextMenuContent';
 export { messageContextMenuPosition } from './messageContextMenuPosition';
@@ -711,7 +712,7 @@ function MessageBubbleView({
   const messageSurfaceContent = (
     <>
       {showInlineHumanSender ? (
-        <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4">{msg.sender}</div>
+        <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4">{msg.sender}{isPipAvatarUrl(msg.senderProfileImageUrl) ? <span className="app-sender-tag">{KORDI_PIP_TAG}</span> : null}</div>
       ) : null}
       {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
       {msg.sourceMessage && !isForwardedMessage ? (

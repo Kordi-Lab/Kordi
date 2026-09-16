@@ -570,10 +570,21 @@ struct MessageBubble: View, Equatable {
     private var bubbleContents: some View {
         VStack(alignment: .leading, spacing: 7) {
             if showAuthor && message.author == .person {
-                Text(message.authorName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(chatTheme.accent)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(message.authorName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(chatTheme.accent)
+                        .lineLimit(1)
+                    if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatarSeed) {
+                        Text(KordiPipIdentity.tag.uppercased())
+                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .tracking(0.4)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(red: 0.941, green: 0.706, blue: 0.161).opacity(0.18), in: Capsule())
+                            .foregroundStyle(Color(red: 0.353, green: 0.239, blue: 0.0))
+                    }
+                }
             }
 
             if let source = visibleForwardSource {

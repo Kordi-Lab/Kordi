@@ -523,3 +523,10 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 .app-plan-card-button-active { border-color: var(--app-chat-accent); background: color-mix(in oklab, var(--app-chat-accent) 14%, transparent); }
 .app-plan-card-button-primary { background: var(--app-chat-accent); color: var(--app-chat-accent-text); border-color: var(--app-chat-accent); }
 .app-plan-card-notice { font-size: 11.5px; color: #b23b3b; }
+
+.app-sender-tag {
+  display: inline-block; margin-left: 6px; vertical-align: 1px;
+  font-family: ui-monospace, "IBM Plex Mono", monospace; font-size: 9.5px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 999px; background: #fff4d6; color: #5a3d00;
+}
+:root[data-theme="dark"] .app-sender-tag, .dark .app-sender-tag { background: #3a2c0c; color: #fff1c9; }

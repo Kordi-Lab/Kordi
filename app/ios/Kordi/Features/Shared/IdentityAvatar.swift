@@ -11,6 +11,7 @@ struct IdentityAvatar: View {
     var seed: String? = nil
 
     private var normalizedImageSource: String? {
+        if isPip { return nil }
         if let source = AvatarImageLoader.normalizedSource(imageSource) { return source }
         guard kind == .agent, !isKordiSupport, let seed = seed?.nonEmpty else { return nil }
         return CanonicalAvatarSystem.previewURL(
@@ -21,6 +22,10 @@ struct IdentityAvatar: View {
 
     private var isKordiSupport: Bool {
         KordiSupportIdentity.matches(name: name, seed: seed)
+    }
+
+    private var isPip: Bool {
+        KordiPipIdentity.matches(name: name, seed: seed)
     }
 
     var body: some View {
@@ -42,7 +47,9 @@ struct IdentityAvatar: View {
 
     @ViewBuilder
     private var fallback: some View {
-        if isKordiSupport {
+        if isPip {
+            PipMarkAvatar()
+        } else if isKordiSupport {
             KordiSupportAvatar()
         } else {
             switch kind {
@@ -118,6 +125,60 @@ struct AvatarActionPill: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(uploadLabel)
+    }
+}
+
+/// Pip, the built-in plan agent. Matched by its system account id or the
+/// exact display name, the same way Kordi Support is.
+enum KordiPipIdentity {
+    static let accountId = "acct_kordi_pip"
+    static let agentId = "cloud_agent_kordi_pip"
+    static let displayName = "Pip"
+    static let tag = "Built-in agent"
+
+    static func matches(name: String?, seed: String?) -> Bool {
+        let normalizedSeed = seed?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedSeed == accountId || normalizedSeed == agentId { return true }
+        let normalizedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalizedName == displayName && (normalizedSeed?.isEmpty ?? true)
+    }
+}
+
+/// Pip's mark: a chick with the crack it just made in its shell.
+struct PipMarkAvatar: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let s = proxy.size.width / 64
+            ZStack {
+                Circle().fill(Color(red: 1.0, green: 0.957, blue: 0.839))
+                Circle().fill(Color(red: 0.941, green: 0.706, blue: 0.161))
+                    .frame(width: 44 * s, height: 44 * s)
+                    .offset(y: 2 * s)
+                Circle().fill(Color(red: 0.88, green: 0.33, blue: 0.35).opacity(0.35))
+                    .frame(width: 7 * s, height: 7 * s).offset(x: -13 * s, y: 8 * s)
+                Circle().fill(Color(red: 0.88, green: 0.33, blue: 0.35).opacity(0.35))
+                    .frame(width: 7 * s, height: 7 * s).offset(x: 13 * s, y: 8 * s)
+                Circle().fill(Color(red: 0.09, green: 0.1, blue: 0.12))
+                    .frame(width: 5.6 * s, height: 5.6 * s).offset(x: -7.5 * s, y: -2 * s)
+                Circle().fill(Color(red: 0.09, green: 0.1, blue: 0.12))
+                    .frame(width: 5.6 * s, height: 5.6 * s).offset(x: 7.5 * s, y: -2 * s)
+                Path { path in
+                    path.move(to: CGPoint(x: 32 * s, y: 34 * s))
+                    path.addLine(to: CGPoint(x: 27.5 * s, y: 39.5 * s))
+                    path.addLine(to: CGPoint(x: 36.5 * s, y: 39.5 * s))
+                    path.closeSubpath()
+                }
+                .fill(Color(red: 0.886, green: 0.451, blue: 0.11))
+                Path { path in
+                    path.move(to: CGPoint(x: 23 * s, y: 14 * s))
+                    path.addLine(to: CGPoint(x: 26.6 * s, y: 18.6 * s))
+                    path.addLine(to: CGPoint(x: 23.9 * s, y: 22.2 * s))
+                    path.addLine(to: CGPoint(x: 28.4 * s, y: 24.9 * s))
+                }
+                .stroke(Color(red: 0.09, green: 0.1, blue: 0.12).opacity(0.55), style: StrokeStyle(lineWidth: 2 * s, lineCap: .round))
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
     }
 }
 
