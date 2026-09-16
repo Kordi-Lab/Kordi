@@ -18,7 +18,8 @@ use crate::{
 };
 
 use super::models::{
-    PlanCardParticipantInput, PlanCardProposeArgs, PlanCardRsvp, PlanCardState, PlanCardStoreError,
+    PlanCardParticipantInput, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp, PlanCardState,
+    PlanCardStoreError,
 };
 use super::store;
 
@@ -147,7 +148,86 @@ async fn handle(
         account_id: session.account_id.clone(),
         on_behalf_of_conversation: None,
     };
-    dispatch(state.db_pool(), &actor, request).await
+    let change = MemberChange::from_request(&request);
+    match dispatch_row(state.db_pool(), &actor, request).await {
+        Ok(row) => {
+            // A member's vote must reach everyone, not only the device that
+            // pressed the button: Pip reposts the fresh card at once, with no
+            // model call, so every transcript shows the same snapshot.
+            if let (Some(pip), Some(change)) = (state.pip(), change) {
+                let text = change.describe(&row);
+                if let Err(error) = crate::pip::store::post_member_update(
+                    state.db_pool(),
+                    &pip.config().account_id,
+                    &row,
+                    &text,
+                )
+                .await
+                {
+                    eprintln!("[pip] Could not post the plan card update: {error}");
+                }
+            }
+            Json(row).into_response()
+        }
+        Err(response) => response,
+    }
+}
+
+/// What a signed-in member just did to a card, in the words Pip uses to tell
+/// the group. Proposals are left to Pip's own runs.
+enum MemberChange {
+    Rsvp { participant_id: String, going: bool },
+    Confirm { account_id: String },
+    Reopen { reason: String },
+    Cancel { account_id: String },
+}
+
+impl MemberChange {
+    fn from_request(request: &Request) -> Option<Self> {
+        match request {
+            Request::Propose { .. } => None,
+            Request::Rsvp {
+                participant_id,
+                rsvp,
+                ..
+            } => Some(Self::Rsvp {
+                participant_id: participant_id.clone(),
+                going: rsvp == "yes",
+            }),
+            Request::Confirm { confirmed_by, .. } => Some(Self::Confirm {
+                account_id: confirmed_by.clone(),
+            }),
+            Request::Reopen { reason, .. } => Some(Self::Reopen {
+                reason: reason.trim().to_string(),
+            }),
+            Request::Cancel { canceled_by, .. } => Some(Self::Cancel {
+                account_id: canceled_by.clone(),
+            }),
+        }
+    }
+
+    fn describe(&self, row: &PlanCardRow) -> String {
+        let name = |account_id: &str| {
+            row.participants
+                .iter()
+                .find(|participant| participant.account_id == account_id)
+                .map(|participant| participant.display_name.clone())
+                .unwrap_or_else(|| "A member".to_string())
+        };
+        match self {
+            Self::Rsvp {
+                participant_id,
+                going: true,
+            } => format!("{} is in.", name(participant_id)),
+            Self::Rsvp {
+                participant_id,
+                going: false,
+            } => format!("{} can't make it.", name(participant_id)),
+            Self::Confirm { account_id } => format!("{} confirmed the plan.", name(account_id)),
+            Self::Reopen { reason } => format!("The plan is open again: {reason}"),
+            Self::Cancel { account_id } => format!("{} canceled the plan.", name(account_id)),
+        }
+    }
 }
 
 /// Who is acting on a card. A signed-in member acts for themselves only. A
@@ -194,6 +274,20 @@ pub(crate) async fn dispatch(
     actor: &Actor,
     request: Request,
 ) -> Response {
+    match dispatch_row(pool, actor, request).await {
+        Ok(row) => Json(row).into_response(),
+        Err(response) => response,
+    }
+}
+
+/// Applies one request and returns the resulting card, or the error response
+/// to send back. Split from `dispatch` so the member route can act on the
+/// new card after a successful change.
+pub(crate) async fn dispatch_row(
+    pool: &sqlx_postgres::PgPool,
+    actor: &Actor,
+    request: Request,
+) -> Result<PlanCardRow, Response> {
     match request {
         Request::Propose {
             conversation_id,
@@ -209,42 +303,42 @@ pub(crate) async fn dispatch(
             source_message_ids,
         } => {
             let Ok(conversation_id) = Uuid::parse_str(&conversation_id) else {
-                return error(
+                return Err(error(
                     "invalid_conversation_id",
                     "conversationId must be a valid conversation identifier.",
                     StatusCode::BAD_REQUEST,
-                );
+                ));
             };
             if actor
                 .on_behalf_of_conversation
                 .is_some_and(|scope| scope != conversation_id)
             {
-                return error(
+                return Err(error(
                     "plan_card_forbidden",
                     "This run may only manage plan cards in its own conversation.",
                     StatusCode::FORBIDDEN,
-                );
+                ));
             }
             let Some(card_state) = PlanCardState::from_db_str(&to_snake_case(&state_str)) else {
-                return error(
+                return Err(error(
                     "invalid_state",
                     "state must be polling or awaitingConfirmation.",
                     StatusCode::BAD_REQUEST,
-                );
+                ));
             };
             if title.trim().is_empty() {
-                return error(
+                return Err(error(
                     "invalid_title",
                     "title is required.",
                     StatusCode::BAD_REQUEST,
-                );
+                ));
             }
             if participants.is_empty() {
-                return error(
+                return Err(error(
                     "invalid_participants",
                     "At least one participant is required.",
                     StatusCode::BAD_REQUEST,
-                );
+                ));
             }
             // Models often send optional strings as "" rather than omitting
             // them; an empty existingEventId must mean "new card", not an
@@ -254,11 +348,15 @@ pub(crate) async fn dispatch(
             let location = blank_to_none(location);
             let start_at = match normalize_instant(start_at.as_deref()) {
                 Ok(value) => value,
-                Err(message) => return error("invalid_start_at", message, StatusCode::BAD_REQUEST),
+                Err(message) => {
+                    return Err(error("invalid_start_at", message, StatusCode::BAD_REQUEST))
+                }
             };
             let end_at = match normalize_instant(end_at.as_deref()) {
                 Ok(value) => value,
-                Err(message) => return error("invalid_end_at", message, StatusCode::BAD_REQUEST),
+                Err(message) => {
+                    return Err(error("invalid_end_at", message, StatusCode::BAD_REQUEST))
+                }
             };
             let args = PlanCardProposeArgs {
                 conversation_id,
@@ -280,10 +378,9 @@ pub(crate) async fn dispatch(
                     .collect(),
                 source_message_ids,
             };
-            match store::propose(pool, &actor.account_id, args).await {
-                Ok(row) => Json(row).into_response(),
-                Err(err) => store_error(err),
-            }
+            store::propose(pool, &actor.account_id, args)
+                .await
+                .map_err(store_error)
         }
         Request::Rsvp {
             event_id,
@@ -293,30 +390,30 @@ pub(crate) async fn dispatch(
             note,
         } => {
             let Some(rsvp) = PlanCardRsvp::from_db_str(&rsvp) else {
-                return error(
+                return Err(error(
                     "invalid_rsvp",
                     "rsvp must be yes or no.",
                     StatusCode::BAD_REQUEST,
-                );
+                ));
             };
             if matches!(rsvp, PlanCardRsvp::Pending) {
-                return error(
+                return Err(error(
                     "invalid_rsvp",
                     "rsvp must be yes or no.",
                     StatusCode::BAD_REQUEST,
-                );
+                ));
             }
             // A member records only their own RSVP. Pip may record another
             // active member's RSVP from what that member said in the chat.
             if !may_act_for(pool, actor, &participant_id).await {
-                return error(
+                return Err(error(
                     "plan_card_forbidden",
                     "You can only record your own RSVP.",
                     StatusCode::FORBIDDEN,
-                );
+                ));
             }
             let note = blank_to_none(note);
-            match store::rsvp(
+            store::rsvp(
                 pool,
                 &event_id,
                 revision,
@@ -325,10 +422,7 @@ pub(crate) async fn dispatch(
                 note.as_deref(),
             )
             .await
-            {
-                Ok(row) => Json(row).into_response(),
-                Err(err) => store_error(err),
-            }
+            .map_err(store_error)
         }
         Request::Confirm {
             event_id,
@@ -336,16 +430,15 @@ pub(crate) async fn dispatch(
             confirmed_by,
         } => {
             if !may_act_for(pool, actor, &confirmed_by).await {
-                return error(
+                return Err(error(
                     "plan_card_forbidden",
                     "confirmedBy must match the authenticated account.",
                     StatusCode::FORBIDDEN,
-                );
+                ));
             }
-            match store::confirm(pool, &event_id, revision, &confirmed_by, None).await {
-                Ok(row) => Json(row).into_response(),
-                Err(err) => store_error(err),
-            }
+            store::confirm(pool, &event_id, revision, &confirmed_by, None)
+                .await
+                .map_err(store_error)
         }
         Request::Reopen {
             event_id,
@@ -353,16 +446,15 @@ pub(crate) async fn dispatch(
             reason,
         } => {
             if reason.trim().is_empty() {
-                return error(
+                return Err(error(
                     "invalid_reason",
                     "reason is required to reopen a plan card.",
                     StatusCode::BAD_REQUEST,
-                );
+                ));
             }
-            match store::reopen(pool, &event_id, revision, &actor.account_id, &reason).await {
-                Ok(row) => Json(row).into_response(),
-                Err(err) => store_error(err),
-            }
+            store::reopen(pool, &event_id, revision, &actor.account_id, &reason)
+                .await
+                .map_err(store_error)
         }
         Request::Cancel {
             event_id,
@@ -371,16 +463,15 @@ pub(crate) async fn dispatch(
             reason,
         } => {
             if !may_act_for(pool, actor, &canceled_by).await {
-                return error(
+                return Err(error(
                     "plan_card_forbidden",
                     "canceledBy must match the authenticated account.",
                     StatusCode::FORBIDDEN,
-                );
+                ));
             }
-            match store::cancel(pool, &event_id, revision, &canceled_by, reason.as_deref()).await {
-                Ok(row) => Json(row).into_response(),
-                Err(err) => store_error(err),
-            }
+            store::cancel(pool, &event_id, revision, &canceled_by, reason.as_deref())
+                .await
+                .map_err(store_error)
         }
     }
 }

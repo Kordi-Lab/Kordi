@@ -16,6 +16,7 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use crate::chat_sync::models::SendMessageRequest;
+use crate::plan_cards::models::PlanCardRow;
 
 use super::config::PipConfig;
 use super::prompt::PIP_SYSTEM_PROMPT;
@@ -482,6 +483,73 @@ async fn plan_card_block(
             "rsvp": rsvp,
         })).collect::<Vec<_>>(),
     })))
+}
+
+/// The same `plan_card` block `plan_card_block` derives from the database,
+/// built from a card the store just returned.
+pub(crate) fn card_block_from_row(row: &PlanCardRow) -> Value {
+    json!({
+        "type": "plan_card",
+        "eventId": row.event_id,
+        "revision": row.revision,
+        "state": row.state.as_db_str(),
+        "title": row.title,
+        "startAt": row.start_at,
+        "endAt": row.end_at,
+        "location": row.location,
+        "unresolvedFields": row.unresolved_fields,
+        "participants": row.participants.iter().map(|participant| json!({
+            "participantId": participant.account_id,
+            "displayName": participant.display_name,
+            "organizer": participant.organizer,
+            "rsvp": participant.rsvp.as_db_str(),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// Posts a short Pip message carrying the card after a member changed it
+/// from a client. No model run is involved, and Pip's cursor moves past the
+/// message so the change does not wake a sweep.
+pub(crate) async fn post_member_update(
+    pool: &PgPool,
+    pip_account_id: &str,
+    row: &PlanCardRow,
+    text: &str,
+) -> Result<(), sqlx_core::Error> {
+    let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
+        return Ok(());
+    };
+    let request = SendMessageRequest {
+        client_message_id: Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            format!("{}:{}:member", row.event_id, row.revision).as_bytes(),
+        ),
+        kind: "text".to_string(),
+        content: json!({
+            "schema": 1,
+            "blocks": [
+                {"type": "text", "text": encode_pip_message(text)},
+                card_block_from_row(row),
+            ],
+            "legacy_attachments": [],
+        }),
+        reply_to_message_id: None,
+        attachment_ids: Vec::new(),
+    };
+    let outcome =
+        crate::chat_sync::store::send_message(pool, pip_account_id, conversation_id, request)
+            .await
+            .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    query(
+        "UPDATE cloud_pip_conversation_state
+         SET seen_sequence = GREATEST(seen_sequence, $2), updated_at = now()
+         WHERE conversation_id = $1",
+    )
+    .bind(conversation_id)
+    .bind(outcome.value.conversation_sequence)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 struct ActiveRun {
