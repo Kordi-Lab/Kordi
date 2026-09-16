@@ -157,3 +157,23 @@ test('canonical state projection reuses its result while the store is unchanged'
     'an unchanged store must not rebuild the flattened transcript array',
   );
 });
+
+test('a session repeated in the catalog does not repeat its transcript', () => {
+  const base = storeWith(['session:a'], 2);
+  const store = {
+    ...base,
+    catalog: {
+      ...base.catalog,
+      sessions: [...base.catalog.sessions, ...base.catalog.sessions],
+    },
+  };
+
+  const state = canonicalStateFromStore(store);
+
+  assert.ok(state, 'expected a projected canonical state');
+  assert.deepEqual(
+    state.messages.map((entry) => entry.id),
+    ['session:a:m0', 'session:a:m1'],
+    'each message must appear once regardless of catalog duplicates',
+  );
+});

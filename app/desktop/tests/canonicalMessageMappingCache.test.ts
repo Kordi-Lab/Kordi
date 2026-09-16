@@ -118,3 +118,33 @@ test('mapping reuses the result when an unrelated context entry changes', () => 
     'context this message never consulted must not invalidate its cached result',
   );
 });
+
+test('the recorded context map still behaves like a map', () => {
+  // The recorder wraps the caller's map. If it replaced it with a bare object
+  // carrying only get(), any other lookup inside the mapper would throw.
+  const identityById = identities();
+  const consulted: string[] = [];
+  const replyTargets = new Map([['m0', 'visible-a']]);
+  const observed = new Proxy(replyTargets, {
+    get(target, property, receiver) {
+      if (typeof property === 'string') consulted.push(property);
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+
+  const mapped = mapCanonicalMessageCached(
+    message({ parentMessageId: 'm0' }),
+    identityById,
+    'human:me',
+    { visibleReplyTargetByMessageId: observed },
+  );
+
+  assert.ok(mapped, 'expected the message to map');
+  assert.equal(mapped.replyToMessageId, 'visible-a');
+  assert.ok(
+    consulted.includes('get'),
+    'the mapper should read the caller map through its own accessor',
+  );
+  assert.equal(replyTargets.size, 1, 'wrapping must not disturb the caller map');
+});

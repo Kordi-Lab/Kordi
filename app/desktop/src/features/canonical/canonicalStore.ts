@@ -273,6 +273,9 @@ export function canonicalStateFromStore(store: CanonicalStore): CanonicalSession
   const messages: CanonicalSessionMessage[] = [];
   const projected = new Set<string>();
   for (const session of store.catalog.sessions) {
+    // A catalog that repeats a session must not repeat its transcript; the
+    // previous global sort could not duplicate a message.
+    if (projected.has(session.id)) continue;
     projected.add(session.id);
     for (const message of store.messagesBySessionId[session.id] ?? []) {
       messages.push(message);

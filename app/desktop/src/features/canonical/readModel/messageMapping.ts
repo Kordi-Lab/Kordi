@@ -506,20 +506,28 @@ type MappedMessageCacheEntry = {
 
 const mappedMessages = new WeakMap<CanonicalSessionMessage, MappedMessageCacheEntry>();
 
+// Records which entries a mapping consulted. A proxy keeps the real map's
+// behaviour intact, so a future lookup through has(), size or iteration still
+// works rather than meeting an object that only carries get().
 function recordingContextMap(
   map: ReadonlyMap<string, string> | null | undefined,
   name: ContextMapName,
   reads: RecordedRead[],
 ): ReadonlyMap<string, string> | null | undefined {
   if (!map) return map;
-  return {
-    ...map,
-    get(key: string) {
-      const value = map.get(key);
-      reads.push({ map: name, key, value });
-      return value;
+  return new Proxy(map, {
+    get(target, property, receiver) {
+      if (property === 'get') {
+        return (key: string) => {
+          const value = target.get(key);
+          reads.push({ map: name, key, value });
+          return value;
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
     },
-  } as ReadonlyMap<string, string>;
+  });
 }
 
 export function mapCanonicalMessageCached(
