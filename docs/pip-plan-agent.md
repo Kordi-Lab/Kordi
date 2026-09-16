@@ -69,6 +69,11 @@ After a successful change the route posts a one-line Pip message ("Riya is
 in.") with the fresh card and moves Pip's cursor past it, so every device
 shows the same snapshot and no model run is spent on a vote.
 
+A transcript shows one card per plan. Only the newest message carrying a
+card renders it, at the newest snapshot known for that plan; every earlier
+copy keeps just its text. The card therefore sits next to the latest
+activity and its buttons always act at the current revision.
+
 Both clients recognise Pip by its account id: it gets its own chick mark
 instead of a generated face, and a "Built-in agent" tag next to its name.
 
