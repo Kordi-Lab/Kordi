@@ -347,9 +347,10 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     let Ok(output) = output else {
         return fail(pool, run, Some(runner), "invalid_output").await;
     };
-    let Ok(output) = super::incremental::merge_output(&input, output) else {
+    let Ok(mut output) = super::incremental::merge_output(&input, output) else {
         return fail(pool, run, Some(runner), "invalid_output").await;
     };
+    super::pip_guard::drop_pip_conflicts(pool, &input, &mut output).await?;
     if validate_output(&output, &input).is_err() {
         return fail(pool, run, Some(runner), "invalid_output").await;
     }

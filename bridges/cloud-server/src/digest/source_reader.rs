@@ -158,7 +158,14 @@ async fn fetch_rows(
     if let Some(ids) = ids {
         request = request.bind(ids);
     }
-    request.fetch_all(pool).await
+    let mut rows = request.fetch_all(pool).await?;
+    // PiP's messages are group coordination, not anyone's commitments; its
+    // plans reach the digest as calendar events. Reading them would also
+    // rerun every member's digest each time a vote refreshes PiP's card.
+    if let Some(pip) = crate::pip::service_account_id() {
+        rows.retain(|row| row.4 != pip);
+    }
+    Ok(rows)
 }
 
 pub(super) async fn source_page(

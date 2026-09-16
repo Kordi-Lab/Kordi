@@ -2456,7 +2456,7 @@ struct ConversationView: View {
         }
         // Pip posts in the chat without being a member, so it is never in
         // groupParticipants; keep its own mark instead of the group's.
-        if participant == nil, conversation.kind == .group, message.authorName == KordiPipIdentity.displayName {
+        if participant == nil, conversation.kind == .group, KordiPipIdentity.isPipName(message.authorName) {
             return ConversationAvatarIdentity(
                 name: KordiPipIdentity.displayName,
                 source: nil,

@@ -243,17 +243,6 @@ async fn may_act_for(pool: &sqlx_postgres::PgPool, actor: &Actor, acting_for: &s
     }
 }
 
-pub(crate) async fn dispatch(
-    pool: &sqlx_postgres::PgPool,
-    actor: &Actor,
-    request: Request,
-) -> Response {
-    match dispatch_row(pool, actor, request).await {
-        Ok(row) => Json(row).into_response(),
-        Err(response) => response,
-    }
-}
-
 /// Applies one request and returns the resulting card, or the error response
 /// to send back. Split from `dispatch` so the member route can act on the
 /// new card after a successful change.

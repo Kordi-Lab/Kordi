@@ -6,17 +6,20 @@
 
 use std::sync::Arc;
 
-use axum::{http::StatusCode, response::Response, Json};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 use serde_json::{json, Value};
 use sqlx_core::query_as::query_as;
 use uuid::Uuid;
 
 use crate::server::ServerState;
 
-use super::routes::{dispatch, Actor, Request};
+use super::routes::{dispatch_row, Actor, Request};
 
 fn error(code: &str, message: &str, status: StatusCode) -> Response {
-    use axum::response::IntoResponse;
     (status, Json(json!({"errorCode": code, "message": message}))).into_response()
 }
 
@@ -95,13 +98,17 @@ pub async fn runner_action(
         account_id: pip_account_id,
         on_behalf_of_conversation: Some(conversation_id),
     };
-    let response = dispatch(state.db_pool(), &actor, request).await;
-    if !response.status().is_success() {
-        eprintln!(
-            "[pip] plan_card action rejected for run {run_id}: status {} request {}",
-            response.status(),
-            request_summary.chars().take(600).collect::<String>()
-        );
+    match dispatch_row(state.db_pool(), &actor, request).await {
+        // The model gets the compact card: counts and the people it may need
+        // to name, never every voter of a large group.
+        Ok(row) => Json(crate::pip::context::compact_card(&row)).into_response(),
+        Err(response) => {
+            eprintln!(
+                "[pip] plan_card action rejected for run {run_id}: status {} request {}",
+                response.status(),
+                request_summary.chars().take(600).collect::<String>()
+            );
+            response
+        }
     }
-    response
 }

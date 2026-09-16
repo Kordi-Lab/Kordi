@@ -133,11 +133,18 @@ struct AvatarActionPill: View {
 enum KordiPipIdentity {
     static let accountId = "acct_kordi_pip"
     static let agentId = "cloud_agent_kordi_pip"
-    static let displayName = "Pip"
+    static let displayName = "PiP"
     static let tag = "Built-in agent"
 
     /// Pip is a built-in agent, not a person: it posts in the chat but is never
     /// counted, named, or pictured as a member.
+    /// PiP's name, in any capitalisation, so messages from before the rename
+    /// ("Pip") keep its mark.
+    static func isPipName(_ name: String?) -> Bool {
+        name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(displayName) == .orderedSame
+    }
+
     static func isPip(accountId: String?) -> Bool {
         accountId?.trimmingCharacters(in: .whitespacesAndNewlines) == Self.accountId
     }
@@ -145,8 +152,7 @@ enum KordiPipIdentity {
     static func matches(name: String?, seed: String?) -> Bool {
         let normalizedSeed = seed?.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalizedSeed == accountId || normalizedSeed == agentId { return true }
-        let normalizedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalizedName == displayName && (normalizedSeed?.isEmpty ?? true)
+        return isPipName(name) && (normalizedSeed?.isEmpty ?? true)
     }
 }
 

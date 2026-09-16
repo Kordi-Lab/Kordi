@@ -8,7 +8,7 @@ use std::{env, fmt};
 
 pub const DEFAULT_PIP_ACCOUNT_ID: &str = "acct_kordi_pip";
 pub const DEFAULT_PIP_AGENT_ID: &str = "cloud_agent_kordi_pip";
-pub const DEFAULT_PIP_NAME: &str = "Pip";
+pub const DEFAULT_PIP_NAME: &str = "PiP";
 pub const DEFAULT_PIP_SUBTITLE: &str = "Keeps plans in this chat honest";
 pub const DEFAULT_PIP_OWNER_EMAIL: &str = "pip@kordi.ai";
 pub const DEFAULT_PIP_OPENAI_MODEL: &str = "gpt-5.6-luna";
@@ -133,6 +133,15 @@ fn enabled(value: Option<&str>) -> bool {
     })
 }
 
+fn switched_off(value: Option<&str>) -> bool {
+    value.is_some_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "no" | "off"
+        )
+    })
+}
+
 fn optional(get: &mut impl FnMut(&str) -> Option<String>, key: &str) -> Option<String> {
     get(key)
         .map(|value| value.trim().to_string())
@@ -155,12 +164,21 @@ impl PendingPipConfig {
     pub fn from_lookup(
         mut get: impl FnMut(&str) -> Option<String>,
     ) -> Result<Option<Self>, PipConfigError> {
-        if !enabled(get("KORDI_PIP_ENABLED").as_deref()) {
+        // PiP is always on once its key is configured; KORDI_PIP_ENABLED=false
+        // is the only way to turn it off, and =true without a key is an error.
+        let switch = get("KORDI_PIP_ENABLED");
+        if switched_off(switch.as_deref()) {
             return Ok(None);
         }
-        let api_key = optional(&mut get, "KORDI_PIP_OPENAI_API_KEY").ok_or(
-            PipConfigError::Invalid("KORDI_PIP_OPENAI_API_KEY is required"),
-        )?;
+        let Some(api_key) = optional(&mut get, "KORDI_PIP_OPENAI_API_KEY") else {
+            return if enabled(switch.as_deref()) {
+                Err(PipConfigError::Invalid(
+                    "KORDI_PIP_OPENAI_API_KEY is required",
+                ))
+            } else {
+                Ok(None)
+            };
+        };
         let model =
             required_or_default(&mut get, "KORDI_PIP_OPENAI_MODEL", DEFAULT_PIP_OPENAI_MODEL);
         let owner_email =
@@ -211,12 +229,31 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
-    fn pip_is_off_unless_explicitly_enabled() {
+    fn pip_is_off_without_a_key() {
         let values: HashMap<&str, &str> = HashMap::new();
         let config =
             PendingPipConfig::from_lookup(|key| values.get(key).map(|value| value.to_string()))
                 .unwrap();
         assert!(config.is_none());
+    }
+
+    #[test]
+    fn pip_is_on_whenever_a_key_is_configured_unless_switched_off() {
+        let on = HashMap::from([("KORDI_PIP_OPENAI_API_KEY", "sk-test")]);
+        assert!(
+            PendingPipConfig::from_lookup(|key| on.get(key).map(|value| value.to_string()))
+                .unwrap()
+                .is_some()
+        );
+        let off = HashMap::from([
+            ("KORDI_PIP_OPENAI_API_KEY", "sk-test"),
+            ("KORDI_PIP_ENABLED", "false"),
+        ]);
+        assert!(
+            PendingPipConfig::from_lookup(|key| off.get(key).map(|value| value.to_string()))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -240,7 +277,7 @@ mod tests {
                 .unwrap();
         assert_eq!(config.account_id, DEFAULT_PIP_ACCOUNT_ID);
         assert_eq!(config.agent_id, DEFAULT_PIP_AGENT_ID);
-        assert_eq!(config.name, "Pip");
+        assert_eq!(config.name, "PiP");
         assert_eq!(config.provider_auth.api_key(), "sk-test");
         assert_eq!(config.provider_auth.model(), DEFAULT_PIP_OPENAI_MODEL);
         assert!(!format!("{:?}", config.provider_auth).contains("sk-test"));

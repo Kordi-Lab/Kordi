@@ -9,6 +9,8 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use serde::Deserialize;
+use std::collections::BTreeSet;
+
 use serde_json::{json, Value};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
@@ -19,11 +21,11 @@ use crate::chat_sync::models::SendMessageRequest;
 use crate::plan_cards::models::{PlanCardRow, PlanCardState};
 
 use super::config::PipConfig;
+use super::context;
 use super::prompt::PIP_SYSTEM_PROMPT;
 
 pub const RUN_PREFIX: &str = "pip_";
 const SWEEP_BATCH: i64 = 10;
-const RECENT_MESSAGE_LIMIT: i64 = 40;
 const MESSAGE_TEXT_LIMIT: usize = 1200;
 const CLOUD_MESSAGE_PREFIXES: [&str; 2] = ["kordi-cloud-message:", "kordi-cloud-group:"];
 
@@ -129,18 +131,6 @@ fn encode_pip_message_with_mentions(text: &str, mentions: Vec<Value>) -> String 
 
 /// message_id, sequence, sender, sender display name, kind, content, created_at
 type MessageRow = (String, i64, String, Option<String>, String, Value, String);
-/// event_id, revision, state, title, start_at, end_at, location, unresolved_fields
-type CardRow = (
-    String,
-    i64,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    Value,
-    Value,
-);
 
 /// `@Handle` for a member: the display name without spaces, which is what the
 /// clients' mention parsers match a token against.
@@ -242,7 +232,20 @@ pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core
              WHERE s.active_run_id IS NULL
                AND s.retry_after <= now()
                AND (
-                 c.latest_message_sequence > s.seen_sequence
+                 -- New messages, once the chat has been quiet for 30 seconds,
+                 -- or at most two minutes after the first unseen message.
+                 (c.latest_message_sequence > s.seen_sequence
+                  AND (
+                    (SELECT m.created_at FROM cloud_chat_messages m
+                      WHERE m.conversation_id = c.conversation_id
+                      ORDER BY m.conversation_sequence DESC LIMIT 1)
+                      <= now() - interval '30 seconds'
+                    OR (SELECT m.created_at FROM cloud_chat_messages m
+                      WHERE m.conversation_id = c.conversation_id
+                        AND m.conversation_sequence > s.seen_sequence
+                      ORDER BY m.conversation_sequence ASC LIMIT 1)
+                      <= now() - interval '2 minutes'
+                  ))
                  OR EXISTS (
                    SELECT 1 FROM cloud_plan_cards card
                    WHERE card.conversation_id = c.conversation_id
@@ -307,8 +310,27 @@ async fn enqueue(
     candidate: &Candidate,
 ) -> Result<bool, sqlx_core::Error> {
     let input = build_input(pool, config, candidate).await?;
-    let hooks = input["hooks"].as_array().map(Vec::len).unwrap_or(0);
-    if hooks == 0 {
+    let hook_names: Vec<&str> = input["hooks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|hook| hook["name"].as_str())
+        .collect();
+    // New chat alone is checked for free first: small talk with no day, time,
+    // place, or plan word (or no answer while a card is open) never reaches
+    // the model.
+    let only_new_messages = hook_names == ["new_messages"];
+    let worth_a_look = !only_new_messages || {
+        let new_texts: Vec<String> = input["messages"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|message| message["isNew"] == json!(true) && message["fromPip"] != json!(true))
+            .filter_map(|message| message["text"].as_str().map(str::to_string))
+            .collect();
+        context::worth_a_look(&new_texts, !input["openCard"].is_null())
+    };
+    if hook_names.is_empty() || !worth_a_look {
         // Nothing to react to after all (for example a card whose reminder
         // already fired). Advance the cursor so the row stops looking dirty.
         query(
@@ -390,7 +412,7 @@ async fn build_input(
             .and_then(|(_, _, _, timezone)| timezone.clone())
     };
 
-    let messages: Vec<MessageRow> = query_as(
+    let rows: Vec<MessageRow> = query_as(
         "SELECT message.message_id::text, message.conversation_sequence, message.sender_account_id,
                 account.display_name, message.message_kind, message.content,
                 message.created_at::text
@@ -402,20 +424,41 @@ async fn build_input(
          LIMIT $2",
     )
     .bind(candidate.conversation_id)
-    .bind(RECENT_MESSAGE_LIMIT)
+    .bind(context::CONTEXT_MESSAGE_FETCH)
     .fetch_all(pool)
     .await?;
+    let messages = context::budget_messages(
+        rows.into_iter()
+            .map(
+                |(id, sequence, sender, display_name, kind, content, created_at)| {
+                    context::ContextMessage {
+                        id,
+                        sequence,
+                        sender_id: sender,
+                        sender_name: display_name.unwrap_or_else(|| "Member".to_string()),
+                        kind,
+                        text: message_text(&content),
+                        created_at,
+                    }
+                },
+            )
+            .collect(),
+        candidate.seen_sequence,
+        &config.account_id,
+    );
 
-    let card: Option<CardRow> = query_as(
-        "SELECT event_id, revision, state, title, start_at::text, end_at::text, location,
-                    unresolved_fields, options
-             FROM cloud_plan_cards
-             WHERE conversation_id = $1 AND state <> 'canceled'
-             ORDER BY updated_at DESC LIMIT 1",
+    let open_event: Option<(String,)> = query_as(
+        "SELECT event_id FROM cloud_plan_cards
+         WHERE conversation_id = $1 AND state <> 'canceled'
+         ORDER BY updated_at DESC LIMIT 1",
     )
     .bind(candidate.conversation_id)
     .fetch_optional(pool)
     .await?;
+    let card = match open_event {
+        Some((event_id,)) => crate::plan_cards::store::load(pool, &event_id).await?,
+        None => None,
+    };
 
     let mut hooks: Vec<Value> = Vec::new();
     if candidate.latest_sequence > candidate.seen_sequence {
@@ -425,49 +468,36 @@ async fn build_input(
         }));
     }
     let mut open_card = Value::Null;
+    let mut featured: BTreeSet<String> = messages
+        .iter()
+        .filter_map(|message| message["senderId"].as_str().map(str::to_string))
+        .collect();
     let mut organizer_account_id: Option<String> = None;
-    if let Some((
-        event_id,
-        revision,
-        state,
-        title,
-        start_at,
-        end_at,
-        location,
-        unresolved,
-        options,
-    )) = card
-    {
+    if let Some(row) = card {
         let seen_revision = candidate
             .hooks_fired
             .get("card_seen_revision")
             .and_then(Value::as_i64)
             .unwrap_or(0);
-        if revision > seen_revision {
+        if row.revision > seen_revision {
             hooks.push(json!({
                 "name": "card_changed",
-                "key": format!("card_seen_revision"),
-                "eventId": event_id,
-                "revision": revision,
+                "key": "card_seen_revision",
+                "eventId": row.event_id,
+                "revision": row.revision,
                 "detail": "Members responded or voted on the card since your last look.",
             }));
         }
-        let participants: Vec<(String, String, bool, String)> = query_as(
-            "SELECT account_id, display_name, organizer, rsvp
-             FROM cloud_plan_card_participants WHERE event_id = $1
-             ORDER BY organizer DESC, display_name ASC",
-        )
-        .bind(&event_id)
-        .fetch_all(pool)
-        .await?;
-        organizer_account_id = participants
+        organizer_account_id = row
+            .participants
             .iter()
-            .find(|(_, _, organizer, _)| *organizer)
-            .map(|(account_id, _, _, _)| account_id.clone());
-        if let Some(start) = start_at.as_deref().and_then(parse_pg_timestamp) {
+            .find(|participant| participant.organizer)
+            .map(|participant| participant.account_id.clone());
+        if let Some(start) = row.start_at.as_deref().and_then(parse_pg_timestamp) {
             let remaining = start.with_timezone(&Utc) - Utc::now();
             let fired = |key: &str| candidate.hooks_fired.get(key).is_some();
             if remaining > chrono::Duration::zero() {
+                let event_id = &row.event_id;
                 if remaining <= chrono::Duration::hours(2) {
                     let key = format!("t_minus_2h:{event_id}");
                     if !fired(&key) {
@@ -481,23 +511,12 @@ async fn build_input(
                 }
             }
         }
-        open_card = json!({
-            "eventId": event_id,
-            "revision": revision,
-            "state": state,
-            "title": title,
-            "startAt": start_at,
-            "endAt": end_at,
-            "location": location,
-            "unresolvedFields": unresolved,
-            "options": options,
-            "participants": participants.into_iter().map(|(account_id, display_name, organizer, rsvp)| json!({
-                "participantId": account_id,
-                "displayName": display_name,
-                "organizer": organizer,
-                "rsvp": rsvp,
-            })).collect::<Vec<_>>(),
-        });
+        open_card = context::compact_card(&row);
+        if let Some(listed) = open_card["participants"].as_array() {
+            featured.extend(listed.iter().filter_map(|participant| {
+                participant["participantId"].as_str().map(str::to_string)
+            }));
+        }
     }
 
     // Prefer the open card's organizer's timezone, since that's whose "now"
@@ -511,25 +530,7 @@ async fn build_input(
                 .find_map(|(_, _, _, timezone)| timezone.clone())
         });
 
-    let messages: Vec<Value> = messages
-        .into_iter()
-        .rev()
-        .map(
-            |(id, sequence, sender, display_name, message_kind, content, created_at)| {
-                json!({
-                    "messageId": id,
-                    "sequence": sequence,
-                    "senderId": sender,
-                    "senderName": display_name.unwrap_or_else(|| "Member".to_string()),
-                    "fromPip": sender == config.account_id,
-                    "kind": message_kind,
-                    "text": message_text(&content),
-                    "createdAt": created_at,
-                })
-            },
-        )
-        .collect();
-
+    let listed_members = context::pick_members(&members, |member| member.0.as_str(), &featured);
     Ok(json!({
         "pip": {"accountId": config.account_id, "name": config.name},
         "conversation": {
@@ -537,14 +538,15 @@ async fn build_input(
             "kind": kind,
             "title": group_title.or(shared_title),
         },
-        "members": members.into_iter().map(|(account_id, display_name, role, timezone)| {
-            let display_name = display_name.unwrap_or_else(|| "Member".to_string());
+        "memberCount": members.len(),
+        "members": listed_members.into_iter().map(|(account_id, display_name, role, timezone)| {
+            let display_name = display_name.clone().unwrap_or_else(|| "Member".to_string());
             json!({
                 "participantId": account_id,
                 "displayName": display_name,
                 "handle": format!("@{}", mention_handle(&display_name)),
                 "role": role,
-                "isPip": account_id == config.account_id,
+                "isPip": *account_id == config.account_id,
                 "timezone": timezone,
             })
         }).collect::<Vec<_>>(),

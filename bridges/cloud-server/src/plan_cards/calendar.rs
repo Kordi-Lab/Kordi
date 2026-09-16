@@ -36,8 +36,8 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
         .and_then(|(shared, group)| group.or(shared))
         .filter(|value| !value.trim().is_empty());
     let mut description = match group {
-        Some(group) => format!("Planned with Pip in {group}."),
-        None => "Planned with Pip.".to_string(),
+        Some(group) => format!("Planned with PiP in {group}."),
+        None => "Planned with PiP.".to_string(),
     };
     if let Some(location) = row
         .location
