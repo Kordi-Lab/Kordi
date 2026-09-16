@@ -98,7 +98,14 @@ export function useChatTranscriptViewport({
       && !(message.turn?.status === 'queued' && !message.turn.completed));
     if (!entries.some(({ message }) => message.planCard)) return entries;
     const resolved = resolveTranscriptPlanCards<Message>(entries.map(({ message }) => message));
-    return entries.map((entry, index) => (resolved[index] === entry.message ? entry : { ...entry, message: resolved[index] }));
+    return entries.flatMap((entry, index) => {
+      const message = resolved[index];
+      if (message === entry.message) return [entry];
+      // A message that carried only a card which a newer copy now shows.
+      const emptiedCardCopy = entry.message.planCard && !message.planCard && !message.text.trim()
+        && !message.attachments?.length && !message.voiceMessage;
+      return emptiedCardCopy ? [] : [{ ...entry, message }];
+    });
   }, [queuedMessages, sourceTranscriptEntries]);
   const syncedQueuedIds = useMemo(
     () => queuedTranscriptRequestIds(sourceTranscriptEntries.map(({ message }) => message)),

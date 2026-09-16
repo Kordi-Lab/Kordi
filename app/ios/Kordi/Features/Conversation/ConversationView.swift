@@ -394,7 +394,7 @@ struct ConversationView: View {
     private let timelineVerticalInset: CGFloat = 14
 
     var body: some View {
-        let renderedMessages = allMessages
+        let renderedMessages = PlanCardTranscriptResolution.apply(to: allMessages)
         let projection = MessageThreadProjection(messages: renderedMessages)
         let threadReadCursors = model.threadReadCursors[conversation.sessionId]
         let timeline: [ChatMessage]
@@ -418,12 +418,11 @@ struct ConversationView: View {
                 isInitialViewportRevealed: hasRevealedInitialViewport
             )
         )
-        let planCards = PlanCardTranscriptResolution(messages: timeline)
         let visibleTimelineRows = visibleTimeline.enumerated().map { offset, message in
             ConversationTimelineRow(
                 id: model.timelineIdentity(for: message),
                 offset: offset,
-                message: planCards.isEmpty ? message : planCards.resolve(message)
+                message: message
             )
         }
         let firstVisibleTimelineIdentity = visibleTimelineRows.first?.id

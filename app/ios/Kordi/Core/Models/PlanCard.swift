@@ -196,6 +196,20 @@ struct PlanCardTranscriptResolution {
 
     var isEmpty: Bool { latest.isEmpty }
 
+    /// Resolves every card in a transcript and drops messages that carried only
+    /// a card which a newer copy now shows.
+    static func apply(to messages: [ChatMessage]) -> [ChatMessage] {
+        let resolution = PlanCardTranscriptResolution(messages: messages)
+        guard !resolution.isEmpty else { return messages }
+        return messages.compactMap { message in
+            let resolved = resolution.resolve(message)
+            let emptiedCardCopy = message.planCard != nil && resolved.planCard == nil
+                && resolved.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && resolved.attachments.isEmpty && resolved.voiceMessage == nil
+            return emptiedCardCopy ? nil : resolved
+        }
+    }
+
     func resolve(_ message: ChatMessage) -> ChatMessage {
         guard let card = message.planCard else { return message }
         var copy = message

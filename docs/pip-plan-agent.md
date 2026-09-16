@@ -72,8 +72,9 @@ later changes update the same entry; a decline or a cancellation removes it.
    Pip may record another active member's RSVP, vote, confirmation, or
    cancellation from what that member said; a signed-in member still acts only
    for themselves.
-5. The run's final JSON `{"message": ..., "hooksHandled": [...]}` is posted as a
-   normal message from Pip when `message` is non-empty. `@Handle` tokens that
+5. When the run changed the card, Pip posts the card as its own message; the
+   run's final JSON `{"message": ..., "hooksHandled": [...]}` is then posted as
+   a separate text message from Pip when `message` is non-empty. `@Handle` tokens that
    match one member become real mentions. The handled hooks are stored so a
    reminder never fires twice, and the card revision Pip has seen is
    recorded so its own tool calls never wake the next sweep.
@@ -84,7 +85,7 @@ provider costs a handful of calls per day, not thousands.
 
 ## How the card reaches the clients
 
-Pip's message carries a `plan_card` block next to its text: the card's
+Pip's card message carries a single `plan_card` block, separate from Pip's text messages: the card's
 identity, state, title, time, place, options with votes, unresolved fields,
 and every participant's RSVP. macOS
 (`app/desktop/src/kordi-app/components/planCard.tsx`) and iOS

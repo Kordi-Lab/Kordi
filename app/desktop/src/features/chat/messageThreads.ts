@@ -55,6 +55,7 @@ function messageHasVisibleContent(message: Message) {
     || message.callActivity
     || message.text.trim()
     || message.voiceMessage
+    || message.planCard
     || message.attachments?.length
     || message.detail?.trim()
     || message.sourceMessage

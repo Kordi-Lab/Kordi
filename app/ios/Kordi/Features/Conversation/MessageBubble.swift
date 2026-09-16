@@ -414,7 +414,7 @@ struct MessageBubble: View, Equatable {
                 || message.reactionTargetMessageId.flatMap(UUID.init(uuidString:)) != nil)
             && message.deliveryState != .sending
             && message.deliveryState != .failed
-            && (!message.text.isEmpty || !message.attachments.isEmpty)
+            && (!message.text.isEmpty || !message.attachments.isEmpty || message.planCard != nil)
     }
 
     @ViewBuilder

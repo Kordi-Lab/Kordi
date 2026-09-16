@@ -737,12 +737,13 @@ pub async fn complete(
     let mut response_message_id: Option<String> = None;
     let mut posted_sequence: Option<i64> = None;
     let card_block = plan_card_block(pool, run.conversation_id, &run.created_at).await?;
-    let text = match (message, card_block.is_some()) {
-        (Some(text), _) => Some(text.to_string()),
-        (None, true) => Some("Plan card updated.".to_string()),
-        (None, false) => None,
-    };
-    if let Some(text) = text {
+    // The card and Pip's words are two messages: the card first, as its own
+    // message the group acts on, then the guidance text below it.
+    let mut outgoing: Vec<(&str, Vec<Value>)> = Vec::new();
+    if let Some(block) = card_block {
+        outgoing.push(("card", vec![block]));
+    }
+    if let Some(text) = message {
         let members: Vec<(String, String)> = query_as(
             "SELECT member.account_id, COALESCE(account.display_name, 'Member')
              FROM cloud_chat_conversation_members member
@@ -752,16 +753,21 @@ pub async fn complete(
         .bind(run.conversation_id)
         .fetch_all(pool)
         .await?;
-        let mentions = resolve_mentions(&text, &members);
-        let mut blocks = vec![json!({
-            "type": "text",
-            "text": encode_pip_message_with_mentions(&text, mentions),
-        })];
-        if let Some(block) = card_block {
-            blocks.push(block);
-        }
+        let mentions = resolve_mentions(text, &members);
+        outgoing.push((
+            "text",
+            vec![json!({
+                "type": "text",
+                "text": encode_pip_message_with_mentions(text, mentions),
+            })],
+        ));
+    }
+    for (part, blocks) in outgoing {
         let request = SendMessageRequest {
-            client_message_id: Uuid::new_v5(&Uuid::NAMESPACE_OID, run_id.as_bytes()),
+            client_message_id: Uuid::new_v5(
+                &Uuid::NAMESPACE_OID,
+                format!("{run_id}:{part}").as_bytes(),
+            ),
             kind: "text".to_string(),
             content: json!({
                 "schema": 1,
@@ -784,7 +790,7 @@ pub async fn complete(
                 posted_sequence = Some(outcome.value.conversation_sequence);
             }
             Err(error) => {
-                eprintln!("[pip] Could not post Pip's message: {error}");
+                eprintln!("[pip] Could not post Pip's {part} message: {error}");
             }
         }
     }
