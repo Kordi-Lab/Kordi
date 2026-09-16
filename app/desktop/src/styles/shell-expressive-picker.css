@@ -303,7 +303,6 @@
   border-top: 1px solid var(--app-divider);
 }
 
-.app-expressive-picker-public-meme > img,
 .app-expressive-picker-public-media > img {
   object-fit: contain;
 }

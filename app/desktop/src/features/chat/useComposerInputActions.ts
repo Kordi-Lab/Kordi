@@ -29,14 +29,12 @@ import {
 import type { ComposerScope, ComposerSelectorType } from '@/kordi-app/types';
 import type {
   AttachmentItem,
-  AttachmentItemUpdate,
   ComposerConfigTargetOverride,
   ComposerDraftState,
   ComposerSelection,
   ComposerSelectionState,
   ComposerSelectorState,
   MinimalProviderOption,
-  SaveDesktopAttachmentOptions,
   UseComposerInputActionsArgs,
 } from './composerController.types';
 
@@ -348,10 +346,7 @@ export function useComposerInputActions({
     attachmentSummaryTextValue(text, attachments)
   ), [chatComposerAttachments]);
 
-  const saveDesktopAttachments = useCallback(async (
-    files: File[],
-    options: SaveDesktopAttachmentOptions = {},
-  ) => {
+  const saveDesktopAttachments = useCallback(async (files: File[]) => {
     if (!isNativeShell || files.length === 0) {
       return [] as AttachmentItem[];
     }
@@ -359,7 +354,7 @@ export function useComposerInputActions({
     try {
       setDesktopChatError(null);
       const saved = await Promise.all(
-        files.map((file) => composerAttachmentItemFromFile(file, options)),
+        files.map((file) => composerAttachmentItemFromFile(file)),
       );
 
       setChatComposerAttachments((current) => {
@@ -412,10 +407,7 @@ export function useComposerInputActions({
     });
   }, [setChatComposerAttachments]);
 
-  const updateChatComposerAttachment = useCallback((
-    id: string,
-    update: AttachmentItemUpdate,
-  ) => {
+  const updateChatComposerAttachment = useCallback((id: string, update: AttachmentItem) => {
     setChatComposerAttachments((current) => current.map((attachment) => (
       attachment.id === id ? updatedComposerAttachment(attachment, update) : attachment
     )));

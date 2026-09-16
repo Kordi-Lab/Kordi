@@ -40,7 +40,6 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR,formatDesktopEventTime,isSharedLocalSla
 import type { AttachmentItem } from '../composerController.types';
 import { updateScopeDraft,type ComposerDraftState } from '../composerDrafts';
 import { isLocalDraftChatConversationId,LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '../draftSessions';
-import { memeAttachmentDraftError } from '../memeAttachments';
 import { composerMessageAction } from '../messageActionMetadata';
 import { messageMentionsForSend } from '../messageMentions';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
@@ -950,13 +949,6 @@ export function useChatMessageActions({
     ]);
     if (!text && attachmentsToSend.length === 0) return;
     if (!activeConversationMatchesSendScope(activeConvId, activeConvMentionScope)) { setDesktopChatError('Chat is still loading. Try again in a moment.'); return; }
-    const memeValidationError = memeAttachmentDraftError(attachmentsToSend, {
-      requireRightsConfirmation: !retryMessage,
-    });
-    if (memeValidationError) {
-      setDesktopChatError(memeValidationError);
-      return;
-    }
     const optimisticSendSpan = !retryMessage && activeConversationUsesCollaboration
       ? beginChatPerformanceSpan('cloud-send-to-optimistic') : null;
     const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);

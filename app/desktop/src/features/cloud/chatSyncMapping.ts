@@ -63,6 +63,16 @@ export function cloudOperationUuid(value?: string | null): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+// Sticker identity rides the message kind, never an attachment subtype. iOS
+// strips it the same way in Core/API/CloudAPIClient.swift; keeping the two
+// clients on one wire shape is what makes a sticker sent from either device
+// decode on the other.
+function wireAttachment(attachment: SendCloudMessageAttachmentInput) {
+  if (attachment.subtype !== 'sticker') return attachment;
+  const { subtype: _sticker, ...ordinaryAttachment } = attachment;
+  return ordinaryAttachment;
+}
+
 export function chatTextContent(
   body: string,
   attachments: SendCloudMessageAttachmentInput[],
@@ -88,7 +98,7 @@ export function chatTextContent(
         } } : {}),
       }] : []),
     ],
-    legacy_attachments: voiceMessage ? [] : attachments,
+    legacy_attachments: voiceMessage ? [] : attachments.map(wireAttachment),
     ...(canonicalHistory ? {
       canonical_history: {
         local_message_id: canonicalHistory.localMessageId,
@@ -241,7 +251,14 @@ function groupMessageBody(
   });
 }
 
-function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] {
+// The wire carries no sticker subtype, so restore it from the message kind the
+// way iOS does in Core/API/CloudDirectMessageProjector.swift. Sizing, height
+// estimation, and styling all read the subtype, and a synced message that lost
+// it would re-render a 180px sticker as a 464px image card.
+function attachmentsFromChatContent(
+  content: unknown,
+  messageKind?: string | null,
+): CloudMessageAttachment[] {
   if (!content || typeof content !== 'object' || Array.isArray(content)) return [];
   const attachments = (content as { legacy_attachments?: unknown }).legacy_attachments;
   if (!Array.isArray(attachments)) return [];
@@ -257,12 +274,9 @@ function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] 
       attachmentId,
       name,
       kind,
-      ...(record.subtype === 'sticker' && kind === 'image'
+      ...((record.subtype === 'sticker' || messageKind === 'sticker') && kind === 'image'
         ? { subtype: 'sticker' as const }
-        : record.subtype === 'meme' && kind === 'image' ? {
-            subtype: 'meme' as const,
-            altText: typeof record.altText === 'string' ? record.altText : null,
-          } : {}),
+        : {}),
       mimeType: typeof record.mimeType === 'string' ? record.mimeType : null,
       sizeBytes: typeof record.sizeBytes === 'number' ? record.sizeBytes : null,
       ...(dimensions ?? {}),
@@ -352,7 +366,7 @@ export function cloudMessageFromChatSync(
     ...(outgoing && conversation.kind === 'group' ? { readByAccountIds } : {}),
     direction: outgoing ? 'outgoing' : 'incoming',
     sessionId: conversation.legacy_session_id ?? conversation.id,
-    attachments: attachmentsFromChatContent(message.content),
+    attachments: attachmentsFromChatContent(message.content, message.kind),
     voiceMessage: voiceMessageFromChatContent(message.content),
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,

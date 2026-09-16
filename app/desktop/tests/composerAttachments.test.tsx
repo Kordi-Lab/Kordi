@@ -105,20 +105,18 @@ test('stored composer attachments persist durable local paths but drop stale blo
   }]);
 });
 
-test('stored composer attachments round-trip meme accessibility and rights state', () => {
+test('stored composer attachments round-trip the sticker subtype', () => {
   const serialized = serializeStoredComposerAttachments([{
-    id: 'meme-1',
+    id: 'sticker-1',
     name: 'reaction.webp',
     path: '/tmp/reaction.webp',
     kind: 'image',
     mimeType: 'image/webp',
-    subtype: 'meme',
-    altText: 'Two buttons labeled deploy and sleep; the character chooses deploy.',
-    memeRightsConfirmed: true,
+    subtype: 'sticker',
   }]);
 
   assert.deepEqual(parseStoredComposerAttachments(serialized)[0], {
-    id: 'meme-1',
+    id: 'sticker-1',
     name: 'reaction.webp',
     path: '/tmp/reaction.webp',
     kind: 'image',
@@ -127,31 +125,8 @@ test('stored composer attachments round-trip meme accessibility and rights state
     localPath: '/tmp/reaction.webp',
     previewUrl: null,
     sizeBytes: null,
-    subtype: 'meme',
-    altText: 'Two buttons labeled deploy and sleep; the character chooses deploy.',
-    memeRightsConfirmed: true,
+    subtype: 'sticker',
   });
-});
-
-test('meme attachment editor exposes alt text and rights confirmation without an inline type toggle', () => {
-  const markup = renderToStaticMarkup(createElement(ComposerAttachmentList, {
-    attachments: [{
-      id: 'meme-1',
-      name: 'reaction.png',
-      kind: 'image',
-      mimeType: 'image/png',
-      subtype: 'meme',
-      altText: '',
-      memeRightsConfirmed: false,
-    }],
-    onRemove: () => undefined,
-    onUpdate: () => undefined,
-  }));
-
-  assert.match(markup, /data-composer-meme-attachment="true"/);
-  assert.match(markup, /placeholder="Describe the visible text and joke"/);
-  assert.match(markup, /permission or another legal right to share this meme/);
-  assert.doesNotMatch(markup, /Mark as meme|Treat reaction\.png as an ordinary image/);
 });
 
 test('composer attachment tiles keep the filename and remove control on one compact line', () => {
@@ -235,20 +210,6 @@ test('main composer opens pasted images directly in the editor', () => {
   assert.match(source, /openPastedImageEditor\(videoReviews\.stage\(saveDesktopAttachments\(files\)\)\)/);
   assert.match(source, /openPastedImageEditor\(videoReviews\.stage\(saveDesktopAttachmentPaths\(pastedPaths\)\)\)/);
   assert.match(source, /requestedEditAttachmentId=\{pastedImageEditId\}/);
-});
-
-test('main composer and add menu do not expose meme shortcuts', () => {
-  const mainComposer = readFileSync(
-    new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
-    'utf8',
-  );
-  const addMenu = readFileSync(
-    new URL('../src/kordi-app/components/composerAttachments.tsx', import.meta.url),
-    'utf8',
-  );
-
-  assert.doesNotMatch(mainComposer, /memeAttachmentInputRef|MEME_IMAGE_ACCEPT/);
-  assert.doesNotMatch(addMenu, /Meme image|memeInputRef/);
 });
 
 test('composer add trigger opens one Files and folders action and dismisses accessibly', async () => {

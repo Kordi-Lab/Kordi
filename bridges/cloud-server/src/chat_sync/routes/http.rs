@@ -296,7 +296,9 @@ fn validate_attachment_metadata(
         if subtype.is_null() {
             continue;
         }
-        if subtype.as_str() != Some("meme") {
+        // "meme" is retired and no client emits it; it stays accepted so stored
+        // messages from that era survive an edit, with no rules of its own.
+        if !matches!(subtype.as_str(), Some("sticker") | Some("meme")) {
             return Err(MessageValidationError {
                 status: StatusCode::BAD_REQUEST,
                 code: "INVALID_ATTACHMENT_SUBTYPE",
@@ -327,14 +329,14 @@ fn validate_attachment_metadata(
                 .iter()
                 .any(|value| value.trim() == attachment_id)
             || attachment.get("kind").and_then(serde_json::Value::as_str) != Some("image")
-            || alt_text.is_empty()
             || alt_text.chars().count() > 500
             || !supported_mime
         {
             return Err(MessageValidationError {
                 status: StatusCode::BAD_REQUEST,
-                code: "INVALID_MEME_ATTACHMENT",
-                message: "Meme attachments require a supported image, a matching attachment ID, and alt text of 500 characters or fewer.",
+                code: "INVALID_STICKER_ATTACHMENT",
+                message:
+                    "Sticker attachments require a supported image and a matching attachment ID.",
             });
         }
     }
