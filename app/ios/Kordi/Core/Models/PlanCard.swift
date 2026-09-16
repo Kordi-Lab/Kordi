@@ -104,9 +104,22 @@ struct PlanCard: Codable, Hashable {
     let unresolvedFields: [String]
     let participants: [PlanCardParticipant]
     let options: [PlanCardOption]
+    /// Which card this message shows: "vote" between options, or "event", the
+    /// calendar card for the plan itself.
+    var view: String?
 
     enum CodingKeys: String, CodingKey {
-        case eventId, revision, state, title, startAt, endAt, location, unresolvedFields, participants, options
+        case eventId, revision, state, title, startAt, endAt, location, unresolvedFields, participants, options, view
+    }
+
+    enum CardView { case vote, event }
+
+    var cardView: CardView {
+        switch view {
+        case "vote": return .vote
+        case "event": return .event
+        default: return state == .polling && !options.isEmpty ? .vote : .event
+        }
     }
 
     init(from decoder: Decoder) throws {
@@ -121,6 +134,7 @@ struct PlanCard: Codable, Hashable {
         unresolvedFields = (try? container.decodeIfPresent([String].self, forKey: .unresolvedFields)) ?? []
         participants = (try? container.decodeIfPresent([PlanCardParticipant].self, forKey: .participants)) ?? []
         options = (try? container.decodeIfPresent([PlanCardOption].self, forKey: .options)) ?? []
+        view = try? container.decodeIfPresent(String.self, forKey: .view)
     }
 
     /// Voting is open while the card polls between concrete options.
@@ -176,18 +190,23 @@ struct PlanCardAction: Encodable, Hashable {
     }
 }
 
-/// One card per plan in a transcript: the newest message carrying a card
-/// renders the newest snapshot, every earlier copy keeps only its text. A
-/// canceled plan also collapses once a newer plan appears after it.
+/// One vote card and one calendar card per plan in a transcript: the newest
+/// message carrying each renders it at the newest snapshot of the plan, and
+/// every earlier copy keeps only its text. A canceled plan also collapses once
+/// a newer plan appears after it.
 struct PlanCardTranscriptResolution {
     private var latest: [String: PlanCard] = [:]
     private var holderMessageID: [String: String] = [:]
     private var newestEventID: String?
 
+    private static func holderKey(_ card: PlanCard) -> String {
+        "\(card.eventId):\(card.cardView == .vote ? "vote" : "event")"
+    }
+
     init(messages: [ChatMessage]) {
         for message in messages {
             guard let card = message.planCard else { continue }
-            holderMessageID[card.eventId] = message.id
+            holderMessageID[Self.holderKey(card)] = message.id
             newestEventID = card.eventId
             if let known = latest[card.eventId], known.revision >= card.revision { continue }
             latest[card.eventId] = card
@@ -214,11 +233,13 @@ struct PlanCardTranscriptResolution {
         guard let card = message.planCard else { return message }
         var copy = message
         let newest = latest[card.eventId] ?? card
-        if holderMessageID[card.eventId] != message.id
+        if holderMessageID[Self.holderKey(card)] != message.id
             || (newest.state == .canceled && newestEventID != card.eventId) {
             copy.planCard = nil
         } else if newest.revision > card.revision {
-            copy.planCard = newest
+            var snapshot = newest
+            snapshot.view = card.cardView == .vote ? "vote" : "event"
+            copy.planCard = snapshot
         } else {
             return message
         }

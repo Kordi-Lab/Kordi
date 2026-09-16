@@ -47,7 +47,11 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
       }];
     })
     : [];
+  const view: MessagePlanCard['view'] = block.view === 'vote' || block.view === 'event'
+    ? block.view
+    : state === 'polling' && options.length > 0 ? 'vote' : 'event';
   return {
+    view,
     eventId,
     revision,
     state: state as MessagePlanCard['state'],
@@ -82,31 +86,37 @@ export function latestPlanCardsByEvent(
   return latest;
 }
 
+/** The card a message shows for its plan: the vote, or the calendar card. */
+export function planCardView(card: MessagePlanCard): 'vote' | 'event' {
+  if (card.view) return card.view;
+  return card.state === 'polling' && (card.options?.length ?? 0) > 0 ? 'vote' : 'event';
+}
+
 /**
- * One card per plan in a transcript. Every message that carries a card keeps
- * only its text, except the newest one, which renders the newest snapshot so
- * the card sits next to the latest activity and its buttons act at the
- * current revision. Messages without a card come back unchanged.
+ * One vote card and one calendar card per plan in a transcript. Only the
+ * newest message carrying each renders it, at the newest snapshot of the
+ * plan; earlier copies keep only their text. A canceled plan also collapses
+ * once a newer plan appears after it.
  */
 export function resolveTranscriptPlanCards<T extends { id?: string; planCard?: MessagePlanCard | null }>(
   messages: readonly T[],
 ): T[] {
   const latest = latestPlanCardsByEvent(messages);
   if (latest.size === 0) return [...messages];
-  // The newest message carrying each card, by position in the transcript.
   const holder = new Map<string, number>();
   let newestEventId: string | null = null;
   messages.forEach((message, index) => {
     if (!message.planCard) return;
-    holder.set(message.planCard.eventId, index);
+    holder.set(`${message.planCard.eventId}:${planCardView(message.planCard)}`, index);
     newestEventId = message.planCard.eventId;
   });
   return messages.map((message, index) => {
     const card = message.planCard;
     if (!card) return message;
-    const canceledAndSuperseded = (latest.get(card.eventId) ?? card).state === 'canceled' && newestEventId !== card.eventId;
-    if (holder.get(card.eventId) !== index || canceledAndSuperseded) return { ...message, planCard: null };
-    const newest = latest.get(card.eventId);
-    return !newest || newest.revision <= card.revision ? message : { ...message, planCard: newest };
+    const cardView = planCardView(card);
+    const newest = latest.get(card.eventId) ?? card;
+    const canceledAndSuperseded = newest.state === 'canceled' && newestEventId !== card.eventId;
+    if (holder.get(`${card.eventId}:${cardView}`) !== index || canceledAndSuperseded) return { ...message, planCard: null };
+    return newest.revision <= card.revision ? message : { ...message, planCard: { ...newest, view: cardView } };
   });
 }

@@ -188,19 +188,14 @@ async fn handle(
             // message that carries this card is refreshed in place for
             // everyone, with no new line and no model run.
             if let Some(pip) = state.pip() {
-                match crate::pip::store::refresh_card_message(
+                if let Err(error) = crate::pip::store::sync_card_messages(
                     state.db_pool(),
                     &pip.config().account_id,
                     &row,
                 )
                 .await
                 {
-                    Ok(true) => {}
-                    Ok(false) => eprintln!(
-                        "[pip] No Pip message carries plan card {} yet; the next run will post it",
-                        row.event_id
-                    ),
-                    Err(error) => eprintln!("[pip] Could not refresh the plan card: {error}"),
+                    eprintln!("[pip] Could not update the plan card messages: {error}");
                 }
             }
             Json(row).into_response()
@@ -355,6 +350,13 @@ async fn apply(
                     return Err(error("invalid_end_at", message, StatusCode::BAD_REQUEST))
                 }
             };
+            if starts_in_the_past(start_at.as_deref()) {
+                return Err(error(
+                    "start_in_past",
+                    "startAt is already in the past. Use the next upcoming date for this plan.",
+                    StatusCode::BAD_REQUEST,
+                ));
+            }
             let mut normalized_options = Vec::with_capacity(options.len());
             for (index, option) in options.into_iter().enumerate() {
                 let label = option.label.trim().to_string();
@@ -377,6 +379,13 @@ async fn apply(
                         return Err(error("invalid_end_at", message, StatusCode::BAD_REQUEST))
                     }
                 };
+                if starts_in_the_past(start_at.as_deref()) {
+                    return Err(error(
+                        "option_in_past",
+                        "An option starts in the past. Offer only upcoming times.",
+                        StatusCode::BAD_REQUEST,
+                    ));
+                }
                 normalized_options.push(PlanCardOption {
                     id: blank_to_none(option.id).unwrap_or_else(|| format!("opt_{}", index + 1)),
                     label,
@@ -522,6 +531,15 @@ async fn apply(
                 .map_err(store_error)
         }
     }
+}
+
+/// A plan or option that starts more than ten minutes ago cannot be proposed.
+fn starts_in_the_past(instant: Option<&str>) -> bool {
+    instant
+        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+        .is_some_and(|start| {
+            start.with_timezone(&chrono::Utc) < chrono::Utc::now() - chrono::Duration::minutes(10)
+        })
 }
 
 /// Treats an empty or whitespace-only optional string as absent.

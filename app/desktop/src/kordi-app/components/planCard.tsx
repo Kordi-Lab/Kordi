@@ -1,12 +1,13 @@
-import { CalendarClock, Check, MapPin, X } from 'lucide-react';
+import { CalendarCheck, CalendarClock, Check, MapPin, Vote, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { defaultCloudAuthClient, type PlanCardActionRequest } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
 import type { MessagePlanCard, MessagePlanCardOption } from '@/kordi-app/types/message';
+import { planCardView } from '@/features/cloud/planCardSnapshot';
 
 const STATE_LABEL: Record<MessagePlanCard['state'], string> = {
-  polling: 'Vote',
+  polling: 'Planning',
   awaiting_confirmation: 'Leaning yes',
   confirmed: 'Confirmed',
   canceled: 'Canceled',
@@ -79,15 +80,18 @@ export function PlanCardContent({
   }, [votersFor]);
   // A click updates the card at once; a newer snapshot from the transcript
   // then takes over, so the card never sticks on an old local result.
-  const view = localState && localState.revision > card.revision ? localState : card;
+  const view = localState && localState.revision > card.revision ? { ...localState, view: card.view } : card;
+  const isVote = planCardView(card) === 'vote';
   const accountId = ownAccountId ?? sessionAccountId;
   const self = accountId ? view.participants.find((participant) => participant.participantId === accountId) : undefined;
   const options = view.options ?? [];
-  const polling = view.state === 'polling' && options.length > 0;
+  const polling = isVote && view.state === 'polling' && options.length > 0;
   const isOpen = view.state !== 'canceled';
-  const canRespond = Boolean(self) && isOpen && !polling;
-  const leading = polling ? leadingOption(options) : null;
-  const canConfirm = Boolean(self?.organizer) && (view.state === 'awaiting_confirmation' || (polling && leading !== null));
+  const canRespond = !isVote && Boolean(self) && isOpen;
+  const leading = isVote ? leadingOption(options) : null;
+  const canConfirm = Boolean(self?.organizer) && (isVote ? polling && leading !== null : view.state === 'awaiting_confirmation');
+  const onCalendar = !isVote && view.state === 'confirmed' && self?.rsvp === 'yes' && Boolean(view.startAt);
+  const voterCount = new Set(options.flatMap((option) => option.votes)).size;
   const when = formatWhen(view.startAt, view.endAt);
   const going = view.participants.filter((participant) => participant.rsvp === 'yes').length;
   const nameOf = (participantId: string) => view.participants.find((participant) => participant.participantId === participantId)?.displayName ?? 'Member';
@@ -115,33 +119,46 @@ export function PlanCardContent({
   };
 
   return (
-    <section className="app-plan-card" data-kordi-copy-surface="message" data-plan-card-state={view.state} aria-label={`Plan: ${view.title}`}>
+    <section className={cn('app-plan-card', isVote ? 'app-plan-card-vote' : 'app-plan-card-event')} data-kordi-copy-surface="message" data-plan-card-state={view.state} data-plan-card-view={isVote ? 'vote' : 'event'} aria-label={`${isVote ? 'Vote' : 'Plan'}: ${view.title}`}>
       <div className="app-plan-card-head">
-        <CalendarClock size={14} aria-hidden className="app-plan-card-icon" />
+        {isVote
+          ? <Vote size={14} aria-hidden className="app-plan-card-icon" />
+          : view.state === 'confirmed'
+            ? <CalendarCheck size={14} aria-hidden className="app-plan-card-icon" />
+            : <CalendarClock size={14} aria-hidden className="app-plan-card-icon" />}
         <div className="app-plan-card-heading">
           <div className={cn('app-plan-card-title', view.state === 'canceled' && 'line-through opacity-60')}>{view.title}</div>
           <div className="app-plan-card-meta">
-            {when ? <span>{when}</span> : null}
-            {view.location ? <span><MapPin size={11} aria-hidden /> {view.location}</span> : null}
-            {view.unresolvedFields.length > 0 && !polling ? <span className="app-plan-card-unresolved">still open: {view.unresolvedFields.join(', ')}</span> : null}
+            {isVote ? (
+              <span>{voterCount === 0 ? 'No votes yet' : `${voterCount} of ${view.participants.length} voted`}</span>
+            ) : (
+              <>
+                {when ? <span>{when}</span> : null}
+                {view.location ? <span><MapPin size={11} aria-hidden /> {view.location}</span> : null}
+                {view.unresolvedFields.length > 0 ? <span className="app-plan-card-unresolved">still open: {view.unresolvedFields.join(', ')}</span> : null}
+              </>
+            )}
           </div>
         </div>
-        <span className={cn('app-plan-card-state', `app-plan-card-state-${view.state}`)}>
-          {view.state === 'confirmed' && view.participants.length > 0 ? `${going} going` : STATE_LABEL[view.state]}
+        <span className={cn('app-plan-card-state', `app-plan-card-state-${isVote && view.state === 'confirmed' ? 'decided' : view.state}`)}>
+          {isVote
+            ? polling ? 'Vote' : view.state === 'canceled' ? 'Canceled' : 'Decided'
+            : view.state === 'confirmed' && view.participants.length > 0 ? `${going} going` : STATE_LABEL[view.state]}
         </span>
       </div>
 
-      {polling ? (
+      {isVote ? (
         <div className="app-plan-card-options" role="group" aria-label="Options" ref={optionsRef}>
           {options.map((option) => {
             const mine = accountId ? option.votes.includes(accountId) : false;
             const percent = percentOf(option);
+            const winner = !polling && view.state === 'confirmed' && leading?.id === option.id;
             return (
-              <div key={option.id} className={cn('app-plan-card-option', mine && 'app-plan-card-option-mine')}>
+              <div key={option.id} className={cn('app-plan-card-option', mine && 'app-plan-card-option-mine', winner && 'app-plan-card-option-winner')}>
                 <button
                   type="button"
                   className="app-plan-card-option-vote"
-                  disabled={Boolean(busy) || !self}
+                  disabled={Boolean(busy) || !self || !polling}
                   aria-pressed={mine}
                   title="Right-click to see who voted"
                   onClick={() => { void act(`vote:${option.id}`, { action: 'vote', eventId: view.eventId, participantId: accountId ?? '', optionId: option.id }); }}
@@ -221,6 +238,7 @@ export function PlanCardContent({
           ) : null}
         </div>
       ) : null}
+      {onCalendar ? <div className="app-plan-card-calendar-note"><CalendarCheck size={11} aria-hidden /> On your calendar</div> : null}
       {notice ? <div className="app-plan-card-notice" role="status">{notice}</div> : null}
     </section>
   );

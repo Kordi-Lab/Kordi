@@ -159,6 +159,12 @@ fn json_string_array(value: serde_json::Value) -> Vec<String> {
     }
 }
 
+/// The current card with participants and options, if it exists.
+pub async fn load(pool: &PgPool, event_id: &str) -> Result<Option<PlanCardRow>, sqlx_core::Error> {
+    let mut conn = pool.acquire().await?;
+    fetch_row(&mut conn, event_id).await
+}
+
 async fn require_row(
     conn: &mut PgConnection,
     event_id: &str,

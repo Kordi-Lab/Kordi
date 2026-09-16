@@ -224,6 +224,8 @@ export type MessagePlanCard = {
   participants: MessagePlanCardParticipant[];
   /** Concrete choices while the card is polling; each carries the voters' account ids. */
   options?: MessagePlanCardOption[];
+  /** Which card this message shows: the vote between options, or the calendar card for the plan. */
+  view?: 'vote' | 'event';
 };
 
 export type TranscriptLoadingPlaceholder = {

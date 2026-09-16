@@ -38,7 +38,7 @@ the card, never in Pip's chat lines.
 
 | Situation | What Pip does |
 | --- | --- |
-| A real plan with the time or place still open | `propose` a polling card with 2 to 4 options; one message inviting the group to vote |
+| The chat names competing days, times, or places | opens a vote on its own (`propose` a polling card with 2 to 4 options), without anyone asking |
 | Votes or answers missing for a while | asks the missing people by name, once per card |
 | The group settles, or the vote has a clear winner and the organizer agrees | `confirm` (with `optionId` when the poll decides it); one message saying what is fixed |
 | A member cannot make it | `rsvp` no for that member only; the plan stands |
@@ -85,7 +85,7 @@ provider costs a handful of calls per day, not thousands.
 
 ## How the card reaches the clients
 
-Pip's card message carries a single `plan_card` block, separate from Pip's text messages: the card's
+A plan shows as two separate cards, each its own card-only message apart from Pip's text: a vote card while the group chooses between options, and a calendar card for the plan itself, posted when a single option is proposed or a vote is confirmed. Both refresh in place as the plan changes. Each card message carries a single `plan_card` block with a `view` of `vote` or `event`: the card's
 identity, state, title, time, place, options with votes, unresolved fields,
 and every participant's RSVP. macOS
 (`app/desktop/src/kordi-app/components/planCard.tsx`) and iOS

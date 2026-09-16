@@ -16,7 +16,7 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use crate::chat_sync::models::SendMessageRequest;
-use crate::plan_cards::models::PlanCardRow;
+use crate::plan_cards::models::{PlanCardRow, PlanCardState};
 
 use super::config::PipConfig;
 use super::prompt::PIP_SYSTEM_PROMPT;
@@ -556,69 +556,41 @@ async fn build_input(
     }))
 }
 
-/// The current card of a conversation as a `plan_card` message block, so
-/// clients can render the card inline with Pip's message. `None` when the
-/// conversation has no card or the card was not touched since `since`.
-async fn plan_card_block(
-    pool: &PgPool,
-    conversation_id: Uuid,
-    since: &str,
-) -> Result<Option<Value>, sqlx_core::Error> {
-    let card: Option<CardRow> = query_as(
-        "SELECT event_id, revision, state, title, start_at::text, end_at::text, location,
-                unresolved_fields, options
-         FROM cloud_plan_cards
-         WHERE conversation_id = $1 AND updated_at >= $2::timestamptz
-         ORDER BY updated_at DESC LIMIT 1",
-    )
-    .bind(conversation_id)
-    .bind(since)
-    .fetch_optional(pool)
-    .await?;
-    let Some((event_id, revision, state, title, start_at, end_at, location, unresolved, options)) =
-        card
-    else {
-        return Ok(None);
-    };
-    let participants: Vec<(String, String, bool, String)> = query_as(
-        "SELECT account_id, display_name, organizer, rsvp
-         FROM cloud_plan_card_participants WHERE event_id = $1
-         ORDER BY organizer DESC, display_name ASC",
-    )
-    .bind(&event_id)
-    .fetch_all(pool)
-    .await?;
-    let rfc3339 = |value: Option<String>| {
-        value
-            .as_deref()
-            .and_then(parse_pg_timestamp)
-            .map(|instant| instant.to_rfc3339())
-    };
-    Ok(Some(json!({
-        "type": "plan_card",
-        "eventId": event_id,
-        "revision": revision,
-        "state": state,
-        "title": title,
-        "startAt": rfc3339(start_at),
-        "endAt": rfc3339(end_at),
-        "location": location,
-        "unresolvedFields": unresolved,
-        "options": options,
-        "participants": participants.into_iter().map(|(account_id, display_name, organizer, rsvp)| json!({
-            "participantId": account_id,
-            "displayName": display_name,
-            "organizer": organizer,
-            "rsvp": rsvp,
-        })).collect::<Vec<_>>(),
-    })))
+/// Which card a plan shows as: a vote while it polls between options, and a
+/// calendar card for the plan itself once it is proposed as one concrete
+/// option, confirmed, or canceled. They are separate messages.
+pub(crate) fn card_view(row: &PlanCardRow) -> &'static str {
+    if row.state == PlanCardState::Polling && !row.options.is_empty() {
+        "vote"
+    } else {
+        "event"
+    }
 }
 
-/// The same `plan_card` block `plan_card_block` derives from the database,
-/// built from a card the store just returned.
-pub(crate) fn card_block_from_row(row: &PlanCardRow) -> Value {
+fn block_view(block: &Value) -> &'static str {
+    match block.get("view").and_then(Value::as_str) {
+        Some("vote") => "vote",
+        Some("event") => "event",
+        _ => {
+            let polling = block.get("state").and_then(Value::as_str) == Some("polling");
+            let has_options = block
+                .get("options")
+                .and_then(Value::as_array)
+                .is_some_and(|options| !options.is_empty());
+            if polling && has_options {
+                "vote"
+            } else {
+                "event"
+            }
+        }
+    }
+}
+
+/// A `plan_card` message block for one card view, built from the stored card.
+pub(crate) fn card_block_from_row(row: &PlanCardRow, view: &str) -> Value {
     json!({
         "type": "plan_card",
+        "view": view,
         "eventId": row.event_id,
         "revision": row.revision,
         "state": row.state.as_db_str(),
@@ -637,51 +609,92 @@ pub(crate) fn card_block_from_row(row: &PlanCardRow) -> Value {
     })
 }
 
-/// Keeps the card in Pip's newest message current after a member changed it
-/// from a client. The message is refreshed in place, so the group sees the
-/// vote on the card itself, with no new chat line and no model run. Returns
-/// false when no Pip message carries this card yet.
-pub(crate) async fn refresh_card_message(
+/// Brings Pip's card messages for a plan up to date. Every message already
+/// carrying the card is refreshed in place, keeping its own view, so votes and
+/// answers show on the card with no new chat line. When the plan needs a view
+/// no message shows yet (the vote card when a poll opens, the calendar card
+/// when a poll resolves), Pip posts it as a new card-only message and its
+/// sequence is returned.
+pub(crate) async fn sync_card_messages(
     pool: &PgPool,
     pip_account_id: &str,
     row: &PlanCardRow,
-) -> Result<bool, sqlx_core::Error> {
+) -> Result<Option<i64>, sqlx_core::Error> {
     let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
-        return Ok(false);
+        return Ok(None);
     };
+    let wanted = card_view(row);
     let probe = json!([{"type": "plan_card", "eventId": row.event_id}]);
-    let holder: Option<(Uuid, Value)> = query_as(
+    let carriers: Vec<(Uuid, Value)> = query_as(
         "SELECT message_id, content FROM cloud_chat_messages
          WHERE conversation_id = $1 AND sender_account_id = $2 AND deleted_at IS NULL
            AND content->'blocks' @> $3::jsonb
-         ORDER BY conversation_sequence DESC LIMIT 1",
+         ORDER BY conversation_sequence DESC LIMIT 6",
     )
     .bind(conversation_id)
     .bind(pip_account_id)
     .bind(&probe)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
-    let Some((message_id, mut content)) = holder else {
-        return Ok(false);
-    };
-    if let Some(blocks) = content.get_mut("blocks").and_then(Value::as_array_mut) {
-        for block in blocks.iter_mut() {
-            if block.get("type").and_then(Value::as_str) == Some("plan_card")
-                && block.get("eventId").and_then(Value::as_str) == Some(row.event_id.as_str())
-            {
-                *block = card_block_from_row(row);
+    let has_carrier = !carriers.is_empty();
+    let mut shows_wanted = false;
+    for (message_id, mut content) in carriers {
+        let mut changed = false;
+        if let Some(blocks) = content.get_mut("blocks").and_then(Value::as_array_mut) {
+            for block in blocks.iter_mut() {
+                if block.get("type").and_then(Value::as_str) == Some("plan_card")
+                    && block.get("eventId").and_then(Value::as_str) == Some(row.event_id.as_str())
+                {
+                    let view = block_view(block);
+                    shows_wanted |= view == wanted;
+                    *block = card_block_from_row(row, view);
+                    changed = true;
+                }
             }
         }
+        if changed {
+            crate::chat_sync::store::refresh_server_message_content(
+                pool,
+                pip_account_id,
+                message_id,
+                content,
+            )
+            .await
+            .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+        }
     }
-    crate::chat_sync::store::refresh_server_message_content(
-        pool,
-        pip_account_id,
-        message_id,
-        content,
+    // A canceled plan updates the cards it already has; it never adds one.
+    if shows_wanted || (row.state == PlanCardState::Canceled && has_carrier) {
+        return Ok(None);
+    }
+    let request = SendMessageRequest {
+        client_message_id: Uuid::new_v5(
+            &Uuid::NAMESPACE_OID,
+            format!("{}:{}", row.event_id, wanted).as_bytes(),
+        ),
+        kind: "text".to_string(),
+        content: json!({
+            "schema": 1,
+            "blocks": [card_block_from_row(row, wanted)],
+            "legacy_attachments": [],
+        }),
+        reply_to_message_id: None,
+        attachment_ids: Vec::new(),
+    };
+    let outcome =
+        crate::chat_sync::store::send_message(pool, pip_account_id, conversation_id, request)
+            .await
+            .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
+    query(
+        "UPDATE cloud_pip_conversation_state
+         SET seen_sequence = GREATEST(seen_sequence, $2), updated_at = now()
+         WHERE conversation_id = $1",
     )
-    .await
-    .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-    Ok(true)
+    .bind(conversation_id)
+    .bind(outcome.value.conversation_sequence)
+    .execute(pool)
+    .await?;
+    Ok(Some(outcome.value.conversation_sequence))
 }
 
 struct ActiveRun {
@@ -736,13 +749,28 @@ pub async fn complete(
 
     let mut response_message_id: Option<String> = None;
     let mut posted_sequence: Option<i64> = None;
-    let card_block = plan_card_block(pool, run.conversation_id, &run.created_at).await?;
-    // The card and Pip's words are two messages: the card first, as its own
-    // message the group acts on, then the guidance text below it.
-    let mut outgoing: Vec<(&str, Vec<Value>)> = Vec::new();
-    if let Some(block) = card_block {
-        outgoing.push(("card", vec![block]));
+    // A card the run touched gets its card message first (a new vote or
+    // calendar card, or an in-place refresh); Pip's words follow as their own
+    // message.
+    let touched: Option<(String,)> = query_as(
+        "SELECT event_id FROM cloud_plan_cards
+         WHERE conversation_id = $1 AND updated_at >= $2::timestamptz
+         ORDER BY updated_at DESC LIMIT 1",
+    )
+    .bind(run.conversation_id)
+    .bind(&run.created_at)
+    .fetch_optional(pool)
+    .await?;
+    if let Some((event_id,)) = touched {
+        if let Some(row) = crate::plan_cards::store::load(pool, &event_id).await? {
+            match sync_card_messages(pool, &run.owner_account_id, &row).await {
+                Ok(Some(sequence)) => posted_sequence = Some(sequence),
+                Ok(None) => {}
+                Err(error) => eprintln!("[pip] Could not post the plan card: {error}"),
+            }
+        }
     }
+    let mut outgoing: Vec<(&str, Vec<Value>)> = Vec::new();
     if let Some(text) = message {
         let members: Vec<(String, String)> = query_as(
             "SELECT member.account_id, COALESCE(account.display_name, 'Member')

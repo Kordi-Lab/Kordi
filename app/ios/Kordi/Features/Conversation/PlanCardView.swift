@@ -19,20 +19,31 @@ struct PlanCardView: View {
         return card
     }
     private var me: PlanCardParticipant? { view.participant(ownAccountId) }
-    private var canRespond: Bool { me != nil && view.state != .canceled && !view.isPolling && onAction != nil }
+    /// The vote and the calendar card are separate messages; the message's own
+    /// card decides which one this is.
+    private var isVote: Bool { card.cardView == .vote }
+    private var votingOpen: Bool { isVote && view.isPolling }
+    private var canRespond: Bool { !isVote && me != nil && view.state != .canceled && onAction != nil }
     private var canConfirm: Bool {
         guard me?.organizer ?? false, onAction != nil else { return false }
-        return view.state == .awaitingConfirmation || (view.isPolling && view.leadingOption != nil)
+        return isVote ? votingOpen && view.leadingOption != nil : view.state == .awaitingConfirmation
+    }
+    private var onCalendar: Bool {
+        !isVote && view.state == .confirmed && me?.rsvp == .yes && view.startAt != nil
     }
     private var stateLabel: String {
+        if isVote {
+            return votingOpen ? "Vote" : view.state == .canceled ? "Canceled" : "Decided"
+        }
         if view.state == .confirmed, !view.participants.isEmpty { return "\(view.goingCount) going" }
-        return view.isPolling ? "Vote" : view.state.label
+        return view.state == .polling ? "Planning" : view.state.label
     }
+    private var voterCount: Int { Set(view.options.flatMap(\.votes)).count }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "calendar.badge.clock")
+                Image(systemName: isVote ? "checklist" : view.state == .confirmed ? "calendar.badge.checkmark" : "calendar.badge.clock")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .padding(.top, 2)
@@ -55,7 +66,7 @@ struct PlanCardView: View {
                     .foregroundStyle(stateTint)
                     .monospacedDigit()
             }
-            if view.isPolling {
+            if isVote {
                 optionsList
             } else {
                 participantsRow
@@ -79,6 +90,11 @@ struct PlanCardView: View {
                     }
                 }
             }
+            if onCalendar {
+                Label("On your calendar", systemImage: "calendar.badge.checkmark")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(red: 0.12, green: 0.54, blue: 0.37))
+            }
             if let notice {
                 Text(notice)
                     .font(.system(size: 11))
@@ -99,10 +115,13 @@ struct PlanCardView: View {
     }
 
     private var metaLine: String? {
+        if isVote {
+            return voterCount == 0 ? "No votes yet" : "\(voterCount) of \(view.participants.count) voted"
+        }
         var parts: [String] = []
         if let when = whenLabel { parts.append(when) }
         if let location = view.location, !location.isEmpty { parts.append(location) }
-        if !view.isPolling, !view.unresolvedFields.isEmpty {
+        if !view.unresolvedFields.isEmpty {
             parts.append("still open: \(view.unresolvedFields.joined(separator: ", "))")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
@@ -119,6 +138,7 @@ struct PlanCardView: View {
             ForEach(view.options) { option in
                 let mine = ownAccountId.map { option.votes.contains($0) } ?? false
                 let share = percent(option)
+                let winner = !votingOpen && view.state == .confirmed && view.leadingOption?.id == option.id
                 Button {
                     guard let accountId = ownAccountId, me != nil else { return }
                     Task { await perform(.vote(view, accountId: accountId, optionId: option.id)) }
@@ -133,7 +153,7 @@ struct PlanCardView: View {
                         }
                         .frame(width: 14, height: 14)
                         Text(option.label)
-                            .font(.system(size: 12))
+                            .font(.system(size: 12, weight: winner ? .semibold : .regular))
                             .lineLimit(3)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
@@ -158,7 +178,7 @@ struct PlanCardView: View {
                     .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(busy || me == nil || onAction == nil)
+                .disabled(busy || me == nil || onAction == nil || !votingOpen)
                 .contextMenu {
                     if option.votes.isEmpty {
                         Text("No votes yet")
