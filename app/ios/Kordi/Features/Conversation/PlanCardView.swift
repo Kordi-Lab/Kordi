@@ -134,7 +134,7 @@ struct PlanCardView: View {
                         .frame(width: 14, height: 14)
                         Text(option.label)
                             .font(.system(size: 12))
-                            .lineLimit(2)
+                            .lineLimit(3)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 4)
