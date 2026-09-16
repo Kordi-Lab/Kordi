@@ -246,6 +246,12 @@ pub(crate) async fn dispatch(
                     StatusCode::BAD_REQUEST,
                 );
             }
+            // Models often send optional strings as "" rather than omitting
+            // them; an empty existingEventId must mean "new card", not an
+            // update of a card that does not exist.
+            let existing_event_id = blank_to_none(existing_event_id);
+            let existing_revision = existing_revision.filter(|_| existing_event_id.is_some());
+            let location = blank_to_none(location);
             let start_at = match normalize_instant(start_at.as_deref()) {
                 Ok(value) => value,
                 Err(message) => return error("invalid_start_at", message, StatusCode::BAD_REQUEST),
@@ -309,6 +315,7 @@ pub(crate) async fn dispatch(
                     StatusCode::FORBIDDEN,
                 );
             }
+            let note = blank_to_none(note);
             match store::rsvp(
                 pool,
                 &event_id,
@@ -378,6 +385,13 @@ pub(crate) async fn dispatch(
     }
 }
 
+/// Treats an empty or whitespace-only optional string as absent.
+pub(crate) fn blank_to_none(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 /// Optional instants must be RFC 3339 with an explicit offset so the card's
 /// time is unambiguous for every participant. Blank means unknown.
 pub(crate) fn normalize_instant(value: Option<&str>) -> Result<Option<String>, &'static str> {
@@ -411,6 +425,16 @@ fn to_snake_case(value: &str) -> String {
 #[cfg(test)]
 mod instant_tests {
     use super::normalize_instant;
+
+    #[test]
+    fn blank_optional_strings_are_absent() {
+        assert_eq!(super::blank_to_none(None), None);
+        assert_eq!(super::blank_to_none(Some("  ".into())), None);
+        assert_eq!(
+            super::blank_to_none(Some(" plan_1 ".into())),
+            Some("plan_1".into())
+        );
+    }
 
     #[test]
     fn instants_require_an_offset() {
