@@ -350,7 +350,11 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     let Ok(mut output) = super::incremental::merge_output(&input, output) else {
         return fail(pool, run, Some(runner), "invalid_output").await;
     };
-    super::pip_guard::drop_pip_conflicts(pool, &input, &mut output).await?;
+    // Best effort: a failed check keeps the suggestions rather than failing
+    // the member's whole digest.
+    if let Err(error) = super::pip_guard::drop_pip_conflicts(pool, &input, &mut output).await {
+        eprintln!("[digest] Could not check suggestions against PiP plans: {error}");
+    }
     if validate_output(&output, &input).is_err() {
         return fail(pool, run, Some(runner), "invalid_output").await;
     }
