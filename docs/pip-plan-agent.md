@@ -54,10 +54,26 @@ Failures back off at 1 minute, 5 minutes, 30 minutes, 2 hours, then 12 hours
 between attempts. Progress is never reset on failure, so a persistently failing
 provider costs a handful of calls per day, not thousands.
 
+## How the card reaches the clients
+
+Pip's message carries a `plan_card` block next to its text: the card's
+identity, state, title, time, place, unresolved fields, and every
+participant's RSVP. macOS (`app/desktop/src/kordi-app/components/planCard.tsx`)
+and iOS (`app/ios/Kordi/Features/Conversation/PlanCardView.swift`) render the
+block as a card with "I'm in", "Can't make it", and, for the organizer, a
+confirm button. Card instants are always RFC 3339 with an offset, whether
+they arrive in a block or as the reply to an action.
+
+A member's button press goes to `POST /v1/cloud/plan_cards` as that member.
+After a successful change the route posts a one-line Pip message ("Riya is
+in.") with the fresh card and moves Pip's cursor past it, so every device
+shows the same snapshot and no model run is spent on a vote.
+
+Both clients recognise Pip by its account id: it gets its own chick mark
+instead of a generated face, and a "Built-in agent" tag next to its name.
+
 ## What this stage does not include
 
-- Card rendering on macOS and iOS. Cards exist as rows; Pip's replies are
-  plain messages.
 - Pip in direct and AI sessions.
 - `reach_out` questions to a single person and calendar writes on confirm.
 - Decision and route cards.
