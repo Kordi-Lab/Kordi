@@ -5661,7 +5661,10 @@ final class AppModel: ObservableObject {
                     author: author,
                     authorName: author == .me
                         ? "You"
-                        : participantNames[wire.fromAccountId] ?? conversation.displayName,
+                        : participantNames[wire.fromAccountId]
+                            ?? (KordiPipIdentity.isPip(accountId: wire.fromAccountId)
+                                ? KordiPipIdentity.displayName
+                                : conversation.displayName),
                     text: CloudMessageCodec.displayText(wire.body),
                     createdAt: parseCloudDate(wire.createdAt),
                     editedAt: wire.editedAt.map(parseCloudDate),

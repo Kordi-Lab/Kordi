@@ -136,6 +136,12 @@ enum KordiPipIdentity {
     static let displayName = "Pip"
     static let tag = "Built-in agent"
 
+    /// Pip is a built-in agent, not a person: it posts in the chat but is never
+    /// counted, named, or pictured as a member.
+    static func isPip(accountId: String?) -> Bool {
+        accountId?.trimmingCharacters(in: .whitespacesAndNewlines) == Self.accountId
+    }
+
     static func matches(name: String?, seed: String?) -> Bool {
         let normalizedSeed = seed?.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalizedSeed == accountId || normalizedSeed == agentId { return true }

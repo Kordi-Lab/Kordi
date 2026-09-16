@@ -1,4 +1,5 @@
 import { sortedCanonicalMessages, type CanonicalMessageSortPosition, type SortableCanonicalMessage } from './messageSort';
+import { isPipIdentity } from '@/features/pip/pipIdentity';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import type {
@@ -730,6 +731,9 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
     if (participant.state !== 'active') continue;
+    // Pip is a built-in agent that posts in the chat, not a member: it is kept
+    // for message attribution but never counted, named, or pictured as one.
+    if (isPipIdentity(identityById.get(participant.identityId))) continue;
     pushMapArray(participantsBySessionId, participant.sessionId, participant);
   }
   const canonicalParticipantsBySessionId = new Map<string, ConversationParticipant[]>();

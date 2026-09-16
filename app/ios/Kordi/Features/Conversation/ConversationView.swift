@@ -2455,6 +2455,15 @@ struct ConversationView: View {
         let participant = conversation.groupParticipants.first {
             $0.displayName.localizedCaseInsensitiveCompare(message.authorName) == .orderedSame
         }
+        // Pip posts in the chat without being a member, so it is never in
+        // groupParticipants; keep its own mark instead of the group's.
+        if participant == nil, conversation.kind == .group, message.authorName == KordiPipIdentity.displayName {
+            return ConversationAvatarIdentity(
+                name: KordiPipIdentity.displayName,
+                source: nil,
+                seed: KordiPipIdentity.accountId
+            )
+        }
         return ConversationAvatarIdentity(
             name: participant?.displayName.nonEmpty
                 ?? conversation.displayName.nonEmpty

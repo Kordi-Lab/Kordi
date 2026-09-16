@@ -867,7 +867,7 @@ enum CloudConversationCatalog {
         account: CloudAccount,
         contactsById: [String: CloudContact]
     ) -> [CloudGroupParticipant] {
-        participants.map { participant in
+        participants.filter { !KordiPipIdentity.isPip(accountId: $0.accountId) }.map { participant in
             if participant.accountId == account.accountId {
                 return CloudGroupParticipant(
                     accountId: participant.accountId,

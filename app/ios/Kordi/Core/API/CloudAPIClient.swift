@@ -393,7 +393,7 @@ actor CloudAPIClient {
         var result: [String: [CloudGroupParticipant]] = [:]
         for conversation in chatConversationsById.values where conversation.kind == "group" {
             let participants = conversation.members
-                .filter { $0.membershipState == "active" }
+                .filter { $0.membershipState == "active" && !KordiPipIdentity.isPip(accountId: $0.accountId) }
                 .map { member in
                     CloudGroupParticipant(
                         accountId: member.accountId,
@@ -2220,6 +2220,7 @@ actor CloudAPIClient {
         let outgoing = message.senderAccountId == viewerAccountId
         let otherMembers = conversation.members.filter {
             $0.accountId != viewerAccountId && $0.membershipState == "active"
+                && !KordiPipIdentity.isPip(accountId: $0.accountId)
         }
         let peerAccountId = message.senderAccountId != viewerAccountId
             ? message.senderAccountId
