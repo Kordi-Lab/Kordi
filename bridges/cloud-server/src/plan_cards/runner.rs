@@ -80,6 +80,7 @@ pub async fn runner_action(
             StatusCode::FORBIDDEN,
         );
     };
+    let request_summary = serde_json::to_string(&request).unwrap_or_default();
     let request: Request = match serde_json::from_value(request) {
         Ok(request) => request,
         Err(err) => {
@@ -97,8 +98,9 @@ pub async fn runner_action(
     let response = dispatch(state.db_pool(), &actor, request).await;
     if !response.status().is_success() {
         eprintln!(
-            "[pip] plan_card action rejected for run {run_id}: status {}",
-            response.status()
+            "[pip] plan_card action rejected for run {run_id}: status {} request {}",
+            response.status(),
+            request_summary.chars().take(600).collect::<String>()
         );
     }
     response
