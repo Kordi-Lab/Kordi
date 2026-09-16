@@ -6,6 +6,7 @@ import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } 
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { cloudVoiceMessageMetadataOnly, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
+import { normalizePlanCardSnapshot } from '@/features/cloud/planCardSnapshot';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import type {
@@ -458,6 +459,7 @@ export function mapCanonicalMessage(
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
     messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
     voiceMessage,
+    planCard: normalizePlanCardSnapshot(content.planCard),
     detail: stringValue(content.detail),
     attachments: withoutVoiceAttachment(canonicalAttachments(content.attachments), voiceMessage),
     mentions,
