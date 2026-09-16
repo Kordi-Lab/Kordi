@@ -475,6 +475,7 @@ pub async fn complete(
         .filter(|text| !text.is_empty());
 
     let mut response_message_id: Option<String> = None;
+    let mut posted_sequence: Option<i64> = None;
     if let Some(text) = message {
         let request = SendMessageRequest {
             client_message_id: Uuid::new_v5(&Uuid::NAMESPACE_OID, run_id.as_bytes()),
@@ -495,7 +496,10 @@ pub async fn complete(
         )
         .await
         {
-            Ok(outcome) => response_message_id = Some(outcome.value.id.to_string()),
+            Ok(outcome) => {
+                response_message_id = Some(outcome.value.id.to_string());
+                posted_sequence = Some(outcome.value.conversation_sequence);
+            }
             Err(error) => {
                 eprintln!("[pip] Could not post Pip's message: {error}");
             }
@@ -531,15 +535,19 @@ pub async fn complete(
     .bind(&now)
     .execute(&mut *tx)
     .await?;
+    // Pip's own message must not wake the next sweep: move the cursor past it.
     query(
         "UPDATE cloud_pip_conversation_state
          SET active_run_id = NULL, attempts = 0, last_error = NULL,
-             hooks_fired = hooks_fired || $2::jsonb, updated_at = now()
+             hooks_fired = hooks_fired || $2::jsonb,
+             seen_sequence = GREATEST(seen_sequence, COALESCE($4, seen_sequence)),
+             updated_at = now()
          WHERE conversation_id = $1 AND active_run_id = $3",
     )
     .bind(run.conversation_id)
     .bind(hooks)
     .bind(run_id)
+    .bind(posted_sequence)
     .execute(&mut *tx)
     .await?;
     tx.commit().await

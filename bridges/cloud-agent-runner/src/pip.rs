@@ -96,7 +96,10 @@ where
                             .await
                         {
                             Ok(value) => value,
-                            Err(err) => json!({"error": err.to_string()}),
+                            Err(err) => {
+                                tracing::warn!(run_id = %run.run_id, error = %err, "plan_card call failed");
+                                json!({"error": err.to_string()})
+                            }
                         }
                     } else {
                         json!({"error": "Tool unavailable. Only plan_card is allowed."})

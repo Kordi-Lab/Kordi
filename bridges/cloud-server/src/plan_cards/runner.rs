@@ -94,5 +94,12 @@ pub async fn runner_action(
         account_id: pip_account_id,
         on_behalf_of_conversation: Some(conversation_id),
     };
-    dispatch(state.db_pool(), &actor, request).await
+    let response = dispatch(state.db_pool(), &actor, request).await;
+    if !response.status().is_success() {
+        eprintln!(
+            "[pip] plan_card action rejected for run {run_id}: status {}",
+            response.status()
+        );
+    }
+    response
 }
