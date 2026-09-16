@@ -10,3 +10,4 @@ pub mod tool_policy;
 pub mod tools;
 
 pub mod digest;
+pub mod pip;

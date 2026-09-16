@@ -14,6 +14,7 @@ use crate::calls::{CallMediaConfig, CallMediaConfigError};
 use crate::events::{EventBus, EventBusError};
 use crate::notifications::{PushNotificationConfigError, PushNotificationService};
 use crate::pg::{init_pool, PgPoolError};
+use crate::pip::{PendingPipConfig, PipConfigError, PipService};
 use crate::support::{PendingSupportConfig, SupportConfigError, SupportService};
 use crate::updates::store::{
     MinioReleaseStore, ReleaseCatalogStore, ReleaseStoreConfig, ReleaseStoreError,
@@ -26,6 +27,7 @@ pub struct ServerState {
     s3: Option<S3Config>,
     release_store: Option<ReleaseCatalogStore>,
     support: Option<SupportService>,
+    pip: Option<PipService>,
     call_media: Option<CallMediaConfig>,
     notifications: Option<PushNotificationService>,
 }
@@ -39,6 +41,7 @@ impl ServerState {
             s3: None,
             release_store: None,
             support: None,
+            pip: None,
             call_media: None,
             notifications: None,
         }
@@ -51,6 +54,11 @@ impl ServerState {
 
     pub fn with_release_store(mut self, release_store: ReleaseCatalogStore) -> Self {
         self.release_store = Some(release_store);
+        self
+    }
+
+    pub fn with_pip(mut self, pip: PipService) -> Self {
+        self.pip = Some(pip);
         self
     }
 
@@ -87,6 +95,10 @@ impl ServerState {
 
     pub fn release_store(&self) -> Option<&ReleaseCatalogStore> {
         self.release_store.as_ref()
+    }
+
+    pub fn pip(&self) -> Option<&PipService> {
+        self.pip.as_ref()
     }
 
     pub fn support(&self) -> Option<&SupportService> {
@@ -165,6 +177,7 @@ pub enum RunError {
     Events(EventBusError),
     RateLimiter(RateLimiterError),
     Support(SupportConfigError),
+    Pip(PipConfigError),
     CallMedia(CallMediaConfigError),
     Notifications(PushNotificationConfigError),
     Bind(std::io::Error),
@@ -178,6 +191,7 @@ impl std::fmt::Display for RunError {
             Self::Events(err) => write!(f, "{err}"),
             Self::RateLimiter(err) => write!(f, "{err}"),
             Self::Support(err) => write!(f, "configure support: {err}"),
+            Self::Pip(err) => write!(f, "configure Pip: {err}"),
             Self::CallMedia(err) => write!(f, "configure call media: {err}"),
             Self::Notifications(err) => write!(f, "configure Apple notifications: {err}"),
             Self::Bind(err) => write!(f, "bind: {err}"),
@@ -275,6 +289,18 @@ pub async fn run(
     } else {
         println!("Kordi support contact is disabled");
     }
+    if let Some(pending) = PendingPipConfig::from_env().map_err(RunError::Pip)? {
+        let pip_config = crate::pip::bootstrap_pip_agent(state.db_pool(), pending)
+            .await
+            .map_err(RunError::Pip)?;
+        println!(
+            "Kordi Pip plan agent configured as {} ({})",
+            pip_config.name, pip_config.account_id
+        );
+        state = state.with_pip(PipService::new(pip_config));
+    } else {
+        println!("Kordi Pip plan agent is disabled");
+    }
     if let Some(s3) = S3Config::from_env() {
         println!(
             "Kordi cloud server attachment store at {} (bucket={})",
@@ -312,6 +338,7 @@ pub async fn run(
     crate::support::spawn_ticket_worker(state.clone());
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     crate::digest::spawn(state.clone());
+    crate::pip::spawn(state.clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
     if let Some(notifications) = state.notifications() {
         notifications.spawn_message_notification_worker(state.db_pool().clone());

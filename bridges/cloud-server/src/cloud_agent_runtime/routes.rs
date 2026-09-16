@@ -48,14 +48,42 @@ fn include_service_provider_auth(state: &ServerState, run: &mut RunnerRunRespons
     if run.provider_auth_available {
         return;
     }
-    let Some(support) = state.support() else {
-        return;
-    };
-    let config = support.config();
-    let provider_auth = config.provider_auth();
-    run.provider_auth_available = run.owner_account_id == config.owner_account_id
-        && run.runtime_route.default_auth_provider.as_deref() == Some(provider_auth.provider())
-        && run.runtime_route.default_auth_choice.as_deref() == Some(provider_auth.auth_choice());
+    run.provider_auth_available = service_provider_auths(state).iter().any(|service_auth| {
+        run.owner_account_id == service_auth.owner_account_id
+            && run.runtime_route.default_auth_provider.as_deref() == Some(service_auth.provider)
+            && run.runtime_route.default_auth_choice.as_deref() == Some(service_auth.auth_choice)
+    });
+}
+
+fn service_provider_auths(state: &ServerState) -> Vec<ServiceProviderAuth<'_>> {
+    let mut auths = Vec::new();
+    if let Some(support) = state.support() {
+        let config = support.config();
+        let provider_auth = config.provider_auth();
+        auths.push(ServiceProviderAuth {
+            owner_account_id: &config.owner_account_id,
+            snapshot_id: provider_auth.snapshot_id(),
+            provider: provider_auth.provider(),
+            auth_choice: provider_auth.auth_choice(),
+            api_key: provider_auth.api_key(),
+            base_url: provider_auth.base_url(),
+            model: provider_auth.model(),
+        });
+    }
+    if let Some(pip) = state.pip() {
+        let config = pip.config();
+        let provider_auth = config.provider_auth();
+        auths.push(ServiceProviderAuth {
+            owner_account_id: &config.account_id,
+            snapshot_id: provider_auth.snapshot_id(),
+            provider: provider_auth.provider(),
+            auth_choice: provider_auth.auth_choice(),
+            api_key: provider_auth.api_key(),
+            base_url: provider_auth.base_url(),
+            model: provider_auth.model(),
+        });
+    }
+    auths
 }
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -129,6 +157,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::runs::subsessions::tool_route),
         )
         .route("/v1/cloud/agent-runs/lease", post(lease_runner_run))
+        .route(
+            "/v1/cloud/agent-runs/:run_id/plan-card",
+            post(runner_plan_card),
+        )
         .route(
             "/v1/cloud/agent-runs/:run_id/context",
             post(read_runner_context),
@@ -309,26 +341,14 @@ async fn fetch_runner_provider_auth(
         );
     };
     let cipher = EnvProviderAuthCipher::from_env().ok();
-    let service_auth = state.support().map(|support| {
-        let config = support.config();
-        let provider_auth = config.provider_auth();
-        ServiceProviderAuth {
-            owner_account_id: &config.owner_account_id,
-            snapshot_id: provider_auth.snapshot_id(),
-            provider: provider_auth.provider(),
-            auth_choice: provider_auth.auth_choice(),
-            api_key: provider_auth.api_key(),
-            base_url: provider_auth.base_url(),
-            model: provider_auth.model(),
-        }
-    });
+    let service_auths = service_provider_auths(&state);
 
     match provider_auth_for_run(
         state.db_pool(),
         cipher
             .as_ref()
             .map(|value| value as &dyn ProviderAuthCipher),
-        service_auth,
+        service_auths,
         &run_id,
         &runner_id,
     )
@@ -426,6 +446,25 @@ mod auth_snapshots;
 use auth_snapshots::{
     current_provider_auth_snapshot, publish_provider_auth_snapshot, revoke_provider_auth_snapshot,
 };
+
+#[derive(serde::Deserialize)]
+struct RunnerPlanCardRequest {
+    #[serde(rename = "runnerId")]
+    runner_id: String,
+    request: serde_json::Value,
+}
+
+async fn runner_plan_card(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(input): Json<RunnerPlanCardRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    crate::plan_cards::runner_action(&state, &run_id, &input.runner_id, input.request).await
+}
 
 async fn read_runner_context(
     State(state): State<Arc<ServerState>>,

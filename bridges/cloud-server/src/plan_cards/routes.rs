@@ -34,7 +34,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct WireParticipant {
+pub(crate) struct WireParticipant {
     participant_id: String,
     display_name: String,
     #[serde(default)]
@@ -43,7 +43,7 @@ struct WireParticipant {
 
 #[derive(Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
-enum Request {
+pub(crate) enum Request {
     Propose {
         #[serde(rename = "conversationId")]
         conversation_id: String,
@@ -143,6 +143,57 @@ async fn handle(
     Extension(session): Extension<CloudSession>,
     Json(request): Json<Request>,
 ) -> Response {
+    let actor = Actor {
+        account_id: session.account_id.clone(),
+        on_behalf_of_conversation: None,
+    };
+    dispatch(state.db_pool(), &actor, request).await
+}
+
+/// Who is acting on a card. A signed-in member acts for themselves only. A
+/// service agent (Pip) acts inside one conversation and may record another
+/// active member's RSVP, confirmation, or cancellation from what that member
+/// said in the chat.
+pub(crate) struct Actor {
+    pub account_id: String,
+    pub on_behalf_of_conversation: Option<Uuid>,
+}
+
+async fn is_active_member(
+    pool: &sqlx_postgres::PgPool,
+    conversation_id: Uuid,
+    account_id: &str,
+) -> bool {
+    sqlx_core::query_as::query_as::<_, (bool,)>(
+        "SELECT EXISTS(SELECT 1 FROM cloud_chat_conversation_members
+         WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active')",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .fetch_one(pool)
+    .await
+    .map(|row| row.0)
+    .unwrap_or(false)
+}
+
+/// Validates that `acting_for` may be acted on by this actor: either it is the
+/// actor itself, or the actor is a service agent and `acting_for` is an active
+/// member of the actor's conversation.
+async fn may_act_for(pool: &sqlx_postgres::PgPool, actor: &Actor, acting_for: &str) -> bool {
+    if acting_for == actor.account_id {
+        return true;
+    }
+    match actor.on_behalf_of_conversation {
+        Some(conversation_id) => is_active_member(pool, conversation_id, acting_for).await,
+        None => false,
+    }
+}
+
+pub(crate) async fn dispatch(
+    pool: &sqlx_postgres::PgPool,
+    actor: &Actor,
+    request: Request,
+) -> Response {
     match request {
         Request::Propose {
             conversation_id,
@@ -164,6 +215,16 @@ async fn handle(
                     StatusCode::BAD_REQUEST,
                 );
             };
+            if actor
+                .on_behalf_of_conversation
+                .is_some_and(|scope| scope != conversation_id)
+            {
+                return error(
+                    "plan_card_forbidden",
+                    "This run may only manage plan cards in its own conversation.",
+                    StatusCode::FORBIDDEN,
+                );
+            }
             let Some(card_state) = PlanCardState::from_db_str(&to_snake_case(&state_str)) else {
                 return error(
                     "invalid_state",
@@ -205,7 +266,7 @@ async fn handle(
                     .collect(),
                 source_message_ids,
             };
-            match store::propose(state.db_pool(), &session.account_id, args).await {
+            match store::propose(pool, &actor.account_id, args).await {
                 Ok(row) => Json(row).into_response(),
                 Err(err) => store_error(err),
             }
@@ -231,9 +292,9 @@ async fn handle(
                     StatusCode::BAD_REQUEST,
                 );
             }
-            // The acting account and the account the RSVP is recorded for
-            // are always the same: nobody can RSVP on someone else's behalf.
-            if participant_id != session.account_id {
+            // A member records only their own RSVP. Pip may record another
+            // active member's RSVP from what that member said in the chat.
+            if !may_act_for(pool, actor, &participant_id).await {
                 return error(
                     "plan_card_forbidden",
                     "You can only record your own RSVP.",
@@ -241,7 +302,7 @@ async fn handle(
                 );
             }
             match store::rsvp(
-                state.db_pool(),
+                pool,
                 &event_id,
                 revision,
                 &participant_id,
@@ -259,14 +320,14 @@ async fn handle(
             revision,
             confirmed_by,
         } => {
-            if confirmed_by != session.account_id {
+            if !may_act_for(pool, actor, &confirmed_by).await {
                 return error(
                     "plan_card_forbidden",
                     "confirmedBy must match the authenticated account.",
                     StatusCode::FORBIDDEN,
                 );
             }
-            match store::confirm(state.db_pool(), &event_id, revision, &confirmed_by, None).await {
+            match store::confirm(pool, &event_id, revision, &confirmed_by, None).await {
                 Ok(row) => Json(row).into_response(),
                 Err(err) => store_error(err),
             }
@@ -283,15 +344,7 @@ async fn handle(
                     StatusCode::BAD_REQUEST,
                 );
             }
-            match store::reopen(
-                state.db_pool(),
-                &event_id,
-                revision,
-                &session.account_id,
-                &reason,
-            )
-            .await
-            {
+            match store::reopen(pool, &event_id, revision, &actor.account_id, &reason).await {
                 Ok(row) => Json(row).into_response(),
                 Err(err) => store_error(err),
             }
@@ -302,22 +355,14 @@ async fn handle(
             canceled_by,
             reason,
         } => {
-            if canceled_by != session.account_id {
+            if !may_act_for(pool, actor, &canceled_by).await {
                 return error(
                     "plan_card_forbidden",
                     "canceledBy must match the authenticated account.",
                     StatusCode::FORBIDDEN,
                 );
             }
-            match store::cancel(
-                state.db_pool(),
-                &event_id,
-                revision,
-                &canceled_by,
-                reason.as_deref(),
-            )
-            .await
-            {
+            match store::cancel(pool, &event_id, revision, &canceled_by, reason.as_deref()).await {
                 Ok(row) => Json(row).into_response(),
                 Err(err) => store_error(err),
             }

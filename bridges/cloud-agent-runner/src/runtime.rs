@@ -150,6 +150,44 @@ where
     }
 
     client.mark_running(&run.run_id).await?;
+    if run.run_id.starts_with(crate::pip::RUN_PREFIX) {
+        let response = {
+            let generation = async {
+                match client.fetch_provider_auth(&run.run_id).await {
+                    Ok(material) => crate::pip::run(client, provider, &run, material)
+                        .await
+                        .map_err(|_| ()),
+                    Err(_) => Err(()),
+                }
+            };
+            tokio::pin!(generation);
+            let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
+            heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            heartbeat.tick().await;
+            tokio::time::timeout(std::time::Duration::from_secs(300), async {
+                loop {
+                    tokio::select! {
+                        result = &mut generation => break Ok::<_, RunnerClientError>(result),
+                        _ = heartbeat.tick() => client.mark_running(&run.run_id).await?,
+                    }
+                }
+            })
+            .await
+            .unwrap_or(Ok(Err(())))?
+        };
+        return match response {
+            Ok(text) => {
+                client.complete_run(&run.run_id, &text).await?;
+                Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
+            }
+            Err(()) => {
+                client
+                    .fail_run(&run.run_id, "pip_sweep_failed", "Pip sweep failed.")
+                    .await?;
+                Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id })
+            }
+        };
+    }
     if run.run_id.starts_with("digest_") {
         let response = {
             let generation = async {

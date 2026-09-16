@@ -463,6 +463,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "shared plan cards for group-chat coordination",
         sql: include_str!("../../migrations/0094_plan_cards.sql"),
     },
+    EmbeddedMigration {
+        version: 95,
+        description: "pip conversation sweep state",
+        sql: include_str!("../../migrations/0095_pip_conversation_state.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
