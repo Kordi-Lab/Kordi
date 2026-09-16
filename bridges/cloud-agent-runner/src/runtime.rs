@@ -156,8 +156,13 @@ where
                 match client.fetch_provider_auth(&run.run_id).await {
                     Ok(material) => crate::pip::run(client, provider, &run, material)
                         .await
-                        .map_err(|_| ()),
-                    Err(_) => Err(()),
+                        .map_err(|error| {
+                            tracing::warn!(run_id = %run.run_id, error = %error, "pip sweep run failed");
+                        }),
+                    Err(error) => {
+                        tracing::warn!(run_id = %run.run_id, error = %error, "pip provider auth unavailable");
+                        Err(())
+                    }
                 }
             };
             tokio::pin!(generation);
