@@ -233,7 +233,7 @@ struct ConversationView: View {
     @State private var queuedVideoReviews: [PendingAttachment] = []
     @State private var isPreparingAttachments = false
     @State private var voiceRecorder = VoiceMessageRecorder()
-    @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
+    @State private var voiceHoldPresentation = VoiceHoldToTalkPresentation()
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var videoPreview: VideoPreviewPresentation?
@@ -785,7 +785,7 @@ struct ConversationView: View {
                                 }
                             ),
                             isAgentModelPickerPresented: $showAgentModel,
-                            voiceGestureIntent: $voiceGestureIntent,
+                            voiceHoldPresentation: voiceHoldPresentation,
                             conversation: conversation,
                             mentionTargets: mentionTargets,
                             isSending: isSending || isEditingMessage,
@@ -897,20 +897,27 @@ struct ConversationView: View {
                 }
             }
             .overlay {
-                if voiceRecorder.phase == .recording, !voiceRecorder.isLocked {
-                    VoiceHoldToTalkOverlay(
-                        recorder: voiceRecorder,
-                        gestureIntent: voiceGestureIntent
-                    )
-                    .transition(.opacity)
+                // Driven by the gesture, not the recorder phase, so it appears as the
+                // long press begins. The window host keeps its coordinates equal to
+                // the window coordinates the gesture reports.
+                if voiceHoldPresentation.isOverlayMounted {
+                    WindowOverlayPresenter(
+                        passthroughFrame: nil,
+                        allowsInteraction: false,
+                        animatesRemoval: false
+                    ) { _ in
+                        VoiceHoldToTalkOverlay(
+                            recorder: voiceRecorder,
+                            presentation: voiceHoldPresentation
+                        )
+                    }
                 }
             }
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.16),
-                value: voiceRecorder.phase == .recording && !voiceRecorder.isLocked
-            )
             #if DEBUG
             .onAppear {
+                if model.isPreviewMode, let previewState = VoiceHoldToTalkPreviewState.launchArgument {
+                    previewState.install(recorder: voiceRecorder, presentation: voiceHoldPresentation)
+                }
                 if ConversationMotionProbeRegistry.enabled {
                     ConversationMotionProbeRegistry.setDraft = { draft = $0 }
                     ConversationMotionProbeRegistry.send = { Task { await send() } }
@@ -1111,7 +1118,9 @@ struct ConversationView: View {
             rememberViewport(in: messages)
             scrollPosition.cancelInitialPositioning()
             scrollPosition.cancelScrolling()
+            voiceHoldPresentation.dismiss()
             voiceRecorder.cancel()
+            voiceRecorder.releaseHoldToTalk()
             if !showsCompanionPanel {
                 attachments.forEach { $0.discardOwnedFile() }
                 attachments = []
@@ -1228,6 +1237,7 @@ struct ConversationView: View {
             synchronizeReadPresentation()
         }
         .onChange(of: conversation.id) { _, _ in
+            voiceHoldPresentation.dismiss()
             voiceRecorder.cancel()
             videoReview?.discardOwnedFile()
             queuedVideoReviews.forEach { $0.discardOwnedFile() }
@@ -1506,8 +1516,9 @@ struct ConversationView: View {
                     onPrepareVoiceMessage: { voiceMessage in
                         await model.prepareVoiceMessageForPresentation(voiceMessage)
                     },
-                    onUpdateVoiceTranscript: { voice in
-                        await model.updateVoiceTranscript(voice, message: message)
+                    voiceTranscriptions: model.voiceTranscriptions,
+                    onTranscribeVoiceMessage: {
+                        model.transcribeVoiceMessage(message)
                     },
                     onPrepareAttachment: { attachment in
                         await model.prepareAttachmentForPresentation(attachment)
@@ -2682,6 +2693,8 @@ struct ConversationView: View {
             isSending = false
             return
         }
+        // Voice messages send right away without a transcript. Transcription runs
+        // later, on request or for an agent, and never delays delivery.
         let message = pending.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingMention = resolvedMentionTarget(in: message)
         guard canSendWithCurrentAuthentication(mention: outgoingMention) else {
@@ -2693,13 +2706,9 @@ struct ConversationView: View {
         replySource = nil
         selectedMention = nil
         voiceRecorder = VoiceMessageRecorder()
-        let resolvedVoiceMessage = Task { @MainActor in
-            await sendingRecorder.finishTranscriptionForSend(pending)
-        }
         await model.send(
             message,
             voiceMessage: pending,
-            resolvedVoiceMessage: resolvedVoiceMessage,
             replyingTo: outgoingReply,
             mentioning: outgoingMention,
             messageAction: scopedThreadMessageAction,
@@ -2713,6 +2722,8 @@ struct ConversationView: View {
                 isSending = false
             }
         )
+        // The outgoing message keeps its own copy of the audio for upload and retry.
+        sendingRecorder.cancel()
     }
 
     private func canPresentPhotoPicker() -> Bool {
