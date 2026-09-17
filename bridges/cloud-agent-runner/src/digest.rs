@@ -262,6 +262,11 @@ pub async fn run<P: CloudModelProvider + Sync>(
     let mut used = 0;
     for _ in 0..MAX_MODEL_CALLS {
         match provider.next_response(&auth, &messages, &catalog).await? {
+            ModelProviderResponse::FinalText(text) if text.trim().is_empty() => {
+                return Err(ModelLoopError::Provider(
+                    "The model finished without writing a digest".into(),
+                ))
+            }
             ModelProviderResponse::FinalText(text) => {
                 return completed_output(text, input.get("changes").is_some_and(Value::is_object))
             }

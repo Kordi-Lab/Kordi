@@ -295,6 +295,8 @@ impl CloudModelProvider for OpenAiCompatibleProvider {
     }
 }
 
+const ANTHROPIC_MAX_TOKENS: u32 = 32_000;
+
 fn completion_request_from_cloud_messages(
     auth: &OpenAiProviderConfig,
     messages: &[Value],
@@ -307,7 +309,9 @@ fn completion_request_from_cloud_messages(
         tools: tools.to_vec(),
         extra_tool_schemas: Vec::new(),
         model: auth.model.clone(),
-        max_tokens: None,
+        // Claude's default cap of 16,384 tokens covers thinking and the reply together, which a
+        // long digest can use up before writing anything.
+        max_tokens: (auth.provider == "anthropic").then_some(ANTHROPIC_MAX_TOKENS),
         stream: true,
         thinking: Some(auth.thinking.clone()),
     }
@@ -352,6 +356,8 @@ fn model_response_from_stream_events(
     events: Vec<StreamEvent>,
 ) -> Result<ModelProviderResponse, ModelLoopError> {
     let mut text = String::new();
+    let mut thinking_chars = 0usize;
+    let mut output_tokens = 0u64;
     let mut tool_order = Vec::new();
     let mut tool_calls: HashMap<String, PendingToolCall> = HashMap::new();
 
@@ -377,10 +383,9 @@ fn model_response_from_stream_events(
                     .arguments
                     .push_str(&arguments_delta);
             }
-            StreamEvent::ToolCallEnd { .. }
-            | StreamEvent::ThinkingDelta { .. }
-            | StreamEvent::Usage(_)
-            | StreamEvent::Done => {}
+            StreamEvent::ThinkingDelta { text: delta } => thinking_chars += delta.len(),
+            StreamEvent::Usage(usage) => output_tokens = output_tokens.max(usage.output_tokens),
+            StreamEvent::ToolCallEnd { .. } | StreamEvent::Done => {}
             StreamEvent::ServerToolUseStart { .. }
             | StreamEvent::ServerToolUseDelta { .. }
             | StreamEvent::ServerToolUseEnd { .. }
@@ -392,6 +397,13 @@ fn model_response_from_stream_events(
     }
 
     if tool_order.is_empty() {
+        if text.trim().is_empty() {
+            tracing::warn!(
+                output_tokens,
+                thinking_chars,
+                "the model finished without a reply"
+            );
+        }
         return Ok(ModelProviderResponse::FinalText(text));
     }
 

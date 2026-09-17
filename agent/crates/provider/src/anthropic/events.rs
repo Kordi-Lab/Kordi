@@ -255,6 +255,17 @@ impl AnthropicEventState {
                 }
             }
             Some("message_delta") => {
+                if let Some(reason) = event
+                    .get("delta")
+                    .and_then(|delta| delta.get("stop_reason"))
+                    .and_then(Value::as_str)
+                    .filter(|reason| !matches!(*reason, "end_turn" | "tool_use" | "stop_sequence"))
+                {
+                    tracing::warn!(
+                        stop_reason = reason,
+                        "Claude stopped before finishing its reply"
+                    );
+                }
                 if let Some(usage) = event.get("usage") {
                     let _ = tx.send(StreamEvent::Usage(usage_info(usage, cache_metrics_source)));
                 }
