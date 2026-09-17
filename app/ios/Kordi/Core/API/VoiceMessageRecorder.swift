@@ -22,7 +22,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     }
 
     static let minimumDurationMs = 1_000
-    static let maximumDurationMs = 60_000
+    nonisolated static let maximumDurationMs = 60_000
 
     private(set) var phase = Phase.idle
     private(set) var transcriptionPhase = TranscriptionPhase.idle
@@ -59,6 +59,14 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     private var preparedTrimStartMs = 0
     private var preparedTrimEndMs = 0
 
+    // Hold to Talk keeps one prepared recorder so a press never waits for setup.
+    @ObservationIgnored private var warmCapture: VoiceCaptureHandle?
+    @ObservationIgnored private var warmupTask: Task<Void, Never>?
+    @ObservationIgnored private var warmupGeneration = 0
+    @ObservationIgnored private var pressCapture: VoiceCaptureHandle?
+    @ObservationIgnored private var pressActivation: Task<Bool, Never>?
+    @ObservationIgnored private var pressGeneration = 0
+
     var canRetryTranscription: Bool {
         transcriptionPhase == .failed && (transcriptionAttempts < VoiceTranscription.maximumAttempts
             || preparedTrimStartMs != trimStartMs || preparedTrimEndMs != trimEndMs)
@@ -80,50 +88,175 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
                 throw VoiceMessageError.microphonePermission
             }
             guard startGeneration == generation else { return false }
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(
-                .playAndRecord,
-                mode: .spokenAudio,
-                options: [.defaultToSpeaker, .allowBluetoothHFP]
-            )
-            try session.setActive(true, options: .notifyOthersOnDeactivation)
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent("kordi-voice-\(UUID().uuidString.lowercased()).m4a")
-            let recorder = try AVAudioRecorder(
-                url: url,
-                settings: [
-                    AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                    AVSampleRateKey: 44_100,
-                    AVNumberOfChannelsKey: 1,
-                    AVEncoderBitRateKey: 64_000,
-                    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
-                ]
-            )
-            recorder.delegate = self
-            recorder.isMeteringEnabled = true
-            guard recorder.record(forDuration: TimeInterval(Self.maximumDurationMs) / 1_000) else {
-                throw VoiceMessageError.recordingFailed
+            VoiceCaptureAudioSession.isActivatedForCapture = true
+            let capture = try await VoiceCaptureAudioSession.perform {
+                let capture = try VoiceCaptureAudioSession.makePreparedCapture()
+                do {
+                    try VoiceCaptureAudioSession.activateAndRecord(capture)
+                } catch {
+                    VoiceCaptureAudioSession.discard(capture)
+                    throw error
+                }
+                return capture
             }
-            self.recorder = recorder
-            recordingURL = url
-            rawSamples = []
-            waveformSamples = []
-            durationMs = 0
-            transcript = ""
-            pendingMessage = nil
-            reviewURL = nil
-            errorMessage = nil
-            isLocked = locked
-            shouldAutoSend = false
-            transcriptionPhase = .idle
-            phase = .recording
-            meterTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.sampleMeter() }
+            guard startGeneration == generation, phase == .idle || phase == .failed else {
+                VoiceCaptureAudioSession.discardLater(capture)
+                return false
             }
+            installRecording(capture, locked: locked)
             return true
         } catch {
             fail(error, preserveReview: false)
             return false
+        }
+    }
+
+    /// Prepares a recorder while the composer shows Hold to Talk. The audio session
+    /// category is set and the recorder is prepared off the main thread, but the
+    /// session stays inactive so other apps keep playing until the user presses.
+    func prepareHoldToTalk() {
+        guard phase == .idle, warmCapture == nil, pressCapture == nil, warmupTask == nil else { return }
+        warmupGeneration += 1
+        let warmupGeneration = warmupGeneration
+        warmupTask = Task { [weak self] in
+            guard await AVAudioApplication.requestRecordPermission() else {
+                self?.finishHoldToTalkWarmup(nil, generation: warmupGeneration)
+                return
+            }
+            let capture = try? await VoiceCaptureAudioSession.perform {
+                try VoiceCaptureAudioSession.makePreparedCapture()
+            }
+            guard let self else {
+                if let capture { VoiceCaptureAudioSession.discardLater(capture) }
+                return
+            }
+            finishHoldToTalkWarmup(capture, generation: warmupGeneration)
+        }
+    }
+
+    /// Releases the prepared recorder when the composer leaves voice input or the
+    /// conversation disappears, and hands audio back to other apps.
+    func releaseHoldToTalk() {
+        warmupGeneration += 1
+        warmupTask?.cancel()
+        warmupTask = nil
+        if let warmCapture { VoiceCaptureAudioSession.discardLater(warmCapture) }
+        warmCapture = nil
+        discardPressCaptureOnly()
+        deactivateCaptureSessionIfIdle()
+    }
+
+    /// Starts recording from the prepared recorder at touch-down, before the long
+    /// press activates, so the first syllable is captured.
+    func beginPressCapture() {
+        guard phase == .idle, pressCapture == nil, let capture = warmCapture else { return }
+        warmCapture = nil
+        pressCapture = capture
+        pressGeneration += 1
+        let pressGeneration = pressGeneration
+        VoiceCaptureAudioSession.isActivatedForCapture = true
+        pressActivation = Task { [weak self] in
+            let started: Bool
+            do {
+                try await VoiceCaptureAudioSession.perform {
+                    try VoiceCaptureAudioSession.activateAndRecord(capture)
+                }
+                started = true
+            } catch {
+                started = false
+            }
+            guard let self, pressGeneration == self.pressGeneration else { return false }
+            if !started {
+                self.pressCapture = nil
+                VoiceCaptureAudioSession.discardLater(capture)
+            }
+            return started
+        }
+    }
+
+    /// Discards a press that ended before the long press activated.
+    func discardPressCapture() {
+        guard pressCapture != nil || pressActivation != nil else { return }
+        discardPressCaptureOnly()
+        deactivateCaptureSessionIfIdle()
+    }
+
+    /// Begins an unlocked Hold to Talk recording. Adopts the recording started at
+    /// touch-down when it is ready, and otherwise starts one the existing way.
+    @discardableResult
+    func startHoldRecording() async -> Bool {
+        if let capture = pressCapture, let activation = pressActivation {
+            let pressGeneration = pressGeneration
+            let started = await activation.value
+            guard pressGeneration == self.pressGeneration else { return false }
+            if started, pressCapture === capture, phase == .idle || phase == .failed {
+                pressCapture = nil
+                pressActivation = nil
+                cancel(removeFile: true)
+                transcriptionAttempts = 0
+                sourceVersion = UUID().uuidString.lowercased()
+                installRecording(capture, locked: false)
+                return true
+            }
+            discardPressCaptureOnly()
+        }
+        return await start(locked: false)
+    }
+
+    private func finishHoldToTalkWarmup(_ capture: VoiceCaptureHandle?, generation: Int) {
+        guard generation == warmupGeneration else {
+            if let capture { VoiceCaptureAudioSession.discardLater(capture) }
+            return
+        }
+        warmupTask = nil
+        guard let capture else { return }
+        guard phase == .idle, warmCapture == nil, pressCapture == nil else {
+            VoiceCaptureAudioSession.discardLater(capture)
+            return
+        }
+        warmCapture = capture
+    }
+
+    private func discardPressCaptureOnly() {
+        pressGeneration += 1
+        pressActivation = nil
+        if let pressCapture { VoiceCaptureAudioSession.discardLater(pressCapture) }
+        pressCapture = nil
+    }
+
+    private func deactivateCaptureSessionIfIdle() {
+        guard VoiceCaptureAudioSession.isActivatedForCapture,
+              phase != .recording, phase != .paused else { return }
+        VoiceCaptureAudioSession.isActivatedForCapture = false
+        VoiceCaptureAudioSession.deactivateLater()
+    }
+
+    private func installRecording(_ capture: VoiceCaptureHandle, locked: Bool) {
+        // A prepared recorder only waits while idle; the composer prepares a new one afterward.
+        warmupGeneration += 1
+        warmupTask?.cancel()
+        warmupTask = nil
+        if let warmCapture { VoiceCaptureAudioSession.discardLater(warmCapture) }
+        warmCapture = nil
+        let recorder = capture.recorder
+        recorder.delegate = self
+        recorder.isMeteringEnabled = true
+        self.recorder = recorder
+        recordingURL = capture.url
+        // Audio may have started at touch-down; keep the waveform aligned with it.
+        rawSamples = Array(repeating: 0.08, count: max(0, Int(recorder.currentTime * 10)))
+        waveformSamples = []
+        durationMs = 0
+        transcript = ""
+        pendingMessage = nil
+        reviewURL = nil
+        errorMessage = nil
+        isLocked = locked
+        shouldAutoSend = false
+        transcriptionPhase = .idle
+        phase = .recording
+        meterTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.sampleMeter() }
         }
     }
 
@@ -149,7 +282,11 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         guard [.recording, .paused].contains(phase),
               let recorder,
               let url = recordingURL else { return false }
-        durationMs = min(Self.maximumDurationMs, max(1, Int(recorder.currentTime * 1_000)))
+        // A recorder that stopped itself at the limit reports zero, so keep the last sample.
+        let measuredMs = recorder.isRecording || phase == .paused
+            ? Int(recorder.currentTime * 1_000)
+            : durationMs
+        durationMs = min(Self.maximumDurationMs, max(1, measuredMs))
         recorder.stop()
         meterTimer?.invalidate()
         meterTimer = nil
@@ -241,6 +378,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     }
 
     func cancel() {
+        discardPressCaptureOnly()
         cancel(removeFile: true)
         phase = .idle
         transcriptionPhase = .idle
@@ -283,6 +421,14 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
 
     private func sampleMeter() {
         guard let recorder, phase == .recording else { return }
+        guard recorder.isRecording else {
+            // record(forDuration:) stops the recorder itself at the limit.
+            if durationMs >= Self.maximumDurationMs - 250 {
+                durationMs = Self.maximumDurationMs
+                stop(autoSend: !isLocked)
+            }
+            return
+        }
         recorder.updateMeters()
         let normalized = max(
             0.08,
@@ -291,7 +437,8 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         rawSamples.append(normalized)
         waveformSamples = Self.downsample(Array(rawSamples.suffix(48)), count: 48)
         durationMs = min(Self.maximumDurationMs, Int(recorder.currentTime * 1_000))
-        if durationMs >= Self.maximumDurationMs { stop() }
+        // An unlocked Hold to Talk recording sends at the limit, as if released.
+        if durationMs >= Self.maximumDurationMs { stop(autoSend: !isLocked) }
     }
 
     @discardableResult
@@ -533,6 +680,139 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
             Int(ceil((Double(min(durationMs, endMs)) / Double(durationMs)) * Double(samples.count)))
         )
         return downsample(Array(samples[start..<min(end, samples.count)]))
+    }
+}
+
+#if DEBUG
+extension VoiceMessageRecorder {
+    func installHoldToTalkPreview(durationMs: Int, waveformSamples: [Double]) {
+        phase = .recording
+        isLocked = false
+        shouldAutoSend = false
+        transcriptionPhase = .idle
+        self.durationMs = durationMs
+        self.waveformSamples = waveformSamples
+    }
+
+    func installFailedDraftPreview(durationMs: Int, waveformSamples: [Double]) {
+        phase = .review
+        isLocked = false
+        shouldAutoSend = false
+        transcriptionPhase = .failed
+        transcriptionAttempts = 1
+        self.durationMs = durationMs
+        self.waveformSamples = waveformSamples
+        trimStartMs = 0
+        trimEndMs = durationMs
+        preparedTrimStartMs = 0
+        preparedTrimEndMs = durationMs
+        errorMessage = VoiceMessageError.noSpeech.errorDescription
+        pendingMessage = PendingVoiceMessage(
+            attachment: PendingAttachment(
+                id: "preview-voice-draft",
+                name: "Voice message.m4a",
+                kind: .file,
+                mimeType: "audio/mp4",
+                data: Data(),
+                previewURL: nil
+            ),
+            durationMs: durationMs,
+            waveformSamples: waveformSamples,
+            transcript: "",
+            transcription: VoiceTranscription(status: .failed, sourceVersion: sourceVersion,
+                engine: "apple-speech-v1", attempts: 1)
+        )
+    }
+}
+#endif
+
+/// A recorder created and prepared on the audio session queue.
+private final class VoiceCaptureHandle: @unchecked Sendable {
+    let recorder: AVAudioRecorder
+    let url: URL
+
+    init(recorder: AVAudioRecorder, url: URL) {
+        self.recorder = recorder
+        self.url = url
+    }
+}
+
+/// Runs blocking AVAudioSession and AVAudioRecorder setup on one serial queue so
+/// the main thread stays responsive and teardown always follows setup in order.
+private enum VoiceCaptureAudioSession {
+    private static let queue = DispatchQueue(label: "ai.kordi.voice-capture-session", qos: .userInteractive)
+
+    /// True after voice capture activated the shared session and before it hands audio back.
+    @MainActor static var isActivatedForCapture = false
+
+    static func perform<T>(_ work: @escaping () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                continuation.resume(with: Result { try work() })
+            }
+        }
+    }
+
+    static func makePreparedCapture() throws -> VoiceCaptureHandle {
+        try configureCategory()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-voice-\(UUID().uuidString.lowercased()).m4a")
+        let recorder = try AVAudioRecorder(
+            url: url,
+            settings: [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 44_100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderBitRateKey: 64_000,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+            ]
+        )
+        recorder.isMeteringEnabled = true
+        guard recorder.prepareToRecord() else {
+            try? FileManager.default.removeItem(at: url)
+            throw VoiceMessageError.recordingFailed
+        }
+        return VoiceCaptureHandle(recorder: recorder, url: url)
+    }
+
+    static func activateAndRecord(_ capture: VoiceCaptureHandle) throws {
+        let session = AVAudioSession.sharedInstance()
+        // Message playback may have switched the category since the recorder was prepared.
+        if session.category != .playAndRecord || session.mode != .spokenAudio {
+            try configureCategory()
+        }
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
+        guard capture.recorder.record(
+            forDuration: TimeInterval(VoiceMessageRecorder.maximumDurationMs) / 1_000
+        ) else {
+            throw VoiceMessageError.recordingFailed
+        }
+    }
+
+    static func discard(_ capture: VoiceCaptureHandle) {
+        capture.recorder.stop()
+        try? FileManager.default.removeItem(at: capture.url)
+    }
+
+    static func discardLater(_ capture: VoiceCaptureHandle) {
+        queue.async { discard(capture) }
+    }
+
+    static func deactivateLater() {
+        queue.async {
+            let session = AVAudioSession.sharedInstance()
+            // Message playback owns the session after it changes the category.
+            guard session.category == .playAndRecord else { return }
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
+    }
+
+    private static func configureCategory() throws {
+        try AVAudioSession.sharedInstance().setCategory(
+            .playAndRecord,
+            mode: .spokenAudio,
+            options: [.defaultToSpeaker, .allowBluetoothHFP]
+        )
     }
 }
 

@@ -139,6 +139,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-completed-subsession` | Completed long-answer task; combine with `--preview-data --preview-background-stop` to test repeated child navigation |
 | `--preview-menu-test-chat` | Manual menu testing chat with long text, voice, photos and captions; combine with `--preview-data --preview-contact-chat` |
 | `--preview-voice-message-actions` | Compact voice fixture for hold-versus-transcript checks |
+| `--preview-voice-hold=<state>` | Debug-only Hold to Talk states frozen for screenshots: `hold`, `cancel`, `convert`, `short`, and `converting` show the overlay with sample levels and a 0:04 timer; `draft-failed` shows the voice draft pill after a failed transcription. Combine with `--preview-data --preview-contact-chat` |
 | `--preview-rich-message-actions` | Markdown and blob-emoji fixture for checking rendered long-press previews |
 | `--preview-image-caption-actions` | Single image with a separately interactive caption |
 | `--preview-long-message-actions` | Tall formatted message for menu scrolling and layout checks; combine with `--preview-data --preview-contact-chat` |

@@ -170,7 +170,7 @@ struct ComposerView: View {
     @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     @Binding var isAgentModelPickerPresented: Bool
-    @Binding var voiceGestureIntent: VoiceRecordingGestureIntent
+    let voiceHoldPresentation: VoiceHoldToTalkPresentation
     let conversation: ConversationSummary
     let mentionTargets: [ComposerMentionTarget]
     let isSending: Bool
@@ -195,7 +195,10 @@ struct ComposerView: View {
     @State private var isVoicePressing = false
     @State private var voiceGestureActive = false
     @State private var voiceGestureEnded = false
+    @State private var voiceGestureToken = 0
     @State private var shortVoiceFeedback = 0
+    @State private var showsHoldToTalkHint = false
+    @State private var holdToTalkHintToken = 0
     @State private var expressiveMediaImportRequest: ExpressiveMediaImportRequest?
     @State private var isShowingExpressiveMediaPhotoPicker = false
     @State private var selectedExpressiveMediaPhotos: [PhotosPickerItem] = []
@@ -210,14 +213,10 @@ struct ComposerView: View {
         composerContainer
             .overlay(alignment: .bottomTrailing) {
                 VoiceRecordingGestureCapture(
-                    isEnabled: isVoiceInputMode
-                        && editingMessage == nil
-                        && !canSend
-                        && !isSending
-                        && !isPreparingAttachments
-                        && voiceRecorder.phase != .failed
-                        && !voiceRecorder.isLocked,
+                    isEnabled: canCaptureHoldToTalk,
                     onPressingChanged: updateVoicePressing,
+                    onTouchDown: beginVoicePressCapture,
+                    onReleasedBeforeActivation: releaseVoicePressBeforeActivation,
                     onBegan: beginVoiceRecordingGesture,
                     onChanged: updateVoiceRecordingGesture,
                     onEnded: endVoiceRecordingGesture,
@@ -251,6 +250,33 @@ struct ComposerView: View {
                 isFocused = true
             }
             .sensoryFeedback(.error, trigger: shortVoiceFeedback)
+            .onChange(of: isVoiceInputMode) { _, isVoiceInputMode in
+                if isVoiceInputMode {
+                    prepareHoldToTalkIfNeeded()
+                } else {
+                    voiceRecorder.releaseHoldToTalk()
+                }
+            }
+            .onChange(of: ObjectIdentifier(voiceRecorder)) {
+                prepareHoldToTalkIfNeeded()
+            }
+            .onChange(of: voiceRecorder.phase) { _, phase in
+                handleVoiceRecorderPhaseChange(phase)
+            }
+            .onAppear {
+                prepareHoldToTalkIfNeeded()
+            }
+            .onDisappear {
+                voiceRecorder.releaseHoldToTalk()
+            }
+            #if DEBUG
+            .onAppear {
+                guard model.isPreviewMode,
+                      let previewState = VoiceHoldToTalkPreviewState.launchArgument else { return }
+                isVoiceInputMode = true
+                isVoicePressing = previewState.isPressing
+            }
+            #endif
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
                 rememberKeyboardSurfaceHeight(from: $0)
             }
@@ -348,15 +374,59 @@ struct ComposerView: View {
     private var inputSurfaceAssembly: some View {
         inputSurface
             .padding(.horizontal, 10)
-            .sensoryFeedback(.selection, trigger: voiceGestureIntent) { _, newValue in
-                newValue != .hold
+            .overlay(alignment: .top) {
+                if showsHoldToTalkHint {
+                    holdToTalkHint
+                        .alignmentGuide(.top) { dimensions in dimensions[.bottom] + 8 }
+                        .transition(.opacity)
+                }
             }
-            .animation(voiceRecordingTransitionAnimation, value: voiceRecorder.isVisible)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: showsHoldToTalkHint)
+            .sensoryFeedback(.selection, trigger: voiceHoldPresentation.intent) { _, newValue in
+                newValue != .hold && voiceHoldPresentation.stage == .recording
+            }
+            .animation(voiceRecordingTransitionAnimation, value: showsVoiceDraftPill)
+    }
+
+    private var holdToTalkHint: some View {
+        Text("Hold to record a voice message")
+            .font(.footnote)
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Color(red: 17 / 255, green: 24 / 255, blue: 39 / 255).opacity(0.88),
+                in: Capsule()
+            )
+            .fixedSize()
+            .allowsHitTesting(false)
+    }
+
+    /// Locked, review, and failed recordings use the draft pill. An unlocked hold keeps
+    /// the Hold to Talk bar on screen so the layout does not jump.
+    private var showsVoiceDraftPill: Bool {
+        guard voiceRecorder.isVisible, voiceHoldPresentation.stage != .converting else { return false }
+        switch voiceRecorder.phase {
+        case .recording, .paused: return voiceRecorder.isLocked
+        case .idle, .review, .failed: return true
+        }
+    }
+
+    private var canCaptureHoldToTalk: Bool {
+        isVoiceInputMode
+            && editingMessage == nil
+            && !canSend
+            && !isSending
+            && !isPreparingAttachments
+            && voiceHoldPresentation.stage != .converting
+            && (voiceRecorder.phase == .idle
+                || (voiceRecorder.phase == .recording && !voiceRecorder.isLocked))
     }
 
     @ViewBuilder
     private var inputSurface: some View {
-        if voiceRecorder.isVisible {
+        if showsVoiceDraftPill {
             VoiceRecordingComposer(
                 recorder: voiceRecorder,
                 onCancel: voiceRecorder.cancel,
@@ -384,7 +454,7 @@ struct ComposerView: View {
 
     private var voiceRecordingTransitionAnimation: Animation? {
         guard !reduceMotion else { return nil }
-        return voiceRecorder.isVisible
+        return showsVoiceDraftPill
             ? .smooth(duration: 0.24)
             : .easeOut(duration: 0.16)
     }
@@ -457,18 +527,16 @@ struct ComposerView: View {
                     .frame(width: 18)
                     .symbolEffect(.variableColor, isActive: isVoicePressing && !reduceMotion)
                     .accessibilityHidden(true)
-                Text(isVoicePressing ? "Keep holding…" : "Hold to Talk")
+                Text(isVoicePressing ? "Release to send" : "Hold to Talk")
                     .font(.body.weight(.semibold))
             }
-            .foregroundStyle(isVoicePressing ? KordiTheme.signalBlue : .primary)
+            .foregroundStyle(isVoicePressing ? Color.white : Color.primary)
             .frame(maxWidth: .infinity, minHeight: composerControlHeight)
-            .padding(.trailing, sendButtonDiameter + 8)
             .background {
                 Capsule()
-                    .fill(KordiTheme.signalBlue.opacity(isVoicePressing ? 0.14 : 0))
-                    .padding(.vertical, 4)
-                    .padding(.trailing, sendButtonDiameter + 8)
+                    .fill(KordiTheme.signalBlue.opacity(isVoicePressing ? 1 : 0))
             }
+            .padding(.trailing, sendButtonDiameter + 8)
             .scaleEffect(
                 reduceMotion || !isVoicePressing ? 1 : 0.985,
                 anchor: .center
@@ -806,16 +874,67 @@ struct ComposerView: View {
         )
     }
 
-    private func beginVoiceRecordingGesture() {
+    private func prepareHoldToTalkIfNeeded() {
+        guard isVoiceInputMode, editingMessage == nil else { return }
+        #if DEBUG
+        // Frozen screenshot states must not prompt for the microphone.
+        if VoiceHoldToTalkPreviewState.launchArgument != nil { return }
+        #endif
+        voiceRecorder.prepareHoldToTalk()
+    }
+
+    private func beginVoicePressCapture() {
+        showsHoldToTalkHint = false
+        guard canCaptureHoldToTalk, !voiceGestureActive, voiceRecorder.phase == .idle else { return }
+        voiceRecorder.beginPressCapture()
+    }
+
+    private func releaseVoicePressBeforeActivation(_ wasCancelled: Bool) {
+        guard !voiceGestureActive else { return }
+        voiceRecorder.discardPressCapture()
+        prepareHoldToTalkIfNeeded()
+        guard !wasCancelled, isVoiceInputMode else { return }
+        showHoldToTalkHint()
+    }
+
+    private func showHoldToTalkHint() {
+        holdToTalkHintToken &+= 1
+        let token = holdToTalkHintToken
+        showsHoldToTalkHint = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1_100))
+            guard token == holdToTalkHintToken else { return }
+            showsHoldToTalkHint = false
+        }
+    }
+
+    private func beginVoiceRecordingGesture(at location: CGPoint, in windowSize: CGSize) {
         guard !isSending, !isPreparingAttachments, !voiceGestureActive else { return }
         voiceGestureActive = true
         voiceGestureEnded = false
+        voiceGestureToken &+= 1
+        let token = voiceGestureToken
         isFocused = false
         dismissExpressivePicker()
         dismissAgentModelPicker()
+        // Show the overlay from the gesture, before the recorder confirms.
+        voiceHoldPresentation.present()
+        voiceHoldPresentation.intent = VoiceHoldToTalkTargetLayout.intent(
+            for: location,
+            in: windowSize,
+            previous: .hold
+        )
+        let recorder = voiceRecorder
         Task {
-            let started = await voiceRecorder.start(locked: false)
-            if started, voiceGestureEnded {
+            let started = await recorder.startHoldRecording()
+            guard token == voiceGestureToken else { return }
+            guard started else {
+                voiceGestureActive = false
+                voiceGestureEnded = false
+                if voiceHoldPresentation.stage == .recording { voiceHoldPresentation.dismiss() }
+                return
+            }
+            if voiceGestureEnded {
                 completeVoiceRecordingGesture()
             }
         }
@@ -829,14 +948,21 @@ struct ComposerView: View {
         self.isVoicePressing = isPressing
     }
 
-    private func updateVoiceRecordingGesture(_ translation: CGSize) {
-        guard voiceGestureActive else { return }
-        voiceGestureIntent = VoiceHoldToTalkTargetLayout.intent(for: translation)
+    private func updateVoiceRecordingGesture(at location: CGPoint, in windowSize: CGSize) {
+        guard voiceGestureActive, voiceHoldPresentation.stage == .recording else { return }
+        let intent = VoiceHoldToTalkTargetLayout.intent(
+            for: location,
+            in: windowSize,
+            previous: voiceHoldPresentation.intent
+        )
+        if intent != voiceHoldPresentation.intent {
+            voiceHoldPresentation.intent = intent
+        }
     }
 
-    private func endVoiceRecordingGesture(_ translation: CGSize) {
+    private func endVoiceRecordingGesture(at location: CGPoint, in windowSize: CGSize) {
         guard voiceGestureActive else { return }
-        voiceGestureIntent = VoiceHoldToTalkTargetLayout.intent(for: translation)
+        updateVoiceRecordingGesture(at: location, in: windowSize)
         voiceGestureActive = false
         voiceGestureEnded = true
         if voiceRecorder.phase == .recording || voiceRecorder.phase == .paused {
@@ -848,18 +974,16 @@ struct ComposerView: View {
         guard voiceGestureActive else { return }
         voiceGestureActive = false
         voiceGestureEnded = false
-        voiceGestureIntent = .hold
         voiceRecorder.cancel()
+        voiceHoldPresentation.dismiss()
     }
 
     private func completeVoiceRecordingGesture() {
         voiceGestureEnded = false
-        defer {
-            voiceGestureIntent = .hold
-        }
-        switch voiceGestureIntent {
+        switch voiceHoldPresentation.intent {
         case .cancel:
             voiceRecorder.cancel()
+            voiceHoldPresentation.dismiss()
         case .convertToText:
             convertVoiceRecordingToText()
         case .hold:
@@ -867,10 +991,30 @@ struct ComposerView: View {
         }
     }
 
+    /// The recorder can stop while the finger is still down: at the 60-second limit,
+    /// when the app leaves the foreground, or when recording fails.
+    private func handleVoiceRecorderPhaseChange(_ phase: VoiceMessageRecorder.Phase) {
+        if phase == .idle {
+            prepareHoldToTalkIfNeeded()
+        }
+        guard voiceGestureActive, phase == .review || phase == .failed else { return }
+        voiceGestureActive = false
+        voiceGestureEnded = false
+        if phase == .review, voiceRecorder.shouldAutoSend {
+            // Send as if released on hold; the later release is ignored.
+            finishVoiceRecordingAndSend()
+        } else {
+            voiceHoldPresentation.dismiss()
+        }
+    }
+
     private func finishVoiceRecordingAndSend() {
         guard voiceRecorder.phase == .review || voiceRecorder.stop(autoSend: true) else {
             rejectShortVoiceRecording()
             return
+        }
+        if voiceHoldPresentation.stage == .recording {
+            voiceHoldPresentation.dismiss()
         }
         onSendVoice()
     }
@@ -880,14 +1024,18 @@ struct ComposerView: View {
             rejectShortVoiceRecording()
             return
         }
+        voiceHoldPresentation.showConverting()
+        let recorder = voiceRecorder
         Task {
-            guard let transcript = await voiceRecorder.prepareTranscript() else {
-                voiceRecorder.cancel()
+            guard let transcript = await recorder.prepareTranscript() else {
+                recorder.cancel()
+                voiceHoldPresentation.dismiss()
                 model.errorMessage = "No recognizable speech was found. Try again."
                 return
             }
             text = transcript
-            voiceRecorder.cancel()
+            recorder.cancel()
+            voiceHoldPresentation.dismiss()
             isVoiceInputMode = false
             showKeyboard()
         }
@@ -895,6 +1043,9 @@ struct ComposerView: View {
 
     private func rejectShortVoiceRecording() {
         shortVoiceFeedback &+= 1
+        if voiceHoldPresentation.isPresented {
+            voiceHoldPresentation.showTooShort()
+        }
         UIAccessibility.post(
             notification: .announcement,
             argument: "Recording was shorter than one second and was discarded."
