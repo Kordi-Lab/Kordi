@@ -58,6 +58,11 @@
     0 8px 18px rgba(0, 0, 0, 0.18);
 }
 
+/* Chat composer send: one 32px size for text drafts, voice drafts, and edits. */
+.app-composer-send.app-composer-send-compact {
+  border: 0;
+}
+
 .app-composer-send[data-composer-send='true'] {
   transition: transform 140ms var(--app-motion-ease);
 }

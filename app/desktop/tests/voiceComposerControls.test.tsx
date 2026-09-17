@@ -5,7 +5,7 @@ import { act, createElement, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { useVoiceComposer } from '../src/pages/chatsPage.voiceComposer';
-import { VoiceComposerControls, VoiceRecordingSurface } from '../src/pages/chatsPage.voiceControls';
+import { VoiceComposerControls } from '../src/pages/chatsPage.voiceControls';
 import type { Conversation } from '../src/kordi-app/types';
 
 test('mouse click records, pending transcription is visible, and cancel or failed send cannot lock the microphone', async () => {
@@ -63,8 +63,7 @@ test('mouse click records, pending transcription is visible, and cancel or faile
     return createElement('div', null,
       createElement('div', { 'data-message-bubble': true }, deliveryStatus),
       createElement(VoiceComposerControls, { voice, hasSendableDraft: false, validationError: null,
-        activeLiveTurnIsRunning: false, onSend: () => {} }),
-      voice.surfaceActive ? createElement(VoiceRecordingSurface, { voice }) : null);
+        activeLiveTurnIsRunning: false, onSend: () => {} }));
   }
   const button = (label: string) => {
     const value = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);

@@ -12,7 +12,7 @@ import type { Conversation, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } 
 import { CompactComposerModelMenu, ComposerMentionMenu, type ComposerMentionOption } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
 import { useVoiceComposer } from '@/pages/chatsPage.voiceComposer';
-import { VoiceComposerControls, VoiceRecordingSurface } from '@/pages/chatsPage.voiceControls';
+import { VoiceComposerControls } from '@/pages/chatsPage.voiceControls';
 import { chatTranscriptDensityMode } from '@/pages/chatsPage.model';
 import { ChatSessionPane } from '@/pages/chatsPage.sessionPane';
 import type { ChatSessionPaneActions } from '@/pages/chatsPage.types';
@@ -270,43 +270,41 @@ export function ChatThreadPanel({
                       event.currentTarget.value = '';
                     }}
                   />
-                  {voice.surfaceActive ? <VoiceRecordingSurface voice={voice} /> : <>
-                    <ComposerAttachmentList
-                      attachments={attachments}
-                      onRemove={(id) => setAttachmentsByRoot((current) => ({
-                        ...current,
-                        [rootId]: (current[rootId] ?? []).filter((attachment) => attachment.id !== id),
-                      }))}
-                    />
-                    <textarea
-                      ref={textareaRef}
-                      value={draft}
-                      onChange={(event) => {
-                        updateMentionCursor(event.target.selectionStart);
-                        setDrafts((current) => ({ ...current, [rootId]: event.target.value }));
-                      }}
-                      onKeyDown={(event) => {
-                        if (handleMentionKeyDown(event)) return;
-                        if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
-                        event.preventDefault();
-                        void send();
-                      }}
-                      rows={1}
-                      className="min-h-6 max-h-40 w-full resize-none bg-transparent text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                      placeholder="Reply in thread…"
-                      aria-label="Reply in thread"
-                      aria-autocomplete="list"
-                      aria-controls={mentionTargets.length > 0 ? mentionMenuId : undefined}
-                      aria-expanded={mentionTargets.length > 0}
-                      aria-activedescendant={mentionActiveDescendant}
-                    />
-                  </>}
+                  <ComposerAttachmentList
+                    attachments={attachments}
+                    onRemove={(id) => setAttachmentsByRoot((current) => ({
+                      ...current,
+                      [rootId]: (current[rootId] ?? []).filter((attachment) => attachment.id !== id),
+                    }))}
+                  />
+                  <textarea
+                    ref={textareaRef}
+                    value={draft}
+                    onChange={(event) => {
+                      updateMentionCursor(event.target.selectionStart);
+                      setDrafts((current) => ({ ...current, [rootId]: event.target.value }));
+                    }}
+                    onKeyDown={(event) => {
+                      if (handleMentionKeyDown(event)) return;
+                      if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+                      event.preventDefault();
+                      void send();
+                    }}
+                    rows={1}
+                    className="min-h-6 max-h-40 w-full resize-none bg-transparent text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+                    placeholder="Reply in thread…"
+                    aria-label="Reply in thread"
+                    aria-autocomplete="list"
+                    aria-controls={mentionTargets.length > 0 ? mentionMenuId : undefined}
+                    aria-expanded={mentionTargets.length > 0}
+                    aria-activedescendant={mentionActiveDescendant}
+                  />
                 </div>
-                <div className={voice.surfaceActive ? 'hidden' : 'app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5'}>
+                <div className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5">
                   <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
                     <CompactComposerModelMenu scope="chat" {...compactModelMenu} />
-                    {!voice.recording ? <ComposerAttachmentAddMenu inputRef={inputRef} /> : null}
-                    {!voice.recording ? <ComposerExpressivePicker
+                    {!voice.surfaceActive ? <ComposerAttachmentAddMenu inputRef={inputRef} /> : null}
+                    {!voice.surfaceActive ? <ComposerExpressivePicker
                       accountId={accountId}
                       captureSelection={() => ({
                         start: textareaRef.current?.selectionStart ?? draft.length,

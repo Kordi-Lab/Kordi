@@ -1,4 +1,3 @@
-import { useVoiceComposerLayout } from './useVoiceComposerLayout';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -34,7 +33,7 @@ import {
   shouldUseCompactModelRouteMenu,
 } from '@/pages/chatsPage.header';
 import { useVoiceComposer } from './chatsPage.voiceComposer';
-import { VoiceComposerControls, VoiceRecordingSurface } from './chatsPage.voiceControls';
+import { VoiceComposerControls } from './chatsPage.voiceControls';
 import { useVideoMessageRecorder } from '@/features/chat/useVideoMessageRecorder';
 import {
   VideoAttachmentReviewSurface,
@@ -141,7 +140,6 @@ export function MainComposer({
     focusComposer: () => composerInputRef.current?.focus(),
   });
   const voiceSurfaceActive = voice.surfaceActive;
-  const voiceLayoutRef = useVoiceComposerLayout(voiceSurfaceActive);
   const video = useVideoMessageRecorder({
     conversationId: conversation.id,
     onSend,
@@ -152,7 +150,7 @@ export function MainComposer({
     onRemoveAttachment: removeChatComposerAttachment,
   });
   const attachedVideoReview = videoReviews.current;
-  const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive || Boolean(attachedVideoReview);
+  const videoSurfaceActive = video.surfaceActive || Boolean(attachedVideoReview);
 
   function openPastedImageEditor(pendingAttachments: Promise<AttachmentItem[]>) {
     void pendingAttachments.then((saved) => {
@@ -162,7 +160,7 @@ export function MainComposer({
   }
 
   return (
-    <div ref={voiceLayoutRef} className="shrink-0 px-5 pb-4 pt-3">
+    <div className="shrink-0 px-5 pb-4 pt-3">
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <MessageSelectionBar
           count={selectedMessageCount}
@@ -226,8 +224,6 @@ export function MainComposer({
               />
             ) : video.surfaceActive ? (
               <VideoRecordingSurface video={video} />
-            ) : voiceSurfaceActive ? (
-              <VoiceRecordingSurface voice={voice} />
             ) : <div className="flex min-w-0">
               <BlobEmojiComposerInput
                 ref={composerInputRef}
@@ -338,7 +334,7 @@ export function MainComposer({
           ref={composerControlsRef}
           className={cn(
             'app-composer-meta mt-2 items-center justify-between gap-4 pt-2.5',
-            mediaSurfaceActive ? 'hidden' : 'flex',
+            videoSurfaceActive ? 'hidden' : 'flex',
           )}
         >
           <div
@@ -385,7 +381,8 @@ export function MainComposer({
           <div
             className={cn(
               'flex min-w-0 items-center overflow-visible',
-              display.showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3',
+              voiceSurfaceActive ? 'flex-1 justify-end gap-2'
+                : display.showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3',
             )}
           >
             {!editingMessage && !voiceSurfaceActive && localRouting.paneKind === 'agent'
@@ -454,7 +451,7 @@ export function MainComposer({
                 ) : null}
             {editingMessage ? (
               <Button
-                className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
+                className="app-composer-send app-composer-send-compact m-1 h-8 w-8 shrink-0 rounded-full p-0"
                 onClick={() => { void saveMessageEdit?.(); }}
                 disabled={!canSaveEdit}
                 aria-label="Save message edit"

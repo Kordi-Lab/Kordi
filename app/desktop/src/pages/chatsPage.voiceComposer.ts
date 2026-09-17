@@ -11,11 +11,6 @@ import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollab
 import { uploadNativeCloudAttachment } from '@/features/cloud/cloudAttachmentUpload';
 import type { Conversation } from '@/kordi-app/types';
 
-export function formatVoiceRecordingDuration(durationMs: number) {
-  const seconds = Math.max(0, Math.round(durationMs / 1_000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
 export function useVoiceComposer({
   conversation,
   cloudAccountId,
