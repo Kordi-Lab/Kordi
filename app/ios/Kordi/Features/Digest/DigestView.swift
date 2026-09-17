@@ -75,12 +75,16 @@ struct DigestView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 4) {
-                headerStatus
-                Spacer()
+                headerStatus.lineLimit(1)
+                Spacer(minLength: 8)
                 Button { selectedSheet = .details } label: { Image(systemName: "info.circle") }
                     .tint(.secondary)
                     .accessibilityLabel("How Digest updates")
-            }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 18).padding(.bottom, 8)
+            }
+            .font(.caption).foregroundStyle(.secondary)
+            .frame(height: 20)
+            .accessibilityElement(children: .contain)
+            .padding(.horizontal, 18).padding(.bottom, 8)
             HStack(spacing: 26) {
                 ForEach(DigestPane.allCases, id: \.self) { tab in
                     Button { pane = tab } label: {
@@ -133,14 +137,23 @@ struct DigestView: View {
             ConversationView(conversation: route.conversation, initialMessageID: route.messageID)
         }
     }
-    /// The header says how fresh the brief is; a missing brief explains itself
-    /// once, in the page body, so nothing here repeats it.
+    /// Every digest status and its one action live in this line, which keeps
+    /// the same height in every state; the page body stays empty until there
+    /// is a brief, so nothing is said twice and nothing shifts.
     @ViewBuilder private var headerStatus: some View {
         switch availability {
-        case .loading: Text("Loading…")
-        case .unreachable: Text("Offline")
-        case .preparing: Text("Preparing your digest…")
-        case .needsProvider, .failed: EmptyView()
+        case .loading:
+            Text("Loading…")
+        case .unreachable:
+            Text("Couldn't reach Kordi ·")
+            statusAction("Try again") { retryRead(calendar: false) }
+        case .preparing:
+            Text("Preparing your digest…")
+        case .needsProvider:
+            Text("Connect a model provider in Account to get your digest")
+        case .failed:
+            Text("Your digest couldn't be prepared ·")
+            statusAction(isRefreshing ? "Trying again…" : "Try again") { Task { await refresh() } }
         case .brief:
             if let date = DigestDate.parse(digest?.updatedAt) {
                 Text("Updated \(date.formatted(date: .omitted, time: .shortened))")
@@ -150,12 +163,15 @@ struct DigestView: View {
             if digest?.status == "updating" {
                 Text("· Updating…")
             } else if digest?.errorCode == "missing_provider_auth" {
-                Text("· Connect a model provider in Account").lineLimit(1)
+                Text("· Connect a model provider in Account")
             } else if digest?.errorCode != nil {
                 Text("· Last update failed ·")
-                Button("Retry") { Task { await refresh() } }.buttonStyle(.plain).underline().disabled(isRefreshing)
+                statusAction("Retry") { Task { await refresh() } }
             }
         }
+    }
+    private func statusAction(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action).buttonStyle(.plain).underline().disabled(isRefreshing)
     }
     private func page<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ScrollView {
@@ -257,30 +273,8 @@ struct DigestView: View {
             }
         }
     }
-    /// The one explanation for a digest without a brief, with the action that
-    /// helps: reload, start a new generation, or connect a provider.
-    @ViewBuilder private var digestReadNotice: some View {
-        switch availability {
-        case .loading:
-            ProgressView("Loading…").frame(maxWidth: .infinity, alignment: .leading)
-        case .preparing:
-            Text("Preparing your digest. This can take a minute.").foregroundStyle(.secondary)
-        case .unreachable:
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Couldn't reach Kordi.").foregroundStyle(.secondary)
-                Button("Try again") { retryRead(calendar: false) }.buttonStyle(.plain)
-            }
-        case .needsProvider:
-            Text("Connect a model provider in Account to get your digest.").foregroundStyle(.secondary)
-        case .failed:
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Your digest couldn't be prepared.").foregroundStyle(.secondary)
-                Button(isRefreshing ? "Trying again…" : "Try again") { Task { await refresh() } }.buttonStyle(.plain).disabled(isRefreshing)
-            }
-        case .brief:
-            EmptyView()
-        }
-    }
+    /// A digest without a brief explains itself in the header line only.
+    private var digestReadNotice: some View { EmptyView() }
     private func setSuggestionDismissed(_ id: String, dismissed: Bool) {
         do { _ = try model.beginDismissingDigestItem(id, dismissed: dismissed) }
         catch { self.error = error.localizedDescription }
