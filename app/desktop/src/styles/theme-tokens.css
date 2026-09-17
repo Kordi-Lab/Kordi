@@ -190,10 +190,9 @@
   --app-tool-running-muted: oklch(50% 0.05 70);
   --app-tool-running-bg: oklch(54% 0.055 70 / 0.09);
   --app-tool-running-border: oklch(50% 0.055 70 / 0.2);
-  --app-motion-fast: 200ms;
-  --app-motion-base: 260ms;
-  --app-motion-slow: 340ms;
-  --app-motion-ease: cubic-bezier(0.2, 0.9, 0.22, 1);
+  /* Motion timing is not a theme property: --app-motion-* is defined once on
+     .kordi-app above and intentionally not redefined here, so light and dark
+     animate at the same speed with the same easing. */
   --app-page-bg:
     radial-gradient(circle at 18% 12%, oklch(0.72 0.16 211 / 0.10), transparent 32%),
     radial-gradient(circle at 82% 18%, oklch(0.66 0.26 355 / 0.08), transparent 28%),

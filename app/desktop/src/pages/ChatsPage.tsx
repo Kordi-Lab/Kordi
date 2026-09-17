@@ -1,6 +1,6 @@
 import {useUnreadThreadNavigation} from './useUnreadThreadNavigation';
 import {ThreadShortcut} from '@/features/chat/ThreadShortcut';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
@@ -272,6 +272,29 @@ export function ChatsPage({
   });
   const openUnreadRoot=useCallback((rootId:string)=>setOpenThreadState({conversationId:activeConv.id,rootId}),[activeConv.id,setOpenThreadState]);
   const unreadThreads=useUnreadThreadNavigation(activeConv,cloudAccount?.accountId,openUnreadRoot,activeThreadRootId);
+  // A stable ref keeps the shortcut's onClick identity fixed even though
+  // `unreadThreads` is a fresh object every render, so the memoized element
+  // below only changes when its visible props actually change (not on every
+  // keystroke or unrelated re-render), which lets VirtualTranscript's own
+  // memoization see a stable navigationAccessory prop.
+  const unreadThreadsRef = useRef(unreadThreads);
+  useLayoutEffect(() => { unreadThreadsRef.current = unreadThreads; });
+  const handleThreadShortcutClick = useCallback(() => {
+    const current = unreadThreadsRef.current;
+    void (current.error ? current.retry() : current.load());
+  }, []);
+  const threadShortcutCount = activeConv.threadAttention?.thread_count ?? 0;
+  const threadShortcutElement = useMemo(
+    () => (
+      <ThreadShortcut
+        count={threadShortcutCount}
+        busy={unreadThreads.busy}
+        error={unreadThreads.error}
+        onClick={handleThreadShortcutClick}
+      />
+    ),
+    [threadShortcutCount, unreadThreads.busy, unreadThreads.error, handleThreadShortcutClick],
+  );
   const loadedThreadPage=unreadThreads.page;
   const notificationMessage=loadedThreadPage && !loadedThreadPage.isThread?loadedThreadPage.thread.root:undefined;
   const {threadProjection,locatedLiveTurn}=useThreadTranscript(activeConv,activeTranscriptLiveTurn,notificationMessage,loadedThreadPage?.isThread?loadedThreadPage.thread:undefined);
@@ -448,7 +471,7 @@ export function ChatsPage({
               open: openSideAgentPanel,
               openSession: openRelatedAgentSession,
             }}
-            threadShortcut={<ThreadShortcut count={activeConv.threadAttention?.thread_count??0} busy={unreadThreads.busy} error={unreadThreads.error} onClick={()=>void (unreadThreads.error?unreadThreads.retry():unreadThreads.load())}/>}
+            threadShortcut={threadShortcutElement}
             threadPanel={activeThread ? (
               <ChatThreadPanel
                 conversation={activeConv}

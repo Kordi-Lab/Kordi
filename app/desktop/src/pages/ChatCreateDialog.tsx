@@ -212,9 +212,24 @@ export function ChatCreateDialog({
   const visibleAddableContacts = useMemo(() => addableContacts.filter((contact) => contact.sourceParticipantId?.trim()), [addableContacts]);
 
   useEffect(() => {
-    if (isOpen) {
-      setMode(initialMode);
-    }
+    if (!isOpen) return;
+    // Mirrors close()'s resets so every open (or a live initialMode retarget
+    // while already open) starts clean regardless of how the previous
+    // session ended, without needing a remounting `key` on this component
+    // (that key tore the whole dialog down and replayed its enter animation
+    // on every open and close, and made an exit animation impossible -- see
+    // WorkspaceSidebar.tsx).
+    setMode(initialMode);
+    setSelectedContactIds([]);
+    setGroupName('');
+    setContactNodeId('');
+    setAddContactState('idle');
+    setAddContactError('');
+    setRequestingContactNodeId(null);
+    setRequestedContactNodeIds([]);
+    setLookupState('idle');
+    setLookupError('');
+    setLookupResult(null);
   }, [initialMode, isOpen]);
 
   const selectedPeople = groupPersonOptions.filter((option) => selectedContactIds.includes(option.id));
