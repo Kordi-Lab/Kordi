@@ -35,10 +35,7 @@ export function VoiceComposerControls({
         state={recorder.state}
         onCancel={recorder.reset}
         onSend={() => { void (voice.recording ? voice.finishAndSend() : voice.sendPrepared()); }}
-        onRetry={() => {
-          if (recorder.state.attachment) void recorder.prepareForSend();
-          else void recorder.start();
-        }}
+        onRetry={() => { void recorder.start(); }}
         onTrimRange={recorder.setTrimRange}
       />
     );

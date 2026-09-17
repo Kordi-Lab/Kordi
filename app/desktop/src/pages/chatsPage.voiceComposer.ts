@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { useVoiceMessageRecorder } from '@/features/chat/useVoiceMessageRecorder';
+import { VOICE_MESSAGE_BODY_TEXT } from '@/features/chat/voiceTranscription';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { uploadNativeCloudAttachment } from '@/features/cloud/cloudAttachmentUpload';
 import type { Conversation } from '@/kordi-app/types';
@@ -30,11 +31,11 @@ export function useVoiceComposer({
   );
 
   const handOff = useCallback((attachment: AttachmentItem, operation: symbol) => {
-    const transcript = attachment.voiceMessage?.transcript.trim();
-    if (!transcript || sendingRef.current !== operation) return;
+    if (!attachment.voiceMessage || sendingRef.current !== operation) return;
     let delivery: Promise<void> | void;
     try {
-      delivery = onSend(transcript, [attachment]);
+      // Voice sends immediately. Previews, notifications and search read the body until a transcript exists.
+      delivery = onSend(VOICE_MESSAGE_BODY_TEXT, [attachment]);
     } catch {
       // No handoff occurred. Keep the recording if the caller rejects synchronously.
       recorder.recoverSend(attachment.id);

@@ -164,8 +164,19 @@
   margin-top: 0.25rem;
 }
 
-.app-voice-transcript-unavailable {
+.app-voice-transcript-unavailable,
+.app-voice-transcript-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
   color: color-mix(in oklab, currentColor 62%, transparent);
+}
+
+.app-voice-transcript-unavailable .app-voice-transcript-toggle {
+  margin-top: 0;
+  padding: 0;
+  cursor: pointer;
 }
 
 @media (max-width: 760px) {

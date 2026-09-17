@@ -1,8 +1,7 @@
-import { LoaderCircle, Pause, Play, RotateCcw, Scissors, Send, X } from 'lucide-react';
+import { Pause, Play, RotateCcw, Scissors, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { VoiceMessageRecorderState } from '@/features/chat/useVoiceMessageRecorder';
-import { MAX_TRANSCRIPTION_ATTEMPTS } from '@/features/chat/voiceTranscription';
 import { cn } from '@/lib/utils';
 import { formatVoiceDuration, localVoiceSource } from './voiceAudioSource';
 import { VoiceWaveform } from './voiceWaveform';
@@ -22,20 +21,19 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
   const [elapsedMs, setElapsedMs] = useState(0);
   const [trimming, setTrimming] = useState(false);
   const recording = state.phase === 'recording';
-  const pending = !recording && state.transcriptionPhase === 'transcribing';
   const failed = !recording && Boolean(state.error);
   const duration = recording ? state.durationMs : Math.max(0, state.trimEndMs - state.trimStartMs);
   const progress = duration ? Math.max(0, Math.min(1, (elapsedMs - state.trimStartMs) / duration)) : 0;
   const path = state.attachment?.localPath ?? state.attachment?.path;
-  const canTrim = Boolean(state.attachment) && !pending;
-  const canSend = recording || state.transcriptionPhase === 'ready';
-  const retryDisabled = (state.attachment?.voiceMessage?.transcription?.attempts ?? 0) >= MAX_TRANSCRIPTION_ATTEMPTS
-    && state.trimStartMs <= 50 && state.trimEndMs >= state.durationMs - 50;
-  const status = recording ? 'Recording' : pending ? 'Transcribing…'
+  const canTrim = Boolean(state.attachment);
+  // A finished recording is always sendable; transcription happens after sending, only when needed.
+  const canSend = recording || Boolean(state.attachment);
+  const status = recording ? 'Recording'
     : /Allow Kordi.*microphone/i.test(state.error ?? '') ? 'Allow microphone access in Settings'
-    : /Allow Kordi.*Speech Recognition/i.test(state.error ?? '') ? 'Allow Speech Recognition in Settings'
-    : failed ? state.attachment ? state.transcriptionPhase === 'ready' ? 'Send failed · recording saved' : 'Transcription failed · recording saved'
-      : 'Could not start recording' : 'Ready to send';
+    : failed ? state.attachment
+      ? /trim/i.test(state.error ?? '') ? 'Trim failed · recording saved' : 'Send failed · recording saved'
+      : 'Could not start recording'
+    : 'Ready to send';
 
   useEffect(() => {
     let cancelled = false;
@@ -84,9 +82,8 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
             setElapsedMs(next);
           }} />}
       </div>}
-      <span className={cn('app-voice-recording-status', !(pending || failed) && 'sr-only')}
+      <span className={cn('app-voice-recording-status', !failed && 'sr-only')}
         role="status" title={state.error ?? undefined}>
-        {pending ? <LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" /> : null}
         <span>{status}</span>
       </span>
       {state.phase === 'error' && !state.attachment ? null
@@ -104,9 +101,9 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
           <button type="button" onClick={() => setTrimming(false)}>Done</button>
         </div>}
       </div> : null}
-      {!pending && !recording && (state.transcriptionPhase === 'error' || state.phase === 'error') ?
-        <button type="button" className="app-voice-control" onClick={onRetry} disabled={Boolean(state.attachment) && retryDisabled}
-          aria-label={state.attachment ? 'Retry voice transcription' : 'Record voice message again'} title={state.attachment ? 'Retry transcription' : 'Try recording again'}><RotateCcw size={15} /></button> : null}
+      {state.phase === 'error' && !state.attachment ?
+        <button type="button" className="app-voice-control" onClick={onRetry}
+          aria-label="Record voice message again" title="Try recording again"><RotateCcw size={15} /></button> : null}
       <Button className="app-composer-send app-composer-send-compact h-8 w-8 shrink-0 rounded-full p-0" onClick={onSend}
         disabled={!canSend} data-composer-send={canSend ? 'true' : undefined}
         aria-label={recording ? 'Stop and send voice message' : 'Send voice message'} title={recording ? 'Stop and send' : 'Send voice message'}>

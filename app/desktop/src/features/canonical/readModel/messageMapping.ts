@@ -434,7 +434,12 @@ export function mapCanonicalMessage(
   const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
   if (role === 'system' && !displayText.trim()) return null;
-  const voiceMessage = cloudVoiceMessageMetadataOnly(content.voiceMessage);
+  const portableVoiceMessage = cloudVoiceMessageMetadataOnly(content.voiceMessage);
+  // Portable voice metadata never carries a path. This device's own recording keeps it for playback and transcription.
+  const ownRecordingPath = isOwnMessage ? stringValue(contentRecord(content.voiceMessage).localPath)?.trim() : '';
+  const voiceMessage = portableVoiceMessage && ownRecordingPath
+    ? { ...portableVoiceMessage, localPath: ownRecordingPath }
+    : portableVoiceMessage;
   return {
     id: message.id,
     // Cloud user messages already carry the runtime entry ID as sourceEventId,
