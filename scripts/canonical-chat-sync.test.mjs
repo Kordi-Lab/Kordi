@@ -153,7 +153,7 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   );
   assert.match(
     conversation,
-    /let showsTimeline = hasRevealedInitialViewport \|\| usesCachedThreadTimeline/,
+    /let showsTimeline = hasRevealedInitialViewport\s*\|\| \(usesCachedThreadTimeline && cachedThreadRevealDeadlinePassed\)/,
   );
   assert.match(
     conversation,

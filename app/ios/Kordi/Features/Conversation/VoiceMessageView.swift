@@ -14,18 +14,14 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
 
     let isEnabled: Bool
     let onPressingChanged: (Bool) -> Void
-    /// Touch-down, before the long press activates.
-    let onTouchDown: () -> Void
-    /// The touch ended before the long press activated. `true` when the system cancelled it.
-    let onReleasedBeforeActivation: (Bool) -> Void
-    /// Finger location in window coordinates, with the window size.
-    let onBegan: (CGPoint, CGSize) -> Void
-    let onChanged: (CGPoint, CGSize) -> Void
-    let onEnded: (CGPoint, CGSize) -> Void
+    let onBegan: () -> Void
+    let onChanged: (CGSize) -> Void
+    let onEnded: (CGSize) -> Void
     let onCancelled: () -> Void
 
     final class Coordinator: NSObject {
         var parent: VoiceRecordingGestureCapture
+        private var startLocation = CGPoint.zero
 
         init(parent: VoiceRecordingGestureCapture) {
             self.parent = parent
@@ -35,34 +31,29 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
             parent.onPressingChanged(isPressing)
         }
 
-        func touchDown() {
-            parent.onTouchDown()
-        }
-
-        func releasedBeforeActivation(_ wasCancelled: Bool) {
-            parent.onReleasedBeforeActivation(wasCancelled)
-        }
-
         @objc func handle(_ recognizer: UILongPressGestureRecognizer) {
-            guard let window = recognizer.view?.window else {
-                if [.ended, .cancelled, .failed].contains(recognizer.state) { parent.onCancelled() }
-                return
-            }
+            let window = recognizer.view?.window
             let location = recognizer.location(in: window)
-            let size = window.bounds.size
             switch recognizer.state {
             case .began:
-                (recognizer.view as? VoiceRecordingCaptureView)?.didActivate = true
-                parent.onBegan(location, size)
+                startLocation = location
+                parent.onBegan()
             case .changed:
-                parent.onChanged(location, size)
+                parent.onChanged(translation(to: location))
             case .ended:
-                parent.onEnded(location, size)
+                parent.onEnded(translation(to: location))
             case .cancelled, .failed:
                 parent.onCancelled()
             default:
                 break
             }
+        }
+
+        private func translation(to location: CGPoint) -> CGSize {
+            CGSize(
+                width: location.x - startLocation.x,
+                height: location.y - startLocation.y
+            )
         }
     }
 
@@ -76,8 +67,6 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
         view.isAccessibilityElement = false
         view.accessibilityElementsHidden = true
         view.onPressingChanged = context.coordinator.setPressing
-        view.onTouchDown = context.coordinator.touchDown
-        view.onReleasedBeforeActivation = context.coordinator.releasedBeforeActivation
         let gesture = UILongPressGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handle(_:))
@@ -100,29 +89,21 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
 
 private final class VoiceRecordingCaptureView: UIView {
     var onPressingChanged: (Bool) -> Void = { _ in }
-    var onTouchDown: () -> Void = {}
-    var onReleasedBeforeActivation: (Bool) -> Void = { _ in }
-    var didActivate = false
     private var isPressing = false
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
-        didActivate = false
         setPressing(true)
-        // Start audio now so speech counts from the touch, not from the long press.
-        onTouchDown()
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesEnded(touches, with: event)
         setPressing(false)
-        if !didActivate { onReleasedBeforeActivation(false) }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesCancelled(touches, with: event)
         setPressing(false)
-        if !didActivate { onReleasedBeforeActivation(true) }
     }
 
     func setPressing(_ isPressing: Bool) {
@@ -132,787 +113,340 @@ private final class VoiceRecordingCaptureView: UIView {
     }
 }
 
-/// Geometry shared by the Hold to Talk hit test and the overlay that draws it.
-/// All values are in window coordinates.
-struct VoiceHoldToTalkTargetLayout: Equatable {
-    static let arcTopRatio: CGFloat = 0.83
-    static let bubbleCenterRatio: CGFloat = 0.43
-    static let targetCenterRatio: CGFloat = 0.73
-    static let cancelTargetXRatio: CGFloat = 0.25
-    static let convertTargetXRatio: CGFloat = 0.75
-    static let targetDiameter: CGFloat = 72
-    static let arcOverhang: CGFloat = 40
-    static let arcCapHeight: CGFloat = 122
-    /// Distance past the arc edge needed to leave or re-enter the send zone.
-    static let verticalHysteresis: CGFloat = 12
-    /// Distance past the center line needed to switch between Cancel and Convert to Text.
-    static let horizontalHysteresis: CGFloat = 10
-
-    let size: CGSize
-
-    var arcTop: CGFloat { size.height * Self.arcTopRatio }
-    var midX: CGFloat { size.width / 2 }
-    var bubbleCenter: CGPoint { CGPoint(x: midX, y: size.height * Self.bubbleCenterRatio) }
-    var cancelTargetCenter: CGPoint {
-        CGPoint(x: size.width * Self.cancelTargetXRatio, y: size.height * Self.targetCenterRatio)
-    }
-    var convertTargetCenter: CGPoint {
-        CGPoint(x: size.width * Self.convertTargetXRatio, y: size.height * Self.targetCenterRatio)
-    }
-
-    func intent(
-        for location: CGPoint,
-        previous: VoiceRecordingGestureIntent
-    ) -> VoiceRecordingGestureIntent {
-        switch previous {
-        case .hold:
-            guard location.y < arcTop - Self.verticalHysteresis else { return .hold }
-            return location.x < midX ? .cancel : .convertToText
-        case .cancel:
-            if location.y > arcTop + Self.verticalHysteresis { return .hold }
-            return location.x > midX + Self.horizontalHysteresis ? .convertToText : .cancel
-        case .convertToText:
-            if location.y > arcTop + Self.verticalHysteresis { return .hold }
-            return location.x < midX - Self.horizontalHysteresis ? .cancel : .convertToText
-        }
-    }
+enum VoiceHoldToTalkTargetLayout {
+    static let activationDistance: CGFloat = 92
+    static let cancelSectorDegrees = 215.0...260.0
+    static let convertToTextSectorDegrees = 280.0...325.0
 
     static func intent(
-        for location: CGPoint,
-        in size: CGSize,
-        previous: VoiceRecordingGestureIntent
+        for translation: CGSize
     ) -> VoiceRecordingGestureIntent {
-        VoiceHoldToTalkTargetLayout(size: size).intent(for: location, previous: previous)
+        let distance = sqrt(
+            translation.width * translation.width
+                + translation.height * translation.height
+        )
+        guard distance >= activationDistance else { return .hold }
+        let rawDegrees = atan2(
+            Double(translation.height),
+            Double(translation.width)
+        ) * 180 / .pi
+        let degrees = rawDegrees < 0 ? rawDegrees + 360 : rawDegrees
+        if cancelSectorDegrees.contains(degrees) { return .cancel }
+        if convertToTextSectorDegrees.contains(degrees) { return .convertToText }
+        return .hold
     }
-}
-
-/// What the Hold to Talk overlay shows. The composer drives it from the gesture,
-/// so the overlay appears as soon as the long press begins.
-@MainActor
-@Observable
-final class VoiceHoldToTalkPresentation {
-    enum Stage: Equatable {
-        case recording
-        case tooShort
-        case converting
-    }
-
-    static let tooShortDisplayDuration: Duration = .milliseconds(900)
-    static let fadeDuration: TimeInterval = 0.14
-
-    private(set) var stage: Stage?
-    /// Stays true briefly after dismissal so the window overlay can fade out.
-    private(set) var isOverlayMounted = false
-    var intent = VoiceRecordingGestureIntent.hold
-    @ObservationIgnored private var dismissTask: Task<Void, Never>?
-    @ObservationIgnored private var unmountTask: Task<Void, Never>?
-
-    var isPresented: Bool { stage != nil }
-
-    func present() {
-        dismissTask?.cancel()
-        dismissTask = nil
-        intent = .hold
-        mount(.recording)
-    }
-
-    func showTooShort() {
-        dismissTask?.cancel()
-        intent = .hold
-        mount(.tooShort)
-        dismissTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.tooShortDisplayDuration)
-            guard !Task.isCancelled, let self, self.stage == .tooShort else { return }
-            self.dismiss()
-        }
-    }
-
-    func showConverting() {
-        dismissTask?.cancel()
-        dismissTask = nil
-        intent = .convertToText
-        mount(.converting)
-    }
-
-    func dismiss() {
-        dismissTask?.cancel()
-        dismissTask = nil
-        guard isOverlayMounted else { return }
-        stage = nil
-        unmountTask?.cancel()
-        guard !UIAccessibility.isReduceMotionEnabled else {
-            unmountTask = nil
-            isOverlayMounted = false
-            return
-        }
-        unmountTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(Int(Self.fadeDuration * 1_000) + 30))
-            guard !Task.isCancelled, let self, self.stage == nil else { return }
-            self.isOverlayMounted = false
-        }
-    }
-
-    private func mount(_ stage: Stage) {
-        unmountTask?.cancel()
-        unmountTask = nil
-        isOverlayMounted = true
-        self.stage = stage
-    }
-
-    #if DEBUG
-    func installPreview(stage: Stage, intent: VoiceRecordingGestureIntent) {
-        dismissTask?.cancel()
-        dismissTask = nil
-        self.intent = intent
-        mount(stage)
-    }
-    #endif
 }
 
 struct VoiceHoldToTalkOverlay: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let recorder: VoiceMessageRecorder
-    let presentation: VoiceHoldToTalkPresentation
-
-    @State private var isShown = false
-    @State private var lastStage = VoiceHoldToTalkPresentation.Stage.recording
-
-    static let barCount = 16
-    static let barWidth: CGFloat = 4
-    static let barSpacing: CGFloat = 3
-    static let minimumBarHeight: CGFloat = 4
-    static let maximumBarHeight: CGFloat = 34
-    static let bubbleHeight: CGFloat = 76
-    static let bubbleMinimumWidth: CGFloat = 150
-    static let bubbleMaximumWidth: CGFloat = 250
-    static let countdownStartMs = 50_000
-
-    private static let ink = Color(red: 17 / 255, green: 24 / 255, blue: 39 / 255)
-    private static let convertBarColor = Color(red: 156 / 255, green: 163 / 255, blue: 175 / 255)
+    let gestureIntent: VoiceRecordingGestureIntent
 
     var body: some View {
         GeometryReader { proxy in
-            let layout = VoiceHoldToTalkTargetLayout(size: proxy.size)
-            ZStack(alignment: .topLeading) {
-                backdrop
-                arc(layout)
-                    .opacity(showsTargets ? 1 : 0)
-                target(.cancel, center: layout.cancelTargetCenter)
-                    .opacity(showsTargets ? 1 : 0)
-                target(.convertToText, center: layout.convertTargetCenter)
-                    .opacity(showsTargets ? 1 : 0)
-                bubble
-                    .position(layout.bubbleCenter)
-                status
-                    .frame(width: max(0, proxy.size.width - 32))
-                    .position(
-                        x: layout.midX,
-                        y: layout.bubbleCenter.y + Self.bubbleHeight / 2 + 50
-                    )
+            ZStack {
+                Color.black.opacity(0.78)
+                    .ignoresSafeArea()
+
+                recordingPrompt(in: proxy.size)
+                    .position(x: proxy.size.width / 2, y: proxy.size.height * 0.5)
+
+                gestureTargets(in: proxy.size)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: showsTargets)
         }
-        .ignoresSafeArea()
-        .opacity(isVisible ? 1 : 0)
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: VoiceHoldToTalkPresentation.fadeDuration),
-            value: isVisible
-        )
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .onAppear { isShown = true }
-        .onChange(of: presentation.stage, initial: true) { _, stage in
-            // Keep the last content while the window overlay fades out.
-            if let stage { lastStage = stage }
-        }
     }
 
-    private var stage: VoiceHoldToTalkPresentation.Stage {
-        presentation.stage ?? lastStage
-    }
-
-    private var isVisible: Bool {
-        isShown && presentation.stage != nil
-    }
-
-    private var intent: VoiceRecordingGestureIntent {
-        switch stage {
-        case .recording: presentation.intent
-        case .tooShort: .hold
-        case .converting: .convertToText
-        }
-    }
-
-    private var showsTargets: Bool { stage == .recording }
-
-    @ViewBuilder
-    private var backdrop: some View {
-        if reduceTransparency {
-            Color.black.opacity(0.78)
-        } else {
-            ZStack {
-                Rectangle().fill(.ultraThinMaterial)
-                Color.black.opacity(0.46)
-            }
-            .environment(\.colorScheme, .dark)
-        }
-    }
-
-    // MARK: Bubble
-
-    private var bubble: some View {
-        HStack(spacing: 12) {
-            switch stage {
-            case .recording:
-                levelBars
-                Text(Self.timerText(durationMs: recorder.durationMs))
-                    .font(.footnote.weight(.semibold).monospacedDigit())
-                    .lineLimit(1)
-                    .fixedSize()
-            case .tooShort:
-                Image(systemName: "exclamationmark.circle")
-                    .font(.body.weight(.semibold))
-                Text("Too short")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize()
-            case .converting:
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(Self.ink)
-                Text("Converting…")
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .fixedSize()
-            }
-        }
-        .foregroundStyle(bubbleContentColor)
-        .padding(.horizontal, 20)
-        .frame(
-            minWidth: stage == .recording
-                ? Self.bubbleWidth(durationMs: recorder.durationMs)
-                : Self.bubbleMinimumWidth,
-            minHeight: Self.bubbleHeight,
-            maxHeight: Self.bubbleHeight
-        )
-        .background {
-            ZStack(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(bubbleFill)
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .fill(bubbleFill)
-                    .frame(width: 16, height: 16)
-                    .rotationEffect(.degrees(45))
-                    .offset(y: 6)
-            }
-            .compositingGroup()
-            .shadow(color: .black.opacity(0.25), radius: 15, y: 10)
-        }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: intent)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: Self.bubbleWidth(durationMs: recorder.durationMs))
-    }
-
-    private var levelBars: some View {
-        let heights = Self.levelBarHeights(recorder.waveformSamples)
-        return HStack(spacing: Self.barSpacing) {
-            ForEach(heights.indices, id: \.self) { index in
-                Capsule()
-                    .fill(intent == .convertToText ? Self.convertBarColor : Color.white.opacity(0.92))
-                    .frame(width: Self.barWidth, height: heights[index])
-            }
-        }
-        .frame(height: Self.maximumBarHeight)
-        .animation(reduceMotion ? nil : .linear(duration: 0.1), value: heights)
-    }
-
-    private var bubbleFill: Color {
-        switch intent {
-        case .hold: KordiTheme.signalBlue
-        case .cancel: Color(uiColor: .systemRed)
-        case .convertToText: .white
-        }
-    }
-
-    private var bubbleContentColor: Color {
-        intent == .convertToText ? Self.ink : .white
-    }
-
-    // MARK: Status
-
-    private var status: some View {
-        let text = Self.statusText(stage: stage, intent: intent)
-        return VStack(spacing: 2) {
-            Text(text.title)
-                .font(.headline)
-                .foregroundStyle(.white.opacity(0.92))
-            Text(text.subtitle)
-                .font(.footnote)
-                .foregroundStyle(.white.opacity(0.62))
-        }
-        .multilineTextAlignment(.center)
-        .lineLimit(2)
-    }
-
-    // MARK: Targets
-
-    private func target(_ kind: VoiceRecordingGestureIntent, center: CGPoint) -> some View {
-        let isActive = stage == .recording && intent == kind
-        let diameter = VoiceHoldToTalkTargetLayout.targetDiameter
-        return ZStack(alignment: .topLeading) {
-            ZStack {
-                Circle()
-                    .fill(isActive ? Color.white : Color.white.opacity(0.16))
-                Circle()
-                    .strokeBorder(Color.white.opacity(isActive ? 0 : 0.22), lineWidth: 1)
-                Image(systemName: kind == .cancel ? "xmark" : "textformat")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(
-                        isActive
-                            ? (kind == .cancel ? Color(uiColor: .systemRed) : Self.ink)
-                            : Color.white
-                    )
-            }
-            .frame(width: diameter, height: diameter)
-            .scaleEffect(isActive && !reduceMotion ? 1.22 : 1)
-            .animation(
-                reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.62),
-                value: isActive
+    private func recordingPrompt(in size: CGSize) -> some View {
+        VStack(spacing: 18) {
+            VoiceWaveform(
+                samples: recorder.waveformSamples,
+                progress: 1,
+                activeColor: KordiTheme.signalBlue
             )
-            .position(center)
-
-            Text(kind == .cancel ? "Cancel" : "Convert to Text")
-                .font(.subheadline.weight(isActive ? .bold : .medium))
-                .foregroundStyle(isActive ? Color.white : Color.white.opacity(0.8))
+                .frame(width: min(180, max(140, size.width * 0.46)))
+            Text(statusText)
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.9))
                 .lineLimit(1)
-                .fixedSize()
-                .position(x: center.x, y: center.y + diameter / 2 + 20)
+                .minimumScaleFactor(0.8)
         }
     }
 
-    // MARK: Arc
-
-    private func arc(_ layout: VoiceHoldToTalkTargetLayout) -> some View {
-        let isHolding = stage == .recording && intent == .hold
-        return ZStack(alignment: .topLeading) {
-            VoiceHoldToTalkArcShape(top: layout.arcTop, edgeOnly: false)
-                .fill(Color.white.opacity(isHolding ? 0.30 : 0.18))
-            VoiceHoldToTalkArcShape(top: layout.arcTop, edgeOnly: true)
-                .stroke(Color.white.opacity(0.35), lineWidth: 1)
-            Image(systemName: "waveform")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(Color.white.opacity(isHolding ? 1 : 0.7))
-                .position(x: layout.midX, y: layout.arcTop + 44)
-        }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHolding)
-    }
-
-    // MARK: Pure helpers
-
-    /// `m:ss` while recording, then a countdown during the last ten seconds.
-    static func timerText(durationMs: Int) -> String {
-        let elapsedSeconds = max(0, durationMs) / 1_000
-        if durationMs >= countdownStartMs {
-            let remaining = max(1, VoiceMessageRecorder.maximumDurationMs / 1_000 - elapsedSeconds)
-            return "\(remaining)s left"
-        }
-        return "\(elapsedSeconds / 60):\(String(format: "%02d", elapsedSeconds % 60))"
-    }
-
-    static func bubbleWidth(durationMs: Int) -> CGFloat {
-        let seconds = CGFloat(max(0, durationMs) / 1_000)
-        return min(bubbleMaximumWidth, bubbleMinimumWidth + seconds * 10)
-    }
-
-    /// Heights for the most recent level samples, oldest first. Missing samples use the minimum height.
-    static func levelBarHeights(_ samples: [Double]) -> [CGFloat] {
-        let recent = samples.suffix(barCount)
-        let padded = Array(repeating: 0.0, count: barCount - recent.count) + recent
-        return padded.map { sample in
-            let level = max(0, min(1, (sample - 0.08) / 0.92))
-            return minimumBarHeight + (maximumBarHeight - minimumBarHeight) * CGFloat(level)
+    private var statusText: String {
+        switch gestureIntent {
+        case .hold: "Release to send voice"
+        case .cancel: "Release to cancel"
+        case .convertToText: "Release to convert to text"
         }
     }
 
-    static func statusText(
-        stage: VoiceHoldToTalkPresentation.Stage,
-        intent: VoiceRecordingGestureIntent
-    ) -> (title: String, subtitle: String) {
-        switch stage {
-        case .tooShort:
-            return ("Too short", "Hold for at least 1 second")
-        case .converting:
-            return ("Converting to text…", "The words will appear in the message field")
-        case .recording:
-            switch intent {
-            case .hold: return ("Release to send", "Slide to a target to cancel or convert")
-            case .cancel: return ("Release to cancel", "The recording will be discarded")
-            case .convertToText: return ("Release to convert to text", "Edit the words before sending")
-            }
-        }
-    }
-}
-
-/// The send zone: a wide elliptical cap whose top edge sits at the layout's arc top.
-private struct VoiceHoldToTalkArcShape: Shape {
-    let top: CGFloat
-    let edgeOnly: Bool
-
-    func path(in rect: CGRect) -> Path {
-        let overhang = VoiceHoldToTalkTargetLayout.arcOverhang
-        let capHeight = VoiceHoldToTalkTargetLayout.arcCapHeight
-        let minX = rect.minX - overhang
-        let maxX = rect.maxX + overhang
-        let bottom = max(rect.maxY, top + capHeight) + overhang
-        let transform = CGAffineTransform(translationX: rect.midX, y: top + capHeight)
-            .scaledBy(x: (maxX - minX) / 2, y: capHeight)
-        var path = Path()
-        if !edgeOnly {
-            path.move(to: CGPoint(x: minX, y: bottom))
-            path.addLine(to: CGPoint(x: minX, y: top + capHeight))
-        }
-        path.addArc(
-            center: .zero,
-            radius: 1,
-            startAngle: .degrees(180),
-            endAngle: .degrees(360),
-            clockwise: false,
-            transform: transform
+    private func gestureTargets(in size: CGSize) -> some View {
+        let center = CGPoint(x: size.width / 2, y: size.height + 42)
+        let innerRadius = VoiceHoldToTalkTargetLayout.activationDistance
+        let outerRadius = min(250, size.width * 0.54)
+        let labelRadius = (innerRadius + outerRadius) * 0.52
+        let cancelLabel = point(
+            from: center,
+            radius: labelRadius,
+            degrees: 237.5
         )
-        if !edgeOnly {
-            path.addLine(to: CGPoint(x: maxX, y: bottom))
-            path.closeSubpath()
+        let convertLabel = point(
+            from: center,
+            radius: labelRadius,
+            degrees: 302.5
+        )
+        return ZStack {
+            Canvas { context, _ in
+                let sectors: [(
+                    intent: VoiceRecordingGestureIntent,
+                    startDegrees: Double,
+                    endDegrees: Double
+                )] = [
+                    (
+                        .cancel,
+                        VoiceHoldToTalkTargetLayout.cancelSectorDegrees.lowerBound,
+                        VoiceHoldToTalkTargetLayout.cancelSectorDegrees.upperBound
+                    ),
+                    (
+                        .convertToText,
+                        VoiceHoldToTalkTargetLayout.convertToTextSectorDegrees.lowerBound,
+                        VoiceHoldToTalkTargetLayout.convertToTextSectorDegrees.upperBound
+                    ),
+                ]
+
+                for sector in sectors {
+                    let isSelected = gestureIntent == sector.intent
+                    let path = sectorPath(
+                        center: center,
+                        innerRadius: innerRadius,
+                        outerRadius: outerRadius,
+                        startDegrees: sector.startDegrees,
+                        endDegrees: sector.endDegrees
+                    )
+                    let opacity = isSelected ? 0.17 : 0.065
+                    context.drawLayer { layer in
+                        layer.addFilter(.blur(radius: 3.2))
+                        layer.fill(
+                            path,
+                            with: .radialGradient(
+                                Gradient(stops: [
+                                    .init(
+                                        color: .white.opacity(opacity),
+                                        location: 0
+                                    ),
+                                    .init(
+                                        color: .white.opacity(opacity * 0.72),
+                                        location: 0.72
+                                    ),
+                                    .init(color: .clear, location: 1),
+                                ]),
+                                center: center,
+                                startRadius: innerRadius,
+                                endRadius: outerRadius
+                            )
+                        )
+                    }
+                }
+            }
+
+            directionalLabel(
+                "Cancel",
+                isSelected: gestureIntent == .cancel
+            )
+            .position(cancelLabel)
+
+            directionalLabel(
+                "Convert to Text",
+                isSelected: gestureIntent == .convertToText
+            )
+            .position(convertLabel)
         }
+        .clipped()
+    }
+
+    private func sectorPath(
+        center: CGPoint,
+        innerRadius: CGFloat,
+        outerRadius: CGFloat,
+        startDegrees: Double,
+        endDegrees: Double
+    ) -> Path {
+        var path = Path()
+        let outerStart = point(
+            from: center,
+            radius: outerRadius,
+            degrees: startDegrees
+        )
+        let innerEnd = point(
+            from: center,
+            radius: innerRadius,
+            degrees: endDegrees
+        )
+        let connectorRadius = (innerRadius + outerRadius) / 2
+        path.move(to: outerStart)
+        for degrees in stride(from: startDegrees, through: endDegrees, by: 3) {
+            path.addLine(to: point(from: center, radius: outerRadius, degrees: degrees))
+        }
+        path.addQuadCurve(
+            to: innerEnd,
+            control: point(
+                from: center,
+                radius: connectorRadius,
+                degrees: endDegrees + (endDegrees > 300 ? 14 : 0)
+            )
+        )
+        for degrees in stride(from: endDegrees, through: startDegrees, by: -3) {
+            path.addLine(to: point(from: center, radius: innerRadius, degrees: degrees))
+        }
+        path.addQuadCurve(
+            to: outerStart,
+            control: point(
+                from: center,
+                radius: connectorRadius,
+                degrees: startDegrees + (startDegrees < 250 ? -14 : 0)
+            )
+        )
+        path.closeSubpath()
         return path
     }
-}
 
-#if DEBUG
-/// `--preview-voice-hold=<state>` freezes Hold to Talk in one state for screenshots.
-enum VoiceHoldToTalkPreviewState: String {
-    case hold
-    case cancel
-    case convert
-    case short
-    case converting
-    case draftFailed = "draft-failed"
-
-    private static let argumentPrefix = "--preview-voice-hold="
-
-    static var launchArgument: VoiceHoldToTalkPreviewState? {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard arguments.contains("--preview-data"),
-              let argument = arguments.first(where: { $0.hasPrefix(argumentPrefix) }) else { return nil }
-        return VoiceHoldToTalkPreviewState(rawValue: String(argument.dropFirst(argumentPrefix.count)))
+    private func point(
+        from center: CGPoint,
+        radius: CGFloat,
+        degrees: Double
+    ) -> CGPoint {
+        let radians = degrees * .pi / 180
+        return CGPoint(
+            x: center.x + CGFloat(cos(radians)) * radius,
+            y: center.y + CGFloat(sin(radians)) * radius
+        )
     }
 
-    static let sampleWaveform: [Double] = (0..<48).map { index in
-        let wave = abs(sin(Double(index) * 0.62)) * (0.55 + 0.45 * abs(cos(Double(index) * 0.21)))
-        return min(1, 0.12 + 0.82 * wave)
-    }
-
-    var isPressing: Bool {
-        switch self {
-        case .hold, .cancel, .convert: true
-        case .short, .converting, .draftFailed: false
-        }
-    }
-
-    @MainActor
-    func install(recorder: VoiceMessageRecorder, presentation: VoiceHoldToTalkPresentation) {
-        switch self {
-        case .draftFailed:
-            recorder.installFailedDraftPreview(durationMs: 7_000, waveformSamples: Self.sampleWaveform)
-        case .hold, .cancel, .convert, .short, .converting:
-            recorder.installHoldToTalkPreview(durationMs: 4_200, waveformSamples: Self.sampleWaveform)
-            switch self {
-            case .cancel: presentation.installPreview(stage: .recording, intent: .cancel)
-            case .convert: presentation.installPreview(stage: .recording, intent: .convertToText)
-            case .short: presentation.installPreview(stage: .tooShort, intent: .hold)
-            case .converting: presentation.installPreview(stage: .converting, intent: .convertToText)
-            default: presentation.installPreview(stage: .recording, intent: .hold)
-            }
-        }
+    private func directionalLabel(
+        _ title: String,
+        isSelected: Bool
+    ) -> some View {
+        Text(title)
+            .font(.callout.weight(isSelected ? .semibold : .regular))
+            .foregroundStyle(.white.opacity(isSelected ? 0.96 : 0.64))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
     }
 }
-#endif
 
-/// Review, failed, and locked recordings share one draft pill.
 struct VoiceRecordingComposer: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let recorder: VoiceMessageRecorder
     let onCancel: () -> Void
     let onSend: () -> Void
 
-    @State private var playback = VoiceMessagePlayback()
-    @State private var showsTrim = false
-
-    private static let pillBarCount = 24
-
     var body: some View {
-        VStack(spacing: 6) {
-            if showsTrim && recorder.phase == .review {
-                VoiceTrimControl(
-                    durationMs: recorder.durationMs,
-                    startMs: recorder.trimStartMs,
-                    endMs: recorder.trimEndMs,
-                    onChange: recorder.setTrim
-                )
-                .frame(height: 24)
-                .padding(.leading, 40 + 8 + 20)
-                .padding(.trailing, 20)
-                .disabled(recorder.transcriptionPhase == .transcribing)
-                .transition(.opacity)
-            }
-
-            HStack(spacing: 8) {
-                discardButton
-                pill
-            }
-        }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showsTrim)
-        .accessibilityElement(children: .contain)
-        .onChange(of: recorder.trimStartMs) {
-            playback.updateBounds(startMs: recorder.trimStartMs, endMs: recorder.trimEndMs)
-        }
-        .onChange(of: recorder.trimEndMs) {
-            playback.updateBounds(startMs: recorder.trimStartMs, endMs: recorder.trimEndMs)
-        }
-        .onChange(of: recorder.phase) { _, phase in
-            guard phase != .review else { return }
-            showsTrim = false
-            playback.reset()
-        }
-    }
-
-    private var isRecording: Bool {
-        recorder.phase == .recording || recorder.phase == .paused
-    }
-
-    private var canSend: Bool {
-        switch recorder.phase {
-        case .recording, .paused: true
-        case .review: recorder.pendingMessage != nil
-        case .idle, .failed: false
-        }
-    }
-
-    private var discardButton: some View {
-        Button(role: .destructive, action: onCancel) {
-            Image(systemName: "xmark")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 40, height: 40)
-                .background(Color(uiColor: .tertiarySystemFill), in: Circle())
-                .contentShape(Circle().inset(by: -4))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isRecording ? "Cancel voice recording" : "Discard voice recording")
-    }
-
-    private var pill: some View {
-        HStack(spacing: 4) {
-            switch recorder.phase {
-            case .recording, .paused:
-                recordingContent
-            case .review:
-                reviewContent
-            case .idle, .failed:
-                failedContent
-            }
-            sendButton
-        }
-        .padding(.leading, 3)
-        .padding(.trailing, 5)
-        .frame(maxWidth: .infinity)
-        .frame(height: 50)
-        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
-    }
-
-    @ViewBuilder
-    private var recordingContent: some View {
-        Button {
-            if recorder.phase == .paused {
-                recorder.resume()
-            } else {
-                recorder.pause()
-            }
-        } label: {
-            Image(systemName: recorder.phase == .paused ? "mic.fill" : "pause.fill")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(recorder.phase == .paused ? Color(uiColor: .systemRed) : Color.primary)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(recorder.phase == .paused ? "Resume recording" : "Pause recording")
-
-        VoiceWaveform(
-            samples: Array(recorder.waveformSamples.suffix(Self.pillBarCount)),
-            progress: 1,
-            height: 26
-        )
-        .frame(maxWidth: .infinity)
-
-        Text(VoiceRecordingComposer.duration(recorder.durationMs))
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-            .fixedSize()
-            .padding(.trailing, 4)
-    }
-
-    @ViewBuilder
-    private var reviewContent: some View {
-        Button {
-            guard let url = recorder.reviewURL else { return }
-            playback.toggle(
-                url: url,
-                identifier: url.path,
-                startMs: recorder.trimStartMs,
-                endMs: recorder.trimEndMs
-            )
-        } label: {
-            Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(playback.isPlaying ? "Pause voice recording preview" : "Play voice recording preview")
-
-        VStack(alignment: .leading, spacing: 1) {
-            ZStack {
-                VoiceWaveform(
-                    samples: VoiceMessageRecorder.downsample(recorder.waveformSamples, count: Self.pillBarCount),
-                    progress: playback.progress,
-                    height: 20
-                )
-                Slider(value: $playback.progress, in: 0...1) { editing in
-                    if !editing { playback.seek(to: playback.progress) }
+        Group {
+            if recorder.phase == .recording || recorder.phase == .paused {
+                if recorder.isLocked {
+                    lockedControls
+                } else {
+                    Color.clear
+                        .frame(height: 58)
+                        .accessibilityHidden(true)
                 }
-                .tint(.clear)
-                .opacity(0.02)
-                .accessibilityLabel("Voice recording preview position")
-                .accessibilityValue(
-                    "\(VoiceRecordingComposer.duration(playback.elapsedMs)) of \(VoiceRecordingComposer.duration(recorder.trimEndMs - recorder.trimStartMs))"
-                )
+            } else if recorder.phase == .review {
+                VStack(spacing: 8) {
+                    VoiceDraftReview(recorder: recorder)
+                        .disabled(recorder.transcriptionPhase == .transcribing)
+                    HStack {
+                        Button("Discard", role: .destructive, action: onCancel)
+                            .frame(minHeight: 44)
+                        if recorder.transcriptionPhase == .transcribing {
+                            ProgressView("Transcribing")
+                        } else if recorder.transcriptionPhase == .failed {
+                            Button("Retry transcription", action: recorder.retryTranscription)
+                                .frame(minHeight: 44)
+                                .disabled(!recorder.canRetryTranscription)
+                        }
+                        Spacer()
+                        Button("Send", action: onSend)
+                            .frame(minHeight: 44)
+                            .disabled(recorder.pendingMessage == nil)
+                    }
+                    if let error = recorder.errorMessage {
+                        Text(error).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
+            } else {
+                failedControls
+                    .frame(height: 56)
+                    .padding(.horizontal, 14)
+                    .background(.ultraThinMaterial, in: Capsule())
             }
-            .frame(height: 22)
-            .clipped()
-
-            reviewStatus
-                .frame(height: 15)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
 
-        Text(VoiceRecordingComposer.duration(recorder.trimEndMs - recorder.trimStartMs))
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-            .fixedSize()
-
-        Button {
-            showsTrim.toggle()
-        } label: {
-            Image(systemName: "scissors")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(showsTrim ? KordiTheme.signalBlue : Color.secondary)
-                .frame(width: 34, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(recorder.transcriptionPhase == .transcribing)
-        .accessibilityLabel(showsTrim ? "Hide trim controls" : "Trim voice recording")
-
-        if recorder.transcriptionPhase == .failed {
-            Button(action: recorder.retryTranscription) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(Color.secondary)
-                    .frame(width: 34, height: 44)
-                    .contentShape(Rectangle())
+    private var lockedControls: some View {
+        HStack(spacing: 8) {
+            Button(role: .destructive, action: onCancel) {
+                Image(systemName: "trash")
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .disabled(!recorder.canRetryTranscription)
-            .opacity(recorder.canRetryTranscription ? 1 : 0.4)
-            .accessibilityLabel("Retry transcription")
-        }
-    }
+            .accessibilityLabel("Cancel voice recording")
 
-    @ViewBuilder
-    private var reviewStatus: some View {
-        switch recorder.transcriptionPhase {
-        case .transcribing:
-            HStack(spacing: 4) {
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Transcribing…")
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-        case .failed:
-            Text(recorder.errorMessage ?? "Unable to transcribe this recording.")
-                .font(.caption2)
-                .foregroundStyle(Color(uiColor: .systemRed))
-                .lineLimit(1)
-                .truncationMode(.tail)
-        case .idle, .ready:
-            if recorder.pendingMessage == nil {
-                HStack(spacing: 4) {
-                    ProgressView()
-                        .controlSize(.mini)
-                    Text("Preparing…")
-                }
-                .font(.caption2)
+            VoiceWaveform(
+                samples: recorder.waveformSamples,
+                progress: 1
+            )
+                .frame(maxWidth: .infinity, minHeight: 24)
+
+            Text(VoiceRecordingComposer.duration(recorder.durationMs))
+                .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-            } else {
-                Text("Ready to send")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+
+            Button {
+                if recorder.phase == .paused {
+                    recorder.resume()
+                } else {
+                    recorder.pause()
+                }
+            } label: {
+                Image(systemName: recorder.phase == .paused ? "mic.fill" : "pause.fill")
+                    .frame(width: 44, height: 44)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(recorder.phase == .paused ? "Resume recording" : "Pause recording")
+
+            Button(action: onSend) {
+                Image(systemName: "arrow.up")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 50, height: 50)
+                    .background(KordiTheme.signalBlue, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Send voice message")
         }
+        .frame(height: 58)
+        .padding(.leading, 4)
+        .padding(.trailing, 4)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
-    @ViewBuilder
-    private var failedContent: some View {
-        Text(recorder.errorMessage ?? "Voice recording unavailable.")
-            .font(.caption)
-            .foregroundStyle(Color(uiColor: .systemRed))
-            .lineLimit(2)
-            .minimumScaleFactor(0.85)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 13)
-
-        Button {
-            Task { await recorder.start() }
-        } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(Color.secondary)
-                .frame(width: 34, height: 44)
-                .contentShape(Rectangle())
+    private var failedControls: some View {
+        Group {
+            Text(recorder.errorMessage ?? "Voice recording unavailable.")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                Task { await recorder.start() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Record voice message again")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Record voice message again")
-    }
-
-    private var sendButton: some View {
-        Button(action: onSend) {
-            Image(systemName: "arrow.up")
-                .font(.body.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(KordiTheme.signalBlue, in: Circle())
-                .contentShape(Circle().inset(by: -2))
-        }
-        .buttonStyle(.plain)
-        .disabled(!canSend)
-        .opacity(canSend ? 1 : 0.4)
-        .accessibilityLabel("Send voice message")
     }
 
     static func duration(_ milliseconds: Int) -> String {
@@ -921,6 +455,72 @@ struct VoiceRecordingComposer: View {
     }
 }
 
+private struct VoiceDraftReview: View {
+    let recorder: VoiceMessageRecorder
+    @State private var playback = VoiceMessagePlayback()
+
+    var body: some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 6) {
+                Button {
+                    guard let url = recorder.reviewURL else { return }
+                    playback.toggle(
+                        url: url,
+                        identifier: url.path,
+                        startMs: recorder.trimStartMs,
+                        endMs: recorder.trimEndMs
+                    )
+                } label: {
+                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                        .frame(width: 44, height: 44)
+                        .background(Color.primary.opacity(0.08), in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(playback.isPlaying ? "Pause voice recording preview" : "Play voice recording preview")
+
+                ZStack {
+                    VoiceWaveform(samples: recorder.waveformSamples, progress: playback.progress)
+                    Slider(value: $playback.progress, in: 0...1) { editing in
+                        if !editing { playback.seek(to: playback.progress) }
+                    }
+                    .tint(.clear)
+                    .opacity(0.02)
+                    .accessibilityLabel("Voice recording preview position")
+                    .accessibilityValue(
+                        "\(VoiceRecordingComposer.duration(playback.elapsedMs)) of \(VoiceRecordingComposer.duration(recorder.trimEndMs - recorder.trimStartMs))"
+                    )
+                }
+                .frame(maxWidth: .infinity)
+
+                Button("\(playback.speed.formatted())×") {
+                    playback.cycleSpeed()
+                }
+                .font(.caption2.weight(.bold))
+                .buttonStyle(.plain)
+                .frame(minWidth: 36, minHeight: 44)
+                .accessibilityLabel("Playback speed (playback.speed.formatted()) times")
+
+                Text(VoiceRecordingComposer.duration(recorder.trimEndMs - recorder.trimStartMs))
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            VoiceTrimControl(
+                durationMs: recorder.durationMs,
+                startMs: recorder.trimStartMs,
+                endMs: recorder.trimEndMs,
+                onChange: recorder.setTrim
+            )
+            .frame(height: 20)
+        }
+        .onChange(of: recorder.trimStartMs) {
+            playback.updateBounds(startMs: recorder.trimStartMs, endMs: recorder.trimEndMs)
+        }
+        .onChange(of: recorder.trimEndMs) {
+            playback.updateBounds(startMs: recorder.trimStartMs, endMs: recorder.trimEndMs)
+        }
+    }
+}
 
 private struct VoiceTrimControl: View {
     let durationMs: Int
@@ -1004,9 +604,7 @@ struct VoiceMessageBubbleContent: View {
     var deliveryState: MessageDeliveryState? = nil
     var readByCount: Int? = nil
     var deliveryTint: Color? = nil
-    var transcriptions: VoiceTranscriptionJobs? = nil
-    var isSender = false
-    var onTranscribe: () -> Void = {}
+    var onUpdateTranscript: ((VoiceMessage) async -> Bool)? = nil
     var onExpansionChange: (Bool) -> Void = { _ in }
 
     @State private var playback = VoiceMessagePlayback()
@@ -1090,19 +688,13 @@ struct VoiceMessageBubbleContent: View {
                         Button {
                             toggleTranscript()
                         } label: {
-                            Group {
-                                if transcriptState == .transcribing {
-                                    ProgressView().controlSize(.mini)
-                                } else {
-                                    Image(systemName: "text.bubble")
-                                        .font(.caption2)
-                                }
-                            }
-                            .frame(width: 24, height: 24)
+                            Image(systemName: "text.bubble")
+                                .font(.caption2)
+                                .frame(width: 24, height: 24)
                         }
                         .buttonStyle(.plain)
                         .contentShape(Rectangle().inset(by: -8))
-                        .accessibilityLabel(transcriptButtonLabel)
+                        .accessibilityLabel(showsTranscript ? "Hide voice transcript" : "Show voice transcript")
                         .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
 
                         if reservesDeliveryStatus {
@@ -1119,7 +711,7 @@ struct VoiceMessageBubbleContent: View {
             }
             .transaction { $0.animation = nil }
 
-            VoiceTranscriptDetails(state: transcriptState, onTranscribe: onTranscribe)
+            VoiceTranscriptDetails(voice: voiceMessage, onPrepare: onPrepare, onUpdate: onUpdateTranscript)
                 .frame(height: showsTranscript ? nil : 0, alignment: .top)
                 .clipped()
                 .opacity(showsTranscript ? 1 : 0)
@@ -1133,28 +725,8 @@ struct VoiceMessageBubbleContent: View {
         .onDisappear { if showsTranscript { onExpansionChange(false) } }
     }
 
-    private var transcriptState: VoiceTranscriptState {
-        transcriptions?.state(for: voiceMessage, isSender: isSender)
-            ?? voiceMessage.spokenText.nonEmpty.map(VoiceTranscriptState.ready)
-            ?? .failed(canRetry: false)
-    }
-
-    private var transcriptButtonLabel: String {
-        switch transcriptState {
-        case .ready: showsTranscript ? "Hide voice transcript" : "Show voice transcript"
-        case .notTranscribed: "Transcribe voice message"
-        case .transcribing: "Transcribing voice message"
-        case .failed(let canRetry): canRetry ? "Transcribe voice message again" : "Transcription failed"
-        }
-    }
-
     private func toggleTranscript() {
         let expanded = !showsTranscript
-        // Tapping an untranscribed message is the transcribe action. A running job
-        // only shows its progress; the store never starts a duplicate.
-        if expanded, transcriptState == .notTranscribed {
-            onTranscribe()
-        }
         if expanded { onExpansionChange(true) }
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
             showsTranscript = expanded
@@ -1173,7 +745,6 @@ private struct VoiceWaveform: View {
     let samples: [Double]
     let progress: Double
     var activeColor = KordiTheme.signalBlue
-    var height: CGFloat = 32
 
     var body: some View {
         HStack(spacing: 2) {
@@ -1184,10 +755,10 @@ private struct VoiceWaveform: View {
                             ? activeColor
                             : Color.secondary.opacity(0.35)
                     )
-                    .frame(maxWidth: 3, minHeight: 3, maxHeight: max(3, (height - 4) * sample))
+                    .frame(maxWidth: 3, minHeight: 3, maxHeight: max(3, 28 * sample))
             }
         }
-        .frame(height: height)
+        .frame(height: 32)
         .accessibilityHidden(true)
     }
 

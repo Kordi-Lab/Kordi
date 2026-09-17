@@ -434,11 +434,10 @@ test('chat composer renders a compact flat quote preview with remove control', (
   });
 
   assert.match(markup, /data-composer-quote-preview="true"/);
-  assert.match(markup, /Alice/);
-  assert.match(markup, /Can we ship/);
-  assert.match(markup, /aria-label="Remove quoted message"/);
-  assert.match(markup, /data-composer-quote-preview="true" class="[^"]*items-center[^"]*px-1 py-1/);
+  assert.match(markup, /title="Alice: Can we ship\?"/);
+  assert.match(markup, /<span>Alice: <\/span>Can we ship\?/);
+  assert.match(markup, /aria-label="Remove quote"/);
+  assert.match(markup, /class="[^"]*truncate border-l-2[^"]*text-\[12px\]/);
   assert.doesNotMatch(markup, /data-composer-quote-preview="true" class="[^"]*(?:rounded-\[14px\]|border-sky-300\/20|bg-sky-400\/10)/);
-  assert.match(markup, /h-8 w-px shrink-0 bg-\[color:var\(--app-sidebar-accent\)\]/);
-  assert.match(markup, /aria-label="Remove quoted message" class="[^"]*rounded-\[8px\]/);
+  assert.doesNotMatch(markup, /Replying to|Remove quoted message/);
 });

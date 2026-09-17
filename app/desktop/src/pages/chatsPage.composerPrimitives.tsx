@@ -1,6 +1,8 @@
 import { Copy, Pencil, Send, X } from 'lucide-react';
 
 import { BlobEmojiInlineText } from '@/features/emoji/BlobEmojiInlineText';
+import { useActiveLocalProfileIdentity } from '@/kordi-app/components/localProfileIdentity';
+import { quotedSenderLabel } from '@/lib/identityLabels';
 import type { ChatsPageComposer } from '@/pages/chatsPage.types';
 
 type MessageSelectionBarProps = {
@@ -62,28 +64,29 @@ export function ComposerQuotePreview({
   quote,
   onClear,
 }: ComposerQuotePreviewProps) {
+  const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
+  const senderLabel = quotedSenderLabel(quote.source.senderLabel, activeLocalProfileIdentity.displayName);
+  const text = quote.source.textPreview
+    || `[${quote.source.attachmentCount === 1 ? 'Attachment' : `${quote.source.attachmentCount} attachments`}]`;
   return (
     <div
       data-composer-quote-preview="true"
-      className="mb-1 flex items-center gap-2 px-1 py-1 text-left"
+      className="mb-1.5 flex min-w-0 items-center gap-2 px-1 text-left"
     >
-      <span className="h-8 w-px shrink-0 bg-[color:var(--app-sidebar-accent)]" aria-hidden="true" />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[11px] font-semibold text-[color:var(--app-sidebar-accent)]">
-          {quote.source.senderLabel}
-        </div>
-        <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">
-          <BlobEmojiInlineText text={quote.source.textPreview
-            || `${quote.source.attachmentCount} attachment${quote.source.attachmentCount === 1 ? '' : 's'}`} />
-        </div>
+      <div
+        className="min-w-0 flex-1 truncate border-l-2 border-[color:color-mix(in_oklab,var(--utility-muted-text)_28%,transparent)] py-px pl-2 text-[12px] leading-4 text-[color:color-mix(in_oklab,var(--utility-muted-text)_64%,transparent)]"
+        title={`${senderLabel}: ${text}`}
+      >
+        <span>{senderLabel}: </span>
+        <BlobEmojiInlineText text={text} />
       </div>
       <button
         type="button"
-        aria-label="Remove quoted message"
+        aria-label="Remove quote"
         onClick={onClear}
-        className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-[8px] p-0"
+        className="app-button-quiet grid h-6 w-6 shrink-0 place-items-center rounded-full p-0"
       >
-        <X className="h-3.5 w-3.5" />
+        <X className="h-3 w-3" />
       </button>
     </div>
   );

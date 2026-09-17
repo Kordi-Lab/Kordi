@@ -304,8 +304,7 @@ test('no-provider live turn keeps the source quote so reply context stays stable
 
   assert.match(markup, /No provider configured yet/);
   assert.match(markup, />Open authentication</);
-  assert.match(markup, /app-source-message-quote/);
-  assert.match(markup, /app-live-assistant-answer-surface/);
+  assert.match(markup, /app-live-assistant-answer-surface[\s\S]*No provider configured yet[\s\S]*app-source-message-quote/);
   assert.match(markup, /app-message-mention-agent[^>]*>@MyKordi<\/span>/);
   assert.match(markup, /what are you doing/);
 });

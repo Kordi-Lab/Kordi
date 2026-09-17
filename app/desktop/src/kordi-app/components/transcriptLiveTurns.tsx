@@ -31,7 +31,7 @@ import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError }
 import { cn } from '@/lib/utils';
 import { AgentWaitingWave } from './AgentWaitingWave';
 import { isDiffLikeOutput, parseDiffOutput, stripAnsi, type ParsedDiffLine } from './diffOutput';
-import { SourceMessageQuote } from './transcriptReplyAttribution';
+import { SourceMessageQuoteRow } from './transcriptReplyAttribution';
 import { MarkdownCodeBlock, MarkdownContent } from './markdown';
 import { FoldableAssistantAnswer } from './transcriptAssistantAnswer';
 import { InlineChangedFiles } from './transcriptChangedFiles';
@@ -724,8 +724,8 @@ function LiveChatTurnCardView({
   const displayedError = noProviderConfiguredError ? cloudAgentNoProviderNoticeText() : cancelledContent ? cancelledContent.error : visibleTurn.error;
   const cancellationNotice = cancelledContent?.notice;
   const shouldShowSourceQuote = !plainAgentResponse && Boolean(visibleTurn.sourceMessage);
-  const hasResponseSurface = Boolean(
-    shouldShowSourceQuote
+  const hasResponseSurface = Boolean( // A failed quoted turn keeps its answer surface; the quote sits below it.
+    (shouldShowSourceQuote && visibleTurn.error)
       || showLiveStatusHeader
       || isCompressionStatus
       || hasTimelineActivity
@@ -740,9 +740,6 @@ function LiveChatTurnCardView({
     <div data-live-turn-status={visibleTurn.status} className="app-live-turn-card w-full max-w-[min(100%,58rem)] pb-1.5 [overflow-anchor:auto]">
       {showResponsePanel ? (
         <div className={cn('app-live-turn-response-panel', hasResponseSurface && !plainAgentResponse && 'app-live-assistant-answer-surface', 'w-full max-w-[min(100%,58rem)] space-y-2.5')}>
-          {shouldShowSourceQuote ? (
-            <SourceMessageQuote sourceMessage={visibleTurn.sourceMessage} onNavigateToMessage={onNavigateToMessage} />
-          ) : null}
           {showLiveStatusHeader ? (
             <div className="app-transcript-live-status flex items-center gap-2 text-[11px] font-medium text-slate-400">
               {visibleTurn.status === 'cancelling' || visibleTurn.status === 'retrying' ? (
@@ -842,6 +839,7 @@ function LiveChatTurnCardView({
           />
         </div>
       ) : null}
+      {shouldShowSourceQuote ? <SourceMessageQuoteRow sourceMessage={visibleTurn.sourceMessage} side="agent" onNavigateToMessage={onNavigateToMessage} className={showResponsePanel ? 'mt-1' : undefined} /> : null}
     </div>
   );
 }

@@ -226,105 +226,51 @@
 }
 
 .app-source-message-quote {
-  --app-source-message-quote-foreground: var(--utility-foreground);
-  --app-source-message-quote-muted: var(--utility-muted-text);
-  --app-source-message-quote-accent: var(--app-message-mention, var(--app-chat-accent, rgb(147 197 253)));
-  --app-source-message-quote-bg: color-mix(in oklab, var(--app-source-message-quote-foreground) 10%, transparent);
-  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-source-message-quote-foreground) 14%, transparent);
-  --app-source-message-quote-label: color-mix(in oklab, var(--app-source-message-quote-foreground) 94%, var(--app-source-message-quote-muted));
-  --app-source-message-quote-text: color-mix(in oklab, var(--app-source-message-quote-foreground) 82%, var(--app-source-message-quote-muted));
-  --app-source-message-quote-fade-bg: var(--app-live-assistant-answer-bg, var(--app-modal-bg));
-  position: relative;
-  border-radius: 11px;
-  background: transparent;
-  padding: 0.18rem 0.08rem;
-}
-
-.app-chat-bubble-user .app-source-message-quote {
-  --app-source-message-quote-foreground: var(--app-chat-bubble-user-text);
-  --app-source-message-quote-muted: color-mix(in oklab, var(--app-chat-bubble-user-text) 72%, transparent);
-  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-bubble-user-text) 16%, transparent);
-  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-bubble-user-text) 22%, transparent);
-  --app-source-message-quote-fade-bg: var(--app-chat-bubble-user-bg);
-}
-
-.app-chat-bubble-peer .app-source-message-quote {
-  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-accent) 22%, var(--app-chat-bubble-peer-bg));
-  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-accent) 28%, var(--app-chat-bubble-peer-bg));
-  --app-source-message-quote-fade-bg: var(--app-chat-bubble-peer-bg);
-}
-
-body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer .app-source-message-quote,
-.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-peer .app-source-message-quote {
-  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-bubble-peer-text) 12%, var(--app-chat-bubble-peer-bg));
-  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-bubble-peer-text) 16%, var(--app-chat-bubble-peer-bg));
-}
-
-.app-source-message-quote-link {
-  width: 100%;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 0;
-  border: 0;
-  border-radius: 7px;
-  background: var(--app-source-message-quote-bg);
-  color: inherit;
-  cursor: pointer;
-  padding: 0.34rem 0.62rem;
-  transition: background-color var(--app-motion-fast) var(--app-motion-ease);
-}
-
-.app-source-message-quote-link:hover {
-  background: var(--app-source-message-quote-bg-hover);
-}
-
-.app-source-message-quote-rail {
-  display: none;
-}
-
-.app-source-message-quote-label {
-  color: var(--app-source-message-quote-label);
-}
-
-.app-source-message-quote-text-frame {
-  position: relative;
+  --app-source-message-quote-muted: color-mix(in oklab, var(--utility-muted-text) 64%, transparent);
+  --app-source-message-quote-bar: color-mix(in oklab, var(--utility-muted-text) 28%, transparent);
+  display: block;
   min-width: 0;
-}
-
-.app-source-message-quote-text {
-  color: var(--app-source-message-quote-text);
-}
-
-.app-source-message-quote .app-message-mention {
-  color: var(--app-source-message-quote-accent);
-}
-
-.app-source-message-quote-folded {
-  max-height: calc(1.25rem * 3);
+  max-width: min(100%, 28rem);
+  margin: 0;
+  border: 0;
+  border-left: 2px solid var(--app-source-message-quote-bar);
+  border-radius: 0;
+  background: transparent;
+  padding: 1px 0 1px 0.5rem;
+  color: var(--app-source-message-quote-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    color var(--app-motion-fast) var(--app-motion-ease),
+    border-color var(--app-motion-fast) var(--app-motion-ease);
 }
 
-.app-source-message-quote-folded::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 1;
-  height: 1.05rem;
-  content: '';
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    color-mix(in oklab, var(--app-source-message-quote-fade-bg) 62%, transparent) 100%
-  );
+.app-source-message-quote[data-quote-side="own"] {
+  border-left: 0;
+  border-right: 2px solid var(--app-source-message-quote-bar);
+  padding: 1px 0.5rem 1px 0;
+  text-align: right;
 }
 
-.app-source-message-quote-icon {
-  color: color-mix(in oklab, var(--app-source-message-quote-accent) 76%, var(--app-source-message-quote-muted));
+.app-source-message-quote:hover,
+.app-source-message-quote:focus-visible {
+  --app-source-message-quote-bar: var(--app-chat-accent, var(--app-sidebar-accent));
+  color: var(--utility-muted-text);
 }
 
-.app-source-message-quote-link:hover .app-source-message-quote-text {
-  color: color-mix(in oklab, var(--app-source-message-quote-foreground) 90%, var(--app-source-message-quote-muted));
+.app-source-message-quote-text,
+.app-source-message-quote .app-message-mention {
+  color: inherit;
+  font-weight: inherit;
+}
+
+.app-source-message-quote .app-inline-blob-emoji {
+  vertical-align: -0.2em;
 }
 
 .app-fold-reveal-row {
@@ -374,23 +320,6 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
   flex: 0 0 auto;
 }
 
-.app-source-message-quote-toggle {
-  color: color-mix(in oklab, var(--app-source-message-quote-foreground) 88%, var(--app-source-message-quote-muted));
-}
-
-.app-source-message-quote-toggle:hover,
-.app-source-message-quote-toggle:focus-visible {
-  color: color-mix(in oklab, var(--app-source-message-quote-foreground) 96%, var(--app-source-message-quote-muted));
-}
-
-.app-source-message-quote-reveal-row {
-  padding-left: calc(3px + 0.625rem);
-}
-
-.app-source-message-quote-reveal-row .app-fold-reveal-line {
-  background: linear-gradient(90deg, color-mix(in oklab, var(--app-source-message-quote-foreground) 12%, transparent), transparent);
-}
-
 .app-live-assistant-answer-toggle {
   color: color-mix(in oklab, var(--utility-foreground) 86%, var(--utility-muted-text));
 }
@@ -416,44 +345,42 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
   to { filter: brightness(1) drop-shadow(0 0 0 rgba(56, 189, 248, 0)); }
 }
 
-.app-transcript-message-highlight .app-chat-bubble-user {
-  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-bubble-user-bg) 86%, var(--app-transcript-highlight-accent));
-  --app-message-bubble-stroke: color-mix(in oklab, var(--app-transcript-highlight-accent) 46%, transparent);
+/* Route-back highlight matches iOS: one full-width accent band behind the row,
+ * the same for sent, received, and agent messages. Paint only; geometry is unchanged. */
+.app-transcript-message-highlight {
+  --app-transcript-highlight-band: color-mix(in oklab, var(--app-chat-accent, var(--app-sidebar-accent)) 16%, transparent);
+  background-color: var(--app-transcript-highlight-band);
+  box-shadow: 0 0 0 100vmax var(--app-transcript-highlight-band);
+  clip-path: inset(-3px -100vmax);
+  animation: app-transcript-message-highlight-band 1500ms var(--app-motion-ease) both;
 }
 
-.app-transcript-message-highlight .app-chat-bubble-peer {
-  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-bubble-peer-bg) 76%, var(--app-transcript-highlight-accent));
-  --app-message-bubble-stroke: color-mix(in oklab, var(--app-transcript-highlight-accent) 52%, transparent);
+.app-transcript-message-highlight .app-transcript-message-highlight {
+  background-color: transparent;
+  box-shadow: none;
+  clip-path: none;
+  animation: none;
 }
 
-/* The light-theme own-bubble rule has greater specificity than the shared state
- * rule above. Keep this paint-only state override theme-scoped so route-back
- * highlighting wins without changing the bubble's geometry. */
-.kordi-app.theme-light .app-transcript-message-highlight .app-chat-bubble-user {
-  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-bubble-user-bg) 86%, var(--app-transcript-highlight-accent));
-  --app-message-bubble-stroke: color-mix(in oklab, var(--app-transcript-highlight-accent) 46%, transparent);
-}
-
-.app-transcript-message-highlight .app-message-bubble-shape-fill {
-  transition:
-    fill var(--app-motion-fast) var(--app-motion-ease),
-    stroke var(--app-motion-fast) var(--app-motion-ease);
-}
-
-.app-transcript-message-highlight .app-chat-bubble-peer:not(.app-message-bubble) {
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklab, var(--app-control-bg) 78%, var(--app-transcript-highlight-accent) 12%),
-    color-mix(in oklab, var(--app-main-bg) 90%, var(--app-transcript-highlight-accent) 10%)
-  );
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, var(--app-transcript-highlight-accent) 42%, transparent),
-    0 12px 28px rgba(14, 165, 233, 0.12);
+@keyframes app-transcript-message-highlight-band {
+  0% {
+    background-color: transparent;
+    box-shadow: 0 0 0 100vmax transparent;
+  }
+  12%, 80% {
+    background-color: var(--app-transcript-highlight-band);
+    box-shadow: 0 0 0 100vmax var(--app-transcript-highlight-band);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: 0 0 0 100vmax transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .app-message-forward-reveal,
-  .app-message-forward-reveal :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface) {
+  .app-message-forward-reveal :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface),
+  .app-transcript-message-highlight {
     animation: none;
   }
 }

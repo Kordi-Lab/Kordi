@@ -33,11 +33,11 @@ test('renders agent source quote and waiting waveform without an output block be
   assert.equal(shouldSuppressAgentReplyAttribution({ id: 'private-fork', type: 'external-agent', forkedFromSessionId: 'session:group:1' }), false);
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn }));
 
-  assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface/);
-  assert.match(markup, /app-source-message-quote/);
+  assert.match(markup, /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-agent-waiting-wave[\s\S]*app-source-message-quote/);
+  assert.match(markup, /data-quote-side="agent"/);
   assert.doesNotMatch(markup, /app-source-message-quote-rail/);
   assert.doesNotMatch(markup, /app-source-message-quote-icon/);
-  assert.match(markup, />You: <\/span>/);
+  assert.match(markup, />Me: <\/span>/);
   assert.match(markup, /app-message-mention-agent[^>]*>@AliceKordi<\/span>/);
   assert.doesNotMatch(markup, /app-source-message-quote-label block truncate/);
   assert.doesNotMatch(markup, /Replying to/);
@@ -48,7 +48,7 @@ test('renders agent source quote and waiting waveform without an output block be
   assert.doesNotMatch(markup, /checking auth screenshots/);
 });
 
-test('human reply preview is an inset replying-to rectangle without the quote rail', () => {
+test('human quote renders as one line under the bubble on the bubble outer edge', () => {
   const baseMessage: Message = {
     id: 'msg-reply-own',
     role: 'user',
@@ -74,23 +74,19 @@ test('human reply preview is an inset replying-to rectangle without the quote ra
       sender: 'Maya',
     },
   }));
-  const shellCss = readDesktopShellCss();
-  const quoteLinkBlock = shellCss.match(/\.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const railRule = shellCss.match(/\.app-source-message-quote-rail \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(ownMarkup, /app-chat-bubble-user/);
-  assert.match(peerMarkup, /app-chat-bubble-peer/);
-  assert.match(ownMarkup, />Replying to: <\/span>keep it concise/);
-  assert.match(peerMarkup, />Replying to: <\/span>keep it concise/);
-  assert.doesNotMatch(ownMarkup, />Maya: <\/span>keep it concise/);
-  assert.doesNotMatch(peerMarkup, />Maya: <\/span>keep it concise/);
-  assert.match(quoteLinkBlock, /grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(quoteLinkBlock, /border-radius:\s*7px;/);
-  assert.match(quoteLinkBlock, /padding:\s*0\.34rem 0\.62rem;/);
-  assert.match(railRule, /display:\s*none;/);
+  assert.match(ownMarkup, /app-chat-bubble-user[\s\S]*Updated\. The patch is small[\s\S]*data-quote-side="own"/);
+  assert.match(peerMarkup, /app-chat-bubble-peer[\s\S]*Updated\. The patch is small[\s\S]*data-quote-side="peer"/);
+  assert.match(ownMarkup, /justify-end pr-10"><button type="button" class="app-source-message-quote"/);
+  assert.match(peerMarkup, /justify-start pl-10"><button type="button" class="app-source-message-quote"/);
+  assert.match(ownMarkup, />Maya: <\/span>keep it concise/);
+  assert.match(peerMarkup, />Maya: <\/span>keep it concise/);
+  assert.match(ownMarkup, /title="Maya: keep it concise"/);
+  assert.doesNotMatch(ownMarkup, /Replying to/);
+  assert.doesNotMatch(peerMarkup, /Replying to/);
 });
 
-test('folds long source quotes after three lines while keeping the full request text in the DOM', () => {
+test('keeps long source quotes on one line with the full text in the tooltip', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-long-source-quote',
     sessionId: 'session-1',
@@ -109,8 +105,7 @@ test('folds long source quotes after three lines while keeping the full request 
       text: [
         '@MayasKordi create a github issue about this bug.',
         'Use the current Kordi repo issue template and keep the reproduction details.',
-        'Mention that the bug affects Chinese Pinyin IME confirmation.',
-        'Final acceptance detail should remain available when folded.',
+        'Final acceptance detail should remain available in the tooltip.',
       ].join('\n'),
       attachmentCount: 0,
     },
@@ -118,71 +113,46 @@ test('folds long source quotes after three lines while keeping the full request 
 
   const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { showReasoning: true, turn, historical: true }));
 
-  assert.match(markup, /app-source-message-quote-text-frame app-source-message-quote-folded/);
-  assert.match(markup, /app-fold-reveal-row app-source-message-quote-reveal-row/);
-  assert.match(markup, /app-source-message-quote-toggle/);
-  assert.match(markup, /Show full request/);
-  assert.doesNotMatch(markup, /app-source-message-quote-toggle-overlay/);
-  assert.doesNotMatch(markup, /— Click to show full request —/);
-  assert.match(markup, /Final acceptance detail should remain available when folded/);
-  assert.doesNotMatch(markup, /Final acceptance detail should remain available when folded…/);
+  assert.match(markup, /title="Maya: @MayasKordi create a github issue about this bug\. Use the current Kordi repo issue template and keep the reproduction details\. Final acceptance detail should remain available in the tooltip\."/);
+  assert.doesNotMatch(markup, /app-source-message-quote-folded|app-source-message-quote-toggle|Show full request/);
 });
 
-test('styles folded source quote reveal as a compact inline control', () => {
+test('styles the source quote as a single muted line with a side bar', () => {
   const shellCss = readDesktopShellCss();
-  const sourceToggleBlock = shellCss.match(/\.app-source-message-quote-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const sharedToggleBlock = shellCss.match(/\.app-inline-expand-toggle \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const revealRowBlock = shellCss.match(/\.app-fold-reveal-row \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const sourceFoldedAfterBlock = shellCss.match(/\.app-source-message-quote-folded::after \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const quoteRootBlock = shellCss.match(/\.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const ownQuoteBlock = shellCss.match(/\.app-source-message-quote\[data-quote-side="own"\] \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const hoverBlock = shellCss.match(/\.app-source-message-quote:hover,\n\.app-source-message-quote:focus-visible \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(sourceToggleBlock, /color:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 88%, var\(--app-source-message-quote-muted\)\)/);
-  assert.match(sharedToggleBlock, /min-height:\s*30px/);
-  assert.match(sharedToggleBlock, /border-radius:\s*9px/);
-  assert.match(revealRowBlock, /display:\s*flex/);
-  assert.doesNotMatch(shellCss, /\.app-source-message-quote-toggle-overlay/);
-  assert.match(sourceFoldedAfterBlock, /height:\s*1\.05rem/);
-  assert.doesNotMatch(sourceFoldedAfterBlock, /backdrop-filter:\s*blur\(/);
+  assert.match(quoteRootBlock, /border-left:\s*2px solid var\(--app-source-message-quote-bar\)/);
+  assert.match(quoteRootBlock, /background:\s*transparent/);
+  assert.match(quoteRootBlock, /white-space:\s*nowrap/);
+  assert.match(quoteRootBlock, /text-overflow:\s*ellipsis/);
+  assert.match(quoteRootBlock, /font-size:\s*12px/);
+  assert.match(ownQuoteBlock, /border-right:\s*2px solid var\(--app-source-message-quote-bar\)/);
+  assert.match(ownQuoteBlock, /text-align:\s*right/);
+  assert.match(hoverBlock, /--app-source-message-quote-bar:\s*var\(--app-chat-accent/);
+  assert.doesNotMatch(shellCss, /\.app-source-message-quote-(?:link|toggle|folded|reveal-row)/);
 });
 
 test('styles reply attribution surfaces with stronger dark-mode contrast', () => {
   const shellCss = readDesktopShellCss();
   const responsePanelBlock = shellCss.match(/\.app-live-turn-response-panel \{[\s\S]*?\n\}/)?.[0] ?? '';
   const responseSurfaceBlock = shellCss.match(/\.app-live-assistant-answer-surface \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const quoteLinkBlock = shellCss.match(/\.app-source-message-quote-link \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const quoteLabelBlock = shellCss.match(/\.app-source-message-quote-label \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const quoteTextBlock = shellCss.match(/\.app-source-message-quote-text \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(responsePanelBlock, /var\(--app-control-bg\) 74%/);
   // Agent reply surface is intentionally flat: no border, no shadow, subtle fill.
   assert.match(responseSurfaceBlock, /border:\s*0/);
   assert.match(responseSurfaceBlock, /box-shadow:\s*none/);
   assert.match(responseSurfaceBlock, /background:\s*color-mix\(in oklab, var\(--utility-foreground\) 3%, transparent\)/);
-  assert.match(quoteLinkBlock, /var\(--app-source-message-quote-bg\)/);
-  assert.match(quoteLabelBlock, /var\(--app-source-message-quote-label\)/);
-  assert.match(quoteTextBlock, /var\(--app-source-message-quote-text\)/);
 });
 
-test('styles source quote colors contextually across chat themes', () => {
+test('keeps quoted mentions in the muted quote color', () => {
   const shellCss = readDesktopShellCss();
-  const quoteRootBlock = shellCss.match(/\.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const ownBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const peerBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-peer \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const quoteMentionBlock = shellCss.match(/\.app-source-message-quote \.app-message-mention \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const quoteMentionBlock = shellCss.match(/\.app-source-message-quote-text,\n\.app-source-message-quote \.app-message-mention \{[\s\S]*?\n\}/)?.[0] ?? '';
 
-  assert.match(quoteRootBlock, /--app-source-message-quote-foreground:\s*var\(--utility-foreground\)/);
-  assert.match(quoteRootBlock, /--app-source-message-quote-accent:\s*var\(--app-message-mention, var\(--app-chat-accent/);
-  assert.match(quoteRootBlock, /--app-source-message-quote-text:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 82%, var\(--app-source-message-quote-muted\)\)/);
-  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*var\(--app-chat-bubble-user-text\)/);
-  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-muted:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 72%, transparent\)/);
-  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 16%, transparent\)/);
-  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-fade-bg:\s*var\(--app-chat-bubble-user-bg\)/);
-  assert.doesNotMatch(shellCss, /\.kordi-app\.theme-light \.app-chat-bubble-user \.app-source-message-quote/);
-  assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-accent\) 22%, var\(--app-chat-bubble-peer-bg\)\)/);
-  assert.match(quoteMentionBlock, /color:\s*var\(--app-source-message-quote-accent\)/);
-  assert.match(
-    shellCss,
-    /body\[data-kordi-chat-theme="quiet"\][\s\S]*?\.app-chat-bubble-peer \.app-source-message-quote,[\s\S]*?--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-bubble-peer-text\) 12%, var\(--app-chat-bubble-peer-bg\)\)/,
-  );
+  assert.match(quoteMentionBlock, /color:\s*inherit/);
+  assert.match(quoteMentionBlock, /font-weight:\s*inherit/);
+  assert.doesNotMatch(shellCss, /\.app-chat-bubble-(?:user|peer) \.app-source-message-quote/);
 });
 
 test('keeps medium completed agent responses readable without folding too early', () => {
@@ -239,7 +209,7 @@ test('expanded fold controls use click-to-hide copy consistently', () => {
     readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8'),
   ].join('\n');
 
-  assert.match(transcriptSource, /Hide request/);
+  assert.doesNotMatch(transcriptSource, /Hide request|Show full request/);
   assert.match(transcriptSource, /Hide response/);
   assert.doesNotMatch(transcriptSource, /— Click to hide request —/);
   assert.doesNotMatch(transcriptSource, /— Click to hide response —/);
@@ -270,9 +240,9 @@ test('light theme keeps folded assistant markdown readable against the answer su
   assert.match(lightAnswerListBlock, /color:\s*var\(--utility-foreground\)\s*!important;/);
 });
 
-const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-source-message-quote[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer/;
+const quoteToolAnswerSurfacePattern = /app-live-turn-response-panel app-live-assistant-answer-surface[\s\S]*app-transcript-tool-timeline[\s\S]*app-live-assistant-answer[\s\S]*<\/div><div class="flex min-w-0 max-w-full mt-1"><button type="button" class="app-source-message-quote" data-quote-side="agent"/;
 
-test('keeps source quote and tool summary inside the same assistant response background', () => {
+test('keeps the tool summary inside the assistant response and the source quote under it', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-source-tools-answer',
     sessionId: 'session-1',
