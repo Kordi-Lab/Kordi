@@ -51,7 +51,7 @@ Subsession reads inherit active membership in the parent conversation. Members r
 | --- | --- | --- |
 | Ask Agent | Owner-only Agent conversation | Owner sends a request |
 | Agent execution subsession | Active members of its source conversation; one bound Agent and Owner ID | Agent calls the spawn tool; later replies require an explicit mention of that Agent |
-| Message discussion thread | Same members as its parent conversation | A member chooses Reply in thread |
+| Message discussion thread | Same members as its parent conversation | A member chooses Open discussion |
 | Private Agent fork | Independent owner-only Agent session with inherited reference history | Owner forks an Agent session |
 
 Names are current presentation data, not routing identifiers. A profile rename updates selectors, headers and mention choices by Agent ID without rewriting stored message text or changing the scope of an existing conversation.

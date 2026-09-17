@@ -244,7 +244,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /data-message-context-menu-content="true"/);
   assert.match(markup, /w-\[13\.5rem\]/);
   assert.doesNotMatch(markup, /data-message-context-menu-reactions="true"/);
-  assert.match(markup, /Reply/);
+  assert.match(markup, />Quote</);
   assert.match(markup, />Copy</);
   assert.match(markup, /Select/);
   assert.doesNotMatch(markup, />Edit</);
@@ -405,12 +405,12 @@ test('message context menu exposes only wired actions for eligible messages', ()
     onRequestPinMessage: () => undefined,
   }));
 
-  assert.match(markup, />Reply in conversation</);
+  assert.match(markup, />Quote</);
   assert.match(markup, />Forward</);
   assert.match(markup, />Select</);
   assert.match(markup, />Pin</);
-  assert.match(markup, /data-message-context-menu-action="reply-conversation"/);
-  assert.doesNotMatch(markup, /data-message-context-menu-action="reply-thread"/);
+  assert.match(markup, /data-message-context-menu-action="quote"/);
+  assert.doesNotMatch(markup, /data-message-context-menu-action="open-discussion"/);
   assert.match(markup, /data-message-context-menu-action="forward"/);
   assert.match(markup, /data-message-context-menu-action="select"/);
   assert.match(markup, /data-message-context-menu-action="pin"/);
