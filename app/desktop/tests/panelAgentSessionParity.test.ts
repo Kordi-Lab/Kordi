@@ -456,6 +456,10 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
     new URL('../src/features/chat/messageActions/localAgentSessionTarget.ts', import.meta.url),
     'utf8',
   );
+  const turnDispatchSource = readFileSync(
+    new URL('../src/features/chat/messageActions/localAgentTurnDispatch.ts', import.meta.url),
+    'utf8',
+  );
   const targetedStart = source.indexOf('const sendTargetedChatMessage = useCallback');
   const activeStart = source.indexOf('return useCallback', targetedStart);
   const targetedSendBlock = source.slice(targetedStart, activeStart);
@@ -465,11 +469,13 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
   const queuedSendStart = source.indexOf('const sendQueuedLocalMessage = useCallback', materializerStart);
   const materializerBlock = source.slice(materializerStart, queuedSendStart);
   const materializeIndex = sharedSendBlock.indexOf('await materializeTarget()');
-  const sendIndex = sharedSendBlock.indexOf('await startDesktopChatMessage(');
+  const sendIndex = sharedSendBlock.indexOf('await startLocalAgentTurn(');
 
   assert.match(targetedSendBlock, /materializeTarget: \(\) => materializeLocalChatTarget\(targetConversation\.id\)/, 'an inactive side Agent session should supply its runtime materializer');
   assert.notEqual(materializeIndex, -1, 'the shared send should await runtime transcript materialization');
   assert.notEqual(sendIndex, -1, 'the shared send should start the live turn');
+  assert.match(turnDispatchSource, /export async function startLocalAgentTurn[\s\S]*?await startDesktopChatMessage\(/, 'the turn helper starts the runtime turn');
+  assert.ok(sharedSendBlock.indexOf('dispatchLocalAgentVoiceTurn(') > materializeIndex, 'a voice turn also starts only after materialization');
   assert.ok(materializeIndex < sendIndex, 'runtime transcript materialization must finish before the live turn starts');
   assert.match(sharedSendBlock, /resolvedMaterializedState[\s\S]*appendOptimisticOutboundMessage/, 'the shared send should receive the materialized target state');
   assert.match(materializerBlock, /await fetchMaterializedLocalChatTarget\(sessionId, desktopChatState\)/, 'the action should use the shared target materializer');

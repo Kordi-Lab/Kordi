@@ -1,13 +1,10 @@
 import {
   useEffect,
-  useRef,
-  useState,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
-import { useVoiceTranscriptionJobsVersion } from '@/features/chat/voiceTranscriptionJobs';
-import { voiceAgentWaitingSince, voiceForAgentExecution } from './cloudVoiceAgentGate';
+import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
@@ -106,12 +103,9 @@ export function useCloudDirectAgentExecution({
   syncMessages: () => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
 }) {
-  const voiceTranscriptionJobsVersion = useVoiceTranscriptionJobsVersion();
-  const voiceWaitingSinceRef = useRef(new Map<string, number>());
-  const [voiceWaitWake, setVoiceWaitWake] = useState(0);
+  const voiceGate = useVoiceAgentRequestGate();
   useEffect(() => {
     if (!account || !initialMessagesSettled || !runtimeReady) return;
-    let voiceWaitUntilMs = Number.POSITIVE_INFINITY;
     for (const [peerId, messages] of cloudMessageIndex.byPeerId) {
       for (const message of messages) {
         if (!shouldRunLocalCloudAgentForCloudMessage({
@@ -125,16 +119,8 @@ export function useCloudDirectAgentExecution({
         })) continue;
         if (processedRequestIdsRef.current.has(message.messageId)) continue;
         // A voice message sent without transcription waits (bounded) for the sender's transcript.
-        const voiceGate = voiceForAgentExecution({
-          voice: message.voiceMessage,
-          createdAt: message.createdAt,
-          waitingSinceMs: voiceAgentWaitingSince(voiceWaitingSinceRef.current, message.messageId),
-        });
-        if (voiceGate.status === 'waiting') {
-          voiceWaitUntilMs = Math.min(voiceWaitUntilMs, voiceGate.retryAtMs);
-          continue;
-        }
-        voiceWaitingSinceRef.current.delete(message.messageId);
+        const voice = voiceGate.check(message);
+        if (voice === undefined) continue;
 
         processedRequestIdsRef.current.add(message.messageId);
         const contact = cloudLookupContacts.find((candidate) => (
@@ -157,7 +143,7 @@ export function useCloudDirectAgentExecution({
           body: cloudDirectMessageDisplayText(message.body),
         };
         const prompt = promptTextForCloudAgentMention(
-          directDisplayMessage.body, voiceGate.voice,
+          directDisplayMessage.body, voice,
         );
         const contextMessages = [
           ...cloudAgentContextMessagesFromDefinition(
@@ -381,12 +367,7 @@ export function useCloudDirectAgentExecution({
         })();
       }
     }
-    if (!Number.isFinite(voiceWaitUntilMs)) return;
-    const wake = window.setTimeout(
-      () => setVoiceWaitWake((value) => value + 1),
-      Math.max(0, voiceWaitUntilMs - Date.now()),
-    );
-    return () => window.clearTimeout(wake);
+    return voiceGate.scheduleWake();
   }, [
     account,
     activityRef,
@@ -405,7 +386,6 @@ export function useCloudDirectAgentExecution({
     setLocalTurns,
     syncMessages,
     turnIdsByRequestIdRef,
-    voiceTranscriptionJobsVersion,
-    voiceWaitWake,
+    voiceGate,
   ]);
 }

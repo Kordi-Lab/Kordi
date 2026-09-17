@@ -1,13 +1,11 @@
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
-import { useVoiceTranscriptionJobsVersion } from '@/features/chat/voiceTranscriptionJobs';
-import { voiceAgentWaitingSince, voiceForAgentExecution } from './cloudVoiceAgentGate';
+import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { useDesktopAgentReadiness, type CloudSelfAgentExecutionInput } from './useDesktopAgentReadiness';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   useEffect,
   useRef,
-  useState,
 } from 'react';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
@@ -92,9 +90,7 @@ export function useCloudSelfAgentExecution({
   reportWarning,
 }: CloudSelfAgentExecutionInput) {
   const supersededRequestIdsRef = useRef<Set<string>>(new Set());
-  const voiceTranscriptionJobsVersion = useVoiceTranscriptionJobsVersion();
-  const voiceWaitingSinceRef = useRef(new Map<string, number>());
-  const [voiceWaitWake, setVoiceWaitWake] = useState(0);
+  const voiceGate = useVoiceAgentRequestGate();
   const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
     account?.accountId ?? null,
@@ -157,23 +153,10 @@ export function useCloudSelfAgentExecution({
     });
     const selfMessages =
       messageIndex.byPeerId.get(account.accountId) ?? [];
-    let voiceWaitUntilMs = Number.POSITIVE_INFINITY;
     for (const request of candidates) {
       if (processedRequestIdsRef.current.has(request.messageId)) continue;
-      // A voice request sent without transcription waits (bounded) for its transcript.
-      const voiceGate = voiceForAgentExecution({
-        voice: request.voiceMessage,
-        createdAt: request.createdAt,
-        waitingSinceMs: voiceAgentWaitingSince(voiceWaitingSinceRef.current, request.messageId),
-      });
-      if (voiceGate.status === 'waiting') {
-        voiceWaitUntilMs = Math.min(voiceWaitUntilMs, voiceGate.retryAtMs);
-        continue;
-      }
-      voiceWaitingSinceRef.current.delete(request.messageId);
-      const requestPromptText = () => (
-        voiceGate.voice ? voiceAgentText(voiceGate.voice) : cloudDirectMessageDisplayText(request.body)
-      );
+      const voice = voiceGate.check(request);
+      if (voice === undefined) continue;
       const candidateSessionId = request.sessionId?.trim() ?? '';
       const candidateRuntimeSessionId = cloudSelfAgentRuntimeSessionId(candidateSessionId);
       if (!candidateRuntimeSessionId) continue;
@@ -233,7 +216,7 @@ export function useCloudSelfAgentExecution({
 
         const lease = await acquireDesktopExecutionLease(client, session.token, {
           requestMessageId: request.messageId, sessionId, ownerAccountId: account.accountId,
-          requesterAccountId: account.accountId, prompt: requestPromptText(),
+          requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)),
           runtimeRoute: requestRoute ? { defaultModel: requestRoute.model, defaultAuthProvider: requestRoute.authProvider,
             defaultAuthChoice: requestRoute.authChoice, thinking: requestRoute.thinking } : undefined,
           idempotencyKey: `request:${request.messageId}`,
@@ -257,7 +240,7 @@ export function useCloudSelfAgentExecution({
             processedRequestIdsRef.current.delete(request.messageId);
             return;
           }
-          const prompt = requestPromptText().trim();
+          const prompt = (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)).trim();
           if (!prompt) {
             processedRequestIdsRef.current.delete(request.messageId);
             return;
@@ -492,12 +475,7 @@ export function useCloudSelfAgentExecution({
         reportWarning('[cloud-self-agent-execution] request failed', error);
       });
     }
-    if (!Number.isFinite(voiceWaitUntilMs)) return;
-    const wake = window.setTimeout(
-      () => setVoiceWaitWake((value) => value + 1),
-      Math.max(0, voiceWaitUntilMs - Date.now()),
-    );
-    return () => window.clearTimeout(wake);
+    return voiceGate.scheduleWake();
   }, [
     account,
     canonicalState,
@@ -514,7 +492,6 @@ export function useCloudSelfAgentExecution({
     setLocalTurns,
     syncMessages,
     turnIdsByRequestIdRef,
-    voiceTranscriptionJobsVersion,
-    voiceWaitWake,
+    voiceGate,
   ]);
 }

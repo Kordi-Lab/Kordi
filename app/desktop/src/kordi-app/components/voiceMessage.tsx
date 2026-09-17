@@ -3,8 +3,9 @@ import { formatVoiceDuration, localVoiceSource } from './voiceAudioSource';
 import { VoiceWaveform } from './voiceWaveform';
 import {
   useVoiceTranscriptState,
+  voiceTranscriptPersistTarget,
   voiceTranscriptTriggerLabel,
-  type VoiceTranscriptPersistTarget,
+  type VoiceTranscriptOwnMessage,
 } from './voiceTranscriptAction';
 import { FileText, LoaderCircle, Pause, Play } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -20,11 +21,9 @@ import { pauseDesktopVoiceMessage, playDesktopVoiceMessage, seekDesktopVoiceMess
 const VOICE_PLAY_EVENT = 'kordi:voice-message-play';
 const MIN_PLAYABLE_VOICE_BYTES = 1_024;
 
-export type { VoiceTranscriptPersistTarget } from './voiceTranscriptAction';
-
-export function VoiceMessageContent({ voice, footer, transcriptTarget }: {
-  /** Present only on the sender's own server message; recipients transcribe for this device. */
-  transcriptTarget?: VoiceTranscriptPersistTarget;
+export function VoiceMessageContent({ voice, footer, ownMessage }: {
+  /** Present only for the sender's own message; recipients transcribe for this device. */
+  ownMessage?: VoiceTranscriptOwnMessage;
   voice: MessageVoice;
   footer?: ReactNode;
 }) {
@@ -43,7 +42,7 @@ export function VoiceMessageContent({ voice, footer, transcriptTarget }: {
   const [showsFullTranscript, setShowsFullTranscript] = useState(false);
   const transcription = useVoiceTranscriptState({
     voice,
-    persistTarget: transcriptTarget,
+    persistTarget: voiceTranscriptPersistTarget(ownMessage),
     canTranscribeOnDevice: nativePlayback,
   });
   const transcript = transcription.transcript;

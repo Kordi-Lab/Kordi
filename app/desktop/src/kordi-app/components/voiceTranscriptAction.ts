@@ -11,10 +11,19 @@ import {
   voiceTranscriptionKeys,
 } from '@/features/chat/voiceTranscriptionJobs';
 import { transcribeVoiceMessageOnDemand } from '@/features/cloud/cloudVoiceTranscription';
-import type { MessageVoice } from '@/kordi-app/types/message';
+import type { Message, MessageVoice } from '@/kordi-app/types/message';
 
 /** The sender's server message. Only the sender may store a transcript for everyone. */
 export type VoiceTranscriptPersistTarget = { conversationId: string; messageId: string; version: number };
+
+export type VoiceTranscriptOwnMessage = Pick<Message, 'reactionConversationId' | 'reactionTargetMessageId' | 'cloudMessageVersion'>;
+
+/** The server message the sender may update, once the sender's own message has been stored. */
+export function voiceTranscriptPersistTarget(msg: VoiceTranscriptOwnMessage | undefined): VoiceTranscriptPersistTarget | undefined {
+  return msg?.reactionConversationId && msg.reactionTargetMessageId && msg.cloudMessageVersion
+    ? { conversationId: msg.reactionConversationId, messageId: msg.reactionTargetMessageId, version: msg.cloudMessageVersion }
+    : undefined;
+}
 
 export type VoiceTranscriptStatus = 'ready' | 'running' | 'failed' | 'idle' | 'unavailable';
 

@@ -484,49 +484,6 @@ export function appendOptimisticCanonicalMessage(
   };
 }
 
-/** Replaces the attachment content of a prepared message, for example after its voice transcript is ready. */
-export function preparedCanonicalUserMessageWithAttachments(
-  prepared: PreparedCanonicalUserMessage | null,
-  attachments: AttachmentItem[],
-  contentText = prepared?.request.contentText ?? '',
-): PreparedCanonicalUserMessage | null {
-  if (!prepared) return prepared;
-  return {
-    ...prepared,
-    request: {
-      ...prepared.request,
-      contentText,
-      content: {
-        ...optimisticContentRecord(prepared.request.content),
-        ...optimisticAttachmentContent(attachments),
-      },
-    },
-  };
-}
-
-export function replaceOptimisticCanonicalMessageContent(
-  current: CanonicalSessionState | null,
-  prepared: PreparedCanonicalUserMessage | null,
-): CanonicalSessionState | null {
-  if (!current || !prepared) return current;
-  let changed = false;
-  const messages = current.messages.map((message) => {
-    if (message.id !== prepared.messageId || message.sessionId !== prepared.request.sessionId) return message;
-    changed = true;
-    return {
-      ...message,
-      contentText: prepared.request.contentText,
-      contentHash: null,
-      content: {
-        ...optimisticContentRecord(message.content),
-        ...optimisticContentRecord(prepared.request.content),
-        deliveryState: optimisticContentRecord(message.content).deliveryState,
-      },
-    };
-  });
-  return changed ? { ...current, messages } : current;
-}
-
 export async function persistCanonicalUserMessage(prepared: PreparedCanonicalUserMessage | null) {
   if (!prepared) return null;
   return appendCanonicalMessageFast(prepared.request);

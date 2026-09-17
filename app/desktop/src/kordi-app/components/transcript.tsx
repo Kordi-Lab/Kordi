@@ -117,9 +117,7 @@ function MessageFooter({
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
-  // Transcript updates set editedAt on voice messages; they are not user edits.
-  const showsEdited = Boolean(message.editedAt && !message.voiceMessage);
-  if (!isUser && !showDetail && !replySummary && !showsEdited) return null;
+  if (!isUser && !showDetail && !replySummary && !(message.editedAt && !message.voiceMessage)) return null;
 
   return (
     <div className={cn(
@@ -687,9 +685,6 @@ function MessageBubbleView({
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
-  const voiceTranscriptTarget = isOwnHumanMessage && msg.reactionConversationId && msg.reactionTargetMessageId && msg.cloudMessageVersion
-    ? { conversationId: msg.reactionConversationId, messageId: msg.reactionTargetMessageId, version: msg.cloudMessageVersion }
-    : undefined;
   const hasVoice = Boolean(msg.voiceMessage); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const hasLinkPreview = hasText && !msg.callActivity && Boolean(firstExternalMessageLink(msg.text));
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasAttachments && (msg.attachments?.length ?? 0) > 1 && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasDetachedImageGroup = hasGroupedImageAttachments && hasText;
@@ -741,7 +736,7 @@ function MessageBubbleView({
         ) : (
           <>
             <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>
-              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} transcriptTarget={voiceTranscriptTarget} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
+              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} ownMessage={isOwnHumanMessage ? msg : undefined} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
               {hasAttachments && !hasDetachedImageGroup ? (
                 <AttachmentPreview
                   msg={msg}

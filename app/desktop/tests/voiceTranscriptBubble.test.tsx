@@ -110,9 +110,9 @@ async function withBubbleHarness(run: (harness: {
 
 test('the transcript icon transcribes in the background, survives re-mounting, and the sender stores the result', async () => {
   await withBubbleHarness(async ({ root, transcribeCalls, finishSpeech, puts, trigger, panelText, settle }) => {
-    const target = { conversationId: 'conversation-sender', messageId: 'message-sender', version: 1 };
+    const target = { reactionConversationId: 'conversation-sender', reactionTargetMessageId: 'message-sender', cloudMessageVersion: 1 };
     const sent = voice('media-sender', '/synthetic/sender.m4a');
-    await act(async () => root.render(createElement(VoiceMessageContent, { key: 'first', voice: sent, transcriptTarget: target })));
+    await act(async () => root.render(createElement(VoiceMessageContent, { key: 'first', voice: sent, ownMessage: target })));
     assert.equal(trigger().getAttribute('aria-label'), 'Transcribe');
     assert.equal(trigger().title, 'Transcribe');
     assert.equal(document.querySelector('.app-voice-transcript'), null);
@@ -127,7 +127,7 @@ test('the transcript icon transcribes in the background, survives re-mounting, a
 
     // Virtualization unmounts the row; the job keeps running and the new row re-opens its state.
     await act(async () => root.render(createElement('div')));
-    await act(async () => root.render(createElement(VoiceMessageContent, { key: 'second', voice: sent, transcriptTarget: target })));
+    await act(async () => root.render(createElement(VoiceMessageContent, { key: 'second', voice: sent, ownMessage: target })));
     assert.match(panelText(), /Transcribing…/);
     assert.equal(transcribeCalls.length, 1, 're-mounting never starts a second job');
     assert.equal(puts.length, 0);
@@ -193,9 +193,9 @@ test('clicking while a background job runs only reveals it, and recipients keep 
 
 test('a failed attempt shows a short note with Try again within the limit; impossible transcription explains why', async () => {
   await withBubbleHarness(async ({ root, transcribeCalls, finishSpeech, puts, trigger, panelText, settle }) => {
-    const target = { conversationId: 'conversation-failure', messageId: 'message-failure', version: 1 };
+    const target = { reactionConversationId: 'conversation-failure', reactionTargetMessageId: 'message-failure', cloudMessageVersion: 1 };
     const path = '/synthetic/failure.m4a';
-    await act(async () => root.render(createElement(VoiceMessageContent, { voice: voice('media-failure', path), transcriptTarget: target })));
+    await act(async () => root.render(createElement(VoiceMessageContent, { voice: voice('media-failure', path), ownMessage: target })));
     await act(async () => { trigger().click(); await new Promise(resolve => setTimeout(resolve, 10)); });
     await finishSpeech(path, new Error('No recognizable speech was found.'));
     // The native helper tries each fallback locale before it gives up.
@@ -211,7 +211,7 @@ test('a failed attempt shows a short note with Try again within the limit; impos
 
     // message.updated delivers the stored failure before the retry.
     await act(async () => root.render(createElement(VoiceMessageContent, {
-      voice: voice('media-failure', path, { status: 'failed', attempts: 1 }), transcriptTarget: { ...target, version: 2 },
+      voice: voice('media-failure', path, { status: 'failed', attempts: 1 }), ownMessage: { ...target, cloudMessageVersion: 2 },
     })));
     const callsBeforeRetry = transcribeCalls.length;
     await act(async () => { document.querySelector<HTMLButtonElement>('.app-voice-transcript button')!.click(); });
@@ -225,7 +225,7 @@ test('a failed attempt shows a short note with Try again within the limit; impos
 
     await act(async () => root.render(createElement(VoiceMessageContent, {
       key: 'exhausted', voice: voice('media-exhausted', '/synthetic/exhausted.m4a', { status: 'failed', attempts: 3 }),
-      transcriptTarget: { ...target, messageId: 'message-exhausted' },
+      ownMessage: { ...target, reactionTargetMessageId: 'message-exhausted' },
     })));
     assert.equal(trigger().getAttribute('aria-label'), 'Transcript unavailable');
     await act(async () => { trigger().click(); });

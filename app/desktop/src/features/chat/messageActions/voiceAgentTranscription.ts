@@ -92,3 +92,33 @@ export async function persistSentAgentVoiceTranscript(
     markCloudVoiceTranscriptSettled(sent?.messageId);
   }
 }
+
+/** A queued local agent message takes its background transcript before its turn starts. */
+export async function queuedMessageWithAgentTranscript<T extends { text: string; attachments: AttachmentItem[] }>(
+  message: T,
+): Promise<T> {
+  const { attachments, outcome } = await transcribeAgentVoiceAttachments(message.attachments);
+  if (!outcome) return message;
+  return {
+    ...message,
+    text: outcome.status === 'ready' ? outcome.transcript : message.text,
+    attachments: [...attachments],
+  };
+}
+
+/**
+ * Starts transcription for a Cloud voice send that an agent will read. The returned hooks store the
+ * transcript once the message exists, without delaying the send itself.
+ */
+export function agentVoiceSend(addressedToAgent: boolean, attachments: readonly AttachmentItem[]) {
+  const transcription = addressedToAgent ? startAgentVoiceTranscription(attachments) : null;
+  if (!transcription) return null;
+  return {
+    persistAfterSend: (sent: CloudMessage) => {
+      void persistSentAgentVoiceTranscript(sent, attachments, transcription).catch(() => undefined);
+    },
+    beforeFallbackClaim: async (sent: readonly CloudMessage[]) => {
+      await persistSentAgentVoiceTranscript(sent.find((message) => message.voiceMessage) ?? null, attachments, transcription);
+    },
+  };
+}
