@@ -1,10 +1,11 @@
 import { CalendarCheck, CalendarClock, Check, ChevronRight, MapPin, Vote, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { defaultCloudAuthClient, type PlanCardActionRequest } from '@/features/cloud/authClient';
+import { planCardAction, type PlanCardActionRequest } from '@/features/cloud/planCardClient';
 import { loadSession } from '@/features/cloud/session';
 import type { MessagePlanCard, MessagePlanCardOption } from '@/kordi-app/types/message';
 import { planCardView } from '@/features/cloud/planCardSnapshot';
+import { isPipAvatarUrl, KORDI_PIP_TAG } from '@/features/pip/pipIdentity';
 
 const STATE_LABEL: Record<MessagePlanCard['state'], string> = {
   polling: 'Planning',
@@ -45,6 +46,11 @@ function leadingOption(options: MessagePlanCardOption[]): MessagePlanCardOption 
  * message; buttons act for the signed-in member, and the card refreshes for
  * everyone through the same message. PiP decides in chat what happens next.
  */
+/** PiP's "Built-in agent" tag beside its name; nothing for anyone else. */
+export function PipSenderTag({ avatarUrl }: { avatarUrl?: string | null }) {
+  return isPipAvatarUrl(avatarUrl) ? <span className="app-sender-tag">{KORDI_PIP_TAG}</span> : null;
+}
+
 export function PlanCardContent({
   card,
   ownAccountId,
@@ -109,7 +115,7 @@ export function PlanCardContent({
         setNotice('Sign in to respond.');
         return;
       }
-      const updated = await defaultCloudAuthClient().planCardAction(session.token, request);
+      const updated = await planCardAction(session.token, request);
       setLocalState(updated);
     } catch (error) {
       setLocalState(null);

@@ -1,5 +1,6 @@
 import { sortedCanonicalMessages, type CanonicalMessageSortPosition, type SortableCanonicalMessage } from './messageSort';
 import { isPipIdentity } from '@/features/pip/pipIdentity';
+import { transcriptEntries } from './planCardEntries';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import type {
@@ -731,8 +732,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
     if (participant.state !== 'active') continue;
-    // PiP is a built-in agent that posts in the chat, not a member: it is kept
-    // for message attribution but never counted, named, or pictured as one.
+    // PiP posts in the chat as a built-in agent, never as a counted member.
     if (isPipIdentity(identityById.get(participant.identityId))) continue;
     pushMapArray(participantsBySessionId, participant.sessionId, participant);
   }
@@ -1022,33 +1022,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         : inheritedDesktopForkSnapshot(sessionById.get(sessionId), displaySourceMessage)
           ? { ...mappedWithReadStatus, isForkSnapshot: true }
           : mappedWithReadStatus;
-      const sortPosition = messageSortById.get(message.id) ?? messageSortPosition(message);
-      // A card and PiP's words are always two messages, even when an older
-      // message stored them together: the card first, then the text.
-      if (displayMessage.planCard && displayMessage.text.trim()) {
-        const cardPart: Message = {
-          ...displayMessage,
-          id: `${displayMessage.id ?? message.id}#plan-card`,
-          entryId: `${displayMessage.entryId ?? message.id}#plan-card`,
-          text: '',
-          mentions: undefined,
-          replyToMessageId: undefined,
-          replyAliasIds: undefined,
-          messageAction: undefined,
-          sourceMessage: undefined,
-          reactionTargetMessageId: undefined,
-          reactions: undefined,
-        };
-        return [
-          { message: cardPart, ...sortPosition, tieBreakAtMs: message.createdAtMs - 1 },
-          { message: { ...displayMessage, planCard: null }, ...sortPosition, tieBreakAtMs: message.createdAtMs },
-        ];
-      }
-      return [{
-        message: displayMessage,
-        ...sortPosition,
-        tieBreakAtMs: message.createdAtMs,
-      }];
+      return transcriptEntries(displayMessage, message.id, messageSortById.get(message.id) ?? messageSortPosition(message), message.createdAtMs);
     });
     canonicalMessagesBySessionId.set(
       sessionId,

@@ -56,10 +56,8 @@ import { MessageDeliveryStatusSlot,TranscriptMessageTransferActions } from './tr
 import { RequestReplyLine,SourceMessageQuoteRow,ThreadReplyLine } from './transcriptReplyAttribution';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { VoiceMessageContent } from './voiceMessage';
-import { PlanCardContent } from './planCard';
-import { isPipAvatarUrl, KORDI_PIP_TAG } from '@/features/pip/pipIdentity';
-export { MessageContextMenuContent } from './messageContextMenuContent';
-export type { MessageContextMenuActionHandlers } from './messageContextMenuContent';
+import { PipSenderTag, PlanCardContent } from './planCard';
+export { MessageContextMenuContent, type MessageContextMenuActionHandlers } from './messageContextMenuContent';
 export { messageContextMenuPosition } from './messageContextMenuPosition';
 export { openInlineChangedFile } from './transcriptChangedFiles';
 export { LiveChatTurnCard,LiveChatTurnMessage };
@@ -712,7 +710,7 @@ function MessageBubbleView({
   const messageSurfaceContent = (
     <>
       {showInlineHumanSender ? (
-        <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4">{msg.sender}{isPipAvatarUrl(msg.senderProfileImageUrl) ? <span className="app-sender-tag">{KORDI_PIP_TAG}</span> : null}</div>
+        <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4">{msg.sender}<PipSenderTag avatarUrl={msg.senderProfileImageUrl} /></div>
       ) : null}
       {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
       {standaloneEmojiItem ? <StandaloneEmojiMessage item={standaloneEmojiItem} own={isOwnHumanMessage} status={bubbleDeliveryStatus} /> : showCompactFooter ? (
@@ -742,8 +740,7 @@ function MessageBubbleView({
                   imageGallery={imageGallery}
                   imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
                 />
-              ) : null}
-              {msg.planCard ? <PlanCardContent card={msg.planCard} /> : null}
+              ) : null}{msg.planCard ? <PlanCardContent card={msg.planCard} /> : null}
               {msg.supportContactTyping ? (
                 <SupportContactTypingIndicator />
               ) : hasText ? (
@@ -766,8 +763,7 @@ function MessageBubbleView({
       ) : (
         <>
           <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
-            {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
-            {msg.planCard ? <PlanCardContent card={msg.planCard} /> : null}
+            {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} /> : null}
             {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <><MarkdownContent text={msg.text} showLinkIcons copySurface="message" />{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>) : null}
           </div>
           {(msg.statusChips?.length || footerDetail) ? (
