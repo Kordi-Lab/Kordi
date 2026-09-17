@@ -33,7 +33,7 @@ pub struct ServiceProviderAuth<'a> {
 pub(super) fn service_provider_auth_for_run(
     owner_account_id: &str,
     runtime_route: &Value,
-    service_auth: Option<ServiceProviderAuth<'_>>,
+    service_auths: Vec<ServiceProviderAuth<'_>>,
 ) -> Option<RunnerProviderAuthMaterial> {
     let routed_provider_ids = equivalent_provider_ids(
         runtime_route
@@ -47,7 +47,7 @@ pub(super) fn service_provider_auth_for_run(
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let service_auth = service_auth.filter(|service_auth| {
+    let service_auth = service_auths.into_iter().find(|service_auth| {
         service_auth.owner_account_id == owner_account_id
             && routed_provider_ids.as_ref().is_some_and(|providers| {
                 providers

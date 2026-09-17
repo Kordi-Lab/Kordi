@@ -5,44 +5,20 @@ use super::subtyped_attachment_validation::{
 use super::support::*;
 use super::*;
 
+mod fanout;
 mod group_identity;
 mod mutations;
+mod server_refresh;
 mod voice;
+pub(super) use fanout::fanout_message_sync_event;
 pub(super) use group_identity::normalize_stored_group_agent_identity;
 use group_identity::{
     apply_group_control_title, load_existing_group_message, lock_group_message_fingerprint,
     normalize_group_envelope,
 };
 pub use mutations::{delete_message, edit_message};
+pub use server_refresh::refresh_server_message_content;
 pub use voice::{update_voice_transcript, UpdateVoiceTranscriptRequest};
-
-pub(super) async fn fanout_message_sync_event(
-    transaction: &mut Transaction<'_, Postgres>,
-    event_type: &str,
-    message: &MessageSnapshot,
-) -> Result<(), StoreError> {
-    let payloads = load_active_conversation_projections(transaction, message.conversation_id)
-        .await?
-        .into_iter()
-        .map(|(account_id, conversation)| {
-            (
-                account_id,
-                json!({ "message": message, "conversation": conversation }),
-            )
-        })
-        .collect();
-    insert_sync_event_fanout(
-        transaction,
-        event_type,
-        Some(message.conversation_id),
-        Some(message.id),
-        Some(message.version),
-        payloads,
-    )
-    .await?;
-    crate::digest::changes::note_message(&mut **transaction, event_type, message).await?;
-    Ok(())
-}
 
 pub async fn load_message_snapshot(
     pool: &PgPool,
@@ -454,48 +430,6 @@ pub async fn replace_message_snapshot(
         .execute(&mut *transaction)
         .await?;
     }
-    let message = load_message(&mut transaction, message_id).await?;
-    fanout_message_sync_event(&mut transaction, "message.updated", &message).await?;
-    transaction.commit().await?;
-    Ok(message)
-}
-
-/// Refresh a trusted server-authored message's content in place, without
-/// marking it edited. The message keeps its timeline position, its version
-/// moves so every client replaces its copy, and readers see no edit marker.
-/// PiP uses this to keep one plan card current as members respond.
-pub async fn refresh_server_message_content(
-    pool: &PgPool,
-    sender_account_id: &str,
-    message_id: Uuid,
-    content: Value,
-) -> Result<MessageSnapshot, StoreError> {
-    let mut transaction = pool.begin().await?;
-    let row: Option<(String,)> = query_as(
-        "SELECT sender_account_id FROM cloud_chat_messages \
-         WHERE message_id = $1 AND deleted_at IS NULL FOR UPDATE",
-    )
-    .bind(message_id)
-    .fetch_optional(&mut *transaction)
-    .await?;
-    let Some((stored_sender_account_id,)) = row else {
-        return Err(StoreError::NotFound);
-    };
-    if stored_sender_account_id != sender_account_id {
-        return Err(StoreError::Forbidden);
-    }
-    let current = load_message(&mut transaction, message_id).await?;
-    if current.content == content {
-        transaction.commit().await?;
-        return Ok(current);
-    }
-    query(
-        "UPDATE cloud_chat_messages SET content = $2, version = version + 1 WHERE message_id = $1",
-    )
-    .bind(message_id)
-    .bind(&content)
-    .execute(&mut *transaction)
-    .await?;
     let message = load_message(&mut transaction, message_id).await?;
     fanout_message_sync_event(&mut transaction, "message.updated", &message).await?;
     transaction.commit().await?;
