@@ -48,13 +48,8 @@ export function VoiceComposerControls({
       <button
         type="button"
         className="app-button-quiet app-icon-button grid h-9 w-9 shrink-0 place-items-center rounded-full border-0 p-0"
-        onPointerDown={recorder.state.phase === 'idle' ? voice.beginGesture : undefined}
-        onContextMenu={(event) => event.preventDefault()}
-        onClick={() => {
-          if (voice.suppressClickRef.current) return;
-          void recorder.start();
-        }}
-        title="Click to record, or hold and release to send"
+        onClick={() => { void recorder.start(); }}
+        title="Record a voice message"
         aria-label="Record voice message"
       >
         <VoiceMessageIcon className="h-5 w-5" />

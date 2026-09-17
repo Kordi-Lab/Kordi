@@ -71,23 +71,13 @@ test('mouse click records, pending transcription is visible, and cancel or faile
     return value;
   };
   const settle = () => new Promise(resolve => setTimeout(resolve, 10));
-  async function tapToRecord() {
-    const mic = button('Record voice message');
-    await act(async () => {
-      mic.dispatchEvent(new dom.window.PointerEvent('pointerdown', { bubbles: true, pointerId: 1, button: 0, clientY: 100 }));
-      await settle();
-    });
-    await act(async () => {
-      dom.window.dispatchEvent(new dom.window.PointerEvent('pointerup', { bubbles: true, pointerId: 1, button: 0, clientY: 100 }));
-      mic.click();
-      await settle();
-    });
+  async function clickToRecord() {
+    await act(async () => { button('Record voice message').click(); await settle(); });
   }
   try {
     await act(async () => root.render(createElement(Probe)));
-    await tapToRecord();
+    await clickToRecord();
     assert.equal(voice.recorder.state.phase, 'recording');
-    assert.equal(voice.recorder.state.locked, true);
     assert.equal(starts, 1);
     assert.equal(button('Cancel voice recording').disabled, false);
     deferred = true;
@@ -101,7 +91,7 @@ test('mouse click records, pending transcription is visible, and cancel or faile
     assert.equal(button('Record voice message').disabled, false);
     // A cancelled recognizer may still be completing. It must not own the next send.
     deferred = false;
-    await tapToRecord();
+    await clickToRecord();
     failSend = true;
     await act(async () => { button('Stop and send voice message').click(); await settle(); });
     assert.equal(voice.recorder.state.phase, 'review');
@@ -116,13 +106,13 @@ test('mouse click records, pending transcription is visible, and cancel or faile
     assert.equal(sends, 1);
     assert.equal(voice.recorder.state.phase, 'idle');
     deferDelivery = true;
-    await tapToRecord();
+    await clickToRecord();
     await act(async () => { button('Stop and send voice message').click(); await settle(); });
     assert.equal(voice.surfaceActive, false, 'upload progress belongs to the outgoing bubble');
     assert.equal(document.querySelector('.app-voice-recording-rail'), null);
     assert.equal(button('Record voice message').disabled, false);
     assert.equal(document.querySelector('[data-message-bubble]')?.textContent, 'Sending message');
-    await tapToRecord();
+    await clickToRecord();
     await act(async () => { finishDelivery?.(true); await settle(); });
     assert.equal(document.querySelector('[data-message-bubble]')?.textContent, 'Message failed');
     assert.equal(voice.recorder.state.phase, 'recording', 'late delivery failure must not replace the next draft');
@@ -131,15 +121,12 @@ test('mouse click records, pending transcription is visible, and cancel or faile
     const heldMic = button('Record voice message');
     await act(async () => {
       heldMic.dispatchEvent(new dom.window.PointerEvent('pointerdown', { bubbles: true, pointerId: 2, button: 0, clientY: 100 }));
-      await settle();
-    });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 320)); });
-    await act(async () => {
+      await new Promise(resolve => setTimeout(resolve, 320));
       dom.window.dispatchEvent(new dom.window.PointerEvent('pointerup', { bubbles: true, pointerId: 2, button: 0, clientY: 100 }));
-      heldMic.click();
       await settle();
     });
-    assert.equal(sends, 3, 'holding and releasing still sends the recording');
+    assert.equal(starts, 4, 'pressing and holding without a click must not start a recording');
+    assert.equal(sends, 2, 'holding and releasing no longer sends');
     assert.equal(voice.recorder.state.phase, 'idle');
     failStart = true;
     await act(async () => { button('Record voice message').click(); await settle(); });

@@ -7,14 +7,14 @@ for (const width of [400, 900, 1280]) {
     const shell = page.locator('.app-composer-shell');
     const baseline = await shell.boundingBox();
     expect(baseline).not.toBeNull();
-    for (const state of ['Holding', 'Recording', 'Pending', 'Retry', 'Ready']) {
+    for (const state of ['Recording', 'Pending', 'Retry', 'Ready']) {
       await page.getByRole('button', { name: state, exact: true }).click();
       const bounds = await shell.boundingBox();
       expect(bounds?.height).toBe(baseline?.height);
       expect(bounds?.y).toBe(baseline?.y);
       await expect(page.getByRole('slider', { name: 'Trim voice message start' })).toHaveCount(0);
       const rail = await page.locator('.app-voice-recording-rail').boundingBox();
-      const recording = state === 'Recording' || state === 'Holding';
+      const recording = state === 'Recording';
       const send = await page.getByRole('button', { name: recording ? 'Stop and send voice message' : 'Send voice message', exact: true }).boundingBox();
       expect(send!.x + send!.width).toBeLessThanOrEqual(rail!.x + rail!.width + 1);
       expect(rail!.x + rail!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);

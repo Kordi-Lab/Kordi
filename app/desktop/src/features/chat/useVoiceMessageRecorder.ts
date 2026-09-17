@@ -22,7 +22,6 @@ type TranscriptionPhase = 'idle' | 'transcribing' | 'ready' | 'error';
 export type VoiceMessageRecorderState = {
   phase: RecorderPhase;
   transcriptionPhase: TranscriptionPhase;
-  locked: boolean;
   durationMs: number;
   waveformSamples: number[];
   transcript: string;
@@ -35,7 +34,6 @@ export type VoiceMessageRecorderState = {
 const IDLE_STATE: VoiceMessageRecorderState = {
   phase: 'idle',
   transcriptionPhase: 'idle',
-  locked: false,
   durationMs: 0,
   waveformSamples: [],
   transcript: '',
@@ -212,7 +210,7 @@ export function useVoiceMessageRecorder() {
     }
   }, [commit]);
 
-  const start = useCallback(async ({ locked = true }: { locked?: boolean } = {}) => {
+  const start = useCallback(async () => {
     if (!['idle', 'error'].includes(stateRef.current.phase) || activeRef.current) return false;
     generationRef.current += 1;
     const generation = generationRef.current;
@@ -228,7 +226,7 @@ export function useVoiceMessageRecorder() {
       }
       activeRef.current = true;
       samplesRef.current = [];
-      commit({ ...IDLE_STATE, phase: 'recording', locked });
+      commit({ ...IDLE_STATE, phase: 'recording' });
       timerRef.current = window.setInterval(() => {
         if (!activeRef.current || samplingRef.current) return;
         samplingRef.current = true;
@@ -324,10 +322,6 @@ export function useVoiceMessageRecorder() {
 
   stopRef.current = stop;
 
-  const lock = useCallback(() => {
-    if (stateRef.current.phase === 'recording') commit((current) => ({ ...current, locked: true }));
-  }, [commit]);
-
   const recoverSend = useCallback((attachmentId: string) => {
     if (stateRef.current.attachment?.id === attachmentId) commit((current) => ({
       ...current, phase: 'review', error: 'Could not send this voice message. Your recording is saved; try sending again.',
@@ -415,7 +409,6 @@ export function useVoiceMessageRecorder() {
     reset,
     discardReview,
     setTrimRange,
-    lock,
     recoverSend,
     prepareForSend,
   };

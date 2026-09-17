@@ -22,7 +22,6 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
   const [elapsedMs, setElapsedMs] = useState(0);
   const [trimming, setTrimming] = useState(false);
   const recording = state.phase === 'recording';
-  const holding = recording && !state.locked;
   const pending = !recording && state.transcriptionPhase === 'transcribing';
   const failed = !recording && Boolean(state.error);
   const duration = recording ? state.durationMs : Math.max(0, state.trimEndMs - state.trimStartMs);
@@ -32,8 +31,7 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
   const canSend = recording || state.transcriptionPhase === 'ready';
   const retryDisabled = (state.attachment?.voiceMessage?.transcription?.attempts ?? 0) >= MAX_TRANSCRIPTION_ATTEMPTS
     && state.trimStartMs <= 50 && state.trimEndMs >= state.durationMs - 50;
-  const status = holding ? 'Release to send'
-    : recording ? 'Recording' : pending ? 'Transcribing…'
+  const status = recording ? 'Recording' : pending ? 'Transcribing…'
     : /Allow Kordi.*microphone/i.test(state.error ?? '') ? 'Allow microphone access in Settings'
     : /Allow Kordi.*Speech Recognition/i.test(state.error ?? '') ? 'Allow Speech Recognition in Settings'
     : failed ? state.attachment ? state.transcriptionPhase === 'ready' ? 'Send failed · recording saved' : 'Transcription failed · recording saved'
@@ -86,7 +84,7 @@ export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRan
             setElapsedMs(next);
           }} />}
       </div>}
-      <span className={cn('app-voice-recording-status', !(holding || pending || failed) && 'sr-only')}
+      <span className={cn('app-voice-recording-status', !(pending || failed) && 'sr-only')}
         role="status" title={state.error ?? undefined}>
         {pending ? <LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" /> : null}
         <span>{status}</span>

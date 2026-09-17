@@ -11,7 +11,7 @@ document.body.classList.add('kordi-native-shell', theme);
 document.body.dataset.kordiChatTheme = 'quiet';
 const waveform = Array.from({ length: 48 }, (_, i) => 0.12 + Math.abs(Math.sin(i * 0.71) * Math.cos(i * 0.23)) * 0.8);
 const initial: VoiceMessageRecorderState = {
-  phase: 'review', transcriptionPhase: 'error', locked: true, durationMs: 8000,
+  phase: 'review', transcriptionPhase: 'error', durationMs: 8000,
   waveformSamples: waveform, transcript: '', trimStartMs: 0, trimEndMs: 8000, error: 'Retry',
   attachment: { id: 'synthetic-audio', name: 'Voice message.m4a', path: '', kind: 'file',
     voiceMessage: { mimeType: 'audio/mp4', durationMs: 8000, waveformSamples: waveform, transcript: '',
@@ -23,15 +23,14 @@ function Fixture() {
   const [range, setRange] = useState([0, 8000]);
   const active = mode !== 'Idle';
   const state: VoiceMessageRecorderState = { ...initial, trimStartMs: range[0], trimEndMs: range[1],
-    phase: mode === 'Recording' || mode === 'Holding' ? 'recording' : 'review',
-    locked: mode !== 'Holding',
+    phase: mode === 'Recording' ? 'recording' : 'review',
     transcriptionPhase: mode === 'Pending' ? 'transcribing' : mode === 'Retry' ? 'error' : 'ready',
     error: mode === 'Retry' ? 'Retry' : null,
-    attachment: mode === 'Recording' || mode === 'Holding' ? null : initial.attachment,
+    attachment: mode === 'Recording' ? null : initial.attachment,
   };
   return <main className={`kordi-app ${theme}`} style={{ padding: 24, minHeight: '100vh', background: 'var(--app-main-bg)' }}>
     <nav style={{ display: 'flex', gap: 16, height: 40, marginBottom: 80 }}>
-      {['Idle', 'Holding', 'Recording', 'Pending', 'Retry', 'Ready'].map(value => <button key={value} onClick={() => setMode(value)}>{value}</button>)}
+      {['Idle', 'Recording', 'Pending', 'Retry', 'Ready'].map(value => <button key={value} onClick={() => setMode(value)}>{value}</button>)}
     </nav>
     <ComposerDropSurface saveDesktopAttachments={async () => {}}>
       <div className="relative"><div className="app-composer-input rounded-[18px] px-4 py-2.5">
