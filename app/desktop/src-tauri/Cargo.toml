@@ -45,7 +45,7 @@ system-configuration = "0.7"
 block2 = "0.6"
 objc2 = "0.6"
 objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["AVAudioBuffer", "AVAudioChannelLayout", "AVAudioEngine", "AVAudioFile", "AVAudioFormat", "AVAudioIONode", "AVAudioNode", "AVAudioSettings", "AVAudioTime", "AVAudioTypes", "block2"] }
-objc2-foundation = { version = "0.3", features = ["NSError", "NSLocale", "NSString", "NSURL"] }
+objc2-foundation = { version = "0.3", features = ["NSError", "NSLocale", "NSNotification", "NSOperation", "NSString", "NSURL", "block2"] }
 objc2-speech = "0.3.2"
 
 [dev-dependencies]

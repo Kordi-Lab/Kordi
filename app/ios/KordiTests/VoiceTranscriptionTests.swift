@@ -67,61 +67,47 @@ struct VoiceTranscriptionTests {
         #expect(decoded.voiceMessage == original)
     }
 
-    @Test func releaseHandsOffAudioBeforeRecognitionCompletesAndReusesItsTask() async throws {
-        let (speech, completion) = AsyncStream<String>.makeStream()
+    @Test func sendingPreparesAudioWithoutTranscribing() async throws {
         var calls = 0
         let recorder = VoiceMessageRecorder(speechTranscriber: { _ in
             calls += 1
-            for await text in speech { return text }
-            throw CancellationError()
+            return "Must not run."
         })
         let url = try recordingFixture()
-        defer { recorder.cancel(); completion.finish() }
+        defer { recorder.cancel() }
         recorder.prepareRecording(at: url, durationMs: 2_000, waveformSamples: [0.2], autoSend: true)
         #expect(!recorder.isVisible)
 
-        // Release the gate after a deadline so a regression reports a failure instead of hanging.
-        var exceededDeadline = false
-        let deadline = Task {
-            try await Task.sleep(for: .seconds(2))
-            exceededDeadline = true
-            completion.yield("Deadline fallback")
-        }
-        defer { deadline.cancel() }
         let pending = try #require(await recorder.prepareForSend())
-        #expect(!exceededDeadline)
-        #expect(pending.transcription?.status == .pending)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(calls == 0)
+        #expect(!pending.attachment.data.isEmpty)
         #expect(pending.transcript.isEmpty)
-        #expect(FileManager.default.fileExists(atPath: url.path))
+        #expect(pending.transcription?.status == .pending)
+        #expect(pending.transcription?.attempts == 0)
+        #expect(recorder.transcriptionPhase == .idle)
 
-        let outgoing = Task { await recorder.finishTranscriptionForSend(pending) }
-        let nextRecorder = VoiceMessageRecorder()
-        nextRecorder.cancel()
-        completion.yield("Meet at noon.")
-        let resolved = try #require(await outgoing.value)
-        #expect(resolved.attachment == pending.attachment)
-        #expect(resolved.transcript == "Meet at noon.")
-        #expect(resolved.transcription?.status == .ready)
-        #expect(resolved.transcription?.attempts == 1)
-        #expect(calls == 1)
-        #expect(!FileManager.default.fileExists(atPath: url.path))
-        #expect(recorder.phase == .idle)
-        #expect(nextRecorder.phase == .idle)
+        // The uploaded copy binds its transcription to the uploaded media id.
+        let uploaded = pending.voiceMessage(mediaId: "att_uploaded")
+        #expect(uploaded.transcription?.sourceVersion == "att_uploaded")
+        #expect(uploaded.isAwaitingFirstTranscription)
     }
 
-    @Test func transcriptionFailureStillHandsOffTheOriginalAudio() async throws {
-        struct RecognitionFailed: Error {}
-        let recorder = VoiceMessageRecorder(speechTranscriber: { _ in throw RecognitionFailed() })
-        defer { recorder.cancel() }
-        recorder.prepareRecording(at: try recordingFixture(), durationMs: 2_000,
-            waveformSamples: [0.2], autoSend: true)
-        let pending = try #require(await recorder.prepareForSend())
-        let resolved = try #require(await recorder.finishTranscriptionForSend(pending))
-        #expect(resolved.attachment == pending.attachment)
-        #expect(!resolved.attachment.data.isEmpty)
-        #expect(resolved.transcript.isEmpty)
-        #expect(resolved.transcription?.status == .failed)
-        #expect(resolved.transcription?.attempts == 1)
+    @Test func sendPathDoesNotWaitForTranscriptionBeforeUpload() throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let model = try String(contentsOf: root.appendingPathComponent("Kordi/App/AppModel.swift"), encoding: .utf8)
+        let conversation = try String(
+            contentsOf: root.appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift"),
+            encoding: .utf8
+        )
+        let send = try #require(model.range(of: "    func send(\n"))
+        let upload = try #require(model.range(of: "let uploadedAttachments = try await attachmentUpload", range: send.upperBound..<model.endIndex))
+        let beforeUpload = model[send.lowerBound..<upload.lowerBound]
+        #expect(!model.contains("resolvedVoiceMessage"))
+        #expect(!beforeUpload.contains(".transcript.trimmingCharacters"))
+        #expect(!beforeUpload.contains("await agentVoiceTranscription"))
+        #expect(beforeUpload.contains("startVoiceTranscription(optimisticVoice, isSender: true, persist: nil)"))
+        #expect(!conversation.contains("finishTranscriptionForSend"))
     }
 
     @Test func convertToTextStillWaitsForTheTranscript() async throws {
@@ -131,9 +117,11 @@ struct VoiceTranscriptionTests {
             waveformSamples: [0.2], autoSend: false)
         #expect(recorder.isVisible)
         #expect(await recorder.prepareTranscript() == "Converted words.")
+        #expect(recorder.pendingMessage?.transcription?.status == .ready)
+        #expect(recorder.pendingMessage?.transcription?.attempts == 1)
     }
 
-    @Test func cancelledRecordingCannotResurrectAPendingSend() async throws {
+    @Test func cancelledConversionReturnsNoTranscript() async throws {
         let (speech, completion) = AsyncStream<String>.makeStream()
         let recorder = VoiceMessageRecorder(speechTranscriber: { _ in
             for await text in speech { return text }
@@ -141,13 +129,155 @@ struct VoiceTranscriptionTests {
         })
         defer { recorder.cancel(); completion.finish() }
         recorder.prepareRecording(at: try recordingFixture(), durationMs: 2_000,
-            waveformSamples: [0.2], autoSend: true)
-        let pending = try #require(await recorder.prepareForSend())
+            waveformSamples: [0.2], autoSend: false)
+        let conversion = Task { await recorder.prepareTranscript() }
+        try await Task.sleep(for: .milliseconds(100))
         recorder.cancel()
         completion.yield("Late words.")
-        #expect(await recorder.finishTranscriptionForSend(pending) == nil)
+        #expect(await conversion.value == nil)
         #expect(recorder.pendingMessage == nil)
         #expect(recorder.phase == .idle)
+    }
+
+    @Test func untranscribedMessagesOfferTranscribeInsteadOfPending() {
+        var pending = voice(.pending)
+        pending.transcription = VoiceTranscription(status: .pending, sourceVersion: "audio-v1",
+            engine: "apple-speech-v1", attempts: 0)
+        for isSender in [true, false] {
+            #expect(VoiceTranscriptState.resolve(voice: pending, localResult: nil, isRunning: false,
+                lastAttemptFailed: false, isSender: isSender) == .notTranscribed)
+            #expect(VoiceTranscriptState.resolve(voice: pending, localResult: nil, isRunning: true,
+                lastAttemptFailed: false, isSender: isSender) == .transcribing)
+        }
+        let legacy = VoiceMessage(mediaId: "audio-v1", mimeType: "audio/mp4", durationMs: 2000,
+            waveformSamples: [0.2], transcript: "")
+        #expect(VoiceTranscriptState.resolve(voice: legacy, localResult: nil, isRunning: false,
+            lastAttemptFailed: false, isSender: false) == .notTranscribed)
+        #expect(VoiceTranscriptState.resolve(voice: voice(.ready, text: "Meet at noon."), localResult: nil,
+            isRunning: false, lastAttemptFailed: false, isSender: false) == .ready("Meet at noon."))
+
+        var exhausted = voice(.failed)
+        exhausted.transcription = VoiceTranscription(status: .failed, sourceVersion: "audio-v1",
+            engine: "apple-speech-v1", attempts: 3)
+        #expect(VoiceTranscriptState.resolve(voice: exhausted, localResult: nil, isRunning: false,
+            lastAttemptFailed: false, isSender: true) == .failed(canRetry: false))
+        // A recipient's attempts are local; the sender's failures do not block them.
+        #expect(VoiceTranscriptState.resolve(voice: exhausted, localResult: nil, isRunning: false,
+            lastAttemptFailed: false, isSender: false) == .notTranscribed)
+        #expect(VoiceTranscriptState.resolve(voice: voice(.failed), localResult: nil, isRunning: false,
+            lastAttemptFailed: false, isSender: true) == .failed(canRetry: true))
+    }
+
+    @Test func senderPersistsTranscriptAndRecipientKeepsItOnDevice() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("voice-transcripts-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = VoiceTranscriptLocalCache(directory: directory)
+        let jobs = VoiceTranscriptionJobs(cache: cache)
+        jobs.activate(accountId: "acct_me")
+        let recognizer = VoiceMessageRecorder(speechTranscriber: { _ in "Meet at noon." })
+        var persisted: [VoiceMessage] = []
+        func pending(_ mediaId: String) -> VoiceMessage {
+            VoiceMessage(mediaId: mediaId, mimeType: "audio/mp4", durationMs: 2000, waveformSamples: [0.2],
+                transcript: "", transcription: VoiceTranscription(status: .pending, sourceVersion: mediaId,
+                    engine: "apple-speech-v1", attempts: 0))
+        }
+        func start(_ voice: VoiceMessage, isSender: Bool) -> Task<VoiceMessage?, Never>? {
+            jobs.transcribe(voice, isSender: isSender,
+                prepareAudio: { _ in URL(fileURLWithPath: "/synthetic/audio.m4a") },
+                recognize: { voice, url in await recognizer.transcribeExisting(voice, url: url) },
+                persist: { result in persisted.append(result); return true })
+        }
+
+        let sent = pending("att_sent")
+        let senderResult = try #require(await start(sent, isSender: true)?.value)
+        #expect(senderResult.spokenText == "Meet at noon.")
+        #expect(senderResult.transcription?.attempts == 1)
+        #expect(persisted.map(\.mediaId) == ["att_sent"])
+        #expect(jobs.state(for: sent, isSender: true) == .ready("Meet at noon."))
+
+        let received = pending("att_received")
+        _ = await start(received, isSender: false)?.value
+        #expect(persisted.count == 1)
+        #expect(jobs.state(for: received, isSender: false) == .ready("Meet at noon."))
+
+        var saved: [VoiceTranscriptLocalCache.Entry] = []
+        for _ in 0..<40 where saved.isEmpty {
+            saved = cache.load(accountId: "acct_me")
+            if saved.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        }
+        #expect(saved.map(\.voice.mediaId) == ["att_received"])
+        let reopened = VoiceTranscriptionJobs(cache: cache)
+        reopened.activate(accountId: "acct_me")
+        #expect(reopened.state(for: received, isSender: false) == .ready("Meet at noon."))
+    }
+
+    @Test func localCacheKeepsTheNewestSnapshotWhenSavesOverlap() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("voice-transcripts-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = VoiceTranscriptLocalCache(directory: directory)
+        func entry(_ index: Int) -> VoiceTranscriptLocalCache.Entry {
+            let mediaId = "att_\(index)"
+            return VoiceTranscriptLocalCache.Entry(
+                voice: VoiceMessage(mediaId: mediaId, mimeType: "audio/mp4", durationMs: 2000, waveformSamples: [0.2],
+                    transcript: "Line \(index)", transcription: VoiceTranscription(status: .ready, sourceVersion: mediaId,
+                        engine: "apple-speech-v1", attempts: 1)),
+                savedAt: Date(timeIntervalSince1970: Double(index))
+            )
+        }
+        for count in 1...40 {
+            cache.save((0..<count).map(entry), accountId: "acct_me")
+        }
+        cache.waitForPendingWrites()
+        #expect(cache.load(accountId: "acct_me").count == 40)
+    }
+
+    @Test func repeatedRequestsShareOneJobAndFollowTheUpload() async throws {
+        let (speech, completion) = AsyncStream<String>.makeStream()
+        var calls = 0
+        let recognizer = VoiceMessageRecorder(speechTranscriber: { _ in
+            calls += 1
+            for await text in speech { return text }
+            throw CancellationError()
+        })
+        defer { completion.finish() }
+        let jobs = VoiceTranscriptionJobs()
+        jobs.activate(accountId: "acct_me")
+        let voice = VoiceMessage(mediaId: "pending:draft", mimeType: "audio/mp4", durationMs: 2000,
+            waveformSamples: [0.2], transcript: "", transcription: VoiceTranscription(status: .pending,
+                sourceVersion: "pending:draft", engine: "apple-speech-v1", attempts: 0))
+        func start() -> Task<VoiceMessage?, Never>? {
+            jobs.transcribe(voice, isSender: true,
+                prepareAudio: { _ in URL(fileURLWithPath: "/synthetic/audio.m4a") },
+                recognize: { voice, url in await recognizer.transcribeExisting(voice, url: url) },
+                persist: nil)
+        }
+        let first = try #require(start())
+        let second = try #require(start())
+        #expect(jobs.state(for: voice, isSender: true) == .transcribing)
+
+        let uploaded = voice.rebound(to: "att_uploaded")
+        jobs.rekey(from: "pending:draft", to: "att_uploaded")
+        #expect(jobs.task(for: "att_uploaded") != nil)
+        #expect(jobs.state(for: uploaded, isSender: true) == .transcribing)
+
+        try await Task.sleep(for: .milliseconds(50))
+        completion.yield("Meet at noon.")
+        _ = await first.value
+        _ = await second.value
+        #expect(calls == 1)
+        #expect(jobs.localResult(for: "att_uploaded")?.spokenText == "Meet at noon.")
+        #expect(jobs.state(for: uploaded, isSender: true) == .ready("Meet at noon."))
+    }
+
+    @Test func transcriptUpdateKeepsAnOutgoingVoiceMessageDelivered() {
+        let updated = CloudMessageDTO(messageId: "voice-message", clientMessageId: "client-voice",
+            fromAccountId: "acct_me", toAccountId: "acct_peer", body: "Meet at noon.",
+            createdAt: "2026-01-01T00:00:00Z", editedAt: "2026-01-01T00:00:05Z",
+            deliveredAt: nil, readAt: nil, direction: "outgoing", sessionId: "session",
+            messageKind: "voice", voiceMessage: voice(.ready, text: "Meet at noon."), version: 2)
+        #expect(CloudMessageStateProjector.deliveryState(for: updated, ownAccountId: "acct_me") == .delivered)
     }
 
     private func recordingFixture() throws -> URL {

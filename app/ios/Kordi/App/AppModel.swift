@@ -191,7 +191,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var phase: AppPhase = .launching
     @Published private(set) var account: CloudAccount? {
         didSet {
-            if oldValue?.accountId != account?.accountId { resetDigestReads() }
+            if oldValue?.accountId != account?.accountId {
+                resetDigestReads()
+                voiceTranscriptions.activate(accountId: account?.accountId)
+            }
         }
     }
     @Published var rollingDigestSnapshot: RollingDigestResponse?
@@ -201,6 +204,7 @@ final class AppModel: ObservableObject {
     let rollingDigestRead = DigestReadCoordinator<RollingDigestResponse>()
     let digestCalendarRead = DigestReadCoordinator<DigestCalendarResponse>()
     let digestWarmup = DigestWarmupCoordinator()
+    let digestCalendarSync = DigestCalendarSyncCoordinator()
     @Published private(set) var contacts: [CloudContact] = []
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
@@ -297,6 +301,8 @@ final class AppModel: ObservableObject {
     private var pendingAttachmentDraftsByMessageId: [String: [PendingAttachment]] = [:]
     private var videoCacheTasks: [String: Task<Void, Never>] = [:]
     private var pendingVoiceDraftsByMessageId: [String: PendingVoiceMessage] = [:]
+    /// On-demand voice transcription jobs, shared by every bubble for a recording.
+    let voiceTranscriptions = VoiceTranscriptionJobs(cache: VoiceTranscriptLocalCache.standard())
     private var pendingReplyByMessageId: [String: MessageActionSource] = [:]
     private var pendingMessageActionByMessageId: [String: MessageActionMetadata] = [:]
     private var pendingMentionByMessageId: [String: ComposerMentionTarget] = [:]
@@ -1636,7 +1642,6 @@ final class AppModel: ObservableObject {
         _ rawText: String,
         attachments: [PendingAttachment] = [],
         voiceMessage: PendingVoiceMessage? = nil,
-        resolvedVoiceMessage: Task<PendingVoiceMessage?, Never>? = nil,
         replyingTo replySource: MessageActionSource? = nil,
         mentioning mentionTarget: ComposerMentionTarget? = nil,
         messageAction actionOverride: MessageActionMetadata? = nil,
@@ -1647,7 +1652,7 @@ final class AppModel: ObservableObject {
     ) async {
         var didStage = false
         defer { if !didStage { onStaged(nil) } }
-        var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingAttachments = voiceMessage.map { [$0.attachment] } ?? attachments
         guard (!text.isEmpty || !outgoingAttachments.isEmpty), let token, let account else { return }
         if agentContext != nil && !CompanionPanelCatalog.isPrivateOwnedSession(conversation, ownAccountID: account.accountId) {
@@ -1703,8 +1708,11 @@ final class AppModel: ObservableObject {
             || routesToSupportAgent
         let isNewAgentSession = conversation.kind == .agent
             && !conversations.contains { $0.sessionId == conversation.sessionId }
-        var initialAgentSessionTitle = isNewAgentSession
-            ? initialSessionTitle(text: text, attachmentCount: attachments.count)
+        // A voice request gets its title once the transcript is ready.
+        let initialAgentSessionTitle = isNewAgentSession
+            ? (voiceMessage == nil
+                ? initialSessionTitle(text: text, attachmentCount: attachments.count)
+                : "Voice message")
             : nil
         let inheritedRuntimeRoute = isNewAgentSession
             ? requestedRuntimeRoute(for: conversation)
@@ -1779,6 +1787,14 @@ final class AppModel: ObservableObject {
         )
         didStage = true
         onStaged(clientMessageId)
+        // Send immediately. An agent needs the words, so its transcription starts now,
+        // in parallel with the upload, and never delays delivery.
+        var agentVoiceTranscription: Task<VoiceMessage?, Never>?
+        if requestsAgentRun, !previewMode, let optimisticVoice = optimistic.voiceMessage {
+            voiceTranscriptions.activate(accountId: account.accountId)
+            agentVoiceTranscription = startVoiceTranscription(optimisticVoice, isSender: true, persist: nil)
+                ?? voiceTranscriptions.task(for: optimisticVoice.mediaId)
+        }
         await conversationSendQueue.acquire(conversation.id)
         defer { conversationSendQueue.release(conversation.id) }
         guard self.account?.accountId == account.accountId else { return }
@@ -1818,23 +1834,15 @@ final class AppModel: ObservableObject {
                 token: token,
                 progress: uploadProgress
             )
-            let resolvedVoiceMessage = await resolvedVoiceMessage?.value ?? voiceMessage
-            if let resolvedVoiceMessage {
-                pendingVoiceDraftsByMessageId[localId] = resolvedVoiceMessage
-                text = resolvedVoiceMessage.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-                if isNewAgentSession {
-                    initialAgentSessionTitle = initialSessionTitle(
-                        text: text,
-                        attachmentCount: outgoingAttachments.count
-                    )
-                }
-            }
             let uploadedAttachments = try await attachmentUpload
             await attachmentFileStore.cacheUploadedOriginals(
                 drafts: outgoingAttachments, uploaded: uploadedAttachments, accountId: account.accountId
             )
-            let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
+            let uploadedVoiceMessage = voiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
+            }
+            if let uploadedVoiceMessage, let pendingVoiceMediaId = optimistic.voiceMessage?.mediaId {
+                voiceTranscriptions.rekey(from: pendingVoiceMediaId, to: uploadedVoiceMessage.mediaId)
             }
             if conversation.kind == .group {
                 let outgoingMessageKind = uploadedVoiceMessage != nil
@@ -1879,19 +1887,32 @@ final class AppModel: ObservableObject {
                 ))
                 outgoingAttachments.forEach { $0.discardOwnedFile() }
                 clearPendingSendMetadata(localId)
-                if mentionTarget?.kind == .agent, messageAction?.kind != "forward" {
+                let dispatchesAgent = mentionTarget?.kind == .agent && messageAction?.kind != "forward"
+                let dispatchGroupAgent: (String) -> Void = { [weak self] userText in
+                    guard let self else { return }
                     startAgentRunInBackground(
                         conversation: conversation,
                         requestMessageId: localId,
                         ownerAccountId: mentionTarget?.accountId ?? conversation.peerAccountId,
                         prompt: AgentPromptContext.compose(
-                            userText: promptText(text, removing: mentionTarget),
+                            userText: promptText(userText, removing: mentionTarget),
                             referenceText: agentContext
                         ),
                         token: token,
                         account: account,
                         runtimeRoute: requestedRuntimeRoute(for: conversation)
                     )
+                }
+                if let uploadedVoiceMessage {
+                    finishSentVoiceTranscription(
+                        mediaId: uploadedVoiceMessage.mediaId,
+                        messageId: localId,
+                        conversationId: conversation.id,
+                        job: agentVoiceTranscription,
+                        dispatchAgent: dispatchesAgent ? dispatchGroupAgent : nil
+                    )
+                } else if dispatchesAgent {
+                    dispatchGroupAgent(text)
                 }
                 return
             }
@@ -1940,13 +1961,15 @@ final class AppModel: ObservableObject {
             outgoingAttachments.forEach { $0.discardOwnedFile() }
             clearPendingSendMetadata(localId)
 
-            if conversation.kind == .agent || routedAgent != nil || routesToSupportAgent {
+            let dispatchesAgent = conversation.kind == .agent || routedAgent != nil || routesToSupportAgent
+            let dispatchDirectAgent: (String) -> Void = { [weak self] userText in
+                guard let self else { return }
                 startAgentRunInBackground(
                     conversation: conversation,
                     requestMessageId: sent.messageId,
                     ownerAccountId: routedAgent?.accountId ?? conversation.peerAccountId,
                     prompt: AgentPromptContext.compose(
-                        userText: promptText(text, removing: routedAgent),
+                        userText: promptText(userText, removing: routedAgent),
                         referenceText: agentContext
                     ),
                     token: token,
@@ -1954,7 +1977,35 @@ final class AppModel: ObservableObject {
                     runtimeRoute: requestedRuntimeRoute(for: conversation)
                 )
             }
-            if let initialAgentSessionTitle {
+            if let uploadedVoiceMessage {
+                let retitlesSession = isNewAgentSession
+                finishSentVoiceTranscription(
+                    mediaId: uploadedVoiceMessage.mediaId,
+                    messageId: sent.messageId,
+                    conversationId: conversation.id,
+                    job: agentVoiceTranscription,
+                    dispatchAgent: dispatchesAgent ? { [weak self] userText in
+                        dispatchDirectAgent(userText)
+                        guard retitlesSession, userText != VoiceTranscriptState.agentFailureText,
+                              let self else { return }
+                        let title = initialSessionTitle(text: userText, attachmentCount: 0)
+                        Task {
+                            _ = try? await self.api.updateSessionTitle(
+                                token: token,
+                                sessionId: conversation.sessionId,
+                                title: title,
+                                peerAccountId: conversation.peerAccountId,
+                                conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
+                                memberAccountIds: [conversation.peerAccountId]
+                            )
+                        }
+                    } : nil
+                )
+            } else if dispatchesAgent {
+                dispatchDirectAgent(text)
+            }
+            // The send already shared a voice request's placeholder title; its transcript retitles it.
+            if let initialAgentSessionTitle, uploadedVoiceMessage == nil {
                 _ = try? await api.updateSessionTitle(
                     token: token,
                     sessionId: conversation.sessionId,
@@ -3093,21 +3144,142 @@ final class AppModel: ObservableObject {
         )
     }
 
-    func updateVoiceTranscript(_ voice: VoiceMessage, message: ChatMessage) async -> Bool {
-        guard message.author == .me, let token, let account,
-              let version = message.cloudMessageVersion,
-              message.voiceMessage?.mediaId == voice.mediaId else { return false }
+    /// Transcribes a voice message in the background when someone asks for it.
+    /// Senders save the transcript to the message; recipients keep it on this device.
+    @discardableResult
+    func transcribeVoiceMessage(_ message: ChatMessage) -> Task<VoiceMessage?, Never>? {
+        guard let voice = message.voiceMessage, let account else { return nil }
+        voiceTranscriptions.activate(accountId: account.accountId)
+        let isSender = message.author == .me
+        let messageId = message.id
+        let conversationId = message.conversationId
+        let canPersist = isSender
+            && !previewMode
+            && message.cloudMessageVersion != nil
+            && !voice.mediaId.hasPrefix("pending:")
+        var persist: (@MainActor (VoiceMessage) async -> Bool)?
+        if canPersist {
+            persist = { [weak self] result in
+                guard let self else { return false }
+                return await self.persistVoiceTranscript(result, messageId: messageId, conversationId: conversationId)
+            }
+        }
+        return startVoiceTranscription(voice, isSender: isSender, persist: persist)
+    }
+
+    private func startVoiceTranscription(
+        _ voice: VoiceMessage,
+        isSender: Bool,
+        persist: (@MainActor (VoiceMessage) async -> Bool)?
+    ) -> Task<VoiceMessage?, Never>? {
+        voiceTranscriptions.transcribe(
+            voice,
+            isSender: isSender,
+            prepareAudio: { [weak self] voice in
+                await self?.prepareVoiceMessageForPresentation(voice)
+            },
+            recognize: { voice, url in
+                await VoiceMessageRecorder().transcribeExisting(voice, url: url)
+            },
+            persist: persist
+        )
+    }
+
+    /// Saves the sender's transcript. The server requires the current message version
+    /// and exactly one more attempt, so a version conflict refreshes and retries once.
+    private func persistVoiceTranscript(
+        _ result: VoiceMessage,
+        messageId: String,
+        conversationId: String
+    ) async -> Bool {
+        guard !previewMode, let token, let account else { return false }
         let expectedAccount = account.accountId
-        do {
-            let updated = try await api.updateVoiceTranscript(token: token,
-                sessionId: message.conversationId, messageId: message.id,
-                expectedVersion: version, voice: voice)
-            guard self.account?.accountId == expectedAccount, self.token == token else { return false }
-            mergeCloudMessage(updated, peerHint: nil)
-            return true
-        } catch {
-            errorMessage = "Could not update transcription. Refresh the message before retrying."
-            return false
+        var refreshed = false
+        while true {
+            guard let message = await sentVoiceMessage(id: messageId, conversationId: conversationId),
+                  let version = message.cloudMessageVersion,
+                  let current = message.voiceMessage else { return false }
+            guard current.spokenText.isEmpty else { return true }
+            let attempts = (current.transcription?.attempts ?? 0) + 1
+            guard attempts <= VoiceTranscription.maximumAttempts,
+                  let transcription = result.transcription else { return false }
+            let outgoing = VoiceMessage(
+                mediaId: current.mediaId,
+                mimeType: current.mimeType,
+                durationMs: current.durationMs,
+                waveformSamples: current.waveformSamples,
+                transcript: transcription.status == .ready ? result.transcript : "",
+                transcription: VoiceTranscription(
+                    status: transcription.status == .pending ? .failed : transcription.status,
+                    sourceVersion: current.mediaId,
+                    engine: transcription.engine,
+                    language: transcription.language,
+                    attempts: attempts
+                )
+            )
+            do {
+                let updated = try await api.updateVoiceTranscript(
+                    token: token,
+                    sessionId: message.conversationId,
+                    messageId: message.id,
+                    expectedVersion: version,
+                    voice: outgoing
+                )
+                guard self.account?.accountId == expectedAccount, self.token == token else { return false }
+                mergeCloudMessage(updated, peerHint: nil)
+                return true
+            } catch let error as CloudAPIError where error.statusCode == 409 && !refreshed {
+                refreshed = true
+                await refreshMessagesAfterVersionConflict(conversationId: conversationId, token: token)
+                guard self.account?.accountId == expectedAccount else { return false }
+            } catch {
+                return false
+            }
+        }
+    }
+
+    /// Waits briefly for a just-sent message to receive its server version.
+    private func sentVoiceMessage(id: String, conversationId: String) async -> ChatMessage? {
+        for _ in 0..<20 {
+            if let message = messagesByConversation[conversationId]?.first(where: {
+                $0.id == id || $0.clientMessageId == id
+            }), message.author == .me, message.voiceMessage != nil {
+                if message.cloudMessageVersion != nil { return message }
+            }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return nil }
+        }
+        return nil
+    }
+
+    private func refreshMessagesAfterVersionConflict(conversationId: String, token: String) async {
+        let sessionId = conversations.first(where: { $0.id == conversationId })?.sessionId ?? conversationId
+        guard let page = try? await api.conversationMessagePage(token: token, sessionId: sessionId, limit: 50) else {
+            return
+        }
+        page.messages.forEach { mergeCloudMessage($0, peerHint: nil) }
+    }
+
+    /// Finishes transcription for a voice message that was just sent: saves any transcript
+    /// the sender requested while it uploaded, and hands an agent request its text.
+    private func finishSentVoiceTranscription(
+        mediaId: String,
+        messageId: String,
+        conversationId: String,
+        job: Task<VoiceMessage?, Never>?,
+        dispatchAgent: ((String) -> Void)?
+    ) {
+        let pendingJob = job ?? voiceTranscriptions.task(for: mediaId)
+        guard pendingJob != nil
+                || voiceTranscriptions.localResult(for: mediaId) != nil
+                || dispatchAgent != nil else { return }
+        Task { [weak self] in
+            let jobResult = await pendingJob?.value
+            guard let self else { return }
+            let result = jobResult ?? voiceTranscriptions.localResult(for: mediaId)
+            if let result {
+                _ = await persistVoiceTranscript(result, messageId: messageId, conversationId: conversationId)
+            }
+            dispatchAgent?(result?.spokenText.nonEmpty ?? VoiceTranscriptState.agentFailureText)
         }
     }
 

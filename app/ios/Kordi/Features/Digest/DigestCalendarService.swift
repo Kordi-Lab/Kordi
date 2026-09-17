@@ -4,7 +4,7 @@ import Foundation
 import JavaScriptCore
 import UserNotifications
 
-struct DigestDeviceCalendar: Identifiable { let id: String; let title: String }
+struct DigestDeviceCalendar: Identifiable, Equatable, Sendable { let id: String; let title: String; var allowsModifications = true }
 struct DigestImportResult: Sendable { let events: [DigestCalendarEvent]; let warnings: [String] }
 struct DigestCalendarError: LocalizedError { let message: String; var errorDescription: String? { message } }
 
@@ -29,25 +29,109 @@ enum DigestCalendarService {
         _ = try? await EKEventStore().requestFullAccessToEvents()
     }
 
-    static func calendars() async throws -> [DigestDeviceCalendar] {
-        let store = EKEventStore()
-        guard try await store.requestFullAccessToEvents() else { throw DigestCalendarError(message: "Calendar access is off. Allow Kordi in Settings, or import an ICS file.") }
-        return store.calendars(for: .event).map { DigestDeviceCalendar(id: $0.calendarIdentifier, title: $0.title) }
+    static func accessStatus(request: Bool) async -> EKAuthorizationStatus {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        guard request, status == .notDetermined else { return status }
+        _ = try? await EKEventStore().requestFullAccessToEvents()
+        return EKEventStore.authorizationStatus(for: .event)
     }
-    static func events(in ids: Set<String>, from: Date, to: Date) throws -> [DigestCalendarEvent] {
-        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw DigestCalendarError(message: "Calendar permission was revoked.") }
-        let store = EKEventStore()
-        let calendars = store.calendars(for: .event).filter { ids.contains($0.calendarIdentifier) }
-        guard !calendars.isEmpty, calendars.count == ids.count, to > from, to.timeIntervalSince(from) <= 366 * 86400 else { throw DigestCalendarError(message: "Choose available calendars and a range of up to one year.") }
-        let events = store.events(matching: store.predicateForEvents(withStart: from, end: to, calendars: calendars))
-        guard events.count <= 1000 else { throw DigestCalendarError(message: "More than 1,000 events. Choose fewer calendars.") }
-        let formatter = ISO8601DateFormatter()
-        return events.map { event in
-            let start = event.isAllDay ? DigestDate.key(event.startDate) + "T00:00:00Z" : formatter.string(from: event.startDate)
-            let end = event.isAllDay ? DigestDate.key(event.endDate) + "T00:00:00Z" : formatter.string(from: event.endDate)
-            let uid = "device:\(event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier):\(start)"
-            return DigestCalendarEvent(id: "calendar-" + hash(uid), title: event.title ?? "Event", startAt: start, endAt: end, allDay: event.isAllDay, description: String((event.notes ?? "").prefix(5000)), externalUid: uid)
+    /// Stable identity for a device event. Occurrences of a repeating event share the item
+    /// identifier, so the original occurrence date tells them apart and survives a reschedule.
+    static func externalUid(_ event: EKEvent) -> String {
+        let base = event.calendarItemExternalIdentifier ?? event.calendarItemIdentifier
+        if event.hasRecurrenceRules || event.isDetached, let occurrence = event.occurrenceDate {
+            return "device:\(base):occurrence:\(Int(occurrence.timeIntervalSince1970))"
         }
+        return "device:\(base)"
+    }
+    static func deviceEvent(_ event: EKEvent, calendar: Calendar = .current) -> DigestDeviceEvent {
+        let formatter = ISO8601DateFormatter()
+        let startDate: Date = event.startDate ?? Date()
+        let endDate: Date = event.endDate ?? startDate
+        let start: String, end: String
+        if event.isAllDay {
+            // The device store ends an all-day event late on its last day; Kordi stores the exclusive next date.
+            var lastExclusive = endDate
+            if calendar.startOfDay(for: endDate) != endDate { lastExclusive = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: endDate)) ?? endDate }
+            if lastExclusive <= startDate { lastExclusive = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: startDate)) ?? startDate }
+            start = DigestDate.key(startDate, calendar: calendar) + "T00:00:00Z"
+            end = DigestDate.key(lastExclusive, calendar: calendar) + "T00:00:00Z"
+        } else {
+            start = formatter.string(from: startDate)
+            end = formatter.string(from: endDate)
+        }
+        let uid = externalUid(event)
+        let title = (event.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let mapped = DigestCalendarEvent(id: "calendar-" + hash(uid), title: title.isEmpty ? "Event" : title, startAt: start, endAt: end, allDay: event.isAllDay, description: String((event.notes ?? "").prefix(5000)), externalUid: uid)
+        return DigestDeviceEvent(event: mapped, deviceId: event.eventIdentifier ?? "", calendarId: event.calendar?.calendarIdentifier ?? "", modifiedAt: event.lastModifiedDate)
+    }
+    /// Every calendar on the device with the events inside the sync window. Exclusions are applied by the planner.
+    static func readDevice(from: Date, to: Date) throws -> (calendars: [DigestDeviceCalendar], events: [DigestDeviceEvent]) {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw DigestCalendarPermissionError(status: EKEventStore.authorizationStatus(for: .event)) }
+        let store = EKEventStore()
+        let calendars = Array(store.calendars(for: .event).prefix(DigestCalendarSyncEngine.maximumCalendars))
+        guard !calendars.isEmpty else { return ([], []) }
+        let events = store.events(matching: store.predicateForEvents(withStart: from, end: to, calendars: calendars)).map { deviceEvent($0) }.filter { !$0.deviceId.isEmpty }
+        return (calendars.map { DigestDeviceCalendar(id: $0.calendarIdentifier, title: $0.title, allowsModifications: $0.allowsContentModifications) }, events)
+    }
+    /// The occurrence timestamp encoded in a device identity, when the event repeats.
+    nonisolated static func occurrenceTimestamp(_ uid: String?) -> Int? {
+        guard let uid, let marker = uid.range(of: ":occurrence:", options: .backwards) else { return nil }
+        return Int(uid[marker.upperBound...])
+    }
+    /// Finds exactly the event a device identity names. `event(withIdentifier:)` returns the FIRST
+    /// occurrence of a repeating event, so an occurrence is searched for by its original date,
+    /// near both that date and where the device copy currently starts (it may have been moved).
+    static func resolve(in store: EKEventStore, deviceId: String, externalUid: String?, currentStart: String?) -> EKEvent? {
+        guard let timestamp = occurrenceTimestamp(externalUid) else { return store.event(withIdentifier: deviceId) }
+        var anchors = [Date(timeIntervalSince1970: TimeInterval(timestamp))]
+        if let start = DigestDate.parse(currentStart), abs(start.timeIntervalSince(anchors[0])) > 86_400 { anchors.append(start) }
+        for anchor in anchors {
+            let predicate = store.predicateForEvents(withStart: anchor.addingTimeInterval(-2 * 86_400), end: anchor.addingTimeInterval(2 * 86_400), calendars: nil)
+            if let match = store.events(matching: predicate).first(where: { $0.eventIdentifier == deviceId && $0.occurrenceDate.map { Int($0.timeIntervalSince1970) } == timestamp }) { return match }
+        }
+        return nil
+    }
+    static func write(_ event: DigestCalendarEvent, deviceId: String?, calendarId: String?, deviceStartAt: String? = nil, calendar: Calendar = .current) throws -> (deviceId: String, externalUid: String) {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw DigestCalendarPermissionError(status: EKEventStore.authorizationStatus(for: .event)) }
+        guard let start = DigestDate.parse(event.startAt) else { throw DigestCalendarError(message: "Invalid start date.") }
+        let end = DigestDate.parse(event.endAt)
+        let store = EKEventStore()
+        let target: EKEvent
+        if let deviceId {
+            guard let existing = resolve(in: store, deviceId: deviceId, externalUid: event.externalUid, currentStart: deviceStartAt) else { throw DigestCalendarError(message: "The device calendar event is no longer available.") }
+            guard existing.calendar?.allowsContentModifications ?? true else { throw DigestCalendarError(message: "This device calendar is read-only.") }
+            target = existing
+        } else {
+            target = EKEvent(eventStore: store)
+            let chosen = calendarId.flatMap { id in store.calendars(for: .event).first { $0.calendarIdentifier == id && $0.allowsContentModifications } }
+            guard let destination = chosen ?? store.defaultCalendarForNewEvents, destination.allowsContentModifications else { throw DigestCalendarError(message: "No writable calendar is available on this iPhone.") }
+            target.calendar = destination
+        }
+        target.title = event.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notes = event.description.trimmingCharacters(in: .whitespacesAndNewlines)
+        target.notes = notes.isEmpty ? nil : notes
+        target.isAllDay = event.allDay
+        if event.allDay {
+            let first = calendar.startOfDay(for: start)
+            let lastExclusive = end.map { calendar.startOfDay(for: $0) }.flatMap { $0 > first ? $0 : nil } ?? calendar.date(byAdding: .day, value: 1, to: first) ?? first
+            target.startDate = first
+            // The device store expects the last day itself, not the exclusive boundary.
+            target.endDate = lastExclusive.addingTimeInterval(-1)
+        } else {
+            target.startDate = start
+            target.endDate = end.flatMap { $0 > start ? $0 : nil } ?? start.addingTimeInterval(30 * 60)
+        }
+        try store.save(target, span: .thisEvent, commit: true)
+        guard let identifier = target.eventIdentifier else { throw DigestCalendarError(message: "The saved event has no identifier.") }
+        return (identifier, externalUid(target))
+    }
+    /// Removes exactly one device event, or one occurrence of a repeating event.
+    static func delete(deviceId: String, externalUid: String?, startAt: String?) throws {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw DigestCalendarPermissionError(status: EKEventStore.authorizationStatus(for: .event)) }
+        let store = EKEventStore()
+        guard let event = resolve(in: store, deviceId: deviceId, externalUid: externalUid, currentStart: startAt) else { return }
+        try store.remove(event, span: .thisEvent, commit: true)
     }
     static func syncReminders(accountId: String, events: [DigestCalendarEvent], requestPermission: Bool = false, isCurrentAccount: @escaping @MainActor () -> Bool) async throws -> Bool {
         let previous = reminderOperation

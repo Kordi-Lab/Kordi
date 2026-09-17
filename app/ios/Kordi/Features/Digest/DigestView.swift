@@ -30,8 +30,8 @@ private struct DigestReadNotice: View {
     }
 }
 private enum DigestSheet: Identifiable {
-    case source([String]), event(DigestCalendarEvent, RollingDigestItem? = nil, DigestCalendarEvent? = nil, [DigestCalendarEvent]? = nil), imports, connection, details
-    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event, let proposal, _, _): "event:\(event.id):\(proposal?.id ?? "")"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
+    case source([String]), event(DigestCalendarEvent, RollingDigestItem? = nil, DigestCalendarEvent? = nil, [DigestCalendarEvent]? = nil), imports, calendarSettings, details
+    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event, let proposal, _, _): "event:\(event.id):\(proposal?.id ?? "")"; case .imports: "import"; case .calendarSettings: "calendar-settings"; case .details: "details" } }
 }
 
 struct DigestView: View {
@@ -245,8 +245,9 @@ struct DigestView: View {
     private var calendar: some View {
         VStack(alignment: .leading, spacing: 18) {
             DigestReadNotice(name: "calendar", hasResponse: model.digestCalendarSnapshot != nil, error: calendarLoadError) { retryRead(calendar: true) }
+            DigestCalendarSyncLine(sync: model.digestCalendarSync) { model.requestDigestCalendarSync() }
             HStack(spacing: 22) {
-                Button { selectedSheet = .connection } label: { Label("Connect calendars", systemImage: "calendar.badge.plus") }
+                Button { selectedSheet = .calendarSettings } label: { Label("Calendar settings", systemImage: "gearshape") }
                 Button { selectedSheet = .imports } label: { Label("Import ICS", systemImage: "square.and.arrow.down") }
             }.font(.subheadline).buttonStyle(.plain).foregroundStyle(.secondary)
             if !remindersAllowed { Text("Events are saved, but notifications are off. Enable them in Settings to receive reminders.").font(.caption).foregroundStyle(.secondary) }
@@ -352,13 +353,14 @@ struct DigestView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
-        case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: {
+        case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); model.requestDigestCalendarSync(); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: {
             if let series, let id = proposal?.existingSeriesId { _ = try model.beginRemovingDigestCalendarSeries(id, events: series) }
             else { _ = try model.beginRemovingDigestCalendarEvent(event) }
+            model.requestDigestCalendarSync()
             selectedSheet = nil
         }
-        case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
-        case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
+        case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); model.requestDigestCalendarSync(); if let id = model.account?.accountId { await load(accountId: id) }; return report }
+        case .calendarSettings: DigestCalendarSettingsView(sync: model.digestCalendarSync, preferences: model.digestCalendarSyncPreferences()) { model.updateDigestCalendarSyncPreferences($0) }
         case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Your digest updates a few minutes after your conversations go quiet, and right away when you open it or pull to refresh."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("How Digest updates")
         }
     }

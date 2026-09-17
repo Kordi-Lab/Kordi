@@ -92,6 +92,8 @@ struct DigestCalendarEvent: Codable, Identifiable, Equatable, Sendable {
     var seriesId: String? = nil
     var seriesFingerprint: String? = nil
     var confirmSingleOccurrence: Bool? = nil
+    /// Server write time, read-only. Used to settle edits made on both sides between syncs.
+    var updatedAt: String? = nil
 }
 struct DigestRecurrence: Codable, Equatable, Sendable {
     var frequency: String
@@ -139,13 +141,18 @@ enum DigestDate {
         formatter.dateStyle = .medium; formatter.timeStyle = .short
         return formatter.string(from: date) + " · " + timezone
     }
+    // Creating an ISO8601DateFormatter is expensive, and calendar views parse every event on every render.
+    // The formatters are configured once and never mutated, so sharing them is safe.
+    private nonisolated(unsafe) static let internetDateTime: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime]; return formatter
+    }()
+    private nonisolated(unsafe) static let internetDateTimeWithFraction: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter(); formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return formatter
+    }()
     static func parse(_ value: String?) -> Date? {
         guard let value else { return nil }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: value) { return date }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: value)
+        // Server instants usually have no fractional seconds, so try that format first.
+        return internetDateTime.date(from: value) ?? internetDateTimeWithFraction.date(from: value)
     }
     static func key(_ date: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: date)
@@ -168,6 +175,30 @@ enum DigestDate {
             return (item.calendarAction == "update" || !events.contains { $0.id == "digest-\(item.id)" || $0.seriesId == "digest-\(item.id)" })
                 && parse(item.startAt).map { calendar.isDate($0, inSameDayAs: day) } == true
         }
+    }
+    /// Groups events by the visible days they occur on, parsing each event once. Same rule as
+    /// `event(_:occursOn:)`; keeps input order within each day. Keyed by `key(_:)`.
+    static func eventsByDay(_ events: [DigestCalendarEvent], days: [Date], calendar: Calendar = .current) -> [String: [DigestCalendarEvent]] {
+        let spans: [(key: String, start: Date, end: Date)] = days.compactMap { day in
+            calendar.dateInterval(of: .day, for: day).map { (key(day, calendar: calendar), $0.start, $0.end) }
+        }
+        var result: [String: [DigestCalendarEvent]] = [:]
+        for event in events {
+            if event.allDay {
+                let start = String(event.startAt.prefix(10))
+                let end = event.endAt.map { String($0.prefix(10)) }
+                for span in spans where end.map({ span.key >= start && span.key < $0 }) ?? (span.key == start) {
+                    result[span.key, default: []].append(event)
+                }
+                continue
+            }
+            guard let start = parse(event.startAt) else { continue }
+            let end = parse(event.endAt) ?? start.addingTimeInterval(1)
+            for span in spans where start < span.end && end > span.start {
+                result[span.key, default: []].append(event)
+            }
+        }
+        return result
     }
     static func event(_ event: DigestCalendarEvent, occursOn date: Date, calendar: Calendar = .current) -> Bool {
         if event.allDay {

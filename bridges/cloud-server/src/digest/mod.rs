@@ -9,6 +9,7 @@ mod series_routes;
 mod source_identity;
 mod source_reader;
 mod store;
+mod sync_routes;
 mod worker;
 pub use routes::routes;
 pub use store::{authorized, complete, fail, revalidate_run};

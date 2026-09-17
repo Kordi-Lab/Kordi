@@ -69,31 +69,6 @@ struct DigestImportView: View {
     }
 }
 
-struct DigestConnectView: View {
-    let existing: [DigestCalendarEvent]
-    let save: ([DigestCalendarEvent]) async throws -> DigestCalendarImportReport
-    @State private var calendars: [DigestDeviceCalendar] = []
-    @State private var selected = Set<String>()
-    @State private var report: DigestCalendarImportReport?
-    @State private var error: String?
-    @State private var busy = false
-    var body: some View {
-        Form {
-            if let report { DigestImportCompletion(report: report) } else {
-            Section {
-                Text("Choose calendars already connected to this iPhone, including iCloud and Google. Calendar access is separate from notification permission.")
-                if calendars.isEmpty { Button("Allow calendar access") { Task { busy = true; defer { busy = false }; do { calendars = try await DigestCalendarService.calendars() } catch { self.error = error.localizedDescription } } }.disabled(busy) }
-                ForEach(calendars) { calendar in
-                    Toggle(calendar.title, isOn: Binding(get: { selected.contains(calendar.id) }, set: { if $0 { selected.insert(calendar.id) } else { selected.remove(calendar.id) } }))
-                }
-            } footer: { Text("Selected titles, dates and notes become part of your private Kordi calendar and digest context. No invitations or provider changes are made.") }
-            if !calendars.isEmpty { Button("Import selected calendars") { Task { busy = true; defer { busy = false }; do { let now = Date(); let events = try DigestCalendarService.events(in: selected, from: now, to: Calendar.current.date(byAdding: .year, value: 1, to: now) ?? now); report = try await save(events) } catch { self.error = error.localizedDescription } } }.disabled(selected.isEmpty || busy) }
-            if let error { Section { Text(error).foregroundStyle(.red) } }
-            }
-        }.navigationTitle("Connect calendars").navigationBarTitleDisplayMode(.inline)
-    }
-}
-
 private struct DigestImportCompletion: View {
     let report: DigestCalendarImportReport
     @Environment(\.dismiss) private var dismiss

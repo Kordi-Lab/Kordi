@@ -115,6 +115,7 @@ fn calendar_validation_rejects_invalid_times() {
         confirm_single_occurrence: None,
         external_uid: None,
         revision: 0,
+        updated_at: None,
     };
     assert!(validate_event(&event).is_ok());
     event.end_at = Some("2026-09-08T14:00:00Z".into());
@@ -432,6 +433,7 @@ async fn postgres_scope_and_atomic_publication() {
         confirm_single_occurrence: None,
         external_uid: None,
         revision: 0,
+        updated_at: None,
     };
     query("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,'capacity-'||i,jsonb_set($2,'{id}',to_jsonb('capacity-'||i)) FROM generate_series(1,1000) i").bind(&viewer).bind(serde_json::to_value(&event).unwrap()).execute(&pool).await.unwrap();
     let state = std::sync::Arc::new(crate::server::ServerState::new(
@@ -473,6 +475,7 @@ async fn postgres_scope_and_atomic_publication() {
         "A full calendar must still allow edits"
     );
     super::calendar_tests::postgres_calendar_contract(&pool, &author).await;
+    super::calendar_tests::postgres_sync_contract(&pool, &author).await;
     query("DELETE FROM cloud_chat_conversations WHERE conversation_id=ANY($1)")
         .bind(vec![public, private])
         .execute(&pool)
