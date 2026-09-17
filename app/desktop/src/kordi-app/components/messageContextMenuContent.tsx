@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckCheck, CheckCircle2, Copy, Eye, Forward, MessageCircle, PanelRightOpen, Pencil, Pin, Trash2 } from 'lucide-react';
+import { CheckCheck, CheckCircle2, Copy, Eye, Forward, MessagesSquare, Pencil, Pin, TextQuote, Trash2 } from 'lucide-react';
 
 import {
   attachmentMediaGalleryIndex,
@@ -202,8 +202,9 @@ export function MessageContextMenuContent({
             <div className="app-transient-divider mx-3 my-1 border-t" role="separator" />
           </>
         ) : null}
-        {actionEligible && onReplyMessage ? <Action action="reply-conversation" icon={<MessageCircle className="h-4 w-4" />} label="Reply in conversation" onClick={() => closeAfterReply('conversation')} /> : null}
-        {actionEligible && onOpenMessageThread ? <Action action="reply-thread" icon={<PanelRightOpen className="h-4 w-4" />} label="Reply in thread" onClick={() => closeAfterReply('thread')} /> : null}
+        {actionEligible && onReplyMessage ? <Action action="quote" icon={<TextQuote className="h-4 w-4" />} label="Quote" onClick={() => closeAfterReply('conversation')} /> : null}
+        {actionEligible && onOpenMessageThread ? <Action action="open-discussion" icon={<MessagesSquare className="h-4 w-4" />} label="Open discussion" onClick={() => closeAfterReply('thread')} /> : null}
+        {actionEligible && (onReplyMessage || onOpenMessageThread) ? <div className="app-transient-divider mx-3 my-1 border-t" role="separator" /> : null}
         {canEdit ? <Action action="edit" icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => closeAfter(onEditMessage)} /> : null}
         {copyableText ? <Action action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => void copyText()} /> : null}
         {actionEligible ? <Action action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => closeAfter(onForwardMessage)} /> : null}

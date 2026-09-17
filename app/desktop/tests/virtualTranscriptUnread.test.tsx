@@ -30,7 +30,7 @@ test('thread and latest navigation buttons share flow layout and remain independ
   await act(async () => viewport.scrollTo({ top: 1_000 }));
   await flush();
   const controls = view.host.querySelector<HTMLElement>('[data-transcript-navigation-controls]')!;
-  const thread = controls.querySelector<HTMLButtonElement>('[aria-label="Jump to next unread thread"]')!;
+  const thread = controls.querySelector<HTMLButtonElement>('[aria-label="Jump to next unread discussion"]')!;
   const latest = controls.querySelector<HTMLButtonElement>('[data-transcript-latest-button]')!;
   assert.ok(thread && latest);
   assert.ok(controls.classList.contains('flex-col'));

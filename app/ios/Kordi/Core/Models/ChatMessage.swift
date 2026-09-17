@@ -547,6 +547,8 @@ struct MessageThread: Identifiable, Equatable {
 struct MessageThreadProjection: Equatable {
     let mainMessages: [ChatMessage]
     let threadsByRootID: [String: MessageThread]
+    /// Main-conversation messages that quote or answer each message, oldest first.
+    let quoteReplyIDsBySourceID: [String: [String]]
     private let primaryIDByAlias: [String: String]
 
     private static func resolveMessageID(_ reference: String, aliases: [String: String]) -> String {
@@ -616,7 +618,18 @@ struct MessageThreadProjection: Equatable {
             guard let root = rootsByID[entry.key] else { return }
             result[entry.key] = MessageThread(root: root, replies: entry.value)
         }
-        mainMessages = messages.filter { rootIDByThreadMessageID[$0.id] == nil }
+        let mainMessages = messages.filter { rootIDByThreadMessageID[$0.id] == nil }
+        self.mainMessages = mainMessages
+        quoteReplyIDsBySourceID = mainMessages.reduce(into: [:]) { result, message in
+            guard let sourceID = message.quotedReplyMessageId.map({ Self.resolveMessageID($0, aliases: aliases) }),
+                  sourceID != message.id,
+                  rootsByID[sourceID] != nil else { return }
+            result[sourceID, default: []].append(message.id)
+        }
+    }
+
+    func quoteReplyIDs(sourceID: String) -> [String] {
+        quoteReplyIDsBySourceID[Self.resolveMessageID(sourceID, aliases: primaryIDByAlias)] ?? []
     }
 
     func thread(rootID: String) -> MessageThread? {

@@ -39,6 +39,8 @@ struct MessageBubble: View, Equatable {
     let threadReplyCount: Int
     var threadHasUnread = false
     var threadAgentState: BackgroundAgentSession.State? = nil
+    var quoteReplyCount = 0
+    var selfDisplayName: String? = nil
     let showsAvatarSlot: Bool
     let authorAvatarName: String
     let authorAvatarSource: String?
@@ -59,11 +61,11 @@ struct MessageBubble: View, Equatable {
     let onReact: (String) -> Void
     let onNavigateToReply: (String) -> Void
     let onOpenThread: () -> Void
+    var onOpenLatestQuoteReply: () -> Void = {}
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
-    let voiceTranscriptions: VoiceTranscriptionJobs
-    let onTranscribeVoiceMessage: () -> Void
+    let onUpdateVoiceTranscript: (VoiceMessage) async -> Bool
     let onPrepareAttachment: (ChatAttachment) async -> URL?
     let onPrepareAttachmentPreview: (ChatAttachment) async -> UIImage?
     let onOpenVideo: (ChatAttachment, AVPlayer, UIImage?) -> Void
@@ -97,7 +99,7 @@ struct MessageBubble: View, Equatable {
     static let actionLongPressDuration = MessageActionMotion.activationDelay
 
     private var showsSelectionHighlight: Bool {
-        isHighlighted || isSelected
+        isSelected
     }
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
@@ -124,6 +126,8 @@ struct MessageBubble: View, Equatable {
             && lhs.threadReplyCount == rhs.threadReplyCount
             && lhs.threadHasUnread == rhs.threadHasUnread
             && lhs.threadAgentState == rhs.threadAgentState
+            && lhs.quoteReplyCount == rhs.quoteReplyCount
+            && lhs.selfDisplayName == rhs.selfDisplayName
             && lhs.showsAvatarSlot == rhs.showsAvatarSlot
             && lhs.authorAvatarName == rhs.authorAvatarName
             && lhs.authorAvatarSource == rhs.authorAvatarSource
@@ -239,11 +243,6 @@ struct MessageBubble: View, Equatable {
                         reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.22),
                         value: pendingSendEntrance
                     )
-                    .scaleEffect(
-                        reduceMotion
-                            ? 1
-                            : isHighlighted && !isSelected && !isActionPresented ? 1.018 : 1
-                    )
                     .animation(
                         reduceMotion ? nil : .snappy(duration: 0.24),
                         value: showsSelectionHighlight
@@ -311,6 +310,10 @@ struct MessageBubble: View, Equatable {
                         isRequestingActionFrame = true
                     }
 
+                if let source = visibleReplySource {
+                    quoteLine(source)
+                }
+
                 MessageBubbleAccessoryRow(
                     reactions: message.reactions,
                     threadReplyCount: threadReplyCount,
@@ -319,7 +322,9 @@ struct MessageBubble: View, Equatable {
                     ownAccountId: ownAccountId,
                     scrollAnchor: message.author == .me ? .trailing : .leading,
                     onReact: onReact,
-                    onOpenThread: onOpenThread
+                    onOpenThread: onOpenThread,
+                    quoteReplyCount: rendersQuoteReplyMarkInsideBubble ? 0 : quoteReplyCount,
+                    onOpenLatestQuoteReply: onOpenLatestQuoteReply
                 )
 
                 if !backgroundSessions.isEmpty {
@@ -356,6 +361,17 @@ struct MessageBubble: View, Equatable {
             }
 
             if message.author != .me { Spacer(minLength: 34) }
+        }
+        // Sent, received, and agent messages share one full-width highlight, so a jump
+        // lands the same way whatever the bubble color or surface.
+        .background {
+            Rectangle()
+                .fill(chatTheme.accent.opacity(isHighlighted && !isSelected ? 0.16 : 0))
+                .padding(.horizontal, -12)
+                .padding(.vertical, -3)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.25), value: isHighlighted)
         }
         // Selection uses the existing avatar/spacer area. Adding a column here
         // would narrow every bubble and rewrap the conversation on menu dismissal.
@@ -623,10 +639,6 @@ struct MessageBubble: View, Equatable {
                 .foregroundStyle(bubbleSecondaryTextColor)
             }
 
-            if let source = visibleReplySource {
-                replyPreview(source)
-            }
-
             if let execution = Self.agentExecutionForDisplay(message) {
                 AgentExecutionTimeline(
                     messageID: message.id,
@@ -645,9 +657,7 @@ struct MessageBubble: View, Equatable {
                     deliveryState: message.author == .me && message.agentQueuePosition == nil ? message.deliveryState : nil,
                     readByCount: message.readByCount,
                     deliveryTint: bubbleDeliveryColor,
-                    transcriptions: voiceTranscriptions,
-                    isSender: message.author == .me,
-                    onTranscribe: onTranscribeVoiceMessage,
+                    onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil,
                     onExpansionChange: onContentExpansionChange
                 )
                 .id("\(message.id):\(voiceMessage.mediaId)")
@@ -732,6 +742,10 @@ struct MessageBubble: View, Equatable {
             if message.isEdited && message.voiceMessage == nil {
                 HStack(spacing: 2) {
                     Spacer(minLength: 0)
+                    if quoteReplyCount > 0 {
+                        quoteReplyMark
+                            .padding(.trailing, 4)
+                    }
                     Text("edited", comment: "Message metadata indicating that its text was changed after sending.")
                     if message.author == .me {
                         MessageDeliveryGlyph(
@@ -743,9 +757,38 @@ struct MessageBubble: View, Equatable {
                 }
                 .font(.caption2)
                 .foregroundStyle(bubbleSecondaryTextColor)
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: quoteReplyCount > 0 ? .contain : .combine)
+            } else if quoteReplyCount > 0 {
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    quoteReplyMark
+                }
+                .padding(.top, -3)
             }
         }
+    }
+
+    /// The reply mark sits inside the bubble footer and jumps to the newest message that quoted this one.
+    private var quoteReplyMark: some View {
+        Button(action: onOpenLatestQuoteReply) {
+            HStack(spacing: 2) {
+                Image(systemName: "arrow.turn.down.left")
+                    .font(.caption2.weight(.bold))
+                Text("\(quoteReplyCount)")
+                    .font(.caption2.weight(.semibold))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(message.author == .me ? chatTheme.ownReplyAccent : bubbleInlineAccentColor)
+            .contentShape(Rectangle().inset(by: -10))
+        }
+        .buttonStyle(.plain)
+        .disabled(selectionMode)
+        .accessibilityLabel("\(quoteReplyCount) \(quoteReplyCount == 1 ? "reply" : "replies"), jump to latest reply")
+    }
+
+    /// Messages without a bubble keep the reply mark in the accessory row below them.
+    private var rendersQuoteReplyMarkInsideBubble: Bool {
+        !isCallActivity && standaloneEmojiItem == nil && !usesBorderlessImageSurface && !usesBorderlessVideoSurface
     }
 
     private var usesBorderlessImageSurface: Bool {
@@ -969,44 +1012,37 @@ struct MessageBubble: View, Equatable {
         MessageBubbleGeometry.shape(for: message.author)
     }
 
-    private func replyPreview(_ source: MessageActionSource) -> some View {
+    /// One quiet line under the bubble that names the quoted message and jumps back to it.
+    private func quoteLine(_ source: MessageActionSource) -> some View {
+        let isOwn = message.author == .me
+        let senderLabel = MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: selfDisplayName)
+        let previewText = MessageQuotePresentation.previewText(source.textPreview, attachmentCount: source.attachmentCount)
         let accessibilityText = ComposerMentionTargetCatalog.accessibilityText(
-            in: source.textPreview,
+            in: previewText,
             mentions: source.mentions ?? [],
             targets: mentionTargets
         )
         return Button {
-            onNavigateToReply(source.sourceMessageId)
+            // The resolved local row is authoritative; metadata can carry another device's ID.
+            onNavigateToReply(replySourceMessage?.id ?? source.sourceMessageId)
         } label: {
-            HStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(source.senderLabel)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(bubbleInlineAccentColor)
-                    MarkdownMessageContent(
-                        text: source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount),
-                        density: .compact,
-                        mentionTargets: mentionTargets,
-                        mentions: source.mentions ?? [],
-                        inlineAccent: bubbleInlineAccentColor,
-                        personMentionAccent: bubblePersonMentionColor,
-                        agentMentionAccent: bubbleAgentMentionColor
-                    )
-                        .foregroundStyle(bubbleSecondaryTextColor)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                if !isOwn { MessageQuoteBar() }
+                BlobEmojiPreviewText(text: "\(senderLabel): \(previewText)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if isOwn { MessageQuoteBar() }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(
-                replyPreviewBackgroundColor,
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-            )
+            .frame(maxWidth: 260, minHeight: 28, alignment: isOwn ? .trailing : .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Reply to \(source.senderLabel): \(accessibilityText)")
+        .padding(.horizontal, 4)
+        .disabled(selectionMode)
+        .accessibilityLabel("Quoted message from \(senderLabel): \(accessibilityText)")
+        .accessibilityHint("Jumps to the quoted message")
     }
 
     private var bubbleColor: Color {
@@ -1048,16 +1084,6 @@ struct MessageBubble: View, Equatable {
         message.deliveryState == .read ? chatTheme.ownPersonMention : chatTheme.ownReplyAccent
     }
 
-    private var replyPreviewBackgroundColor: Color {
-        switch message.author {
-        case .me: bubbleTextColor.opacity(0.16)
-        case .person: colorScheme == .light && chatTheme == .quiet
-            ? chatTheme.peerText.opacity(0.12)
-            : chatTheme.accent.opacity(0.22)
-        case .agent: KordiTheme.agentViolet.opacity(0.22)
-        }
-    }
-
     private var bubbleTextColor: Color {
         message.author == .me ? chatTheme.ownText : chatTheme.peerText
     }
@@ -1095,8 +1121,7 @@ struct MessageBubble: View, Equatable {
             mentions: message.mentions,
             targets: mentionTargets
         )
-        // A voice transcript update sets editedAt, but the message itself did not change.
-        let editedLabel = message.isEdited && message.voiceMessage == nil ? ", edited" : ""
+        let editedLabel = message.isEdited ? ", edited" : ""
         return "\(message.authorName), \(messageText)\(attachmentLabel)\(editedLabel), \(receipt)"
     }
 
@@ -1128,13 +1153,16 @@ struct MessageBubbleAccessoryRow: View {
     let scrollAnchor: UnitPoint
     let onReact: (String) -> Void
     let onOpenThread: () -> Void
+    var quoteReplyCount = 0
+    var onOpenLatestQuoteReply: () -> Void = {}
 
     var body: some View {
         Group {
-            if !reactions.isEmpty || threadReplyCount > 0 {
+            if !reactions.isEmpty || threadReplyCount > 0 || quoteReplyCount > 0 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 4) {
                         if scrollAnchor == .leading {
+                            quoteReplyButton
                             threadButton
                         }
                         ForEach(reactions) { reaction in
@@ -1169,6 +1197,7 @@ struct MessageBubbleAccessoryRow: View {
                         }
                         if scrollAnchor == .trailing {
                             threadButton
+                            quoteReplyButton
                         }
                     }
                 }
@@ -1187,7 +1216,7 @@ struct MessageBubbleAccessoryRow: View {
         if threadReplyCount > 0 {
             Button(action: onOpenThread) {
                 HStack(spacing: 4) {
-                    Label("\(threadReplyCount) discussed in thread", systemImage: "bubble.left.and.bubble.right")
+                    Label("Discussion · \(threadReplyCount)", systemImage: "bubble.left.and.bubble.right")
                     if threadHasUnread {
                         Image(systemName: "circle.fill").font(.system(size: 6)).accessibilityHidden(true)
                     }
@@ -1198,9 +1227,27 @@ struct MessageBubbleAccessoryRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                "Open thread with \(threadReplyCount) discussed in thread"
+                "Open discussion with \(threadReplyCount) \(threadReplyCount == 1 ? "message" : "messages")"
             )
-            .accessibilityValue(threadHasUnread ? "Unread replies" : "")
+            .accessibilityValue(threadHasUnread ? "Unread messages" : "")
+        }
+    }
+
+    @ViewBuilder
+    private var quoteReplyButton: some View {
+        if quoteReplyCount > 0 {
+            Button(action: onOpenLatestQuoteReply) {
+                Label("\(quoteReplyCount)", systemImage: "arrow.turn.down.left")
+                    .labelStyle(MessageReplyMarkLabelStyle())
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 32, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "\(quoteReplyCount) \(quoteReplyCount == 1 ? "reply" : "replies"), jump to latest reply"
+            )
         }
     }
 
@@ -3742,5 +3789,51 @@ private struct MessageSendEntranceTransform: AnimatableModifier {
             .scaleEffect(scale, anchor: .bottomTrailing)
             .opacity(Double(min(1, max(0, (scale - 0.8) / 0.2))))
             .transaction { $0.animation = nil }
+    }
+}
+
+enum MessageQuotePresentation {
+    /// Quote metadata can name a message by its cloud, client, or desktop presentation ID.
+    static func message(_ message: ChatMessage, matchesReference reference: String) -> Bool {
+        let reference = reference.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reference.isEmpty else { return false }
+        let identifiers = [message.id, message.clientMessageId, message.reactionTargetMessageId].compactMap { $0 }
+        if identifiers.contains(reference) { return true }
+        guard reference.hasPrefix("collaboration-message:"),
+              let suffix = reference.split(separator: ":").last else { return false }
+        return identifiers.contains(String(suffix))
+    }
+
+    static func senderLabel(_ senderLabel: String, selfDisplayName: String?) -> String {
+        let label = senderLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return "Message" }
+        guard ["me", "you"].contains(label.lowercased()) else { return label }
+        return selfDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "Me"
+    }
+
+    static func previewText(_ textPreview: String, attachmentCount: Int) -> String {
+        let text = textPreview.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        if !text.isEmpty { return text }
+        guard attachmentCount > 0 else { return "" }
+        return attachmentCount == 1 ? "[Attachment]" : "[\(attachmentCount) attachments]"
+    }
+}
+
+struct MessageQuoteBar: View {
+    var body: some View {
+        Capsule()
+            .fill(Color.secondary.opacity(0.4))
+            .frame(width: 2, height: 14)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct MessageReplyMarkLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 2) {
+            configuration.icon
+                .foregroundStyle(.tint)
+            configuration.title
+        }
     }
 }

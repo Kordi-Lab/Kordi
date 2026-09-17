@@ -459,7 +459,7 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertEqual(NewChatMode.previewMode(arguments: ["--preview-add-contact"]), .addContact)
     }
 
-    func testReplyPreviewKeepsItsRailBoundedAndCancelTargetAccessible() throws {
+    func testQuotePreviewKeepsItsBarBoundedAndRemoveTargetAccessible() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -469,8 +469,10 @@ final class CompanionChatPanelTests: XCTestCase {
         let end = try XCTUnwrap(source.range(of: "    private var attachmentTray"))
         let preview = source[start.lowerBound..<end.lowerBound]
 
-        XCTAssertTrue(preview.contains(".frame(width: 3, height: 32)"))
+        XCTAssertTrue(preview.contains("MessageQuoteBar()"))
         XCTAssertTrue(preview.contains(".frame(width: 44, height: 44)"))
+        XCTAssertTrue(preview.contains(".accessibilityLabel(\"Remove quote\")"))
+        XCTAssertFalse(preview.contains("Replying to"))
     }
 
     func testDraftPaneButtonAppearsAfterTheInlineComposerGrows() {

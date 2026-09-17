@@ -1,37 +1,37 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronUp, CornerDownLeft, MessagesSquare } from 'lucide-react';
+import { CornerDownLeft, MessagesSquare } from 'lucide-react';
 
 import { replyStatusText } from '@/features/chat/replyAttribution';
 import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
+import { quotedSenderLabel } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import type { MessageReplySummary, MessageSourceReference } from '../types';
+import { useActiveLocalProfileIdentity } from './localProfileIdentity';
 import { MessageInlineContent } from './messageInlineContent';
 
+export type SourceMessageQuoteSide = 'own' | 'peer' | 'agent';
+
 function sourceQuoteText(sourceMessage: MessageSourceReference) {
-  return sourceMessage.text.trim();
+  const text = sourceMessage.text.replace(/\s+/g, ' ').trim();
+  if (text) return text;
+  const count = Math.max(0, Math.floor(sourceMessage.attachmentCount ?? 0));
+  if (count <= 0) return '';
+  return count === 1 ? '[Attachment]' : `[${count} attachments]`;
 }
 
-function sourceQuoteNeedsFold(sourceMessage: MessageSourceReference) {
-  const text = sourceQuoteText(sourceMessage);
-  return text.split(/\r?\n/).length > 3 || text.replace(/\s+/g, ' ').length > 260;
-}
-
+/** One quiet line under a message that names the quoted message and jumps back to it. */
 export function SourceMessageQuote({
   sourceMessage,
+  side = 'peer',
   onNavigateToMessage,
-  compactReplyPreview = false,
 }: {
   sourceMessage?: MessageSourceReference | null;
+  side?: SourceMessageQuoteSide;
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
-  compactReplyPreview?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
   if (!sourceMessage) return null;
-  const canFold = sourceQuoteNeedsFold(sourceMessage);
-  const senderLabel = compactReplyPreview ? 'Replying to' : (sourceMessage.senderLabel?.trim() || 'message');
-  const attachmentText = compactReplyPreview
-    ? ''
-    : (sourceMessage.attachmentCount ? ` · ${sourceMessage.attachmentCount} attachment${sourceMessage.attachmentCount === 1 ? '' : 's'}` : '');
+  const senderLabel = quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName);
+  const text = sourceQuoteText(sourceMessage);
   const navigate = () => {
     if (onNavigateToMessage) {
       onNavigateToMessage(sourceMessage.messageId, sourceMessage);
@@ -41,38 +41,24 @@ export function SourceMessageQuote({
   };
 
   return (
-    <div className="app-source-message-quote w-full">
-      <button
-        type="button"
-        className="app-source-message-quote-link grid max-w-full grid-cols-[minmax(0,1fr)] items-start text-left"
-        onClick={navigate}
-        title="Jump to original request"
-      >
-        <span className="min-w-0">
-          <span className={cn('app-source-message-quote-text-frame', canFold && !expanded && 'app-source-message-quote-folded', 'block')}>
-            <span className="app-source-message-quote-text block whitespace-pre-wrap text-[12px] leading-5" data-kordi-copy-surface="message">
-              <span className="app-source-message-quote-label app-source-message-quote-inline-label font-medium">{senderLabel}{attachmentText}: </span>
-              <MessageInlineContent text={sourceQuoteText(sourceMessage)} mentions={sourceMessage.mentions} showSiteIcons={false} />
-            </span>
-          </span>
-        </span>
-      </button>
-      {canFold ? (
-        <div className="app-fold-reveal-row app-source-message-quote-reveal-row">
-          <button
-            type="button"
-            className="app-button-quiet app-inline-expand-toggle app-source-message-quote-toggle"
-            onClick={() => setExpanded((current) => !current)}
-            aria-expanded={expanded}
-          >
-            <span>{expanded ? 'Hide request' : 'Show full request'}</span>
-            {expanded ? <ChevronUp className="app-inline-expand-toggle-icon" aria-hidden="true" /> : <ChevronDown className="app-inline-expand-toggle-icon" aria-hidden="true" />}
-          </button>
-          <span className="app-fold-reveal-line" aria-hidden="true" />
-        </div>
-      ) : null}
-    </div>
+    <button
+      type="button"
+      className="app-source-message-quote"
+      data-quote-side={side}
+      onClick={navigate}
+      title={text ? `${senderLabel}: ${text}` : senderLabel}
+    >
+      <span className="app-source-message-quote-text" data-kordi-copy-surface="message">
+        <span className="app-source-message-quote-label">{senderLabel}: </span>
+        <MessageInlineContent text={text} mentions={sourceMessage.mentions} linksInteractive={false} showSiteIcons={false} />
+      </span>
+    </button>
   );
+}
+
+/** Places the quote line under a message, aligned with the bubble's outer edge. */
+export function SourceMessageQuoteRow({ className, ...quote }: Parameters<typeof SourceMessageQuote>[0] & { className?: string }) {
+  return <div className={cn('flex min-w-0 max-w-full', className)}><SourceMessageQuote {...quote} /></div>;
 }
 
 export function RequestReplyLine({
@@ -135,7 +121,8 @@ export function ThreadReplyLine({
 }) {
   const visibleCount = Math.max(0, Math.floor(count ?? 0));
   if (visibleCount <= 0) return null;
-  const label = `${visibleCount} discussed in thread`;
+  const label = `Discussion · ${visibleCount}`;
+  const messageLabel = `${visibleCount} message${visibleCount === 1 ? '' : 's'}`;
   return (
     <button
       type="button"
@@ -146,7 +133,7 @@ export function ThreadReplyLine({
         inline ? 'align-baseline' : 'mt-0.5',
         own ? 'self-end' : 'self-start',
       )}
-      aria-label={`Open thread with ${label}${unread ? ', unread replies' : ''}`}
+      aria-label={`Open discussion with ${messageLabel}${unread ? ', unread messages' : ''}`}
     >
       <MessagesSquare className="app-message-reply-line-icon h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       <span className="app-message-reply-count">{label}</span>
