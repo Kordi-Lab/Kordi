@@ -1,4 +1,5 @@
 import { CloudPinClient } from './cloudPinClient';
+import type { CloudMessage } from './cloudMessageTypes';
 import { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLookup,type CloudProviderAuthSnapshot,type CloudProviderAuthSnapshotInput } from "./cloudAgentRuntimeTypes";
 // Cloud-edition HTTP client. Authentication and ancillary account features
 // remain under /v1/cloud; durable chat transport is exclusively /v2/chat.
@@ -141,8 +142,6 @@ export type CloudContactAcceptResult = {
   helloMessage?: CloudMessage | null;
 };
 
-export type CloudMessageDirection = 'incoming' | 'outgoing';
-
 export type SendCloudMessageOptions = {
   sessionId?: string | null;
   attachments?: SendCloudMessageAttachmentInput[];
@@ -156,26 +155,7 @@ export type SendCloudMessageOptions = {
   sharedTitle?: string | null;
 };
 
-export type CloudMessage = {
-  messageId: string;
-  fromAccountId: string;
-  toAccountId: string;
-  body: string;
-  createdAt: string;
-  deliveredAt: string | null;
-  readAt: string | null;
-  readByAccountIds?: string[];
-  direction: CloudMessageDirection;
-  sessionId?: string | null;
-  attachments?: CloudMessageAttachment[]; voiceMessage?: CloudVoiceMessage | null;
-  conversationId?: string | null;
-  conversationSequence?: number | null;
-  clientMessageId?: string | null;
-  messageKind?: string | null;
-  canonicalHistoryLocalMessageId?: string | null;
-  version?: number | null; editedAt?: string | null; deletedAt?: string | null;
-  reactions?: Array<{ value: string; accountIds: string[] }>; pendingReactionIntents?: Array<{ value: string; accountId: string; active: boolean }>;
-};
+export type { CloudMessage, CloudMessageDirection } from './cloudMessageTypes';
 export type CloudSyncEventType = string;
 
 export type CloudSyncEvent = {

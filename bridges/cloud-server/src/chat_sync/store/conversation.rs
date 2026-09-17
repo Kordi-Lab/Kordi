@@ -173,7 +173,9 @@ async fn create_conversation_in_transaction_with_trusted_peer(
                 return Err(StoreError::IdempotencyKeyReused);
             }
             require_active_member(transaction, conversation_id, account_id).await?;
-            let stored_members = active_member_ids(transaction, conversation_id).await?;
+            let stored_members = super::service_members::without_service_members(
+                active_member_ids(transaction, conversation_id).await?,
+            );
             if stored_members != members {
                 return Err(StoreError::IdempotencyKeyReused);
             }

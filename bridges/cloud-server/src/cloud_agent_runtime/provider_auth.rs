@@ -311,7 +311,7 @@ pub async fn revoke_snapshot(
 pub async fn provider_auth_for_run(
     pool: &PgPool,
     cipher: Option<&dyn ProviderAuthCipher>,
-    service_auth: Option<ServiceProviderAuth<'_>>,
+    service_auths: Vec<ServiceProviderAuth<'_>>,
     run_id: &str,
     runner_id: &str,
 ) -> Result<ProviderAuthForRunResult, sqlx_core::Error> {
@@ -328,7 +328,7 @@ pub async fn provider_auth_for_run(
     };
 
     if let Some(provider_auth) =
-        service_provider_auth_for_run(&owner_account_id, &runtime_route, service_auth)
+        service_provider_auth_for_run(&owner_account_id, run_id, &runtime_route, service_auths)
     {
         return Ok(ProviderAuthForRunResult::Found(provider_auth));
     }

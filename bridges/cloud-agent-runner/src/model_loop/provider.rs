@@ -69,11 +69,15 @@ impl OpenAiProviderConfig {
                     .to_string(),
             ));
         }
+        // A stored model from another provider (an OpenAI model saved with an
+        // Anthropic sign-in, say) would only ever fail; use the provider's
+        // default instead.
         let model = payload
             .get("model")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
+            .filter(|value| model_fits_provider(value, &provider))
             .unwrap_or_else(|| default_model_for_provider(&provider));
         let model = normalize_model_for_mode(model, api_mode).to_string();
         let account_id = payload
@@ -189,6 +193,36 @@ fn normalize_provider(provider: &str) -> &str {
     }
 }
 
+/// Whether a model name can belong to this provider. Only clear mismatches
+/// between the major model families are rejected.
+fn model_fits_provider(model: &str, provider: &str) -> bool {
+    let name = model
+        .rsplit_once('/')
+        .map(|(_, name)| name)
+        .unwrap_or(model)
+        .to_ascii_lowercase();
+    let family = if name.starts_with("claude") {
+        "anthropic"
+    } else if name.starts_with("gemini") {
+        "google"
+    } else if name.starts_with("gpt-")
+        || name.starts_with("o1")
+        || name.starts_with("o3")
+        || name.starts_with("o4")
+        || name.starts_with("codex")
+    {
+        "openai"
+    } else {
+        return true;
+    };
+    match provider {
+        "anthropic" => family == "anthropic",
+        "google" | "google-gemini" => family == "google",
+        "openai" | "openai-codex" => family == "openai",
+        _ => true,
+    }
+}
+
 fn default_model_for_provider(provider: &str) -> &'static str {
     match provider {
         "anthropic" => "claude-sonnet-5",
@@ -261,6 +295,8 @@ impl CloudModelProvider for OpenAiCompatibleProvider {
     }
 }
 
+const ANTHROPIC_MAX_TOKENS: u32 = 32_000;
+
 fn completion_request_from_cloud_messages(
     auth: &OpenAiProviderConfig,
     messages: &[Value],
@@ -273,7 +309,9 @@ fn completion_request_from_cloud_messages(
         tools: tools.to_vec(),
         extra_tool_schemas: Vec::new(),
         model: auth.model.clone(),
-        max_tokens: None,
+        // Claude's default cap of 16,384 tokens covers thinking and the reply together, which a
+        // long digest can use up before writing anything.
+        max_tokens: (auth.provider == "anthropic").then_some(ANTHROPIC_MAX_TOKENS),
         stream: true,
         thinking: Some(auth.thinking.clone()),
     }
@@ -318,6 +356,8 @@ fn model_response_from_stream_events(
     events: Vec<StreamEvent>,
 ) -> Result<ModelProviderResponse, ModelLoopError> {
     let mut text = String::new();
+    let mut thinking_chars = 0usize;
+    let mut output_tokens = 0u64;
     let mut tool_order = Vec::new();
     let mut tool_calls: HashMap<String, PendingToolCall> = HashMap::new();
 
@@ -343,10 +383,9 @@ fn model_response_from_stream_events(
                     .arguments
                     .push_str(&arguments_delta);
             }
-            StreamEvent::ToolCallEnd { .. }
-            | StreamEvent::ThinkingDelta { .. }
-            | StreamEvent::Usage(_)
-            | StreamEvent::Done => {}
+            StreamEvent::ThinkingDelta { text: delta } => thinking_chars += delta.len(),
+            StreamEvent::Usage(usage) => output_tokens = output_tokens.max(usage.output_tokens),
+            StreamEvent::ToolCallEnd { .. } | StreamEvent::Done => {}
             StreamEvent::ServerToolUseStart { .. }
             | StreamEvent::ServerToolUseDelta { .. }
             | StreamEvent::ServerToolUseEnd { .. }
@@ -358,6 +397,13 @@ fn model_response_from_stream_events(
     }
 
     if tool_order.is_empty() {
+        if text.trim().is_empty() {
+            tracing::warn!(
+                output_tokens,
+                thinking_chars,
+                "the model finished without a reply"
+            );
+        }
         return Ok(ModelProviderResponse::FinalText(text));
     }
 
@@ -382,3 +428,18 @@ fn model_response_from_stream_events(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod model_fit_tests {
+    use super::model_fits_provider;
+
+    #[test]
+    fn another_providers_model_is_rejected() {
+        assert!(!model_fits_provider("gpt-5.6-sol", "anthropic"));
+        assert!(!model_fits_provider("openai/gpt-5.6-sol", "anthropic"));
+        assert!(!model_fits_provider("claude-sonnet-5", "openai"));
+        assert!(model_fits_provider("claude-sonnet-5", "anthropic"));
+        assert!(model_fits_provider("gpt-5.6-sol", "openai-codex"));
+        assert!(model_fits_provider("llama-3.3-70b-versatile", "groq"));
+    }
+}

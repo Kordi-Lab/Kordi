@@ -2190,6 +2190,18 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Applies a plan-card action for the signed-in member and returns the
+    /// server's snapshot, or nil after surfacing the error.
+    func performPlanCardAction(_ action: PlanCardAction) async -> PlanCard? {
+        guard !previewMode, let token else { return nil }
+        do {
+            return try await api.planCardAction(token: token, action: action)
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not update the plan card.")
+            return nil
+        }
+    }
+
     func toggleReaction(
         _ reaction: String,
         on message: ChatMessage,
@@ -5627,6 +5639,7 @@ final class AppModel: ObservableObject {
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             voiceMessage: message.voiceMessage,
+            planCard: message.planCard,
             agentExecution: ownerExecution ?? CloudMessageCodec.agentWaitingExecution(
                 deliveryState: CloudMessageCodec.isAgentExecutionClaim(message.body)
                     ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
@@ -5660,7 +5673,10 @@ final class AppModel: ObservableObject {
                     author: author,
                     authorName: author == .me
                         ? "You"
-                        : participantNames[wire.fromAccountId] ?? conversation.displayName,
+                        : participantNames[wire.fromAccountId]
+                            ?? (KordiPipIdentity.isPip(accountId: wire.fromAccountId)
+                                ? KordiPipIdentity.displayName
+                                : conversation.displayName),
                     text: CloudMessageCodec.displayText(wire.body),
                     createdAt: parseCloudDate(wire.createdAt),
                     editedAt: wire.editedAt.map(parseCloudDate),
@@ -5679,6 +5695,7 @@ final class AppModel: ObservableObject {
                     reactionTargetMessageId: wire.messageId,
                     messageKind: wire.messageKind,
                     voiceMessage: wire.voiceMessage,
+                    planCard: wire.planCard,
                     reactions: wire.reactions,
                     attachmentReactions: wire.attachmentReactions
                 )
@@ -5806,6 +5823,7 @@ final class AppModel: ObservableObject {
                 mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),
                 messageKind: payload.messageKind,
                 voiceMessage: payload.voiceMessage ?? wire.voiceMessage,
+                planCard: wire.planCard,
                 agentExecution: author == .agent ? CloudMessageCodec.agentWaitingExecution(
                     deliveryState: payload.deliveryState == "processing" ? .processing : nil,
                     updatedAtMs: payload.createdAtMs
@@ -6757,6 +6775,7 @@ final class AppModel: ObservableObject {
                     attachments: message.attachments,
                     messageKind: message.messageKind,
                     voiceMessage: message.voiceMessage,
+                    planCard: message.planCard,
                     conversationId: message.conversationId,
                     conversationSequence: message.conversationSequence,
                     version: message.version,

@@ -36,18 +36,76 @@ fn model_context(input: &Value) -> Result<Value, ModelLoopError> {
     )
 }
 
-fn completed_output(text: String, incremental: bool) -> Result<String, ModelLoopError> {
-    if !incremental {
-        return Ok(text);
+const OUTPUT_LISTS: &[&str] = &["claims", "commitments", "suggestions", "calendarCandidates"];
+const ITEM_FIELDS: &[&str] = &[
+    "id",
+    "title",
+    "text",
+    "sourceIds",
+    "kind",
+    "ownerAccountId",
+    "dueAt",
+    "existingTaskId",
+    "startAt",
+    "endAt",
+    "timezone",
+    "calendarAction",
+    "existingEventId",
+    "existingEventRevision",
+    "calendarScope",
+    "existingSeriesId",
+    "recurrence",
+];
+
+/// The JSON object in a model reply, which may come wrapped in a code block
+/// or with a sentence around it.
+fn json_object(text: &str) -> Option<Value> {
+    let trimmed = text.trim();
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        return value.is_object().then_some(value);
     }
-    let mut output: Value = serde_json::from_str(text.trim())
-        .map_err(|_| ModelLoopError::Provider("Invalid incremental digest output".into()))?;
-    let object = output.as_object_mut().ok_or_else(|| {
-        ModelLoopError::Provider("Incremental digest output must be an object".into())
-    })?;
-    // Older servers reject this marker rather than treating a patch as a full snapshot after rollback.
-    object.entry("removedItemIds").or_insert_with(|| json!([]));
-    Ok(output.to_string())
+    let start = trimmed.find('{')?;
+    let end = trimmed.rfind('}')?;
+    (start < end)
+        .then(|| serde_json::from_str::<Value>(&trimmed[start..=end]).ok())
+        .flatten()
+        .filter(Value::is_object)
+}
+
+/// Keeps only the fields the digest schema defines, so extra keys a model adds
+/// do not get a whole digest rejected.
+fn schema_output(mut output: Value, incremental: bool) -> Value {
+    let object = output.as_object_mut().expect("digest output is an object");
+    object.retain(|key, _| OUTPUT_LISTS.contains(&key.as_str()) || key == "removedItemIds");
+    for list in OUTPUT_LISTS {
+        let items = object.entry(*list).or_insert_with(|| json!([]));
+        if !items.is_array() {
+            *items = json!([]);
+        }
+        for item in items.as_array_mut().into_iter().flatten() {
+            if let Some(fields) = item.as_object_mut() {
+                fields.retain(|key, _| ITEM_FIELDS.contains(&key.as_str()));
+            }
+        }
+    }
+    if incremental {
+        // Older servers reject this marker rather than treating a patch as a full snapshot after rollback.
+        object.entry("removedItemIds").or_insert_with(|| json!([]));
+    } else {
+        object.remove("removedItemIds");
+    }
+    output
+}
+
+fn completed_output(text: String, incremental: bool) -> Result<String, ModelLoopError> {
+    match json_object(&text) {
+        Some(output) => Ok(schema_output(output, incremental).to_string()),
+        // The server rejects a full reply that is not a digest and records why.
+        None if !incremental => Ok(text),
+        None => Err(ModelLoopError::Provider(
+            "Invalid incremental digest output".into(),
+        )),
+    }
 }
 
 pub fn tools() -> Vec<Value> {
@@ -102,6 +160,80 @@ pub fn observe(input: &Value, name: &str, args: &Value) -> Value {
         }
     }
 }
+/// Why a digest run failed, as a code the app can explain and a redacted
+/// detail for the runner log.
+#[derive(Debug)]
+pub struct DigestFailure {
+    pub code: &'static str,
+    pub detail: String,
+}
+
+/// Removes anything that looks like a credential and bounds the length, so a
+/// provider error can be logged safely.
+pub fn redact(text: &str) -> String {
+    let mut out = Vec::new();
+    let mut hide_next = false;
+    for word in text.split_whitespace() {
+        let lower = word.to_ascii_lowercase();
+        let looks_secret = lower.starts_with("sk-")
+            || lower.starts_with("sk_")
+            || (word.len() > 40
+                && word
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-_.=".contains(c)));
+        out.push(if hide_next || looks_secret {
+            "[redacted]"
+        } else {
+            word
+        });
+        hide_next = lower == "bearer" || lower.ends_with("key:") || lower.ends_with("token:");
+    }
+    out.join(" ").chars().take(300).collect()
+}
+
+/// Sorts a model error into what the person can do about it.
+pub fn failure_reason(message: &str) -> DigestFailure {
+    let lower = message.to_ascii_lowercase();
+    let any = |needles: &[&str]| needles.iter().any(|needle| lower.contains(needle));
+    let code = if any(&[
+        "401",
+        "403",
+        "unauthorized",
+        "forbidden",
+        "authentication",
+        "invalid api key",
+        "invalid x-api-key",
+        "token is missing",
+        "expired",
+        "oauth",
+        "permission",
+        "owner-local provider endpoint",
+        "credential",
+    ]) {
+        "provider_auth_rejected"
+    } else if any(&[
+        "429",
+        "rate limit",
+        "overloaded",
+        "500",
+        "502",
+        "503",
+        "504",
+        "timed out",
+        "timeout",
+        "connection",
+        "unavailable",
+    ]) {
+        "provider_unavailable"
+    } else {
+        "digest_generation_failed"
+    };
+    DigestFailure {
+        code,
+        detail: redact(message),
+    }
+}
+
 pub async fn run<P: CloudModelProvider + Sync>(
     provider: &P,
     run: &CloudAgentRun,
@@ -130,6 +262,11 @@ pub async fn run<P: CloudModelProvider + Sync>(
     let mut used = 0;
     for _ in 0..MAX_MODEL_CALLS {
         match provider.next_response(&auth, &messages, &catalog).await? {
+            ModelProviderResponse::FinalText(text) if text.trim().is_empty() => {
+                return Err(ModelLoopError::Provider(
+                    "The model finished without writing a digest".into(),
+                ))
+            }
             ModelProviderResponse::FinalText(text) => {
                 return completed_output(text, input.get("changes").is_some_and(Value::is_object))
             }
@@ -187,12 +324,20 @@ mod tests {
                 ["removedItemIds"],
             json!([])
         );
-        assert_eq!(completed_output("{}".into(), false).unwrap(), "{}");
+        assert_eq!(completed_output("{}".into(), false).unwrap(), EMPTY_OUTPUT);
+        assert_eq!(
+            completed_output("not a digest".into(), false).unwrap(),
+            "not a digest"
+        );
+        assert!(completed_output("not a digest".into(), true).is_err());
         let mut large = input;
         large["sources"][0]["text"] = json!("unchanged ".repeat(10_000));
         assert!(large.to_string().len() > 100_000);
         assert!(model_context(&large).unwrap().to_string().len() < 2_000);
     }
+
+    const EMPTY_OUTPUT: &str =
+        r#"{"calendarCandidates":[],"claims":[],"commitments":[],"suggestions":[]}"#;
 
     #[tokio::test]
     async fn first_model_call_includes_sources_from_every_session() {
@@ -231,7 +376,10 @@ mod tests {
             auth_choice: "default".into(),
             payload: json!({"apiKey":"test-key","model":"test-model"}),
         };
-        assert_eq!(super::run(&Provider, &run, material).await.unwrap(), "{}");
+        assert_eq!(
+            super::run(&Provider, &run, material).await.unwrap(),
+            EMPTY_OUTPUT
+        );
     }
 
     #[test]
@@ -257,5 +405,50 @@ mod tests {
                 .len(),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+
+    #[test]
+    fn provider_failures_are_sorted_and_redacted() {
+        assert_eq!(
+            failure_reason("provider error: 401 Unauthorized: invalid x-api-key").code,
+            "provider_auth_rejected"
+        );
+        assert_eq!(
+            failure_reason("provider error: 529 overloaded").code,
+            "provider_unavailable"
+        );
+        assert_eq!(
+            failure_reason("tool loop limit exceeded").code,
+            "digest_generation_failed"
+        );
+        let detail = redact("Authorization: Bearer abcdefghijklmnop sk-live-123 plain words");
+        assert!(!detail.contains("abcdefghijklmnop"));
+        assert!(!detail.contains("sk-live-123"));
+        assert!(detail.contains("plain words"));
+    }
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+
+    #[test]
+    fn fenced_replies_with_extra_fields_become_schema_output() {
+        let reply = "Here is the digest:\n```json\n{\"claims\":[{\"id\":\"a\",\"title\":\"T\",\"text\":\"\",\"sourceIds\":[\"m1\"],\"kind\":\"decision\",\"confidence\":0.9}],\"notes\":\"x\"}\n```";
+        let output: Value =
+            serde_json::from_str(&completed_output(reply.to_string(), false).unwrap()).unwrap();
+        assert!(output.get("notes").is_none());
+        assert!(output["claims"][0].get("confidence").is_none());
+        assert_eq!(output["commitments"], json!([]));
+        assert!(output.get("removedItemIds").is_none());
+        let patch: Value =
+            serde_json::from_str(&completed_output("{\"claims\":[]}".into(), true).unwrap())
+                .unwrap();
+        assert_eq!(patch["removedItemIds"], json!([]));
     }
 }

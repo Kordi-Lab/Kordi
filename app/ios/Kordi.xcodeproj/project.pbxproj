@@ -73,6 +73,7 @@
 		57C48DFB0681685E6BAA605D /* ShareExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC107DB5F8A72F207A0CCBC9 /* ShareExtensionView.swift */; };
 		591D049BE5259BAF6555CCBC /* noto-emoji in Resources */ = {isa = PBXBuildFile; fileRef = 30170A4D2C1A1AF7B87BF136 /* noto-emoji */; };
 		5A526074F09A34B5DEF383AE /* KordiMessageNotificationCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34269C735F1FCF72602AD0D6 /* KordiMessageNotificationCleanup.swift */; };
+		5E77AF0C6E4C68157B633C3D /* PlanCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C36D8E21FB8E12DA41407C6F /* PlanCardView.swift */; };
 		5FEE4877B559B162470420DE /* CloudConversationCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44A3C66207D7BD48F04030BF /* CloudConversationCatalogTests.swift */; };
 		6316C7A33ABEDDA7248784C4 /* CloudPresencePublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C895B1E21D180A3B8DAC028C /* CloudPresencePublisher.swift */; };
 		6370770F0FFF928CBAB4050A /* ComposerMentionMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46FD8ADA8B828FDECB16AB83 /* ComposerMentionMenu.swift */; };
@@ -90,6 +91,7 @@
 		7450B6513CBD85BE88B9D802 /* GroupAgentTargetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FF8982F88272CFCECE0D898 /* GroupAgentTargetTests.swift */; };
 		7563571CDD502AF81C834BFD /* PhotoSendReviewSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4341AB98A04360584EC3B4BD /* PhotoSendReviewSheet.swift */; };
 		76A00FABDC02FA26E7C31DA4 /* CloudInitialStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134F1B1ED00BEA5F6A8E081E /* CloudInitialStateTests.swift */; };
+		7798BB0DF10DE5025F1D6830 /* PlanCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA7D44D8A1C2EFED3C150F4 /* PlanCard.swift */; };
 		77F965172EEC9C516ADC2C37 /* PreparedEmojiAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEA3D20EFD80FF00B434F7A6 /* PreparedEmojiAnimation.swift */; };
 		798E25FC71EFE3AFBBD92A56 /* CloudAPIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1891761174EB0D425725600A /* CloudAPIClient.swift */; };
 		7B59FD457626E06D06B121EC /* AgentTrajectoryLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31C58A675895E2F82B65D1F /* AgentTrajectoryLayoutTests.swift */; };
@@ -289,6 +291,7 @@
 		4D22A792A04EFA89754D2EE1 /* OfflineChatRefreshTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineChatRefreshTests.swift; sourceTree = "<group>"; };
 		4D3FAACD21D63BFA6A9455D5 /* MediaPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPreviewTests.swift; sourceTree = "<group>"; };
 		4DCEE1B4AB8ED2647728BD25 /* CloudConversationCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConversationCatalog.swift; sourceTree = "<group>"; };
+		4EA7D44D8A1C2EFED3C150F4 /* PlanCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCard.swift; sourceTree = "<group>"; };
 		50F81413AD9566BB9C65BFA1 /* ComposerTextInputIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTextInputIntegrationTests.swift; sourceTree = "<group>"; };
 		53F18B597C9FC8361CBBE668 /* ConversationTailScrollAnimator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTailScrollAnimator.swift; sourceTree = "<group>"; };
 		5610E7F5FABA1874E1D24FFA /* SessionDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailSheet.swift; sourceTree = "<group>"; };
@@ -367,6 +370,7 @@
 		C0216215122D9CFCEADED62A /* DigestImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestImportView.swift; sourceTree = "<group>"; };
 		C0A87BEB6341F1E394022C91 /* VoiceMessageRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceMessageRecorder.swift; sourceTree = "<group>"; };
 		C2C10B9D09B7992549A6CE35 /* ExpressiveMediaPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpressiveMediaPicker.swift; sourceTree = "<group>"; };
+		C36D8E21FB8E12DA41407C6F /* PlanCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanCardView.swift; sourceTree = "<group>"; };
 		C6AF7C0755E63E50264115EE /* KordiDeletionUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KordiDeletionUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C75854832F415234D5CAD6B9 /* PreviewData+Trajectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PreviewData+Trajectory.swift"; sourceTree = "<group>"; };
 		C83AA46FD83C33AF5379F1E6 /* agent-targeting */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "agent-targeting"; path = "../../shared/agent-targeting"; sourceTree = SOURCE_ROOT; };
@@ -467,6 +471,7 @@
 				DDB063759C8072686227B4C1 /* GroupSpaceSummary.swift */,
 				5C2D1BC4DA20D76871039412 /* LivePhotoAttachment.swift */,
 				FFFD604ABA6CBEE2041D4D75 /* NotoEmoji.swift */,
+				4EA7D44D8A1C2EFED3C150F4 /* PlanCard.swift */,
 				BEA3D20EFD80FF00B434F7A6 /* PreparedEmojiAnimation.swift */,
 				FD490ECA738742A1C27BD23C /* ProviderAuthentication.swift */,
 				030EF9AB2B49807064976F35 /* SharedEmojiAnimationView.swift */,
@@ -559,6 +564,7 @@
 				AFC9BC36305D732953A99687 /* PhotoImageEditing.swift */,
 				F6A1B174CA85A5F4F5E0AC15 /* PhotoImageEditor.swift */,
 				4341AB98A04360584EC3B4BD /* PhotoSendReviewSheet.swift */,
+				C36D8E21FB8E12DA41407C6F /* PlanCardView.swift */,
 				5610E7F5FABA1874E1D24FFA /* SessionDetailSheet.swift */,
 				B253DEC14935BAE03D80365F /* SessionFilesSheet.swift */,
 				7991665C65F9A43F00EE4092 /* SubsessionConversation.swift */,
@@ -1221,6 +1227,8 @@
 				2CE57FDD21E960A9636D7824 /* PhotoImageEditing.swift in Sources */,
 				15542F77BD47FB38853E0818 /* PhotoImageEditor.swift in Sources */,
 				7563571CDD502AF81C834BFD /* PhotoSendReviewSheet.swift in Sources */,
+				7798BB0DF10DE5025F1D6830 /* PlanCard.swift in Sources */,
+				5E77AF0C6E4C68157B633C3D /* PlanCardView.swift in Sources */,
 				77F965172EEC9C516ADC2C37 /* PreparedEmojiAnimation.swift in Sources */,
 				D2FC34F12B335A9D4B2998D9 /* PreviewData+Trajectory.swift in Sources */,
 				C44AB4CDAC5B8D7F66D2F952 /* PreviewData.swift in Sources */,

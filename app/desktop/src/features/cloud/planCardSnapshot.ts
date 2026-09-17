@@ -1,0 +1,122 @@
+import type { MessagePlanCard, MessagePlanCardOption, MessagePlanCardParticipant } from '@/kordi-app/types/message';
+
+const PLAN_CARD_STATES = new Set(['polling', 'awaiting_confirmation', 'confirmed', 'canceled']);
+
+/**
+ * Reads a plan card snapshot as the server writes it into a `plan_card`
+ * message block, tolerating anything unexpected: the card is dropped, the
+ * message is not.
+ */
+export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | null {
+  if (!value || typeof value !== 'object') return null;
+  const block = value as Record<string, unknown>;
+  const eventId = typeof block.eventId === 'string' ? block.eventId : '';
+  const title = typeof block.title === 'string' ? block.title : '';
+  const state = typeof block.state === 'string' && PLAN_CARD_STATES.has(block.state) ? block.state : null;
+  const revision = typeof block.revision === 'number' ? block.revision : null;
+  if (!eventId || !title || !state || revision === null) return null;
+  const participants = Array.isArray(block.participants)
+    ? block.participants.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return [];
+      const participant = entry as Record<string, unknown>;
+      const participantId = typeof participant.participantId === 'string' ? participant.participantId : '';
+      if (!participantId) return [];
+      const rsvp: MessagePlanCardParticipant['rsvp'] = participant.rsvp === 'yes' || participant.rsvp === 'no' ? participant.rsvp : 'pending';
+      return [{
+        participantId,
+        displayName: typeof participant.displayName === 'string' && participant.displayName.trim() ? participant.displayName : 'Member',
+        organizer: participant.organizer === true,
+        rsvp,
+      }];
+    })
+    : [];
+  const options: MessagePlanCardOption[] = Array.isArray(block.options)
+    ? block.options.flatMap((entry) => {
+      if (!entry || typeof entry !== 'object') return [];
+      const option = entry as Record<string, unknown>;
+      const id = typeof option.id === 'string' ? option.id : '';
+      const label = typeof option.label === 'string' ? option.label : '';
+      if (!id || !label) return [];
+      return [{
+        id,
+        label,
+        startAt: typeof option.startAt === 'string' ? option.startAt : null,
+        endAt: typeof option.endAt === 'string' ? option.endAt : null,
+        location: typeof option.location === 'string' ? option.location : null,
+        votes: Array.isArray(option.votes) ? option.votes.filter((voter): voter is string => typeof voter === 'string') : [],
+      }];
+    })
+    : [];
+  const view: MessagePlanCard['view'] = block.view === 'vote' || block.view === 'event'
+    ? block.view
+    : state === 'polling' && options.length > 0 ? 'vote' : 'event';
+  return {
+    view,
+    eventId,
+    revision,
+    state: state as MessagePlanCard['state'],
+    title,
+    startAt: typeof block.startAt === 'string' ? block.startAt : null,
+    endAt: typeof block.endAt === 'string' ? block.endAt : null,
+    location: typeof block.location === 'string' ? block.location : null,
+    unresolvedFields: Array.isArray(block.unresolvedFields)
+      ? block.unresolvedFields.filter((field): field is string => typeof field === 'string')
+      : [],
+    participants,
+    options,
+  };
+}
+
+/**
+ * The newest snapshot of every card in a transcript, by event. PiP reposts the
+ * card whenever it changes, so older messages carry stale copies; rendering
+ * each of them with the newest state keeps every button at the current
+ * revision.
+ */
+export function latestPlanCardsByEvent(
+  messages: readonly { planCard?: MessagePlanCard | null }[],
+): Map<string, MessagePlanCard> {
+  const latest = new Map<string, MessagePlanCard>();
+  for (const message of messages) {
+    const card = message.planCard;
+    if (!card) continue;
+    const known = latest.get(card.eventId);
+    if (!known || known.revision < card.revision) latest.set(card.eventId, card);
+  }
+  return latest;
+}
+
+/** The card a message shows for its plan: the vote, or the calendar card. */
+export function planCardView(card: MessagePlanCard): 'vote' | 'event' {
+  if (card.view) return card.view;
+  return card.state === 'polling' && (card.options?.length ?? 0) > 0 ? 'vote' : 'event';
+}
+
+/**
+ * One vote card and one calendar card per plan in a transcript. Only the
+ * newest message carrying each renders it, at the newest snapshot of the
+ * plan; earlier copies keep only their text. A canceled plan also collapses
+ * once a newer plan appears after it.
+ */
+export function resolveTranscriptPlanCards<T extends { id?: string; planCard?: MessagePlanCard | null }>(
+  messages: readonly T[],
+): T[] {
+  const latest = latestPlanCardsByEvent(messages);
+  if (latest.size === 0) return [...messages];
+  const holder = new Map<string, number>();
+  let newestEventId: string | null = null;
+  messages.forEach((message, index) => {
+    if (!message.planCard) return;
+    holder.set(`${message.planCard.eventId}:${planCardView(message.planCard)}`, index);
+    newestEventId = message.planCard.eventId;
+  });
+  return messages.map((message, index) => {
+    const card = message.planCard;
+    if (!card) return message;
+    const cardView = planCardView(card);
+    const newest = latest.get(card.eventId) ?? card;
+    const canceledAndSuperseded = newest.state === 'canceled' && newestEventId !== card.eventId;
+    if (holder.get(`${card.eventId}:${cardView}`) !== index || canceledAndSuperseded) return { ...message, planCard: null };
+    return newest.revision <= card.revision ? message : { ...message, planCard: { ...newest, view: cardView } };
+  });
+}

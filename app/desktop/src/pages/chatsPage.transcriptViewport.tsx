@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { resolveTranscriptPlanCards } from '@/features/cloud/planCardSnapshot';
 import { Split } from 'lucide-react';
 
 import { shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
@@ -92,9 +93,19 @@ export function useChatTranscriptViewport({
   } = viewport;
   const transcriptEntries = useMemo(() => {
     const queuedIds = new Set(queuedMessages.map((message) => message.id));
-    return sourceTranscriptEntries.filter(({ message }) => ![message.id, message.entryId, ...(message.replyAliasIds ?? [])].some((id) => id && queuedIds.has(id))
+    const entries = sourceTranscriptEntries.filter(({ message }) => ![message.id, message.entryId, ...(message.replyAliasIds ?? [])].some((id) => id && queuedIds.has(id))
       && !queuedIds.has(message.replyToMessageId ?? '')
       && !(message.turn?.status === 'queued' && !message.turn.completed));
+    if (!entries.some(({ message }) => message.planCard)) return entries;
+    const resolved = resolveTranscriptPlanCards<Message>(entries.map(({ message }) => message));
+    return entries.flatMap((entry, index) => {
+      const message = resolved[index];
+      if (message === entry.message) return [entry];
+      // A message that carried only a card which a newer copy now shows.
+      const emptiedCardCopy = entry.message.planCard && !message.planCard && !message.text.trim()
+        && !message.attachments?.length && !message.voiceMessage;
+      return emptiedCardCopy ? [] : [{ ...entry, message }];
+    });
   }, [queuedMessages, sourceTranscriptEntries]);
   const syncedQueuedIds = useMemo(
     () => queuedTranscriptRequestIds(sourceTranscriptEntries.map(({ message }) => message)),

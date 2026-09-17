@@ -150,23 +150,26 @@ where
     }
 
     client.mark_running(&run.run_id).await?;
-    if run.run_id.starts_with("digest_") {
+    if run.run_id.starts_with(crate::pip::RUN_PREFIX) {
         let response = {
             let generation = async {
                 match client.fetch_provider_auth(&run.run_id).await {
-                    Ok(material) => crate::digest::run(provider, &run, material)
+                    Ok(material) => crate::pip::run(client, provider, &run, material)
                         .await
-                        .map_err(|_| ()),
-                    Err(_) => Err(()),
+                        .map_err(|error| {
+                            tracing::warn!(run_id = %run.run_id, error = %error, "pip sweep run failed");
+                        }),
+                    Err(error) => {
+                        tracing::warn!(run_id = %run.run_id, error = %error, "pip provider auth unavailable");
+                        Err(())
+                    }
                 }
             };
-            // Keep the existing lease alive while the read-only model is working.
-            // mark_running also revalidates source access on the server.
             tokio::pin!(generation);
             let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
             heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             heartbeat.tick().await;
-            tokio::time::timeout(std::time::Duration::from_secs(600), async {
+            tokio::time::timeout(std::time::Duration::from_secs(300), async {
                 loop {
                     tokio::select! {
                         result = &mut generation => break Ok::<_, RunnerClientError>(result),
@@ -184,11 +187,59 @@ where
             }
             Err(()) => {
                 client
-                    .fail_run(
-                        &run.run_id,
-                        "digest_generation_failed",
-                        "Digest generation failed.",
-                    )
+                    .fail_run(&run.run_id, "pip_sweep_failed", "PiP sweep failed.")
+                    .await?;
+                Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id })
+            }
+        };
+    }
+    if run.run_id.starts_with("digest_") {
+        let response = {
+            let generation = async {
+                match client.fetch_provider_auth(&run.run_id).await {
+                    Ok(material) => crate::digest::run(provider, &run, material)
+                        .await
+                        .map_err(|error| crate::digest::failure_reason(&error.to_string())),
+                    Err(error) => Err(crate::digest::DigestFailure {
+                        code: "provider_unavailable",
+                        detail: crate::digest::redact(&error.to_string()),
+                    }),
+                }
+            };
+            // Keep the existing lease alive while the read-only model is working.
+            // mark_running also revalidates source access on the server.
+            tokio::pin!(generation);
+            let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
+            heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            heartbeat.tick().await;
+            tokio::time::timeout(std::time::Duration::from_secs(600), async {
+                loop {
+                    tokio::select! {
+                        result = &mut generation => break Ok::<_, RunnerClientError>(result),
+                        _ = heartbeat.tick() => client.mark_running(&run.run_id).await?,
+                    }
+                }
+            })
+            .await
+            .unwrap_or(Ok(Err(crate::digest::DigestFailure {
+                code: "digest_generation_failed",
+                detail: "timed out after 10 minutes".to_string(),
+            })))?
+        };
+        return match response {
+            Ok(text) => {
+                client.complete_run(&run.run_id, &text).await?;
+                Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
+            }
+            Err(failure) => {
+                tracing::warn!(
+                    run_id = %run.run_id,
+                    code = failure.code,
+                    detail = %failure.detail,
+                    "digest generation failed"
+                );
+                client
+                    .fail_run(&run.run_id, failure.code, "Digest generation failed.")
                     .await?;
                 Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id })
             }

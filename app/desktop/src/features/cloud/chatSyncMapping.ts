@@ -1,4 +1,7 @@
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
+import type { MessagePlanCard } from '@/kordi-app/types/message';
+import { normalizePlanCardSnapshot } from './planCardSnapshot';
+import { isPipAccountId } from '@/features/pip/pipIdentity';
 import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
@@ -106,6 +109,19 @@ export function chatTextContent(
       },
     } : {}),
   };
+}
+
+function planCardFromChatContent(content: unknown): MessagePlanCard | null {
+  if (!content || typeof content !== 'object') return null;
+  const blocks = (content as { blocks?: unknown }).blocks;
+  if (!Array.isArray(blocks)) return null;
+  for (const value of blocks) {
+    if (!value || typeof value !== 'object') continue;
+    if ((value as { type?: unknown }).type !== 'plan_card') continue;
+    const card = normalizePlanCardSnapshot(value);
+    if (card) return card;
+  }
+  return null;
 }
 
 function voiceMessageFromChatContent(content: unknown): CloudVoiceMessage | null {
@@ -321,7 +337,7 @@ export function conversationPeer(
 ): string {
   if (senderAccountId !== viewerAccountId) return senderAccountId;
   return conversation.members
-    .find((member) => member.account_id !== viewerAccountId && member.membership_state === 'active')
+    .find((member) => member.account_id !== viewerAccountId && member.membership_state === 'active' && !isPipAccountId(member.account_id))
     ?.account_id ?? viewerAccountId;
 }
 
@@ -333,7 +349,7 @@ export function cloudMessageFromChatSync(
   const peerAccountId = conversationPeer(conversation, viewerAccountId, message.sender_account_id);
   const outgoing = message.sender_account_id === viewerAccountId;
   const otherMembers = conversation.members.filter(
-    (member) => member.account_id !== viewerAccountId && member.membership_state === 'active',
+    (member) => member.account_id !== viewerAccountId && member.membership_state === 'active' && !isPipAccountId(member.account_id),
   );
   const readByAccountIds = otherMembers
     .filter((member) => member.last_read_sequence >= message.conversation_sequence)
@@ -368,6 +384,7 @@ export function cloudMessageFromChatSync(
     sessionId: conversation.legacy_session_id ?? conversation.id,
     attachments: attachmentsFromChatContent(message.content, message.kind),
     voiceMessage: voiceMessageFromChatContent(message.content),
+    planCard: planCardFromChatContent(message.content),
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
     clientMessageId: message.client_message_id,

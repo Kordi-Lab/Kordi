@@ -5,42 +5,20 @@ use super::subtyped_attachment_validation::{
 use super::support::*;
 use super::*;
 
+mod fanout;
 mod group_identity;
 mod mutations;
+mod server_refresh;
 mod voice;
+pub(super) use fanout::fanout_message_sync_event;
 pub(super) use group_identity::normalize_stored_group_agent_identity;
 use group_identity::{
     apply_group_control_title, load_existing_group_message, lock_group_message_fingerprint,
     normalize_group_envelope,
 };
 pub use mutations::{delete_message, edit_message};
+pub use server_refresh::refresh_server_message_content;
 pub use voice::{update_voice_transcript, UpdateVoiceTranscriptRequest};
-
-pub(super) async fn fanout_message_sync_event(
-    transaction: &mut Transaction<'_, Postgres>,
-    event_type: &str,
-    message: &MessageSnapshot,
-) -> Result<(), StoreError> {
-    let payloads = load_active_conversation_projections(transaction, message.conversation_id)
-        .await?
-        .into_iter()
-        .map(|(account_id, conversation)| {
-            (
-                account_id,
-                json!({ "message": message, "conversation": conversation }),
-            )
-        })
-        .collect();
-    insert_sync_event_fanout(
-        transaction,
-        event_type,
-        Some(message.conversation_id),
-        Some(message.id),
-        Some(message.version),
-        payloads,
-    )
-    .await
-}
 
 pub async fn load_message_snapshot(
     pool: &PgPool,

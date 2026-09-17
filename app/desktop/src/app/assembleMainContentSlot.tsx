@@ -14,6 +14,7 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
   return (
     <MainContentSwitch
       activeNav={args.activeNav}
+      onOpenProviderSettings={args.openAuthSettings}
       cloudSession={args.cloudSession}
       contactsPageProps={{
         filteredGroupedContacts: args.filteredGroupedContacts,

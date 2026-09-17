@@ -1,4 +1,5 @@
 import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
+import { isPipAccountId } from '@/features/pip/pipIdentity';
 import { livePhotoAttachmentIds } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudSessionTitle, SendCloudMessageOptions, UpdateCloudSessionTitleInput } from './authClient';
 import {
@@ -36,14 +37,18 @@ export class ChatSyncConversationClient {
       throw new Error('A stable session id is required for reliable chat delivery.');
     }
     const kind = input.kind ?? inferConversationKind(accountId, peerAccountId, sessionId);
+    // PiP is a server-managed member: clients never list it, so it never counts
+    // as a difference to synchronize, and a client never removes it.
     const memberAccountIds = [...new Set(
-      (input.memberAccountIds ?? [peerAccountId]).map((value) => value.trim()).filter(Boolean),
+      (input.memberAccountIds ?? [peerAccountId])
+        .map((value) => value.trim())
+        .filter((value) => value && !isPipAccountId(value)),
     )];
     const cached = this.state.conversationBySessionId.get(sessionId);
     if (cached) {
       if (cached.kind !== 'group') return cached;
       const activeMembers = new Set(cached.members
-        .filter((member) => member.membership_state === 'active')
+        .filter((member) => member.membership_state === 'active' && !isPipAccountId(member.account_id))
         .map((member) => member.account_id));
       const missing = memberAccountIds.filter((member) => !activeMembers.has(member));
       const removed = input.replaceMembers

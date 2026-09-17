@@ -130,17 +130,32 @@ async fn create_conversation(
     )
     .await
     {
-        Ok(outcome) => (
+        Ok(outcome) => {
             if outcome.inserted {
-                StatusCode::CREATED
-            } else {
-                StatusCode::OK
-            },
-            Json(ConversationResponse {
-                conversation: outcome.value,
-            }),
-        )
-            .into_response(),
+                if let Some(pip) = state.pip() {
+                    if let Err(error) = crate::pip::membership::join_conversation(
+                        state.db_pool(),
+                        &pip.config().account_id,
+                        outcome.value.id,
+                    )
+                    .await
+                    {
+                        eprintln!("[pip] Could not join a new conversation: {error}");
+                    }
+                }
+            }
+            (
+                if outcome.inserted {
+                    StatusCode::CREATED
+                } else {
+                    StatusCode::OK
+                },
+                Json(ConversationResponse {
+                    conversation: outcome.value,
+                }),
+            )
+                .into_response()
+        }
         Err(error) => store_error("create conversation", error),
     }
 }

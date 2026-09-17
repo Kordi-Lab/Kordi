@@ -225,9 +225,10 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         Option<Value>,
         Option<String>,
         Option<Value>,
+        Option<chrono::DateTime<Utc>>,
     );
-    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json FROM cloud_account_digests WHERE account_id=$1 AND retry_after<=now()").bind(account).fetch_optional(pool).await?;
-    let Some((locale, timezone, old_hash, snapshot, active, saved_input)) = row else {
+    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json,last_change_at FROM cloud_account_digests WHERE account_id=$1 AND retry_after<=now()").bind(account).fetch_optional(pool).await?;
+    let Some((locale, timezone, old_hash, snapshot, active, saved_input, seen_change)) = row else {
         return Ok(());
     };
     if active.is_some() {
@@ -238,6 +239,18 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         .and_then(|value| serde_json::from_value::<Input>(value).ok())
         .filter(|saved| saved.viewer_account_id == account);
     let mut input = input(pool, account, &locale, &timezone, previous).await?;
+    // The rebuilt input covers the changes marked before it was read. Any later
+    // mark, including one from a send that was still committing, changes
+    // last_change_at, so the digest stays marked; the update waits for that
+    // send's row lock and then compares against what it committed.
+    query(
+        "UPDATE cloud_account_digests SET dirty_since=NULL,last_change_at=NULL
+         WHERE account_id=$1 AND last_change_at IS NOT DISTINCT FROM $2",
+    )
+    .bind(account)
+    .bind(seen_change)
+    .execute(pool)
+    .await?;
     if let Some(previous) = &mut input.previous {
         retain_previous_evidence(
             previous,
@@ -363,14 +376,28 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     };
     let input: Input =
         serde_json::from_value(value).map_err(|e| sqlx_core::Error::Decode(Box::new(e)))?;
-    let output = serde_json::from_str::<Output>(text.trim());
-    let Ok(output) = output else {
-        return fail(pool, run, Some(runner), "invalid_output").await;
+    // The reason a generated digest is rejected is logged without its content.
+    let output = match serde_json::from_str::<Output>(text.trim()) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("[digest] Rejected run {run}: output is not a digest ({error})");
+            return fail(pool, run, Some(runner), "invalid_output").await;
+        }
     };
-    let Ok(output) = super::incremental::merge_output(&input, output) else {
-        return fail(pool, run, Some(runner), "invalid_output").await;
+    let mut output = match super::incremental::merge_output(&input, output) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("[digest] Rejected run {run}: could not merge output ({error:?})");
+            return fail(pool, run, Some(runner), "invalid_output").await;
+        }
     };
-    if validate_output(&output, &input).is_err() {
+    // Best effort: a failed check keeps the suggestions rather than failing
+    // the member's whole digest.
+    if let Err(error) = super::pip_guard::drop_pip_conflicts(pool, &input, &mut output).await {
+        eprintln!("[digest] Could not check suggestions against PiP plans: {error}");
+    }
+    if let Err(reason) = validate_output(&output, &input) {
+        eprintln!("[digest] Rejected run {run}: {reason}");
         return fail(pool, run, Some(runner), "invalid_output").await;
     }
     if !input_is_currently_authorized(pool, &account, &input).await? {
@@ -381,7 +408,7 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     if changed.rows_affected() == 0 {
         return Err(sqlx_core::Error::RowNotFound);
     }
-    query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=input_json,active_run_id=NULL,error_code=NULL,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id=$3").bind(&account).bind(serde_json::to_value(output).unwrap()).bind(run).execute(&mut *tx).await?;
+    query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=input_json,active_run_id=NULL,error_code=NULL,failure_count=0,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id=$3").bind(&account).bind(serde_json::to_value(output).unwrap()).bind(run).execute(&mut *tx).await?;
     crate::chat_sync::store::append_account_hint(
         &mut tx,
         &account,
@@ -397,7 +424,25 @@ pub async fn fail(pool: &PgPool, run: &str, runner: Option<&str>, code: &str) ->
     let mut tx = pool.begin().await?;
     let changed=query("UPDATE cloud_agent_fallback_runs SET status='failed',error_code=$3,error_message='Digest update failed.',updated_at=$4 WHERE run_id=$1 AND ($2::text IS NULL OR claimed_by=$2) AND status IN ('queued','leased','running')").bind(run).bind(runner).bind(code).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
     if changed.rows_affected() > 0 {
-        query("UPDATE cloud_account_digests SET active_run_id=NULL,error_code=$2,retry_after=now()+CASE WHEN $2='sources_changed' THEN interval '1 second' ELSE interval '30 seconds' END,input_hash='' WHERE active_run_id=$1").bind(run).bind(code).execute(&mut *tx).await?;
+        // Repeated failures back off (1 minute, 5 minutes, 30 minutes, 2 hours,
+        // then 12 hours) so a broken provider sign-in costs a handful of calls
+        // a day. A source change is not a failure and retries at once.
+        query(
+            "UPDATE cloud_account_digests SET active_run_id=NULL,error_code=$2,input_hash='',
+                failure_count=CASE WHEN $2='sources_changed' THEN failure_count ELSE failure_count+1 END,
+                retry_after=now()+CASE
+                    WHEN $2='sources_changed' THEN interval '1 second'
+                    WHEN failure_count=0 THEN interval '1 minute'
+                    WHEN failure_count=1 THEN interval '5 minutes'
+                    WHEN failure_count=2 THEN interval '30 minutes'
+                    WHEN failure_count=3 THEN interval '2 hours'
+                    ELSE interval '12 hours' END
+             WHERE active_run_id=$1",
+        )
+        .bind(run)
+        .bind(code)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await
 }

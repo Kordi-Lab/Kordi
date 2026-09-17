@@ -28,12 +28,24 @@ pub struct ServiceProviderAuth<'a> {
     pub api_key: &'a str,
     pub base_url: &'a str,
     pub model: &'a str,
+    /// When set, the credential only serves runs whose id starts with this
+    /// prefix. PiP's key belongs to PiP's own sweep runs, never to an ordinary
+    /// agent run that happens to be owned by PiP's account.
+    pub run_id_prefix: Option<&'a str>,
+}
+
+impl ServiceProviderAuth<'_> {
+    pub fn covers_run(&self, run_id: &str) -> bool {
+        self.run_id_prefix
+            .is_none_or(|prefix| run_id.starts_with(prefix))
+    }
 }
 
 pub(super) fn service_provider_auth_for_run(
     owner_account_id: &str,
+    run_id: &str,
     runtime_route: &Value,
-    service_auth: Option<ServiceProviderAuth<'_>>,
+    service_auths: Vec<ServiceProviderAuth<'_>>,
 ) -> Option<RunnerProviderAuthMaterial> {
     let routed_provider_ids = equivalent_provider_ids(
         runtime_route
@@ -47,8 +59,9 @@ pub(super) fn service_provider_auth_for_run(
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let service_auth = service_auth.filter(|service_auth| {
+    let service_auth = service_auths.into_iter().find(|service_auth| {
         service_auth.owner_account_id == owner_account_id
+            && service_auth.covers_run(run_id)
             && routed_provider_ids.as_ref().is_some_and(|providers| {
                 providers
                     .iter()
@@ -97,5 +110,37 @@ mod tests {
         let debug = format!("{material:?}");
         assert!(debug.contains("[REDACTED]"));
         assert!(!debug.contains("secret-support-key"));
+    }
+
+    #[test]
+    fn a_prefixed_service_key_only_serves_its_own_runs() {
+        let route = serde_json::json!({
+            "defaultAuthProvider": "openai",
+            "defaultAuthChoice": "pip-service-api-key",
+        });
+        let pip_key = || ServiceProviderAuth {
+            owner_account_id: "acct_kordi_pip",
+            snapshot_id: "pip-service-openai",
+            provider: "openai",
+            auth_choice: "pip-service-api-key",
+            api_key: "secret-pip-key",
+            base_url: "https://api.openai.com/v1",
+            model: "gpt",
+            run_id_prefix: Some("pip_"),
+        };
+        assert!(service_provider_auth_for_run(
+            "acct_kordi_pip",
+            "pip_123",
+            &route,
+            vec![pip_key()]
+        )
+        .is_some());
+        assert!(service_provider_auth_for_run(
+            "acct_kordi_pip",
+            "run_from_a_member",
+            &route,
+            vec![pip_key()]
+        )
+        .is_none());
     }
 }

@@ -5,7 +5,8 @@ import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
-import { cloudVoiceMessageMetadataOnly, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
+import { storedVoiceMessage, withoutVoiceAttachment } from '@/features/cloud/cloudVoiceMessage';
+import { normalizePlanCardSnapshot } from '@/features/cloud/planCardSnapshot';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import type {
@@ -434,12 +435,7 @@ export function mapCanonicalMessage(
   const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
   if (role === 'system' && !displayText.trim()) return null;
-  const portableVoiceMessage = cloudVoiceMessageMetadataOnly(content.voiceMessage);
-  // Portable voice metadata never carries a path. This device's own recording keeps it for playback and transcription.
-  const ownRecordingPath = isOwnMessage ? stringValue(contentRecord(content.voiceMessage).localPath)?.trim() : '';
-  const voiceMessage = portableVoiceMessage && ownRecordingPath
-    ? { ...portableVoiceMessage, localPath: ownRecordingPath }
-    : portableVoiceMessage;
+  const voiceMessage = storedVoiceMessage(content.voiceMessage, isOwnMessage);
   return {
     id: message.id,
     // Cloud user messages already carry the runtime entry ID as sourceEventId,
@@ -463,6 +459,7 @@ export function mapCanonicalMessage(
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
     messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
     voiceMessage,
+    planCard: normalizePlanCardSnapshot(content.planCard),
     detail: stringValue(content.detail),
     attachments: withoutVoiceAttachment(canonicalAttachments(content.attachments), voiceMessage),
     mentions,

@@ -17,6 +17,8 @@ pub mod digest;
 pub mod events;
 pub mod notifications;
 pub mod pg;
+pub mod pip;
+pub mod plan_cards;
 pub mod presence;
 pub mod scheduled_tasks;
 pub mod server;

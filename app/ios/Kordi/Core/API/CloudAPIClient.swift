@@ -393,7 +393,7 @@ actor CloudAPIClient {
         var result: [String: [CloudGroupParticipant]] = [:]
         for conversation in chatConversationsById.values where conversation.kind == "group" {
             let participants = conversation.members
-                .filter { $0.membershipState == "active" }
+                .filter { $0.membershipState == "active" && !KordiPipIdentity.isPip(accountId: $0.accountId) }
                 .map { member in
                     CloudGroupParticipant(
                         accountId: member.accountId,
@@ -1156,6 +1156,17 @@ actor CloudAPIClient {
         conversation = conversation.withLatestMessageSequence(response.message.conversationSequence)
         remember(conversation)
         return legacyMessage(from: response.message, conversation: conversation, viewerAccountId: accountId)
+    }
+
+    /// Acts on a shared plan card as the signed-in member.
+    func planCardAction(token: String, action: PlanCardAction) async throws -> PlanCard {
+        try await send(
+            path: "/v1/cloud/plan_cards",
+            method: "POST",
+            token: token,
+            body: action,
+            fallback: "Could not update the plan card."
+        )
     }
 
     func setReaction(
@@ -2121,10 +2132,16 @@ actor CloudAPIClient {
     ) async throws -> CloudChatConversation {
         let accountId = try requireActiveAccountId()
         _ = try await bootstrapChat(token: token)
-        let desiredMembers = Set(memberAccountIds.compactMap(\.nonEmpty)).union([accountId])
+        // PiP is a server-managed member: clients never list it, so it never
+        // counts as a difference to synchronize, and a client never removes it.
+        let desiredMembers = Set(
+            memberAccountIds.compactMap(\.nonEmpty).filter { !KordiPipIdentity.isPip(accountId: $0) }
+        ).union([accountId])
         if var cached = chatConversationsBySessionId[sessionId] {
             if cached.kind == "group" {
-                let activeMembers = Set(cached.members.filter { $0.membershipState == "active" }.map(\.accountId))
+                let activeMembers = Set(cached.members.filter {
+                    $0.membershipState == "active" && !KordiPipIdentity.isPip(accountId: $0.accountId)
+                }.map(\.accountId))
                 if activeMembers != desiredMembers {
                     let response: ChatConversationResponse = try await send(
                         path: "/v2/chat/conversations/\(escapedPath(cached.id))/members",
@@ -2209,6 +2226,7 @@ actor CloudAPIClient {
         let outgoing = message.senderAccountId == viewerAccountId
         let otherMembers = conversation.members.filter {
             $0.accountId != viewerAccountId && $0.membershipState == "active"
+                && !KordiPipIdentity.isPip(accountId: $0.accountId)
         }
         let peerAccountId = message.senderAccountId != viewerAccountId
             ? message.senderAccountId
@@ -2245,6 +2263,7 @@ actor CloudAPIClient {
             attachments: message.content.legacyAttachments,
             messageKind: message.kind,
             voiceMessage: message.content.voiceMessage,
+            planCard: message.content.planCard,
             conversationId: conversation.id,
             conversationSequence: message.conversationSequence,
             version: message.version,

@@ -203,7 +203,7 @@ export function cloudMessageToCollaborationMessage(
     attachments: cloudMessageAttachmentsForPresentation(message.attachments, message.voiceMessage),
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
-    messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, cloudMessageVersion: message.version ?? null, editedAt: message.editedAt ?? null, reactions: message.reactions ?? [],
+    messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, planCard: message.planCard ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, cloudMessageVersion: message.version ?? null, editedAt: message.editedAt ?? null, reactions: message.reactions ?? [],
     localTurn: agentResponse?.requestId
       ? options.localAgentTurnsByRequestId?.[agentResponse.requestId]
         ?? syncedExecutionTurn

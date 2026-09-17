@@ -9,3 +9,6 @@ export function DigestReadStatus({ label, failed = false, busy, onRetry }: {
     {failed && <button disabled={busy} onClick={onRetry}>{busy ? 'Retrying…' : 'Try again'}</button>}
   </div>;
 }
+
+/** Why the digest has no brief to display right now. */
+export type DigestUnavailableState = 'loading' | 'unreachable' | 'preparing' | 'needsProvider' | 'providerRejected' | 'providerUnavailable' | 'failed';

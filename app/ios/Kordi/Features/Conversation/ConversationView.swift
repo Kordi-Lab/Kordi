@@ -398,7 +398,7 @@ struct ConversationView: View {
     private let timelineVerticalInset: CGFloat = 14
 
     var body: some View {
-        let renderedMessages = allMessages
+        let renderedMessages = PlanCardTranscriptResolution.apply(to: allMessages)
         let projection = MessageThreadProjection(messages: renderedMessages)
         let threadReadCursors = model.threadReadCursors[conversation.sessionId]
         let timeline: [ChatMessage]
@@ -1492,6 +1492,9 @@ struct ConversationView: View {
                             viewportFrame: viewportFrame
                         )
                     },
+                    onPlanCardAction: { action in
+                        await model.performPlanCardAction(action)
+                    },
                     onUpdateActionFrame: { frame in
                         updateMessageActionFrame(for: message.id, frame: frame, viewportFrame: viewportFrame)
                     },
@@ -2533,6 +2536,15 @@ struct ConversationView: View {
 
         let participant = conversation.groupParticipants.first {
             $0.displayName.localizedCaseInsensitiveCompare(message.authorName) == .orderedSame
+        }
+        // PiP posts in the chat without being a member, so it is never in
+        // groupParticipants; keep its own mark instead of the group's.
+        if participant == nil, conversation.kind == .group, KordiPipIdentity.isPipName(message.authorName) {
+            return ConversationAvatarIdentity(
+                name: KordiPipIdentity.displayName,
+                source: nil,
+                seed: KordiPipIdentity.accountId
+            )
         }
         return ConversationAvatarIdentity(
             name: participant?.displayName.nonEmpty

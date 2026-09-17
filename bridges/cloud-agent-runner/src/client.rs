@@ -164,6 +164,17 @@ pub trait CloudAgentRunClient {
         ))
     }
 
+    /// Forwards one `plan_card` tool call to the server, bound to this run.
+    async fn plan_card_action(
+        &self,
+        _run_id: &str,
+        _request: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "Plan cards are unavailable".to_string(),
+        ))
+    }
+
     async fn export_artifact(
         &self,
         run_id: &str,
@@ -345,6 +356,18 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
         self.post_json(
             &format!("/v1/cloud/agent-runs/{run_id}/context"),
             serde_json::json!({ "runnerId": self.runner_id, "tool": tool, "arguments": arguments }),
+        )
+        .await
+    }
+
+    async fn plan_card_action(
+        &self,
+        run_id: &str,
+        request: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        self.post_json(
+            &format!("/v1/cloud/agent-runs/{run_id}/plan-card"),
+            serde_json::json!({ "runnerId": self.runner_id, "request": request }),
         )
         .await
     }

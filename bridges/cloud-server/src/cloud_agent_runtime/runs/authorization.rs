@@ -39,6 +39,9 @@ pub async fn requester_can_target_owner(
     if requester_account_id == owner_account_id {
         return Ok(true);
     }
+    if is_pip_owner(owner_account_id) {
+        return Ok(false);
+    }
     let row: Option<(String,)> = query_as(
         "SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2 LIMIT 1",
     )
@@ -168,6 +171,12 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
     }))
 }
 
+/// PiP lives in every group and runs on a Kordi-operated key, so members may
+/// never start an agent run on PiP's account; PiP's sweep queues its own runs.
+fn is_pip_owner(owner_account_id: &str) -> bool {
+    crate::pip::service_account_id() == Some(owner_account_id)
+}
+
 fn is_default_kordi_target(
     agent_id: &str,
     owner_account_id: &str,
@@ -201,7 +210,10 @@ pub async fn validate_shared_cloud_agent_claim(
     let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
         return Ok(true);
     };
-    if target.owner_account_id != input.owner_account_id {
+    if target.owner_account_id != input.owner_account_id
+        || (is_pip_owner(&target.owner_account_id)
+            && input.requester_account_id != target.owner_account_id)
+    {
         return Ok(false);
     }
     let participants =

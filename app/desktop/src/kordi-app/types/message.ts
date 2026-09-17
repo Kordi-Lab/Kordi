@@ -190,6 +190,42 @@ export type MessageVoice = {
 
 export type MessageVoiceDraft = Omit<MessageVoice, 'mediaId'>;
 
+export type MessagePlanCardState = 'polling' | 'awaiting_confirmation' | 'confirmed' | 'canceled';
+
+export type MessagePlanCardParticipant = {
+  participantId: string;
+  displayName: string;
+  organizer: boolean;
+  rsvp: 'pending' | 'yes' | 'no';
+};
+
+/** A shared plan card snapshot carried by a PiP message. The server keeps the
+ * live card; each PiP message carries the state at the time it was posted. */
+export type MessagePlanCardOption = {
+  id: string;
+  label: string;
+  startAt?: string | null;
+  endAt?: string | null;
+  location?: string | null;
+  votes: string[];
+};
+
+export type MessagePlanCard = {
+  eventId: string;
+  revision: number;
+  state: MessagePlanCardState;
+  title: string;
+  startAt?: string | null;
+  endAt?: string | null;
+  location?: string | null;
+  unresolvedFields: string[];
+  participants: MessagePlanCardParticipant[];
+  /** Concrete choices while the card is polling; each carries the voters' account ids. */
+  options?: MessagePlanCardOption[];
+  /** Which card this message shows: the vote between options, or the calendar card for the plan. */
+  view?: 'vote' | 'event';
+};
+
 export type TranscriptLoadingPlaceholder = {
   kind: 'message' | 'link' | 'image' | 'agent';
   side: 'own' | 'peer';
@@ -253,6 +289,7 @@ export type Message = {
   callActivity?: MessageCallActivity;
   messageKind?: string | null;
   voiceMessage?: MessageVoice | null;
+  planCard?: MessagePlanCard | null;
   detail?: string;
   statusChips?: string[];
   attachments?: MessageAttachment[];

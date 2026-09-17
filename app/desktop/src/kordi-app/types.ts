@@ -811,7 +811,7 @@ export type DesktopCollaborationConversationMessage = {
   attachments?: MessageAttachment[];
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
-  messageKind?: string | null; voiceMessage?: Message['voiceMessage']; readReceiptSummary?: Message['readReceiptSummary'];
+  messageKind?: string | null; voiceMessage?: Message['voiceMessage']; readReceiptSummary?: Message['readReceiptSummary']; planCard?: Message['planCard'];
   localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; cloudMessageVersion?: number | null; editedAt?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
 };
 export type DesktopCollaborationSessionThreadMessage = {

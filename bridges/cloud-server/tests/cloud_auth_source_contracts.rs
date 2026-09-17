@@ -53,7 +53,7 @@ fn cloud_attachment_preview_recovery_only_updates_caller_visible_links() {
 
 #[test]
 fn message_migrations_remain_historical_and_device_authorizations_are_embedded() {
-    let pool_source = include_str!("../src/pg/pool.rs");
+    let pool_source = include_str!("../src/pg/pool/embedded.rs");
     for migration in [28, 29, 30, 31, 32, 47, 48, 49, 50, 51] {
         assert!(
             pool_source.contains(&format!("version: {migration}")),

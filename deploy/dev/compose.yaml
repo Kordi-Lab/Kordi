@@ -131,6 +131,9 @@ services:
       KORDI_CHAT_SYNC_CURSOR_SECRET: ${KORDI_CHAT_SYNC_CURSOR_SECRET:?Set KORDI_CHAT_SYNC_CURSOR_SECRET in deploy/dev/.env}
       KORDI_CHAT_REALTIME_ALLOWED_ORIGINS: "tauri://localhost,http://tauri.localhost,http://127.0.0.1"
       KORDI_SUPPORT_ENABLED: "false"
+      KORDI_PIP_ENABLED: ${KORDI_PIP_ENABLED:-false}
+      KORDI_PIP_OPENAI_API_KEY: ${KORDI_PIP_OPENAI_API_KEY:-}
+      KORDI_PIP_OPENAI_MODEL: ${KORDI_PIP_OPENAI_MODEL:-}
     command: ["serve", "--port", "17081"]
     depends_on:
       postgres:

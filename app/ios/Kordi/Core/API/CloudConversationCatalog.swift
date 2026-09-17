@@ -258,7 +258,10 @@ enum CloudConversationCatalog {
             if let latestCanonicalMessage {
                 visibleRows.append((
                     parseCloudDate(latestCanonicalMessage.createdAt),
-                    CloudMessageCodec.previewText(latestCanonicalMessage).nonEmpty,
+                    CloudMessageCodec.previewText(latestCanonicalMessage).nonEmpty
+                        ?? latestCanonicalMessage.planCard.map {
+                            $0.cardView == .vote ? "Vote: \($0.title)" : "Plan: \($0.title)"
+                        },
                     previewAttachment(latestCanonicalMessage)
                 ))
             }
@@ -867,7 +870,7 @@ enum CloudConversationCatalog {
         account: CloudAccount,
         contactsById: [String: CloudContact]
     ) -> [CloudGroupParticipant] {
-        participants.map { participant in
+        participants.filter { !KordiPipIdentity.isPip(accountId: $0.accountId) }.map { participant in
             if participant.accountId == account.accountId {
                 return CloudGroupParticipant(
                     accountId: participant.accountId,

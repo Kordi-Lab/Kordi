@@ -210,6 +210,9 @@ export function mergeCloudMessageMonotonicState(
     voiceMessage: incomingIsOlder
       ? current.voiceMessage
       : incoming.voiceMessage ?? current.voiceMessage,
+    planCard: incomingIsOlder
+      ? current.planCard
+      : incoming.planCard ?? current.planCard,
     deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
     readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
     readByAccountIds: mergeCloudReaderAccountIds(

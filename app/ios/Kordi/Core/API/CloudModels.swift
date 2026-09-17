@@ -1050,6 +1050,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let attachments: [CloudMessageAttachment]
     let messageKind: String?
     let voiceMessage: VoiceMessage?
+    var planCard: PlanCard? = nil
     let conversationId: String?
     let conversationSequence: Int64?
     let version: Int?
@@ -1074,6 +1075,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         attachments: [CloudMessageAttachment] = [],
         messageKind: String? = nil,
         voiceMessage: VoiceMessage? = nil,
+        planCard: PlanCard? = nil,
         conversationId: String? = nil,
         conversationSequence: Int64? = nil,
         version: Int? = nil,
@@ -1096,6 +1098,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.attachments = attachments
         self.messageKind = messageKind
         self.voiceMessage = voiceMessage
+        self.planCard = planCard
         self.conversationId = conversationId
         self.conversationSequence = conversationSequence
         self.version = version
@@ -1227,6 +1230,38 @@ struct CloudChatBlock: Codable, Hashable {
     let waveformSamples: [Double]?
     let transcript: String?
     let transcription: VoiceTranscription?
+    /// `plan_card` blocks carry a card snapshot. Decoded leniently so an
+    /// unexpected card never fails the surrounding message.
+    var planCardSnapshot: PlanCard? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case type, text, mediaId, mimeType, durationMs, waveformSamples, transcript, transcription
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(String.self, forKey: .type)
+        text = try container.decodeIfPresent(String.self, forKey: .text)
+        mediaId = try container.decodeIfPresent(String.self, forKey: .mediaId)
+        mimeType = try container.decodeIfPresent(String.self, forKey: .mimeType)
+        durationMs = try container.decodeIfPresent(Int.self, forKey: .durationMs)
+        waveformSamples = try container.decodeIfPresent([Double].self, forKey: .waveformSamples)
+        transcript = try container.decodeIfPresent(String.self, forKey: .transcript)
+        transcription = try container.decodeIfPresent(VoiceTranscription.self, forKey: .transcription)
+        planCardSnapshot = type == "plan_card" ? try? PlanCard(from: decoder) : nil
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type, forKey: .type)
+        try container.encodeIfPresent(text, forKey: .text)
+        try container.encodeIfPresent(mediaId, forKey: .mediaId)
+        try container.encodeIfPresent(mimeType, forKey: .mimeType)
+        try container.encodeIfPresent(durationMs, forKey: .durationMs)
+        try container.encodeIfPresent(waveformSamples, forKey: .waveformSamples)
+        try container.encodeIfPresent(transcript, forKey: .transcript)
+        try container.encodeIfPresent(transcription, forKey: .transcription)
+    }
 
     init(text: String) {
         type = "text"
@@ -1249,6 +1284,8 @@ struct CloudChatBlock: Codable, Hashable {
         transcript = voiceMessage.transcript
         transcription = voiceMessage.transcription?.bound(to: voiceMessage.mediaId)
     }
+
+    var planCard: PlanCard? { type == "plan_card" ? planCardSnapshot : nil }
 
     var voiceMessage: VoiceMessage? {
         guard type == "voice", let mediaId, let mimeType, let durationMs else { return nil }
@@ -1310,6 +1347,7 @@ struct CloudChatContent: Codable, Hashable {
 
     var body: String { blocks.compactMap(\.text).joined() }
     var voiceMessage: VoiceMessage? { blocks.lazy.compactMap(\.voiceMessage).first }
+    var planCard: PlanCard? { blocks.lazy.compactMap(\.planCard).first }
 }
 
 struct CloudChatReaction: Codable, Hashable {

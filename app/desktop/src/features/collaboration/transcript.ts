@@ -376,7 +376,7 @@ export function mapCollaborationConversationToViewModel(
       showSenderMeta: isAgent,
       senderAvatarSeed,
       senderProfileImageUrl,
-      text: displayText, ...('messageKind' in message ? { messageKind: message.messageKind ?? null } : {}), ...('voiceMessage' in message ? { voiceMessage: message.voiceMessage ?? null } : {}),
+      text: displayText, ...('messageKind' in message ? { messageKind: message.messageKind ?? null } : {}), ...('voiceMessage' in message ? { voiceMessage: message.voiceMessage ?? null } : {}), ...('planCard' in message ? { planCard: message.planCard ?? null } : {}),
       time: message.timeLabel,
       timestampMs: message.timestampMs,
       conversationSequence: message.conversationSequence,
