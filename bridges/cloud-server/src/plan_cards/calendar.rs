@@ -56,6 +56,30 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
         .or_else(|| start.map(|start| (start + chrono::Duration::hours(2)).to_rfc3339()));
     let reminder_at = start.map(|start| (start - chrono::Duration::hours(1)).to_rfc3339());
 
+    let members: Vec<String> = row
+        .participants
+        .iter()
+        .map(|participant| participant.account_id.clone())
+        .collect();
+    // PiP outranks the digest: once a plan is confirmed, competing calendar
+    // suggestions leave every member's saved digest right away.
+    if row.state == PlanCardState::Confirmed {
+        let plan = crate::digest::pip_guard::TrackedPlan {
+            conversation_id: Some(row.conversation_id.clone()),
+            title: row.title.clone(),
+            start_at: start.map(|value| value.with_timezone(&chrono::Utc)),
+        };
+        if let Err(error) =
+            crate::digest::pip_guard::clear_saved_conflicts(pool, &members, &plan).await
+        {
+            eprintln!(
+                "[pip] Could not clear digest suggestions for {}: {error}",
+                row.event_id
+            );
+        }
+    }
+    let mut calendar_changed: Vec<String> = Vec::new();
+
     for participant in &row.participants {
         let keep = attending && participant.rsvp == PlanCardRsvp::Yes;
         if keep {
@@ -70,7 +94,7 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
                 "description": description,
                 "externalUid": null,
             });
-            query(
+            let written = query(
                 "INSERT INTO cloud_calendar_events (account_id, event_id, payload) \
                  VALUES ($1, $2, $3) \
                  ON CONFLICT (account_id, event_id) DO UPDATE \
@@ -83,13 +107,22 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
             .bind(payload)
             .execute(pool)
             .await?;
+            if written.rows_affected() > 0 {
+                calendar_changed.push(participant.account_id.clone());
+            }
         } else {
-            query("DELETE FROM cloud_calendar_events WHERE account_id = $1 AND event_id = $2")
-                .bind(&participant.account_id)
-                .bind(&calendar_id)
-                .execute(pool)
-                .await?;
+            let removed =
+                query("DELETE FROM cloud_calendar_events WHERE account_id = $1 AND event_id = $2")
+                    .bind(&participant.account_id)
+                    .bind(&calendar_id)
+                    .execute(pool)
+                    .await?;
+            if removed.rows_affected() > 0 {
+                calendar_changed.push(participant.account_id.clone());
+            }
         }
     }
+    // A calendar PiP changed is a digest change for that person.
+    crate::digest::changes::mark_accounts(pool, &calendar_changed).await?;
     Ok(())
 }

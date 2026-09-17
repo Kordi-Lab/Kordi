@@ -473,6 +473,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "plan card vote options",
         sql: include_str!("../../migrations/0096_plan_card_options.sql"),
     },
+    EmbeddedMigration {
+        version: 97,
+        description: "digest change tracking",
+        sql: include_str!("../../migrations/0097_digest_change_tracking.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

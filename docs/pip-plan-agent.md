@@ -89,9 +89,15 @@ confirm, and writing calendars never use the model.
   `plan:`. The digest treats them as confirmed context and never proposes
   updating or deleting them (`bridges/cloud-server/src/digest/pip_guard.rs`
   drops any such suggestion).
-- The digest does not suggest a new event for an arrangement PiP is already
-  tracking: a create suggestion whose sources all come from a chat where PiP
-  holds a live plan is dropped.
+- PiP outranks the digest on plans. A create suggestion is dropped when it is
+  the same arrangement as a plan PiP tracks: it comes from that plan's chat at
+  a nearby or unknown time, or it starts within 90 minutes of a PiP event on
+  the person's calendar and shares a meaningful title word. The rule runs when
+  a digest is produced and again the moment PiP confirms a plan, which removes
+  competing suggestions from every member's saved digest without waiting for
+  their next run.
+- A calendar PiP writes or removes marks that person's digest as changed, so it
+  catches up after its quiet window like any other change.
 
 ## How a run happens
 

@@ -93,11 +93,25 @@ async fn read(
         i64,
         chrono::DateTime<chrono::Utc>,
         String,
+        bool,
     );
-    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at,timezone FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
-    let Ok((mut snapshot, input, active, error_code, revision, updated_at, timezone)) = row else {
+    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at,timezone,(dirty_since IS NOT NULL AND retry_after<=now()) FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
+    let Ok((mut snapshot, input, active, error_code, revision, updated_at, timezone, pending)) =
+        row
+    else {
         return failed();
     };
+    // Opening the digest with unprocessed changes brings it up to date now;
+    // the background quiet window only applies while nobody is looking.
+    if pending && active.is_none() {
+        let pool = pool.clone();
+        let account = session.account_id.clone();
+        tokio::spawn(async move {
+            if store::refresh(&pool, &account).await.is_err() {
+                eprintln!("[digest] Refresh on open failed; the background check will retry.");
+            }
+        });
+    }
     let input = serde_json::from_value::<Input>(input).ok();
     let mut refs = Vec::new();
     let mut partial = false;
@@ -268,6 +282,11 @@ pub(super) async fn save_event(
             if tx.commit().await.is_err() {
                 return failed();
             }
+            let _ = super::changes::mark_accounts(
+                state.db_pool(),
+                std::slice::from_ref(&session.account_id),
+            )
+            .await;
             value["revision"] = json!(revision);
             Json(value).into_response()
         }
@@ -308,7 +327,14 @@ async fn remove_event(
     .execute(state.db_pool())
     .await
     {
-        Ok(r) if r.rows_affected() == 1 => StatusCode::NO_CONTENT.into_response(),
+        Ok(r) if r.rows_affected() == 1 => {
+            let _ = super::changes::mark_accounts(
+                state.db_pool(),
+                std::slice::from_ref(&session.account_id),
+            )
+            .await;
+            StatusCode::NO_CONTENT.into_response()
+        }
         Ok(_) => error(
             "version_conflict",
             "This event changed. Reload before removing it.",

@@ -213,11 +213,21 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
     if active.is_some() {
         return Ok(());
     }
+    let rebuilt_at = Utc::now();
     let previous = snapshot.and_then(|v| serde_json::from_value(v).ok());
     let saved = saved_input
         .and_then(|value| serde_json::from_value::<Input>(value).ok())
         .filter(|saved| saved.viewer_account_id == account);
     let mut input = input(pool, account, &locale, &timezone, previous).await?;
+    // The rebuilt input covers every change up to now; later ones stay marked.
+    query(
+        "UPDATE cloud_account_digests SET dirty_since=NULL,last_change_at=NULL
+         WHERE account_id=$1 AND (last_change_at IS NULL OR last_change_at <= $2)",
+    )
+    .bind(account)
+    .bind(rebuilt_at)
+    .execute(pool)
+    .await?;
     if let Some(previous) = &mut input.previous {
         retain_previous_evidence(
             previous,

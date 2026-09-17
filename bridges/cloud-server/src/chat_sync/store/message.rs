@@ -37,7 +37,9 @@ pub(super) async fn fanout_message_sync_event(
         Some(message.version),
         payloads,
     )
-    .await
+    .await?;
+    crate::digest::changes::note_message(&mut **transaction, event_type, message).await?;
+    Ok(())
 }
 
 pub async fn load_message_snapshot(
