@@ -199,8 +199,11 @@ where
                 match client.fetch_provider_auth(&run.run_id).await {
                     Ok(material) => crate::digest::run(provider, &run, material)
                         .await
-                        .map_err(|_| ()),
-                    Err(_) => Err(()),
+                        .map_err(|error| crate::digest::failure_reason(&error.to_string())),
+                    Err(error) => Err(crate::digest::DigestFailure {
+                        code: "provider_unavailable",
+                        detail: crate::digest::redact(&error.to_string()),
+                    }),
                 }
             };
             // Keep the existing lease alive while the read-only model is working.
@@ -218,20 +221,25 @@ where
                 }
             })
             .await
-            .unwrap_or(Ok(Err(())))?
+            .unwrap_or(Ok(Err(crate::digest::DigestFailure {
+                code: "digest_generation_failed",
+                detail: "timed out after 10 minutes".to_string(),
+            })))?
         };
         return match response {
             Ok(text) => {
                 client.complete_run(&run.run_id, &text).await?;
                 Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
             }
-            Err(()) => {
+            Err(failure) => {
+                tracing::warn!(
+                    run_id = %run.run_id,
+                    code = failure.code,
+                    detail = %failure.detail,
+                    "digest generation failed"
+                );
                 client
-                    .fail_run(
-                        &run.run_id,
-                        "digest_generation_failed",
-                        "Digest generation failed.",
-                    )
+                    .fail_run(&run.run_id, failure.code, "Digest generation failed.")
                     .await?;
                 Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id })
             }

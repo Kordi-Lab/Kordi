@@ -3,7 +3,7 @@ import SwiftUI
 struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
 private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
 /// What the digest can show: a brief, or the one reason there is none yet.
-private enum DigestAvailability: Equatable { case loading, unreachable, preparing, needsProvider, failed, brief }
+private enum DigestAvailability: Equatable { case loading, unreachable, preparing, needsProvider, providerRejected, providerUnavailable, failed, brief }
 enum DigestReadState: Equatable {
     case loading, failed, content
     init(hasResponse: Bool, error: String?) {
@@ -67,6 +67,8 @@ struct DigestView: View {
         if digest.snapshot != nil { return .brief }
         if digest.status == "updating" || digest.status == "loading" { return .preparing }
         if digest.errorCode == "missing_provider_auth" { return .needsProvider }
+        if digest.errorCode == "provider_auth_rejected" { return .providerRejected }
+        if digest.errorCode == "provider_unavailable" { return .providerUnavailable }
         if digest.status == "error" { return .failed }
         return .brief
     }
@@ -151,6 +153,11 @@ struct DigestView: View {
             Text("Preparing your digest…")
         case .needsProvider:
             Text("Connect a model provider in Account to get your digest")
+        case .providerRejected:
+            Text("Your model provider sign-in didn't work. Check it in Account")
+        case .providerUnavailable:
+            Text("Your model provider is unavailable right now ·")
+            statusAction(isRefreshing ? "Trying again…" : "Try again") { Task { await refresh() } }
         case .failed:
             Text("Your digest couldn't be prepared ·")
             statusAction(isRefreshing ? "Trying again…" : "Try again") { Task { await refresh() } }
@@ -164,6 +171,11 @@ struct DigestView: View {
                 Text("· Updating…")
             } else if digest?.errorCode == "missing_provider_auth" {
                 Text("· Connect a model provider in Account")
+            } else if digest?.errorCode == "provider_auth_rejected" {
+                Text("· Provider sign-in didn't work")
+            } else if digest?.errorCode == "provider_unavailable" {
+                Text("· Provider unavailable ·")
+                statusAction("Retry") { Task { await refresh() } }
             } else if digest?.errorCode != nil {
                 Text("· Last update failed ·")
                 statusAction("Retry") { Task { await refresh() } }

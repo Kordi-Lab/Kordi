@@ -102,6 +102,80 @@ pub fn observe(input: &Value, name: &str, args: &Value) -> Value {
         }
     }
 }
+/// Why a digest run failed, as a code the app can explain and a redacted
+/// detail for the runner log.
+#[derive(Debug)]
+pub struct DigestFailure {
+    pub code: &'static str,
+    pub detail: String,
+}
+
+/// Removes anything that looks like a credential and bounds the length, so a
+/// provider error can be logged safely.
+pub fn redact(text: &str) -> String {
+    let mut out = Vec::new();
+    let mut hide_next = false;
+    for word in text.split_whitespace() {
+        let lower = word.to_ascii_lowercase();
+        let looks_secret = lower.starts_with("sk-")
+            || lower.starts_with("sk_")
+            || (word.len() > 40
+                && word
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "-_.=".contains(c)));
+        out.push(if hide_next || looks_secret {
+            "[redacted]"
+        } else {
+            word
+        });
+        hide_next = lower == "bearer" || lower.ends_with("key:") || lower.ends_with("token:");
+    }
+    out.join(" ").chars().take(300).collect()
+}
+
+/// Sorts a model error into what the person can do about it.
+pub fn failure_reason(message: &str) -> DigestFailure {
+    let lower = message.to_ascii_lowercase();
+    let any = |needles: &[&str]| needles.iter().any(|needle| lower.contains(needle));
+    let code = if any(&[
+        "401",
+        "403",
+        "unauthorized",
+        "forbidden",
+        "authentication",
+        "invalid api key",
+        "invalid x-api-key",
+        "token is missing",
+        "expired",
+        "oauth",
+        "permission",
+        "owner-local provider endpoint",
+        "credential",
+    ]) {
+        "provider_auth_rejected"
+    } else if any(&[
+        "429",
+        "rate limit",
+        "overloaded",
+        "500",
+        "502",
+        "503",
+        "504",
+        "timed out",
+        "timeout",
+        "connection",
+        "unavailable",
+    ]) {
+        "provider_unavailable"
+    } else {
+        "digest_generation_failed"
+    };
+    DigestFailure {
+        code,
+        detail: redact(message),
+    }
+}
+
 pub async fn run<P: CloudModelProvider + Sync>(
     provider: &P,
     run: &CloudAgentRun,
@@ -257,5 +331,30 @@ mod tests {
                 .len(),
             0
         );
+    }
+}
+
+#[cfg(test)]
+mod failure_tests {
+    use super::*;
+
+    #[test]
+    fn provider_failures_are_sorted_and_redacted() {
+        assert_eq!(
+            failure_reason("provider error: 401 Unauthorized: invalid x-api-key").code,
+            "provider_auth_rejected"
+        );
+        assert_eq!(
+            failure_reason("provider error: 529 overloaded").code,
+            "provider_unavailable"
+        );
+        assert_eq!(
+            failure_reason("tool loop limit exceeded").code,
+            "digest_generation_failed"
+        );
+        let detail = redact("Authorization: Bearer abcdefghijklmnop sk-live-123 plain words");
+        assert!(!detail.contains("abcdefghijklmnop"));
+        assert!(!detail.contains("sk-live-123"));
+        assert!(detail.contains("plain words"));
     }
 }

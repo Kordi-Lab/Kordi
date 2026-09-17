@@ -478,6 +478,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "digest change tracking",
         sql: include_str!("../../migrations/0097_digest_change_tracking.sql"),
     },
+    EmbeddedMigration {
+        version: 98,
+        description: "digest failure backoff",
+        sql: include_str!("../../migrations/0098_digest_failure_backoff.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

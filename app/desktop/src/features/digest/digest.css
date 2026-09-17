@@ -28,9 +28,9 @@
 .digest-status { display: flex; gap: 20px; margin: 4px 0 16px; min-height: 18px; line-height: 18px; color: var(--digest-muted); font-size: 12px; }
 .digest-status-line { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .digest-placeholder { min-height: 1px; }
-.digest-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
-.digest-link:disabled { opacity: 0.55; cursor: default; }
-.digest-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 3px; }
+.digest-page .digest-status .digest-link { display: inline; min-height: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; font: inherit; line-height: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.digest-page .digest-status .digest-link:disabled { opacity: 0.55; cursor: default; }
+.digest-page .digest-status .digest-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 3px; }
 .digest-header nav { display: flex; gap: 24px; border-bottom: 1px solid var(--digest-line); }
 .digest-header nav button { padding: 8px 0 10px; font-size: 13px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--digest-muted); }
 .digest-header nav button:hover { background: transparent; color: var(--digest-text); }
