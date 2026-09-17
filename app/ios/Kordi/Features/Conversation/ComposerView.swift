@@ -1001,8 +1001,8 @@ struct ComposerView: View {
         voiceGestureActive = false
         voiceGestureEnded = false
         if phase == .review, voiceRecorder.shouldAutoSend {
-            // Send as if released on hold; the later release is ignored.
-            finishVoiceRecordingAndSend()
+            // Finish as if released where the finger is; the later release is ignored.
+            completeVoiceRecordingGesture()
         } else {
             voiceHoldPresentation.dismiss()
         }
@@ -1020,7 +1020,7 @@ struct ComposerView: View {
     }
 
     private func convertVoiceRecordingToText() {
-        guard voiceRecorder.stop() else {
+        guard voiceRecorder.phase == .review || voiceRecorder.stop() else {
             rejectShortVoiceRecording()
             return
         }

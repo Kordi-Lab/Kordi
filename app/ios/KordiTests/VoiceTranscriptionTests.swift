@@ -212,6 +212,27 @@ struct VoiceTranscriptionTests {
         #expect(reopened.state(for: received, isSender: false) == .ready("Meet at noon."))
     }
 
+    @Test func localCacheKeepsTheNewestSnapshotWhenSavesOverlap() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("voice-transcripts-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cache = VoiceTranscriptLocalCache(directory: directory)
+        func entry(_ index: Int) -> VoiceTranscriptLocalCache.Entry {
+            let mediaId = "att_\(index)"
+            return VoiceTranscriptLocalCache.Entry(
+                voice: VoiceMessage(mediaId: mediaId, mimeType: "audio/mp4", durationMs: 2000, waveformSamples: [0.2],
+                    transcript: "Line \(index)", transcription: VoiceTranscription(status: .ready, sourceVersion: mediaId,
+                        engine: "apple-speech-v1", attempts: 1)),
+                savedAt: Date(timeIntervalSince1970: Double(index))
+            )
+        }
+        for count in 1...40 {
+            cache.save((0..<count).map(entry), accountId: "acct_me")
+        }
+        cache.waitForPendingWrites()
+        #expect(cache.load(accountId: "acct_me").count == 40)
+    }
+
     @Test func repeatedRequestsShareOneJobAndFollowTheUpload() async throws {
         let (speech, completion) = AsyncStream<String>.makeStream()
         var calls = 0

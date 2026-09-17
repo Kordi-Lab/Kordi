@@ -246,6 +246,8 @@ struct VoiceTranscriptLocalCache: Sendable {
     }
 
     static let maximumEntries = 300
+    /// One serial queue keeps whole-file snapshots on disk in the order they were saved.
+    private static let writes = DispatchQueue(label: "ai.kordi.voice-transcript-cache", qos: .utility)
     let directory: URL
 
     static func standard() -> VoiceTranscriptLocalCache? {
@@ -264,11 +266,16 @@ struct VoiceTranscriptLocalCache: Sendable {
         let kept = Array(entries.sorted { $0.savedAt > $1.savedAt }.prefix(Self.maximumEntries))
         let url = fileURL(accountId: accountId)
         let directory = directory
-        Task.detached(priority: .utility) {
+        Self.writes.async {
             guard let data = try? JSONEncoder().encode(kept) else { return }
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try? data.write(to: url, options: [.atomic])
         }
+    }
+
+    /// Blocks until every save requested so far is on disk.
+    func waitForPendingWrites() {
+        Self.writes.sync {}
     }
 
     private func fileURL(accountId: String) -> URL {
