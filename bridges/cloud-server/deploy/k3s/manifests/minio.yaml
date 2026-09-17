@@ -51,7 +51,8 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+          # MinIO publishes to quay.io; its Docker Hub repositories no longer resolve.
+          image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
           imagePullPolicy: IfNotPresent
           args:
             - server
@@ -128,7 +129,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: mc
-          image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+          image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
           env:
             - name: MC_HOST_minio
               # mc reads the alias from this env var. Format:

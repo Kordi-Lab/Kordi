@@ -13,7 +13,6 @@ import {
 } from '@/features/emoji/BlobEmojiComposerInput';
 import { blobEmojiComposerValue } from '@/features/emoji/blobEmojiComposerDom';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
-import { memeAttachmentDraftError } from '@/features/chat/memeAttachments';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -99,9 +98,7 @@ export function MainComposer({
   const imeCompositionGuard = useImeCompositionGuard();
   const composerInputRef = useRef<BlobEmojiComposerInputHandle | null>(null);
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
-  const memeValidationMessageId = useId();
   const editErrorMessageId = useId();
-  const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const editingMessage = Boolean(activeMessageEdit);
   const composerText = activeMessageEdit?.text ?? chatComposerText;
   const {
@@ -217,20 +214,10 @@ export function MainComposer({
             {!editingMessage ? <ComposerAttachmentList
               attachments={chatComposerAttachments}
               onRemove={removeChatComposerAttachment}
-              onUpdate={updateChatComposerAttachment}
               onReplace={updateChatComposerAttachment}
               requestedEditAttachmentId={pastedImageEditId}
               onRequestedEditClosed={() => setPastedImageEditId(null)}
             /> : null}
-            {!editingMessage && memeValidationError ? (
-              <p
-                id={memeValidationMessageId}
-                className="px-0.5 pb-1 text-[10.5px] leading-4 text-amber-500"
-                role="status"
-              >
-                {memeValidationError}
-              </p>
-            ) : null}
             {attachedVideoReview ? (
               <VideoAttachmentReviewSurface
                 attachment={attachedVideoReview}
@@ -333,7 +320,7 @@ export function MainComposer({
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                ariaDescribedBy={messageEditError ? editErrorMessageId : memeValidationError ? memeValidationMessageId : undefined}
+                ariaDescribedBy={messageEditError ? editErrorMessageId : undefined}
                 ariaControls={filteredChatMentionTargets.length > 0 ? mentionMenuId : undefined}
                 ariaExpanded={filteredChatMentionTargets.length > 0}
                 ariaActiveDescendant={chatMentionActiveDescendant}
@@ -480,7 +467,6 @@ export function MainComposer({
             ) : <VoiceComposerControls
               voice={voice}
               hasSendableDraft={hasSendableDraft}
-              validationError={memeValidationError}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
             />}

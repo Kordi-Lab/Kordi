@@ -170,7 +170,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: mc
-          image: minio/mc:RELEASE.2024-11-21T17-21-54Z
+          image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
           env:
             - name: ROOT_ACCESS_KEY
               valueFrom:

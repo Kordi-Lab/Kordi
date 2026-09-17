@@ -33,10 +33,10 @@ test('cloud-only attachment references do not require a local download or upload
   assert.equal(uploaded[0].attachmentId, image.attachmentId);
 });
 
-test('sticker, meme, dimensions, and Live Photo metadata are preserved', () => {
+test('sticker, dimensions, and Live Photo metadata are preserved', () => {
   const motion = { video: { attachmentId: 'video', name: 'Live.mov', mimeType: 'video/quicktime', sizeBytes: 40 }, playback: { attachmentId: 'playback', name: 'Live.mp4', mimeType: 'video/mp4', sizeBytes: 40 } };
-  const [parsed] = selfAgentMessageAttachments({ attachments: [{ ...image, subtype: 'meme', altText: 'Caption', widthPixels: 12, heightPixels: 8, livePhoto: motion, livePhotoFiles: { videoPath: '/tmp/video.mov', playbackPath: '/tmp/video.mp4' } }] });
-  assert.equal(parsed.subtype, 'meme'); assert.equal(parsed.altText, 'Caption');
+  const [parsed] = selfAgentMessageAttachments({ attachments: [{ ...image, subtype: 'sticker', widthPixels: 12, heightPixels: 8, livePhoto: motion, livePhotoFiles: { videoPath: '/tmp/video.mov', playbackPath: '/tmp/video.mp4' } }] });
+  assert.equal(parsed.subtype, 'sticker');
   assert.equal(parsed.widthPixels, 12); assert.equal(parsed.heightPixels, 8);
   assert.deepEqual(parsed.livePhoto, motion); assert.ok(parsed.livePhotoFiles);
   assert.equal(selfAgentMessageAttachments({ attachments: [{ ...image, subtype: 'sticker' }] })[0].subtype, 'sticker');

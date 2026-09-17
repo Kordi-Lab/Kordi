@@ -37,9 +37,7 @@ export type ComposerAttachmentPresentation = {
   name: string;
   kind: 'image' | 'file';
   mimeType?: string | null;
-  subtype?: 'meme' | 'sticker' | null;
-  altText?: string | null;
-  memeRightsConfirmed?: boolean;
+  subtype?: 'sticker' | null;
   path?: string;
 };
 
@@ -125,17 +123,12 @@ function attachmentVisual(attachment: ComposerAttachmentPresentation): Attachmen
 export function ComposerAttachmentList({
   attachments,
   onRemove,
-  onUpdate,
   onReplace,
   requestedEditAttachmentId = null,
   onRequestedEditClosed,
 }: {
   attachments: ComposerAttachmentPresentation[];
   onRemove: (id: string) => void;
-  onUpdate?: (
-    id: string,
-    update: Pick<ComposerAttachmentPresentation, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
-  ) => void;
   onReplace?: (id: string, replacement: AttachmentItem) => Promise<void> | void;
   requestedEditAttachmentId?: string | null;
   onRequestedEditClosed?: () => void;
@@ -164,18 +157,11 @@ export function ComposerAttachmentList({
         {attachments.map((attachment) => {
         const visual = attachmentVisual(attachment);
         const Icon = visual.Icon;
-        const isMeme = attachment.subtype === 'meme';
         return (
           <div
             key={attachment.id}
             data-composer-attachment-tile="true"
-            data-composer-meme-attachment={isMeme ? 'true' : undefined}
-            className={cn(
-              'max-w-full rounded-[10px] bg-[color:var(--app-control-bg)] text-[color:var(--utility-foreground)]',
-              isMeme
-                ? 'flex w-full max-w-[420px] flex-col items-stretch gap-2 rounded-[14px] p-2'
-                : 'inline-flex h-8 items-center gap-1.5 px-1.5',
-            )}
+            className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-[10px] bg-[color:var(--app-control-bg)] px-1.5 text-[color:var(--utility-foreground)]"
             title={attachment.name}
           >
             <div className="flex min-w-0 items-center gap-1.5">
@@ -213,39 +199,6 @@ export function ComposerAttachmentList({
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>
             </div>
-            {isMeme && onUpdate ? (
-              <div className="flex flex-col gap-1.5 px-0.5 pb-0.5">
-                <label className="flex flex-col gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]">
-                  Alt text <span className="sr-only">for {attachment.name}</span>
-                  <input
-                    type="text"
-                    value={attachment.altText ?? ''}
-                    maxLength={500}
-                    onChange={(event) => onUpdate(attachment.id, {
-                      subtype: 'meme',
-                      altText: event.currentTarget.value,
-                      memeRightsConfirmed: attachment.memeRightsConfirmed,
-                    })}
-                    className="h-8 min-w-0 rounded-[9px] border border-[color:var(--app-control-border)] bg-transparent px-2.5 text-[12px] text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)] focus-visible:ring-2 focus-visible:ring-sky-400/55"
-                    placeholder="Describe the visible text and joke"
-                    aria-required="true"
-                  />
-                </label>
-                <label className="flex min-h-8 cursor-pointer items-start gap-2 rounded-[9px] px-1 py-1 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
-                  <input
-                    type="checkbox"
-                    checked={attachment.memeRightsConfirmed === true}
-                    onChange={(event) => onUpdate(attachment.id, {
-                      subtype: 'meme',
-                      altText: attachment.altText,
-                      memeRightsConfirmed: event.currentTarget.checked,
-                    })}
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-sky-500"
-                  />
-                  <span>I confirm I have permission or another legal right to share this meme.</span>
-                </label>
-              </div>
-            ) : null}
           </div>
         );
         })}
