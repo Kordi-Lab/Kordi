@@ -42,6 +42,13 @@ export function appendOptimisticOutboundMessage(
   sentAt: string,
   mentions: MessageMention[] = [],
   quote: ComposerQuoteState | null = null,
+  // The canonical row's durable id (`msg:ui:<uuid>`), when a matching canonical
+  // message was prepared for the same send. Carrying it as the transcript's
+  // render identity from the first frame means the row keeps the same React
+  // key after the completed-turn refresh replaces this optimistic message with
+  // the persisted one (which gains an `entryId`), so the bubble does not
+  // remount and its shape/avatar do not flash.
+  clientMessageId: string | null = null,
 ) {
   const quoteAction = quote?.source ? composerMessageAction(quote) : null;
   const updatedAtMs = Date.now();
@@ -57,6 +64,7 @@ export function appendOptimisticOutboundMessage(
     messageAction: quoteAction,
     timeLabel: sentAt,
     timestampMs: updatedAtMs,
+    ...(clientMessageId ? { transcriptRenderId: clientMessageId } : {}),
   };
 
   const activeSessionMatches = current.activeSession.id === targetSessionId;

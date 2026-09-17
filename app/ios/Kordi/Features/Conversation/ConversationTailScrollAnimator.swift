@@ -22,6 +22,10 @@ final class ConversationTailScrollAnimator: NSObject {
     private var nativeTargetY: CGFloat = 0
     private var nativeStartedAt: CFTimeInterval = 0
     private var nativePreviousGeometry: PositionedGeometry?
+    /// Frame-driven scroll toward `nativeTargetY`. The model offset advances every
+    /// display frame, so lazy rows, read probes and unread state see real movement
+    /// rather than a bounds jump hidden behind a Core Animation presentation.
+    private var scrollSegment: ConversationTailScrollMotion.Segment?
     private var jumpCover: UIView?
     private var jumpImage: UIView?
     private var isFadingJumpCover = false
@@ -131,7 +135,13 @@ final class ConversationTailScrollAnimator: NSObject {
         let targetY = Self.targetOffset(in: scrollView)
         let running = isAnimating
 
-        if positionedCompletion != nil {
+        // A send reveals its row as the transcript starts moving, so the new
+        // bubble travels with its neighbours instead of appearing after a
+        // hidden settle. Reduced motion and an in-flight keyboard transition
+        // keep the measured, instant placement.
+        let animatesSend = positionedCompletion != nil && animated && !reduceMotion
+            && CACurrentMediaTime() >= keyboardAnimationDeadline
+        if positionedCompletion != nil, !animatesSend {
             finishNativeAnimation()
             UIView.performWithoutAnimation {
                 scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
@@ -140,6 +150,9 @@ final class ConversationTailScrollAnimator: NSObject {
             startPositioning()
             return
         }
+        let revealSend: (() -> Void)? = animatesSend ? positionedCompletion : nil
+        if animatesSend { positionedCompletion = nil }
+        defer { revealSend?() }
         // Duplicate state changes must not restart a navigation transition.
         if running, abs(nativeTargetY - targetY) < 0.5, !reduceMotion { return }
         let shouldAnimate = !reduceMotion && (animated || running)
@@ -160,7 +173,9 @@ final class ConversationTailScrollAnimator: NSObject {
             else { nativeTargetY = targetY }
             return
         }
-        if !running, let contentView, contentView.bounds.height > scrollView.bounds.height {
+        // A send moves by about one row; only a genuine history jump needs the
+        // snapshot cover that hides unmeasured lazy rows.
+        if !running, !animatesSend, let contentView, contentView.bounds.height > scrollView.bounds.height {
             beginJumpCover(in: scrollView)
         }
         nativeTargetY = targetY
@@ -171,7 +186,20 @@ final class ConversationTailScrollAnimator: NSObject {
             nativeDisplayLink = link
             link.add(to: .main, forMode: .common)
         }
-        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: jumpCover == nil)
+        if jumpCover == nil {
+            beginScrollSegment(to: targetY, in: scrollView)
+        } else {
+            scrollSegment = nil
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+        }
+    }
+
+    /// Continue toward a new target from the offset currently on screen.
+    private func beginScrollSegment(to targetY: CGFloat, in scrollView: UIScrollView) {
+        let now = CACurrentMediaTime()
+        let fromY = scrollSegment.map { $0.offset(at: now) } ?? scrollView.contentOffset.y
+        scrollSegment = ConversationTailScrollMotion.Segment(fromY: fromY, toY: targetY, startedAt: now)
+        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: fromY), animated: false)
     }
 
     private func visibleViewport(in scroll: UIScrollView, window: UIWindow) -> CGRect {
@@ -292,8 +320,20 @@ final class ConversationTailScrollAnimator: NSObject {
             return
         }
         if abs(nativeTargetY - targetY) > 0.5 {
-            request(in: scrollView, contentView: contentView, animated: true, reduceMotion: reduceMotion)
-            return
+            // Lazy measurement moved the tail while scrolling. Retarget from the
+            // offset on screen so the motion never reverses or restarts.
+            nativeTargetY = targetY
+            nativePreviousGeometry = nil
+            beginScrollSegment(to: targetY, in: scrollView)
+        }
+        if let segment = scrollSegment {
+            let now = CACurrentMediaTime()
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: segment.offset(at: now)), animated: false)
+            guard segment.isFinished(at: now) else {
+                nativePreviousGeometry = nil
+                return
+            }
+            scrollSegment = nil
         }
         guard abs(scrollView.contentOffset.y - targetY) < 0.5 else {
             nativePreviousGeometry = nil
@@ -309,6 +349,7 @@ final class ConversationTailScrollAnimator: NSObject {
         nativeDisplayLink?.invalidate()
         nativeDisplayLink = nil
         nativePreviousGeometry = nil
+        scrollSegment = nil
         let wasCovered = jumpCover != nil
         jumpCover?.layer.removeAllAnimations()
         jumpCover?.removeFromSuperview()

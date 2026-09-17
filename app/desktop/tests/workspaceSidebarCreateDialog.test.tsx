@@ -26,7 +26,13 @@ test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-
   assert.match(chromeSource, /app-filter-tabs/);
   assert.doesNotMatch(stableChrome, /showArchived/);
   assert.match(source, /\{chatSidebarChrome\}/);
-  assert.match(dialogSource, /if \(isOpen\) \{\s*setMode\(initialMode\);\s*\}/);
+  // The dialog resets its own transient state (mode included) whenever it
+  // opens or its initialMode retargets while open, gated by an early return
+  // when closed -- so WorkspaceSidebar no longer needs a remounting `key` to
+  // get a clean dialog on every open (that key replayed the enter animation
+  // on every open and close and made an exit animation impossible).
+  assert.match(dialogSource, /if \(!isOpen\) return;[\s\S]*setMode\(initialMode\);/);
+  assert.doesNotMatch(source, /key=\{isChatCreateDialogOpen \? chatCreateInitialMode : 'closed'\}/);
 });
 
 test('only the default Kordi agent uses the generic local New session path', () => {

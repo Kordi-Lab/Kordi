@@ -73,8 +73,13 @@ test('runtime transcript reconciliation stays subquadratic with 12,000 canonical
   assert.equal(merged[1]?.text, 'runtime message 0');
   assert.equal(merged.at(-2)?.text, 'canonical-only message 11999');
   assert.equal(merged.at(-1)?.text, 'runtime message 11999');
+  // Budget raised from 48 to 50: matching a runtime row to its canonical twin
+  // now also carries the canonical row's durable id onto the runtime message
+  // as `clientMessageId` (two more bounded, constant-per-row reads), so a
+  // desktop-local human message keeps one render key across the optimistic ->
+  // completed-turn-refresh transition instead of remounting its bubble.
   assert.ok(
-    propertyReads <= runtimeMessages.length * 48,
-    `Expected at most 48 indexed property reads per runtime row, received ${(propertyReads / runtimeMessages.length).toFixed(1)}`,
+    propertyReads <= runtimeMessages.length * 50,
+    `Expected at most 50 indexed property reads per runtime row, received ${(propertyReads / runtimeMessages.length).toFixed(1)}`,
   );
 });
