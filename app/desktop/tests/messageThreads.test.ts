@@ -65,8 +65,8 @@ test('Agent turn roots render the existing discussion entry for owners and other
     const projected = projectMessageThreads(rows).mainMessages[0];
     assert.equal(projected.threadSummary?.replyCount, 3);
     const render = (msg: Message) => renderToStaticMarkup(createElement(MessageBubble, {msg, onOpenMessageThread: () => {}}));
-    assert.match(render(projected), /aria-label="Open thread with 3 discussed in thread"/);
-    assert.doesNotMatch(render({...projected, threadSummary: undefined}), /discussed in thread/);
+    assert.match(render(projected), /aria-label="Open discussion with 3 messages"/);
+    assert.doesNotMatch(render({...projected, threadSummary: undefined}), /Discussion · /);
   }
 });
 

@@ -1035,14 +1035,17 @@ struct MessageActionOverlay: View {
                         Divider().padding(.horizontal, 14)
                     }
                     if allowsConversationReply {
-                        actionButton("Reply in conversation", systemImage: "message") {
+                        actionButton("Quote", systemImage: "text.quote") {
                             onReply(.conversation)
                         }
                     }
                     if allowsThreadReply {
-                        actionButton("Reply in thread", systemImage: "sidebar.right") {
+                        actionButton("Open discussion", systemImage: "bubble.left.and.bubble.right") {
                             onReply(.thread)
                         }
+                    }
+                    if allowsConversationReply || allowsThreadReply {
+                        Divider().padding(.horizontal, 14)
                     }
                     if !message.text.isEmpty, mediaAttachment == nil {
                         actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)

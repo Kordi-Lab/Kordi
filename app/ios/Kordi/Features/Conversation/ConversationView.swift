@@ -102,9 +102,12 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
             horizontalSizeClass: horizontalSizeClass
         ) {
         case .navigation:
-            content.navigationDestination(item: $activeRootMessageID) { threadRootID in
-                threadDestination(rootID: threadRootID)
-            }
+            content
+                // Back from a pushed discussion is the native chevron without the conversation title.
+                .background(NavigationMinimalBackButtonBridge())
+                .navigationDestination(item: $activeRootMessageID) { threadRootID in
+                    threadDestination(rootID: threadRootID)
+                }
         case .inspector:
             content.inspector(isPresented: threadIsPresented) {
                 if let threadRootID = activeRootMessageID {
@@ -150,12 +153,12 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
             }
         )
         .id(rootID)
-        .navigationTitle("Thread")
+        .navigationTitle("Discussion")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("Thread")
+                Text("Discussion")
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
             }
@@ -213,6 +216,7 @@ struct ConversationView: View {
     @State private var hasLaidOutInitialTimeline = false
     @State private var didFinishInitialHistoryLoad = false
     @State private var didPresentInitialLoading = false
+    @State private var cachedThreadRevealDeadlinePassed = false
     @State private var hasRevealedInitialViewport = false
     @State private var initialFailure: ConversationInitialFailure?
     @State private var trackedMessageID: String?
@@ -407,7 +411,10 @@ struct ConversationView: View {
             rootMessageID: scopedThreadRootMessageID,
             messageCount: timeline.count
         )
-        let showsTimeline = hasRevealedInitialViewport || usesCachedThreadTimeline
+        // A cached discussion waits for its first positioned frame so it does not
+        // paint top-aligned and then drop to the latest message.
+        let showsTimeline = hasRevealedInitialViewport
+            || (usesCachedThreadTimeline && cachedThreadRevealDeadlinePassed)
         let timelineSnapshot = ConversationTimelineWindow.Snapshot(count: timeline.count, latestMessageID: timeline.last?.id)
         let visibleTimeline = ConversationTimelineWindow.visibleMessages(
             in: timeline,
@@ -520,7 +527,10 @@ struct ConversationView: View {
                                         )
                                             .padding(.top, 70)
                                     } else {
-                                        if visibleStartIndex > 0 || model.hasEarlierMessages(for: conversation) {
+                                        // A discussion's replies all follow its loaded root, so older
+                                        // conversation pages never belong in it.
+                                        if visibleStartIndex > 0
+                                            || (scopedThreadRootMessageID == nil && model.hasEarlierMessages(for: conversation)) {
                                             EarlierMessagesLoader(
                                                 remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil,
                                                 isLoading: isLoadingEarlier
@@ -545,6 +555,7 @@ struct ConversationView: View {
                                             let threadReplyCount = scopedThreadRootMessageID == nil
                                                 ? projection.replyCount(rootID: message.id)
                                                 : 0
+                                            let quoteReplyIDs = projection.quoteReplyIDs(sourceID: message.id)
                                             ConversationTimelineRowSlot(
                                                 viewportFrame: viewport.frame(in: .global),
                                                 isRetained: message.id == timeline.last?.id
@@ -571,6 +582,7 @@ struct ConversationView: View {
                                                         threadReplyCount: threadReplyCount,
                                                         threadHasUnread: threadReadCursors.map { thread?.hasUnread(cursors: $0) ?? false } ?? false,
                                                         threadAgentState: thread?.agentState,
+                                                        quoteReplyIDs: quoteReplyIDs,
                                                         viewportFrame: viewport.frame(in: .global),
                                                         proxy: proxy
                                                     )
@@ -1101,6 +1113,13 @@ struct ConversationView: View {
                 }
             }
         }
+        .task(id: scopedThreadRootMessageID) {
+            guard scopedThreadRootMessageID != nil, !cachedThreadRevealDeadlinePassed else { return }
+            // Fallback only: positioning normally reveals a cached discussion within a few frames.
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled else { return }
+            cachedThreadRevealDeadlinePassed = true
+        }
         .task(id: mentionTargetRefreshID) {
             await model.refreshMentionTargets(for: conversation)
         }
@@ -1387,6 +1406,7 @@ struct ConversationView: View {
         threadReplyCount: Int,
         threadHasUnread: Bool,
         threadAgentState: BackgroundAgentSession.State?,
+        quoteReplyIDs: [String],
         viewportFrame: CGRect,
         proxy: ScrollViewProxy
     ) -> some View {
@@ -1432,6 +1452,8 @@ struct ConversationView: View {
                     threadReplyCount: threadReplyCount,
                     threadHasUnread: threadHasUnread,
                     threadAgentState: threadAgentState,
+                    quoteReplyCount: conversation.kind.supportsQuotedReplies ? quoteReplyIDs.count : 0,
+                    selfDisplayName: model.account?.displayName,
                     showsAvatarSlot: message.author != .agent,
                     authorAvatarName: avatar.name,
                     authorAvatarSource: avatar.source,
@@ -1491,6 +1513,10 @@ struct ConversationView: View {
                     },
                     onOpenThread: {
                         openThread(rootMessageID: message.id)
+                    },
+                    onOpenLatestQuoteReply: {
+                        guard let latestID = quoteReplyIDs.last else { return }
+                        navigateToMessage(latestID, in: timeline, proxy: proxy)
                     },
                     onOpenAttachment: { attachment, previewImage in
                         openAttachment(
@@ -1846,16 +1872,23 @@ struct ConversationView: View {
     }
 
     private func navigateToMessage(
-        _ messageID: String,
+        _ messageReference: String,
         in timeline: [ChatMessage],
         proxy: ScrollViewProxy
     ) {
-        guard let sourceIndex = timeline.firstIndex(where: { $0.id == messageID }) else { return }
+        guard let sourceIndex = timeline.firstIndex(where: {
+            MessageQuotePresentation.message($0, matchesReference: messageReference)
+        }) else { return }
+        let messageID = timeline[sourceIndex].id
         let targetIdentity = model.timelineIdentity(for: timeline[sourceIndex])
-        visibleMessageLimit = max(visibleMessageLimit, timeline.count - sourceIndex)
+        let requiredLimit = timeline.count - sourceIndex
+        let needsWiderWindow = requiredLimit > visibleMessageLimit
+        if needsWiderWindow { visibleMessageLimit = requiredLimit }
         Task { @MainActor in
-            await Task.yield()
-            await Task.yield()
+            if needsWiderWindow {
+                await Task.yield()
+                await Task.yield()
+            }
             if messageID == timeline.last?.id || scrollPosition.contentFitsViewport {
                 if hasRevealedInitialViewport {
                     scrollToBottom()
@@ -1866,9 +1899,7 @@ struct ConversationView: View {
                     await positionAndRevealInitialViewport(using: proxy)
                 }
             } else {
-                withAnimation(.easeInOut(duration: 0.24)) {
-                    proxy.scrollTo(targetIdentity, anchor: .center)
-                }
+                await glideToMessage(messageID, at: sourceIndex, in: timeline, targetIdentity: targetIdentity, proxy: proxy)
             }
             withAnimation(.snappy(duration: 0.2)) {
                 highlightedMessageID = messageID
@@ -1877,6 +1908,57 @@ struct ConversationView: View {
             guard highlightedMessageID == messageID else { return }
             withAnimation(.easeOut(duration: 0.25)) {
                 highlightedMessageID = nil
+            }
+        }
+    }
+
+    /// Nearby messages glide the whole way. Distant rows use the same snapshot
+    /// cover and reveal as a long jump to the latest message.
+    @MainActor
+    private func glideToMessage(
+        _ messageID: String,
+        at sourceIndex: Int,
+        in timeline: [ChatMessage],
+        targetIdentity: String,
+        proxy: ScrollViewProxy
+    ) async {
+        scrollPosition.cancelScrolling()
+        let visibleHeight = scrollPosition.visibleHeight ?? 600
+        if let currentOffsetY = scrollPosition.currentOffsetY,
+           let targetOffsetY = scrollPosition.centeredOffsetY(forMessage: messageID),
+           abs(targetOffsetY - currentOffsetY) <= visibleHeight * 1.5 {
+            scrollPosition.setOffsetY(targetOffsetY, animated: !reduceMotion)
+            // Highlight after the glide settles so the two motions do not compete.
+            if !reduceMotion { try? await Task.sleep(for: .milliseconds(320)) }
+            return
+        }
+        scrollPosition.captureReadingAnchor()
+        let topVisibleIndex = scrollPosition.readingAnchor.flatMap { anchor in
+            timeline.firstIndex { $0.id == anchor.messageID }
+        }
+        let movingToOlder = topVisibleIndex.map { sourceIndex < $0 } ?? true
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        let revealed = await withCheckedContinuation { continuation in
+            let started = scrollPosition.jumpToMessage(
+                messageID,
+                movingToOlder: movingToOlder,
+                reduceMotion: reduceMotion
+            ) {
+                continuation.resume(returning: true)
+            }
+            guard started else {
+                continuation.resume(returning: false)
+                return
+            }
+            // Build the destination under the cover; the animator centers and reveals it.
+            withTransaction(transaction) {
+                proxy.scrollTo(targetIdentity, anchor: .center)
+            }
+        }
+        if !revealed {
+            withTransaction(transaction) {
+                proxy.scrollTo(targetIdentity, anchor: .center)
             }
         }
     }
@@ -2085,7 +2167,8 @@ struct ConversationView: View {
         proxy: ScrollViewProxy
     ) {
         guard !isLoadingEarlier,
-              visibleMessageLimit < totalCount || model.hasEarlierMessages(for: conversation),
+              visibleMessageLimit < totalCount
+                || (scopedThreadRootMessageID == nil && model.hasEarlierMessages(for: conversation)),
               let anchorID else { return }
         isLoadingEarlier = true
         Task { @MainActor in
@@ -4052,5 +4135,41 @@ private struct OutgoingMessageEntrance: ViewModifier {
             .opacity(pendingPosition ? 0 : 1)
             .allowsHitTesting(!pendingPosition)
             .accessibilityHidden(pendingPosition)
+    }
+}
+
+/// Sets the native minimal back button on the hosting navigation item, so screens
+/// pushed from here show only the chevron while their own titles stay centered.
+private struct NavigationMinimalBackButtonBridge: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) { controller.applyMinimalBackButton() }
+
+    final class Controller: UIViewController {
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+            view.isHidden = true
+        }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            applyMinimalBackButton()
+        }
+
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated)
+            applyMinimalBackButton()
+        }
+
+        func applyMinimalBackButton() {
+            var candidate: UIViewController? = self
+            while let controller = candidate {
+                if controller.parent is UINavigationController {
+                    controller.navigationItem.backButtonDisplayMode = .minimal
+                    return
+                }
+                candidate = controller.parent
+            }
+        }
     }
 }

@@ -160,6 +160,58 @@ final class ConversationScrollPosition {
         }
     }
 
+    var visibleHeight: CGFloat? {
+        guard let scrollView, scrollView.window != nil else { return nil }
+        let inset = scrollView.adjustedContentInset
+        return scrollView.bounds.height - inset.top - inset.bottom
+    }
+
+    var currentOffsetY: CGFloat? {
+        guard let scrollView, scrollView.window != nil else { return nil }
+        return scrollView.contentOffset.y
+    }
+
+    /// The content offset that centers a mounted message, clamped to the scrollable range.
+    func centeredOffsetY(forMessage messageID: String) -> CGFloat? {
+        guard let scrollView, scrollView.window != nil,
+              let row = rows[messageID]?.view, row.window === scrollView.window,
+              row.isDescendant(of: scrollView), row.bounds.height > 0 else { return nil }
+        let frame = row.convert(row.bounds, to: scrollView)
+        let inset = scrollView.adjustedContentInset
+        let visibleHeight = scrollView.bounds.height - inset.top - inset.bottom
+        return ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            frame.midY - inset.top - visibleHeight / 2,
+            contentHeight: scrollView.contentSize.height, containerHeight: scrollView.bounds.height,
+            topInset: inset.top, bottomInset: inset.bottom
+        )
+    }
+
+    /// Returns false when no native scroll view or animator is attached yet.
+    func jumpToMessage(
+        _ messageID: String,
+        movingToOlder: Bool,
+        reduceMotion: Bool,
+        onRevealed: @escaping () -> Void
+    ) -> Bool {
+        guard let scrollView, scrollView.window != nil, let navigationAnimator else { return false }
+        navigationAnimator.jumpToMessage(
+            in: scrollView,
+            contentView: contentView,
+            movingToOlder: movingToOlder,
+            reduceMotion: reduceMotion,
+            targetOffsetY: { [weak self] in self?.centeredOffsetY(forMessage: messageID) },
+            onRevealed: onRevealed
+        )
+        return true
+    }
+
+    /// Native UIKit scrolling keeps a message jump on the render thread instead of
+    /// re-evaluating SwiftUI rows every animation frame.
+    func setOffsetY(_ offsetY: CGFloat, animated: Bool) {
+        guard let scrollView, scrollView.window != nil else { return }
+        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: offsetY), animated: animated)
+    }
+
     func attach(to scrollView: UIScrollView, contentView: UIView? = nil) {
         self.scrollView = scrollView
         self.contentView = contentView

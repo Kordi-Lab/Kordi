@@ -939,21 +939,16 @@ struct ComposerView: View {
     }
 
     private func replyPreview(_ source: MessageActionSource) -> some View {
-        HStack(spacing: 10) {
-            Capsule()
-                .fill(KordiTheme.signalBlue)
-                .frame(width: 3, height: 32)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Replying to \(source.senderLabel)")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(KordiTheme.signalBlue)
-                BlobEmojiPreviewText(
-                    text: source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount)
-                )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
+        let senderLabel = MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: model.account?.displayName)
+        let previewText = MessageQuotePresentation.previewText(source.textPreview, attachmentCount: source.attachmentCount)
+        return HStack(spacing: 8) {
+            MessageQuoteBar()
+            BlobEmojiPreviewText(text: "\(senderLabel): \(previewText)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityLabel("Quoting \(senderLabel): \(previewText)")
             Spacer(minLength: 8)
             Button {
                 replySource = nil
@@ -964,12 +959,10 @@ struct ComposerView: View {
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
-            .accessibilityLabel("Cancel reply")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Remove quote")
         }
-        .padding(.leading, 8)
-        .padding(.trailing, 6)
-        .padding(.vertical, 2)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .padding(.leading, 6)
     }
 
     private func editPreview(_ message: ChatMessage) -> some View {
@@ -1212,10 +1205,6 @@ struct ComposerView: View {
         } else {
             isFocused = true
         }
-    }
-
-    private func attachmentCountText(_ count: Int) -> String {
-        count == 1 ? "1 attachment" : "\(count) attachments"
     }
 }
 

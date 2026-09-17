@@ -198,11 +198,11 @@ export function ChatThreadPanel({
   };
 
   return (
-    <aside data-thread-root-id={readKey??undefined} data-thread-root-client-id={thread.root.clientMessageId} className="app-thread-panel relative flex h-full min-w-[19rem] max-w-[40rem] shrink-0 flex-col border-l border-[color:var(--app-divider)] bg-[color:var(--app-main-bg)]" style={{ width }} aria-label="Message thread">
+    <aside data-thread-root-id={readKey??undefined} data-thread-root-client-id={thread.root.clientMessageId} className="app-thread-panel relative flex h-full min-w-[19rem] max-w-[40rem] shrink-0 flex-col border-l border-[color:var(--app-divider)] bg-[color:var(--app-main-bg)]" style={{ width }} aria-label="Message discussion">
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize thread panel"
+        aria-label="Resize discussion panel"
         aria-valuemin={304}
         aria-valuemax={640}
         aria-valuenow={Math.round(width)}
@@ -220,12 +220,12 @@ export function ChatThreadPanel({
       <header className="app-page-header app-chat-pane-header relative flex shrink-0 items-start gap-3">
         <div className="min-w-0 flex-1">
           <div className="app-page-header-title-row app-chat-pane-title-row flex items-center">
-            <h2 className="truncate text-[17px] font-semibold text-[color:var(--utility-foreground)]">Thread</h2>
+            <h2 className="truncate text-[17px] font-semibold text-[color:var(--utility-foreground)]">Discussion</h2>
           </div>
-          <p className="text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{replyCount} discussed in thread</p>
+          <p className="text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{replyCount} message{replyCount === 1 ? '' : 's'}</p>
         </div>
-        {unreadThreadCount ? <button type="button" onClick={onNextUnread} aria-label="Jump to next unread thread" title="Next unread thread" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full text-[color:var(--app-sidebar-accent)]"><MessagesSquare className="h-4 w-4"/></button>:null}
-        <button type="button" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full" onClick={onClose} aria-label="Close thread">
+        {unreadThreadCount ? <button type="button" onClick={onNextUnread} aria-label="Jump to next unread discussion" title="Next unread discussion" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full text-[color:var(--app-sidebar-accent)]"><MessagesSquare className="h-4 w-4"/></button>:null}
+        <button type="button" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full" onClick={onClose} aria-label="Close discussion">
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </header>
@@ -292,8 +292,8 @@ export function ChatThreadPanel({
                     }}
                     rows={1}
                     className="min-h-6 max-h-40 w-full resize-none bg-transparent text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                    placeholder="Reply in thread…"
-                    aria-label="Reply in thread"
+                    placeholder="Add to discussion…"
+                    aria-label="Add to discussion"
                     aria-autocomplete="list"
                     aria-controls={mentionTargets.length > 0 ? mentionMenuId : undefined}
                     aria-expanded={mentionTargets.length > 0}

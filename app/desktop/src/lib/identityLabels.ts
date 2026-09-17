@@ -31,6 +31,14 @@ export function selfDisplayName(value?: string | null, isSelf = false) {
   return label;
 }
 
+/** Quotes name the real sender, so a self label becomes the viewer's display name. */
+export function quotedSenderLabel(senderLabel?: string | null, selfDisplayName?: string | null) {
+  const label = cleanLabel(senderLabel);
+  if (!label) return 'Message';
+  if (!isSelfReferenceName(label)) return label;
+  return cleanLabel(selfDisplayName) || 'Me';
+}
+
 export function selfObjectLabel(value?: string | null, isSelf = false) {
   const label = cleanLabel(value);
   if (isSelf || isSelfReferenceName(label)) return 'me';

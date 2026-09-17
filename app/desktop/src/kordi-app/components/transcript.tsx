@@ -53,7 +53,7 @@ import { transcriptMessageIsOwnHuman,transcriptMessageIsPeerHuman } from './tran
 import { TranscriptMessageSurface } from './transcriptMessageSurface';
 import { ContactRequestTime,MessageEditedLabel,MessageHoverTime } from './transcriptMessageTime';
 import { MessageDeliveryStatusSlot,TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
-import { RequestReplyLine,SourceMessageQuote,ThreadReplyLine } from './transcriptReplyAttribution';
+import { RequestReplyLine,SourceMessageQuoteRow,ThreadReplyLine } from './transcriptReplyAttribution';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { VoiceMessageContent } from './voiceMessage';
 export { MessageContextMenuContent } from './messageContextMenuContent';
@@ -713,9 +713,6 @@ function MessageBubbleView({
         <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4">{msg.sender}</div>
       ) : null}
       {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
-      {msg.sourceMessage && !isForwardedMessage ? (
-        <div className={cn(hasText || hasAttachments || hasVoice ? 'mb-2' : '')}><SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage || isPeerHumanMessage} onNavigateToMessage={onNavigateToMessage} /></div>
-      ) : null}
       {standaloneEmojiItem ? <StandaloneEmojiMessage item={standaloneEmojiItem} own={isOwnHumanMessage} status={bubbleDeliveryStatus} /> : showCompactFooter ? (
         showInlineCompactFooter ? (
           <div className="leading-[1.45]">
@@ -908,6 +905,7 @@ function MessageBubbleView({
         {forkButton}
         {forkChip}
       </div>
+      {msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} onNavigateToMessage={onNavigateToMessage} className={isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start'} /> : null}
       <MessageReactionChips
         msg={msg}
         onReactMessage={onReactMessage}

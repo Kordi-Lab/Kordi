@@ -5,15 +5,15 @@ for (const role of ['owned-agent','external-agent']) {
     await page.addInitScript(role => Object.assign(window,{fixtureDiscussionRole:role,fixtureThreadReply:true}),role);
     for (let attempt=0;attempt<2;attempt++) {
       await page.goto('/tests/visual/subsessionConversation.html');
-      await page.getByRole('button',{name:'Open thread with 5 discussed in thread',exact:true}).click();
-      const thread = page.getByRole('complementary',{name:'Message thread'});
+      await page.getByRole('button',{name:'Open discussion with 5 messages',exact:true}).click();
+      const thread = page.getByRole('complementary',{name:'Message discussion'});
       const answer = thread.locator('#app-transcript-message-thread-answer');
       await expect(answer).toContainText('THREAD-ANSWER');
       await expect(answer.locator('.app-source-message-quote')).toHaveCount(1);
       await expect(answer.locator('.app-source-message-quote')).toContainText('What are we discussing?');
       await expect(answer).not.toContainText('UNRELATED-REQUEST');
       await expect(thread.locator('#app-transcript-message-thread-question .app-source-message-quote')).toHaveCount(0);
-      await answer.getByTitle('Jump to original request',{exact:true}).click();
+      await answer.locator('.app-source-message-quote').click();
       await expect(thread.locator('#app-transcript-message-thread-question')).toBeVisible();
       if(attempt===0) await page.screenshot({path:testInfo.outputPath('thread-reply-quote.png')});
     }
@@ -39,14 +39,14 @@ test('thread unread updates synchronize between devices without clearing another
   await first.screenshot({path:testInfo.outputPath('thread-unread.png')});
   expect(writes).toEqual([]);
   await first.bringToFront();
-  await first.getByRole('button',{name:'Open thread with 3 discussed in thread, unread replies',exact:true}).click();
-  await expect(first.getByRole('complementary',{name:'Message thread'})).toBeVisible();
+  await first.getByRole('button',{name:'Open discussion with 3 messages, unread messages',exact:true}).click();
+  await expect(first.getByRole('complementary',{name:'Message discussion'})).toBeVisible();
   await expect.poll(() => reads.get('peer')).toBe(4);
   await expect(second.locator('[data-thread-unread="true"]')).toHaveCount(0);
   await expect(peer.locator('[data-thread-unread="true"]')).toHaveCount(1);
   await first.screenshot({path:testInfo.outputPath('thread-open-read.png')});
   await second.reload();
-  await expect(second.getByRole('button',{name:'Open thread with 3 discussed in thread',exact:true})).toBeVisible();
+  await expect(second.getByRole('button',{name:'Open discussion with 3 messages',exact:true})).toBeVisible();
   await expect(second.locator('[data-thread-unread="true"]')).toHaveCount(0);
   await context.close();
 });
@@ -58,11 +58,11 @@ for (const context of ['group', 'contact']) {
         Object.assign(window,{fixtureDiscussionContext:context,fixtureDiscussionRole:role});
       }, {context,role});
       await page.goto('/tests/visual/subsessionConversation.html');
-      const entry = page.getByRole('button',{name:'Open thread with 3 discussed in thread',exact:true});
+      const entry = page.getByRole('button',{name:'Open discussion with 3 messages',exact:true});
       await expect(entry).toBeVisible();
       await expect(page.getByText('Discussion reply 1',{exact:true})).toHaveCount(0);
       await entry.click();
-      const thread = page.getByRole('complementary',{name:'Message thread'});
+      const thread = page.getByRole('complementary',{name:'Message discussion'});
       await expect(thread).toBeVisible();
       for (const index of [1,2,3]) await expect(thread.getByText(`Discussion reply ${index}`,{exact:true})).toBeVisible();
       await expect(thread.getByRole('textbox')).toBeVisible();
@@ -72,7 +72,7 @@ for (const context of ['group', 'contact']) {
         {text:'Continue this discussion',quote:{action:'thread',source:expect.objectContaining({sourceMessageId:'10000000-0000-4000-8000-000000000001'})}},
       ]);
       await expect(thread.getByRole('button',{name:/Open thread with/})).toHaveCount(0);
-      await thread.getByRole('button',{name:'Close thread',exact:true}).click();
+      await thread.getByRole('button',{name:'Close discussion',exact:true}).click();
       await expect(thread).toHaveCount(0);
       await expect(entry).toBeVisible();
       expect(await page.evaluate(() => (window as unknown as {unexpectedParentSends:number}).unexpectedParentSends)).toBe(0);

@@ -43,6 +43,6 @@ test('the final sidebar clears a locally read message before the attention poll 
 test('genuinely unread discussions retain their independent attention total', () => {
   const { conversations, markup } = sidebar(0, 3, 3);
   assert.equal(conversations[0].unread, 3);
-  assert.match(markup, /Jump to next unread thread/);
+  assert.match(markup, /Jump to next unread discussion/);
   assert.match(markup, /data-unread-count="3"/);
 });
