@@ -1516,8 +1516,9 @@ struct ConversationView: View {
                     onPrepareVoiceMessage: { voiceMessage in
                         await model.prepareVoiceMessageForPresentation(voiceMessage)
                     },
-                    onUpdateVoiceTranscript: { voice in
-                        await model.updateVoiceTranscript(voice, message: message)
+                    voiceTranscriptions: model.voiceTranscriptions,
+                    onTranscribeVoiceMessage: {
+                        model.transcribeVoiceMessage(message)
                     },
                     onPrepareAttachment: { attachment in
                         await model.prepareAttachmentForPresentation(attachment)
@@ -2692,6 +2693,8 @@ struct ConversationView: View {
             isSending = false
             return
         }
+        // Voice messages send right away without a transcript. Transcription runs
+        // later, on request or for an agent, and never delays delivery.
         let message = pending.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingMention = resolvedMentionTarget(in: message)
         guard canSendWithCurrentAuthentication(mention: outgoingMention) else {
@@ -2703,13 +2706,9 @@ struct ConversationView: View {
         replySource = nil
         selectedMention = nil
         voiceRecorder = VoiceMessageRecorder()
-        let resolvedVoiceMessage = Task { @MainActor in
-            await sendingRecorder.finishTranscriptionForSend(pending)
-        }
         await model.send(
             message,
             voiceMessage: pending,
-            resolvedVoiceMessage: resolvedVoiceMessage,
             replyingTo: outgoingReply,
             mentioning: outgoingMention,
             messageAction: scopedThreadMessageAction,
@@ -2723,6 +2722,8 @@ struct ConversationView: View {
                 isSending = false
             }
         )
+        // The outgoing message keeps its own copy of the audio for upload and retry.
+        sendingRecorder.cancel()
     }
 
     private func canPresentPhotoPicker() -> Bool {

@@ -859,10 +859,21 @@ struct VoiceRecordingComposer: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
         case .idle, .ready:
-            Text("Ready to send")
+            if recorder.pendingMessage == nil {
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .controlSize(.mini)
+                    Text("Preparing…")
+                }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            } else {
+                Text("Ready to send")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
         }
     }
 
@@ -993,7 +1004,9 @@ struct VoiceMessageBubbleContent: View {
     var deliveryState: MessageDeliveryState? = nil
     var readByCount: Int? = nil
     var deliveryTint: Color? = nil
-    var onUpdateTranscript: ((VoiceMessage) async -> Bool)? = nil
+    var transcriptions: VoiceTranscriptionJobs? = nil
+    var isSender = false
+    var onTranscribe: () -> Void = {}
     var onExpansionChange: (Bool) -> Void = { _ in }
 
     @State private var playback = VoiceMessagePlayback()
@@ -1077,13 +1090,19 @@ struct VoiceMessageBubbleContent: View {
                         Button {
                             toggleTranscript()
                         } label: {
-                            Image(systemName: "text.bubble")
-                                .font(.caption2)
-                                .frame(width: 24, height: 24)
+                            Group {
+                                if transcriptState == .transcribing {
+                                    ProgressView().controlSize(.mini)
+                                } else {
+                                    Image(systemName: "text.bubble")
+                                        .font(.caption2)
+                                }
+                            }
+                            .frame(width: 24, height: 24)
                         }
                         .buttonStyle(.plain)
                         .contentShape(Rectangle().inset(by: -8))
-                        .accessibilityLabel(showsTranscript ? "Hide voice transcript" : "Show voice transcript")
+                        .accessibilityLabel(transcriptButtonLabel)
                         .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
 
                         if reservesDeliveryStatus {
@@ -1100,7 +1119,7 @@ struct VoiceMessageBubbleContent: View {
             }
             .transaction { $0.animation = nil }
 
-            VoiceTranscriptDetails(voice: voiceMessage, onPrepare: onPrepare, onUpdate: onUpdateTranscript)
+            VoiceTranscriptDetails(state: transcriptState, onTranscribe: onTranscribe)
                 .frame(height: showsTranscript ? nil : 0, alignment: .top)
                 .clipped()
                 .opacity(showsTranscript ? 1 : 0)
@@ -1114,8 +1133,28 @@ struct VoiceMessageBubbleContent: View {
         .onDisappear { if showsTranscript { onExpansionChange(false) } }
     }
 
+    private var transcriptState: VoiceTranscriptState {
+        transcriptions?.state(for: voiceMessage, isSender: isSender)
+            ?? voiceMessage.spokenText.nonEmpty.map(VoiceTranscriptState.ready)
+            ?? .failed(canRetry: false)
+    }
+
+    private var transcriptButtonLabel: String {
+        switch transcriptState {
+        case .ready: showsTranscript ? "Hide voice transcript" : "Show voice transcript"
+        case .notTranscribed: "Transcribe voice message"
+        case .transcribing: "Transcribing voice message"
+        case .failed(let canRetry): canRetry ? "Transcribe voice message again" : "Transcription failed"
+        }
+    }
+
     private func toggleTranscript() {
         let expanded = !showsTranscript
+        // Tapping an untranscribed message is the transcribe action. A running job
+        // only shows its progress; the store never starts a duplicate.
+        if expanded, transcriptState == .notTranscribed {
+            onTranscribe()
+        }
         if expanded { onExpansionChange(true) }
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16), completionCriteria: .logicallyComplete) {
             showsTranscript = expanded
