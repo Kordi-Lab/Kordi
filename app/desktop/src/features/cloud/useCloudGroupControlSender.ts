@@ -132,6 +132,20 @@ export function useCloudGroupControlSender({
       return;
     }
     const canonicalRecipientId = targetAccountIds[0];
+    const claimFallbackAfterPreparation = (
+      sent: readonly CloudMessage[],
+      requestMessageId: string,
+      token: string,
+    ) => {
+      const prepare = input.beforeFallbackClaim;
+      if (!prepare) return claimFreshFallback(sent, requestMessageId, token);
+      // Preparation may wait for transcription; later sends in this conversation must not wait with it.
+      void prepare(sent)
+        .catch((error) => reportWarning('[cloud-group] agent request preparation failed', error))
+        .then(() => claimFreshFallback(sent, requestMessageId, token))
+        .catch((error) => reportWarning('[cloud-group] fallback claim failed', error));
+      return Promise.resolve();
+    };
     const groupTitle = cloudGroupTitleForOutgoingControl({
       kind: input.kind,
       groupTitle: input.groupTitle,
@@ -294,11 +308,7 @@ export function useCloudGroupControlSender({
       }
       if (sentAny) {
         await Promise.all([
-          claimFreshFallback(
-            sentMessages,
-            canonicalMessageId,
-            session.token,
-          ),
+          claimFallbackAfterPreparation(sentMessages, canonicalMessageId, session.token),
           syncDiff().catch(() => {}),
         ]);
       }
@@ -344,11 +354,7 @@ export function useCloudGroupControlSender({
     if (sent.length > 0) {
       if (input.kind === 'group-message' && canonicalMessageId) {
         await Promise.all([
-          claimFreshFallback(
-            sent,
-            canonicalMessageId,
-            session.token,
-          ),
+          claimFallbackAfterPreparation(sent, canonicalMessageId, session.token),
           syncDiff(),
         ]);
         return;

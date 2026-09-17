@@ -117,7 +117,7 @@ function MessageFooter({
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
-  if (!isUser && !showDetail && !replySummary && !message.editedAt) return null;
+  if (!isUser && !showDetail && !replySummary && !(message.editedAt && !message.voiceMessage)) return null;
 
   return (
     <div className={cn(
@@ -733,7 +733,7 @@ function MessageBubbleView({
         ) : (
           <>
             <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>
-              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} retryTarget={isOwnHumanMessage && msg.reactionConversationId && msg.reactionTargetMessageId && msg.cloudMessageVersion ? { conversationId: msg.reactionConversationId, messageId: msg.reactionTargetMessageId, version: msg.cloudMessageVersion } : undefined} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
+              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} ownMessage={isOwnHumanMessage ? msg : undefined} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
               {hasAttachments && !hasDetachedImageGroup ? (
                 <AttachmentPreview
                   msg={msg}

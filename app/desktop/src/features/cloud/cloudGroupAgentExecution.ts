@@ -57,6 +57,7 @@ import {
   mergeCloudSessionActivity,
 } from './cloudSessionActivity';
 import { loadSession } from './session';
+import { waitForVoiceTranscriptForAgent } from './cloudVoiceAgentGate';
 
 export async function respondToCloudGroupAgentMention(
   input: ApplyCloudGroupAgentControlInput,
@@ -79,6 +80,15 @@ export async function respondToCloudGroupAgentMention(
     participantByAccount,
   } = context;
   const message = envelope.message!;
+  // A voice request sent without transcription waits (bounded) for the sender's transcript.
+  const requestVoice = await waitForVoiceTranscriptForAgent({
+    latestVoice: () => runtime.messageIndex().groupRows.find((row) => (
+      row.envelope.groupId === envelope.groupId && row.envelope.message?.id === message.id
+    ))?.wire.voiceMessage ?? cloudMessage.voiceMessage,
+    createdAt: cloudMessage.createdAt,
+    signal,
+  });
+  throwIfCloudAgentTurnAborted(signal);
   const threadMessageAction = message.messageAction?.kind === 'thread'
     ? message.messageAction
     : cloudGroupAgentReplyThreadAction(groupRows, envelope.groupId, message.id, account.accountId);
@@ -132,7 +142,7 @@ export async function respondToCloudGroupAgentMention(
   const lease = await acquireDesktopExecutionLease(runtime.client, session.token, {
     requestMessageId: cloudMessage.messageId, sessionId: envelope.groupId,
     ownerAccountId: account.accountId, requesterAccountId: message.senderAccountId,
-    prompt: promptTextForCloudAgentMention(message.text, cloudMessage.voiceMessage),
+    prompt: promptTextForCloudAgentMention(message.text, requestVoice),
     idempotencyKey: `shared:${message.id}:${account.accountId}`,
     runtimeRoute: requestedRoute ? { defaultModel: requestedRoute.model, defaultAuthProvider: requestedRoute.authProvider, defaultAuthChoice: requestedRoute.authChoice, thinking: requestedRoute.thinking } : undefined,
   });
@@ -178,7 +188,7 @@ export async function respondToCloudGroupAgentMention(
     startedTurn = await startDesktopSharedChatMessage(
       message.id,
       cloudGroupAgentRequestRuntimeSessionId(runtimeSessionId, message.id),
-      promptTextForCloudAgentMention(message.text, cloudMessage.voiceMessage),
+      promptTextForCloudAgentMention(message.text, requestVoice),
       mappedAttachments
         .map((attachment) => attachment.localPath?.trim() || '')
         .filter(Boolean),

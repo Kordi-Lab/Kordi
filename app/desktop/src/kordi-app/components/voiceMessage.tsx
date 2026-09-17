@@ -1,9 +1,13 @@
 export { VoiceRecordingRail } from './voiceRecordingRail';
 import { formatVoiceDuration, localVoiceSource } from './voiceAudioSource';
 import { VoiceWaveform } from './voiceWaveform';
-import { VoiceTranscriptRetry, type VoiceTranscriptRetryTarget } from './voiceTranscriptRetry';
-import { voiceTranscript, voiceTranscriptionLabel } from '@/features/chat/voiceTranscription';
-import { FileText, LoaderCircle, Pause, Play, RotateCcw } from 'lucide-react';
+import {
+  useVoiceTranscriptState,
+  voiceTranscriptPersistTarget,
+  voiceTranscriptTriggerLabel,
+  type VoiceTranscriptOwnMessage,
+} from './voiceTranscriptAction';
+import { FileText, LoaderCircle, Pause, Play } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -17,8 +21,9 @@ import { pauseDesktopVoiceMessage, playDesktopVoiceMessage, seekDesktopVoiceMess
 const VOICE_PLAY_EVENT = 'kordi:voice-message-play';
 const MIN_PLAYABLE_VOICE_BYTES = 1_024;
 
-export function VoiceMessageContent({ voice, footer, retryTarget }: {
-  retryTarget?: VoiceTranscriptRetryTarget;
+export function VoiceMessageContent({ voice, footer, ownMessage }: {
+  /** Present only for the sender's own message; recipients transcribe for this device. */
+  ownMessage?: VoiceTranscriptOwnMessage;
   voice: MessageVoice;
   footer?: ReactNode;
 }) {
@@ -33,16 +38,35 @@ export function VoiceMessageContent({ voice, footer, retryTarget }: {
   const [loading, setLoading] = useState(false);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [showsTranscript, setShowsTranscript] = useState(false);
+  const [transcriptOpened, setTranscriptOpened] = useState(false);
   const [showsFullTranscript, setShowsFullTranscript] = useState(false);
-  const hasTranscript = Boolean(
-    voiceTranscript(voice),
-  );
+  const transcription = useVoiceTranscriptState({
+    voice,
+    persistTarget: voiceTranscriptPersistTarget(ownMessage),
+    canTranscribeOnDevice: nativePlayback,
+  });
+  const transcript = transcription.transcript;
+  const hasTranscript = Boolean(transcript);
   const progress = voice.durationMs > 0 ? Math.min(1, elapsedMs / voice.durationMs) : 0;
-  const transcriptIsLong = voice.transcript.length > 320 || voice.transcript.split('\n').length > 5;
+  const transcriptIsLong = transcript.length > 320 || transcript.split('\n').length > 5;
   const visibleTranscript = useMemo(() => (
-    transcriptIsLong && !showsFullTranscript ? `${voice.transcript.slice(0, 300).trimEnd()}…` : voice.transcript
-  ), [showsFullTranscript, transcriptIsLong, voice.transcript]);
+    transcriptIsLong && !showsFullTranscript ? `${transcript.slice(0, 300).trimEnd()}…` : transcript
+  ), [showsFullTranscript, transcriptIsLong, transcript]);
+  const transcriptStatus = transcription.status;
+  // A requested transcription stays open even if this row was re-rendered or virtualized meanwhile.
+  const showsTranscript = transcriptOpened || transcription.reveal;
+  const triggerLabel = voiceTranscriptTriggerLabel(transcriptStatus, showsTranscript);
+
+  function handleTranscriptTrigger() {
+    if (showsTranscript) {
+      transcription.hideReveal();
+      setTranscriptOpened(false);
+      return;
+    }
+    // Without a transcript, the transcript icon is the transcribe action.
+    if (transcriptStatus === 'idle') transcription.transcribe();
+    setTranscriptOpened(true);
+  }
 
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -265,10 +289,10 @@ export function VoiceMessageContent({ voice, footer, retryTarget }: {
               <button
                 type="button"
                 className="app-voice-transcript-trigger"
-                onClick={() => setShowsTranscript((value) => !value)}
-                aria-label={showsTranscript ? 'Hide voice transcript' : 'Show voice transcript'}
+                onClick={handleTranscriptTrigger}
+                aria-label={triggerLabel}
                 aria-expanded={showsTranscript}
-                title={hasTranscript ? 'Transcript' : 'Transcript unavailable'}
+                title={triggerLabel}
               >
                 <FileText className="h-3 w-3" aria-hidden="true" />
               </button>
@@ -288,10 +312,21 @@ export function VoiceMessageContent({ voice, footer, retryTarget }: {
                 </button>
               ) : null}
             </>
-          ) : <div className="app-voice-transcript-unavailable">
-            {voiceTranscriptionLabel(voice)}
-            {retryTarget && nativePlayback ? <VoiceTranscriptRetry key={`${retryTarget.messageId}:${retryTarget.version}:${voice.mediaId}`} voice={voice} target={retryTarget} /> : null}
-          </div>}
+          ) : transcriptStatus === 'running' || transcriptStatus === 'idle' ? (
+            <div className="app-voice-transcript-status" role="status">
+              <LoaderCircle className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              <span>Transcribing…</span>
+            </div>
+          ) : (
+            <div className="app-voice-transcript-unavailable" role="status">
+              <span>{transcription.note}</span>
+              {transcription.canRetry ? (
+                <button type="button" className="app-voice-transcript-toggle" onClick={transcription.transcribe}>
+                  Try again
+                </button>
+              ) : null}
+            </div>
+          )}
         </div>
       ) : null}
     </div>

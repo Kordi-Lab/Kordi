@@ -35,25 +35,24 @@ test('transcription metadata survives upload binding and round trip without loca
   assert.ok(!JSON.stringify(content).includes('localPath'));
 });
 
-test('recorder retains failure for bounded retry, deduplicates success, and ignores cancelled results', async () => {
+test('recorder finalizes a pending recording without transcription, caches a trimmed export, and ignores cancelled stops', async () => {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   const values = { window: dom.window, document: dom.window.document,
     IS_REACT_ACT_ENVIRONMENT: true, __TAURI_INTERNALS__: {} };
   const previous = new Map(Object.keys(values).map(k => [k, Object.getOwnPropertyDescriptor(globalThis, k)]));
   for (const [key, value] of Object.entries(values)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
-  let outcome: 'permission' | 'ready' | 'deferred' = 'permission';
-  let calls = 0;
-  let resolveSpeech: ((value: string) => void) | undefined;
+  let speechCalls = 0;
+  let trims = 0;
+  let resolveStop: ((value: unknown) => void) | undefined;
+  let deferStop = false;
   mockIPC(command => {
     if (command === 'desktop_voice_record_start') return 'recording';
-    if (command === 'desktop_voice_record_stop') return { path: '/synthetic/audio.m4a', durationMs: 2_000, sizeBytes: 2048 };
-    if (command === 'desktop_voice_trim') return '/synthetic/trim.m4a';
-    if (command === 'desktop_voice_transcribe') {
-      calls += 1;
-      if (outcome === 'permission') throw new Error('Allow Kordi to use Speech Recognition.');
-      if (outcome === 'deferred') return new Promise<string>(resolve => { resolveSpeech = resolve; });
-      return 'Meet at noon.';
+    if (command === 'desktop_voice_record_stop') {
+      const stopped = { path: '/synthetic/audio.m4a', durationMs: 2_000, sizeBytes: 2048 };
+      return deferStop ? new Promise(resolve => { resolveStop = () => resolve(stopped); }) : stopped;
     }
+    if (command === 'desktop_voice_trim') { trims += 1; return '/synthetic/trim.m4a'; }
+    if (command === 'desktop_voice_transcribe') { speechCalls += 1; return 'Must not run.'; }
     return undefined;
   });
   const root = createRoot(document.getElementById('root')!);
@@ -61,41 +60,39 @@ test('recorder retains failure for bounded retry, deduplicates success, and igno
   function Probe() { recorder = useVoiceMessageRecorder(); return null; }
   try {
     await act(async () => root.render(createElement(Probe)));
-    await act(async () => { await recorder.start(); await recorder.stop(); });
+    let stopped!: Awaited<ReturnType<typeof recorder.stop>>;
+    await act(async () => { await recorder.start(); stopped = await recorder.stop(); });
     assert.equal(recorder.state.phase, 'review');
-    assert.equal(recorder.state.transcript, '');
-    assert.equal(recorder.state.attachment?.voiceMessage?.transcription?.status, 'unavailable');
+    assert.equal(stopped?.id, recorder.state.attachment?.id);
+    assert.equal(stopped?.voiceMessage?.transcript, '');
+    assert.equal(stopped?.voiceMessage?.transcription?.status, 'pending');
+    assert.equal(stopped?.voiceMessage?.transcription?.attempts, 0);
     const original = recorder.state.attachment;
-    outcome = 'ready';
     await act(async () => { await Promise.all([recorder.prepareForSend(), recorder.prepareForSend()]); });
-    assert.equal(calls, 2);
-    assert.equal(recorder.state.attachment?.id, original?.id);
-    assert.equal(recorder.state.attachment?.voiceMessage?.transcription?.sourceVersion, original?.voiceMessage?.transcription?.sourceVersion);
-    await act(async () => { await recorder.prepareForSend(); });
-    assert.equal(calls, 2, 'send retries reuse successful transcription');
+    assert.equal(recorder.state.attachment, original, 'an untrimmed recording is sent as recorded');
     await act(async () => recorder.setTrimRange(500, 1500));
-    await act(async () => { await recorder.prepareForSend(); });
-    assert.equal(calls, 3);
+    let trimmed!: Awaited<ReturnType<typeof recorder.prepareForSend>>;
+    await act(async () => { trimmed = await recorder.prepareForSend(); });
+    assert.equal(trims, 1);
     assert.equal(recorder.state.durationMs, 1000);
-    assert.notEqual(recorder.state.attachment?.voiceMessage?.transcription?.sourceVersion, original?.voiceMessage?.transcription?.sourceVersion);
+    assert.equal(trimmed?.path, '/synthetic/trim.m4a');
+    assert.equal(trimmed?.voiceMessage?.transcription?.status, 'pending');
+    assert.notEqual(trimmed?.voiceMessage?.transcription?.sourceVersion, original?.voiceMessage?.transcription?.sourceVersion);
     await act(async () => { await recorder.prepareForSend(); });
-    assert.equal(calls, 3, 'the prepared trim is cached across send retries');
+    assert.equal(trims, 1, 'the trimmed export is reused across send retries');
     await act(async () => recorder.reset());
-    outcome = 'deferred';
+
+    deferStop = true;
     await act(async () => { await recorder.start(); });
     let pending!: ReturnType<typeof recorder.stop>;
     await act(async () => { pending = recorder.stop(); await new Promise(resolve => setTimeout(resolve, 10)); });
-    assert.ok(resolveSpeech);
-    await act(async () => { recorder.reset(); resolveSpeech!('Late speech'); await pending; });
+    assert.ok(resolveStop);
+    let late: Awaited<typeof pending> | undefined;
+    await act(async () => { recorder.reset(); resolveStop!(undefined); late = await pending; });
+    assert.equal(late, null, 'a cancelled recording is never handed off');
     assert.equal(recorder.state.phase, 'idle');
     assert.equal(recorder.state.attachment, null);
-    outcome = 'permission';
-    await act(async () => { await recorder.start(); await recorder.stop(); });
-    await act(async () => { await recorder.prepareForSend(); await recorder.prepareForSend(); });
-    const boundedCalls = calls;
-    await act(async () => { await recorder.prepareForSend(); });
-    assert.equal(calls, boundedCalls);
-    assert.equal(recorder.state.attachment?.voiceMessage?.transcription?.attempts, 3);
+    assert.equal(speechCalls, 0, 'recording never runs speech recognition');
   } finally {
     await act(async () => root.unmount());
     clearMocks();

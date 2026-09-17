@@ -5,7 +5,6 @@ import {
   downsampleVoiceWaveform,
   displayVoiceWaveform,
   trimVoiceWaveform,
-  voiceGestureIntent,
 } from '../src/features/chat/useVoiceMessageRecorder';
 import { voiceMessageDraftFromAttachments } from '../src/features/chat/messageActions/optimistic';
 import { chatTextContent } from '../src/features/cloud/chatSyncMapping';
@@ -86,10 +85,7 @@ test('voice waveform and portable draft stay bounded and omit local paths', () =
   }]), voiceDraft);
 });
 
-test('macOS voice gestures release to send and swipe up to cancel', () => {
-  assert.equal(voiceGestureIntent(-20), 'hold');
-  assert.equal(voiceGestureIntent(-64), 'cancel');
-  assert.equal(voiceGestureIntent(-100), 'cancel');
+test('trimmed voice waveforms keep only the selected range', () => {
   assert.deepEqual(trimVoiceWaveform([0.1, 0.2, 0.8, 1], 4_000, 1_000, 3_000), [0.2, 0.8]);
 });
 

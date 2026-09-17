@@ -1,13 +1,22 @@
-import { ArrowUp, Mic, Send, X } from 'lucide-react';
+import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { VoiceRecordingRail } from '@/kordi-app/components/voiceMessage';
-import { cn } from '@/lib/utils';
-import {
-  formatVoiceRecordingDuration,
-  type VoiceComposerController,
-} from './chatsPage.voiceComposer';
+import type { VoiceComposerController } from './chatsPage.voiceComposer';
 
+function VoiceMessageIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+      strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9.25" />
+      <circle cx="9.25" cy="12" r="1.1" fill="currentColor" stroke="none" />
+      <path d="M11.34 9.51a3.25 3.25 0 0 1 0 4.98" />
+      <path d="M13.11 7.4a6 6 0 0 1 0 9.2" />
+    </svg>
+  );
+}
+
+/** Idle: voice icon beside the send button. Active: the voice draft pill takes their place. */
 export function VoiceComposerControls({
   voice,
   hasSendableDraft,
@@ -20,89 +29,38 @@ export function VoiceComposerControls({
   onSend: () => void;
 }) {
   const recorder = voice.recorder;
-  if (voice.surfaceActive) return null;
+  if (voice.surfaceActive) {
+    return (
+      <VoiceRecordingRail
+        state={recorder.state}
+        onCancel={recorder.reset}
+        onSend={() => { void (voice.recording ? voice.finishAndSend() : voice.sendPrepared()); }}
+        onRetry={() => { void recorder.start(); }}
+        onTrimRange={recorder.setTrimRange}
+      />
+    );
+  }
   return (
-    <>
-      {voice.recording && !recorder.state.locked ? (
-        <span
-          className={cn(
-            'app-voice-swipe-notice',
-            voice.cancelArmed && 'app-voice-cancel-armed',
-          )}
-          role="status"
-          aria-live="polite"
-        >
-          <ArrowUp className="h-3 w-3" aria-hidden="true" />
-          {voice.cancelArmed ? 'Release to cancel' : 'Swipe up to cancel'}
-        </span>
-      ) : null}
-      {voice.recording ? (
-        <span className={cn(
-          'app-voice-button-duration tabular-nums',
-          voice.cancelArmed && 'app-voice-cancel-armed',
-        )} aria-live="off">
-          {formatVoiceRecordingDuration(recorder.state.durationMs)}
-        </span>
-      ) : null}
-      {voice.recording && recorder.state.locked ? (
-        <Button className="app-button-quiet h-10 w-10 shrink-0 rounded-full p-0" onClick={recorder.reset}
-          aria-label="Cancel voice recording" title="Cancel recording">
-          <X className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      ) : null}
-      {!voice.surfaceActive ? (
-        <Button
-          className={cn(
-            'app-composer-send h-10 w-10 shrink-0 rounded-full p-0',
-            voice.recording && 'app-composer-voice-recording-button',
-            voice.cancelArmed && 'app-voice-cancel-armed',
-          )}
-          onPointerDown={!hasSendableDraft && recorder.state.phase === 'idle'
-            ? voice.beginGesture
-            : undefined}
-          onContextMenu={!hasSendableDraft ? (event) => event.preventDefault() : undefined}
-          onKeyDown={(event) => {
-            if (voice.recording && event.key === 'Escape') {
-              event.preventDefault();
-              recorder.reset();
-            }
-          }}
-          onClick={() => {
-            if (!hasSendableDraft) {
-              if (voice.suppressClickRef.current) return;
-              if (voice.recording && recorder.state.locked) void voice.finishAndSend();
-              else if (!voice.recording) void recorder.start();
-              return;
-            }
-            onSend();
-          }}
-          data-composer-send={hasSendableDraft ? 'true' : undefined}
-          title={!hasSendableDraft
-            ? voice.recording ? 'Click to stop and send' : 'Click to record, or hold and release to send'
-            : activeLiveTurnIsRunning
-              ? 'Queue message for this session'
-              : 'Send message'}
-          aria-label={!hasSendableDraft ? voice.recording ? 'Stop and send voice message' : 'Record voice message' : 'Send message'}
-        >
-          {!hasSendableDraft ? <Mic className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-        </Button>
-      ) : null}
-    </>
-  );
-}
-
-export function VoiceRecordingSurface({ voice }: { voice: VoiceComposerController }) {
-  const recorder = voice.recorder;
-  return (
-    <VoiceRecordingRail
-      state={recorder.state}
-      onCancel={recorder.reset}
-      onSend={() => { void (voice.recording ? voice.finishAndSend() : voice.sendPrepared()); }}
-      onRetry={() => {
-        if (recorder.state.attachment) void recorder.prepareForSend();
-        else void recorder.start();
-      }}
-      onTrimRange={recorder.setTrimRange}
-    />
+    <div className="app-voice-composer-actions flex h-10 shrink-0 items-center gap-2 pr-1">
+      <button
+        type="button"
+        className="app-button-quiet app-icon-button grid h-9 w-9 shrink-0 place-items-center rounded-full border-0 p-0"
+        onClick={() => { void recorder.start(); }}
+        title="Record a voice message"
+        aria-label="Record voice message"
+      >
+        <VoiceMessageIcon className="h-5 w-5" />
+      </button>
+      <Button
+        className="app-composer-send app-composer-send-compact h-8 w-8 shrink-0 rounded-full p-0"
+        onClick={onSend}
+        disabled={!hasSendableDraft}
+        data-composer-send={hasSendableDraft ? 'true' : undefined}
+        title={activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
+        aria-label="Send message"
+      >
+        <Send className="h-[15px] w-[15px]" />
+      </Button>
+    </div>
   );
 }
