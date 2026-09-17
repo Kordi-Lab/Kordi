@@ -709,6 +709,7 @@ export function useChatMessageActions({
         const deliveryWrite = markDelivered(preparedCanonicalMessage);
         if (setSendingState) setIsDesktopChatSending(false);
         void (async () => {
+          let turnStarted = false;
           try {
             const agentVoice = await transcribeAgentVoiceAttachments(attachments, agentVoiceTranscription);
             await deliveryWrite;
@@ -721,9 +722,16 @@ export function useChatMessageActions({
               );
               dispatchedCanonicalMessage = transcribedMessage;
               setCanonicalSessionState((current) => replaceOptimisticCanonicalMessageContent(current, transcribedMessage));
-              if (transcribedMessage) await upsertCanonicalMessageFast(transcribedMessage.request);
+              if (transcribedMessage) {
+                // Storing the transcript only updates what is displayed; the agent receives the words directly.
+                await upsertCanonicalMessageFast(transcribedMessage.request).catch((error: unknown) => {
+                  setDesktopChatError(error instanceof Error ? error.message : 'Unable to save the voice transcript');
+                });
+              }
             }
             watchAgentTurn(await startAgentTurn(dispatchedCanonicalMessage, agentVoice.attachments), dispatchedCanonicalMessage);
+            // From here the turn watcher releases the session and flushes its queue when the turn ends.
+            turnStarted = true;
           } catch (error) {
             if (localChatSendInFlightRef.current?.sessionId === targetConversationId) {
               localChatSendInFlightRef.current = null;
@@ -743,6 +751,9 @@ export function useChatMessageActions({
               return;
             }
             setDesktopChatError(error instanceof Error ? error.message : 'Unable to start the agent for this voice message');
+          } finally {
+            // Messages sent while this voice request waited were queued behind it; never strand them.
+            if (!turnStarted) flushQueuedDesktopMessagesForSessionRef.current(targetConversationId);
           }
         })();
         return;

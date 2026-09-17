@@ -9,7 +9,9 @@ import type { UseChatMessageActionsArgs } from '../src/features/chat/messageActi
 import type { AttachmentItem } from '../src/features/chat/composerController.types';
 import { resetVoiceTranscriptionJobsForTests } from '../src/features/chat/voiceTranscriptionJobs';
 import { setCloudVoiceTranscriptClientForTests, type VoiceTranscriptClient } from '../src/features/cloud/cloudVoiceTranscriptPersistence';
-import { voiceForAgentExecution, waitForVoiceTranscriptForAgent, VOICE_AGENT_TRANSCRIPT_WAIT_MS } from '../src/features/cloud/cloudVoiceAgentGate';
+import { voiceForAgentExecution, voiceReadyForStoredPrompt, waitForVoiceTranscriptForAgent, VOICE_AGENT_TRANSCRIPT_WAIT_MS } from '../src/features/cloud/cloudVoiceAgentGate';
+import { persistSentAgentVoiceTranscript } from '../src/features/chat/messageActions/voiceAgentTranscription';
+import { useCloudDirectAgentFallback } from '../src/features/cloud/useCloudDirectAgentFallback';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import { useCloudDirectAgentExecution } from '../src/features/cloud/useCloudDirectAgentExecution';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
@@ -189,20 +191,41 @@ test('a voice message in a human chat sends without any speech recognition', asy
   });
 });
 
-test('a local agent voice message is delivered once, never returns to sending, and the turn starts with the transcript', async () => {
+type LocalAgentContext = {
+  sessionId: string;
+  actions: () => ReturnType<typeof useChatMessageActions>;
+  speech: SpeechControl;
+  statuses: string[];
+  writes: { command: string; status: string; transcript: string }[];
+  turnStarts: string[];
+  errors: (string | null)[];
+  inFlight: { current: { sessionId: string | null } | null };
+  canonical: () => CanonicalSessionState;
+  settle: () => Promise<void>;
+};
+
+async function withLocalAgentHarness(
+  options: { failTranscriptWrite?: boolean; failFirstTurnStart?: boolean },
+  run: (context: LocalAgentContext) => Promise<void>,
+) {
   const sessionId = 'session:local-voice-agent';
-  const writes: { command: string; status: string; transcript: string }[] = [];
+  const writes: LocalAgentContext['writes'] = [];
   const turnStarts: string[] = [];
+  let turnAttempts = 0;
   await withSendHarness((command, payload) => {
     if (command === 'desktop_chat_session_active_turn') return null;
     if (command === 'desktop_canonical_append_message_fast' || command === 'desktop_canonical_upsert_message_fast') {
       const request = payload.request as { id: string; sessionId: string; status: string; content: { voiceMessage?: { transcript: string } } };
-      writes.push({ command, status: request.status, transcript: request.content.voiceMessage?.transcript ?? '' });
+      const transcript = request.content.voiceMessage?.transcript ?? '';
+      writes.push({ command, status: request.status, transcript });
+      if (options.failTranscriptWrite && transcript) throw new Error('Synthetic local store failure');
       return { ...request, sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1 };
     }
     if (command === 'desktop_chat_start_message') {
+      turnAttempts += 1;
+      if (options.failFirstTurnStart && turnAttempts === 1) throw new Error('Synthetic agent start failure');
       turnStarts.push(String(payload.text));
-      return { id: 'turn-voice', sessionId, prompt: String(payload.text), status: 'running', message: '', assistantText: '',
+      return { id: `turn-${turnAttempts}`, sessionId, prompt: String(payload.text), status: 'running', message: '', assistantText: '',
         thinkingText: '', tools: [], completed: false, succeeded: false, startedAtMs: Date.now() };
     }
     return undefined;
@@ -212,6 +235,7 @@ test('a local agent voice message is delivered once, never returns to sending, a
       sessions: [{ id: sessionId, kind: 'self-agent', title: 'Voice agent', status: 'active', updatedAtMs: 1 }], messages: [],
     } as unknown as CanonicalSessionState;
     const statuses: string[] = [];
+    const errors: (string | null)[] = [];
     const inFlight = { current: null as { sessionId: string | null } | null };
     const args = {
       ...cloudArgs('person', async () => assert.fail('A local agent send never reaches Cloud.')),
@@ -222,6 +246,7 @@ test('a local agent voice message is delivered once, never returns to sending, a
         sessions: [], projects: [] },
       localChatSendInFlightRef: inFlight,
       watchDesktopLiveTurn: () => new Promise<void>(() => {}),
+      setDesktopChatError: (error: string | null) => { errors.push(error); },
       setCanonicalSessionState: (update: CanonicalSessionState | ((current: CanonicalSessionState | null) => CanonicalSessionState | null)) => {
         canonical = (typeof update === 'function' ? update(canonical) : update) ?? canonical;
         const status = canonical.messages.find(message => message.sessionId === sessionId)?.status;
@@ -231,12 +256,27 @@ test('a local agent voice message is delivered once, never returns to sending, a
     let actions!: ReturnType<typeof useChatMessageActions>;
     function Harness() { actions = useChatMessageActions(args); return null; }
     await act(async () => root.render(<Harness />));
-    await act(async () => {
-      await actions.handleSendChatMessage('Voice message', undefined, [], [voiceAttachment('/synthetic/local-agent.m4a')]);
-      await new Promise(done => setTimeout(done, 20));
+    await run({
+      sessionId, actions: () => actions, speech, statuses, writes, turnStarts, errors, inFlight,
+      canonical: () => canonical,
+      settle: () => act(async () => { await new Promise(done => setTimeout(done, 20)); }),
     });
+  });
+}
+
+async function sendLocalVoice(context: LocalAgentContext, path: string) {
+  await act(async () => {
+    await context.actions().handleSendChatMessage('Voice message', undefined, [], [voiceAttachment(path)]);
+    await new Promise(done => setTimeout(done, 20));
+  });
+  await context.speech.requested(1);
+}
+
+test('a local agent voice message is delivered once, never returns to sending, and the turn starts with the transcript', async () => {
+  await withLocalAgentHarness({}, async (context) => {
+    const { speech, statuses, writes, turnStarts, inFlight, sessionId } = context;
+    await sendLocalVoice(context, '/synthetic/local-agent.m4a');
     assert.deepEqual(statuses, ['sending', 'sent'], 'delivery completes before transcription finishes');
-    await speech.requested(1);
     assert.deepEqual(speech.calls, ['/synthetic/local-agent.m4a']);
     assert.deepEqual(turnStarts, [], 'the agent turn waits for the words');
     assert.deepEqual(inFlight.current, { sessionId }, 'later messages to this agent queue behind the voice request');
@@ -246,13 +286,45 @@ test('a local agent voice message is delivered once, never returns to sending, a
     assert.match(turnStarts[0], /audio was not provided/);
     assert.match(turnStarts[0], /Open the release notes\.$/);
     assert.deepEqual(statuses, ['sending', 'sent'], 'the transcript update keeps the delivered status');
-    const voiceMessage = canonical.messages[0].content as { voiceMessage: { transcript: string; transcription: VoiceTranscription } };
+    const voiceMessage = context.canonical().messages[0].content as { voiceMessage: { transcript: string; transcription: VoiceTranscription } };
     assert.equal(voiceMessage.voiceMessage.transcript, 'Open the release notes.');
     assert.equal(voiceMessage.voiceMessage.transcription.status, 'ready');
     const firstSent = writes.findIndex(write => write.status === 'sent');
     assert.ok(firstSent > 0);
     assert.ok(writes.slice(firstSent).every(write => write.status === 'sent'), `stored status never returns to sending: ${JSON.stringify(writes)}`);
     assert.equal(writes.at(-1)?.transcript, 'Open the release notes.');
+  });
+});
+
+test('a failed local transcript write is reported but the agent turn still starts with the words', async () => {
+  await withLocalAgentHarness({ failTranscriptWrite: true }, async (context) => {
+    const { speech, turnStarts, writes, errors } = context;
+    await sendLocalVoice(context, '/synthetic/local-store-failure.m4a');
+    await speech.release('Draft the agenda.');
+    await context.settle();
+    assert.ok(writes.some(write => write.transcript === 'Draft the agenda.'), 'the transcript write was attempted');
+    assert.equal(turnStarts.length, 1, 'a display update failure never blocks the agent turn');
+    assert.match(turnStarts[0], /Draft the agenda\.$/);
+    assert.ok(errors.some(error => error?.includes('Synthetic local store failure')), 'the failure is surfaced');
+    assert.ok(!errors.some(error => error?.includes('Unable to start the agent')));
+  });
+});
+
+test('messages queued behind a voice request still send when its agent turn fails to start', async () => {
+  await withLocalAgentHarness({ failFirstTurnStart: true }, async (context) => {
+    const { speech, turnStarts, errors, inFlight } = context;
+    await sendLocalVoice(context, '/synthetic/local-start-failure.m4a');
+    await act(async () => {
+      await context.actions().handleSendChatMessage('Follow-up question', undefined, [], []);
+      await new Promise(done => setTimeout(done, 20));
+    });
+    assert.deepEqual(turnStarts, [], 'the follow-up waits behind the voice request');
+
+    await speech.release('Check the build.');
+    for (let attempt = 0; attempt < 100 && turnStarts.length === 0; attempt += 1) await context.settle();
+    assert.ok(errors.some(error => error?.includes('Synthetic agent start failure')));
+    assert.deepEqual(turnStarts, ['Follow-up question'], 'the queue is flushed after the failed voice turn');
+    assert.deepEqual(inFlight.current, { sessionId: context.sessionId }, 'the flushed follow-up now owns the session');
   });
 });
 
@@ -321,5 +393,55 @@ test('the owner executor does not start an agent turn until the sender stores th
       transcription: { ...voice.transcription!, status: 'ready', attempts: 1, language: 'en-US' } } });
     assert.ok(processed.has('request-voice'), 'message.updated with the transcript releases the request');
     assert.match(turns['request-voice']?.prompt ?? '', /Book the room\.$/);
+  });
+});
+
+test('a direct agent fallback claim waits until the sender has stored the voice transcript', async () => {
+  const pending = { mediaId: 'media-stored', mimeType: 'audio/mp4', durationMs: 2000, waveformSamples: [0.2], transcript: '',
+    transcription: pendingTranscription('media-stored') };
+  const createdAt = new Date(3_000_000).toISOString();
+  assert.equal(voiceReadyForStoredPrompt({ messageId: 'unsettled', voice: pending, createdAt, waitingSinceMs: 3_000_000, nowMs: 3_001_000 }).status, 'waiting');
+  assert.equal(voiceReadyForStoredPrompt({ messageId: 'unsettled', voice: pending, createdAt, waitingSinceMs: 3_000_000,
+    nowMs: 3_000_000 + VOICE_AGENT_TRANSCRIPT_WAIT_MS }).status, 'ready', 'the claim is only delayed for the bounded wait');
+
+  await withSendHarness(() => undefined, async (root) => {
+    const sender: CloudAccount = { accountId: 'sender', displayName: 'Sender', primaryEmail: 'sender@example.test', avatarUrl: null, avatar, nodeId: 'sender', passwordSet: true };
+    const voice: CloudVoiceMessage = { ...pending, mediaId: 'media-fallback', transcription: pendingTranscription('media-fallback') };
+    const request: CloudMessage = { messageId: 'request-fallback', conversationId: 'conversation-fallback', version: 1,
+      fromAccountId: 'sender', toAccountId: 'owner', sessionId: 'session:direct-agent:sender:owner', createdAt: new Date().toISOString(),
+      deliveredAt: null, readAt: null, direction: 'outgoing', voiceMessage: voice,
+      body: encodeCloudDirectMessageEnvelope({ schemaVersion: 1, kind: 'message', text: 'Voice message',
+        targetCloudAgentId: 'cloud_agent_fallback', targetCloudAgentName: 'Owner Agent', targetCloudAgentOwnerAccountId: 'owner' }) };
+    const events: string[] = [];
+    let finishStore: (() => void) | undefined;
+    setCloudVoiceTranscriptClientForTests({ chat: {
+      updateVoiceTranscript: (_token, conversationId, _messageId, _version, mediaId, transcript, transcription) => new Promise(resolve => {
+        finishStore = () => {
+          events.push('stored');
+          resolve({ ...request, conversationId, version: 2, voiceMessage: { ...voice, mediaId, transcript, transcription } });
+        };
+      }),
+      threadPage: async () => { throw new Error('No refresh expected.'); },
+      listHistoryPage: async () => { throw new Error('No refresh expected.'); },
+    } });
+    const args: Parameters<typeof useCloudDirectAgentFallback>[0] = {
+      account: sender, contacts: [], messageIndex: buildCloudMessageIndex(sender.accountId, { owner: [request] }),
+      initialMessagesSettled: true, claimedRunKeysRef: { current: new Set() }, reportWarning: noop, recheckMs: 60_000,
+      claimCloudFallbackRun: async (claim) => { events.push(`claim:${claim.requestMessageId}`); return 'claimed'; },
+    };
+    function Harness() { useCloudDirectAgentFallback(args); return null; }
+    const settle = () => act(async () => { await new Promise(done => setTimeout(done, 20)); });
+    await act(async () => root.render(<Harness />));
+    await settle();
+    assert.deepEqual(events, [], 'no run is claimed while the transcript is still pending');
+
+    const storing = persistSentAgentVoiceTranscript(request, [voiceAttachment('/synthetic/fallback.m4a')],
+      Promise.resolve({ status: 'ready', transcript: 'Call the owner back.', language: 'en-US' }));
+    await settle();
+    assert.ok(finishStore, 'the sender is storing the transcript');
+    assert.deepEqual(events, [], 'the claim still waits while the transcript write is in flight');
+
+    await act(async () => { finishStore!(); await storing; await new Promise(done => setTimeout(done, 20)); });
+    assert.deepEqual(events, ['stored', 'claim:request-fallback'], 'the run is claimed only after the stored prompt has the words');
   });
 });

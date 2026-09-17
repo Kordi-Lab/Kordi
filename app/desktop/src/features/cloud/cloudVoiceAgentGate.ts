@@ -8,6 +8,7 @@ import {
 } from '@/features/chat/voiceTranscriptionJobs';
 
 import type { CloudVoiceMessage } from './cloudAttachmentTypes';
+import { cloudVoiceTranscriptSettled } from './cloudVoiceTranscriptPersistence';
 
 /** How long an agent turn waits for the sender to store a transcript before it proceeds without one. */
 export const VOICE_AGENT_TRANSCRIPT_WAIT_MS = 60_000;
@@ -48,6 +49,32 @@ export function voiceForAgentExecution<T extends AgentVoice>({
   const startedAtMs = Number.isFinite(createdAtMs) ? Math.min(createdAtMs, waitingSinceMs) : waitingSinceMs;
   const retryAtMs = startedAtMs + VOICE_AGENT_TRANSCRIPT_WAIT_MS;
   return nowMs >= retryAtMs ? { status: 'ready', voice } : { status: 'waiting', retryAtMs };
+}
+
+/**
+ * Decides whether a fallback run may be claimed for a voice request. The
+ * server builds that run's prompt from the stored message at claim time, so a
+ * transcript on this device is not enough: the claim waits until the sender's
+ * transcript write has finished, or the bounded wait has passed.
+ */
+export function voiceReadyForStoredPrompt({
+  messageId,
+  voice,
+  createdAt,
+  waitingSinceMs,
+  nowMs = Date.now(),
+}: {
+  messageId: string;
+  voice: AgentVoice | null | undefined;
+  createdAt?: string | null;
+  waitingSinceMs: number;
+  nowMs?: number;
+}): { status: 'ready' } | { status: 'waiting'; retryAtMs: number } {
+  if (!voice || !voiceTranscriptionNotStarted(voice) || cloudVoiceTranscriptSettled(messageId)) return { status: 'ready' };
+  const createdAtMs = Date.parse(createdAt ?? '');
+  const startedAtMs = Number.isFinite(createdAtMs) ? Math.min(createdAtMs, waitingSinceMs) : waitingSinceMs;
+  const retryAtMs = startedAtMs + VOICE_AGENT_TRANSCRIPT_WAIT_MS;
+  return nowMs >= retryAtMs ? { status: 'ready' } : { status: 'waiting', retryAtMs };
 }
 
 /** Remembers when each request was first seen so repeated effect passes share one deadline. */

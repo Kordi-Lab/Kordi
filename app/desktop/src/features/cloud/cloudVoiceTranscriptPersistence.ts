@@ -6,6 +6,8 @@ import {
   type VoiceTranscriptionOutcome,
 } from '@/features/chat/voiceTranscription';
 
+import { useSyncExternalStore } from 'react';
+
 import { defaultCloudAuthClient, type CloudAuthClient, type CloudMessage } from './authClient';
 import { CloudAuthError } from './cloudAuthError';
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
@@ -29,6 +31,43 @@ let sharedClient: CloudAuthClient | null = null;
 let clientOverride: VoiceTranscriptClient | null = null;
 const inFlight = new Map<string, Promise<CloudMessage | null>>();
 
+/**
+ * Messages whose sender-side transcript write has finished (stored or failed).
+ * Server-built agent prompts read the stored message, so fallback claims wait for this.
+ */
+const MAX_SETTLED_MESSAGES = 512;
+const settledMessageIds = new Set<string>();
+const settledListeners = new Set<() => void>();
+let settledVersion = 0;
+
+export function markCloudVoiceTranscriptSettled(messageId: string | null | undefined) {
+  const id = messageId?.trim();
+  if (!id || settledMessageIds.has(id)) return;
+  settledMessageIds.add(id);
+  for (const oldest of settledMessageIds) {
+    if (settledMessageIds.size <= MAX_SETTLED_MESSAGES) break;
+    settledMessageIds.delete(oldest);
+  }
+  settledVersion += 1;
+  for (const listener of [...settledListeners]) listener();
+}
+
+export function cloudVoiceTranscriptSettled(messageId: string) {
+  return settledMessageIds.has(messageId);
+}
+
+function subscribeSettled(listener: () => void) {
+  settledListeners.add(listener);
+  return () => { settledListeners.delete(listener); };
+}
+
+const settledSnapshot = () => settledVersion;
+
+/** Re-renders when a sender-side transcript write finishes. */
+export function useCloudVoiceTranscriptSettledVersion() {
+  return useSyncExternalStore(subscribeSettled, settledSnapshot, settledSnapshot);
+}
+
 function voiceTranscriptClient(): VoiceTranscriptClient {
   if (clientOverride) return clientOverride;
   sharedClient ??= defaultCloudAuthClient();
@@ -38,6 +77,7 @@ function voiceTranscriptClient(): VoiceTranscriptClient {
 export function setCloudVoiceTranscriptClientForTests(client: VoiceTranscriptClient | null) {
   clientOverride = client;
   inFlight.clear();
+  settledMessageIds.clear();
 }
 
 export function cloudVoiceTranscriptTarget(message: Pick<CloudMessage, 'conversationId' | 'messageId' | 'version' | 'voiceMessage'>): CloudVoiceTranscriptTarget | null {
@@ -124,6 +164,7 @@ export function persistCloudVoiceTranscript(
     }
   })().finally(() => {
     if (inFlight.get(key) === run) inFlight.delete(key);
+    markCloudVoiceTranscriptSettled(target.messageId);
   });
   inFlight.set(key, run);
   return run;

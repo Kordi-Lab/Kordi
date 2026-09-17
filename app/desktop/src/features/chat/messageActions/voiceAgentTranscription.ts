@@ -1,6 +1,7 @@
 import type { CloudMessage } from '@/features/cloud/authClient';
 import {
   cloudVoiceTranscriptTarget,
+  markCloudVoiceTranscriptSettled,
   persistCloudVoiceTranscript,
 } from '@/features/cloud/cloudVoiceTranscriptPersistence';
 
@@ -81,8 +82,13 @@ export async function persistSentAgentVoiceTranscript(
   if (voice && mediaId) {
     linkVoiceTranscriptionKeys([...attachmentKeys(voice.attachment, voice.path), `media:${mediaId}`]);
   }
-  const outcome = await transcription;
-  const target = sent ? cloudVoiceTranscriptTarget(sent) : null;
-  if (!target || (sent?.voiceMessage && voiceTranscript(sent.voiceMessage))) return null;
-  return persistCloudVoiceTranscript(target, outcome);
+  try {
+    const outcome = await transcription;
+    const target = sent ? cloudVoiceTranscriptTarget(sent) : null;
+    if (!target || (sent?.voiceMessage && voiceTranscript(sent.voiceMessage))) return null;
+    return await persistCloudVoiceTranscript(target, outcome);
+  } finally {
+    // Fallback runs for this request may be claimed now, whether or not a transcript was stored.
+    markCloudVoiceTranscriptSettled(sent?.messageId);
+  }
 }
