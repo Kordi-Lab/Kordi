@@ -184,7 +184,7 @@ async fn handle(
     };
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
-            // A member's response belongs on the card, not in the chat: Pip's
+            // A member's response belongs on the card, not in the chat: PiP's
             // message that carries this card is refreshed in place for
             // everyone, with no new line and no model run.
             if let Some(pip) = state.pip() {
@@ -205,7 +205,7 @@ async fn handle(
 }
 
 /// Who is acting on a card. A signed-in member acts for themselves only. A
-/// service agent (Pip) acts inside one conversation and may record another
+/// service agent (PiP) acts inside one conversation and may record another
 /// active member's RSVP, confirmation, or cancellation from what that member
 /// said in the chat.
 pub(crate) struct Actor {
@@ -447,7 +447,7 @@ async fn apply(
                     StatusCode::BAD_REQUEST,
                 ));
             }
-            // A member records only their own RSVP. Pip may record another
+            // A member records only their own RSVP. PiP may record another
             // active member's RSVP from what that member said in the chat.
             if !may_act_for(pool, actor, &participant_id).await {
                 return Err(error(

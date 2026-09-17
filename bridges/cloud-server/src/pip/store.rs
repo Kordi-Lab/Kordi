@@ -1,4 +1,4 @@
-//! Sweep state, run creation and run completion for Pip.
+//! Sweep state, run creation and run completion for PiP.
 //!
 //! The sweep copies the digest worker's shape: a bounded batch of dirty
 //! conversations, an atomic per-row reservation, one queued cloud run per
@@ -141,7 +141,7 @@ pub(crate) fn mention_handle(display_name: &str) -> String {
         .collect()
 }
 
-/// Resolves `@Handle` tokens in Pip's text to member mentions in the shape
+/// Resolves `@Handle` tokens in PiP's text to member mentions in the shape
 /// the clients render and notify on. Unknown handles stay plain text.
 pub(crate) fn resolve_mentions(text: &str, members: &[(String, String)]) -> Vec<Value> {
     let mut mentions = Vec::new();
@@ -611,11 +611,11 @@ pub(crate) fn card_block_from_row(row: &PlanCardRow, view: &str) -> Value {
     })
 }
 
-/// Brings Pip's card messages for a plan up to date. Every message already
+/// Brings PiP's card messages for a plan up to date. Every message already
 /// carrying the card is refreshed in place, keeping its own view, so votes and
 /// answers show on the card with no new chat line. When the plan needs a view
 /// no message shows yet (the vote card when a poll opens, the calendar card
-/// when a poll resolves), Pip posts it as a new card-only message and its
+/// when a poll resolves), PiP posts it as a new card-only message and its
 /// sequence is returned.
 pub(crate) async fn sync_card_messages(
     pool: &PgPool,
@@ -731,7 +731,7 @@ async fn active_run(
     ))
 }
 
-/// Records a finished run: posts Pip's message (if any) into the conversation
+/// Records a finished run: posts PiP's message (if any) into the conversation
 /// and marks the one-shot hooks it handled.
 pub async fn complete(
     pool: &PgPool,
@@ -752,7 +752,7 @@ pub async fn complete(
     let mut response_message_id: Option<String> = None;
     let mut posted_sequence: Option<i64> = None;
     // A card the run touched gets its card message first (a new vote or
-    // calendar card, or an in-place refresh); Pip's words follow as their own
+    // calendar card, or an in-place refresh); PiP's words follow as their own
     // message.
     let touched: Option<(String,)> = query_as(
         "SELECT event_id FROM cloud_plan_cards
@@ -820,7 +820,7 @@ pub async fn complete(
                 posted_sequence = Some(outcome.value.conversation_sequence);
             }
             Err(error) => {
-                eprintln!("[pip] Could not post Pip's {part} message: {error}");
+                eprintln!("[pip] Could not post PiP's {part} message: {error}");
             }
         }
     }
@@ -842,7 +842,7 @@ pub async fn complete(
     }
 
     // The card as it stands after this run, so member votes during the run
-    // are seen and Pip's own tool calls never wake the next sweep.
+    // are seen and PiP's own tool calls never wake the next sweep.
     let card_revision: Option<(i64,)> = query_as(
         "SELECT revision FROM cloud_plan_cards
          WHERE conversation_id = $1 AND state <> 'canceled'
@@ -866,7 +866,7 @@ pub async fn complete(
     .bind(&now)
     .execute(&mut *tx)
     .await?;
-    // Pip's own message must not wake the next sweep: move the cursor past it.
+    // PiP's own message must not wake the next sweep: move the cursor past it.
     query(
         "UPDATE cloud_pip_conversation_state
          SET active_run_id = NULL, attempts = 0, last_error = NULL,
@@ -911,7 +911,7 @@ pub async fn fail(
     let mut tx = pool.begin().await?;
     let changed = query(
         "UPDATE cloud_agent_fallback_runs
-         SET status = 'failed', error_code = $3, error_message = 'Pip could not finish this pass.',
+         SET status = 'failed', error_code = $3, error_message = 'PiP could not finish this pass.',
              updated_at = $4
          WHERE run_id = $1 AND ($2::text IS NULL OR claimed_by = $2)
            AND status IN ('queued', 'leased', 'running')",

@@ -1,4 +1,4 @@
-//! Pip is a standing member of every group conversation. Membership is not a
+//! PiP is a standing member of every group conversation. Membership is not a
 //! setting: it is added at creation and backfilled at startup.
 
 use sqlx_core::query::query;
@@ -6,11 +6,11 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-/// Conversation kinds Pip joins automatically. Direct and AI sessions are
+/// Conversation kinds PiP joins automatically. Direct and AI sessions are
 /// deliberately excluded until both clients render a third member there.
 pub const PIP_CONVERSATION_KINDS: &[&str] = &["group"];
 
-/// Adds Pip to one conversation. Returns whether a new membership was created.
+/// Adds PiP to one conversation. Returns whether a new membership was created.
 /// Bumps the conversation version so synchronized clients refresh the member
 /// list on their next pull.
 pub async fn join_conversation(
@@ -65,7 +65,7 @@ pub async fn join_conversation(
     Ok(inserted)
 }
 
-/// Backfills Pip into every existing conversation of a supported kind.
+/// Backfills PiP into every existing conversation of a supported kind.
 pub async fn join_all_groups(pool: &PgPool, pip_account_id: &str) -> Result<u64, sqlx_core::Error> {
     let missing: Vec<(Uuid,)> = query_as(
         "SELECT conversation.conversation_id

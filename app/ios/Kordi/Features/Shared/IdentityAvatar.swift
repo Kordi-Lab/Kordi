@@ -128,7 +128,7 @@ struct AvatarActionPill: View {
     }
 }
 
-/// Pip, the built-in plan agent. Matched by its system account id or the
+/// PiP, the built-in plan agent. Matched by its system account id or the
 /// exact display name, the same way Kordi Support is.
 enum KordiPipIdentity {
     static let accountId = "acct_kordi_pip"
@@ -136,10 +136,10 @@ enum KordiPipIdentity {
     static let displayName = "PiP"
     static let tag = "Built-in agent"
 
-    /// Pip is a built-in agent, not a person: it posts in the chat but is never
+    /// PiP is a built-in agent, not a person: it posts in the chat but is never
     /// counted, named, or pictured as a member.
     /// PiP's name, in any capitalisation, so messages from before the rename
-    /// ("Pip") keep its mark.
+    /// ("PiP") keep its mark.
     static func isPipName(_ name: String?) -> Bool {
         name?.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare(displayName) == .orderedSame
@@ -156,7 +156,7 @@ enum KordiPipIdentity {
     }
 }
 
-/// Pip's mark: a chick with the crack it just made in its shell.
+/// PiP's mark: a chick with the crack it just made in its shell.
 struct PipMarkAvatar: View {
     var body: some View {
         GeometryReader { proxy in

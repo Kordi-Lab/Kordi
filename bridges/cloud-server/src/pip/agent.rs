@@ -1,4 +1,4 @@
-//! Provisioning for Pip's system account, agent definition and membership.
+//! Provisioning for PiP's system account, agent definition and membership.
 
 use chrono::Utc;
 use sqlx_core::query::query;
@@ -12,15 +12,15 @@ use crate::avatars::{
 use super::config::{PendingPipConfig, PipConfig, PipConfigError};
 use super::prompt::PIP_SYSTEM_PROMPT;
 
-/// Creates or refreshes Pip's account, default agent profile and agent
-/// definition, then makes sure Pip sits in every existing group conversation.
+/// Creates or refreshes PiP's account, default agent profile and agent
+/// definition, then makes sure PiP sits in every existing group conversation.
 pub async fn bootstrap_pip_agent(
     pool: &PgPool,
     pending: PendingPipConfig,
 ) -> Result<PipConfig, PipConfigError> {
     let now = Utc::now().to_rfc3339();
     // Accounts only accept the human generated style (database check
-    // constraint); clients substitute Pip's own mark for this account id.
+    // constraint); clients substitute PiP's own mark for this account id.
     let account_avatar_url = generated_avatar_marker(HUMAN_AVATAR_STYLE, &pending.account_id, 1);
     let agent_avatar_url = generated_avatar_marker(AGENT_AVATAR_STYLE, &pending.agent_id, 1);
 
@@ -58,7 +58,7 @@ pub async fn bootstrap_pip_agent(
     .execute(pool)
     .await?;
 
-    // Member listings join every member to a default agent profile, so Pip
+    // Member listings join every member to a default agent profile, so PiP
     // needs one even though it never delegates to a personal agent.
     query(
         "INSERT INTO cloud_default_agent_profiles (
@@ -131,13 +131,13 @@ pub async fn bootstrap_pip_agent(
     .await?;
     if result.rows_affected() == 0 {
         return Err(PipConfigError::Invalid(
-            "The configured Pip agent id belongs to another account",
+            "The configured PiP agent id belongs to another account",
         ));
     }
 
     let joined = super::membership::join_all_groups(pool, &config.account_id).await?;
     if joined > 0 {
-        println!("Pip joined {joined} existing group conversation(s)");
+        println!("PiP joined {joined} existing group conversation(s)");
     }
     Ok(config)
 }

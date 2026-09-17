@@ -91,7 +91,7 @@ struct PlanCardOption: Codable, Hashable, Identifiable {
     }
 }
 
-/// Snapshot of a shared plan card as carried by a Pip message. The server
+/// Snapshot of a shared plan card as carried by a PiP message. The server
 /// keeps the live card; every action returns the new snapshot.
 struct PlanCard: Codable, Hashable {
     let eventId: String
@@ -226,7 +226,7 @@ struct PlanCardTranscriptResolution {
             let emptiedCardCopy = message.planCard != nil && resolved.planCard == nil
                 && !hasText && resolved.attachments.isEmpty && resolved.voiceMessage == nil
             if emptiedCardCopy { return [] }
-            // A card and Pip's words are always two messages, even when an
+            // A card and PiP's words are always two messages, even when an
             // older message stored them together.
             if resolved.planCard != nil, hasText {
                 var words = resolved

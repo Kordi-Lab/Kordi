@@ -43,11 +43,12 @@ test('initial loading is not an empty result, errors offer a read-only retry, ev
     assert.equal(document.hidden, true);
     await act(async () => root.render(createElement(DigestPage, { accountId: 'viewer' })));
     assert.equal(reads, 1, 'Mount must initiate a read regardless of initial webview visibility');
-    assert.match(host.textContent!, /Loading digest/);
+    assert.match(host.querySelector('[aria-label="Brief"]')!.textContent!, /Loading/);
     assert.match(host.textContent!, /Loading calendar/);
     assert.doesNotMatch(host.textContent!, /No suggestions|No events scheduled|New arrangements|first update/);
     await act(async () => { digest.reject(new Error('offline')); calendar.reject(new Error('offline')); });
-    assert.match(host.querySelector('[aria-label="Brief"]')!.textContent!, /Digest could not load/);
+    assert.match(host.querySelector('[aria-label="Brief"]')!.textContent!, /Couldn't reach Kordi/);
+    assert.doesNotMatch(host.textContent!, /could not finish|previous brief|Updates with your conversations/);
     assert.doesNotMatch(host.textContent!, /No suggestions|No events scheduled|first update/);
     digestClient.read = async () => { reads++; return response(); };
     digestClient.calendar = async () => ({ events: [] });

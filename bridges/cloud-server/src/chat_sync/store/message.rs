@@ -460,7 +460,7 @@ pub async fn replace_message_snapshot(
 /// Refresh a trusted server-authored message's content in place, without
 /// marking it edited. The message keeps its timeline position, its version
 /// moves so every client replaces its copy, and readers see no edit marker.
-/// Pip uses this to keep one plan card current as members respond.
+/// PiP uses this to keep one plan card current as members respond.
 pub async fn refresh_server_message_content(
     pool: &PgPool,
     sender_account_id: &str,

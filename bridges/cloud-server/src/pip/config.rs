@@ -1,6 +1,6 @@
-//! Configuration for Pip, the built-in plan agent.
+//! Configuration for PiP, the built-in plan agent.
 //!
-//! Pip mirrors the Kordi Support agent's shape: a system-managed account that
+//! PiP mirrors the Kordi Support agent's shape: a system-managed account that
 //! runs on a Kordi-operated provider credential instead of any member's own
 //! key. Everything here is read once at startup from the environment.
 
@@ -212,7 +212,7 @@ impl PipConfig {
         &self.provider_auth
     }
 
-    /// The runtime route stored on every Pip run so the runner selects the
+    /// The runtime route stored on every PiP run so the runner selects the
     /// service credential instead of looking for a member snapshot.
     pub fn model_routing(&self) -> serde_json::Value {
         serde_json::json!({

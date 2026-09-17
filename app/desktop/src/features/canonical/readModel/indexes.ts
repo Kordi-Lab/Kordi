@@ -731,7 +731,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   const participantsBySessionId = new Map<string, CanonicalSessionParticipant[]>();
   for (const participant of canonicalState.participants) {
     if (participant.state !== 'active') continue;
-    // Pip is a built-in agent that posts in the chat, not a member: it is kept
+    // PiP is a built-in agent that posts in the chat, not a member: it is kept
     // for message attribution but never counted, named, or pictured as one.
     if (isPipIdentity(identityById.get(participant.identityId))) continue;
     pushMapArray(participantsBySessionId, participant.sessionId, participant);
@@ -1023,7 +1023,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
           ? { ...mappedWithReadStatus, isForkSnapshot: true }
           : mappedWithReadStatus;
       const sortPosition = messageSortById.get(message.id) ?? messageSortPosition(message);
-      // A card and Pip's words are always two messages, even when an older
+      // A card and PiP's words are always two messages, even when an older
       // message stored them together: the card first, then the text.
       if (displayMessage.planCard && displayMessage.text.trim()) {
         const cardPart: Message = {

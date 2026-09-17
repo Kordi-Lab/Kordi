@@ -16,6 +16,7 @@ const DigestPage = lazy(() => import('@/features/digest/DigestPage'));
 
 type MainContentSwitchProps = {
   activeNav: NavId;
+  onOpenProviderSettings?: () => void;
   cloudSession: UseCloudSessionResult;
   contactsPageProps: ComponentProps<typeof ContactsPage>;
   agentsPageProps: AgentsPageProps;
@@ -24,6 +25,7 @@ type MainContentSwitchProps = {
 
 export function MainContentSwitch({
   activeNav,
+  onOpenProviderSettings,
   cloudSession,
   contactsPageProps,
   agentsPageProps,
@@ -32,7 +34,7 @@ export function MainContentSwitch({
   useDigestWarmup(cloudSession.account?.accountId);
   switch (activeNav) {
     case 'digest':
-      return <Suspense fallback={<div aria-busy="true">Loading digest…</div>}>{cloudSession.account ? <DigestPage key={cloudSession.account.accountId} accountId={cloudSession.account.accountId} /> : <div className="p-6">Sign in to open your digest.</div>}</Suspense>;
+      return <Suspense fallback={<div aria-busy="true">Loading digest…</div>}>{cloudSession.account ? <DigestPage key={cloudSession.account.accountId} accountId={cloudSession.account.accountId} onOpenProviderSettings={onOpenProviderSettings} /> : <div className="p-6">Sign in to open your digest.</div>}</Suspense>;
     case 'contacts':
       return <ContactsRoute cloudSession={cloudSession} contactsPageProps={contactsPageProps} />;
     case 'agents':

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A plan card posted by Pip. The same card type shows either the vote
+/// A plan card posted by PiP. The same card type shows either the vote
 /// between options or the calendar card for the plan itself; buttons act for
 /// the signed-in member and the returned snapshot shows at once, until the
 /// transcript carries a newer one.

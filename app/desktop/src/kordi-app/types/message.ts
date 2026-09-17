@@ -201,8 +201,8 @@ export type MessagePlanCardParticipant = {
   rsvp: 'pending' | 'yes' | 'no';
 };
 
-/** A shared plan card snapshot carried by a Pip message. The server keeps the
- * live card; each Pip message carries the state at the time it was posted. */
+/** A shared plan card snapshot carried by a PiP message. The server keeps the
+ * live card; each PiP message carries the state at the time it was posted. */
 export type MessagePlanCardOption = {
   id: string;
   label: string;

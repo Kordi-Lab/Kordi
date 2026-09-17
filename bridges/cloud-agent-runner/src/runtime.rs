@@ -187,7 +187,7 @@ where
             }
             Err(()) => {
                 client
-                    .fail_run(&run.run_id, "pip_sweep_failed", "Pip sweep failed.")
+                    .fail_run(&run.run_id, "pip_sweep_failed", "PiP sweep failed.")
                     .await?;
                 Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id })
             }

@@ -1,4 +1,4 @@
-//! Pip sweep runs. No sandbox is created; the only reachable tool is
+//! PiP sweep runs. No sandbox is created; the only reachable tool is
 //! `plan_card`, and every call is forwarded to the server bound to this run.
 
 use crate::{
@@ -63,10 +63,10 @@ where
     P: CloudModelProvider + Sync,
 {
     let input: Value = serde_json::from_str(&run.prompt)
-        .map_err(|_| ModelLoopError::Provider("Invalid Pip sweep input".into()))?;
+        .map_err(|_| ModelLoopError::Provider("Invalid PiP sweep input".into()))?;
     if input.get("messages").and_then(Value::as_array).is_none() {
         return Err(ModelLoopError::Provider(
-            "Pip sweep input has no messages".into(),
+            "PiP sweep input has no messages".into(),
         ));
     }
     let mut auth = OpenAiProviderConfig::from_material(&material)?;

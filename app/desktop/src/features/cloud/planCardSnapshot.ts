@@ -68,7 +68,7 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
 }
 
 /**
- * The newest snapshot of every card in a transcript, by event. Pip reposts the
+ * The newest snapshot of every card in a transcript, by event. PiP reposts the
  * card whenever it changes, so older messages carry stale copies; rendering
  * each of them with the newest state keeps every button at the current
  * revision.

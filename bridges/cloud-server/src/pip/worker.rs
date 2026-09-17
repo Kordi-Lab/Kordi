@@ -5,7 +5,7 @@ use crate::server::ServerState;
 const SWEEP_INTERVAL_SECS: u64 = 5;
 const STALE_CHECK_EVERY_TICKS: u32 = 12;
 
-/// Sweeps Pip's conversations on a fixed interval. Only changed inputs or a
+/// Sweeps PiP's conversations on a fixed interval. Only changed inputs or a
 /// due reminder queue a run, so an idle server issues no model calls.
 pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
 private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
+/// What the digest can show: a brief, or the one reason there is none yet.
+private enum DigestAvailability: Equatable { case loading, unreachable, preparing, needsProvider, failed, brief }
 enum DigestReadState: Equatable {
     case loading, failed, content
     init(hasResponse: Bool, error: String?) {
@@ -60,16 +62,25 @@ struct DigestView: View {
     private var visibleSuggestions: [RollingDigestItem] { model.digestMutationState.suggestions(in: digest, dismissed: false) }
     private var calendarCandidates: [RollingDigestItem] { (content?.calendarCandidates ?? []).filter { $0.calendarProposalAvailable(events: events) } }
     private var digestReadState: DigestReadState { DigestReadState(hasResponse: digest != nil, error: digestLoadError) }
+    private var availability: DigestAvailability {
+        guard let digest else { return digestLoadError == nil ? .loading : .unreachable }
+        if digest.snapshot != nil { return .brief }
+        if digest.status == "updating" || digest.status == "loading" { return .preparing }
+        if digest.errorCode == "missing_provider_auth" { return .needsProvider }
+        if digest.status == "error" { return .failed }
+        return .brief
+    }
     private var calendarReadState: DigestReadState { DigestReadState(hasResponse: model.digestCalendarSnapshot != nil, error: calendarLoadError) }
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text(statusText).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                headerStatus
                 Spacer()
-                Button { selectedSheet = .details } label: { Label("Live", systemImage: "circle.fill").font(.caption).labelStyle(.titleAndIcon) }
+                Button { selectedSheet = .details } label: { Image(systemName: "info.circle") }
                     .tint(.secondary)
-            }.padding(.horizontal, 18).padding(.bottom, 8)
+                    .accessibilityLabel("How Digest updates")
+            }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 18).padding(.bottom, 8)
             HStack(spacing: 26) {
                 ForEach(DigestPane.allCases, id: \.self) { tab in
                     Button { pane = tab } label: {
@@ -122,12 +133,29 @@ struct DigestView: View {
             ConversationView(conversation: route.conversation, initialMessageID: route.messageID)
         }
     }
-    private var statusText: String {
-        if digestReadState == .failed { return "Could not load digest" }
-        if digestReadState == .loading { return "Loading digest…" }
-        if digest?.status == "updating" { return "Updating · previous brief available" }
-        if let date = DigestDate.parse(digest?.updatedAt) { return "Updated \(date.formatted(date: .omitted, time: .shortened))" }
-        return "Preparing your digest"
+    /// The header says how fresh the brief is; a missing brief explains itself
+    /// once, in the page body, so nothing here repeats it.
+    @ViewBuilder private var headerStatus: some View {
+        switch availability {
+        case .loading: Text("Loading…")
+        case .unreachable: Text("Offline")
+        case .preparing: Text("Preparing your digest…")
+        case .needsProvider, .failed: EmptyView()
+        case .brief:
+            if let date = DigestDate.parse(digest?.updatedAt) {
+                Text("Updated \(date.formatted(date: .omitted, time: .shortened))")
+            } else {
+                Text("Up to date")
+            }
+            if digest?.status == "updating" {
+                Text("· Updating…")
+            } else if digest?.errorCode == "missing_provider_auth" {
+                Text("· Connect a model provider in Account").lineLimit(1)
+            } else if digest?.errorCode != nil {
+                Text("· Last update failed ·")
+                Button("Retry") { Task { await refresh() } }.buttonStyle(.plain).underline().disabled(isRefreshing)
+            }
+        }
     }
     private func page<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ScrollView {
@@ -138,10 +166,6 @@ struct DigestView: View {
                         .accessibilityAddTraits(.updatesFrequently)
                 }
                 if let error { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
-                if let code = digest?.errorCode {
-                    Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
                 content()
             }.font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 20)
         }.refreshable { await refresh() }
@@ -166,7 +190,9 @@ struct DigestView: View {
                 }
             }
         } else if digestReadState == .content {
-            Text(digest?.status == "ready" ? (sources.isEmpty ? "No conversations to summarize yet." : "No brief entries to show.") : "Your sourced brief will appear after the first update.").foregroundStyle(.secondary).padding(.vertical, 24)
+            if availability == .brief {
+                Text(sources.isEmpty ? "No conversations to summarize yet." : "No brief entries to show.").foregroundStyle(.secondary).padding(.vertical, 24)
+            }
         }
     }
     @ViewBuilder private var tasks: some View {
@@ -179,8 +205,8 @@ struct DigestView: View {
                 Button("Dismiss") { setSuggestionDismissed(item.id, dismissed: true) }
             }
         }
-        if visibleSuggestions.isEmpty, digestReadState == .content {
-            Text(content == nil && digest?.status != "ready" ? "Suggestions will appear after the first update." : "No suggestions to show.").foregroundStyle(.secondary)
+        if visibleSuggestions.isEmpty, availability == .brief {
+            Text("No suggestions to show.").foregroundStyle(.secondary)
         }
         if !dismissedSuggestions.isEmpty {
             Button("Restore dismissed suggestions") {
@@ -210,7 +236,9 @@ struct DigestView: View {
             Text("Shown in \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
             Text("From your chats").font(.subheadline.weight(.semibold))
-            digestReadNotice
+            if availability != .brief {
+                Text("Suggested events appear once your digest is ready.").font(.footnote).foregroundStyle(.secondary)
+            }
             ForEach(calendarCandidates) { item in
                 VStack(alignment: .leading, spacing: 8) {
                     if item.calendarAction == "delete" { Text("Cancellation to review").font(.caption).foregroundStyle(KordiTheme.destructiveText) }
@@ -229,8 +257,29 @@ struct DigestView: View {
             }
         }
     }
-    private var digestReadNotice: some View {
-        DigestReadNotice(name: "digest", hasResponse: digest != nil, error: digestLoadError) { retryRead(calendar: false) }
+    /// The one explanation for a digest without a brief, with the action that
+    /// helps: reload, start a new generation, or connect a provider.
+    @ViewBuilder private var digestReadNotice: some View {
+        switch availability {
+        case .loading:
+            ProgressView("Loading…").frame(maxWidth: .infinity, alignment: .leading)
+        case .preparing:
+            Text("Preparing your digest. This can take a minute.").foregroundStyle(.secondary)
+        case .unreachable:
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Couldn't reach Kordi.").foregroundStyle(.secondary)
+                Button("Try again") { retryRead(calendar: false) }.buttonStyle(.plain)
+            }
+        case .needsProvider:
+            Text("Connect a model provider in Account to get your digest.").foregroundStyle(.secondary)
+        case .failed:
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Your digest couldn't be prepared.").foregroundStyle(.secondary)
+                Button(isRefreshing ? "Trying again…" : "Try again") { Task { await refresh() } }.buttonStyle(.plain).disabled(isRefreshing)
+            }
+        case .brief:
+            EmptyView()
+        }
     }
     private func setSuggestionDismissed(_ id: String, dismissed: Bool) {
         do { _ = try model.beginDismissingDigestItem(id, dismissed: dismissed) }
@@ -304,7 +353,7 @@ struct DigestView: View {
         }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
-        case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")
+        case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Your digest updates a few minutes after your conversations go quiet, and right away when you open it or pull to refresh."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("How Digest updates")
         }
     }
     private func reloadAfterEdit() async { selectedSheet = nil; if let account = model.account?.accountId { await load(accountId: account) } }

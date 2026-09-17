@@ -191,7 +191,7 @@ impl std::fmt::Display for RunError {
             Self::Events(err) => write!(f, "{err}"),
             Self::RateLimiter(err) => write!(f, "{err}"),
             Self::Support(err) => write!(f, "configure support: {err}"),
-            Self::Pip(err) => write!(f, "configure Pip: {err}"),
+            Self::Pip(err) => write!(f, "configure PiP: {err}"),
             Self::CallMedia(err) => write!(f, "configure call media: {err}"),
             Self::Notifications(err) => write!(f, "configure Apple notifications: {err}"),
             Self::Bind(err) => write!(f, "bind: {err}"),
@@ -294,12 +294,12 @@ pub async fn run(
             .await
             .map_err(RunError::Pip)?;
         println!(
-            "Kordi Pip plan agent configured as {} ({})",
+            "Kordi PiP plan agent configured as {} ({})",
             pip_config.name, pip_config.account_id
         );
         state = state.with_pip(PipService::new(pip_config));
     } else {
-        println!("Kordi Pip plan agent is disabled");
+        println!("Kordi PiP plan agent is disabled");
     }
     if let Some(s3) = S3Config::from_env() {
         println!(

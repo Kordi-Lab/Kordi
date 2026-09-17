@@ -95,15 +95,17 @@ async fn read(
         String,
         bool,
     );
-    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at,timezone,((dirty_since IS NOT NULL OR snapshot_json IS NULL) AND retry_after<=now()) FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
+    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at,timezone,((dirty_since IS NOT NULL OR (snapshot_json IS NULL AND error_code IS NULL)) AND retry_after<=now()) FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
     let Ok((mut snapshot, input, active, error_code, revision, updated_at, timezone, pending)) =
         row
     else {
         return failed();
     };
-    // Opening the digest with unprocessed changes, or before it was ever
-    // built, brings it up to date now; the background quiet window only
-    // applies while nobody is looking.
+    // Opening the digest with unprocessed changes, or before a first build was
+    // ever attempted, brings it up to date now; the background quiet window
+    // only applies while nobody is looking. A failed first build is retried
+    // only on new changes or an explicit refresh, since clients poll this
+    // route while the digest is open.
     if pending && active.is_none() {
         let pool = pool.clone();
         let account = session.account_id.clone();

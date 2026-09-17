@@ -1,7 +1,7 @@
-//! Plan-card actions issued by the cloud runner on behalf of a leased Pip run.
+//! Plan-card actions issued by the cloud runner on behalf of a leased PiP run.
 //!
 //! The runner authenticates with its runner token; this module binds the
-//! action to the run's owner (Pip's system account) and the run's own
+//! action to the run's owner (PiP's system account) and the run's own
 //! conversation, so a run can never touch another chat's card.
 
 use std::sync::Arc;
@@ -32,7 +32,7 @@ pub async fn runner_action(
     let Some(pip) = state.pip() else {
         return error(
             "plan_card_unavailable",
-            "Pip is not enabled on this server.",
+            "PiP is not enabled on this server.",
             StatusCode::NOT_FOUND,
         );
     };
@@ -65,7 +65,7 @@ pub async fn runner_action(
     if owner_account_id != pip_account_id {
         return error(
             "plan_card_forbidden",
-            "Only Pip runs may manage plan cards through the runner.",
+            "Only PiP runs may manage plan cards through the runner.",
             StatusCode::FORBIDDEN,
         );
     }
@@ -79,7 +79,7 @@ pub async fn runner_action(
     let Some(conversation_id) = conversation_id else {
         return error(
             "plan_card_forbidden",
-            "Pip is not an active member of this conversation.",
+            "PiP is not an active member of this conversation.",
             StatusCode::FORBIDDEN,
         );
     };
