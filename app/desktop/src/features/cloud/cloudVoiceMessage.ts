@@ -44,6 +44,16 @@ export function cloudVoiceMessageMetadataOnly(value: unknown): CloudVoiceMessage
   return voice?.mediaId ? { ...voice, mediaId: voice.mediaId } : null;
 }
 
+/** A stored message's voice metadata. Portable voice metadata never carries a
+ * path; this device's own recording keeps it for playback and transcription. */
+export function storedVoiceMessage(value: unknown, isOwnMessage: boolean): CloudVoiceMessage | null {
+  const portable = cloudVoiceMessageMetadataOnly(value);
+  const ownRecordingPath = isOwnMessage && value && typeof value === 'object'
+    ? cleanText((value as { localPath?: unknown }).localPath)
+    : '';
+  return portable && ownRecordingPath ? { ...portable, localPath: ownRecordingPath } : portable;
+}
+
 export function cloudVoiceAttachmentReference(
   voiceMessage: (MessageVoiceDraft & { mediaId?: string | null }) | null | undefined,
   attachment: Pick<CloudMessageAttachment, 'attachmentId'> | undefined,
