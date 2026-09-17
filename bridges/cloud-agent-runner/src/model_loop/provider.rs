@@ -69,11 +69,15 @@ impl OpenAiProviderConfig {
                     .to_string(),
             ));
         }
+        // A stored model from another provider (an OpenAI model saved with an
+        // Anthropic sign-in, say) would only ever fail; use the provider's
+        // default instead.
         let model = payload
             .get("model")
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
+            .filter(|value| model_fits_provider(value, &provider))
             .unwrap_or_else(|| default_model_for_provider(&provider));
         let model = normalize_model_for_mode(model, api_mode).to_string();
         let account_id = payload
@@ -186,6 +190,36 @@ fn normalize_provider(provider: &str) -> &str {
         "google-gemini" => "google",
         "openai-codex" | "codex" => "openai",
         _ => provider.trim(),
+    }
+}
+
+/// Whether a model name can belong to this provider. Only clear mismatches
+/// between the major model families are rejected.
+fn model_fits_provider(model: &str, provider: &str) -> bool {
+    let name = model
+        .rsplit_once('/')
+        .map(|(_, name)| name)
+        .unwrap_or(model)
+        .to_ascii_lowercase();
+    let family = if name.starts_with("claude") {
+        "anthropic"
+    } else if name.starts_with("gemini") {
+        "google"
+    } else if name.starts_with("gpt-")
+        || name.starts_with("o1")
+        || name.starts_with("o3")
+        || name.starts_with("o4")
+        || name.starts_with("codex")
+    {
+        "openai"
+    } else {
+        return true;
+    };
+    match provider {
+        "anthropic" => family == "anthropic",
+        "google" | "google-gemini" => family == "google",
+        "openai" | "openai-codex" => family == "openai",
+        _ => true,
     }
 }
 
@@ -382,3 +416,18 @@ fn model_response_from_stream_events(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod model_fit_tests {
+    use super::model_fits_provider;
+
+    #[test]
+    fn another_providers_model_is_rejected() {
+        assert!(!model_fits_provider("gpt-5.6-sol", "anthropic"));
+        assert!(!model_fits_provider("openai/gpt-5.6-sol", "anthropic"));
+        assert!(!model_fits_provider("claude-sonnet-5", "openai"));
+        assert!(model_fits_provider("claude-sonnet-5", "anthropic"));
+        assert!(model_fits_provider("gpt-5.6-sol", "openai-codex"));
+        assert!(model_fits_provider("llama-3.3-70b-versatile", "groq"));
+    }
+}
