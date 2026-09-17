@@ -9,14 +9,15 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
         loop {
             timer.tick().await;
             // A digest reruns when its chats changed and have been quiet for
-            // a while (or the maximum wait passed), when it was never built,
-            // or on the slow safety check. Opening the digest or pressing
+            // a while (or the maximum wait passed), when it was never built
+            // and has not failed (a missing provider key would otherwise be
+            // retried every 30 seconds), or on the slow safety check. Opening the digest or pressing
             // refresh runs it at once through the routes instead.
             let accounts: Result<Vec<(String,)>, _> = query_as(
                 "UPDATE cloud_account_digests SET checked_at=now() WHERE account_id IN (
                     SELECT account_id FROM cloud_account_digests
                     WHERE retry_after<=now() AND active_run_id IS NULL AND (
-                        snapshot_json IS NULL
+                        (snapshot_json IS NULL AND error_code IS NULL)
                         OR (dirty_since IS NOT NULL AND (
                             last_change_at <= now() - make_interval(mins => $1)
                             OR dirty_since <= now() - make_interval(mins => $2)))
