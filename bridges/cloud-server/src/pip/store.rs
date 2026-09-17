@@ -29,9 +29,9 @@ pub const RUN_PREFIX: &str = "pip_";
 const SWEEP_BATCH: i64 = 10;
 
 /// Conversations worth a run. Every condition reads the same card as the run
-/// input (the newest one not canceled), so a selected conversation always
+/// input (the newest one still in play), so a selected conversation always
 /// yields a hook or moves its cursor, and is never reselected every tick.
-pub(super) const SWEEP_SQL: &str =
+pub(super) const SWEEP_SQL: &str = concat!(
     "UPDATE cloud_pip_conversation_state state SET checked_at = now()
  WHERE state.conversation_id IN (
      SELECT s.conversation_id
@@ -43,7 +43,9 @@ pub(super) const SWEEP_SQL: &str =
      LEFT JOIN LATERAL (
          SELECT card.event_id, card.revision, card.start_at, card.updated_at
          FROM cloud_plan_cards card
-         WHERE card.conversation_id = c.conversation_id AND card.state <> 'canceled'
+         WHERE card.conversation_id = c.conversation_id AND ",
+    crate::plan_cards::live_plan_card_sql!(),
+    "
          ORDER BY card.updated_at DESC LIMIT 1
      ) card ON true
      WHERE s.active_run_id IS NULL
@@ -87,7 +89,8 @@ pub(super) const SWEEP_SQL: &str =
            (SELECT latest_message_sequence FROM cloud_chat_conversations
              WHERE conversation_id = state.conversation_id),
            state.seen_sequence,
-           state.hooks_fired";
+           state.hooks_fired"
+);
 
 #[derive(Debug, Deserialize)]
 pub struct RunOutput {
@@ -114,9 +117,11 @@ pub fn parse_run_output(text: &str) -> RunOutput {
 
 /// One sweep pass. Returns the number of runs queued.
 pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core::Error> {
+    // A chat PiP is already in but has no state yet starts at its newest
+    // message, like a chat PiP just joined.
     query(
-        "INSERT INTO cloud_pip_conversation_state (conversation_id)
-         SELECT conversation.conversation_id
+        "INSERT INTO cloud_pip_conversation_state (conversation_id, seen_sequence)
+         SELECT conversation.conversation_id, conversation.latest_message_sequence
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
            ON member.conversation_id = conversation.conversation_id
@@ -308,8 +313,26 @@ async fn post_text(
     }
 }
 
+/// Every reminder a run was offered counts as fired once the run finishes,
+/// whether PiP posted a nudge or chose to stay silent. The sweep keeps picking
+/// a chat while a due reminder is unmarked, so waiting for the model to list
+/// it in `hooksHandled` would rerun the chat every tick until the plan starts.
+fn offered_reminders(input: &Value) -> Value {
+    let mut hooks = json!({});
+    for key in input["hooks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|hook| hook.get("key").and_then(Value::as_str))
+        .filter(|key| key.starts_with("t_minus_"))
+    {
+        hooks[key] = json!(true);
+    }
+    hooks
+}
+
 /// Records a finished run: posts PiP's message (if any) into the conversation
-/// and marks the one-shot hooks it handled.
+/// and marks the one-shot reminders it was offered.
 pub async fn complete(
     pool: &PgPool,
     run_id: &str,
@@ -344,23 +367,7 @@ pub async fn complete(
         _ => None,
     };
 
-    // Only the reminder keys this run was offered can be marked as fired.
-    let mut hooks = json!({});
-    let offered: Vec<String> = run.input["hooks"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|hook| hook.get("key").and_then(Value::as_str).map(str::to_string))
-        .filter(|key| key.starts_with("t_minus_"))
-        .collect();
-    for handled in &output.hooks_handled {
-        // Accept either the bare hook name or the exact key the input offered.
-        for key in &offered {
-            if key == handled || key.starts_with(&format!("{handled}:")) {
-                hooks[key] = json!(true);
-            }
-        }
-    }
+    let hooks = offered_reminders(&run.input);
 
     let now = Utc::now().to_rfc3339();
     let mut tx = pool.begin().await?;
@@ -411,5 +418,19 @@ mod tests {
         let bare = parse_run_output("Still on for tomorrow?");
         assert_eq!(bare.message.as_deref(), Some("Still on for tomorrow?"));
         assert!(parse_run_output("   ").message.is_none());
+    }
+
+    #[test]
+    fn offered_reminders_fire_even_when_the_run_stays_silent() {
+        let input = json!({"hooks": [
+            {"name": "new_messages", "sinceSequence": 4},
+            {"name": "t_minus_24h", "key": "t_minus_24h:plan_a", "eventId": "plan_a"},
+            {"name": "card_changed", "eventId": "plan_a", "revision": 3},
+        ]});
+        assert_eq!(
+            offered_reminders(&input),
+            json!({"t_minus_24h:plan_a": true})
+        );
+        assert_eq!(offered_reminders(&json!({"hooks": []})), json!({}));
     }
 }

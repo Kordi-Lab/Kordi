@@ -11,57 +11,36 @@ use uuid::Uuid;
 pub const PIP_CONVERSATION_KINDS: &[&str] = &["group"];
 
 /// Adds PiP to one conversation. Returns whether a new membership was created.
-/// Bumps the conversation version so synchronized clients refresh the member
-/// list on their next pull.
+/// Members' devices hear about it through `membership.updated`, and PiP starts
+/// reading at the conversation's newest message, so history from before PiP
+/// joined is never treated as new.
 pub async fn join_conversation(
     pool: &PgPool,
     pip_account_id: &str,
     conversation_id: Uuid,
 ) -> Result<bool, sqlx_core::Error> {
-    let mut tx = pool.begin().await?;
-    let kind: Option<(String,)> =
-        query_as("SELECT kind FROM cloud_chat_conversations WHERE conversation_id = $1 FOR UPDATE")
-            .bind(conversation_id)
-            .fetch_optional(&mut *tx)
-            .await?;
-    let Some((kind,)) = kind else {
-        return Ok(false);
-    };
-    if !PIP_CONVERSATION_KINDS.contains(&kind.as_str()) {
-        return Ok(false);
-    }
-    let inserted = query(
-        "INSERT INTO cloud_chat_conversation_members
-             (conversation_id, account_id, role, membership_state)
-         VALUES ($1, $2, 'member', 'active')
-         ON CONFLICT (conversation_id, account_id) DO UPDATE SET
-             membership_state = 'active', left_at = NULL,
-             version = cloud_chat_conversation_members.version + 1
-         WHERE cloud_chat_conversation_members.membership_state <> 'active'",
+    let inserted = crate::chat_sync::store::join_service_member(
+        pool,
+        conversation_id,
+        pip_account_id,
+        PIP_CONVERSATION_KINDS,
     )
-    .bind(conversation_id)
-    .bind(pip_account_id)
-    .execute(&mut *tx)
-    .await?
-    .rows_affected()
-        > 0;
+    .await
+    .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
     if inserted {
         query(
-            "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now()
-             WHERE conversation_id = $1",
+            "INSERT INTO cloud_pip_conversation_state (conversation_id, seen_sequence)
+             SELECT conversation_id, latest_message_sequence FROM cloud_chat_conversations
+             WHERE conversation_id = $1
+             ON CONFLICT (conversation_id) DO UPDATE SET
+                 seen_sequence = GREATEST(cloud_pip_conversation_state.seen_sequence,
+                                          EXCLUDED.seen_sequence),
+                 updated_at = now()",
         )
         .bind(conversation_id)
-        .execute(&mut *tx)
-        .await?;
-        query(
-            "INSERT INTO cloud_pip_conversation_state (conversation_id) VALUES ($1)
-             ON CONFLICT (conversation_id) DO NOTHING",
-        )
-        .bind(conversation_id)
-        .execute(&mut *tx)
+        .execute(pool)
         .await?;
     }
-    tx.commit().await?;
     Ok(inserted)
 }
 

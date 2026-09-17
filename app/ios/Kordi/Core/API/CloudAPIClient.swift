@@ -2132,10 +2132,16 @@ actor CloudAPIClient {
     ) async throws -> CloudChatConversation {
         let accountId = try requireActiveAccountId()
         _ = try await bootstrapChat(token: token)
-        let desiredMembers = Set(memberAccountIds.compactMap(\.nonEmpty)).union([accountId])
+        // PiP is a server-managed member: clients never list it, so it never
+        // counts as a difference to synchronize, and a client never removes it.
+        let desiredMembers = Set(
+            memberAccountIds.compactMap(\.nonEmpty).filter { !KordiPipIdentity.isPip(accountId: $0) }
+        ).union([accountId])
         if var cached = chatConversationsBySessionId[sessionId] {
             if cached.kind == "group" {
-                let activeMembers = Set(cached.members.filter { $0.membershipState == "active" }.map(\.accountId))
+                let activeMembers = Set(cached.members.filter {
+                    $0.membershipState == "active" && !KordiPipIdentity.isPip(accountId: $0.accountId)
+                }.map(\.accountId))
                 if activeMembers != desiredMembers {
                     let response: ChatConversationResponse = try await send(
                         path: "/v2/chat/conversations/\(escapedPath(cached.id))/members",

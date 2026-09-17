@@ -121,6 +121,41 @@ async fn require_in_scope(pool: &PgPool, actor: &Actor, event_id: &str) -> Resul
     }
 }
 
+/// A member deciding a plan for everyone (confirming, reopening, or canceling
+/// it) must be its organizer or an owner or admin of the chat. PiP's runs
+/// decide from what members said in the chat.
+async fn require_plan_manager(
+    pool: &PgPool,
+    actor: &Actor,
+    event_id: &str,
+) -> Result<(), Rejection> {
+    if actor.on_behalf_of_conversation.is_some() {
+        return Ok(());
+    }
+    let allowed: (bool,) = query_as(
+        "SELECT EXISTS(SELECT 1 FROM cloud_plan_card_participants
+                       WHERE event_id = $1 AND account_id = $2 AND organizer)
+             OR EXISTS(SELECT 1 FROM cloud_plan_cards card
+                       JOIN cloud_chat_conversation_members member
+                         ON member.conversation_id = card.conversation_id
+                       WHERE card.event_id = $1 AND member.account_id = $2
+                         AND member.membership_state = 'active'
+                         AND member.role IN ('owner', 'admin'))",
+    )
+    .bind(event_id)
+    .bind(&actor.account_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|err| store_error(err.into()))?;
+    if allowed.0 {
+        Ok(())
+    } else {
+        Err(forbidden(
+            "Only the plan's organizer or a chat admin can decide this plan.",
+        ))
+    }
+}
+
 fn forbidden(message: &str) -> Rejection {
     error("plan_card_forbidden", message, StatusCode::FORBIDDEN)
 }
@@ -157,6 +192,9 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
         require_in_scope(pool, actor, &event_id).await?;
     }
     match request {
+        Request::Propose(_) if actor.on_behalf_of_conversation.is_none() => {
+            Err(forbidden("Plan cards are proposed by PiP."))
+        }
         Request::Propose(propose) => {
             let args = propose.into_args(actor.on_behalf_of_conversation)?;
             store::propose(pool, &actor.account_id, args)
@@ -213,6 +251,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     "confirmedBy must match the authenticated account.",
                 ));
             }
+            require_plan_manager(pool, actor, &event_id).await?;
             let option_id = blank_to_none(option_id);
             store::confirm(
                 pool,
@@ -237,6 +276,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     StatusCode::BAD_REQUEST,
                 ));
             }
+            require_plan_manager(pool, actor, &event_id).await?;
             store::reopen(pool, &event_id, revision, &actor.account_id, &reason)
                 .await
                 .map_err(store_error)
@@ -252,6 +292,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     "canceledBy must match the authenticated account.",
                 ));
             }
+            require_plan_manager(pool, actor, &event_id).await?;
             store::cancel(pool, &event_id, revision, &canceled_by, reason.as_deref())
                 .await
                 .map_err(store_error)

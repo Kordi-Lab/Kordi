@@ -156,13 +156,14 @@ pub(super) async fn build_input(
         &config.account_id,
     );
 
-    // The card PiP manages: the most recently changed one that is not canceled.
-    // The sweep's card and reminder conditions look at this same card.
-    let open_event: Option<(String,)> = query_as(
-        "SELECT event_id FROM cloud_plan_cards
-         WHERE conversation_id = $1 AND state <> 'canceled'
-         ORDER BY updated_at DESC LIMIT 1",
-    )
+    // The card PiP manages: the most recently changed one still in play. The
+    // sweep's card and reminder conditions look at this same card.
+    let open_event: Option<(String,)> = query_as(concat!(
+        "SELECT card.event_id FROM cloud_plan_cards card
+         WHERE card.conversation_id = $1 AND ",
+        crate::plan_cards::live_plan_card_sql!(),
+        " ORDER BY card.updated_at DESC LIMIT 1"
+    ))
     .bind(candidate.conversation_id)
     .fetch_optional(pool)
     .await?;

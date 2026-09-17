@@ -225,27 +225,30 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         Option<Value>,
         Option<String>,
         Option<Value>,
+        Option<chrono::DateTime<Utc>>,
     );
-    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json FROM cloud_account_digests WHERE account_id=$1 AND retry_after<=now()").bind(account).fetch_optional(pool).await?;
-    let Some((locale, timezone, old_hash, snapshot, active, saved_input)) = row else {
+    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json,last_change_at FROM cloud_account_digests WHERE account_id=$1 AND retry_after<=now()").bind(account).fetch_optional(pool).await?;
+    let Some((locale, timezone, old_hash, snapshot, active, saved_input, seen_change)) = row else {
         return Ok(());
     };
     if active.is_some() {
         return Ok(());
     }
-    let rebuilt_at = Utc::now();
     let previous = snapshot.and_then(|v| serde_json::from_value(v).ok());
     let saved = saved_input
         .and_then(|value| serde_json::from_value::<Input>(value).ok())
         .filter(|saved| saved.viewer_account_id == account);
     let mut input = input(pool, account, &locale, &timezone, previous).await?;
-    // The rebuilt input covers every change up to now; later ones stay marked.
+    // The rebuilt input covers the changes marked before it was read. Any later
+    // mark, including one from a send that was still committing, changes
+    // last_change_at, so the digest stays marked; the update waits for that
+    // send's row lock and then compares against what it committed.
     query(
         "UPDATE cloud_account_digests SET dirty_since=NULL,last_change_at=NULL
-         WHERE account_id=$1 AND (last_change_at IS NULL OR last_change_at <= $2)",
+         WHERE account_id=$1 AND last_change_at IS NOT DISTINCT FROM $2",
     )
     .bind(account)
-    .bind(rebuilt_at)
+    .bind(seen_change)
     .execute(pool)
     .await?;
     if let Some(previous) = &mut input.previous {

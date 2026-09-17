@@ -9,6 +9,7 @@ use super::models::{
     PlanCardOption, PlanCardParticipantStatus, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp,
     PlanCardState, PlanCardStoreError,
 };
+use super::revise::{carry_votes, keeps_answers, revised_rsvp};
 
 pub use super::transitions::{cancel, confirm, reopen, rsvp, vote};
 
@@ -217,12 +218,22 @@ pub async fn propose(
         return Err(PlanCardStoreError::ParticipantNotMember);
     }
 
-    let event_id = if let Some(existing_event_id) = args.existing_event_id {
+    let (event_id, previous) = if let Some(existing_event_id) = args.existing_event_id.clone() {
         let existing_revision = args.existing_revision.ok_or_else(|| {
             PlanCardStoreError::InvalidTransition(
                 "existingRevision is required alongside existingEventId".to_string(),
             )
         })?;
+        // Votes and answers take this lock too, so none can land between
+        // reading the card here and writing its revision.
+        super::transitions::lock_event(&mut tx, &existing_event_id).await?;
+        let previous = fetch_row(&mut tx, &existing_event_id)
+            .await?
+            .filter(|row| row.conversation_id == args.conversation_id.to_string());
+        let options = match &previous {
+            Some(row) => carry_votes(&row.options, args.options.clone(), &participant_ids),
+            None => args.options.clone(),
+        };
         let updated: Option<(String,)> = query_as(
             "UPDATE cloud_plan_cards SET \
                 title = $3, start_at = $4::timestamptz, end_at = $5::timestamptz, \
@@ -254,7 +265,7 @@ pub async fn propose(
                 .collect(),
         ))
         .bind(args.conversation_id)
-        .bind(options_to_json(&args.options))
+        .bind(options_to_json(&options))
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -280,11 +291,15 @@ pub async fn propose(
                 Some(_) => PlanCardStoreError::RevisionConflict,
             });
         };
-        query("DELETE FROM cloud_plan_card_participants WHERE event_id = $1")
-            .bind(&event_id)
-            .execute(&mut *tx)
-            .await?;
-        event_id
+        query(
+            "DELETE FROM cloud_plan_card_participants \
+             WHERE event_id = $1 AND NOT (account_id = ANY($2))",
+        )
+        .bind(&event_id)
+        .bind(&participant_ids)
+        .execute(&mut *tx)
+        .await?;
+        (event_id, previous.filter(|row| keeps_answers(row, &args)))
     } else {
         let event_id = format!("plan_{}", Uuid::new_v4().simple());
         query(
@@ -318,19 +333,25 @@ pub async fn propose(
         .bind(options_to_json(&args.options))
         .execute(&mut *tx)
         .await?;
-        event_id
+        (event_id, None)
     };
 
     for participant in &args.participants {
-        let rsvp = if participant.organizer {
-            PlanCardRsvp::Yes
-        } else {
-            PlanCardRsvp::Pending
-        };
+        let rsvp = revised_rsvp(
+            previous.as_ref(),
+            &participant.account_id,
+            participant.organizer,
+        );
         query(
             "INSERT INTO cloud_plan_card_participants \
                 (event_id, account_id, display_name, organizer, rsvp, responded_at) \
-             VALUES ($1, $2, $3, $4, $5, CASE WHEN $4 THEN now() ELSE NULL END)",
+             VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'pending' THEN NULL ELSE now() END) \
+             ON CONFLICT (event_id, account_id) DO UPDATE SET \
+                display_name = EXCLUDED.display_name, organizer = EXCLUDED.organizer, \
+                rsvp = EXCLUDED.rsvp, \
+                responded_at = CASE WHEN cloud_plan_card_participants.rsvp = EXCLUDED.rsvp \
+                                    THEN cloud_plan_card_participants.responded_at \
+                                    ELSE EXCLUDED.responded_at END",
         )
         .bind(&event_id)
         .bind(&participant.account_id)

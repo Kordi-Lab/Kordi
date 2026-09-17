@@ -70,16 +70,26 @@ pub async fn note_message<'e>(
     mark_conversation(executor, message.conversation_id).await
 }
 
+/// Digest rows are locked in account order before they are marked. A message
+/// send marks its members inside the send's transaction, so two sends into
+/// chats that share members would otherwise lock the same rows in opposite
+/// orders and deadlock.
 pub async fn mark_conversation<'e>(
     executor: impl Executor<'e, Database = Postgres>,
     conversation_id: Uuid,
 ) -> Result<(), sqlx_core::Error> {
     query(
-        "UPDATE cloud_account_digests digest
+        "WITH marked AS (
+             SELECT digest.account_id FROM cloud_account_digests digest
+             JOIN cloud_chat_conversation_members member
+               ON member.account_id = digest.account_id
+             WHERE member.conversation_id = $1 AND member.membership_state = 'active'
+             ORDER BY digest.account_id
+             FOR UPDATE OF digest
+         )
+         UPDATE cloud_account_digests digest
          SET dirty_since = COALESCE(digest.dirty_since, now()), last_change_at = now()
-         FROM cloud_chat_conversation_members member
-         WHERE member.conversation_id = $1 AND member.account_id = digest.account_id
-           AND member.membership_state = 'active'",
+         FROM marked WHERE digest.account_id = marked.account_id",
     )
     .bind(conversation_id)
     .execute(executor)
@@ -95,9 +105,15 @@ pub async fn mark_accounts<'e>(
         return Ok(());
     }
     query(
-        "UPDATE cloud_account_digests
-         SET dirty_since = COALESCE(dirty_since, now()), last_change_at = now()
-         WHERE account_id = ANY($1)",
+        "WITH marked AS (
+             SELECT account_id FROM cloud_account_digests
+             WHERE account_id = ANY($1)
+             ORDER BY account_id
+             FOR UPDATE
+         )
+         UPDATE cloud_account_digests digest
+         SET dirty_since = COALESCE(digest.dirty_since, now()), last_change_at = now()
+         FROM marked WHERE digest.account_id = marked.account_id",
     )
     .bind(account_ids)
     .execute(executor)

@@ -63,7 +63,8 @@ pub async fn runner_action(
             StatusCode::NOT_FOUND,
         );
     };
-    if owner_account_id != pip_account_id {
+    // An ordinary agent run owned by PiP's account is not one of PiP's sweeps.
+    if owner_account_id != pip_account_id || !run_id.starts_with(crate::pip::RUN_PREFIX) {
         return error(
             "plan_card_forbidden",
             "Only PiP runs may manage plan cards through the runner.",

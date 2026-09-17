@@ -1022,8 +1022,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         : inheritedDesktopForkSnapshot(sessionById.get(sessionId), displaySourceMessage)
           ? { ...mappedWithReadStatus, isForkSnapshot: true }
           : mappedWithReadStatus;
-      const messageId = message.id;
-      return transcriptEntries(displayMessage, messageId, messageSortById.get(messageId) ?? messageSortPosition(message), message.createdAtMs);
+      return transcriptEntries(displayMessage, message, messageSortById.get(message.id) ?? messageSortPosition(message));
     });
     canonicalMessagesBySessionId.set(
       sessionId,

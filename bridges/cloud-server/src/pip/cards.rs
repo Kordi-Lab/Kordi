@@ -99,6 +99,41 @@ pub(crate) fn card_block_from_row(row: &PlanCardRow, view: &str) -> Value {
     })
 }
 
+fn card_blocks<'a>(content: &'a Value, event_id: &'a str) -> impl Iterator<Item = &'a Value> {
+    content
+        .get("blocks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(move |block| {
+            block.get("type").and_then(Value::as_str) == Some("plan_card")
+                && block.get("eventId").and_then(Value::as_str) == Some(event_id)
+        })
+}
+
+/// A carrier message's content with its card blocks for `row` brought up to
+/// `row`'s revision, keeping each block's view. A block already at the same or
+/// a newer revision is left alone, so a slower refresh never moves a card
+/// back. `None` when nothing changes.
+fn refreshed_card_content(mut content: Value, row: &PlanCardRow) -> Option<Value> {
+    let mut changed = false;
+    for block in content
+        .get_mut("blocks")
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        let shows_card = block.get("type").and_then(Value::as_str) == Some("plan_card")
+            && block.get("eventId").and_then(Value::as_str) == Some(row.event_id.as_str());
+        let stored_revision = block.get("revision").and_then(Value::as_i64).unwrap_or(0);
+        if shows_card && stored_revision < row.revision {
+            *block = card_block_from_row(row, block_view(block));
+            changed = true;
+        }
+    }
+    changed.then_some(content)
+}
+
 /// Brings PiP's card messages for a plan up to date. Every message already
 /// carrying the card is refreshed in place, keeping its own view, so votes and
 /// answers show on the card with no new chat line. When the plan needs a view
@@ -128,30 +163,17 @@ pub(crate) async fn sync_card_messages(
     .await?;
     let has_carrier = !carriers.is_empty();
     let mut shows_wanted = false;
-    for (message_id, mut content) in carriers {
-        let mut changed = false;
-        if let Some(blocks) = content.get_mut("blocks").and_then(Value::as_array_mut) {
-            for block in blocks.iter_mut() {
-                if block.get("type").and_then(Value::as_str) == Some("plan_card")
-                    && block.get("eventId").and_then(Value::as_str) == Some(row.event_id.as_str())
-                {
-                    let view = block_view(block);
-                    shows_wanted |= view == wanted;
-                    *block = card_block_from_row(row, view);
-                    changed = true;
-                }
-            }
-        }
-        if changed {
-            crate::chat_sync::store::refresh_server_message_content(
-                pool,
-                pip_account_id,
-                message_id,
-                content,
-            )
-            .await
-            .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-        }
+    for (message_id, content) in carriers {
+        shows_wanted |=
+            card_blocks(&content, &row.event_id).any(|block| block_view(block) == wanted);
+        crate::chat_sync::store::refresh_server_message_content(
+            pool,
+            pip_account_id,
+            message_id,
+            |content| refreshed_card_content(content, row),
+        )
+        .await
+        .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
     }
     // A canceled plan updates the cards it already has; it never adds one.
     if shows_wanted || (row.state == PlanCardState::Canceled && has_carrier) {
@@ -178,4 +200,38 @@ pub(crate) async fn sync_card_messages(
             .await
             .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
     Ok(Some(outcome.value.conversation_sequence))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::plan_cards::models::PlanCardRow;
+
+    fn row(revision: i64) -> PlanCardRow {
+        PlanCardRow {
+            event_id: "plan_a".to_string(),
+            conversation_id: Uuid::nil().to_string(),
+            revision,
+            state: PlanCardState::Polling,
+            title: "Dinner".to_string(),
+            start_at: None,
+            end_at: None,
+            location: None,
+            unresolved_fields: Vec::new(),
+            source_message_ids: Vec::new(),
+            participants: Vec::new(),
+            options: Vec::new(),
+            note: None,
+        }
+    }
+
+    #[test]
+    fn a_card_block_never_moves_back_to_an_older_revision() {
+        let content = json!({"blocks": [card_block_from_row(&row(6), "event")]});
+        assert!(refreshed_card_content(content.clone(), &row(5)).is_none());
+        assert!(refreshed_card_content(content.clone(), &row(6)).is_none());
+        let newer = refreshed_card_content(content, &row(7)).expect("newer revision applies");
+        assert_eq!(newer["blocks"][0]["revision"], 7);
+        assert_eq!(newer["blocks"][0]["view"], "event");
+    }
 }

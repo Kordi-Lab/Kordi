@@ -46,5 +46,14 @@ impl PipService {
     }
 }
 
+/// PiP's production account id, registered for database tests that need
+/// server-managed membership rules to apply.
+#[cfg(test)]
+pub(crate) fn test_service_account() -> &'static str {
+    SERVICE_ACCOUNT_ID.get_or_init(|| "acct_kordi_pip".to_string())
+}
+
+#[cfg(test)]
+mod membership_tests;
 #[cfg(test)]
 mod sweep_tests;

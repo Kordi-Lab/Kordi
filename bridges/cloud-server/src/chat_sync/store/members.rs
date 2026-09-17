@@ -1,3 +1,4 @@
+use super::service_members::{is_service_member, service_member_ids, without_service_members};
 use super::support::*;
 use super::*;
 
@@ -66,13 +67,18 @@ pub async fn add_conversation_members(
     let removed = if request.replace {
         current
             .iter()
-            .filter(|member| !desired.contains(member) && member.as_str() != account_id)
+            .filter(|member| {
+                !desired.contains(member)
+                    && member.as_str() != account_id
+                    && !is_service_member(member)
+            })
             .cloned()
             .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
-    if current.len() + missing.len() - removed.len() > MAX_GROUP_MEMBERS {
+    let people = without_service_members(current.clone()).len();
+    if people + missing.len() - removed.len() > MAX_GROUP_MEMBERS {
         return Err(StoreError::InvalidInput("group member count is invalid"));
     }
     if !missing.is_empty() {
@@ -236,9 +242,11 @@ pub async fn accept_invited_conversation_member(
 
     let active_count: (i64,) = query_as(
         "SELECT COUNT(*) FROM cloud_chat_conversation_members
-         WHERE conversation_id = $1 AND membership_state = 'active'",
+         WHERE conversation_id = $1 AND membership_state = 'active'
+           AND NOT (account_id = ANY($2))",
     )
     .bind(conversation_id)
+    .bind(service_member_ids())
     .fetch_one(&mut **transaction)
     .await?;
     if active_count.0 >= MAX_GROUP_MEMBERS as i64 {

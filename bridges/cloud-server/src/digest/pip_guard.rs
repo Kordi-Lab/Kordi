@@ -51,8 +51,11 @@ fn parse_instant(value: Option<&str>) -> Option<DateTime<Utc>> {
 }
 
 /// Whether a create suggestion is the same arrangement as a plan PiP tracks:
-/// it comes from the plan's chat at a nearby or unknown time, or it starts
-/// within 90 minutes of the plan and shares a meaningful title word.
+/// it comes from the plan's chat near the plan's time (or at no stated time),
+/// or from that chat with a shared meaningful title word while the plan's own
+/// time is still open, or it starts within 90 minutes of the plan and shares
+/// a meaningful title word. A plan with no time never blocks everything else
+/// from its chat.
 fn duplicates(
     item_conversations: &BTreeSet<String>,
     item_title: &str,
@@ -61,17 +64,19 @@ fn duplicates(
 ) -> bool {
     let near = |hours: i64| match (item_start, plan.start_at) {
         (Some(item), Some(plan)) => (item - plan).num_minutes().abs() <= hours * 60,
-        _ => true,
+        (None, Some(_)) => true,
+        (_, None) => false,
     };
+    let shares_title_word = || !title_words(item_title).is_disjoint(&title_words(&plan.title));
     let same_chat = plan
         .conversation_id
         .as_ref()
         .is_some_and(|id| item_conversations.contains(id));
-    if same_chat && near(12) {
+    if same_chat && (near(12) || (plan.start_at.is_none() && shares_title_word())) {
         return true;
     }
     let close_in_time = matches!((item_start, plan.start_at), (Some(item), Some(plan)) if (item - plan).num_minutes().abs() <= 90);
-    close_in_time && !title_words(item_title).is_disjoint(&title_words(&plan.title))
+    close_in_time && shares_title_word()
 }
 
 fn keep_candidate(
@@ -103,10 +108,11 @@ async fn live_plans(
     if conversations.is_empty() {
         return Ok(Vec::new());
     }
-    let rows: Vec<(Uuid, String, Option<DateTime<Utc>>)> = query_as(
-        "SELECT conversation_id, title, start_at FROM cloud_plan_cards
-         WHERE conversation_id = ANY($1) AND state <> 'canceled'",
-    )
+    let rows: Vec<(Uuid, String, Option<DateTime<Utc>>)> = query_as(concat!(
+        "SELECT card.conversation_id, card.title, card.start_at FROM cloud_plan_cards card
+         WHERE card.conversation_id = ANY($1) AND ",
+        crate::plan_cards::live_plan_card_sql!()
+    ))
     .bind(conversations)
     .fetch_all(pool)
     .await?;
@@ -171,15 +177,15 @@ pub async fn clear_saved_conflicts(
     if account_ids.is_empty() {
         return Ok(());
     }
-    let digests: Vec<(String, Value, Value)> = query_as(
-        "SELECT account_id, snapshot_json, COALESCE(snapshot_input_json, '{}')
+    let digests: Vec<(String, Value, Value, i64)> = query_as(
+        "SELECT account_id, snapshot_json, COALESCE(snapshot_input_json, '{}'), revision
          FROM cloud_account_digests
          WHERE account_id = ANY($1) AND snapshot_json IS NOT NULL",
     )
     .bind(account_ids)
     .fetch_all(pool)
     .await?;
-    for (account_id, snapshot, input) in digests {
+    for (account_id, snapshot, input, revision) in digests {
         let Ok(mut output) = serde_json::from_value::<Output>(snapshot) else {
             continue;
         };
@@ -205,15 +211,30 @@ pub async fn clear_saved_conflicts(
         let Ok(updated) = serde_json::to_value(&output) else {
             continue;
         };
-        query(
+        // Only the snapshot this was read from is rewritten: a digest saved in
+        // the meantime was produced with PiP's plans already applied.
+        let mut tx = pool.begin().await?;
+        let written = query(
             "UPDATE cloud_account_digests
              SET snapshot_json = $2, revision = revision + 1, updated_at = now()
-             WHERE account_id = $1",
+             WHERE account_id = $1 AND revision = $3",
         )
         .bind(&account_id)
         .bind(updated)
-        .execute(pool)
+        .bind(revision)
+        .execute(&mut *tx)
         .await?;
+        if written.rows_affected() > 0 {
+            crate::chat_sync::store::append_account_hint(
+                &mut tx,
+                &account_id,
+                "digest.updated",
+                &serde_json::json!({"updated": true}),
+            )
+            .await
+            .map_err(|_| sqlx_core::Error::Protocol("Could not publish digest update.".into()))?;
+        }
+        tx.commit().await?;
     }
     Ok(())
 }
@@ -247,6 +268,29 @@ mod tests {
             at("2026-09-25T18:00:00Z"),
             &plan
         ));
+    }
+
+    #[test]
+    fn a_plan_with_no_time_only_matches_its_own_arrangement() {
+        let plan = TrackedPlan {
+            conversation_id: Some("chat".into()),
+            title: "Board games night".into(),
+            start_at: None,
+        };
+        let chats = BTreeSet::from(["chat".to_string()]);
+        assert!(duplicates(
+            &chats,
+            "Board games",
+            at("2026-09-19T18:00:00Z"),
+            &plan
+        ));
+        assert!(!duplicates(
+            &chats,
+            "Dentist",
+            at("2026-09-19T18:00:00Z"),
+            &plan
+        ));
+        assert!(!duplicates(&chats, "Dentist", None, &plan));
     }
 
     #[test]

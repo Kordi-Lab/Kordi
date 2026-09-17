@@ -4,11 +4,15 @@ use super::*;
 /// marking it edited. The message keeps its timeline position, its version
 /// moves so every client replaces its copy, and readers see no edit marker.
 /// PiP uses this to keep one plan card current as members respond.
+/// Rewrites a server-authored message's content. `update` receives the
+/// content as stored, read under the message's row lock, and returns the new
+/// content or `None` to leave it, so concurrent refreshes never overwrite
+/// each other's newer content.
 pub async fn refresh_server_message_content(
     pool: &PgPool,
     sender_account_id: &str,
     message_id: Uuid,
-    content: Value,
+    update: impl FnOnce(Value) -> Option<Value>,
 ) -> Result<MessageSnapshot, StoreError> {
     let mut transaction = pool.begin().await?;
     let row: Option<(String,)> = query_as(
@@ -25,10 +29,12 @@ pub async fn refresh_server_message_content(
         return Err(StoreError::Forbidden);
     }
     let current = load_message(&mut transaction, message_id).await?;
-    if current.content == content {
+    let Some(content) =
+        update(current.content.clone()).filter(|content| *content != current.content)
+    else {
         transaction.commit().await?;
         return Ok(current);
-    }
+    };
     query(
         "UPDATE cloud_chat_messages SET content = $2, version = version + 1 WHERE message_id = $1",
     )

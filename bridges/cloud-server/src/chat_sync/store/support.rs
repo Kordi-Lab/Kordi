@@ -476,7 +476,7 @@ pub(super) fn normalized_members(account_id: &str, values: &[String]) -> Vec<Str
     let mut members = values
         .iter()
         .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.is_empty() && !super::service_members::is_service_member(value))
         .map(ToString::to_string)
         .collect::<BTreeSet<_>>();
     members.insert(account_id.to_string());

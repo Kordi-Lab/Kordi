@@ -9,7 +9,7 @@ use uuid::Uuid;
 use super::models::{PlanCardRow, PlanCardRsvp, PlanCardStoreError};
 use super::store::{options_from_json, options_to_json, require_active_member, require_row};
 
-async fn lock_event(
+pub(super) async fn lock_event(
     tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
     event_id: &str,
 ) -> Result<(), PlanCardStoreError> {

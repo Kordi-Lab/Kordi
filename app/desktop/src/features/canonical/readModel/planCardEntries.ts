@@ -8,17 +8,17 @@ import type { CanonicalMessageSortPosition } from './messageSort';
  */
 export function transcriptEntries(
   message: Message,
-  canonicalId: string,
+  canonical: { id: string; createdAtMs: number },
   sortPosition: CanonicalMessageSortPosition,
-  createdAtMs: number,
 ) {
+  const createdAtMs = canonical.createdAtMs;
   if (!message.planCard || !message.text.trim()) {
     return [{ message, ...sortPosition, tieBreakAtMs: createdAtMs }];
   }
   const cardPart: Message = {
     ...message,
-    id: `${message.id ?? canonicalId}#plan-card`,
-    entryId: `${message.entryId ?? canonicalId}#plan-card`,
+    id: `${message.id ?? canonical.id}#plan-card`,
+    entryId: `${message.entryId ?? canonical.id}#plan-card`,
     text: '',
     mentions: undefined,
     replyToMessageId: undefined,

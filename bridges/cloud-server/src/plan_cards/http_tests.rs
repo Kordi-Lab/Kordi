@@ -112,7 +112,7 @@ async fn full_lifecycle_over_real_http() {
         .unwrap();
     assert_eq!(unauthenticated.status(), 401);
 
-    // Propose over real HTTP, with the real JSON shape the agent tool sends.
+    // Members never propose over HTTP: only PiP opens and revises cards.
     let propose_body = json!({
         "action": "propose",
         "conversationId": conversation_id.to_string(),
@@ -133,14 +133,41 @@ async fn full_lifecycle_over_real_http() {
         .send()
         .await
         .unwrap();
-    let status = response.status();
-    let body_text = response.text().await.unwrap();
-    assert_eq!(status, 200, "propose should succeed: {body_text}");
-    let card: Value = serde_json::from_str(&body_text).unwrap();
+    assert_eq!(response.status(), 403, "members cannot propose cards");
+
+    // PiP proposes through the same request shape inside its own chat.
+    let request: super::wire::Request = serde_json::from_value(propose_body).unwrap();
+    let pip = super::routes::Actor {
+        account_id: jordan.clone(),
+        on_behalf_of_conversation: Some(conversation_id),
+    };
+    let card = super::routes::dispatch_row(&pool, &pip, request)
+        .await
+        .unwrap_or_else(|_| panic!("PiP's propose should succeed"));
+    let card = serde_json::to_value(card).unwrap();
     assert_eq!(card["state"], "polling");
     assert_eq!(card["revision"], 1);
     let event_id = card["eventId"].as_str().unwrap().to_string();
     assert_eq!(card["participants"].as_array().unwrap().len(), 3);
+
+    // A member who is not the organizer cannot decide the plan for everyone.
+    let response = client
+        .post(format!("{base}/v1/cloud/plan_cards"))
+        .bearer_auth(&riya_token)
+        .json(&json!({
+            "action": "cancel",
+            "eventId": event_id,
+            "revision": 1,
+            "canceledBy": riya,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        response.status(),
+        403,
+        "only the organizer or an admin cancels"
+    );
 
     // Confirm.
     let response = client
