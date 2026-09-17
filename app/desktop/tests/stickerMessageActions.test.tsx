@@ -21,7 +21,7 @@ test('sticker message menu offers save alongside standard message actions', () =
     onSelectMessage: () => undefined,
   }));
 
-  assert.match(markup, />Reply in conversation</);
+  assert.match(markup, />Quote</);
   assert.match(markup, />Forward</);
   assert.match(markup, />Save to My Stickers</);
   assert.match(markup, />Select</);

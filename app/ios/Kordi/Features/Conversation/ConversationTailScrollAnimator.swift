@@ -32,6 +32,9 @@ final class ConversationTailScrollAnimator: NSObject {
     private var contentSizeObservation: NSKeyValueObservation?
     private var pendingResizeSnapshot: UIView?
     private var settledJumpFrames = 0
+    private var messageJumpTargetY: (() -> CGFloat?)?
+    private var messageJumpCompletion: (() -> Void)?
+    private var jumpRevealTranslation: CGFloat = -12
     var onTransitionVisibilityChange: (() -> Void)?
     var isTransitionCoveringContent: Bool { jumpCover != nil }
 
@@ -55,6 +58,8 @@ final class ConversationTailScrollAnimator: NSObject {
     }
 
     func request(in scrollView: UIScrollView, contentView: UIView? = nil, animated: Bool, reduceMotion: Bool, onPositioned: (() -> Void)? = nil) {
+        // A message jump owns the viewport until it reveals; content-follow requests wait.
+        if messageJumpTargetY != nil, onPositioned == nil, self.scrollView === scrollView { return }
         attach(to: scrollView)
         self.contentView = contentView
         self.reduceMotion = reduceMotion
@@ -75,6 +80,37 @@ final class ConversationTailScrollAnimator: NSObject {
             guard let self, let scrollView, self.generation == requestedGeneration else { return }
             self.flush(in: scrollView)
         }
+    }
+
+    /// Jump to a distant message with the same motion as a long jump to the latest
+    /// message: hold a snapshot of the current viewport, position the destination
+    /// underneath, and reveal it once its measured geometry settles.
+    func jumpToMessage(
+        in scrollView: UIScrollView,
+        contentView: UIView?,
+        movingToOlder: Bool,
+        reduceMotion: Bool,
+        targetOffsetY: @escaping () -> CGFloat?,
+        onRevealed: @escaping () -> Void
+    ) {
+        attach(to: scrollView)
+        if let contentView { self.contentView = contentView }
+        generation &+= 1
+        pendingFromY = nil
+        pendingAnimated = false
+        // Finishing resumes any earlier jump's waiter, so no caller is left suspended.
+        finishNativeAnimation()
+        self.reduceMotion = reduceMotion
+        messageJumpTargetY = targetOffsetY
+        messageJumpCompletion = onRevealed
+        jumpRevealTranslation = movingToOlder ? 12 : -12
+        if !reduceMotion { beginJumpCover(in: scrollView) }
+        nativePreviousGeometry = nil
+        settledJumpFrames = 0
+        nativeStartedAt = CACurrentMediaTime()
+        let link = CADisplayLink(target: self, selector: #selector(observeNativeAnimation))
+        nativeDisplayLink = link
+        link.add(to: .main, forMode: .common)
     }
 
     func cancel() {
@@ -278,7 +314,7 @@ final class ConversationTailScrollAnimator: NSObject {
         UIView.animate(withDuration: 0.18, delay: 0,
             options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
             cover.alpha = 0
-            self.jumpImage?.transform = CGAffineTransform(translationX: 0, y: -12)
+            self.jumpImage?.transform = CGAffineTransform(translationX: 0, y: self.jumpRevealTranslation)
         } completion: { [weak self, weak cover] _ in
             guard let self, let cover, self.jumpCover === cover else { return }
             self.finishNativeAnimation()
@@ -288,6 +324,10 @@ final class ConversationTailScrollAnimator: NSObject {
     @objc private func observeNativeAnimation() {
         guard let scrollView else { finishNativeAnimation(); return }
         guard !scrollView.isTracking, !scrollView.isDragging else { cancel(); return }
+        if let messageJumpTargetY {
+            observeMessageJump(in: scrollView, resolveTargetY: messageJumpTargetY)
+            return
+        }
         let targetY = Self.targetOffset(in: scrollView)
         // Bound settling if repeated lazy measurements keep changing the target.
         if CACurrentMediaTime() - nativeStartedAt > 2 {
@@ -344,6 +384,39 @@ final class ConversationTailScrollAnimator: NSObject {
         else { nativePreviousGeometry = geometry }
     }
 
+    private func observeMessageJump(in scrollView: UIScrollView, resolveTargetY: () -> CGFloat?) {
+        let timedOut = CACurrentMediaTime() - nativeStartedAt > 2
+        if let cover = jumpCover, let window = scrollView.window {
+            cover.frame = visibleViewport(in: scrollView, window: window)
+        }
+        guard let targetY = resolveTargetY() else {
+            // The destination row is not built yet.
+            nativePreviousGeometry = nil; settledJumpFrames = 0
+            if timedOut { finishNativeAnimation() }
+            return
+        }
+        if timedOut {
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+            finishNativeAnimation()
+            return
+        }
+        if abs(scrollView.contentOffset.y - targetY) > 0.5 {
+            scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+            nativePreviousGeometry = nil; settledJumpFrames = 0
+            return
+        }
+        let geometry = positionedGeometry(in: scrollView, targetY: targetY)
+        let stable = nativePreviousGeometry.map {
+            $0.contentSize == geometry.contentSize && $0.viewportSize == geometry.viewportSize
+                && $0.insets == geometry.insets && $0.contentBounds == geometry.contentBounds
+                && abs($0.targetY - geometry.targetY) < 0.5
+        } ?? false
+        settledJumpFrames = stable ? settledJumpFrames + 1 : 0
+        nativePreviousGeometry = geometry
+        guard settledJumpFrames >= 4 else { return }
+        if jumpCover != nil { revealJumpDestination() } else { finishNativeAnimation() }
+    }
+
     private func finishNativeAnimation() {
         contentSizeObservation = nil
         nativeDisplayLink?.invalidate()
@@ -356,7 +429,13 @@ final class ConversationTailScrollAnimator: NSObject {
         jumpCover = nil; jumpImage = nil
         pendingResizeSnapshot = nil
         isFadingJumpCover = false; settledJumpFrames = 0
+        jumpRevealTranslation = -12
+        messageJumpTargetY = nil
         if wasCovered { onTransitionVisibilityChange?() }
+        if let completion = messageJumpCompletion {
+            messageJumpCompletion = nil
+            completion()
+        }
     }
 
     private func startPositioning() {
@@ -396,14 +475,14 @@ final class ConversationTailScrollAnimator: NSObject {
         }
     }
 
-    private func positionedGeometry(in scrollView: UIScrollView) -> PositionedGeometry {
+    private func positionedGeometry(in scrollView: UIScrollView, targetY: CGFloat? = nil) -> PositionedGeometry {
         PositionedGeometry(
             contentSize: scrollView.contentSize,
             viewportSize: scrollView.bounds.size,
             presentedViewportBounds: scrollView.layer.presentation()?.bounds ?? scrollView.bounds,
             insets: scrollView.adjustedContentInset,
             contentBounds: contentView?.bounds ?? .zero,
-            targetY: Self.targetOffset(in: scrollView)
+            targetY: targetY ?? Self.targetOffset(in: scrollView)
         )
     }
 

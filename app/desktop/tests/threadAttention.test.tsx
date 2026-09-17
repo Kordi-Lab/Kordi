@@ -12,11 +12,11 @@ test('thread shortcut leaves the sidebar total as one count and uses an accessib
   const attention={conversation_id:'conversation',session_id:'session',unread_count:7,thread_count:2,next_root_id:'root',next_message_id:'reply'};
   const html=renderToStaticMarkup(createElement(SidebarSessionMetaColumn,{timeLabel:'10:42',unreadCount:7,unreadMentionCount:1,threadAttention:attention}));
   assert.match(html,/data-unread-count="7"/);
-  assert.match(html,/aria-label="Jump to next unread thread"/);
+  assert.match(html,/aria-label="Jump to next unread discussion"/);
   assert.doesNotMatch(html,/>Unread threads</);
   assert.doesNotMatch(html,/data-unread-count="2"/);
   const button=renderToStaticMarkup(createElement(ThreadShortcut,{count:2,onClick:()=>{}}));
-  assert.match(button,/Jump to next unread thread/);
+  assert.match(button,/Jump to next unread discussion/);
   assert.match(button,/>2</);
   assert.equal(renderToStaticMarkup(createElement(ThreadShortcut,{count:0,onClick:()=>{}})),'');
 });

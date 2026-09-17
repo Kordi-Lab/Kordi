@@ -218,7 +218,7 @@ test('messages without read receipts still expose the Telegram-style message con
   assert.match(bubbleMarkup, /data-message-context-menu-anchor="true"/);
   assert.doesNotMatch(bubbleMarkup, /data-message-read-receipts-context-target/);
   assert.match(menuMarkup, />Copy</);
-  assert.match(menuMarkup, /Reply/);
+  assert.match(menuMarkup, />Quote</);
   assert.doesNotMatch(menuMarkup, /Seen/);
 });
 

@@ -10,46 +10,36 @@ function cssRule(css: string, selector: string) {
   return match[0];
 }
 
-test('jump-to-message highlight is paint-only and does not resize the original bubble surface', () => {
+test('jump-to-message highlight is one full-width accent band, matching iOS', () => {
   const shellCss = readDesktopShellCss();
-  const rootRule = cssRule(shellCss, '.app-transcript-message-highlight');
-  const ownBubbleRule = cssRule(shellCss, '.app-transcript-message-highlight .app-chat-bubble-user');
-  const peerBubbleRule = cssRule(shellCss, '.app-transcript-message-highlight .app-chat-bubble-peer');
-  const shapeRule = cssRule(shellCss, '.app-transcript-message-highlight .app-message-bubble-shape-fill');
+  const bandRule = shellCss.match(/\/\* Route-back highlight[\s\S]*?\*\/\n\.app-transcript-message-highlight \{[^}]*\}/)?.[0] ?? '';
+  const nestedRule = cssRule(shellCss, '.app-transcript-message-highlight .app-transcript-message-highlight');
 
-  assert.doesNotMatch(rootRule, /\boutline\s*:/);
-  assert.doesNotMatch(rootRule, /\boutline-offset\s*:/);
-  for (const rule of [rootRule, ownBubbleRule, peerBubbleRule, shapeRule]) {
-    assert.doesNotMatch(rule, /\b(?:animation|filter|transform|width|height|padding|margin)\s*:/);
-  }
-  assert.match(shapeRule, /transition:[\s\S]*fill[\s\S]*stroke/);
-  assert.doesNotMatch(ownBubbleRule, /--app-message-bubble-shadow/);
-  assert.doesNotMatch(peerBubbleRule, /--app-message-bubble-shadow/);
-  assert.doesNotMatch(shellCss, /@keyframes\s+app-transcript-message-glow/);
+  assert.match(bandRule, /--app-transcript-highlight-band:\s*color-mix\(in oklab, var\(--app-chat-accent, var\(--app-sidebar-accent\)\) 16%, transparent\)/);
+  assert.match(bandRule, /box-shadow:\s*0 0 0 100vmax var\(--app-transcript-highlight-band\)/);
+  assert.match(bandRule, /clip-path:\s*inset\(-3px -100vmax\)/);
+  assert.match(bandRule, /animation:\s*app-transcript-message-highlight-band 1500ms/);
+  assert.doesNotMatch(bandRule, /\b(?:outline|transform|width|height|padding|margin)\s*:/);
+  assert.match(nestedRule, /box-shadow:\s*none/);
+  assert.match(shellCss, /@keyframes app-transcript-message-highlight-band/);
+  assert.doesNotMatch(shellCss, /\.app-transcript-message-highlight \.app-(?:chat-bubble-user|chat-bubble-peer|live-assistant-answer-surface|message-bubble-shape-fill)/);
 });
 
-test('jump-to-message highlight overrides the whole assistant response surface, not only the folded end fade', () => {
+test('reduced motion keeps the highlight band without animating it', () => {
   const shellCss = readDesktopShellCss();
-  const baseSurfaceIndex = shellCss.indexOf('.app-live-assistant-answer-surface {');
-  const highlightSurfaceIndex = shellCss.indexOf('.app-transcript-message-highlight .app-live-assistant-answer-surface {');
-  const highlightSurfaceRule = cssRule(shellCss, '.app-transcript-message-highlight .app-live-assistant-answer-surface');
-
-  assert.ok(baseSurfaceIndex >= 0, 'Missing base assistant response surface rule');
-  assert.ok(highlightSurfaceIndex > baseSurfaceIndex, 'Highlighted assistant response surface must be defined after the base surface so it wins the cascade');
-  assert.match(highlightSurfaceRule, /--app-live-assistant-answer-bg:/);
-  assert.match(highlightSurfaceRule, /background:\s*linear-gradient/);
-  assert.match(highlightSurfaceRule, /box-shadow:[\s\S]*inset 0 0 0 1px/);
-  assert.match(highlightSurfaceRule, /border-color:/);
+  assert.match(
+    shellCss,
+    /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.app-transcript-message-highlight \{\s*animation: none;/,
+  );
 });
 
 test('folded content uses compact fades and inline reveal controls instead of overlay chrome', () => {
   const shellCss = readDesktopShellCss();
-  const quoteFadeRule = cssRule(shellCss, '.app-source-message-quote-folded::after');
   const answerFadeRule = cssRule(shellCss, '.app-live-assistant-answer-folded::after');
   const revealRowRule = cssRule(shellCss, '.app-fold-reveal-row');
   const revealToggleRule = cssRule(shellCss, '.app-inline-expand-toggle');
 
-  for (const rule of [quoteFadeRule, answerFadeRule]) {
+  for (const rule of [answerFadeRule]) {
     assert.match(rule, /height:\s*1\.05rem/);
     assert.match(rule, /linear-gradient\(\s*180deg,\s*transparent/);
     assert.doesNotMatch(rule, /backdrop-filter:\s*blur\(/);
@@ -60,6 +50,6 @@ test('folded content uses compact fades and inline reveal controls instead of ov
   assert.match(revealRowRule, /display:\s*flex/);
   assert.match(revealToggleRule, /min-height:\s*30px/);
   assert.match(revealToggleRule, /border-radius:\s*9px/);
-  assert.doesNotMatch(shellCss, /\.app-source-message-quote-toggle-overlay/);
+  assert.doesNotMatch(shellCss, /\.app-source-message-quote-(?:folded|toggle)/);
   assert.doesNotMatch(shellCss, /\.app-live-assistant-answer-toggle-overlay/);
 });

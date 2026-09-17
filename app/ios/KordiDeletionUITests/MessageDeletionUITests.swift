@@ -78,11 +78,11 @@ final class MessageDeletionUITests: XCTestCase {
 
     func testReplyReturnsToConversationAndKeepsComposerInteractive() {
         let app = launchTextDeletion()
-        app.buttons["Reply in conversation"].tap()
-        XCTAssertTrue(app.buttons["Cancel reply"].waitForExistence(timeout: 5))
+        app.buttons["Quote"].tap()
+        XCTAssertTrue(app.buttons["Remove quote"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Close message actions"].exists)
         XCTAssertTrue(message("m5", in: app).exists)
-        app.buttons["Cancel reply"].tap()
+        app.buttons["Remove quote"].tap()
         XCTAssertTrue(app.buttons["Add photo, video, or file"].isHittable)
         app.terminate()
     }
@@ -111,9 +111,9 @@ final class MessageDeletionUITests: XCTestCase {
         XCTAssertTrue(revealMessage("m5", in: app))
         let target = message("m5", in: app)
         target.press(forDuration: 0.6)
-        XCTAssertTrue(app.buttons["Reply in conversation"].waitForExistence(timeout: 5))
-        app.buttons["Reply in conversation"].tap()
-        XCTAssertTrue(app.buttons["Cancel reply"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Quote"].waitForExistence(timeout: 5))
+        app.buttons["Quote"].tap()
+        XCTAssertTrue(app.buttons["Remove quote"].waitForExistence(timeout: 5))
         app.terminate()
     }
 
@@ -215,7 +215,7 @@ final class MessageDeletionUITests: XCTestCase {
         let original = marker.frame
         capture("Long message before menu", app: app)
         marker.press(forDuration: 0.6)
-        XCTAssertTrue(app.buttons["Reply in conversation"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Quote"].waitForExistence(timeout: 5))
         XCTAssertTrue(marker.exists, "Opening actions must retain the formatted text elements.")
         let lifted = marker.frame
         XCTAssertEqual(lifted.width, original.width, accuracy: 1)
@@ -244,7 +244,7 @@ final class MessageDeletionUITests: XCTestCase {
         let transcript = app.buttons["Show voice transcript"]
         XCTAssertTrue(transcript.waitForExistence(timeout: 10))
         transcript.press(forDuration: 0.6)
-        XCTAssertTrue(app.buttons["Reply in conversation"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Quote"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Hide voice transcript"].exists, "A hold must not also tap the transcript button.")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.3)).tap()
         XCTAssertTrue(app.buttons["Close message actions"].waitForNonExistence(timeout: 5))
