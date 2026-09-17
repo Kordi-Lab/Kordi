@@ -269,7 +269,7 @@ async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_f
 
 #[test]
 fn scheduled_task_schema_migration_is_embedded_in_pool_runner() {
-    let pool_source = std::fs::read_to_string("src/pg/pool.rs").expect("read pool source");
+    let pool_source = std::fs::read_to_string("src/pg/pool/embedded.rs").expect("read pool source");
     assert!(pool_source.contains("version: 22"));
     assert!(pool_source.contains("0022_scheduled_task_tool.sql"));
     assert!(pool_source.contains("scheduled task tool"));
@@ -277,7 +277,7 @@ fn scheduled_task_schema_migration_is_embedded_in_pool_runner() {
 
 #[test]
 fn stranded_scheduled_task_backfill_migration_is_embedded_and_skips_tasks_with_runs() {
-    let pool_source = std::fs::read_to_string("src/pg/pool.rs").expect("read pool source");
+    let pool_source = std::fs::read_to_string("src/pg/pool/embedded.rs").expect("read pool source");
     assert!(pool_source.contains("version: 24"));
     assert!(pool_source.contains("0024_backfill_stranded_scheduled_tasks.sql"));
 
