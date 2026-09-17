@@ -18,7 +18,7 @@ test.afterEach(async () => {
   await cleanupVirtualTranscriptHarness();
 });
 
-test('light theme own-message highlight overrides the normal bubble fill', () => {
+test('light theme own-message highlight keeps the bubble fill and paints the row band', () => {
   const style = document.createElement('style');
   style.textContent = [
     readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8'),
@@ -38,8 +38,9 @@ test('light theme own-message highlight overrides the normal bubble fill', () =>
 
   try {
     const fill = window.getComputedStyle(bubble).getPropertyValue('--app-message-bubble-fill');
-    assert.match(fill, /color-mix\(in oklab/);
-    assert.match(fill, /--app-transcript-highlight-accent/);
+    assert.doesNotMatch(fill, /--app-transcript-highlight-accent/);
+    const band = window.getComputedStyle(highlightedRow).getPropertyValue('--app-transcript-highlight-band');
+    assert.match(band, /color-mix\(in oklab/);
   } finally {
     style.remove();
     app.remove();

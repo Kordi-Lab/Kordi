@@ -753,6 +753,66 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         XCTAssertEqual(MessageThreadProjection.rootSource(for: reply, sessionID: "ignored"), source)
     }
 
+    func testThreadProjectionCountsMainConversationQuotesPerSource() {
+        let root = timelineMessage(id: "root", text: "Can we ship on Friday?", date: Date(timeIntervalSince1970: 1))
+        let source = root.actionSource(sessionId: "session:group:mobile")
+        let firstQuote = timelineMessage(
+            id: "quote-1",
+            text: "Yes, if the patch lands",
+            date: Date(timeIntervalSince1970: 2),
+            messageAction: .quote(source)
+        )
+        let secondQuote = timelineMessage(
+            id: "quote-2",
+            text: "Agreed",
+            date: Date(timeIntervalSince1970: 3),
+            messageAction: .quote(source)
+        )
+        let discussionReply = timelineMessage(
+            id: "discussion-reply",
+            text: "Side note",
+            date: Date(timeIntervalSince1970: 4),
+            messageAction: .thread(source)
+        )
+
+        let projection = MessageThreadProjection(messages: [root, firstQuote, secondQuote, discussionReply])
+
+        XCTAssertEqual(projection.quoteReplyIDs(sourceID: "root"), ["quote-1", "quote-2"])
+        XCTAssertEqual(projection.quoteReplyIDs(sourceID: "quote-1"), [])
+        XCTAssertEqual(projection.replyCount(rootID: "root"), 1)
+    }
+
+    func testQuoteNavigationMatchesEveryIdentifierOfTheQuotedMessage() {
+        let request = ChatMessage(
+            id: "cloud-request",
+            clientMessageId: "client-request",
+            conversationId: "group:mobile",
+            author: .me,
+            authorName: "Shu Yang",
+            text: "@teammate again",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            reactionTargetMessageId: "cloud-request"
+        )
+
+        XCTAssertTrue(MessageQuotePresentation.message(request, matchesReference: "cloud-request"))
+        XCTAssertTrue(MessageQuotePresentation.message(request, matchesReference: "client-request"))
+        XCTAssertTrue(MessageQuotePresentation.message(request, matchesReference: "collaboration-message:client-request"))
+        XCTAssertFalse(MessageQuotePresentation.message(request, matchesReference: "other-request"))
+        XCTAssertFalse(MessageQuotePresentation.message(request, matchesReference: " "))
+    }
+
+    func testQuotePresentationNamesTheRealSenderOnOneLine() {
+        XCTAssertEqual(MessageQuotePresentation.senderLabel("You", selfDisplayName: "Shu Yang"), "Shu Yang")
+        XCTAssertEqual(MessageQuotePresentation.senderLabel("me", selfDisplayName: nil), "Me")
+        XCTAssertEqual(MessageQuotePresentation.senderLabel("Mira Chen", selfDisplayName: "Shu Yang"), "Mira Chen")
+        XCTAssertEqual(MessageQuotePresentation.previewText("Can we ship\non Friday?", attachmentCount: 0), "Can we ship on Friday?")
+        XCTAssertEqual(MessageQuotePresentation.previewText("", attachmentCount: 1), "[Attachment]")
+        XCTAssertEqual(MessageQuotePresentation.previewText("  ", attachmentCount: 3), "[3 attachments]")
+    }
+
     private func agentPayload(
         id: String,
         text: String,
