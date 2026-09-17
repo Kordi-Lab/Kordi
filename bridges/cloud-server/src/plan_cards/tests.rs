@@ -1,11 +1,9 @@
-use super::models::{
-    PlanCardOption, PlanCardParticipantInput, PlanCardProposeArgs, PlanCardRsvp, PlanCardState,
-};
+use super::models::{PlanCardParticipantInput, PlanCardProposeArgs, PlanCardRsvp, PlanCardState};
 use super::store;
 use sqlx_core::query::query;
 use uuid::Uuid;
 
-async fn seed_account(pool: &sqlx_postgres::PgPool, account_id: &str) {
+pub(crate) async fn seed_account(pool: &sqlx_postgres::PgPool, account_id: &str) {
     query("INSERT INTO cloud_accounts(account_id,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at,avatar_url) VALUES($1,$2,$2,'generated','lorelei',$1,'test',1,$2,$3)")
         .bind(account_id)
         .bind(chrono::Utc::now().to_rfc3339())
@@ -15,7 +13,7 @@ async fn seed_account(pool: &sqlx_postgres::PgPool, account_id: &str) {
         .unwrap();
 }
 
-async fn seed_conversation(
+pub(crate) async fn seed_conversation(
     pool: &sqlx_postgres::PgPool,
     conversation_id: Uuid,
     created_by: &str,
@@ -40,7 +38,11 @@ async fn seed_conversation(
     }
 }
 
-fn participant(account_id: &str, display_name: &str, organizer: bool) -> PlanCardParticipantInput {
+pub(crate) fn participant(
+    account_id: &str,
+    display_name: &str,
+    organizer: bool,
+) -> PlanCardParticipantInput {
     PlanCardParticipantInput {
         account_id: account_id.to_string(),
         display_name: display_name.to_string(),
@@ -392,140 +394,4 @@ async fn full_lifecycle_against_real_postgres() {
     .await
     .expect("a second, unrelated open card is allowed");
     assert_ne!(second_plan.event_id, canceled.event_id);
-}
-
-#[tokio::test]
-#[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
-async fn confirm_with_option_marks_voters_attending() {
-    let url =
-        std::env::var("KORDI_DIGEST_TEST_DATABASE_URL").expect("isolated test database required");
-    let pool = sqlx_postgres::PgPoolOptions::new()
-        .max_connections(5)
-        .connect(&url)
-        .await
-        .expect("connect isolated database");
-    crate::pg::pool::apply_migrations(&pool)
-        .await
-        .expect("migrate test database");
-
-    let suffix = Uuid::new_v4().simple().to_string();
-    let jordan = format!("jordan-{suffix}");
-    let maya = format!("maya-{suffix}");
-    let riya = format!("riya-{suffix}");
-    let sam = format!("sam-{suffix}");
-    for account in [&jordan, &maya, &riya, &sam] {
-        seed_account(&pool, account).await;
-    }
-    let conversation_id = Uuid::new_v4();
-    seed_conversation(
-        &pool,
-        conversation_id,
-        &jordan,
-        &[&jordan, &maya, &riya, &sam],
-    )
-    .await;
-
-    let proposed = store::propose(
-        &pool,
-        &jordan,
-        PlanCardProposeArgs {
-            conversation_id,
-            existing_event_id: None,
-            existing_revision: None,
-            title: "Saturday or Sunday?".to_string(),
-            start_at: None,
-            end_at: None,
-            location: None,
-            state: PlanCardState::Polling,
-            unresolved_fields: vec!["startAt".to_string()],
-            participants: vec![
-                participant(&jordan, "Jordan", true),
-                participant(&maya, "Maya", false),
-                participant(&riya, "Riya", false),
-                participant(&sam, "Sam", false),
-            ],
-            source_message_ids: vec!["msg_1".to_string()],
-            options: vec![
-                PlanCardOption {
-                    id: "opt_a".to_string(),
-                    label: "Saturday".to_string(),
-                    start_at: Some("2026-07-04T18:00:00-07:00".to_string()),
-                    end_at: None,
-                    location: Some("Riya's place".to_string()),
-                    votes: Vec::new(),
-                },
-                PlanCardOption {
-                    id: "opt_b".to_string(),
-                    label: "Sunday".to_string(),
-                    start_at: Some("2026-07-05T18:00:00-07:00".to_string()),
-                    end_at: None,
-                    location: Some("Riya's place".to_string()),
-                    votes: Vec::new(),
-                },
-            ],
-        },
-    )
-    .await
-    .expect("propose succeeds");
-
-    // Riya declines outright before the vote settles...
-    let declined = store::rsvp(
-        &pool,
-        &proposed.event_id,
-        &riya,
-        PlanCardRsvp::No,
-        Some("can't make either day"),
-    )
-    .await
-    .expect("rsvp succeeds");
-
-    // ...but still votes, since a vote and an RSVP are independent answers.
-    store::vote(&pool, &declined.event_id, &maya, "opt_a")
-        .await
-        .expect("maya votes");
-    let voted = store::vote(&pool, &declined.event_id, &riya, "opt_a")
-        .await
-        .expect("riya votes");
-
-    let confirmed = store::confirm(
-        &pool,
-        &voted.event_id,
-        voted.revision,
-        &jordan,
-        Some("opt_a"),
-        None,
-    )
-    .await
-    .expect("confirm with an option succeeds");
-    assert!(matches!(confirmed.state, PlanCardState::Confirmed));
-    assert_eq!(
-        confirmed.location.as_deref(),
-        Some("Riya's place"),
-        "the chosen option's location becomes the card's own"
-    );
-
-    let rsvp_of = |account_id: &str| {
-        confirmed
-            .participants
-            .iter()
-            .find(|p| p.account_id == account_id)
-            .unwrap()
-            .rsvp
-    };
-    assert!(
-        matches!(rsvp_of(&maya), PlanCardRsvp::Yes),
-        "a pending voter for the winning option is marked attending"
-    );
-    assert!(
-        matches!(rsvp_of(&riya), PlanCardRsvp::No),
-        "an explicit no is never upgraded by a vote for the winning option"
-    );
-    assert!(
-        matches!(rsvp_of(&sam), PlanCardRsvp::Pending),
-        "a member who never voted is left pending"
-    );
-    assert!(
-        matches!(rsvp_of(&jordan), PlanCardRsvp::Yes),
-        "the organizer was already yes and stays yes"
-    );
 }

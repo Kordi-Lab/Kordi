@@ -17,7 +17,8 @@ use uuid::Uuid;
 
 use crate::server::ServerState;
 
-use super::routes::{dispatch_row, Actor, Request};
+use super::routes::{dispatch_row, Actor};
+use super::wire::Request;
 
 fn error(code: &str, message: &str, status: StatusCode) -> Response {
     (status, Json(json!({"errorCode": code, "message": message}))).into_response()
@@ -83,7 +84,6 @@ pub async fn runner_action(
             StatusCode::FORBIDDEN,
         );
     };
-    let request_summary = serde_json::to_string(&request).unwrap_or_default();
     let request: Request = match serde_json::from_value(request) {
         Ok(request) => request,
         Err(err) => {
@@ -94,21 +94,35 @@ pub async fn runner_action(
             )
         }
     };
+    let action = request.action();
     let actor = Actor {
         account_id: pip_account_id,
         on_behalf_of_conversation: Some(conversation_id),
     };
     match dispatch_row(state.db_pool(), &actor, request).await {
-        // The model gets the compact card: counts and the people it may need
-        // to name, never every voter of a large group.
-        Ok(row) => Json(crate::pip::context::compact_card(&row)).into_response(),
+        Ok(row) => {
+            // PiP knows the card as its own action left it, so only later
+            // member responses wake the next sweep.
+            if let Err(error) = crate::pip::cards::mark_card_seen(
+                state.db_pool(),
+                conversation_id,
+                &row.event_id,
+                row.revision,
+            )
+            .await
+            {
+                eprintln!("[pip] Could not record the card PiP saw: {error}");
+            }
+            // The model gets the compact card: counts and the people it may
+            // need to name, never every voter of a large group.
+            Json(crate::pip::context::compact_card(&row)).into_response()
+        }
         Err(response) => {
             eprintln!(
-                "[pip] plan_card action rejected for run {run_id}: status {} request {}",
-                response.status(),
-                request_summary.chars().take(600).collect::<String>()
+                "[pip] plan_card {action} rejected for run {run_id}: status {}",
+                response.status()
             );
-            response
+            *response
         }
     }
 }

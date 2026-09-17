@@ -11,16 +11,21 @@
 //! holds regardless of what calls it later — an HTTP route today, a
 //! digest-style background sweep in a future slice.
 
+pub mod calendar;
 pub mod models;
 mod routes;
 mod runner;
-pub use runner::runner_action;
-pub mod calendar;
 pub mod store;
+mod transitions;
+mod wire;
+
+pub use runner::runner_action;
 
 pub use routes::routes;
 
 #[cfg(test)]
 mod http_tests;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
+#[cfg(test)]
+mod vote_tests;

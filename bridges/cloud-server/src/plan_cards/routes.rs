@@ -8,8 +8,8 @@ use axum::{
     routing::post,
     Extension, Json, Router,
 };
-use serde::Deserialize;
-use serde_json::json;
+use sqlx_core::query_as::query_as;
+use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use crate::{
@@ -17,11 +17,9 @@ use crate::{
     server::ServerState,
 };
 
-use super::models::{
-    PlanCardOption, PlanCardParticipantInput, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp,
-    PlanCardState, PlanCardStoreError,
-};
+use super::models::{PlanCardRow, PlanCardRsvp};
 use super::store;
+use super::wire::{blank_to_none, error, store_error, Rejection, Request};
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
@@ -31,146 +29,6 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             cloud_session_middleware,
         ))
         .with_state(state)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct WireParticipant {
-    participant_id: String,
-    display_name: String,
-    #[serde(default)]
-    organizer: bool,
-}
-
-/// A vote option as a caller supplies it. Ids are optional; missing ones are
-/// assigned in order so the model can send plain labels.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct WireOption {
-    #[serde(default)]
-    id: Option<String>,
-    label: String,
-    #[serde(default)]
-    start_at: Option<String>,
-    #[serde(default)]
-    end_at: Option<String>,
-    #[serde(default)]
-    location: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case")]
-pub(crate) enum Request {
-    Propose {
-        #[serde(rename = "conversationId")]
-        conversation_id: String,
-        #[serde(default, rename = "existingEventId")]
-        existing_event_id: Option<String>,
-        #[serde(default, rename = "existingRevision")]
-        existing_revision: Option<i64>,
-        title: String,
-        #[serde(default, rename = "startAt")]
-        start_at: Option<String>,
-        #[serde(default, rename = "endAt")]
-        end_at: Option<String>,
-        #[serde(default)]
-        location: Option<String>,
-        state: String,
-        #[serde(default, rename = "unresolvedFields")]
-        unresolved_fields: Vec<String>,
-        participants: Vec<WireParticipant>,
-        #[serde(default, rename = "sourceMessageIds")]
-        source_message_ids: Vec<String>,
-        #[serde(default)]
-        options: Vec<WireOption>,
-    },
-    Rsvp {
-        #[serde(rename = "eventId")]
-        event_id: String,
-        // Accepted for compatibility; an answer applies at any revision.
-        #[serde(default)]
-        #[allow(dead_code)]
-        revision: Option<i64>,
-        #[serde(rename = "participantId")]
-        participant_id: String,
-        rsvp: String,
-        #[serde(default)]
-        note: Option<String>,
-    },
-    Vote {
-        #[serde(rename = "eventId")]
-        event_id: String,
-        #[serde(default)]
-        #[allow(dead_code)]
-        revision: Option<i64>,
-        #[serde(rename = "participantId")]
-        participant_id: String,
-        #[serde(rename = "optionId")]
-        option_id: String,
-    },
-    Confirm {
-        #[serde(rename = "eventId")]
-        event_id: String,
-        revision: i64,
-        #[serde(rename = "confirmedBy")]
-        confirmed_by: String,
-        #[serde(default, rename = "optionId")]
-        option_id: Option<String>,
-    },
-    Reopen {
-        #[serde(rename = "eventId")]
-        event_id: String,
-        revision: i64,
-        reason: String,
-    },
-    Cancel {
-        #[serde(rename = "eventId")]
-        event_id: String,
-        revision: i64,
-        #[serde(rename = "canceledBy")]
-        canceled_by: String,
-        #[serde(default)]
-        reason: Option<String>,
-    },
-}
-
-fn error(code: &str, message: &str, status: StatusCode) -> Response {
-    (status, Json(json!({"errorCode": code, "message": message}))).into_response()
-}
-
-fn store_error(err: PlanCardStoreError) -> Response {
-    match err {
-        PlanCardStoreError::NotFound => error(
-            "plan_card_not_found",
-            "This plan card no longer exists.",
-            StatusCode::NOT_FOUND,
-        ),
-        PlanCardStoreError::RevisionConflict => error(
-            "plan_card_revision_conflict",
-            "This plan card changed since you last read it. Refresh and try again.",
-            StatusCode::CONFLICT,
-        ),
-        PlanCardStoreError::InvalidTransition(reason) => error(
-            "plan_card_invalid_transition",
-            &reason,
-            StatusCode::CONFLICT,
-        ),
-        PlanCardStoreError::NotAParticipant => error(
-            "plan_card_not_a_participant",
-            "That account is not a participant on this plan card.",
-            StatusCode::BAD_REQUEST,
-        ),
-        PlanCardStoreError::Forbidden => error(
-            "plan_card_forbidden",
-            "You must be an active member of this conversation.",
-            StatusCode::FORBIDDEN,
-        ),
-        PlanCardStoreError::Db(_) => error(
-            "plan_card_unavailable",
-            "Could not update the plan card. Try again.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ),
-    }
 }
 
 async fn handle(
@@ -188,7 +46,7 @@ async fn handle(
             // message that carries this card is refreshed in place for
             // everyone, with no new line and no model run.
             if let Some(pip) = state.pip() {
-                if let Err(error) = crate::pip::store::sync_card_messages(
+                if let Err(error) = crate::pip::cards::sync_card_messages(
                     state.db_pool(),
                     &pip.config().account_id,
                     &row,
@@ -200,7 +58,7 @@ async fn handle(
             }
             Json(row).into_response()
         }
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -213,12 +71,8 @@ pub(crate) struct Actor {
     pub on_behalf_of_conversation: Option<Uuid>,
 }
 
-async fn is_active_member(
-    pool: &sqlx_postgres::PgPool,
-    conversation_id: Uuid,
-    account_id: &str,
-) -> bool {
-    sqlx_core::query_as::query_as::<_, (bool,)>(
+async fn is_active_member(pool: &PgPool, conversation_id: Uuid, account_id: &str) -> bool {
+    query_as::<_, (bool,)>(
         "SELECT EXISTS(SELECT 1 FROM cloud_chat_conversation_members
          WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active')",
     )
@@ -233,7 +87,7 @@ async fn is_active_member(
 /// Validates that `acting_for` may be acted on by this actor: either it is the
 /// actor itself, or the actor is a service agent and `acting_for` is an active
 /// member of the actor's conversation.
-async fn may_act_for(pool: &sqlx_postgres::PgPool, actor: &Actor, acting_for: &str) -> bool {
+async fn may_act_for(pool: &PgPool, actor: &Actor, acting_for: &str) -> bool {
     if acting_for == actor.account_id {
         return true;
     }
@@ -243,14 +97,41 @@ async fn may_act_for(pool: &sqlx_postgres::PgPool, actor: &Actor, acting_for: &s
     }
 }
 
+/// A PiP run acts only on cards in its own conversation, whatever event id the
+/// chat put in front of it. Members are checked against the card's own
+/// conversation by the store.
+async fn require_in_scope(pool: &PgPool, actor: &Actor, event_id: &str) -> Result<(), Rejection> {
+    let Some(scope) = actor.on_behalf_of_conversation else {
+        return Ok(());
+    };
+    let card: Option<(Uuid,)> =
+        query_as("SELECT conversation_id FROM cloud_plan_cards WHERE event_id = $1")
+            .bind(event_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|err| store_error(err.into()))?;
+    match card {
+        Some((conversation_id,)) if conversation_id == scope => Ok(()),
+        Some(_) => Err(error(
+            "plan_card_forbidden",
+            "This run may only manage plan cards in its own conversation.",
+            StatusCode::FORBIDDEN,
+        )),
+        None => Err(store_error(super::models::PlanCardStoreError::NotFound)),
+    }
+}
+
+fn forbidden(message: &str) -> Rejection {
+    error("plan_card_forbidden", message, StatusCode::FORBIDDEN)
+}
+
 /// Applies one request and returns the resulting card, or the error response
-/// to send back. Split from `dispatch` so the member route can act on the
-/// new card after a successful change.
+/// to send back. The member route and PiP's runner both act through here.
 pub(crate) async fn dispatch_row(
-    pool: &sqlx_postgres::PgPool,
+    pool: &PgPool,
     actor: &Actor,
     request: Request,
-) -> Result<PlanCardRow, Response> {
+) -> Result<PlanCardRow, Rejection> {
     let row = apply(pool, actor, request).await?;
     // A confirmed plan lives on each attending member's Kordi calendar; a
     // decline or cancellation takes it off again. Never fails the action.
@@ -263,164 +144,33 @@ pub(crate) async fn dispatch_row(
     Ok(row)
 }
 
-async fn apply(
-    pool: &sqlx_postgres::PgPool,
-    actor: &Actor,
-    request: Request,
-) -> Result<PlanCardRow, Response> {
+async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCardRow, Rejection> {
+    let event_id = match &request {
+        Request::Propose(_) => None,
+        Request::Rsvp { event_id, .. }
+        | Request::Vote { event_id, .. }
+        | Request::Confirm { event_id, .. }
+        | Request::Reopen { event_id, .. }
+        | Request::Cancel { event_id, .. } => Some(event_id.clone()),
+    };
+    if let Some(event_id) = event_id {
+        require_in_scope(pool, actor, &event_id).await?;
+    }
     match request {
-        Request::Propose {
-            conversation_id,
-            existing_event_id,
-            existing_revision,
-            title,
-            start_at,
-            end_at,
-            location,
-            state: state_str,
-            unresolved_fields,
-            participants,
-            source_message_ids,
-            options,
-        } => {
-            let Ok(conversation_id) = Uuid::parse_str(&conversation_id) else {
-                return Err(error(
-                    "invalid_conversation_id",
-                    "conversationId must be a valid conversation identifier.",
-                    StatusCode::BAD_REQUEST,
-                ));
-            };
-            if actor
-                .on_behalf_of_conversation
-                .is_some_and(|scope| scope != conversation_id)
-            {
-                return Err(error(
-                    "plan_card_forbidden",
-                    "This run may only manage plan cards in its own conversation.",
-                    StatusCode::FORBIDDEN,
-                ));
-            }
-            let Some(card_state) = PlanCardState::from_db_str(&to_snake_case(&state_str)) else {
-                return Err(error(
-                    "invalid_state",
-                    "state must be polling or awaitingConfirmation.",
-                    StatusCode::BAD_REQUEST,
-                ));
-            };
-            if title.trim().is_empty() {
-                return Err(error(
-                    "invalid_title",
-                    "title is required.",
-                    StatusCode::BAD_REQUEST,
-                ));
-            }
-            if participants.is_empty() {
-                return Err(error(
-                    "invalid_participants",
-                    "At least one participant is required.",
-                    StatusCode::BAD_REQUEST,
-                ));
-            }
-            // Models often send optional strings as "" rather than omitting
-            // them; an empty existingEventId must mean "new card", not an
-            // update of a card that does not exist.
-            let existing_event_id = blank_to_none(existing_event_id);
-            let existing_revision = existing_revision.filter(|_| existing_event_id.is_some());
-            let location = blank_to_none(location);
-            let start_at = match normalize_instant(start_at.as_deref()) {
-                Ok(value) => value,
-                Err(message) => {
-                    return Err(error("invalid_start_at", message, StatusCode::BAD_REQUEST))
-                }
-            };
-            let end_at = match normalize_instant(end_at.as_deref()) {
-                Ok(value) => value,
-                Err(message) => {
-                    return Err(error("invalid_end_at", message, StatusCode::BAD_REQUEST))
-                }
-            };
-            if starts_in_the_past(start_at.as_deref()) {
-                return Err(error(
-                    "start_in_past",
-                    "startAt is already in the past. Use the next upcoming date for this plan.",
-                    StatusCode::BAD_REQUEST,
-                ));
-            }
-            let mut normalized_options = Vec::with_capacity(options.len());
-            for (index, option) in options.into_iter().enumerate() {
-                let label = option.label.trim().to_string();
-                if label.is_empty() {
-                    return Err(error(
-                        "invalid_options",
-                        "Every option needs a label.",
-                        StatusCode::BAD_REQUEST,
-                    ));
-                }
-                let start_at = match normalize_instant(option.start_at.as_deref()) {
-                    Ok(value) => value,
-                    Err(message) => {
-                        return Err(error("invalid_start_at", message, StatusCode::BAD_REQUEST))
-                    }
-                };
-                let end_at = match normalize_instant(option.end_at.as_deref()) {
-                    Ok(value) => value,
-                    Err(message) => {
-                        return Err(error("invalid_end_at", message, StatusCode::BAD_REQUEST))
-                    }
-                };
-                if starts_in_the_past(start_at.as_deref()) {
-                    return Err(error(
-                        "option_in_past",
-                        "An option starts in the past. Offer only upcoming times.",
-                        StatusCode::BAD_REQUEST,
-                    ));
-                }
-                normalized_options.push(PlanCardOption {
-                    id: blank_to_none(option.id).unwrap_or_else(|| format!("opt_{}", index + 1)),
-                    label,
-                    start_at,
-                    end_at,
-                    location: blank_to_none(option.location),
-                    votes: Vec::new(),
-                });
-            }
-            let args = PlanCardProposeArgs {
-                conversation_id,
-                existing_event_id,
-                existing_revision,
-                title,
-                start_at,
-                end_at,
-                location,
-                state: card_state,
-                unresolved_fields,
-                participants: participants
-                    .into_iter()
-                    .map(|participant| PlanCardParticipantInput {
-                        account_id: participant.participant_id,
-                        display_name: participant.display_name,
-                        organizer: participant.organizer,
-                    })
-                    .collect(),
-                source_message_ids,
-                options: normalized_options,
-            };
+        Request::Propose(propose) => {
+            let args = propose.into_args(actor.on_behalf_of_conversation)?;
             store::propose(pool, &actor.account_id, args)
                 .await
                 .map_err(store_error)
         }
         Request::Vote {
             event_id,
-            revision: _,
             participant_id,
             option_id,
+            ..
         } => {
             if !may_act_for(pool, actor, &participant_id).await {
-                return Err(error(
-                    "plan_card_forbidden",
-                    "You can only cast your own vote.",
-                    StatusCode::FORBIDDEN,
-                ));
+                return Err(forbidden("You can only cast your own vote."));
             }
             store::vote(pool, &event_id, &participant_id, option_id.trim())
                 .await
@@ -428,33 +178,24 @@ async fn apply(
         }
         Request::Rsvp {
             event_id,
-            revision: _,
             participant_id,
             rsvp,
             note,
+            ..
         } => {
-            let Some(rsvp) = PlanCardRsvp::from_db_str(&rsvp) else {
-                return Err(error(
-                    "invalid_rsvp",
-                    "rsvp must be yes or no.",
-                    StatusCode::BAD_REQUEST,
-                ));
-            };
-            if matches!(rsvp, PlanCardRsvp::Pending) {
-                return Err(error(
-                    "invalid_rsvp",
-                    "rsvp must be yes or no.",
-                    StatusCode::BAD_REQUEST,
-                ));
-            }
+            let rsvp = PlanCardRsvp::from_db_str(&rsvp)
+                .filter(|rsvp| !matches!(rsvp, PlanCardRsvp::Pending))
+                .ok_or_else(|| {
+                    error(
+                        "invalid_rsvp",
+                        "rsvp must be yes or no.",
+                        StatusCode::BAD_REQUEST,
+                    )
+                })?;
             // A member records only their own RSVP. PiP may record another
             // active member's RSVP from what that member said in the chat.
             if !may_act_for(pool, actor, &participant_id).await {
-                return Err(error(
-                    "plan_card_forbidden",
-                    "You can only record your own RSVP.",
-                    StatusCode::FORBIDDEN,
-                ));
+                return Err(forbidden("You can only record your own RSVP."));
             }
             let note = blank_to_none(note);
             store::rsvp(pool, &event_id, &participant_id, rsvp, note.as_deref())
@@ -468,10 +209,8 @@ async fn apply(
             option_id,
         } => {
             if !may_act_for(pool, actor, &confirmed_by).await {
-                return Err(error(
-                    "plan_card_forbidden",
+                return Err(forbidden(
                     "confirmedBy must match the authenticated account.",
-                    StatusCode::FORBIDDEN,
                 ));
             }
             let option_id = blank_to_none(option_id);
@@ -509,88 +248,13 @@ async fn apply(
             reason,
         } => {
             if !may_act_for(pool, actor, &canceled_by).await {
-                return Err(error(
-                    "plan_card_forbidden",
+                return Err(forbidden(
                     "canceledBy must match the authenticated account.",
-                    StatusCode::FORBIDDEN,
                 ));
             }
             store::cancel(pool, &event_id, revision, &canceled_by, reason.as_deref())
                 .await
                 .map_err(store_error)
         }
-    }
-}
-
-/// A plan or option that starts more than ten minutes ago cannot be proposed.
-fn starts_in_the_past(instant: Option<&str>) -> bool {
-    instant
-        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .is_some_and(|start| {
-            start.with_timezone(&chrono::Utc) < chrono::Utc::now() - chrono::Duration::minutes(10)
-        })
-}
-
-/// Treats an empty or whitespace-only optional string as absent.
-pub(crate) fn blank_to_none(value: Option<String>) -> Option<String> {
-    value
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-/// Optional instants must be RFC 3339 with an explicit offset so the card's
-/// time is unambiguous for every participant. Blank means unknown.
-pub(crate) fn normalize_instant(value: Option<&str>) -> Result<Option<String>, &'static str> {
-    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-    match chrono::DateTime::parse_from_rfc3339(raw) {
-        Ok(instant) => Ok(Some(instant.to_rfc3339())),
-        Err(_) => Err(
-            "startAt and endAt must be RFC 3339 timestamps with a timezone offset, \
-             for example 2026-09-20T12:30:00+03:00. Leave them out when the time is not known yet.",
-        ),
-    }
-}
-
-/// Wire `state` arrives camelCase (`awaitingConfirmation`); the store speaks
-/// the DB's snake_case (`awaiting_confirmation`).
-fn to_snake_case(value: &str) -> String {
-    let mut result = String::with_capacity(value.len() + 4);
-    for ch in value.chars() {
-        if ch.is_ascii_uppercase() {
-            result.push('_');
-            result.push(ch.to_ascii_lowercase());
-        } else {
-            result.push(ch);
-        }
-    }
-    result
-}
-
-#[cfg(test)]
-mod instant_tests {
-    use super::normalize_instant;
-
-    #[test]
-    fn blank_optional_strings_are_absent() {
-        assert_eq!(super::blank_to_none(None), None);
-        assert_eq!(super::blank_to_none(Some("  ".into())), None);
-        assert_eq!(
-            super::blank_to_none(Some(" plan_1 ".into())),
-            Some("plan_1".into())
-        );
-    }
-
-    #[test]
-    fn instants_require_an_offset() {
-        assert_eq!(normalize_instant(None).unwrap(), None);
-        assert_eq!(normalize_instant(Some("  ")).unwrap(), None);
-        assert_eq!(
-            normalize_instant(Some("2026-09-20T12:30:00+03:00")).unwrap(),
-            Some("2026-09-20T12:30:00+03:00".to_string())
-        );
-        assert!(normalize_instant(Some("2026-09-20T12:30:00")).is_err());
-        assert!(normalize_instant(Some("Saturday 12:30")).is_err());
     }
 }

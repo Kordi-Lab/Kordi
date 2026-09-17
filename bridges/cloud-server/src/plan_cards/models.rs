@@ -158,6 +158,8 @@ pub enum PlanCardStoreError {
     InvalidTransition(String),
     /// `account_id` isn't one of this card's participants.
     NotAParticipant,
+    /// A proposed participant isn't an active member of the conversation.
+    ParticipantNotMember,
     /// The acting account isn't an active member of the card's conversation.
     Forbidden,
     Db(sqlx_core::Error),
@@ -170,6 +172,12 @@ impl std::fmt::Display for PlanCardStoreError {
             Self::RevisionConflict => write!(f, "plan card revision conflict"),
             Self::InvalidTransition(reason) => write!(f, "invalid plan card transition: {reason}"),
             Self::NotAParticipant => write!(f, "account is not a participant on this plan card"),
+            Self::ParticipantNotMember => {
+                write!(
+                    f,
+                    "a participant is not an active member of this conversation"
+                )
+            }
             Self::Forbidden => write!(f, "account is not an active member of this conversation"),
             Self::Db(err) => write!(f, "plan card database error: {err}"),
         }

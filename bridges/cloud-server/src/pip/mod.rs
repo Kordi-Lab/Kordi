@@ -6,10 +6,14 @@
 //! ordinary member; it never touches anyone's personal calendar.
 
 mod agent;
+pub(crate) mod cards;
 mod config;
 pub(crate) mod context;
+mod input;
 pub mod membership;
+mod mentions;
 mod prompt;
+mod retry;
 pub mod store;
 mod worker;
 
@@ -41,3 +45,6 @@ impl PipService {
         &self.config
     }
 }
+
+#[cfg(test)]
+mod sweep_tests;
