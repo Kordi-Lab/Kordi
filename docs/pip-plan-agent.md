@@ -20,8 +20,8 @@ excluded until both clients render a third member there.
 
 | Variable | Meaning |
 | --- | --- |
-| `KORDI_PIP_ENABLED` | `true` to provision PiP and start its sweep |
-| `KORDI_PIP_OPENAI_API_KEY` | Kordi-operated OpenAI key, required when enabled |
+| `KORDI_PIP_OPENAI_API_KEY` | Kordi-operated OpenAI key; PiP is on whenever it is set |
+| `KORDI_PIP_ENABLED` | `false` switches PiP off; `true` without a key is a startup error |
 | `KORDI_PIP_OPENAI_MODEL` | Model name; defaults to the support agent's default |
 | `KORDI_PIP_ACCOUNT_ID`, `KORDI_PIP_AGENT_ID`, `KORDI_PIP_AGENT_NAME`, `KORDI_PIP_OWNER_EMAIL` | Identity overrides; defaults are fine for every environment |
 
@@ -59,9 +59,16 @@ five-second sweep considers a group only when one of these holds:
 
 | Trigger | Condition |
 | --- | --- |
-| New messages | The chat has been quiet for 30 seconds, or 2 minutes have passed since the first unseen message |
-| Card changed | Votes or answers changed the card and it has been quiet for 45 seconds |
+| New messages | A member (never PiP itself) wrote, and the chat has been quiet for 30 seconds, or 2 minutes have passed since the first unseen message |
+| Card changed | Votes or answers moved the card past the revision PiP last saw and it has been quiet for 45 seconds |
 | Reminder | An open plan starts within 24 hours or 2 hours and that reminder has not gone out |
+
+Every condition reads the same card as the run input, the newest one not
+canceled, and one reminder window at a time, so a chat the sweep selects
+always yields a hook or moves its cursor instead of being selected again on
+the next tick. PiP records the revision it saw when a run starts and after
+each of its own card actions, so its own calls never wake it, while a vote
+cast during a run still does.
 
 New messages alone then pass a free text check
 (`bridges/cloud-server/src/pip/context.rs`) before any run is queued: a clock
@@ -102,34 +109,36 @@ confirm, and writing calendars never use the model.
 ## How a run happens
 
 1. A five-second sweep (`bridges/cloud-server/src/pip/worker.rs`) selects
-   conversations whose latest message sequence moved past PiP's cursor, whose
-   card changed since PiP last looked (votes and answers, debounced by 45
-   seconds), or whose open card starts within 24 hours or 2 hours and has
-   not yet received that reminder. Selection is an atomic per-row
+   conversations with the triggers above. Selection is an atomic per-row
    reservation, bounded to ten conversations per pass.
 2. The sweep queues one cloud run (`pip_` prefix) whose prompt is a bounded
-   JSON snapshot: members with their `@handle`, the last 40 text messages
-   with envelopes decoded, the open card with options, votes, and
-   per-participant RSVPs, and the hooks that woke PiP.
+   JSON snapshot (`bridges/cloud-server/src/pip/input.rs`) within the limits
+   above, and the hooks that woke PiP.
 3. The cloud runner (`bridges/cloud-agent-runner/src/pip.rs`) runs the model
    with exactly one tool, `plan_card` (propose with options, rsvp, vote,
-   confirm with an option, reopen, cancel). Every call is forwarded to
+   confirm with an option, reopen, cancel), defined only for PiP in
+   `bridges/cloud-agent-runner/src/pip_tool.rs`; members' own agents do not
+   get it. Every call is forwarded to
    `POST /v1/cloud/agent-runs/:run_id/plan-card`, authenticated with the
-   runner token and bound to the run's own conversation.
+   runner token. Every action, not only a proposal, must target a card in
+   the run's own conversation.
 4. The server records the action as PiP (`bridges/cloud-server/src/plan_cards/runner.rs`).
    PiP may record another active member's RSVP, vote, confirmation, or
    cancellation from what that member said; a signed-in member still acts only
-   for themselves.
+   for themselves. Every participant on a card must be an active member of
+   its conversation, since a confirmed plan writes to their calendars and
+   digests.
 5. When the run changed the card, PiP posts the card as its own message; the
    run's final JSON `{"message": ..., "hooksHandled": [...]}` is then posted as
    a separate text message from PiP when `message` is non-empty. `@Handle` tokens that
-   match one member become real mentions. The handled hooks are stored so a
-   reminder never fires twice, and the card revision PiP has seen is
-   recorded so its own tool calls never wake the next sweep.
+   match one member become real mentions. The handled reminder hooks are
+   stored so a reminder never fires twice.
 
 Failures back off at 1 minute, 5 minutes, 30 minutes, 2 hours, then 12 hours
-between attempts. Progress is never reset on failure, so a persistently failing
-provider costs a handful of calls per day, not thousands.
+between attempts (`bridges/cloud-server/src/pip/retry.rs`). Progress is never
+reset on failure, so a persistently failing provider costs a handful of calls
+per day, not thousands. A chat whose run expired or ended without clearing
+its reservation is released on the next stale-run check.
 
 ## How the card reaches the clients
 
@@ -171,7 +180,10 @@ instead of a generated face, and a "Built-in agent" tag next to its name.
 
 Unit coverage: `cargo test -p kordi-cloud-server --lib pip::`,
 `cargo test -p kordi-cloud-server --lib plan_cards::` and
-`cargo test -p kordi-cloud-agent-runner --lib pip::`.
+`cargo test -p kordi-cloud-agent-runner --lib pip::`. The database tests for
+the sweep query, card lifecycle, votes, participant membership, and run scope
+run against a task-owned PostgreSQL database:
+`KORDI_DIGEST_TEST_DATABASE_URL=... cargo test -p kordi-cloud-server --lib -- --ignored pip:: plan_cards::`.
 
 Validated on the isolated development backend (2026-09-16) with two synthetic
 accounts in a fresh group, a Kordi-operated key, and no @-mention anywhere:
