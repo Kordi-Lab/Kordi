@@ -231,6 +231,49 @@ test('live replies fill gaps in a ready page without replaying older history', (
   assert.equal(applyCanonicalSessionStateAction(store, () => replay), store);
 });
 
+test('a concurrent reply does not jump ahead of the sender\'s own still-sending message', () => {
+  // Two people sending within the same instant: the other device or the
+  // server can timestamp its message slightly earlier than this client's
+  // own optimistic send, purely from clock/latency skew. The sender has
+  // already seen their own bubble render before that reply arrives, so it
+  // must settle after it, not retroactively slot in front of it.
+  const base = catalog();
+  base.summaries[0].latestMessage = message('seed', 'session:one', 1000);
+  base.summaries[0].messageCount = 1;
+  let store = mergeCanonicalCatalog(createCanonicalStore(), base);
+  store = { ...store, hydrationBySessionId: { ...store.hydrationBySessionId, 'session:one': 'ready' } };
+  assert.deepEqual(store.messagesBySessionId['session:one']?.map(row => row.id), ['seed']);
+
+  const mine: CanonicalSessionMessage = {
+    ...message('mine', 'session:one', 1002),
+    status: 'sending',
+  };
+  store = applyCanonicalSessionStateAction(store, (current) => current && ({
+    ...current,
+    messages: [...current.messages, mine],
+  }));
+  assert.deepEqual(store.messagesBySessionId['session:one']?.map(row => row.id), ['seed', 'mine']);
+
+  const theirs = message('theirs', 'session:one', 1001);
+  const withReply = { ...base, summaries: [{ ...base.summaries[0]!, latestMessage: theirs, messageCount: 2 }] };
+  store = mergeCanonicalCatalog(store, withReply);
+  assert.deepEqual(
+    store.messagesBySessionId['session:one']?.map(row => row.id),
+    ['seed', 'mine', 'theirs'],
+    'the still-sending message must keep its rendered position instead of being pushed down',
+  );
+
+  // Once the send settles (no longer 'sending'), normal order applies again:
+  // a later concurrent arrival timestamped even earlier can still only
+  // append after everything already shown, since nothing here re-fetches
+  // real history -- that is unaffected and covered by the gap-filling test.
+  store = applyCanonicalSessionStateAction(store, (current) => current && ({
+    ...current,
+    messages: current.messages.map((row) => (row.id === 'mine' ? { ...row, status: 'sent' } : row)),
+  }));
+  assert.deepEqual(store.messagesBySessionId['session:one']?.map(row => row.id), ['seed', 'mine', 'theirs']);
+});
+
 test('inactive canonical sessions retain only their catalog preview', () => {
   const base = catalog();
   const sessions = Array.from({ length: 10 }, (_, index) => ({

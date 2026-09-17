@@ -14,6 +14,11 @@ const contentRecord = (value: unknown): Record<string, unknown> => (
     : {}
 );
 
+function transcriptionKey(value: unknown) {
+  const state = contentRecord(value);
+  return [state.status, state.sourceVersion, state.engine, state.attempts, state.language].join('\u0000');
+}
+
 export function patchCanonicalCloudMessages(
   current: CanonicalSessionState | null,
   groupRows: readonly IndexedCloudGroupRow[],
@@ -23,6 +28,7 @@ export function patchCanonicalCloudMessages(
     conversationId: string;
     targetMessageId: string;
     text: string;
+    voiceMessage: Record<string, unknown> | null;
     version: number | null;
     editedAt: string | null;
     reactions: NonNullable<CloudMessage['reactions']>;
@@ -42,6 +48,8 @@ export function patchCanonicalCloudMessages(
         version === previous.version
         && (row.wire.editedAt ?? '') >= (previous.editedAt ?? '')
       );
+    const rowVoice = row.envelope.message?.voiceMessage;
+    const voiceMessage = rowVoice?.mediaId ? { ...rowVoice, mediaId: rowVoice.mediaId } : null;
     const pendingReactionIntents = [
       ...(previous?.pendingReactionIntents ?? []),
       ...(row.wire.pendingReactionIntents ?? []),
@@ -50,6 +58,7 @@ export function patchCanonicalCloudMessages(
       conversationId: useRowContent ? conversationId : previous.conversationId,
       targetMessageId: useRowContent ? targetMessageId : previous.targetMessageId,
       text: useRowContent ? row.envelope.message!.text : previous.text,
+      voiceMessage: useRowContent ? voiceMessage : previous.voiceMessage,
       version: useRowContent ? version : previous.version,
       editedAt: useRowContent ? row.wire.editedAt ?? null : previous.editedAt,
       reactions: applyCloudReactionIntents(
@@ -78,8 +87,18 @@ export function patchCanonicalCloudMessages(
     );
     if (!projection) return message;
     const reactions = normalizeCloudMessageReactions(content.reactions) ?? [];
+    // A sender's transcript update changes only the voice metadata; keep this device's local path.
+    const currentVoice = contentRecord(content.voiceMessage);
+    const voiceMessage = projection.voiceMessage && currentVoice.mediaId === projection.voiceMessage.mediaId
+      ? { ...currentVoice, transcript: projection.voiceMessage.transcript, transcription: projection.voiceMessage.transcription }
+      : null;
+    const voiceChanged = Boolean(voiceMessage) && (
+      currentVoice.transcript !== voiceMessage?.transcript
+      || transcriptionKey(currentVoice.transcription) !== transcriptionKey(voiceMessage?.transcription)
+    );
     if (
-      message.contentText === projection.text
+      !voiceChanged
+      && message.contentText === projection.text
       && content.cloudMessageVersion === projection.version
       && content.editedAt === projection.editedAt
       && content.cloudReactionConversationId === projection.conversationId
@@ -98,6 +117,7 @@ export function patchCanonicalCloudMessages(
         cloudReactionConversationId: projection.conversationId,
         cloudReactionTargetMessageId: projection.targetMessageId,
         reactions: projection.reactions,
+        ...(voiceChanged && voiceMessage ? { voiceMessage } : {}),
       },
     };
   });

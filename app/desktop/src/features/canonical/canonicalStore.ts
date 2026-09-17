@@ -79,13 +79,82 @@ function mergeReadyPageMessages(
   ));
   // Delayed replies can fill a gap behind the live tail. Only history before
   // the loaded page belongs behind the explicit pagination boundary.
-  return mergeMessages(existing, incoming.filter((message) => (
+  const candidates = incoming.filter((message) => (
     existingIds.has(message.id)
     || (
       compareCanonicalMessages(oldest, message) <= 0
       && message.createdAtMs >= oldest.createdAtMs
     )
-  )));
+  ));
+  if (candidates.length === 0) return existing;
+
+  // Content updates to an already-rendered message never move it: only a
+  // brand-new id gets inserted by chronological position. This function is
+  // called from every state action, including ones that touch nothing about
+  // this session's ordering (e.g. `canonicalStateFromStore` flattens and
+  // re-sorts on every action), so an id-matched message must keep its
+  // established index rather than being re-derived from a fresh full sort
+  // each time -- otherwise a correction made here would be undone the next
+  // time any of those call sites runs, on the very next unrelated action.
+  const byId = new Map(existing.map((message) => [message.id, message]));
+  let changed = false;
+  const newArrivals: CanonicalSessionMessage[] = [];
+  for (const message of candidates) {
+    const previous = byId.get(message.id);
+    if (!previous) {
+      byId.set(message.id, message);
+      newArrivals.push(message);
+      changed = true;
+      continue;
+    }
+    if (message.updatedAtMs < previous.updatedAtMs) continue;
+    if (
+      previous.messageKind === 'agent-turn'
+      || message.messageKind === 'agent-turn'
+    ) {
+      if (!canApplyCloudAgentTurnTransition(previous, message)) continue;
+    }
+    if (canonicalMessagesEqual(previous, message)) continue;
+    byId.set(message.id, message);
+    changed = true;
+  }
+  if (!changed) return existing;
+  const updatedExisting = existing.map((message) => byId.get(message.id) ?? message);
+  if (newArrivals.length === 0) return updatedExisting;
+
+  // A still-'sending' message of this client's own has already rendered by
+  // the time a genuinely concurrent reply from someone else arrives; that
+  // reply must not retroactively slot in front of it just because its
+  // timestamp is nominally earlier (ordinary clock/latency skew between two
+  // people sending within the same instant), or the sender sees their own
+  // just-sent bubble jump down the instant the other message lands. Once a
+  // message settles out of 'sending' it re-joins normal chronological
+  // order, so this does not affect backfilling a real gap in already-
+  // confirmed history (e.g. a delayed group reply landing between two
+  // already-'sent' messages): with no 'sending' message present, every new
+  // arrival inserts at its ordinary chronological position, unclamped.
+  let barrier: CanonicalSessionMessage | null = null;
+  for (const message of updatedExisting) {
+    if (message.status === 'sending') barrier = message;
+  }
+  newArrivals.sort(compareCanonicalMessages);
+  const insertedNewArrivals = new Set<CanonicalSessionMessage>();
+  const result = [...updatedExisting];
+  for (const arrival of newArrivals) {
+    let insertAt = -1;
+    if (barrier && compareCanonicalMessages(arrival, barrier) <= 0) {
+      insertAt = result.lastIndexOf(barrier) + 1;
+      // Land after any other new arrivals already placed right behind the
+      // barrier, preserving their own chronological order among themselves.
+      while (insertAt < result.length && insertedNewArrivals.has(result[insertAt])) insertAt += 1;
+    } else {
+      insertAt = result.findIndex((message) => compareCanonicalMessages(message, arrival) > 0);
+      if (insertAt < 0) insertAt = result.length;
+    }
+    result.splice(insertAt, 0, arrival);
+    insertedNewArrivals.add(arrival);
+  }
+  return result;
 }
 
 function recordsMatch<T>(

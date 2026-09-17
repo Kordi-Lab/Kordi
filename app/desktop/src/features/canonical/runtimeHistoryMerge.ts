@@ -80,7 +80,8 @@ export function mergeCanonicalHistoryIntoRuntime(
     const canonicalMessage = canonicalMessages[canonicalIndex];
     const isForkSnapshot = canonicalMessage.isForkSnapshot;
     const runtimeAliasIds = message.replyAliasIds ?? [];
-    const canonicalAliasIds = [canonicalMessage.id, canonicalMessage.entryId, ...(canonicalMessage.replyAliasIds ?? [])]
+    const canonicalId = canonicalMessage.id;
+    const canonicalAliasIds = [canonicalId, canonicalMessage.entryId, ...(canonicalMessage.replyAliasIds ?? [])]
       .filter((value): value is string => Boolean(value?.trim()));
     const replyAliasIds = [...new Set([
       ...runtimeAliasIds,
@@ -89,17 +90,30 @@ export function mergeCanonicalHistoryIntoRuntime(
     const reactionMetadata = mergedMessageReactionMetadata(message, canonicalMessage);
     const senderOwnerName = canonicalMessage.senderOwnerName ?? message.senderOwnerName;
     const conversationSequence = canonicalMessage.conversationSequence ?? message.conversationSequence;
+    const isUserMessage = message.role === 'user';
     const statusChips = 'statusChips' in canonicalMessage ? canonicalMessage.statusChips : undefined;
-    const hasCanonicalDelivery = Boolean(statusChips?.length) && message.role === 'user';
+    const hasCanonicalDelivery = Boolean(statusChips?.length) && isUserMessage;
     const detail = hasCanonicalDelivery ? canonicalMessage.detail : undefined;
     const deliveryChanged = hasCanonicalDelivery && (statusChips?.join('\u0000') !== message.statusChips?.join('\u0000') || detail !== message.detail);
-    if (!isForkSnapshot && replyAliasIds.length === runtimeAliasIds.length && !reactionMetadata.changed && senderOwnerName === message.senderOwnerName && conversationSequence === message.conversationSequence && !deliveryChanged) {
+    // Borrow the canonical row's durable id as this runtime message's render
+    // identity so a desktop-local human message keeps one React key across the
+    // optimistic -> completed-turn-refresh transition, when its own `id`/`entryId`
+    // are still ephemeral or change. Assistant rows already keep one key via
+    // `id` alone (see useDesktopTranscriptAdapter.ts), so this is user-only.
+    // `canonicalId`/`isUserMessage` reuse the reads already made above; only
+    // `message.clientMessageId` is a new read (cached once) to keep this
+    // bounded-cost per row.
+    const existingClientMessageId = message.clientMessageId;
+    const clientMessageId = isUserMessage && canonicalId?.trim() ? canonicalId : existingClientMessageId;
+    const clientMessageIdChanged = clientMessageId !== existingClientMessageId;
+    if (!isForkSnapshot && replyAliasIds.length === runtimeAliasIds.length && !reactionMetadata.changed && senderOwnerName === message.senderOwnerName && conversationSequence === message.conversationSequence && !deliveryChanged && !clientMessageIdChanged) {
       return message;
     }
     return {
       ...message,
       senderOwnerName,
       conversationSequence,
+      ...(clientMessageIdChanged ? { clientMessageId } : {}),
       ...(hasCanonicalDelivery ? { statusChips, detail } : {}),
       ...(isForkSnapshot ? { isForkSnapshot: true } : {}),
       ...(replyAliasIds.length > 0 ? { replyAliasIds } : {}),

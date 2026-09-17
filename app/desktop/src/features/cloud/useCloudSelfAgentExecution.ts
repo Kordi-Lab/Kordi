@@ -1,4 +1,5 @@
 import { voiceAgentText } from '@/features/chat/voiceTranscription';
+import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { useDesktopAgentReadiness, type CloudSelfAgentExecutionInput } from './useDesktopAgentReadiness';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
@@ -89,6 +90,7 @@ export function useCloudSelfAgentExecution({
   reportWarning,
 }: CloudSelfAgentExecutionInput) {
   const supersededRequestIdsRef = useRef<Set<string>>(new Set());
+  const voiceGate = useVoiceAgentRequestGate();
   const executionReady = useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
     account?.accountId ?? null,
@@ -153,6 +155,8 @@ export function useCloudSelfAgentExecution({
       messageIndex.byPeerId.get(account.accountId) ?? [];
     for (const request of candidates) {
       if (processedRequestIdsRef.current.has(request.messageId)) continue;
+      const voice = voiceGate.check(request);
+      if (voice === undefined) continue;
       const candidateSessionId = request.sessionId?.trim() ?? '';
       const candidateRuntimeSessionId = cloudSelfAgentRuntimeSessionId(candidateSessionId);
       if (!candidateRuntimeSessionId) continue;
@@ -212,7 +216,7 @@ export function useCloudSelfAgentExecution({
 
         const lease = await acquireDesktopExecutionLease(client, session.token, {
           requestMessageId: request.messageId, sessionId, ownerAccountId: account.accountId,
-          requesterAccountId: account.accountId, prompt: (request.voiceMessage ? voiceAgentText(request.voiceMessage) : cloudDirectMessageDisplayText(request.body)),
+          requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)),
           runtimeRoute: requestRoute ? { defaultModel: requestRoute.model, defaultAuthProvider: requestRoute.authProvider,
             defaultAuthChoice: requestRoute.authChoice, thinking: requestRoute.thinking } : undefined,
           idempotencyKey: `request:${request.messageId}`,
@@ -236,7 +240,7 @@ export function useCloudSelfAgentExecution({
             processedRequestIdsRef.current.delete(request.messageId);
             return;
           }
-          const prompt = (request.voiceMessage ? voiceAgentText(request.voiceMessage) : cloudDirectMessageDisplayText(request.body)).trim();
+          const prompt = (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)).trim();
           if (!prompt) {
             processedRequestIdsRef.current.delete(request.messageId);
             return;
@@ -471,6 +475,7 @@ export function useCloudSelfAgentExecution({
         reportWarning('[cloud-self-agent-execution] request failed', error);
       });
     }
+    return voiceGate.scheduleWake();
   }, [
     account,
     canonicalState,
@@ -487,5 +492,6 @@ export function useCloudSelfAgentExecution({
     setLocalTurns,
     syncMessages,
     turnIdsByRequestIdRef,
+    voiceGate,
   ]);
 }

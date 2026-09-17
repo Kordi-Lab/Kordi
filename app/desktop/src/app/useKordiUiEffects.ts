@@ -164,7 +164,11 @@ export function useKordiUiEffects({
     setActiveSourcePreview(null);
     setActiveArtifactId(null);
     setOpenComposerSelector(null);
-    setChatComposerAttachments([]);
+    // A fresh [] here always differs by reference from the current state, so
+    // an unguarded setState forces a second whole-shell render on every page
+    // and conversation switch even when there was nothing to clear. Bail out
+    // when it's already empty so React can skip the extra commit.
+    setChatComposerAttachments((current) => (current.length === 0 ? current : []));
   }, [activeNav, activeConvId, activeProjectId, activeProjectSessionId, setActiveArtifactId, setActiveSourcePreview, setChatComposerAttachments, setOpenComposerSelector]);
 
   useEffect(() => {
@@ -209,21 +213,29 @@ export function useKordiUiEffects({
       !isLocalDraftChatConversationId(activeConvId)
       || isLocalDraftChatConversationId(desktopChatState.activeSessionId)
     );
-    setComposerSelections((current) => ({
-      ...current,
-      chat: shouldSyncChatSelection
-        ? {
-            ...current.chat,
-            model: matchingModelValue,
-            thinking: desktopChatState.activeSession.thinking,
-          }
-        : current.chat,
-      project: {
-        ...current.project,
-        model: desktopChatState.activeSessionId === activeProjectSessionId ? matchingModelValue : current.project.model,
-        thinking: desktopChatState.activeSessionId === activeProjectSessionId ? desktopChatState.activeSession.thinking : current.project.thinking,
-      },
-    }));
+    // This effect's deps include the active session object, so it reruns on
+    // every chat-state refresh (every incoming/outgoing message, not just a
+    // real selection change). Building `chat`/`project` unconditionally
+    // allocates new objects every time and forces a second whole-shell
+    // render on top of whatever the refresh itself already triggered, even
+    // when the model/thinking values end up identical. Only replace a scope
+    // when one of its fields actually changed.
+    setComposerSelections((current) => {
+      const nextChat = shouldSyncChatSelection
+        ? { ...current.chat, model: matchingModelValue, thinking: desktopChatState.activeSession.thinking }
+        : current.chat;
+      const chatChanged = nextChat.model !== current.chat.model || nextChat.thinking !== current.chat.thinking;
+      const projectTargetsThisSession = desktopChatState.activeSessionId === activeProjectSessionId;
+      const nextProjectModel = projectTargetsThisSession ? matchingModelValue : current.project.model;
+      const nextProjectThinking = projectTargetsThisSession ? desktopChatState.activeSession.thinking : current.project.thinking;
+      const projectChanged = nextProjectModel !== current.project.model || nextProjectThinking !== current.project.thinking;
+      if (!chatChanged && !projectChanged) return current;
+      return {
+        ...current,
+        chat: chatChanged ? nextChat : current.chat,
+        project: projectChanged ? { ...current.project, model: nextProjectModel, thinking: nextProjectThinking } : current.project,
+      };
+    });
   }, [
     activeConversationUsesCollaboration,
     activeConvId,

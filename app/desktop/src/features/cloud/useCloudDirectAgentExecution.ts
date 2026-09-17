@@ -4,6 +4,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
+import { useVoiceAgentRequestGate } from './useVoiceAgentRequestGate';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
@@ -102,6 +103,7 @@ export function useCloudDirectAgentExecution({
   syncMessages: () => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
 }) {
+  const voiceGate = useVoiceAgentRequestGate();
   useEffect(() => {
     if (!account || !initialMessagesSettled || !runtimeReady) return;
     for (const [peerId, messages] of cloudMessageIndex.byPeerId) {
@@ -116,6 +118,9 @@ export function useCloudDirectAgentExecution({
           peerMessages: messages,
         })) continue;
         if (processedRequestIdsRef.current.has(message.messageId)) continue;
+        // A voice message sent without transcription waits (bounded) for the sender's transcript.
+        const voice = voiceGate.check(message);
+        if (voice === undefined) continue;
 
         processedRequestIdsRef.current.add(message.messageId);
         const contact = cloudLookupContacts.find((candidate) => (
@@ -138,7 +143,7 @@ export function useCloudDirectAgentExecution({
           body: cloudDirectMessageDisplayText(message.body),
         };
         const prompt = promptTextForCloudAgentMention(
-          directDisplayMessage.body, message.voiceMessage,
+          directDisplayMessage.body, voice,
         );
         const contextMessages = [
           ...cloudAgentContextMessagesFromDefinition(
@@ -362,6 +367,7 @@ export function useCloudDirectAgentExecution({
         })();
       }
     }
+    return voiceGate.scheduleWake();
   }, [
     account,
     activityRef,
@@ -380,5 +386,6 @@ export function useCloudDirectAgentExecution({
     setLocalTurns,
     syncMessages,
     turnIdsByRequestIdRef,
+    voiceGate,
   ]);
 }

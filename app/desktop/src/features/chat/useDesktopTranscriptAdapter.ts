@@ -111,6 +111,17 @@ export function mapDesktopMessagesForTranscript(
 
     return [{
       id: messageId,
+      // Precedes `id` in the transcript's own React key (transcriptRenderKeys.ts).
+      // Only the human's own message needs this: its `transcriptRenderId` is the
+      // canonical row's durable id, carried so the row keeps one render identity
+      // across the optimistic -> completed-turn-refresh transition (the ephemeral
+      // desktop-message/-entry id changes there, but this does not). Assistant
+      // turns already keep one key end to end via `id` alone (`transcriptRenderId`
+      // there is the live turn id, not a canonical id, and the live turn card
+      // never sets `clientMessageId`, so this must not diverge from it).
+      ...(message.role === 'user' && message.transcriptRenderId?.trim()
+        ? { clientMessageId: message.transcriptRenderId.trim() }
+        : {}),
       entryId: message.entryId ?? null,
       role:
         message.role === 'assistant'
