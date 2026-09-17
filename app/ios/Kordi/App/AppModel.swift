@@ -1771,7 +1771,6 @@ final class AppModel: ObservableObject {
                     && !pendingAgentRequestIds[conversation.id, default: []].isEmpty
             )
         }
-        cacheCurrentMessages(conversation.id)
         updateConversationPreview(
             conversation.id,
             text: voiceMessage == nil ? text.nonEmpty ?? attachmentSummary(outgoingAttachments) : "Voice message",
@@ -1780,6 +1779,18 @@ final class AppModel: ObservableObject {
         )
         didStage = true
         onStaged(clientMessageId)
+        // Persist after the optimistic row is on screen. The SwiftData write
+        // happens on the main actor and must not delay the send's first frame.
+        let conversationID = conversation.id
+        Task { @MainActor [weak self] in self?.cacheCurrentMessages(conversationID) }
+        // Send immediately. An agent needs the words, so its transcription starts now,
+        // in parallel with the upload, and never delays delivery.
+        var agentVoiceTranscription: Task<VoiceMessage?, Never>?
+        if requestsAgentRun, !previewMode, let optimisticVoice = optimistic.voiceMessage {
+            voiceTranscriptions.activate(accountId: account.accountId)
+            agentVoiceTranscription = startVoiceTranscription(optimisticVoice, isSender: true, persist: nil)
+                ?? voiceTranscriptions.task(for: optimisticVoice.mediaId)
+        }
         await conversationSendQueue.acquire(conversation.id)
         defer { conversationSendQueue.release(conversation.id) }
         guard self.account?.accountId == account.accountId else { return }

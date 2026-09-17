@@ -1,15 +1,17 @@
+/* Full-shell/panel surfaces (.app-shell, .app-side-shell, .app-left-glass,
+   .app-session-panel, .app-main-panel) are intentionally not in this list:
+   they carry a real backdrop-filter blur, and transitioning filter/
+   backdrop-filter/box-shadow on a window- or panel-sized element forces a
+   re-blur of the whole backdrop on every frame of any state change. Only
+   smaller, contained controls get a transition here, and filter/
+   backdrop-filter are dropped from the property list entirely. */
 .kordi-app.theme-light button,
 .kordi-app.theme-light input,
-.kordi-app.theme-light .app-shell,
-.kordi-app.theme-light .app-side-shell,
-.kordi-app.theme-light .app-left-glass,
-.kordi-app.theme-light .app-session-panel,
-.kordi-app.theme-light .app-main-panel,
 .kordi-app.theme-light .app-surface-card,
 .kordi-app.theme-light .app-modal-panel,
 .kordi-app.theme-light .app-code-panel,
 .kordi-app.theme-light .app-code-toolbar {
-  transition-property: background-color, border-color, color, box-shadow, transform, opacity, filter, backdrop-filter;
+  transition-property: background-color, border-color, color, box-shadow, transform, opacity;
   transition-duration: var(--app-motion-base);
   transition-timing-function: var(--app-motion-ease);
 }

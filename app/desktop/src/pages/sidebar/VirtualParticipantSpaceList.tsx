@@ -1,5 +1,5 @@
 import {
-  useEffect, useLayoutEffect, useMemo, useRef, useState,
+  useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
   type CSSProperties, type ReactNode, type RefObject, type RefCallback,
 } from 'react';
 
@@ -75,6 +75,25 @@ export function VirtualParticipantSpaceList({
 }) {
   const scrolledSession = useRef<string | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
+  // Raw scroll events fire far more often than the compositor needs (every
+  // trackpad tick, not every frame); coalesce them into one React update per
+  // animation frame instead of re-rendering this list and every visible
+  // block on each tick. Read the latest value inside the frame callback
+  // (not at schedule time) so several events landing in the same frame
+  // still commit the most recent position, not the first.
+  const pendingScrollFrame = useRef(0);
+  const latestScrollTop = useRef(0);
+  const handleScroll = useCallback((event: { currentTarget: { scrollTop: number } }) => {
+    latestScrollTop.current = event.currentTarget.scrollTop;
+    if (pendingScrollFrame.current) return;
+    pendingScrollFrame.current = requestAnimationFrame(() => {
+      pendingScrollFrame.current = 0;
+      setScrollTop(latestScrollTop.current);
+    });
+  }, []);
+  useEffect(() => () => {
+    if (pendingScrollFrame.current) cancelAnimationFrame(pendingScrollFrame.current);
+  }, []);
   const viewportHeight = virtualizer.scrollRect?.height || 600;
   const totalSize = virtualizer.getTotalSize();
   const activeBlockIndex = useMemo(() => blocks.findIndex(block => block.channels.some(
@@ -120,7 +139,7 @@ export function VirtualParticipantSpaceList({
   return (
     <ScrollArea ref={setScrollElement} className={scrollClassName} style={scrollStyle}
       data-virtual-chat-list="true" data-chat-sidebar-mode={dataMode}
-      onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
+      onScroll={handleScroll}
       onKeyDownCapture={event => { event.currentTarget.dataset.channelKeyboardMotion = 'true'; }}
       onPointerDownCapture={event => { delete event.currentTarget.dataset.channelKeyboardMotion; }}>
       {blocks.length ? (

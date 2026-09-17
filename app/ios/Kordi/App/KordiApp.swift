@@ -79,6 +79,7 @@ struct KordiApp: App {
     @StateObject private var callCoordinator: KordiCallCoordinator
     @StateObject private var notificationCoordinator: KordiNotificationCoordinator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
 
@@ -124,8 +125,12 @@ struct KordiApp: App {
                                 hasVideo: call.call.kind.allowsVideo,
                                 onOpen: callCoordinator.showCallScreen
                             )
+                            .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                         }
                     }
+                    // The bar's appearance/disappearance resizes this inset,
+                    // which otherwise shifts the whole app content instantly.
+                    .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.28), value: callCoordinator.isMinimized)
                 }
                 .preferredColorScheme(preferredColorScheme)
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
@@ -315,6 +320,7 @@ private struct PreviewThemeControls: View {
 private struct RootView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var hasTopAccessory = false
 
     @ViewBuilder
@@ -419,14 +425,20 @@ private struct RootView: View {
 
     @ViewBuilder
     private var appPhase: some View {
-        switch model.phase {
-        case .launching:
-            LaunchingView()
-        case .signedOut:
-            LoginView()
-        case .signedIn:
-            MainTabView(hasTopAccessory: hasTopAccessory)
+        Group {
+            switch model.phase {
+            case .launching:
+                LaunchingView()
+                    .transition(.opacity)
+            case .signedOut:
+                LoginView()
+                    .transition(.opacity)
+            case .signedIn:
+                MainTabView(hasTopAccessory: hasTopAccessory)
+                    .transition(.opacity)
+            }
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: model.phase)
     }
 }
 

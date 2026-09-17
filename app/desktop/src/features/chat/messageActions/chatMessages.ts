@@ -510,7 +510,7 @@ export function useChatMessageActions({
           && current.activeSession.id === message.sessionId;
         const baseState = materializedState && !currentTargetsSession ? materializedState : current;
         return baseState
-          ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, message.text, message.attachments, message.time, [], quote)
+          ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, message.text, message.attachments, message.time, [], quote, preparedCanonicalMessage?.messageId ?? null)
           : current;
       });
       watchLocalTurnAndFlushQueue(preparedCanonicalMessage
@@ -616,7 +616,7 @@ export function useChatMessageActions({
           ? resolvedMaterializedState
           : current;
         if (!baseState) return current;
-        return appendOptimisticOutboundMessage(baseState, targetConversationId, previewText, text, attachments, sentAt, [], quote);
+        return appendOptimisticOutboundMessage(baseState, targetConversationId, previewText, text, attachments, sentAt, [], quote, preparedCanonicalMessage?.messageId ?? null);
       });
       await persistCanonicalUserMessage(preparedCanonicalMessage);
       const turn = await startDesktopChatMessage(
@@ -1671,7 +1671,7 @@ export function useChatMessageActions({
             ? materializedState
             : current;
           return baseState
-            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, attachmentsToSend, sentAt, [], quoteForSend)
+            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, attachmentsToSend, sentAt, [], quoteForSend, preparedCanonicalMessage.messageId)
             : current;
         });
         if (!preserveComposer) {
