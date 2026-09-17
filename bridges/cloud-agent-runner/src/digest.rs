@@ -36,18 +36,76 @@ fn model_context(input: &Value) -> Result<Value, ModelLoopError> {
     )
 }
 
-fn completed_output(text: String, incremental: bool) -> Result<String, ModelLoopError> {
-    if !incremental {
-        return Ok(text);
+const OUTPUT_LISTS: &[&str] = &["claims", "commitments", "suggestions", "calendarCandidates"];
+const ITEM_FIELDS: &[&str] = &[
+    "id",
+    "title",
+    "text",
+    "sourceIds",
+    "kind",
+    "ownerAccountId",
+    "dueAt",
+    "existingTaskId",
+    "startAt",
+    "endAt",
+    "timezone",
+    "calendarAction",
+    "existingEventId",
+    "existingEventRevision",
+    "calendarScope",
+    "existingSeriesId",
+    "recurrence",
+];
+
+/// The JSON object in a model reply, which may come wrapped in a code block
+/// or with a sentence around it.
+fn json_object(text: &str) -> Option<Value> {
+    let trimmed = text.trim();
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        return value.is_object().then_some(value);
     }
-    let mut output: Value = serde_json::from_str(text.trim())
-        .map_err(|_| ModelLoopError::Provider("Invalid incremental digest output".into()))?;
-    let object = output.as_object_mut().ok_or_else(|| {
-        ModelLoopError::Provider("Incremental digest output must be an object".into())
-    })?;
-    // Older servers reject this marker rather than treating a patch as a full snapshot after rollback.
-    object.entry("removedItemIds").or_insert_with(|| json!([]));
-    Ok(output.to_string())
+    let start = trimmed.find('{')?;
+    let end = trimmed.rfind('}')?;
+    (start < end)
+        .then(|| serde_json::from_str::<Value>(&trimmed[start..=end]).ok())
+        .flatten()
+        .filter(Value::is_object)
+}
+
+/// Keeps only the fields the digest schema defines, so extra keys a model adds
+/// do not get a whole digest rejected.
+fn schema_output(mut output: Value, incremental: bool) -> Value {
+    let object = output.as_object_mut().expect("digest output is an object");
+    object.retain(|key, _| OUTPUT_LISTS.contains(&key.as_str()) || key == "removedItemIds");
+    for list in OUTPUT_LISTS {
+        let items = object.entry(*list).or_insert_with(|| json!([]));
+        if !items.is_array() {
+            *items = json!([]);
+        }
+        for item in items.as_array_mut().into_iter().flatten() {
+            if let Some(fields) = item.as_object_mut() {
+                fields.retain(|key, _| ITEM_FIELDS.contains(&key.as_str()));
+            }
+        }
+    }
+    if incremental {
+        // Older servers reject this marker rather than treating a patch as a full snapshot after rollback.
+        object.entry("removedItemIds").or_insert_with(|| json!([]));
+    } else {
+        object.remove("removedItemIds");
+    }
+    output
+}
+
+fn completed_output(text: String, incremental: bool) -> Result<String, ModelLoopError> {
+    match json_object(&text) {
+        Some(output) => Ok(schema_output(output, incremental).to_string()),
+        // The server rejects a full reply that is not a digest and records why.
+        None if !incremental => Ok(text),
+        None => Err(ModelLoopError::Provider(
+            "Invalid incremental digest output".into(),
+        )),
+    }
 }
 
 pub fn tools() -> Vec<Value> {
@@ -261,12 +319,20 @@ mod tests {
                 ["removedItemIds"],
             json!([])
         );
-        assert_eq!(completed_output("{}".into(), false).unwrap(), "{}");
+        assert_eq!(completed_output("{}".into(), false).unwrap(), EMPTY_OUTPUT);
+        assert_eq!(
+            completed_output("not a digest".into(), false).unwrap(),
+            "not a digest"
+        );
+        assert!(completed_output("not a digest".into(), true).is_err());
         let mut large = input;
         large["sources"][0]["text"] = json!("unchanged ".repeat(10_000));
         assert!(large.to_string().len() > 100_000);
         assert!(model_context(&large).unwrap().to_string().len() < 2_000);
     }
+
+    const EMPTY_OUTPUT: &str =
+        r#"{"calendarCandidates":[],"claims":[],"commitments":[],"suggestions":[]}"#;
 
     #[tokio::test]
     async fn first_model_call_includes_sources_from_every_session() {
@@ -305,7 +371,10 @@ mod tests {
             auth_choice: "default".into(),
             payload: json!({"apiKey":"test-key","model":"test-model"}),
         };
-        assert_eq!(super::run(&Provider, &run, material).await.unwrap(), "{}");
+        assert_eq!(
+            super::run(&Provider, &run, material).await.unwrap(),
+            EMPTY_OUTPUT
+        );
     }
 
     #[test]
@@ -356,5 +425,25 @@ mod failure_tests {
         assert!(!detail.contains("abcdefghijklmnop"));
         assert!(!detail.contains("sk-live-123"));
         assert!(detail.contains("plain words"));
+    }
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::*;
+
+    #[test]
+    fn fenced_replies_with_extra_fields_become_schema_output() {
+        let reply = "Here is the digest:\n```json\n{\"claims\":[{\"id\":\"a\",\"title\":\"T\",\"text\":\"\",\"sourceIds\":[\"m1\"],\"kind\":\"decision\",\"confidence\":0.9}],\"notes\":\"x\"}\n```";
+        let output: Value =
+            serde_json::from_str(&completed_output(reply.to_string(), false).unwrap()).unwrap();
+        assert!(output.get("notes").is_none());
+        assert!(output["claims"][0].get("confidence").is_none());
+        assert_eq!(output["commitments"], json!([]));
+        assert!(output.get("removedItemIds").is_none());
+        let patch: Value =
+            serde_json::from_str(&completed_output("{\"claims\":[]}".into(), true).unwrap())
+                .unwrap();
+        assert_eq!(patch["removedItemIds"], json!([]));
     }
 }

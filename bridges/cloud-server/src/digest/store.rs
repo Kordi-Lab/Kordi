@@ -353,19 +353,28 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     };
     let input: Input =
         serde_json::from_value(value).map_err(|e| sqlx_core::Error::Decode(Box::new(e)))?;
-    let output = serde_json::from_str::<Output>(text.trim());
-    let Ok(output) = output else {
-        return fail(pool, run, Some(runner), "invalid_output").await;
+    // The reason a generated digest is rejected is logged without its content.
+    let output = match serde_json::from_str::<Output>(text.trim()) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("[digest] Rejected run {run}: output is not a digest ({error})");
+            return fail(pool, run, Some(runner), "invalid_output").await;
+        }
     };
-    let Ok(mut output) = super::incremental::merge_output(&input, output) else {
-        return fail(pool, run, Some(runner), "invalid_output").await;
+    let mut output = match super::incremental::merge_output(&input, output) {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("[digest] Rejected run {run}: could not merge output ({error:?})");
+            return fail(pool, run, Some(runner), "invalid_output").await;
+        }
     };
     // Best effort: a failed check keeps the suggestions rather than failing
     // the member's whole digest.
     if let Err(error) = super::pip_guard::drop_pip_conflicts(pool, &input, &mut output).await {
         eprintln!("[digest] Could not check suggestions against PiP plans: {error}");
     }
-    if validate_output(&output, &input).is_err() {
+    if let Err(reason) = validate_output(&output, &input) {
+        eprintln!("[digest] Rejected run {run}: {reason}");
         return fail(pool, run, Some(runner), "invalid_output").await;
     }
     if !input_is_currently_authorized(pool, &account, &input).await? {
