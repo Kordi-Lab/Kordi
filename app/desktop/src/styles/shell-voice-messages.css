@@ -219,10 +219,6 @@
   background: color-mix(in oklab, var(--utility-foreground) 14%, transparent);
   color: var(--utility-foreground);
 }
-.app-voice-recording-rail[data-cancel-armed='true'] .app-voice-cancel-button {
-  background: color-mix(in oklab, #dc2626 16%, transparent);
-  color: #dc2626;
-}
 .app-voice-pill {
   position: relative;
   display: flex;
@@ -277,7 +273,6 @@
   color: var(--app-error-text, #dc2626);
 }
 .app-voice-recording-rail[data-phase='error'] .app-voice-recording-status { padding-left: 0.75rem; }
-.app-voice-recording-rail[data-cancel-armed='true'] .app-voice-recording-status { color: #dc2626; }
 .app-voice-recording-status > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-voice-recording-status > svg { flex-shrink: 0; }
 .app-voice-recording-duration {

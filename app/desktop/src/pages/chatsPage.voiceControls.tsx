@@ -33,7 +33,6 @@ export function VoiceComposerControls({
     return (
       <VoiceRecordingRail
         state={recorder.state}
-        cancelArmed={voice.cancelArmed}
         onCancel={recorder.reset}
         onSend={() => { void (voice.recording ? voice.finishAndSend() : voice.sendPrepared()); }}
         onRetry={() => {

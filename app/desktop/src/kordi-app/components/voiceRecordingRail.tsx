@@ -9,14 +9,13 @@ import { VoiceWaveform } from './voiceWaveform';
 
 type Props = {
   state: VoiceMessageRecorderState;
-  cancelArmed?: boolean;
   onCancel: () => void;
   onSend: () => void;
   onRetry: () => void;
   onTrimRange: (startMs: number, endMs: number) => void;
 };
 
-export function VoiceRecordingRail({ state, cancelArmed = false, onCancel, onSend, onRetry, onTrimRange }: Props) {
+export function VoiceRecordingRail({ state, onCancel, onSend, onRetry, onTrimRange }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [source, setSource] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -33,7 +32,7 @@ export function VoiceRecordingRail({ state, cancelArmed = false, onCancel, onSen
   const canSend = recording || state.transcriptionPhase === 'ready';
   const retryDisabled = (state.attachment?.voiceMessage?.transcription?.attempts ?? 0) >= MAX_TRANSCRIPTION_ATTEMPTS
     && state.trimStartMs <= 50 && state.trimEndMs >= state.durationMs - 50;
-  const status = holding ? cancelArmed ? 'Release to cancel' : 'Swipe up to cancel'
+  const status = holding ? 'Release to send'
     : recording ? 'Recording' : pending ? 'Transcribing…'
     : /Allow Kordi.*microphone/i.test(state.error ?? '') ? 'Allow microphone access in Settings'
     : /Allow Kordi.*Speech Recognition/i.test(state.error ?? '') ? 'Allow Speech Recognition in Settings'
@@ -60,7 +59,7 @@ export function VoiceRecordingRail({ state, cancelArmed = false, onCancel, onSen
   }
 
   return <div className="app-voice-recording-rail" data-phase={state.phase} data-failed={failed ? 'true' : undefined}
-    data-cancel-armed={holding && cancelArmed ? 'true' : undefined} onKeyDown={event => {
+    onKeyDown={event => {
       if (event.key === 'Escape') { if (trimming) setTrimming(false); else onCancel(); }
     }}>
     <audio ref={audioRef} src={source ?? undefined} preload="metadata" onPlay={() => setPlaying(true)}

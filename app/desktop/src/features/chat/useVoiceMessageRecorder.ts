@@ -12,9 +12,7 @@ import {
 import type { AttachmentItem } from './composerController.types';
 
 export const MAX_VOICE_MESSAGE_DURATION_MS = 60_000;
-export const VOICE_CANCEL_SWIPE_PX = 64;
 const VOICE_RECORDING_TOO_SHORT_ERROR = 'Voice recording must be at least one second.';
-export type VoiceGestureIntent = 'hold' | 'cancel';
 type VoiceStopOptions = {
   onAttachmentReady?: (attachment: AttachmentItem) => void;
 };
@@ -46,10 +44,6 @@ const IDLE_STATE: VoiceMessageRecorderState = {
   trimEndMs: 0,
   error: null,
 };
-
-export function voiceGestureIntent(verticalOffset: number): VoiceGestureIntent {
-  return verticalOffset <= -VOICE_CANCEL_SWIPE_PX ? 'cancel' : 'hold';
-}
 
 export function downsampleVoiceWaveform(samples: readonly number[], count = 48) {
   if (samples.length === 0) return Array.from({ length: count }, () => 0.08);
