@@ -481,10 +481,6 @@ impl DesktopRuntimeSession {
         self.setup.tool_ctx.reach_out = runtime;
     }
 
-    pub fn set_plan_card_runtime(&mut self, runtime: Option<kordi_tools::PlanCardRuntime>) {
-        self.setup.tool_ctx.plan_card = runtime;
-    }
-
     pub fn set_scheduled_tasks_cloud_runtime(&mut self, api_base: String, token: String) {
         self.set_scheduled_tasks_cloud_runtime_for_session(
             api_base,

@@ -36,12 +36,7 @@ async fn shared_requests_fail_closed_without_changing_tool_definitions() {
         let definition = tool.parameters_schema();
         let allowed = matches!(
             tool.name(),
-            "web_search"
-                | "web_fetch"
-                | "search_sessions"
-                | "read_session"
-                | "task_operator"
-                | "plan_card"
+            "web_search" | "web_fetch" | "search_sessions" | "read_session" | "task_operator"
         );
         assert_eq!(
             ensure_tool_allowed(tool.as_ref(), &ctx).is_ok(),

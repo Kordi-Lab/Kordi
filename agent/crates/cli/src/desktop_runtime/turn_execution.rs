@@ -290,7 +290,6 @@ fn build_turn_config(
                 .then(|| setup.tool_ctx.task_operator.clone())
                 .flatten(),
             schedule_task: setup.tool_ctx.schedule_task.clone(),
-            plan_card: setup.tool_ctx.plan_card.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

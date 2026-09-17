@@ -117,7 +117,6 @@ fn cloud_tool_context(sandbox: &SandboxBackendHandle) -> ToolContext {
         session_observation: None,
         task_operator: None,
         schedule_task: None,
-        plan_card: None,
         execution_mode: ToolExecutionMode::NonInteractive,
         request_approval: None,
     }

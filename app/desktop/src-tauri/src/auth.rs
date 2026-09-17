@@ -10,7 +10,6 @@ use tauri::State;
 
 mod provider_snapshot;
 #[cfg(test)]
-#[cfg(test)]
 use provider_snapshot::cloud_provider_auth_snapshot_model;
 
 #[tauri::command]
@@ -644,7 +643,6 @@ pub async fn desktop_cancel_auth_attempt(
 #[cfg(test)]
 mod tests {
     use super::cloud_provider_auth_snapshot_model;
-    use super::provider_snapshot::cloud_provider_auth_snapshot_model_for;
 
     #[test]
     fn cloud_auth_snapshot_uses_root_openai_default() {
@@ -652,25 +650,6 @@ mod tests {
         assert_eq!(
             cloud_provider_auth_snapshot_model(Some("gpt-5.4")),
             "gpt-5.4"
-        );
-    }
-
-    #[test]
-    fn cloud_auth_snapshot_model_matches_the_signed_in_provider() {
-        assert!(
-            cloud_provider_auth_snapshot_model_for("anthropic-oauth", None).starts_with("claude")
-        );
-        assert!(
-            cloud_provider_auth_snapshot_model_for("anthropic", Some("gpt-5.6-sol"))
-                .starts_with("claude")
-        );
-        assert_eq!(
-            cloud_provider_auth_snapshot_model_for("anthropic", Some("claude-sonnet-5")),
-            "claude-sonnet-5"
-        );
-        assert_eq!(
-            cloud_provider_auth_snapshot_model_for("openai-codex", None),
-            "gpt-5.6-sol"
         );
     }
 }

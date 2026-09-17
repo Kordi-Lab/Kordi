@@ -160,7 +160,6 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             sibling_conn.clone(),
         )),
         schedule_task: None,
-        plan_card: None,
         execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
         request_approval: None,
     };

@@ -8,21 +8,12 @@ use crate::{
         MAX_MODEL_CALLS, MAX_TOOL_CALLS,
     },
 };
-use kordi_tools::Tool;
 use serde_json::{json, Value};
 
 pub const RUN_PREFIX: &str = "pip_";
 
 pub fn tools() -> Vec<Value> {
-    let tool = kordi_tools::plan_card::PlanCardTool;
-    vec![json!({
-        "type": "function",
-        "function": {
-            "name": tool.name(),
-            "description": tool.description(),
-            "parameters": tool.parameters_schema(),
-        }
-    })]
+    vec![crate::pip_tool::definition()]
 }
 
 /// Normalizes the model's final text into the `{message, hooksHandled}`
@@ -90,7 +81,7 @@ where
                     if used > MAX_TOOL_CALLS {
                         return Err(ModelLoopError::LimitExceeded);
                     }
-                    let result = if call.name == "plan_card" {
+                    let result = if call.name == crate::pip_tool::NAME {
                         match client
                             .plan_card_action(&run.run_id, call.arguments.clone())
                             .await

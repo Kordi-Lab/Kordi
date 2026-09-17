@@ -19,7 +19,6 @@ fn ctx_with_runtime(runtime: Option<SessionObservationRuntime>) -> ToolContext {
         session_observation: runtime,
         task_operator: None,
         schedule_task: None,
-        plan_card: None,
         execution_mode: crate::ToolExecutionMode::Interactive,
         request_approval: None,
     }

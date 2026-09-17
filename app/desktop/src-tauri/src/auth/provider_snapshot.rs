@@ -120,3 +120,27 @@ pub(crate) fn cloud_provider_auth_snapshot_model(model: Option<&str>) -> String 
         .unwrap_or(kordi_core::agent_session::DEFAULT_OPENAI_MODEL_ID)
         .to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::cloud_provider_auth_snapshot_model_for;
+
+    #[test]
+    fn cloud_auth_snapshot_model_matches_the_signed_in_provider() {
+        assert!(
+            cloud_provider_auth_snapshot_model_for("anthropic-oauth", None).starts_with("claude")
+        );
+        assert!(
+            cloud_provider_auth_snapshot_model_for("anthropic", Some("gpt-5.6-sol"))
+                .starts_with("claude")
+        );
+        assert_eq!(
+            cloud_provider_auth_snapshot_model_for("anthropic", Some("claude-sonnet-5")),
+            "claude-sonnet-5"
+        );
+        assert_eq!(
+            cloud_provider_auth_snapshot_model_for("openai-codex", None),
+            "gpt-5.6-sol"
+        );
+    }
+}
