@@ -524,7 +524,7 @@ export function buildCloudCollaborationConversation({
     const directTargetOwnerAccountId = directTargetCloudAgentId
       ? cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body)
       : null;
-    if (!displayBody && directTargetCloudAgentId) continue;
+    if (!displayBody && !message.voiceMessage && directTargetCloudAgentId) continue;
     if (directTargetOwnerAccountId) {
       requestTargetAccountIds.set(message.messageId, directTargetOwnerAccountId);
       const directTargetAgentName = cloudDirectMessageTargetCloudAgentName(message.body)

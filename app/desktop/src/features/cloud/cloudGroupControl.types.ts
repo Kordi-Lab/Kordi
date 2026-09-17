@@ -4,6 +4,7 @@ import type {
 import type {
   DesktopCollaborationSessionParticipant,
 } from '@/kordi-app/types';
+import type { CloudMessage } from './authClient';
 import type {
   CloudGroupControlEnvelope,
   CloudGroupMemberJoin,
@@ -30,4 +31,9 @@ export type SendCloudGroupControlInput = {
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];
   retryFailed?: boolean;
+  /**
+   * Runs after delivery and before a fresh fallback run is claimed, without
+   * blocking the send. Agent-bound voice messages store their transcript here.
+   */
+  beforeFallbackClaim?: (sent: readonly CloudMessage[]) => Promise<void>;
 };

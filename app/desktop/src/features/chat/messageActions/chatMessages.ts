@@ -91,9 +91,15 @@ import {
 appendOptimisticCanonicalMessage,appendOptimisticCollaborationMessage,appendOptimisticOutboundMessage,
 failedPreparedCanonicalUserMessage,markOptimisticCanonicalMessageFailed,
 markOptimisticCanonicalMessageSending,markOptimisticCollaborationMessageSending,optimisticSessionTitleFromMessage,persistCanonicalUserMessage,prepareCanonicalQueuedMessage,prepareCanonicalUserMessage,
+preparedCanonicalUserMessageWithAttachments,replaceOptimisticCanonicalMessageContent,
 retryAttachmentItemsFromMessage,voiceMessageSendFields,voiceMessageAgentText,
 type PreparedCanonicalUserMessage
 } from './optimistic';
+import {
+  persistSentAgentVoiceTranscript,
+  startAgentVoiceTranscription,
+  transcribeAgentVoiceAttachments,
+} from './voiceAgentTranscription';
 import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
 import type {
 UseChatMessageActionsArgs
@@ -427,6 +433,8 @@ export function useChatMessageActions({
       messageAction: quote?.source ? composerMessageAction(quote) : null,
     });
     enqueueLocalQueuedMessage(queuedMessage);
+    // The local agent will need this voice message; transcribe while it waits in the queue.
+    void startAgentVoiceTranscription(attachments);
     void persistQueuedDesktopMessage(queuedMessage, canonicalHumanIdentityId).then((row) => {
       if (row) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, row));
     }).catch((error) => setDesktopChatError(error instanceof Error ? error.message : 'Unable to synchronize queued message'));
@@ -488,15 +496,24 @@ export function useChatMessageActions({
       }
       setDesktopChatError(null);
       const materializedState = await materializeLocalChatTarget(message.sessionId);
-      const attachmentPaths = message.attachments.map((item) => item.path);
-      const previewText = attachmentSummaryText(message.text);
+      // A queued voice message was already transcribing in the background; the agent turn waits for it.
+      const agentVoice = await transcribeAgentVoiceAttachments(message.attachments);
+      const dispatchMessage = agentVoice.outcome
+        ? {
+            ...message,
+            text: agentVoice.outcome.status === 'ready' ? agentVoice.outcome.transcript : message.text,
+            attachments: [...agentVoice.attachments],
+          }
+        : message;
+      const attachmentPaths = dispatchMessage.attachments.map((item) => item.path);
+      const previewText = attachmentSummaryText(dispatchMessage.text);
       const quote = composerQuoteFromMessageAction(message.messageAction);
-      const preparedCanonicalMessage = prepareCanonicalQueuedMessage(message, canonicalHumanIdentityId, 'sent');
-      const queuedRow = await persistQueuedDesktopMessage(message, canonicalHumanIdentityId, 'sent');
+      const preparedCanonicalMessage = prepareCanonicalQueuedMessage(dispatchMessage, canonicalHumanIdentityId, 'sent');
+      const queuedRow = await persistQueuedDesktopMessage(dispatchMessage, canonicalHumanIdentityId, 'sent');
       if (queuedRow) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, queuedRow));
       const turn = await startDesktopChatMessage(
         message.sessionId,
-        voiceMessageAgentText(message.text, message.attachments),
+        voiceMessageAgentText(dispatchMessage.text, dispatchMessage.attachments),
         attachmentPaths,
         message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId),
         message.contextMessages ?? [],
@@ -510,7 +527,7 @@ export function useChatMessageActions({
           && current.activeSession.id === message.sessionId;
         const baseState = materializedState && !currentTargetsSession ? materializedState : current;
         return baseState
-          ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, message.text, message.attachments, message.time, [], quote)
+          ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, dispatchMessage.text, dispatchMessage.attachments, message.time, [], quote)
           : current;
       });
       watchLocalTurnAndFlushQueue(preparedCanonicalMessage
@@ -589,6 +606,8 @@ export function useChatMessageActions({
     if (chatSendShouldAutoFollowMain(quote)) shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
     setPendingUserChatMessage(null);
+    // The local agent needs the words: transcribe in parallel with delivery, never before it.
+    const agentVoiceTranscription = startAgentVoiceTranscription(attachments);
     const attachmentPaths = attachments.map((item) => item.path);
     const previewText = attachmentSummaryText(text, attachments);
     const preparedCanonicalMessage = prepareCanonicalUserMessage(
@@ -619,38 +638,47 @@ export function useChatMessageActions({
         return appendOptimisticOutboundMessage(baseState, targetConversationId, previewText, text, attachments, sentAt, [], quote);
       });
       await persistCanonicalUserMessage(preparedCanonicalMessage);
-      const turn = await startDesktopChatMessage(
-        targetConversationId,
-        voiceMessageAgentText(text, attachments),
-        attachmentPaths,
-        runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
-        contextMessages,
-        [],
-        null,
-        preparedCanonicalMessage?.messageId ?? null,
-      );
-      const linkedTurn = preparedCanonicalMessage
-        ? { ...turn, replyToMessageId: preparedCanonicalMessage.messageId }
-        : turn;
-      const sentCanonicalMessage = sentPreparedCanonicalUserMessage(preparedCanonicalMessage);
-      if (sentCanonicalMessage) {
+      const markDelivered = (prepared: PreparedCanonicalUserMessage | null) => {
+        const sentCanonicalMessage = sentPreparedCanonicalUserMessage(prepared);
+        if (!sentCanonicalMessage) return Promise.resolve();
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageSent(
           current,
           canonicalSessionId,
           sentCanonicalMessage.messageId,
         ));
-        void upsertCanonicalMessageFast(sentCanonicalMessage.request).catch((error: unknown) => {
+        return upsertCanonicalMessageFast(sentCanonicalMessage.request).then(() => undefined, (error: unknown) => {
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to update message delivery status');
         });
-      }
-      watchLocalTurnAndFlushQueue(linkedTurn, async (finalTurn) => {
+      };
+      const startAgentTurn = async (
+        dispatchedCanonicalMessage: PreparedCanonicalUserMessage | null,
+        dispatchAttachments: readonly AttachmentItem[],
+      ) => {
+        const turn = await startDesktopChatMessage(
+          targetConversationId,
+          voiceMessageAgentText(text, dispatchAttachments),
+          attachmentPaths,
+          runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
+          contextMessages,
+          [],
+          null,
+          dispatchedCanonicalMessage?.messageId ?? null,
+        );
+        return dispatchedCanonicalMessage
+          ? { ...turn, replyToMessageId: dispatchedCanonicalMessage.messageId }
+          : turn;
+      };
+      const watchAgentTurn = (
+        linkedTurn: DesktopChatTurnSnapshot,
+        dispatchedCanonicalMessage: PreparedCanonicalUserMessage | null,
+      ) => watchLocalTurnAndFlushQueue(linkedTurn, async (finalTurn) => {
         const noProviderFailure = isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message || finalTurn.assistantText);
-        if (!noProviderFailure || !preparedCanonicalMessage) return;
+        if (!noProviderFailure || !dispatchedCanonicalMessage) return;
         const sentUserRequest = {
-          ...preparedCanonicalMessage.request,
+          ...dispatchedCanonicalMessage.request,
           status: 'sent',
           content: {
-            ...(preparedCanonicalMessage.request.content && typeof preparedCanonicalMessage.request.content === 'object' ? preparedCanonicalMessage.request.content : {}),
+            ...(dispatchedCanonicalMessage.request.content && typeof dispatchedCanonicalMessage.request.content === 'object' ? dispatchedCanonicalMessage.request.content : {}),
             deliveryState: 'sent',
           },
         };
@@ -659,7 +687,7 @@ export function useChatMessageActions({
           const failedReplyRequest = canonicalNoProviderFailedAgentMessageRequest({
             state: stateAfterUser ?? canonicalSessionState,
             sessionId: canonicalSessionId,
-            requestMessageId: preparedCanonicalMessage.messageId,
+            requestMessageId: dispatchedCanonicalMessage.messageId,
           });
           const nextState = failedReplyRequest ? await appendCanonicalMessage(failedReplyRequest) : stateAfterUser;
           if (nextState) setCanonicalSessionState(nextState);
@@ -667,12 +695,62 @@ export function useChatMessageActions({
           setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
             current,
             canonicalSessionId,
-            preparedCanonicalMessage.messageId,
+            dispatchedCanonicalMessage.messageId,
             cloudAgentNoProviderNoticeText(),
           ));
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to save provider notice');
         }
       });
+
+      if (agentVoiceTranscription) {
+        // A voice message is delivered to this session as soon as it is stored. Only the agent turn
+        // waits for the words, in the background, so the bubble never returns to "sending".
+        const delivered = sentPreparedCanonicalUserMessage(preparedCanonicalMessage);
+        const deliveryWrite = markDelivered(preparedCanonicalMessage);
+        if (setSendingState) setIsDesktopChatSending(false);
+        void (async () => {
+          try {
+            const agentVoice = await transcribeAgentVoiceAttachments(attachments, agentVoiceTranscription);
+            await deliveryWrite;
+            let dispatchedCanonicalMessage = delivered;
+            if (agentVoice.outcome && delivered) {
+              const transcribedMessage = preparedCanonicalUserMessageWithAttachments(
+                delivered,
+                [...agentVoice.attachments],
+                agentVoice.outcome.status === 'ready' ? agentVoice.outcome.transcript : delivered.request.contentText,
+              );
+              dispatchedCanonicalMessage = transcribedMessage;
+              setCanonicalSessionState((current) => replaceOptimisticCanonicalMessageContent(current, transcribedMessage));
+              if (transcribedMessage) await upsertCanonicalMessageFast(transcribedMessage.request);
+            }
+            watchAgentTurn(await startAgentTurn(dispatchedCanonicalMessage, agentVoice.attachments), dispatchedCanonicalMessage);
+          } catch (error) {
+            if (localChatSendInFlightRef.current?.sessionId === targetConversationId) {
+              localChatSendInFlightRef.current = null;
+            }
+            // The message stays delivered; the failure belongs to the agent turn.
+            const failedReplyRequest = isCloudAgentNoProviderConfiguredError(error) && delivered
+              ? canonicalNoProviderFailedAgentMessageRequest({
+                  state: canonicalSessionState,
+                  sessionId: canonicalSessionId,
+                  requestMessageId: delivered.messageId,
+                })
+              : null;
+            if (failedReplyRequest) {
+              setCanonicalSessionState((current) => appendCanonicalRequestToLocalState(current, failedReplyRequest));
+              void appendCanonicalMessage(failedReplyRequest).catch(() => undefined);
+              setDesktopChatError(null);
+              return;
+            }
+            setDesktopChatError(error instanceof Error ? error.message : 'Unable to start the agent for this voice message');
+          }
+        })();
+        return;
+      }
+
+      const linkedTurn = await startAgentTurn(preparedCanonicalMessage, attachments);
+      void markDelivered(preparedCanonicalMessage);
+      watchAgentTurn(linkedTurn, preparedCanonicalMessage);
       if (setSendingState) setIsDesktopChatSending(false);
     } catch (error) {
       setPendingUserChatMessage(null);
@@ -680,11 +758,12 @@ export function useChatMessageActions({
         localChatSendInFlightRef.current = null;
       }
       if (setSendingState) setIsDesktopChatSending(false);
-      if (isCloudAgentNoProviderConfiguredError(error) && preparedCanonicalMessage) {
+      const failedMessageId = preparedCanonicalMessage?.messageId ?? null;
+      if (isCloudAgentNoProviderConfiguredError(error) && failedMessageId) {
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
           current,
           canonicalSessionId,
-          preparedCanonicalMessage.messageId,
+          failedMessageId,
           cloudAgentNoProviderNoticeText(),
         ));
         setDesktopChatError(null);
@@ -694,7 +773,7 @@ export function useChatMessageActions({
       setCanonicalSessionState((current) => markOptimisticCanonicalMessageFailed(
         current,
         canonicalSessionId,
-        preparedCanonicalMessage?.messageId ?? null,
+        failedMessageId,
         failureDetail,
       ));
       void persistCanonicalUserMessage(failedPreparedCanonicalUserMessage(preparedCanonicalMessage, failureDetail))
@@ -1099,6 +1178,9 @@ export function useChatMessageActions({
             activeTarget: activeConvCollaborationTarget,
             lockedTarget: lockedSupportAgentTarget,
           });
+          const retryAgentVoiceTranscription = retryDirectHostedAgentTarget
+            ? startAgentVoiceTranscription(retryAttachments)
+            : null;
           const retryCloudBody = retryDirectHostedAgentTarget
             ? encodeCloudDirectMessageEnvelope({
                 schemaVersion: 1,
@@ -1116,6 +1198,9 @@ export function useChatMessageActions({
             retryAttachments,
             { clientMessageId: retryMessageId, ...voiceFields },
           );
+          if (retryAgentVoiceTranscription) {
+            void persistSentAgentVoiceTranscript(canonicalMessage, retryAttachments, retryAgentVoiceTranscription).catch(() => undefined);
+          }
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, retryMessageId, canonicalMessage));
         } catch (error) {
           const failure = terminalCollaborationRetryFailure({
@@ -1165,6 +1250,10 @@ export function useChatMessageActions({
       }
       if (!claimConversationSend(collaborationDraftSendClaims, collaborationSendClaimId)) return;
       const sentAt = formatDesktopEventTime();
+      // An agent is addressed: its transcript is prepared in parallel and stored before the fallback run is claimed.
+      const agentVoiceTranscription = mentionedTarget?.targetKind === 'agent' || localAgentMentioned
+        ? startAgentVoiceTranscription(attachmentsToSend)
+        : null;
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         activeConvCanonicalSessionId,
         canonicalHumanIdentityId,
@@ -1191,6 +1280,15 @@ export function useChatMessageActions({
         await collaborationSendQueue.current.run(activeConvCanonicalSessionId, async () => {
           await persistCanonicalUserMessage(preparedCanonicalMessage);
           await sendCloudGroupControl({
+            ...(agentVoiceTranscription ? {
+              beforeFallbackClaim: async (sent) => {
+                await persistSentAgentVoiceTranscript(
+                  sent.find((message) => message.voiceMessage) ?? null,
+                  attachmentsToSend,
+                  agentVoiceTranscription,
+                );
+              },
+            } : {}),
             targetAccountIds: cloudAgentMentionTargetIds,
             kind: 'group-message',
             groupId: cloudAgentMentionSessionId,
@@ -1334,6 +1432,11 @@ export function useChatMessageActions({
           activeTarget: activeConvCollaborationTarget,
           lockedTarget: lockedSupportAgentTarget,
         });
+        // An agent will read this message: transcribe in parallel with the upload, never before it.
+        const agentVoiceTranscription = directHostedAgentTarget
+          || messageMentions.some((mention) => mention.targetKind === 'agent')
+          ? startAgentVoiceTranscription(attachmentsToSend)
+          : null;
         const shouldEncodeDirectEnvelope = Boolean(quoteForSend?.source || directHostedAgentTarget || messageMentions.length);
         const cloudBody = shouldEncodeDirectEnvelope
           ? encodeCloudDirectMessageEnvelope({
@@ -1356,6 +1459,9 @@ export function useChatMessageActions({
           attachmentsToSend,
           { clientMessageId: optimisticMessageId, ...voiceFields },
         ));
+        if (agentVoiceTranscription) {
+          void persistSentAgentVoiceTranscript(canonicalMessage, attachmentsToSend, agentVoiceTranscription).catch(() => undefined);
+        }
         if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeCloudConversationId)) {
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, optimisticMessageId, canonicalMessage));
         }

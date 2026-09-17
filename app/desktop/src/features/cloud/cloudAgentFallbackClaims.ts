@@ -1,4 +1,6 @@
+import { voiceAgentText } from '@/features/chat/voiceTranscription';
 import type { Contact } from '@/kordi-app/types';
+import type { MessageVoiceDraft } from '@/kordi-app/types/message';
 import type {
   CloudAccount,
   CloudAgentRunClaimInput,
@@ -89,6 +91,7 @@ function cloudFallbackHistoryLine({
   const agentResponse = parseCloudAgentResponse(message.body);
   const displayBody = cloudDirectMessageDisplayText(message.body);
   const text = agentResponse?.text
+    ?? (message.voiceMessage ? voiceAgentText(message.voiceMessage) : null)
     ?? (
       message.fromAccountId === account.accountId
       && cloudMessageMentionsContactAgent(
@@ -129,6 +132,7 @@ function cloudFallbackRunPromptForMessage({
 }): string {
   const currentPrompt = promptTextForCloudAgentMention(
     cloudDirectMessageDisplayText(message.body),
+    message.voiceMessage,
   );
   const requestIndex = peerMessages.findIndex(
     (candidate) => candidate.messageId === message.messageId,
@@ -186,6 +190,7 @@ function cloudGroupFallbackRunPromptForMessage({
   requestMessageId,
   requestCreatedAtMs,
   requestText,
+  requestVoice,
   ownerAccountId,
 }: {
   groupRows: readonly IndexedCloudGroupRow[];
@@ -193,9 +198,10 @@ function cloudGroupFallbackRunPromptForMessage({
   requestMessageId: string;
   requestCreatedAtMs: number;
   requestText: string;
+  requestVoice?: (MessageVoiceDraft & { mediaId?: string | null }) | null;
   ownerAccountId: string;
 }): string {
-  const currentPrompt = promptTextForCloudAgentMention(requestText);
+  const currentPrompt = promptTextForCloudAgentMention(requestText, requestVoice);
   const contextIds = cloudGroupAgentContextMessageIds(groupRows, groupId, requestMessageId, ownerAccountId);
   const seenMessageIds = new Set<string>();
   const history = groupRows
@@ -294,6 +300,7 @@ export function cloudFallbackRunClaimsForMessages({
         requestMessageId: groupMessage.id,
         requestCreatedAtMs: groupMessage.createdAtMs,
         requestText: groupMessage.text,
+        requestVoice: groupMessage.voiceMessage,
         ownerAccountId,
       }),
       idempotencyKey: `cloud-agent-fallback-group:${envelope.groupId}:${groupMessage.id}:${ownerAccountId}`,
@@ -370,7 +377,9 @@ export function cloudFallbackRunClaimsForMessages({
         ) continue;
         const sessionId = cleanText(message.sessionId);
         if (!sessionId) continue;
-        const prompt = cloudDirectMessageDisplayText(message.body).trim();
+        const prompt = (message.voiceMessage
+          ? voiceAgentText(message.voiceMessage)
+          : cloudDirectMessageDisplayText(message.body)).trim();
         if (!prompt) continue;
         claims.push({
           requestMessageId: message.messageId,
