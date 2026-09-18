@@ -65,7 +65,8 @@ struct MessageBubble: View, Equatable {
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
-    let onUpdateVoiceTranscript: (VoiceMessage) async -> Bool
+    let voiceTranscriptions: VoiceTranscriptionJobs
+    let onTranscribeVoiceMessage: () -> Void
     let onPrepareAttachment: (ChatAttachment) async -> URL?
     let onPrepareAttachmentPreview: (ChatAttachment) async -> UIImage?
     let onOpenVideo: (ChatAttachment, AVPlayer, UIImage?) -> Void
@@ -657,7 +658,9 @@ struct MessageBubble: View, Equatable {
                     deliveryState: message.author == .me && message.agentQueuePosition == nil ? message.deliveryState : nil,
                     readByCount: message.readByCount,
                     deliveryTint: bubbleDeliveryColor,
-                    onUpdateTranscript: message.author == .me && message.cloudMessageVersion != nil ? onUpdateVoiceTranscript : nil,
+                    transcriptions: voiceTranscriptions,
+                    isSender: message.author == .me,
+                    onTranscribe: onTranscribeVoiceMessage,
                     onExpansionChange: onContentExpansionChange
                 )
                 .id("\(message.id):\(voiceMessage.mediaId)")
@@ -1121,7 +1124,8 @@ struct MessageBubble: View, Equatable {
             mentions: message.mentions,
             targets: mentionTargets
         )
-        let editedLabel = message.isEdited ? ", edited" : ""
+        // A voice transcript update sets editedAt, but the message itself did not change.
+        let editedLabel = message.isEdited && message.voiceMessage == nil ? ", edited" : ""
         return "\(message.authorName), \(messageText)\(attachmentLabel)\(editedLabel), \(receipt)"
     }
 
