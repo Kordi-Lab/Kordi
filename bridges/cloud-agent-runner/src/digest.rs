@@ -239,6 +239,22 @@ pub async fn run<P: CloudModelProvider + Sync>(
     run: &CloudAgentRun,
     material: ProviderAuthMaterial,
 ) -> Result<String, ModelLoopError> {
+    run_with_router(
+        provider,
+        run,
+        material,
+        crate::evaluation::routing::default_router(),
+    )
+    .await
+}
+
+pub async fn run_with_router<P: CloudModelProvider + Sync>(
+    provider: &P,
+    run: &CloudAgentRun,
+    material: ProviderAuthMaterial,
+    router: &crate::evaluation::routing::Router,
+) -> Result<String, ModelLoopError> {
+    use crate::evaluation::routing::{Consumer, Route};
     let input: Value = serde_json::from_str(&run.prompt)
         .map_err(|_| ModelLoopError::Provider("Invalid digest observation snapshot".into()))?;
     if input.get("sources").and_then(Value::as_array).is_none() {
@@ -246,9 +262,15 @@ pub async fn run<P: CloudModelProvider + Sync>(
             "Session observation unavailable".into(),
         ));
     }
+    let context = model_context(&input)?;
+    let route = router.route(Consumer::Digest, run, &input, &context).await;
+    if route == Route::Skip {
+        // Empty incremental patch preserves the baseline; the server still validates
+        // its source permissions, merges, and advances the frozen observation input.
+        return completed_output("{}".into(), true);
+    }
     let mut auth = OpenAiProviderConfig::from_material(&material)?;
     auth.apply_runtime_route(&run.runtime_route, &material.provider);
-    let context = model_context(&input)?;
     let instruction = if input.get("changes").is_some_and(Value::is_object) {
         "Apply the supplied change events to the previous digest. Return only changed or new items and explicit removedItemIds, not the entire report. Review every changed source, including proposed meetings. Use observation tools only for specific missing context."
     } else {
@@ -260,6 +282,22 @@ pub async fn run<P: CloudModelProvider + Sync>(
     ];
     let catalog = tools();
     let mut used = 0;
+    let observation = match route {
+        Route::ReadSession { session_id } => {
+            Some(("read_session", json!({"sessionId":session_id})))
+        }
+        Route::SearchSessions => Some(("search_sessions", json!({}))),
+        _ => None,
+    };
+    if let Some((name, arguments)) = observation {
+        let result = observe(&input, name, &arguments);
+        // A failed or oversized prefetch falls back without narrowing the original tools.
+        if result.get("error").is_none() && result.to_string().len() <= 24_000 {
+            used += 1;
+            messages.push(json!({"role":"assistant","tool_calls":[{"id":"jev_observation","type":"function","function":{"name":name,"arguments":arguments.to_string()}}]}));
+            messages.push(json!({"role":"tool","tool_call_id":"jev_observation","name":name,"content":result.to_string()}));
+        }
+    }
     for _ in 0..MAX_MODEL_CALLS {
         match provider.next_response(&auth, &messages, &catalog).await? {
             ModelProviderResponse::FinalText(text) if text.trim().is_empty() => {

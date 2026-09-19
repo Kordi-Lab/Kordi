@@ -1,0 +1,1081 @@
+{
+  "seed": 1601,
+  "cases": [
+    {
+      "id": "digest-commitment",
+      "consumer": "digest",
+      "material": true,
+      "expected": "commitment",
+      "input": {
+        "sources": [
+          {
+            "id": "old",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "alice",
+            "senderName": "Alice",
+            "text": "Who will revise the brief?",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false
+          },
+          {
+            "id": "new",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "bob",
+            "senderName": "Bob",
+            "text": "I will send the revised brief by September 22 at 16:00 UTC.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false,
+            "replyToSourceId": "old"
+          }
+        ],
+        "calendarEvents": [],
+        "existingTasks": [],
+        "partial": false,
+        "viewerAccountId": "alice",
+        "locale": "en",
+        "timezone": "UTC",
+        "asOf": "2026-09-19T12:01:00Z",
+        "previous": {
+          "claims": [],
+          "commitments": [],
+          "suggestions": [],
+          "calendarCandidates": []
+        },
+        "changes": {
+          "sources": [
+            {
+              "id": "new",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "bob",
+              "senderName": "Bob",
+              "text": "I will send the revised brief by September 22 at 16:00 UTC.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false,
+              "replyToSourceId": "old"
+            }
+          ],
+          "relatedSources": [
+            {
+              "id": "old",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "alice",
+              "senderName": "Alice",
+              "text": "Who will revise the brief?",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false
+            }
+          ],
+          "removedSourceIds": [],
+          "calendarEvents": [],
+          "removedCalendarEventIds": [],
+          "existingTasks": [],
+          "removedTaskIds": [],
+          "newlyDueReminderIds": [],
+          "preferencesChanged": false
+        }
+      },
+      "arms": [
+        "baseline",
+        "jev"
+      ]
+    },
+    {
+      "id": "digest-acceptance",
+      "consumer": "digest",
+      "material": true,
+      "expected": "commitment",
+      "input": {
+        "sources": [
+          {
+            "id": "old",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "alice",
+            "senderName": "Alice",
+            "text": "Bob, can you send the review notes by September 22 at 16:00 UTC?",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false
+          },
+          {
+            "id": "new",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "bob",
+            "senderName": "Bob",
+            "text": "Yes, I will do that.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false,
+            "replyToSourceId": "old"
+          }
+        ],
+        "calendarEvents": [],
+        "existingTasks": [],
+        "partial": false,
+        "viewerAccountId": "alice",
+        "locale": "en",
+        "timezone": "UTC",
+        "asOf": "2026-09-19T12:01:00Z",
+        "previous": {
+          "claims": [],
+          "commitments": [],
+          "suggestions": [],
+          "calendarCandidates": []
+        },
+        "changes": {
+          "sources": [
+            {
+              "id": "new",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "bob",
+              "senderName": "Bob",
+              "text": "Yes, I will do that.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false,
+              "replyToSourceId": "old"
+            }
+          ],
+          "relatedSources": [
+            {
+              "id": "old",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "alice",
+              "senderName": "Alice",
+              "text": "Bob, can you send the review notes by September 22 at 16:00 UTC?",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false
+            }
+          ],
+          "removedSourceIds": [],
+          "calendarEvents": [],
+          "removedCalendarEventIds": [],
+          "existingTasks": [],
+          "removedTaskIds": [],
+          "newlyDueReminderIds": [],
+          "preferencesChanged": false
+        }
+      },
+      "arms": [
+        "jev",
+        "baseline"
+      ]
+    },
+    {
+      "id": "pip-weather",
+      "consumer": "pip",
+      "material": false,
+      "expected": "none",
+      "input": {
+        "pip": {
+          "accountId": "pip",
+          "name": "PiP"
+        },
+        "conversation": {
+          "id": "synthetic-group",
+          "kind": "group",
+          "title": "Synthetic planning"
+        },
+        "memberCount": 2,
+        "members": [
+          {
+            "participantId": "alice",
+            "displayName": "Alice",
+            "handle": "@Alice",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          },
+          {
+            "participantId": "bob",
+            "displayName": "Bob",
+            "handle": "@Bob",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          }
+        ],
+        "organizerTimezone": "UTC",
+        "openCard": null,
+        "messages": [
+          {
+            "messageId": "old",
+            "text": "The forecast changed again.",
+            "sequence": 1,
+            "isNew": false,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          },
+          {
+            "messageId": "new",
+            "text": "Weather report: rain tomorrow. Just sharing the forecast, no gathering planned.",
+            "sequence": 2,
+            "isNew": true,
+            "fromPip": false,
+            "senderId": "bob",
+            "senderName": "Bob"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "new_messages",
+            "sinceSequence": 1
+          }
+        ],
+        "now": "2026-09-19T12:00:00Z"
+      },
+      "arms": [
+        "baseline",
+        "jev"
+      ]
+    },
+    {
+      "id": "pip-vote",
+      "consumer": "pip",
+      "material": true,
+      "expected": "vote",
+      "input": {
+        "pip": {
+          "accountId": "pip",
+          "name": "PiP"
+        },
+        "conversation": {
+          "id": "synthetic-group",
+          "kind": "group",
+          "title": "Synthetic planning"
+        },
+        "memberCount": 2,
+        "members": [
+          {
+            "participantId": "alice",
+            "displayName": "Alice",
+            "handle": "@Alice",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          },
+          {
+            "participantId": "bob",
+            "displayName": "Bob",
+            "handle": "@Bob",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          }
+        ],
+        "organizerTimezone": "UTC",
+        "openCard": {
+          "eventId": "synthetic-event",
+          "revision": 1,
+          "state": "polling",
+          "title": "Team lunch",
+          "startAt": "2026-09-21T12:30:00Z",
+          "endAt": "2026-09-21T13:30:00Z",
+          "location": "Cafe",
+          "unresolvedFields": [],
+          "participantsTruncated": false,
+          "participants": [
+            {
+              "participantId": "alice",
+              "displayName": "Alice",
+              "organizer": true,
+              "rsvp": "yes"
+            },
+            {
+              "participantId": "bob",
+              "displayName": "Bob",
+              "organizer": false,
+              "rsvp": "pending"
+            }
+          ],
+          "options": [
+            {
+              "id": "fri",
+              "label": "Friday",
+              "startAt": "2026-09-25T12:30:00Z",
+              "voteCount": 0
+            },
+            {
+              "id": "sat",
+              "label": "Saturday",
+              "startAt": "2026-09-26T12:30:00Z",
+              "voteCount": 0
+            }
+          ],
+          "counts": {
+            "participants": 2,
+            "going": 1,
+            "declined": 0,
+            "pending": 1,
+            "voted": 0
+          }
+        },
+        "messages": [
+          {
+            "messageId": "old",
+            "text": "Please vote for Friday or Saturday on the card.",
+            "sequence": 1,
+            "isNew": false,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          },
+          {
+            "messageId": "new",
+            "text": "I vote for the Friday option.",
+            "sequence": 2,
+            "isNew": true,
+            "fromPip": false,
+            "senderId": "bob",
+            "senderName": "Bob"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "new_messages",
+            "sinceSequence": 1
+          }
+        ],
+        "now": "2026-09-19T12:00:00Z"
+      },
+      "arms": [
+        "jev",
+        "baseline"
+      ]
+    },
+    {
+      "id": "pip-decline",
+      "consumer": "pip",
+      "material": true,
+      "expected": "rsvp",
+      "input": {
+        "pip": {
+          "accountId": "pip",
+          "name": "PiP"
+        },
+        "conversation": {
+          "id": "synthetic-group",
+          "kind": "group",
+          "title": "Synthetic planning"
+        },
+        "memberCount": 2,
+        "members": [
+          {
+            "participantId": "alice",
+            "displayName": "Alice",
+            "handle": "@Alice",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          },
+          {
+            "participantId": "bob",
+            "displayName": "Bob",
+            "handle": "@Bob",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          }
+        ],
+        "organizerTimezone": "UTC",
+        "openCard": {
+          "eventId": "synthetic-event",
+          "revision": 1,
+          "state": "confirmed",
+          "title": "Team lunch",
+          "startAt": "2026-09-21T12:30:00Z",
+          "endAt": "2026-09-21T13:30:00Z",
+          "location": "Cafe",
+          "unresolvedFields": [],
+          "participantsTruncated": false,
+          "participants": [
+            {
+              "participantId": "alice",
+              "displayName": "Alice",
+              "organizer": true,
+              "rsvp": "yes"
+            },
+            {
+              "participantId": "bob",
+              "displayName": "Bob",
+              "organizer": false,
+              "rsvp": "pending"
+            }
+          ],
+          "options": [],
+          "counts": {
+            "participants": 2,
+            "going": 1,
+            "declined": 0,
+            "pending": 1,
+            "voted": 0
+          }
+        },
+        "messages": [
+          {
+            "messageId": "old",
+            "text": "The team lunch is confirmed for Monday.",
+            "sequence": 1,
+            "isNew": false,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          },
+          {
+            "messageId": "new",
+            "text": "I cannot come to lunch on Monday.",
+            "sequence": 2,
+            "isNew": true,
+            "fromPip": false,
+            "senderId": "bob",
+            "senderName": "Bob"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "new_messages",
+            "sinceSequence": 1
+          }
+        ],
+        "now": "2026-09-19T12:00:00Z"
+      },
+      "arms": [
+        "baseline",
+        "jev"
+      ]
+    },
+    {
+      "id": "digest-cancel",
+      "consumer": "digest",
+      "material": true,
+      "expected": "delete",
+      "input": {
+        "sources": [
+          {
+            "id": "old",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "alice",
+            "senderName": "Alice",
+            "text": "The design review is saved on September 23 at 10:00 UTC.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false
+          },
+          {
+            "id": "new",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "bob",
+            "senderName": "Bob",
+            "text": "Cancel the design review on September 23 at 10:00 UTC.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false,
+            "replyToSourceId": "old"
+          }
+        ],
+        "calendarEvents": [
+          {
+            "id": "synthetic-review",
+            "revision": 1,
+            "title": "Design review",
+            "startAt": "2026-09-23T10:00:00Z",
+            "endAt": "2026-09-23T11:00:00Z",
+            "allDay": false,
+            "timezone": "UTC",
+            "sourceIds": [
+              "old"
+            ]
+          }
+        ],
+        "existingTasks": [],
+        "partial": false,
+        "viewerAccountId": "alice",
+        "locale": "en",
+        "timezone": "UTC",
+        "asOf": "2026-09-19T12:01:00Z",
+        "previous": {
+          "claims": [],
+          "commitments": [],
+          "suggestions": [],
+          "calendarCandidates": []
+        },
+        "changes": {
+          "sources": [
+            {
+              "id": "new",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "bob",
+              "senderName": "Bob",
+              "text": "Cancel the design review on September 23 at 10:00 UTC.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false,
+              "replyToSourceId": "old"
+            }
+          ],
+          "relatedSources": [
+            {
+              "id": "old",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "alice",
+              "senderName": "Alice",
+              "text": "The design review is saved on September 23 at 10:00 UTC.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false
+            }
+          ],
+          "removedSourceIds": [],
+          "calendarEvents": [],
+          "removedCalendarEventIds": [],
+          "existingTasks": [],
+          "removedTaskIds": [],
+          "newlyDueReminderIds": [],
+          "preferencesChanged": false
+        }
+      },
+      "arms": [
+        "baseline",
+        "jev"
+      ]
+    },
+    {
+      "id": "pip-nostalgia",
+      "consumer": "pip",
+      "material": false,
+      "expected": "none",
+      "input": {
+        "pip": {
+          "accountId": "pip",
+          "name": "PiP"
+        },
+        "conversation": {
+          "id": "synthetic-group",
+          "kind": "group",
+          "title": "Synthetic planning"
+        },
+        "memberCount": 2,
+        "members": [
+          {
+            "participantId": "alice",
+            "displayName": "Alice",
+            "handle": "@Alice",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          },
+          {
+            "participantId": "bob",
+            "displayName": "Bob",
+            "handle": "@Bob",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          }
+        ],
+        "organizerTimezone": "UTC",
+        "openCard": null,
+        "messages": [
+          {
+            "messageId": "old",
+            "text": "Remember the old movie?",
+            "sequence": 1,
+            "isNew": false,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          },
+          {
+            "messageId": "new",
+            "text": "That movie we watched last year was hilarious. This is nostalgia, not a new invitation.",
+            "sequence": 2,
+            "isNew": true,
+            "fromPip": false,
+            "senderId": "bob",
+            "senderName": "Bob"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "new_messages",
+            "sinceSequence": 1
+          }
+        ],
+        "now": "2026-09-19T12:00:00Z"
+      },
+      "arms": [
+        "jev",
+        "baseline"
+      ]
+    },
+    {
+      "id": "pip-proposal",
+      "consumer": "pip",
+      "material": true,
+      "expected": "propose",
+      "input": {
+        "pip": {
+          "accountId": "pip",
+          "name": "PiP"
+        },
+        "conversation": {
+          "id": "synthetic-group",
+          "kind": "group",
+          "title": "Synthetic planning"
+        },
+        "memberCount": 2,
+        "members": [
+          {
+            "participantId": "alice",
+            "displayName": "Alice",
+            "handle": "@Alice",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          },
+          {
+            "participantId": "bob",
+            "displayName": "Bob",
+            "handle": "@Bob",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          }
+        ],
+        "organizerTimezone": "UTC",
+        "openCard": null,
+        "messages": [
+          {
+            "messageId": "old",
+            "text": "Any lunch ideas?",
+            "sequence": 1,
+            "isNew": false,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          },
+          {
+            "messageId": "new",
+            "text": "Let us have a team lunch on September 21 at 12:30 UTC at the cafe. Please track this plan.",
+            "sequence": 2,
+            "isNew": true,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "new_messages",
+            "sinceSequence": 1
+          }
+        ],
+        "now": "2026-09-19T12:00:00Z"
+      },
+      "arms": [
+        "jev",
+        "baseline"
+      ]
+    },
+    {
+      "id": "digest-decision",
+      "consumer": "digest",
+      "material": true,
+      "expected": "item",
+      "input": {
+        "sources": [
+          {
+            "id": "old",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "alice",
+            "senderName": "Alice",
+            "text": "The release date was undecided.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false
+          },
+          {
+            "id": "new",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "bob",
+            "senderName": "Bob",
+            "text": "We decided to release version 2 on September 24 at 14:00 UTC.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false,
+            "replyToSourceId": "old"
+          }
+        ],
+        "calendarEvents": [],
+        "existingTasks": [],
+        "partial": false,
+        "viewerAccountId": "alice",
+        "locale": "en",
+        "timezone": "UTC",
+        "asOf": "2026-09-19T12:01:00Z",
+        "previous": {
+          "claims": [],
+          "commitments": [],
+          "suggestions": [],
+          "calendarCandidates": []
+        },
+        "changes": {
+          "sources": [
+            {
+              "id": "new",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "bob",
+              "senderName": "Bob",
+              "text": "We decided to release version 2 on September 24 at 14:00 UTC.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false,
+              "replyToSourceId": "old"
+            }
+          ],
+          "relatedSources": [
+            {
+              "id": "old",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "alice",
+              "senderName": "Alice",
+              "text": "The release date was undecided.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false
+            }
+          ],
+          "removedSourceIds": [],
+          "calendarEvents": [],
+          "removedCalendarEventIds": [],
+          "existingTasks": [],
+          "removedTaskIds": [],
+          "newlyDueReminderIds": [],
+          "preferencesChanged": false
+        }
+      },
+      "arms": [
+        "jev",
+        "baseline"
+      ]
+    },
+    {
+      "id": "pip-cancel",
+      "consumer": "pip",
+      "material": true,
+      "expected": "cancel",
+      "input": {
+        "pip": {
+          "accountId": "pip",
+          "name": "PiP"
+        },
+        "conversation": {
+          "id": "synthetic-group",
+          "kind": "group",
+          "title": "Synthetic planning"
+        },
+        "memberCount": 2,
+        "members": [
+          {
+            "participantId": "alice",
+            "displayName": "Alice",
+            "handle": "@Alice",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          },
+          {
+            "participantId": "bob",
+            "displayName": "Bob",
+            "handle": "@Bob",
+            "role": "member",
+            "isPip": false,
+            "timezone": "UTC"
+          }
+        ],
+        "organizerTimezone": "UTC",
+        "openCard": {
+          "eventId": "synthetic-event",
+          "revision": 1,
+          "state": "confirmed",
+          "title": "Team lunch",
+          "startAt": "2026-09-21T12:30:00Z",
+          "endAt": "2026-09-21T13:30:00Z",
+          "location": "Cafe",
+          "unresolvedFields": [],
+          "participantsTruncated": false,
+          "participants": [
+            {
+              "participantId": "alice",
+              "displayName": "Alice",
+              "organizer": true,
+              "rsvp": "yes"
+            },
+            {
+              "participantId": "bob",
+              "displayName": "Bob",
+              "organizer": false,
+              "rsvp": "pending"
+            }
+          ],
+          "options": [],
+          "counts": {
+            "participants": 2,
+            "going": 1,
+            "declined": 0,
+            "pending": 1,
+            "voted": 0
+          }
+        },
+        "messages": [
+          {
+            "messageId": "old",
+            "text": "Alice organized the Monday lunch.",
+            "sequence": 1,
+            "isNew": false,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          },
+          {
+            "messageId": "new",
+            "text": "I am canceling Monday lunch for everyone. Please cancel the plan.",
+            "sequence": 2,
+            "isNew": true,
+            "fromPip": false,
+            "senderId": "alice",
+            "senderName": "Alice"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "new_messages",
+            "sinceSequence": 1
+          }
+        ],
+        "now": "2026-09-19T12:00:00Z"
+      },
+      "arms": [
+        "baseline",
+        "jev"
+      ]
+    },
+    {
+      "id": "digest-joke",
+      "consumer": "digest",
+      "material": false,
+      "expected": "none",
+      "input": {
+        "sources": [
+          {
+            "id": "old",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "alice",
+            "senderName": "Alice",
+            "text": "We were joking about imaginary elves.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false
+          },
+          {
+            "id": "new",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "bob",
+            "senderName": "Bob",
+            "text": "The imaginary build elves are taking a coffee break. This is only a joke.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false,
+            "replyToSourceId": "old"
+          }
+        ],
+        "calendarEvents": [],
+        "existingTasks": [],
+        "partial": false,
+        "viewerAccountId": "alice",
+        "locale": "en",
+        "timezone": "UTC",
+        "asOf": "2026-09-19T12:01:00Z",
+        "previous": {
+          "claims": [],
+          "commitments": [],
+          "suggestions": [],
+          "calendarCandidates": []
+        },
+        "changes": {
+          "sources": [
+            {
+              "id": "new",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "bob",
+              "senderName": "Bob",
+              "text": "The imaginary build elves are taking a coffee break. This is only a joke.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false,
+              "replyToSourceId": "old"
+            }
+          ],
+          "relatedSources": [
+            {
+              "id": "old",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "alice",
+              "senderName": "Alice",
+              "text": "We were joking about imaginary elves.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false
+            }
+          ],
+          "removedSourceIds": [],
+          "calendarEvents": [],
+          "removedCalendarEventIds": [],
+          "existingTasks": [],
+          "removedTaskIds": [],
+          "newlyDueReminderIds": [],
+          "preferencesChanged": false
+        }
+      },
+      "arms": [
+        "baseline",
+        "jev"
+      ]
+    },
+    {
+      "id": "digest-cat",
+      "consumer": "digest",
+      "material": false,
+      "expected": "none",
+      "input": {
+        "sources": [
+          {
+            "id": "old",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "alice",
+            "senderName": "Alice",
+            "text": "Here is a cat photo for fun.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false
+          },
+          {
+            "id": "new",
+            "conversationId": "synthetic-group",
+            "sessionId": "synthetic-session",
+            "sessionTitle": "Synthetic planning",
+            "senderAccountId": "bob",
+            "senderName": "Bob",
+            "text": "The cat in that photo has a magnificent hat.",
+            "createdAt": "2026-09-19T12:00:00Z",
+            "version": 1,
+            "isAgent": false,
+            "replyToSourceId": "old"
+          }
+        ],
+        "calendarEvents": [],
+        "existingTasks": [],
+        "partial": false,
+        "viewerAccountId": "alice",
+        "locale": "en",
+        "timezone": "UTC",
+        "asOf": "2026-09-19T12:01:00Z",
+        "previous": {
+          "claims": [],
+          "commitments": [],
+          "suggestions": [],
+          "calendarCandidates": []
+        },
+        "changes": {
+          "sources": [
+            {
+              "id": "new",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "bob",
+              "senderName": "Bob",
+              "text": "The cat in that photo has a magnificent hat.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false,
+              "replyToSourceId": "old"
+            }
+          ],
+          "relatedSources": [
+            {
+              "id": "old",
+              "conversationId": "synthetic-group",
+              "sessionId": "synthetic-session",
+              "sessionTitle": "Synthetic planning",
+              "senderAccountId": "alice",
+              "senderName": "Alice",
+              "text": "Here is a cat photo for fun.",
+              "createdAt": "2026-09-19T12:00:00Z",
+              "version": 1,
+              "isAgent": false
+            }
+          ],
+          "removedSourceIds": [],
+          "calendarEvents": [],
+          "removedCalendarEventIds": [],
+          "existingTasks": [],
+          "removedTaskIds": [],
+          "newlyDueReminderIds": [],
+          "preferencesChanged": false
+        }
+      },
+      "arms": [
+        "jev",
+        "baseline"
+      ]
+    }
+  ]
+}

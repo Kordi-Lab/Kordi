@@ -203,3 +203,7 @@ Two failure modes found and fixed during validation: the model sends optional
 strings as `""` (an empty `existingEventId` is now a new card, not a missing
 one), and it may send ambiguous times (`startAt`/`endAt` now require an RFC
 3339 offset and return a 400 that explains the format).
+
+## Optional Jev routing
+
+The runner can evaluate routing decisions before generation behind independent, default-off feature flags. See [Jev routing for PiP and Digest](jev-routing.md) for supported routes, fallback behavior, synthetic evaluation and rollout requirements.

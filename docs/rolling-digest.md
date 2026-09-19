@@ -60,3 +60,7 @@ cargo check -p kordi-desktop --no-default-features
 ```
 
 Native iOS validation uses the `Kordi Beta` scheme. Real provider generation, EventKit permission prompts and APNs delivery require an authorized isolated environment and configured test accounts; compilation and fixture tests do not substitute for that end-to-end validation.
+
+## Optional Jev routing
+
+The runner can evaluate routing decisions before generation behind independent, default-off feature flags. See [Jev routing for PiP and Digest](jev-routing.md) for supported routes, fallback behavior, synthetic evaluation and rollout requirements.

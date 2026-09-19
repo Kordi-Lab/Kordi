@@ -403,6 +403,35 @@ async fn postgres_scope_and_atomic_publication() {
         count.0, 1,
         "No chat message is created by digest completion"
     );
+    // A Jev no-op patch advances checked-through evidence without changing content age.
+    let content_time: (chrono::DateTime<chrono::Utc>,) =
+        query_as("SELECT updated_at FROM cloud_account_digests WHERE account_id=$1")
+            .bind(&viewer)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let mut unchanged_input = input.clone();
+    unchanged_input.previous = Some(serde_json::from_value(merged.0.clone()).unwrap());
+    unchanged_input.changes = Some(super::incremental::Changes::default());
+    unchanged_input.as_of = "2026-09-07T10:00:00Z".into();
+    let unchanged_run = format!("digest_{}", uuid::Uuid::new_v4().simple());
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,lease_expires_at,created_at,updated_at) SELECT $2,$2,$2,session_id,owner_account_id,requester_account_id,'running',prompt,claimed_by,lease_expires_at,created_at,updated_at FROM cloud_agent_fallback_runs WHERE run_id=$1")
+        .bind(&next_run).bind(&unchanged_run).execute(&pool).await.unwrap();
+    query("UPDATE cloud_account_digests SET input_json=$2,active_run_id=$3 WHERE account_id=$1")
+        .bind(&viewer)
+        .bind(json!(unchanged_input))
+        .bind(&unchanged_run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    store::complete(&pool, &unchanged_run, "test-runner", r#"{"claims":[],"commitments":[],"suggestions":[],"calendarCandidates":[],"removedItemIds":[]}"#).await.unwrap();
+    let unchanged: (serde_json::Value, i64, chrono::DateTime<chrono::Utc>, String) = query_as(
+        "SELECT snapshot_json,revision,updated_at,snapshot_input_json->>'asOf' FROM cloud_account_digests WHERE account_id=$1"
+    ).bind(&viewer).fetch_one(&pool).await.unwrap();
+    assert_eq!(unchanged.0, merged.0);
+    assert_eq!(unchanged.1, 3);
+    assert_eq!(unchanged.2, content_time.0);
+    assert_eq!(unchanged.3, "2026-09-07T10:00:00Z");
     super::calendar_tests::postgres_reply_context(&pool, &viewer, &author, public, message).await;
     query(
         "UPDATE cloud_chat_conversation_members SET membership_state='removed' WHERE account_id=$1",

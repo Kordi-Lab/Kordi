@@ -408,7 +408,7 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
     if changed.rows_affected() == 0 {
         return Err(sqlx_core::Error::RowNotFound);
     }
-    query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=input_json,active_run_id=NULL,error_code=NULL,failure_count=0,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id=$3").bind(&account).bind(serde_json::to_value(output).unwrap()).bind(run).execute(&mut *tx).await?;
+    query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=input_json,active_run_id=NULL,error_code=NULL,failure_count=0,revision=revision+1,updated_at=CASE WHEN snapshot_json IS DISTINCT FROM $2 THEN now() ELSE updated_at END WHERE account_id=$1 AND active_run_id=$3").bind(&account).bind(serde_json::to_value(output).unwrap()).bind(run).execute(&mut *tx).await?;
     crate::chat_sync::store::append_account_hint(
         &mut tx,
         &account,

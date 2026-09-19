@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-09-19T10:18:31.425226+00:00",
+  "provenance": "live synthetic evaluation",
+  "syntheticOnly": true,
+  "exitCode": 1,
+  "fixtures": [
+    {
+      "consumer": "Digest",
+      "decisionMs": 1189,
+      "evaluation": {
+        "answers": {
+          "route": {
+            "choice": "skip",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.01,
+              "read_session": 0.0,
+              "search_sessions": 0.0,
+              "skip": 0.99
+            },
+            "type": "choice"
+          },
+          "session": {
+            "choice": "s0",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.32,
+              "s0": 0.68
+            },
+            "type": "choice"
+          }
+        },
+        "inputTokens": 945,
+        "model": "typesafe-ai/jev",
+        "outputTokens": 77,
+        "status": "succeeded"
+      },
+      "fallback": false,
+      "fixture": "unrelated-chat",
+      "material": false,
+      "route": "Generate"
+    },
+    {
+      "consumer": "Digest",
+      "decisionMs": 446,
+      "evaluation": {
+        "answers": {
+          "route": {
+            "choice": "generate",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.96,
+              "read_session": 0.01,
+              "search_sessions": 0.0,
+              "skip": 0.03
+            },
+            "type": "choice"
+          },
+          "session": {
+            "choice": "s0",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.27,
+              "s0": 0.73
+            },
+            "type": "choice"
+          }
+        },
+        "inputTokens": 955,
+        "model": "typesafe-ai/jev",
+        "outputTokens": 77,
+        "status": "succeeded"
+      },
+      "fallback": false,
+      "fixture": "commitment",
+      "material": true,
+      "route": "Generate"
+    },
+    {
+      "consumer": "Digest",
+      "decisionMs": 482,
+      "evaluation": {
+        "answers": {
+          "route": {
+            "choice": "generate",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.98,
+              "read_session": 0.01,
+              "search_sessions": 0.0,
+              "skip": 0.01
+            },
+            "type": "choice"
+          },
+          "session": {
+            "choice": "s0",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.17,
+              "s0": 0.83
+            },
+            "type": "choice"
+          }
+        },
+        "inputTokens": 952,
+        "model": "typesafe-ai/jev",
+        "outputTokens": 77,
+        "status": "succeeded"
+      },
+      "fallback": false,
+      "fixture": "cancellation",
+      "material": true,
+      "route": "Generate"
+    },
+    {
+      "consumer": "Digest",
+      "decisionMs": 436,
+      "evaluation": {
+        "answers": {
+          "route": {
+            "choice": "generate",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.81,
+              "read_session": 0.01,
+              "search_sessions": 0.0,
+              "skip": 0.18
+            },
+            "type": "choice"
+          },
+          "session": {
+            "choice": "s0",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.24,
+              "s0": 0.76
+            },
+            "type": "choice"
+          }
+        },
+        "inputTokens": 958,
+        "model": "typesafe-ai/jev",
+        "outputTokens": 77,
+        "status": "succeeded"
+      },
+      "fallback": false,
+      "fixture": "short-acceptance",
+      "material": true,
+      "route": "Generate"
+    },
+    {
+      "consumer": "Digest",
+      "decisionMs": 665,
+      "evaluation": {
+        "answers": {
+          "route": {
+            "choice": "generate",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.98,
+              "read_session": 0.01,
+              "search_sessions": 0.0,
+              "skip": 0.01
+            },
+            "type": "choice"
+          },
+          "session": {
+            "choice": "s0",
+            "confidence": null,
+            "probabilities": {
+              "generate": 0.17,
+              "s0": 0.83
+            },
+            "type": "choice"
+          }
+        },
+        "inputTokens": 959,
+        "model": "typesafe-ai/jev",
+        "outputTokens": 77,
+        "status": "succeeded"
+      },
+      "fallback": false,
+      "fixture": "french-reschedule",
+      "material": true,
+      "route": "Generate"
+    },
+    {
+      "consumer": "Digest",
+      "decisionMs": 1071,
+      "evaluation": {
+        "error": "evaluation HTTP status 429",
+        "status": "failed"
+      },
+      "fallback": true,
+      "fixture": "injection",
+      "material": true,
+      "route": "Generate"
+    }
+  ],
+  "summary": {
+    "baselineGenerationInvocations": 6,
+    "complete": false,
+    "decisionMedianMs": 665,
+    "decisionP95Ms": 1189,
+    "evaluationRequests": 6,
+    "failedEvaluations": 1,
+    "fixtures": 6,
+    "inputTokens": 4769,
+    "intervalMs": 15000,
+    "missedMaterialChanges": 0,
+    "model": "typesafe-ai/jev",
+    "note": "Routing evaluation only. Generation invocation counts are inferred; no generative LLM or tools were executed. Token totals cover successful evaluation responses only.",
+    "outputTokens": 385,
+    "plannedFixtures": 12,
+    "routedGenerationInvocations": 6,
+    "successfulDecisionMedianMs": 482,
+    "successfulDecisionP95Ms": 1189,
+    "successfulEvaluations": 5,
+    "unnecessaryGenerationInvocations": 1
+  }
+}
