@@ -28,10 +28,10 @@ else
     -e POSTGRES_HOST_AUTH_METHOD=trust -p 127.0.0.1::5432 postgres:16.14-alpine)"
   [[ "$container_id" =~ ^[a-f0-9]{64}$ ]]
   for attempt in {1..30}; do
-    if docker exec "$container_id" pg_isready -U postgres >/dev/null 2>&1; then break; fi
+    if docker exec "$container_id" pg_isready -h 127.0.0.1 -U postgres >/dev/null 2>&1; then break; fi
     sleep 1
   done
-  docker exec "$container_id" pg_isready -U postgres >/dev/null
+  docker exec "$container_id" pg_isready -h 127.0.0.1 -U postgres >/dev/null
   port="$(docker inspect --format '{{(index (index .NetworkSettings.Ports "5432/tcp") 0).HostPort}}' "$container_id")"
   [[ "$port" =~ ^[0-9]+$ ]]
   migration_create_database() { docker exec "$container_id" createdb -U postgres "$1"; }
