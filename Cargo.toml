@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["app/desktop/src-tauri/vendor/tauri-plugin-http"]
 members = [
     "agent/crates/core",
     "agent/crates/session",
@@ -64,3 +65,7 @@ kordi-protocol = { version = "0.1.0", path = "shared/rust/protocol" }
 
 [profile.release]
 strip = "debuginfo"
+
+[patch.crates-io]
+# Retain the native HTTP connection pool until upstream provides equivalent reuse.
+tauri-plugin-http = { path = "app/desktop/src-tauri/vendor/tauri-plugin-http" }
