@@ -27,6 +27,7 @@ jobs:
       actions: read
     outputs:
       sha: ${{ steps.revision.outputs.sha }}
+      artifact: ${{ steps.bundle.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -99,6 +100,7 @@ jobs:
           TARGET_SHA: ${{ steps.revision.outputs.sha }}
         run: python3 scripts/backend_artifact.py create --directory "$RUNNER_TEMP/backend-bundle" --sha "$TARGET_SHA" --run-id "$GITHUB_RUN_ID"
       - name: Store the immutable promotion bundle
+        id: bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: backend-bundle
@@ -119,6 +121,7 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: read
+      actions: read
       id-token: write
     env:
       TARGET_SHA: ${{ needs.build.outputs.sha }}
@@ -154,6 +157,8 @@ jobs:
       - name: Deploy and verify on the development host
         if: steps.current.outputs.deploy == 'true'
         env:
+          GH_TOKEN: ${{ github.token }}
+          KORDI_BACKEND_ARTIFACT_ID: ${{ needs.build.outputs.artifact }}
           KORDI_BACKEND_PROJECT: ${{ secrets.KORDI_BACKEND_PROJECT }}
           KORDI_BACKEND_ZONE: ${{ secrets.KORDI_BACKEND_ZONE }}
           KORDI_BACKEND_TARGET: ${{ secrets.KORDI_BACKEND_TARGET }}

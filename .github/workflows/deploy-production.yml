@@ -151,6 +151,8 @@ jobs:
         env:
           TARGET_SHA: ${{ needs.preflight.outputs.sha }}
           BUILD_RUN_ID: ${{ inputs.build_run_id || github.event.workflow_run.id }}
+          GH_TOKEN: ${{ github.token }}
+          KORDI_BACKEND_ARTIFACT_ID: ${{ needs.preflight.outputs.bundle }}
           KORDI_BACKEND_PROJECT: ${{ secrets.KORDI_BACKEND_PROJECT }}
           KORDI_BACKEND_ZONE: ${{ secrets.KORDI_BACKEND_ZONE }}
           KORDI_BACKEND_TARGET: ${{ secrets.KORDI_BACKEND_TARGET }}
