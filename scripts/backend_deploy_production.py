@@ -7,9 +7,10 @@ import re
 
 from backend_artifact import SERVICES, verify_bundle
 from backend_backup import verify_backup
+from backend_backup_create import create_backup
 from backend_deploy_common import health, lock, run, write_record, write_state
 
-KUBECTL = ["kubectl", "--namespace", "kordi-cloud"]
+KUBECTL = ["sudo", "k3s", "kubectl", "--namespace", "kordi-cloud"]
 CONTAINERS = {"cloud-server": "server", "cloud-agent-runner": "runner"}
 CTR = ["sudo", "k3s", "ctr", "--namespace", "k8s.io"]
 
@@ -72,7 +73,8 @@ def deploy(args):
             bundle = verify_bundle(args.bundle, args.sha, args.run_id)
             record["images"] = bundle["images"]
             record["stage"] = "backup verification"
-            record.update(verify_backup(args.backup_root, args.backup_id))
+            backup_id = create_backup(args.backup_root, args.run_id) if args.backup_id == "auto" else args.backup_id
+            record.update(verify_backup(args.backup_root, backup_id))
             record["stage"] = "capture previous images"
             previous = capture_previous()
             record["previousImages"] = previous

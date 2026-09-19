@@ -6,8 +6,9 @@ It never rebuilds source on the product server and never deploys a mutable image
 ## Operator workflow
 
 1. Open a successful **Backend delivery** run and copy its run ID.
-2. Prepare a fresh host-owned backup receipt with successful restore evidence for that
-   exact backup. The data stays on approved protected storage; never upload it to Actions.
+2. Use `auto` for the backup input to create and restore a fresh PostgreSQL backup on
+   the product host, or provide an existing verified receipt ID. Backup data never leaves
+   the product machine and is never uploaded to Actions.
 3. Run **Deploy production** from `main`, supplying the build run ID, backup receipt ID,
    and either `backward-compatible` or `forward-only` schema compatibility.
 4. One repository administrator approves the promotion; this may be the triggering user.
@@ -85,7 +86,13 @@ an approved isolated restore target. Do not create evidence from a filename or a
 listing alone. The deployment helper verifies nonzero size, the actual file checksum,
 production environment, creation within the last 24 hours, and a successful restore after
 creation for that checksum. A missing or stale backup blocks promotion before image imports.
-The backup provider and restore rehearsal must be provisioned before the first promotion.
+With `backup=auto`, the host helper verifies that the running backend uses the expected
+PostgreSQL database, checks available disk space, creates a logical dump, and restores it
+into a temporary namespace on the same node. The restore pod has no service-account token,
+no network access, and no TCP listener. It is deleted after verification. Existing backup
+timers remain in place; this additional pre-promotion check covers PostgreSQL, not object
+storage or a complete infrastructure restore. Verified dumps remain in protected host
+storage for operator-managed retention; low disk space blocks a new promotion.
 
 ## Environment secrets
 

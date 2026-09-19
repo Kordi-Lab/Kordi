@@ -56,7 +56,7 @@ else
   : "${KORDI_BACKEND_BACKUP_ROOT:?Missing protected backup directory}"
   : "${KORDI_BACKEND_BACKUP_ID:?Missing verified backup identifier}"
   : "${KORDI_BACKEND_SCHEMA_COMPATIBILITY:?Missing schema compatibility declaration}"
-  files+=("$root/scripts/backend_deploy_production.py" "$root/scripts/backend_backup.py")
+  files+=("$root/scripts/backend_deploy_production.py" "$root/scripts/backend_backup.py" "$root/scripts/backend_backup_create.py")
   arguments=(python3 "$remote/backend_deploy_production.py" --bundle "$remote/bundle" --sha "$sha" --run-id "$run_id"
     --state "$KORDI_BACKEND_STATE" --backup-root "$KORDI_BACKEND_BACKUP_ROOT" --backup-id "$KORDI_BACKEND_BACKUP_ID"
     --schema-compatibility "$KORDI_BACKEND_SCHEMA_COMPATIBILITY")

@@ -8,7 +8,8 @@ on:
         required: true
         type: string
       backup:
-        description: Host-owned backup receipt ID with a verified restore from the last 24 hours
+        default: auto
+        description: auto creates and restores a fresh host-local backup; alternatively provide a verified receipt ID
         required: true
         type: string
       schema_compatibility:
