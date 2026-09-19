@@ -324,22 +324,51 @@ export function retainCanonicalSessionPages(
     : store;
 }
 
+// Every store update reprojects this state, so its cost is paid per incoming
+// message. Cache by the immutable inputs with weak keys so an unchanged store
+// reuses the transcript instead of rebuilding it.
+const projections = new WeakMap<
+  Record<string, CanonicalSessionMessage[]>,
+  { catalog: CanonicalSessionCatalog; state: CanonicalSessionState }
+>();
+
 export function canonicalStateFromStore(store: CanonicalStore): CanonicalSessionState | null {
   if (!store.catalog) return null;
-  const sessionOrder = new Map(store.catalog.sessions.map((session, index) => [session.id, index]));
-  const messages = Object.values(store.messagesBySessionId)
-    .flat()
-    .sort((left, right) => (
-      (sessionOrder.get(left.sessionId) ?? Number.MAX_SAFE_INTEGER)
-        - (sessionOrder.get(right.sessionId) ?? Number.MAX_SAFE_INTEGER)
-      || compareCanonicalMessages(left, right)
-    ));
+  const cached = projections.get(store.messagesBySessionId);
+  if (cached && cached.catalog === store.catalog) return cached.state;
+  // Each session's page is already ordered by compareCanonicalMessages, and the
+  // catalog supplies the order between sessions. Concatenating in catalog order
+  // reproduces the fully sorted transcript without comparing history again.
+  const messages: CanonicalSessionMessage[] = [];
+  const projected = new Set<string>();
+  for (const session of store.catalog.sessions) {
+    // A catalog that repeats a session must not repeat its transcript; the
+    // previous global sort could not duplicate a message.
+    if (projected.has(session.id)) continue;
+    projected.add(session.id);
+    for (const message of store.messagesBySessionId[session.id] ?? []) {
+      messages.push(message);
+    }
+  }
+  // Sessions the catalog does not list share one ordering bucket, so they stay
+  // interleaved by message order and trail every catalog session.
+  const trailing: CanonicalSessionMessage[] = [];
+  for (const [sessionId, sessionMessages] of Object.entries(store.messagesBySessionId)) {
+    if (projected.has(sessionId)) continue;
+    for (const message of sessionMessages) trailing.push(message);
+  }
+  if (trailing.length > 0) {
+    trailing.sort(compareCanonicalMessages);
+    for (const message of trailing) messages.push(message);
+  }
   const { summaries: _summaries, ...catalog } = store.catalog;
-  return {
+  const state: CanonicalSessionState = {
     ...catalog,
     messages,
     contextSnapshots: [],
   };
+  projections.set(store.messagesBySessionId, { catalog: store.catalog, state });
+  return state;
 }
 
 export type CanonicalSessionStateAction = CanonicalSessionState | null | (

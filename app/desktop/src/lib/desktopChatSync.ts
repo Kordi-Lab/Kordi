@@ -125,6 +125,26 @@ export function chatSyncHistoryIsComplete(
   });
 }
 
+export function chatSyncStoreIsBootstrapped(state: Pick<ChatSyncCursorState, 'cursor' | 'lastStreamSeq'>) {
+  return state.cursor !== null || state.lastStreamSeq > 0;
+}
+
+// Before the first sync batch lands, the native store answers every history
+// query with nothing, which a recovery pass would mistake for a fully
+// recovered account. Hold until a sync cursor proves that batch has arrived.
+export async function waitForChatSyncBootstrap(
+  accountId: string,
+  shouldContinue: () => boolean,
+) {
+  if (!isNativeDesktopShell()) return true;
+  while (shouldContinue()) {
+    const state = await loadChatSyncCursor(accountId);
+    if (state && chatSyncStoreIsBootstrapped(state)) return true;
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 1_000));
+  }
+  return false;
+}
+
 export async function waitForCompleteChatSyncHistory(
   accountId: string,
   shouldContinue: () => boolean,

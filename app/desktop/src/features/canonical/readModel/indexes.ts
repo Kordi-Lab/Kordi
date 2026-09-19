@@ -23,11 +23,11 @@ import {
   delegationTerminalStatus,
   directCollaborationSourceEventForOutreachDuplicate,
   isProcessingPlaceholderText,
-  mapCanonicalMessage,
   ownerScopedAgentName,
   processingAgentMessage,
   stringValue,
 } from './messageMapping';
+import { identityIndex, mapCanonicalMessageCached } from './messageMappingCache';
 import { selfAgentMirrorDuplicateIds } from './selfAgentMirrorDedup';
 
 export type CanonicalIndexes = {
@@ -725,7 +725,7 @@ function buildTaskActivitiesBySessionId(
 export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | null): CanonicalIndexes {
   if (!canonicalState) return emptyIndexes();
 
-  const identityById = new Map(canonicalState.identities.map((identity) => [identity.id, identity]));
+  const identityById = identityIndex(canonicalState.identities);
   const sessionById = new Map(canonicalState.sessions.map((session) => [session.id, session]));
   const presenceByIdentityId = new Map(canonicalState.presence.map((presence) => [presence.identityId, presence]));
 
@@ -1002,7 +1002,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         && !delegatedOutreachDirectSources.has(duplicatedDirectLegacyCollaborationSource)) {
         return [];
       }
-      const mapped = mapCanonicalMessage(
+      const mapped = mapCanonicalMessageCached(
         displaySourceMessage,
         identityById,
         canonicalState.profile.humanIdentityId,
