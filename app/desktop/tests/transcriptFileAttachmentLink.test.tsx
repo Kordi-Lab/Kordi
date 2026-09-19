@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { TranscriptFileAttachmentLink } from '../src/kordi-app/components/transcriptFileAttachmentLink';
 
-test('file attachments render as compact transcript links with delivery progress', () => {
+test('file attachments render as a quiet file chip with delivery progress', () => {
   const markup = renderToStaticMarkup(createElement(TranscriptFileAttachmentLink, {
     attachment: {
       kind: 'file',
@@ -17,9 +17,13 @@ test('file attachments render as compact transcript links with delivery progress
     isSending: true,
   }));
 
-  assert.match(markup, /data-attachment-file-link="true"/);
-  assert.match(markup, /app-markdown-link/);
-  assert.match(markup, />notes\.pdf</);
+  assert.match(markup, /data-attachment-file-chip="true"/);
+  assert.match(markup, /data-file-family="pdf"/);
+  assert.match(markup, /app-attachment-file-name-base">notes</);
+  assert.match(markup, /app-attachment-file-name-ext">\.pdf</);
+  assert.match(markup, />PDF</);
+  assert.doesNotMatch(markup, /data-attachment-file-link="true"/);
+  assert.doesNotMatch(markup, /app-markdown-link/);
   assert.doesNotMatch(markup, /data-attachment-file-card=/);
   assert.match(markup, /data-attachment-sending-indicator="true"/);
   assert.match(markup, /Sending…/);

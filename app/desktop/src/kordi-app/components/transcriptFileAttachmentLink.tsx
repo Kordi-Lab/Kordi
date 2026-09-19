@@ -1,5 +1,6 @@
-import { useCallback, useId, useState, useSyncExternalStore } from 'react';
-import { FileText, LoaderCircle, X } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
+import { Check, Copy, Download, FolderOpen, LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -17,8 +18,17 @@ import {
 } from '@/features/cloud/cloudAttachmentUpload';
 import { loadSession } from '@/features/cloud/session';
 import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
-import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
+import { attachmentFileFamily, attachmentFileTileLabel, splitAttachmentName } from '@/features/chat/attachmentFileFamily';
+import { attachmentFormatLabel } from '@/features/chat/composerAttachments';
+import {
+  downloadDesktopAttachment,
+  openDesktopExternalUrl,
+  revealDesktopAttachment,
+  saveDesktopAttachmentAs,
+  storeDesktopChatAttachment,
+} from '@/lib/desktop';
 import type { MessageAttachment } from '../types';
+import { formatAttachmentSize } from './transcriptAttachmentTypes';
 
 function isNativeShell() {
   return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
@@ -100,6 +110,43 @@ export function TranscriptFileAttachmentUploadActions({
     ));
 }
 
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textarea);
+}
+
+function FileMenuAction({ icon: Icon, label, busy = false, onClick }: {
+  icon: typeof FolderOpen;
+  label: string;
+  busy?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={busy}
+      onClick={onClick}
+      className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left transition disabled:cursor-wait disabled:opacity-55"
+    >
+      {busy
+        ? <LoaderCircle className="app-transient-action-icon animate-spin" />
+        : <Icon className="app-transient-action-icon" />}
+      <span className="app-transient-action-label">{label}</span>
+    </button>
+  );
+}
+
 export function TranscriptFileAttachmentLink({
   attachment,
   isSending = false,
@@ -168,59 +215,196 @@ export function TranscriptFileAttachmentLink({
     }
   }
 
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menuAction, setMenuAction] = useState<'reveal' | 'save' | null>(null);
+  const [menuNotice, setMenuNotice] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const closeMenu = useCallback(() => {
+    setMenu(null);
+    setMenuAction(null);
+    setMenuNotice(null);
+  }, []);
+
+  function openMenu(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenuNotice(null);
+    setMenu({ x: event.clientX, y: event.clientY });
+  }
+
+  useEffect(() => {
+    if (!menu) return;
+    function handlePointerDown(event: PointerEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) closeMenu();
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') closeMenu();
+    }
+    window.addEventListener('pointerdown', handlePointerDown, true);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeMenu, menu]);
+
+  async function handleRevealInFinder() {
+    setMenuAction('reveal');
+    setMenuNotice(null);
+    try {
+      const target = await ensureLocalPath();
+      if (!target) throw new Error('Attachment is not available locally.');
+      await revealDesktopAttachment(target);
+      closeMenu();
+    } catch (revealError) {
+      setMenuNotice(revealError instanceof Error ? revealError.message : 'Unable to show in Finder');
+    } finally {
+      setMenuAction(null);
+    }
+  }
+
+  async function handleSaveAs() {
+    setMenuAction('save');
+    setMenuNotice(null);
+    try {
+      const target = await ensureLocalPath();
+      if (!target) throw new Error('Attachment is not available locally.');
+      const savedPath = await saveDesktopAttachmentAs(target, attachment.name);
+      if (savedPath) {
+        setDownloadedPath(savedPath);
+        closeMenu();
+      }
+    } catch (saveError) {
+      setMenuNotice(saveError instanceof Error ? saveError.message : 'Unable to save attachment');
+    } finally {
+      setMenuAction(null);
+    }
+  }
+
+  async function handleCopyFilename() {
+    try {
+      await copyTextToClipboard(attachment.name);
+      setMenuNotice('Copied');
+      window.setTimeout(closeMenu, 600);
+    } catch {
+      setMenuNotice('Unable to copy');
+    }
+  }
+
   const isActionable = canDownload || canOpen;
-  const linkContent = (
+  const family = attachmentFileFamily(attachment);
+  const typeLabel = attachmentFormatLabel(attachment.name, attachment.mimeType ?? undefined);
+  const tileLabel = attachmentFileTileLabel(typeLabel);
+  const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
+  const busy = isSending || isDownloading;
+  const { base: nameBase, extension: nameExtension } = splitAttachmentName(attachment.name);
+  const chipContent = (
     <>
-      <FileText className="h-3 w-3 shrink-0" strokeWidth={1.8} aria-hidden="true" />
-      <span className="truncate">{attachment.name}</span>
+      <span className="app-attachment-file-tile" aria-hidden="true">{tileLabel}</span>
+      <span className="app-attachment-file-body">
+        <span className="app-attachment-file-name">
+          <span className="app-attachment-file-name-base">{nameBase}</span>
+          {nameExtension ? <span className="app-attachment-file-name-ext">{nameExtension}</span> : null}
+        </span>
+        <span className="app-attachment-file-sub">
+          <span className="app-attachment-file-type">{typeLabel}</span>
+          {isSending ? (
+            <>
+              <span className="app-attachment-file-dot" aria-hidden="true" />
+              <span
+                data-attachment-sending-indicator="true"
+                className="app-attachment-file-sending"
+                aria-label={upload?.phase === 'preparing'
+                  ? 'Preparing attachment'
+                  : upload?.phase === 'finishing'
+                    ? 'Finishing attachment upload'
+                    : uploadPercent === null ? 'Sending attachment' : `Uploading attachment, ${uploadPercent}%`}
+              >
+                {sendingLabel}
+              </span>
+            </>
+          ) : sizeLabel ? (
+            <>
+              <span className="app-attachment-file-dot" aria-hidden="true" />
+              {sizeLabel}
+            </>
+          ) : null}
+        </span>
+      </span>
+      <span className="app-attachment-file-action" aria-hidden="true">
+        {busy
+          ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+          : downloadedPath
+            ? <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
+            : <Download className="h-3.5 w-3.5" strokeWidth={1.9} />}
+      </span>
     </>
   );
 
   return (
-    <div
-      data-attachment-file-link="true"
-      className="flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-[11px]"
-    >
+    <div className="app-attachment-file-stack">
       {isActionable ? (
         <button
           type="button"
+          data-attachment-file-chip="true"
+          data-file-family={family}
+          data-downloaded={downloadedPath ? 'true' : undefined}
           onClick={() => void (canOpen ? handleOpen() : handleDownload())}
+          onContextMenu={openMenu}
           disabled={isDownloading}
-          className="app-markdown-link inline-flex max-w-full items-center gap-1 bg-transparent p-0 text-left font-medium disabled:cursor-wait disabled:opacity-65"
+          className="app-attachment-file-chip"
           aria-label={`${canOpen ? 'Open' : 'Download'} ${attachment.name}`}
-          title={`${canOpen ? 'Open' : 'Download'} ${attachment.name}`}
+          title={`${canOpen ? 'Open' : 'Download'} ${attachment.name} · Right-click for file actions`}
         >
-          {linkContent}
+          {chipContent}
         </button>
       ) : (
-        <span className="inline-flex max-w-full items-center gap-1 text-[color:var(--utility-muted-text)]">
-          {linkContent}
+        <span
+          data-attachment-file-chip="true"
+          data-file-family={family}
+          onContextMenu={openMenu}
+          className="app-attachment-file-chip app-attachment-file-chip-static"
+        >
+          {chipContent}
         </span>
       )}
-      {isSending ? (
-        <span
-          data-attachment-sending-indicator="true"
-          className="inline-flex items-center gap-1 text-[10px] font-medium text-[color:var(--utility-muted-text)]"
-          aria-label={upload?.phase === 'preparing'
-            ? 'Preparing attachment'
-            : upload?.phase === 'finishing'
-              ? 'Finishing attachment upload'
-              : uploadPercent === null ? 'Sending attachment' : `Uploading attachment, ${uploadPercent}%`}
-        >
-          <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
-          <span>{sendingLabel}</span>
-        </span>
-      ) : null}
-      {isDownloading ? (
-        <span className="inline-flex items-center gap-1 text-[10px] text-[color:var(--utility-muted-text)]">
-          <LoaderCircle className="h-3 w-3 animate-spin" aria-hidden="true" />
-          Downloading…
-        </span>
-      ) : null}
-      {downloadedPath && !isDownloading ? (
-        <span className="text-[10px] text-[color:var(--utility-muted-text)]">Downloaded</span>
-      ) : null}
-      {error ? <span className="app-error-text text-[10px] text-rose-400">{error}</span> : null}
+      {error ? <span className="app-error-text app-attachment-file-status">{error}</span> : null}
+      {menu && typeof document !== 'undefined' && document.body
+        ? createPortal(
+          <div
+            ref={menuRef}
+            data-attachment-file-menu="true"
+            className="app-transient-surface fixed z-[230] rounded-[14px] border p-1.5"
+            style={{ left: menu.x, top: menu.y }}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <div className="flex min-w-[180px] flex-col">
+              <FileMenuAction
+                icon={FolderOpen}
+                label="Show in Finder"
+                busy={menuAction === 'reveal'}
+                onClick={() => void handleRevealInFinder()}
+              />
+              <FileMenuAction
+                icon={Download}
+                label="Save As…"
+                busy={menuAction === 'save'}
+                onClick={() => void handleSaveAs()}
+              />
+              <FileMenuAction
+                icon={Copy}
+                label="Copy Filename"
+                onClick={() => void handleCopyFilename()}
+              />
+              {menuNotice ? (
+                <span className="app-transient-muted px-2.5 pb-1 text-[10px]">{menuNotice}</span>
+              ) : null}
+            </div>
+          </div>,
+          document.body,
+        )
+        : null}
     </div>
   );
 }
