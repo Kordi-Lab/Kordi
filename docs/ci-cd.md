@@ -185,10 +185,18 @@ and production environment reviewers aligned when administrator membership chang
 
 ## Deployments
 
-- Development deployment remains `workflow_dispatch` only until the self-service
-  phase lands; production deployment stays in the protected production
-  environment with an eligible reviewer. This phase does not change deployment
-  automation.
+- After successful post-merge CI on `main`, `backend-delivery.yml` verifies exact-SHA
+  readiness, builds the server and runner once, and automatically updates shared
+  development with the immutable bundle. It compares candidates with the deployed
+  revision and prevents an older build from replacing a newer deployment.
+- Contributors can dispatch a tested branch to an allocated development stack
+  with `pnpm deploy:dev --stack <allocated-stack>`. The workflow runs from trusted
+  `main` code and validates repository access, allocation ownership, and revision
+  readiness. See [development deployment](dev-deployment.md).
+- A matching successful development result queues protected production promotion.
+  One administrator approval is sufficient. Production revalidates the candidate,
+  verifies the backup/restore receipt, and uses the same image digests without
+  rebuilding. See [production promotion](production-deployment.md).
 - PR workflows receive read-only repository access, no production, signing, or
   deploy secrets, and no `secrets: inherit`.
 - `postmerge-ci.yml` runs the complete suite on `main` plus a broader workspace
@@ -200,20 +208,28 @@ and production environment reviewers aligned when administrator membership chang
   readiness checks. A green pull-request merge-ref check on a different revision
   is not sufficient evidence.
 
+For daily desktop testing, use one shared development connection with separate
+profiles. Backend changes and destructive tests use isolated stacks. Follow the
+[shared testing guide](testing/shared-development.md) for the two-account scenario,
+OAuth preflight, data preservation, and review evidence. CI uses synthetic fixtures;
+persistent development accounts and data are never inputs to PR tests or production
+promotion.
+
 ## Locking
 
 - GitHub Actions concurrency is not a deployment lock. `blocking-ci.yml` cancels
   in-progress runs only for pull requests and groups by PR number or SHA, so
   distinct `main` revisions are never silently displaced. `postmerge-ci.yml`
   groups by SHA with no cancellation.
-- Deployment locking is delivered in Phase 1 (#1592) and is shared by laptop and
-  workflow operator paths, with documented ownership, timeout, crash recovery,
-  and cleanup.
+- Deployments and operator changes must share destination-host locks. Allocated
+  stacks use `stack-<id>`; the shared backend delivery helpers take `host-wide`
+  through the configured `KORDI_BACKEND_LOCK_DIR`. See the
+  [deployment runbook](deployment-runbook.md) for ownership, timeouts, and recovery.
 
 ## Backups
 
 - Production deployment requires a validated pre-deploy backup, recorded schema
-  compatibility, and a rollback plan before rollout (Phase 3, #1594). Deployment
+  compatibility, and a rollback plan before rollout. Deployment
   records include the environment, SHA, actor, artifact digests, backup
   identifier, verification summary, and rollback outcome.
 - Database restore and application rollback are distinct procedures.

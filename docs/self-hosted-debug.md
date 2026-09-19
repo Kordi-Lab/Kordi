@@ -2,6 +2,12 @@
 
 This is the recommended setup for contributors working on the desktop app, account and messaging flows, backend routes, database migrations, attachments, unread state, or multi-account synchronization. Select the local or approved remote path in [Development environment isolation](development-environments.md) before starting.
 
+Developers with approved shared access should use the
+[shared development testing guide](testing/shared-development.md) for daily frontend
+checks. The local setup below remains appropriate for independent data, backend
+changes, migrations, and destructive tests. Its reset commands do not belong in
+the shared-backend workflow.
+
 The environment runs the current checkout of the Kordi server with Postgres, Redis, NATS JetStream, and MinIO on the developer's machine. It never copies production data, credentials, snapshots, or configuration.
 
 This isolated workflow does not authorize or replace product-server validation. If an approved operator session will apply a change to, or restart, the product server, stop the local path and follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug): work on the corresponding product-server machine and validate the deployed product through `https://kordi.ai`.
@@ -93,7 +99,12 @@ Expected result:
 
 An approved remote development host may run this same Docker stack when it satisfies the isolation policy. Keep its application API bound to its own loopback interface and reach it only through the private tunnel documented in [Remote isolated backend through IAP](development-environments.md#remote-isolated-backend-through-iap).
 
-From the desktop machine, use the placeholder command in that guide to forward remote `127.0.0.1:17081` to local `127.0.0.1:17081`. Do not put the real project, zone, instance, IP address, user, or repository path into a commit or shared log. After the tunnel is established, every desktop, OAuth, smoke-test, and profile command below stays the same because the client still uses the explicit loopback origin.
+For an isolated remote stack, use `pnpm dev:cloud:remote` with explicit task-owned
+ports and a named profile. The single-task example forwards remote port `17081`
+to local port `17081`; concurrent stacks may differ. The backend's advertised
+OAuth callback must match the local tunnel port. Run `pnpm doctor:dev --api-base
+http://127.0.0.1:<LOCAL_API_PORT>` before sign-in. Do not put private targets or
+credentials into commits or shared logs.
 
 ## Start one desktop instance
 
