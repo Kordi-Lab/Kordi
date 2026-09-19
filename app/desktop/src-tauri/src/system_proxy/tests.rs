@@ -141,6 +141,22 @@ fn automatic_configuration_with_static_fallback_reports_limitation() {
 }
 
 #[test]
+fn automatic_configuration_without_static_fallback_uses_direct_traffic() {
+    let settings = SystemProxySettings {
+        automatic_configuration: true,
+        automatic_discovery: true,
+        ..SystemProxySettings::default()
+    };
+    let plan = plan_proxy_environment(&environment(&[]), Some(&settings));
+
+    assert!(plan.automatic_configuration_unsupported);
+    assert_eq!(plan.source, ProxySource::Direct);
+    assert_eq!(plan.value("HTTP_PROXY"), None);
+    assert_eq!(plan.value("HTTPS_PROXY"), None);
+    assert_eq!(plan.value("NO_PROXY"), Some("localhost,127.0.0.1,::1"));
+}
+
+#[test]
 fn socks_only_setting_reports_actionable_unsupported_state() {
     let settings = SystemProxySettings {
         socks_url: Some(unused_local_proxy_url("socks5h")),

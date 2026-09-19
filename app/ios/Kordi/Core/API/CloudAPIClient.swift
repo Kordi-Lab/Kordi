@@ -46,9 +46,12 @@ actor CloudAPIClient {
     static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
     private static let sharedAgentOwnerBatchSize = 50
 
+    /// Requests must fail fast instead of waiting on an unreachable proxy.
+    /// `waitsForConnectivity` suspends the session timers while a PAC resolver
+    /// is stuck, which left sends in a permanent sending state.
     static let reliableSession: URLSession = {
         let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
+        configuration.waitsForConnectivity = false
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 90
         return URLSession(configuration: configuration)
@@ -56,6 +59,8 @@ actor CloudAPIClient {
 
     private let baseURL: URL
     private let session: URLSession
+    private let directSession: URLSession
+    private let proxyStateProvider: () -> NetworkProxyPolicy.SystemState
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let deviceIdentityStore: KeychainSessionStore
@@ -71,6 +76,8 @@ actor CloudAPIClient {
     init(
         baseURL: URL = configuredBaseURL,
         session: URLSession = reliableSession,
+        directSession: URLSession? = nil,
+        proxyStateProvider: @escaping () -> NetworkProxyPolicy.SystemState = { NetworkProxyPolicy.systemState },
         deviceIdentityStore: KeychainSessionStore = KeychainSessionStore()
     ) {
         precondition(
@@ -79,7 +86,18 @@ actor CloudAPIClient {
         )
         self.baseURL = baseURL
         self.session = session
+        self.directSession = directSession ?? Self.makeDirectSession(basedOn: session.configuration)
+        self.proxyStateProvider = proxyStateProvider
         self.deviceIdentityStore = deviceIdentityStore
+    }
+
+    /// A proxy-disabled copy of the caller's session so callers and tests keep
+    /// their protocol, timeout, and authentication configuration.
+    private static func makeDirectSession(basedOn configuration: URLSessionConfiguration) -> URLSession {
+        let direct = configuration.copy() as? URLSessionConfiguration ?? URLSessionConfiguration.default
+        direct.connectionProxyDictionary = [AnyHashable: Any]()
+        direct.waitsForConnectivity = false
+        return URLSession(configuration: direct)
     }
 
     func login(email: String, password: String) async throws -> CloudAuthResponse {
@@ -638,7 +656,10 @@ actor CloudAPIClient {
             body: data
         )
         request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        let (responseData, response) = try await session.data(for: request)
+        let (responseData, response) = try await transportData(
+            for: request,
+            fallback: "Could not upload the avatar."
+        )
         try validate(response: response, data: responseData, fallback: "Could not upload the avatar.")
         return try decoder.decode(AvatarAssetUploadResponse.self, from: responseData).uploadedAsset
     }
@@ -1625,7 +1646,10 @@ actor CloudAPIClient {
         request.setValue(attachment.mimeType ?? "application/octet-stream", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = 90
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await transportData(
+                for: request,
+                fallback: "Could not upload \(attachment.name)."
+            )
             try validate(response: response, data: data, fallback: "Could not upload \(attachment.name).")
             return try decoder.decode(AttachmentUploadResponse.self, from: data)
         } catch let error as CloudAPIError {
@@ -1783,7 +1807,10 @@ actor CloudAPIClient {
                 )
                 request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
                 request.timeoutInterval = 90
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await transportData(
+                    for: request,
+                    fallback: "Could not upload \(attachmentName)."
+                )
                 try validate(
                     response: response,
                     data: data,
@@ -1823,7 +1850,10 @@ actor CloudAPIClient {
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 90
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await transportData(
+                for: request,
+                fallback: "Could not download this attachment."
+            )
             try validate(response: response, data: data, fallback: "Could not download this attachment.")
             return data
         } catch let error as CloudAPIError {
@@ -1849,7 +1879,10 @@ actor CloudAPIClient {
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 90
         do {
-            let (url, response) = try await session.download(for: request)
+            let (url, response) = try await transportDownload(
+                for: request,
+                fallback: "Could not download this attachment."
+            )
             if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
                 return url
             }
@@ -1900,7 +1933,10 @@ actor CloudAPIClient {
         )
         request.setValue("image/*", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 30
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await transportData(
+            for: request,
+            fallback: "Could not download this attachment preview."
+        )
         try validate(response: response, data: data, fallback: "Could not download this attachment preview.")
         return data
     }
@@ -2651,6 +2687,63 @@ actor CloudAPIClient {
         return CloudChatRealtimeConnection(url: url, deviceId: ticket.deviceId)
     }
 
+    /// Runs a request against the shared proxy policy: loopback origins
+    /// connect directly, pre-connection proxy failures retry once without a
+    /// proxy, and anything else fails fast with an actionable error.
+    private func transportValue<Value>(
+        _ request: URLRequest,
+        fallback: String,
+        operation: (URLSession, URLRequest) async throws -> Value
+    ) async throws -> Value {
+        let primarySession = NetworkProxyPolicy.isLoopback(baseURL) ? directSession : session
+        do {
+            return try await operation(primarySession, request)
+        } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) {
+                throw CancellationError()
+            }
+            guard primarySession !== directSession,
+                  NetworkProxyPolicy.isDirectRetryEligible(error) else {
+                throw Self.transportError(proxyState: proxyStateProvider(), fallback: fallback)
+            }
+            do {
+                return try await operation(directSession, request)
+            } catch {
+                if CloudTransportErrorPolicy.isCancellation(error) {
+                    throw CancellationError()
+                }
+                throw Self.transportError(proxyState: proxyStateProvider(), fallback: fallback)
+            }
+        }
+    }
+
+    private func transportData(
+        for request: URLRequest,
+        fallback: String
+    ) async throws -> (Data, URLResponse) {
+        try await transportValue(request, fallback: fallback) { session, request in
+            try await session.data(for: request)
+        }
+    }
+
+    private func transportDownload(
+        for request: URLRequest,
+        fallback: String
+    ) async throws -> (URL, URLResponse) {
+        try await transportValue(request, fallback: fallback) { session, request in
+            try await session.download(for: request)
+        }
+    }
+
+    private static func transportError(
+        proxyState: NetworkProxyPolicy.SystemState,
+        fallback: String
+    ) -> CloudAPIError {
+        let message = NetworkProxyPolicy.failureMessage(for: proxyState, fallback: fallback)
+        let code = proxyState == .direct ? "network_error" : "proxy_unreachable"
+        return CloudAPIError(code: code, message: message, statusCode: 0)
+    }
+
     func send<Response: Decodable>(
         path: String,
         method: String,
@@ -2715,7 +2808,7 @@ actor CloudAPIClient {
         fallback: String
     ) async throws {
         let request = try makeRequest(path: path, method: method, token: token, query: query, body: bodyData)
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await transportData(for: request, fallback: fallback)
         try validate(response: response, data: data, fallback: fallback)
     }
 
@@ -2729,7 +2822,7 @@ actor CloudAPIClient {
     ) async throws -> Response {
         let request = try makeRequest(path: path, method: method, token: token, query: query, body: body)
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await transportData(for: request, fallback: fallback)
             try validate(response: response, data: data, fallback: fallback)
             do {
                 return try decoder.decode(Response.self, from: data)

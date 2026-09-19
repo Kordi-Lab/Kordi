@@ -21,6 +21,7 @@ import type {
 } from './chatSyncTypes';
 import { cloudApiBaseUrl } from './cloudApiEnvironment';
 import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
+import { cloudFetchImpl } from './cloudTransport';
 import type { CloudAttachmentDownloadUrlResult,CloudAttachmentFinalizeResult,CloudAttachmentInitiateResult,CloudAttachmentPreviewUpdateResult,CloudExpressiveMediaItem,CloudMessageAttachment,CloudVoiceMessage,SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 import { buildCloudAuthError,CloudAuthError } from './cloudAuthError';
 import type { CloudContactSummary } from './cloudContactTypes';
@@ -323,7 +324,7 @@ export class CloudAuthClient {
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.fetchImpl = options.fetchImpl ?? cloudFetchImpl();
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
     const deviceRegistration = options.deviceRegistration ?? installationDeviceRegistration;
     this.subsessionClient = new CloudAgentSubsessionClient((path, init, fallback) => this.send(path, init, fallback));
