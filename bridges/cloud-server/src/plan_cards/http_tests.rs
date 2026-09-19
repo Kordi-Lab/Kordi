@@ -150,6 +150,30 @@ async fn full_lifecycle_over_real_http() {
     let event_id = card["eventId"].as_str().unwrap().to_string();
     assert_eq!(card["participants"].as_array().unwrap().len(), 3);
 
+    // Conflict recovery is read-only and requires current membership.
+    let snapshot_url = format!("{base}/v1/cloud/plan_cards/{event_id}");
+    let response = client.get(&snapshot_url).send().await.unwrap();
+    assert_eq!(response.status(), 401);
+    let outsider = format!("outsider-{suffix}");
+    seed_account(&pool, &outsider).await;
+    let outsider_token = bearer_token_for(&pool, &outsider).await;
+    let response = client
+        .get(&snapshot_url)
+        .bearer_auth(&outsider_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 403);
+    let response = client
+        .get(&snapshot_url)
+        .bearer_auth(&jordan_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let snapshot: Value = response.json().await.unwrap();
+    assert_eq!(snapshot, card);
+
     // A member who is not the organizer cannot decide the plan for everyone.
     let response = client
         .post(format!("{base}/v1/cloud/plan_cards"))
@@ -186,6 +210,31 @@ async fn full_lifecycle_over_real_http() {
     let card: Value = response.json().await.unwrap();
     assert_eq!(card["state"], "confirmed");
     assert_eq!(card["revision"], 2);
+
+    let response = client
+        .post(format!("{base}/v1/cloud/plan_cards"))
+        .bearer_auth(&jordan_token)
+        .json(
+            &json!({"action": "cancel", "eventId": event_id, "revision": 1, "canceledBy": jordan}),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 409);
+    let error: Value = response.json().await.unwrap();
+    assert_eq!(error["errorCode"], "plan_card_revision_conflict");
+    let response = client
+        .get(&snapshot_url)
+        .bearer_auth(&jordan_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let snapshot: Value = response.json().await.unwrap();
+    assert_eq!(
+        snapshot, card,
+        "reading recovery state must not mutate the plan"
+    );
 
     // Riya declines — over HTTP, as Riya, with Riya's own token. The route
     // must reject a participantId that doesn't match the caller's own

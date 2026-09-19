@@ -152,7 +152,15 @@ card polls, the options are the buttons; otherwise "I'm in" and "Can't make
 it", plus a confirm button for the organizer. Card instants are always RFC
 3339 with an offset.
 
-A member's button press goes to `POST /v1/cloud/plan_cards` as that member.
+A member's button press goes to `POST /v1/cloud/plan_cards` as that member. On
+`plan_card_revision_conflict`, desktop and iOS read the latest snapshot from
+`GET /v1/cloud/plan_cards/:event_id`, which requires active conversation
+membership. They refresh the card without replaying the rejected decision;
+the member can review the new details before confirming again. A failed
+refresh remains an actionable error. While an action is pending, the card
+keeps its displayed snapshot; afterward it uses the newest available revision
+and retains its last successful snapshot if the action fails.
+
 Votes and answers apply at any revision, so a member is never told to refresh
 first. After a successful change the route refreshes the card inside PiP's
 newest message that carries it, in place and without an edit marker, so

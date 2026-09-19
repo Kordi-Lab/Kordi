@@ -68,6 +68,7 @@ export function PlanCardContent({
     return () => { cancelled = true; };
   }, [ownAccountId]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [pendingCard, setPendingCard] = useState<MessagePlanCard | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localState, setLocalState] = useState<MessagePlanCard | null>(null);
   // Which people list is open: `attendees`, or `voters:<optionId>`.
@@ -85,10 +86,12 @@ export function PlanCardContent({
       window.removeEventListener('keydown', close);
     };
   }, [panel]);
-  // A click updates the card at once; a newer snapshot from the transcript
-  // then takes over, so the card never sticks on an old local result.
-  const view = localState && localState.revision > card.revision ? { ...localState, view: card.view } : card;
-  const isVote = planCardView(card) === 'vote';
+  // Keep the visible snapshot stable until the action settles, then use the
+  // newest action result or transcript snapshot without rolling back on errors.
+  const latest = localState?.eventId === card.eventId && localState.revision > card.revision
+    ? { ...localState, view: planCardView(card) } : card;
+  const view = busy && pendingCard?.eventId === card.eventId ? pendingCard : latest;
+  const isVote = planCardView(view) === 'vote';
   const accountId = ownAccountId ?? sessionAccountId;
   const self = accountId ? view.participants.find((participant) => participant.participantId === accountId) : undefined;
   const options = view.options ?? [];
@@ -107,6 +110,7 @@ export function PlanCardContent({
 
   const act = async (label: string, request: PlanCardActionRequest) => {
     if (busy) return;
+    setPendingCard(view);
     setBusy(label);
     setNotice(null);
     try {
@@ -118,9 +122,9 @@ export function PlanCardContent({
       const updated = await planCardAction(session.token, request);
       setLocalState(updated);
     } catch (error) {
-      setLocalState(null);
       setNotice(error instanceof Error ? error.message : 'Could not update the plan.');
     } finally {
+      setPendingCard(null);
       setBusy(null);
     }
   };

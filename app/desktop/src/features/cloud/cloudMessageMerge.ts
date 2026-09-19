@@ -155,6 +155,7 @@ export function cloudMessagesEqual(
     && (message.clientMessageId ?? null) === (other.clientMessageId ?? null)
     && (message.messageKind ?? null) === (other.messageKind ?? null)
     && cloudVoiceMessagesEqual(message.voiceMessage, other.voiceMessage)
+    && JSON.stringify(message.planCard ?? null) === JSON.stringify(other.planCard ?? null)
     && (message.canonicalHistoryLocalMessageId ?? null) === (other.canonicalHistoryLocalMessageId ?? null)
     && (message.version ?? null) === (other.version ?? null)
     && cloudReactionsEqual(message.reactions, other.reactions)
