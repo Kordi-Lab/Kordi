@@ -19,6 +19,9 @@ def run(arguments, **kwargs):
 def lock(name, directory, timeout=1800):
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / (name + ".lock")).open("a") as stream:
+        # A provisioned setgid lock directory lets CI and operators share the lock.
+        if os.fstat(stream.fileno()).st_uid == os.getuid():
+            os.fchmod(stream.fileno(), 0o660)
         deadline = time.monotonic() + timeout
         while True:
             try:

@@ -16,6 +16,9 @@ def deploy(args):
         raise ValueError("Invalid development Compose project")
     if not args.state.is_absolute() or not args.env_file.is_file():
         raise ValueError("An existing isolated environment file and absolute state directory are required")
+    if not 1024 <= args.api_port <= 65535:
+        raise ValueError("Invalid dedicated development API port")
+    os.environ["KORDI_DEBUG_API_PORT"] = str(args.api_port)
     args.state.mkdir(parents=True, exist_ok=True)
     override = args.state / "images.json"
     state_file = args.state / "current.json"
@@ -44,7 +47,7 @@ def deploy(args):
                 container = run(compose + ["ps", "-q", service])
                 if run(["docker", "inspect", "--format", "{{.Image}}", container]) != bundle["images"][service]["imageId"]:
                     raise ValueError("Running development container does not match its approved image")
-            health("http://127.0.0.1:17081/health")
+            health(f"http://127.0.0.1:{args.api_port}/health")
             record["outcome"] = "success"
             write_state(state_file, bundle)
         finally:
@@ -60,6 +63,7 @@ def main():
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--project", required=True)
+    parser.add_argument("--api-port", type=int, required=True)
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--compose", type=Path, required=True)
     parser.add_argument("--lock-dir", type=Path, default=Path("/tmp/kordi-deploy-locks"))

@@ -63,7 +63,7 @@ class BackendTests(unittest.TestCase):
         env = self.directory / "dev.env"
         env.write_text("# Synthetic environment\n")
         return Namespace(bundle=self.directory, sha=SHA, run_id="123", project="kordi-test",
-                         state=self.directory / "state", env_file=env, compose=self.directory / "compose.yaml",
+                         state=self.directory / "state", api_port=17181, env_file=env, compose=self.directory / "compose.yaml",
                          lock_dir=self.directory / "locks")
 
     def test_loaded_image_mismatch_never_updates_running_stack(self):

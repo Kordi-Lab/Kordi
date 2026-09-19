@@ -46,7 +46,7 @@ jobs:
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           test "$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$sha" --jq .merge_base_commit.sha)" = "$sha"
           ready=false
-          for attempt in $(seq 1 20); do
+          for _attempt in $(seq 1 20); do
             if node scripts/check-sha-readiness.mjs --sha "$sha" --branch main --check 'CI required' --check 'Post-merge CI required'; then
               ready=true
               break
@@ -73,6 +73,7 @@ jobs:
         with:
           name: backend-bundle
           path: ${{ runner.temp }}/backend-bundle
+          overwrite: true
           compression-level: 0
           retention-days: 30
           if-no-files-found: error
@@ -127,6 +128,10 @@ jobs:
           KORDI_BACKEND_ZONE: ${{ secrets.KORDI_BACKEND_ZONE }}
           KORDI_BACKEND_TARGET: ${{ secrets.KORDI_BACKEND_TARGET }}
           KORDI_BACKEND_STATE: ${{ secrets.KORDI_BACKEND_STATE }}
+          KORDI_BACKEND_API_PORT: ${{ secrets.KORDI_BACKEND_API_PORT }}
+          KORDI_BACKEND_LOCK_DIR: ${{ secrets.KORDI_BACKEND_LOCK_DIR }}
+          KORDI_BACKEND_SSH_USER: ${{ secrets.KORDI_BACKEND_SSH_USER }}
+          KORDI_BACKEND_SSH_KEY: ${{ secrets.KORDI_BACKEND_SSH_KEY }}
           KORDI_BACKEND_ENV_FILE: ${{ secrets.KORDI_BACKEND_ENV_FILE }}
           KORDI_BACKEND_COMPOSE_PROJECT: ${{ secrets.KORDI_BACKEND_COMPOSE_PROJECT }}
         run: bash scripts/deploy-backend-bundle.sh dev "$RUNNER_TEMP/backend-bundle" "$TARGET_SHA" "$GITHUB_RUN_ID"
@@ -135,6 +140,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: development-deployment-result
+          overwrite: true
           path: ${{ runner.temp }}/backend-bundle/deployment-result.json
           if-no-files-found: warn
           retention-days: 30

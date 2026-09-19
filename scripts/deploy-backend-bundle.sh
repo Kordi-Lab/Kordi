@@ -7,7 +7,7 @@ sha="${3:?Pass the tested revision}"
 run_id="${4:?Pass the build run ID}"
 case "$environment" in dev|production) ;; *) exit 2 ;; esac
 [[ "$sha" =~ ^[0-9a-f]{40}$ && "$run_id" =~ ^[1-9][0-9]*$ ]] || exit 2
-for key in KORDI_BACKEND_PROJECT KORDI_BACKEND_ZONE KORDI_BACKEND_TARGET KORDI_BACKEND_STATE; do
+for key in KORDI_BACKEND_PROJECT KORDI_BACKEND_ZONE KORDI_BACKEND_TARGET KORDI_BACKEND_STATE KORDI_BACKEND_LOCK_DIR; do
   [ -n "${!key:-}" ] || { echo "Missing environment secret: $key" >&2; exit 2; }
 done
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -16,6 +16,17 @@ python3 "$root/scripts/backend_artifact.py" verify --directory "$bundle" --sha "
 ssh=(gcloud compute ssh "$KORDI_BACKEND_TARGET" --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
 scp=(gcloud compute scp --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
 raw_log="$(mktemp)"
+key_file=""
+if [ -n "${KORDI_BACKEND_SSH_KEY:-}" ]; then
+  : "${KORDI_BACKEND_SSH_USER:?Missing dedicated SSH user}"
+  key_file="$(mktemp)"
+  chmod 600 "$key_file"
+  printf '%s\n' "$KORDI_BACKEND_SSH_KEY" > "$key_file"
+  ssh=(gcloud compute ssh "$KORDI_BACKEND_SSH_USER@$KORDI_BACKEND_TARGET" --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet --plain
+    --ssh-flag="-i $key_file" --ssh-flag='-o IdentitiesOnly=yes' --ssh-flag='-o StrictHostKeyChecking=accept-new')
+  scp+=(--plain --scp-flag="-i $key_file" --scp-flag='-o IdentitiesOnly=yes' --scp-flag='-o StrictHostKeyChecking=accept-new')
+  KORDI_BACKEND_TARGET="$KORDI_BACKEND_SSH_USER@$KORDI_BACKEND_TARGET"
+fi
 remote=""
 cleanup() {
   local status=$?
@@ -23,6 +34,7 @@ cleanup() {
     "${ssh[@]}" --command "rm -rf -- '$remote'" >>"$raw_log" 2>&1 || true
   fi
   rm -f "$raw_log"
+  if [ -n "$key_file" ]; then rm -f "$key_file"; fi
   if [ "$status" -ne 0 ]; then
     echo 'Backend deployment failed. Inspect the private host deployment records; raw infrastructure logs are not published.' >&2
   fi
@@ -35,10 +47,11 @@ remote="$("${ssh[@]}" --command 'umask 077; mktemp -d /tmp/kordi-backend.XXXXXXX
 files=("$root/scripts/backend_artifact.py" "$root/scripts/backend_deploy_common.py")
 arguments=(python3 "$remote/backend_deploy_dev.py" --bundle "$remote/bundle" --sha "$sha" --run-id "$run_id" --state "$KORDI_BACKEND_STATE")
 if [ "$environment" = dev ]; then
+  : "${KORDI_BACKEND_API_PORT:?Missing development API port}"
   : "${KORDI_BACKEND_COMPOSE_PROJECT:?Missing development Compose project}"
   : "${KORDI_BACKEND_ENV_FILE:?Missing isolated development environment file}"
   files+=("$root/scripts/backend_deploy_dev.py" "$root/deploy/dev/compose.yaml")
-  arguments+=(--project "$KORDI_BACKEND_COMPOSE_PROJECT" --env-file "$KORDI_BACKEND_ENV_FILE" --compose "$remote/compose.yaml")
+  arguments+=(--api-port "$KORDI_BACKEND_API_PORT" --project "$KORDI_BACKEND_COMPOSE_PROJECT" --env-file "$KORDI_BACKEND_ENV_FILE" --compose "$remote/compose.yaml")
 else
   : "${KORDI_BACKEND_BACKUP_ROOT:?Missing protected backup directory}"
   : "${KORDI_BACKEND_BACKUP_ID:?Missing verified backup identifier}"
@@ -49,6 +62,7 @@ else
     --schema-compatibility "$KORDI_BACKEND_SCHEMA_COMPATIBILITY")
 fi
 "${scp[@]}" "${files[@]}" "$KORDI_BACKEND_TARGET:$remote/" >>"$raw_log" 2>&1
+arguments+=(--lock-dir "$KORDI_BACKEND_LOCK_DIR")
 printf -v command '%q ' "${arguments[@]}"
 status=0
 "${ssh[@]}" --command "umask 077; $command" >>"$raw_log" 2>&1 || status=$?

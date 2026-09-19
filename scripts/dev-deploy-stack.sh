@@ -419,6 +419,11 @@ run_remote() {
     --command "$remote_command"
   )
 
+  if [ -n "${KORDI_DEV_SSH_KEY_FILE:-}" ]; then
+    [[ "${KORDI_DEV_SSH_USER:-}" =~ ^[a-z_][a-z0-9_-]*$ ]] || die "invalid dedicated SSH user"
+    transport[3]="$KORDI_DEV_SSH_USER@$KORDI_DEV_SSH_TARGET"
+    transport+=(--plain --ssh-flag="-i $KORDI_DEV_SSH_KEY_FILE" --ssh-flag="-o IdentitiesOnly=yes")
+  fi
   raw_log="$(mktemp)"
   set +e
   "${transport[@]}" 2>&1 | tee "$raw_log"

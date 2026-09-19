@@ -119,6 +119,22 @@ jobs:
           create_credentials_file: true
           export_environment_variables: true
 
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f
+
+      - name: Configure dedicated development SSH identity when needed
+        shell: bash
+        env:
+          SSH_KEY: ${{ secrets.KORDI_BACKEND_SSH_KEY }}
+          SSH_USER: ${{ secrets.KORDI_BACKEND_SSH_USER }}
+        run: |
+          set -euo pipefail
+          if [ -n "$SSH_KEY" ]; then
+            umask 077
+            printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/dev-deploy-key"
+            echo "KORDI_DEV_SSH_KEY_FILE=$RUNNER_TEMP/dev-deploy-key" >> "$GITHUB_ENV"
+            echo "KORDI_DEV_SSH_USER=$SSH_USER" >> "$GITHUB_ENV"
+          fi
+
       - name: Deploy stack
         id: deploy
         continue-on-error: true
