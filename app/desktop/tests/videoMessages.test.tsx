@@ -63,7 +63,7 @@ test('MP4 attachments stay poster-backed until explicit playback instead of rend
   assert.doesNotMatch(markup, /Stream the video/);
   assert.doesNotMatch(markup, />Play video</);
   assert.doesNotMatch(markup, /<video/);
-  assert.doesNotMatch(markup, /data-attachment-file-link="true"/);
+  assert.doesNotMatch(markup, /data-attachment-file-chip="true"/);
 });
 
 test('legacy videos resolve dimensions before revealing the media card', () => {

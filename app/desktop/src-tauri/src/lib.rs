@@ -203,6 +203,26 @@ fn desktop_open_external_url(url: String) -> Result<String, String> {
     Ok(trimmed.to_string())
 }
 
+#[tauri::command]
+fn desktop_reveal_in_finder(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("Path is required".to_string());
+    }
+    if cfg!(target_os = "macos") {
+        run_external_command(Command::new("open").arg("-R").arg(trimmed))?;
+    } else if cfg!(target_os = "windows") {
+        run_external_command(Command::new("explorer").arg(format!("/select,{trimmed}")))?;
+    } else {
+        let target = std::path::Path::new(trimmed)
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| std::path::PathBuf::from(trimmed));
+        run_external_command(Command::new("xdg-open").arg(target))?;
+    }
+    Ok(trimmed.to_string())
+}
+
 pub fn run() {
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
@@ -237,6 +257,7 @@ pub fn run() {
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
             desktop_open_external_url,
+            desktop_reveal_in_finder,
             desktop_relaunch_after_update,
             desktop_open_media_preview_window,
             desktop_reveal_media_preview_window,
@@ -352,6 +373,7 @@ pub fn run() {
             chat::attachments::live_photos::desktop_chat_prepare_live_photos,
             chat::attachments::desktop_chat_read_attachment,
             chat::attachments::desktop_chat_download_attachment,
+            chat::attachments::save_as::desktop_save_attachment_as,
             chat::attachments::cloud_upload::desktop_cloud_attachment_upload,
             chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,
             chat::artifacts::desktop_chat_artifact_preview,
