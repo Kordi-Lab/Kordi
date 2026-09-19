@@ -12,12 +12,11 @@ on:
 permissions:
   contents: read
   issues: read
-  pull-requests: read
 
 jobs:
   linked-issue:
     name: Require linked issue
-    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 10
 
     steps:

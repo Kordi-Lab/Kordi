@@ -2,13 +2,14 @@
 set -euo pipefail
 umask 077
 
-# Build only the pinned official source in this job's private temporary space.
-# This never installs globally or gives the CI account access to Docker.
+# Native fallback for environments without Docker. CI uses the pinned
+# postgres:16.14-alpine container through scripts/test-cloud-migrations.sh.
+# Build only the pinned official source in a private temporary directory.
 version=16.14
 checksum=f6d077142737920858ce958ccdb75c6ee137a63b5b0853c70693d401ac7e3471
 temporary_parent="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 [[ "$temporary_parent" = /* && -d "$temporary_parent" ]]
-build_root="$(mktemp -d "${temporary_parent%/}/kordi-ci-postgres.XXXXXX")"
+build_root="$(mktemp -d "${temporary_parent%/}/kordi-postgres.XXXXXX")"
 [[ "$build_root" != *$'\n'* && "$build_root" != *$'\r'* ]]
 chmod 700 "$build_root"
 archive="$build_root/postgresql.tar.bz2"
@@ -18,7 +19,11 @@ build_log="$build_root/build.log"
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
   --connect-timeout 20 --max-time 180 --retry 5 --retry-all-errors --retry-delay 2 "https://ftp.postgresql.org/pub/source/v${version}/postgresql-${version}.tar.bz2" \
   --output "$archive"
-printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check --status
+if command -v sha256sum >/dev/null 2>&1; then
+  printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status
+else
+  printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check --status
+fi
 tar -xjf "$archive" -C "$build_root"
 (
   cd "$build_root/postgresql-$version"
