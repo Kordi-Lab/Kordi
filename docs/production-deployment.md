@@ -10,13 +10,14 @@ It never rebuilds source on the product server and never deploys a mutable image
    exact backup. The data stays on approved protected storage; never upload it to Actions.
 3. Run **Deploy production** from `main`, supplying the build run ID, backup receipt ID,
    and either `backward-compatible` or `forward-only` schema compatibility.
-4. A repository administrator other than the triggering user reviews the promotion.
+4. One repository administrator approves the promotion; this may be the triggering user.
 5. The workflow rechecks readiness after approval and delegates the mutation to the
    production machine. Use the resulting revision/digest/outcome record to confirm success.
 
 The `production` environment must restrict deployment branches to `main`, require one of
-its administrator reviewers, and prevent self-review. CI/deployment code is protected by
-CODEOWNERS review from the same administrators. The production deployment concurrency group
+its administrator reviewers, and allow self-review. CI/deployment changes require one
+administrator decision. An administrator may authorize their own PR merge through the
+review-only exception; required CI still applies. The production deployment concurrency group
 is shared by every revision. Neither branch previews nor fork-origin CI evidence may use
 production privileges.
 
