@@ -119,11 +119,13 @@ async fn read(
     let input = serde_json::from_value::<Input>(input).ok();
     let mut refs = Vec::new();
     let mut partial = false;
+    let mut checked_through = None;
     if let Some(input) = input {
         match store::authorized_input_sources(pool, &session.account_id, &input).await {
             Ok(Some(current)) => {
                 refs = current;
                 partial = input.partial;
+                checked_through = Some(input.as_of);
             }
             Ok(None) => snapshot = None,
             Err(_) => return failed(),
@@ -141,7 +143,7 @@ async fn read(
         Ok(v) => v,
         Err(_) => return failed(),
     };
-    Json(json!({"accountId":session.account_id,"timezone":timezone,"snapshot":snapshot,"sources":if snapshot.is_some(){refs}else{vec![]},"partial":partial&&snapshot.is_some(),"revision":revision,"updatedAt":updated_at,"status":if active.is_some(){"updating"}else if error_code.is_some(){"error"}else if snapshot.is_some(){"ready"}else{"loading"},"errorCode":error_code,"feedback":feedback.into_iter().map(|(id,status,task_id)|json!({"id":id,"status":status,"taskId":task_id})).collect::<Vec<_>>()})).into_response()
+    Json(json!({"accountId":session.account_id,"timezone":timezone,"snapshot":snapshot,"sources":if snapshot.is_some(){refs}else{vec![]},"partial":partial&&snapshot.is_some(),"revision":revision,"updatedAt":updated_at,"checkedThrough":if snapshot.is_some(){checked_through}else{None},"status":if active.is_some(){"updating"}else if error_code.is_some(){"error"}else if snapshot.is_some(){"ready"}else{"loading"},"errorCode":error_code,"feedback":feedback.into_iter().map(|(id,status,task_id)|json!({"id":id,"status":status,"taskId":task_id})).collect::<Vec<_>>()})).into_response()
 }
 async fn refresh(
     State(state): State<Arc<ServerState>>,

@@ -1,0 +1,2479 @@
+{
+  "manifest": {
+    "cases": 12,
+    "generationRoute": "development-pip-over-ssh",
+    "model": "gpt-5.6-luna",
+    "seed": 1601,
+    "settings": {
+      "maxCompletionTokens": 2048,
+      "reasoning": "none",
+      "temperature": 0
+    },
+    "syntheticOnly": true,
+    "type": "manifest"
+  },
+  "rates": {
+    "openai/gpt-5.6-luna": {
+      "input": "0.0000002",
+      "input_tiers": [
+        {
+          "cost": "0.0000002",
+          "min": 0,
+          "max": 272000
+        },
+        {
+          "cost": "0.0000004",
+          "min": 272000
+        }
+      ],
+      "output": "0.0000012",
+      "output_tiers": [
+        {
+          "cost": "0.0000012",
+          "min": 0,
+          "max": 272000
+        },
+        {
+          "cost": "0.0000018",
+          "min": 272000
+        }
+      ],
+      "input_cache_read": "0.00000002",
+      "input_cache_read_tiers": [
+        {
+          "cost": "0.00000002",
+          "max": 272000
+        },
+        {
+          "cost": "0.00000004",
+          "min": 272000
+        }
+      ],
+      "input_cache_write": "0.00000025",
+      "input_cache_write_tiers": [
+        {
+          "cost": "0.00000025",
+          "min": 0,
+          "max": 272000
+        },
+        {
+          "cost": "0.0000005",
+          "min": 272000
+        }
+      ],
+      "web_search": "10",
+      "service_tiers": {
+        "flex": {
+          "input": "0.0000001",
+          "output": "0.0000006",
+          "input_cache_read": "0.00000001",
+          "long_context": {
+            "threshold": 272000,
+            "input": "0.0000002",
+            "output": "0.0000009",
+            "input_cache_read": "0.00000002"
+          }
+        },
+        "priority": {
+          "input": "0.0000004",
+          "output": "0.0000024",
+          "input_cache_read": "0.00000004",
+          "long_context": {
+            "threshold": 272000,
+            "input": "0.0000008",
+            "output": "0.0000036",
+            "input_cache_read": "0.00000008"
+          }
+        }
+      },
+      "fast": {
+        "input": "0.0000004",
+        "input_tiers": [
+          {
+            "cost": "0.0000004",
+            "min": 0,
+            "max": 272000
+          },
+          {
+            "cost": "0.0000008",
+            "min": 272000
+          }
+        ],
+        "output": "0.0000024",
+        "output_tiers": [
+          {
+            "cost": "0.0000024",
+            "min": 0,
+            "max": 272000
+          },
+          {
+            "cost": "0.0000036",
+            "min": 272000
+          }
+        ],
+        "input_cache_read": "0.00000004",
+        "input_cache_read_tiers": [
+          {
+            "cost": "0.00000004",
+            "min": 0,
+            "max": 272000
+          },
+          {
+            "cost": "0.00000008",
+            "min": 272000
+          }
+        ],
+        "input_cache_write": "0.0000005",
+        "input_cache_write_tiers": [
+          {
+            "cost": "0.0000005",
+            "min": 0,
+            "max": 272000
+          },
+          {
+            "cost": "0.000001",
+            "min": 272000
+          }
+        ]
+      },
+      "regional": {
+        "us": {
+          "input": "0.00000022",
+          "input_tiers": [
+            {
+              "cost": "0.00000022",
+              "min": 0,
+              "max": 272000
+            },
+            {
+              "cost": "0.00000044",
+              "min": 272000
+            }
+          ],
+          "output": "0.00000132",
+          "output_tiers": [
+            {
+              "cost": "0.00000132",
+              "min": 0,
+              "max": 272000
+            },
+            {
+              "cost": "0.00000198",
+              "min": 272000
+            }
+          ],
+          "input_cache_read": "0.000000022",
+          "input_cache_read_tiers": [
+            {
+              "cost": "0.000000022",
+              "max": 272000
+            },
+            {
+              "cost": "0.000000044",
+              "min": 272000
+            }
+          ],
+          "input_cache_write": "0.000000275",
+          "input_cache_write_tiers": [
+            {
+              "cost": "0.000000275",
+              "min": 0,
+              "max": 272000
+            },
+            {
+              "cost": "0.00000055",
+              "min": 272000
+            }
+          ],
+          "fast": {
+            "input": "0.00000044",
+            "input_tiers": [
+              {
+                "cost": "0.00000044",
+                "min": 0,
+                "max": 272000
+              },
+              {
+                "cost": "0.00000088",
+                "min": 272000
+              }
+            ],
+            "output": "0.00000264",
+            "output_tiers": [
+              {
+                "cost": "0.00000264",
+                "min": 0,
+                "max": 272000
+              },
+              {
+                "cost": "0.00000396",
+                "min": 272000
+              }
+            ],
+            "input_cache_read": "0.000000044",
+            "input_cache_read_tiers": [
+              {
+                "cost": "0.000000044",
+                "min": 0,
+                "max": 272000
+              },
+              {
+                "cost": "0.000000088",
+                "min": 272000
+              }
+            ],
+            "input_cache_write": "0.00000055",
+            "input_cache_write_tiers": [
+              {
+                "cost": "0.00000055",
+                "min": 0,
+                "max": 272000
+              },
+              {
+                "cost": "0.0000011",
+                "min": 272000
+              }
+            ]
+          }
+        }
+      }
+    },
+    "typesafe-ai/jev": {
+      "input": "0.000000042",
+      "output": "0"
+    }
+  },
+  "summary": {
+    "pip": {
+      "baseline": {
+        "generationCalls": 10,
+        "toolRequests": 4,
+        "qualityPasses": 6,
+        "standardizedCostUsd": 0.005749799999999999,
+        "cacheAdjustedCostUsd": 0.0015919799999999998,
+        "totalLatencyMs": 12158,
+        "medianLatencyMs": 2397.0
+      },
+      "jev": {
+        "generationCalls": 10,
+        "toolRequests": 4,
+        "qualityPasses": 6,
+        "standardizedCostUsd": 0.005904402,
+        "cacheAdjustedCostUsd": 0.001353462,
+        "totalLatencyMs": 17093,
+        "medianLatencyMs": 3065.5
+      },
+      "cases": 6,
+      "standardizedSavingsUsd": -0.0001546020000000002,
+      "standardizedSavingsPercent": -2.6888239590942336,
+      "cacheAdjustedSavingsPercent": 14.982474654204191,
+      "baselineUsdPer1000": 0.9582999999999999,
+      "jevUsdPer1000": 0.9840669999999999
+    },
+    "digest": {
+      "baseline": {
+        "generationCalls": 6,
+        "toolRequests": 0,
+        "qualityPasses": 6,
+        "standardizedCostUsd": 0.0026272,
+        "cacheAdjustedCostUsd": 0.0013650399999999999,
+        "totalLatencyMs": 8974,
+        "medianLatencyMs": 1604.0
+      },
+      "jev": {
+        "generationCalls": 6,
+        "toolRequests": 0,
+        "qualityPasses": 6,
+        "standardizedCostUsd": 0.002754388,
+        "cacheAdjustedCostUsd": 0.001261108,
+        "totalLatencyMs": 11912,
+        "medianLatencyMs": 1918.5
+      },
+      "cases": 6,
+      "standardizedSavingsUsd": -0.00012718799999999987,
+      "standardizedSavingsPercent": -4.841199756394635,
+      "cacheAdjustedSavingsPercent": 7.613842817792882,
+      "baselineUsdPer1000": 0.4378666666666667,
+      "jevUsdPer1000": 0.4590646666666667
+    },
+    "combined": {
+      "baseline": {
+        "generationCalls": 16,
+        "toolRequests": 4,
+        "qualityPasses": 12,
+        "standardizedCostUsd": 0.008376999999999999,
+        "cacheAdjustedCostUsd": 0.00295702,
+        "totalLatencyMs": 21132,
+        "medianLatencyMs": 1710.0
+      },
+      "jev": {
+        "generationCalls": 16,
+        "toolRequests": 4,
+        "qualityPasses": 12,
+        "standardizedCostUsd": 0.00865879,
+        "cacheAdjustedCostUsd": 0.00261457,
+        "totalLatencyMs": 29005,
+        "medianLatencyMs": 2373.5
+      },
+      "cases": 12,
+      "standardizedSavingsUsd": -0.0002817900000000005,
+      "standardizedSavingsPercent": -3.363853408141346,
+      "cacheAdjustedSavingsPercent": 11.580915922110766,
+      "baselineUsdPer1000": 0.6980833333333333,
+      "jevUsdPer1000": 0.7215658333333334
+    }
+  },
+  "evaluationSuccesses": 5,
+  "evaluationFailures": 5,
+  "evaluationFailureMessages": [
+    "evaluation HTTP status 429",
+    "evaluation HTTP status 429",
+    "evaluation HTTP status 429",
+    "evaluation HTTP status 429",
+    "evaluation HTTP status 429"
+  ],
+  "sensitivity": {
+    "threshold": 0.99,
+    "estimatedCostUsd": 0.00865879,
+    "estimatedSavingsPercent": -3.363853408141346,
+    "skippedCases": [],
+    "materialCasesSkipped": [],
+    "counterfactual": true
+  },
+  "arms": [
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "digest-commitment",
+      "consumer": "digest",
+      "elapsedMs": 2228,
+      "error": null,
+      "evaluation": [],
+      "expected": "commitment",
+      "generation": {
+        "cachedInputTokens": 0,
+        "calls": 1,
+        "inputTokens": 1537,
+        "outputTokens": 116,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[{\"id\":\"bob-send-revised-brief-2026-09-22\",\"title\":\"Send revised brief\",\"text\":\"Bob explicitly committed to sending the revised brief by September 22, 2026 at 16:00 UTC.\",\"sourceIds\":[\"new\"],\"kind\":\"possible\",\"ownerAccountId\":\"bob\",\"dueAt\":\"2026-09-22T16:00:00Z\",\"existingTaskId\":null,\"startAt\":null,\"endAt\":null}],\"suggestions\":[],\"calendarCandidates\":[]}\n",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 116,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1537,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 1534,
+                "cached_tokens": 0
+              },
+              "total_tokens": 1653
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [
+          {
+            "dueAt": "2026-09-22T16:00:00Z",
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "bob-send-revised-brief-2026-09-22",
+            "kind": "possible",
+            "ownerAccountId": "bob",
+            "sourceIds": [
+              "new"
+            ],
+            "startAt": null,
+            "text": "Bob explicitly committed to sending the revised brief by September 22, 2026 at 16:00 UTC.",
+            "title": "Send revised brief"
+          }
+        ],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0004466,
+      "standardizedCostUsd": 0.0004466,
+      "cacheAdjustedCostUsd": 0.0004466
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "digest-commitment",
+      "consumer": "digest",
+      "elapsedMs": 2630,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 1115,
+          "error": null,
+          "response": {
+            "answers": {
+              "route": {
+                "choice": "generate",
+                "confidence": null,
+                "probabilities": {
+                  "generate": 0.99,
+                  "read_session": 0.0,
+                  "search_sessions": 0.0,
+                  "skip": 0.01
+                },
+                "type": "choice"
+              },
+              "session": {
+                "choice": "s0",
+                "confidence": null,
+                "probabilities": {
+                  "generate": 0.22,
+                  "s0": 0.78
+                },
+                "type": "choice"
+              }
+            },
+            "model": "typesafe-ai/jev",
+            "usage": {
+              "input_tokens": 1354,
+              "output_tokens": 77
+            }
+          }
+        }
+      ],
+      "expected": "commitment",
+      "generation": {
+        "cachedInputTokens": 1534,
+        "calls": 1,
+        "inputTokens": 1537,
+        "outputTokens": 109,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[{\"id\":\"bob-send-revised-brief\",\"title\":\"Send revised brief\",\"text\":\"Bob explicitly committed to sending the revised brief by September 22, 2026 at 16:00 UTC.\",\"sourceIds\":[\"new\"],\"kind\":\"possible\",\"ownerAccountId\":\"bob\",\"dueAt\":\"2026-09-22T16:00:00Z\",\"existingTaskId\":null,\"startAt\":null,\"endAt\":null}],\"suggestions\":[],\"calendarCandidates\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 109,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1537,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 1534
+              },
+              "total_tokens": 1646
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [
+          {
+            "dueAt": "2026-09-22T16:00:00Z",
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "bob-send-revised-brief",
+            "kind": "possible",
+            "ownerAccountId": "bob",
+            "sourceIds": [
+              "new"
+            ],
+            "startAt": null,
+            "text": "Bob explicitly committed to sending the revised brief by September 22, 2026 at 16:00 UTC.",
+            "title": "Send revised brief"
+          }
+        ],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 5.6868e-05,
+      "generationCostUsd": 0.00043819999999999997,
+      "standardizedCostUsd": 0.000495068,
+      "cacheAdjustedCostUsd": 0.000218948
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "digest-acceptance",
+      "consumer": "digest",
+      "elapsedMs": 1911,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 504,
+          "error": null,
+          "response": {
+            "answers": {
+              "route": {
+                "choice": "generate",
+                "confidence": null,
+                "probabilities": {
+                  "generate": 0.82,
+                  "read_session": 0.0,
+                  "search_sessions": 0.0,
+                  "skip": 0.18
+                },
+                "type": "choice"
+              },
+              "session": {
+                "choice": "s0",
+                "confidence": null,
+                "probabilities": {
+                  "generate": 0.27,
+                  "s0": 0.73
+                },
+                "type": "choice"
+              }
+            },
+            "model": "typesafe-ai/jev",
+            "usage": {
+              "input_tokens": 1360,
+              "output_tokens": 77
+            }
+          }
+        }
+      ],
+      "expected": "commitment",
+      "generation": {
+        "cachedInputTokens": 1206,
+        "calls": 1,
+        "inputTokens": 1540,
+        "outputTokens": 117,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[{\"id\":\"send-review-notes-by-2026-09-22\",\"title\":\"Send review notes\",\"text\":\"Bob explicitly committed to sending the review notes by September 22, 2026 at 16:00 UTC.\",\"sourceIds\":[\"new\",\"old\"],\"kind\":\"possible\",\"ownerAccountId\":\"bob\",\"dueAt\":\"2026-09-22T16:00:00Z\",\"existingTaskId\":null,\"startAt\":null,\"endAt\":null}],\"suggestions\":[],\"calendarCandidates\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 117,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1540,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 331,
+                "cached_tokens": 1206
+              },
+              "total_tokens": 1657
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [
+          {
+            "dueAt": "2026-09-22T16:00:00Z",
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "send-review-notes-by-2026-09-22",
+            "kind": "possible",
+            "ownerAccountId": "bob",
+            "sourceIds": [
+              "new",
+              "old"
+            ],
+            "startAt": null,
+            "text": "Bob explicitly committed to sending the review notes by September 22, 2026 at 16:00 UTC.",
+            "title": "Send review notes"
+          }
+        ],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 5.7119999999999995e-05,
+      "generationCostUsd": 0.0004484,
+      "standardizedCostUsd": 0.00050552,
+      "cacheAdjustedCostUsd": 0.00028844
+    },
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "digest-acceptance",
+      "consumer": "digest",
+      "elapsedMs": 1516,
+      "error": null,
+      "evaluation": [],
+      "expected": "commitment",
+      "generation": {
+        "cachedInputTokens": 1537,
+        "calls": 1,
+        "inputTokens": 1540,
+        "outputTokens": 110,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[{\"id\":\"bob-send-review-notes\",\"title\":\"Send review notes\",\"text\":\"Bob explicitly committed to sending the review notes by September 22, 2026 at 16:00 UTC.\",\"sourceIds\":[\"new\",\"old\"],\"kind\":\"possible\",\"ownerAccountId\":\"bob\",\"dueAt\":\"2026-09-22T16:00:00Z\",\"existingTaskId\":null,\"startAt\":null,\"endAt\":null}],\"suggestions\":[],\"calendarCandidates\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 110,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1540,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 1537
+              },
+              "total_tokens": 1650
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [
+          {
+            "dueAt": "2026-09-22T16:00:00Z",
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "bob-send-review-notes",
+            "kind": "possible",
+            "ownerAccountId": "bob",
+            "sourceIds": [
+              "new",
+              "old"
+            ],
+            "startAt": null,
+            "text": "Bob explicitly committed to sending the review notes by September 22, 2026 at 16:00 UTC.",
+            "title": "Send review notes"
+          }
+        ],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.00043999999999999996,
+      "standardizedCostUsd": 0.00043999999999999996,
+      "cacheAdjustedCostUsd": 0.00016334
+    },
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "pip-weather",
+      "consumer": "pip",
+      "elapsedMs": 1193,
+      "error": null,
+      "evaluation": [],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 0,
+        "calls": 1,
+        "inputTokens": 2508,
+        "outputTokens": 12,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2508,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 2505,
+                "cached_tokens": 0
+              },
+              "total_tokens": 2520
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.000516,
+      "standardizedCostUsd": 0.000516,
+      "cacheAdjustedCostUsd": 0.000516
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "pip-weather",
+      "consumer": "pip",
+      "elapsedMs": 1377,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 425,
+          "error": null,
+          "response": {
+            "answers": {
+              "action": {
+                "choice": "generate",
+                "confidence": null,
+                "probabilities": {
+                  "cancel": 0.15,
+                  "confirm": 0.0,
+                  "generate": 0.8200000000000001,
+                  "propose": 0.0,
+                  "reopen": 0.03,
+                  "rsvp": 0.0,
+                  "vote": 0.0
+                },
+                "type": "choice"
+              },
+              "route": {
+                "choice": "skip",
+                "confidence": null,
+                "probabilities": {
+                  "generate": 0.16,
+                  "plan_card": 0.03,
+                  "skip": 0.81
+                },
+                "type": "choice"
+              }
+            },
+            "model": "typesafe-ai/jev",
+            "usage": {
+              "input_tokens": 1024,
+              "output_tokens": 105
+            }
+          }
+        }
+      ],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 2505,
+        "calls": 1,
+        "inputTokens": 2508,
+        "outputTokens": 12,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2508,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2505
+              },
+              "total_tokens": 2520
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 4.3008e-05,
+      "generationCostUsd": 0.000516,
+      "standardizedCostUsd": 0.0005590079999999999,
+      "cacheAdjustedCostUsd": 0.00010810799999999999
+    },
+    {
+      "actions": [
+        {
+          "action": "vote",
+          "eventId": "synthetic-event",
+          "optionId": "fri",
+          "participantId": "bob",
+          "revision": 1
+        }
+      ],
+      "arm": "jev",
+      "case": "pip-vote",
+      "consumer": "pip",
+      "elapsedMs": 2956,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 448,
+          "error": null,
+          "response": {
+            "answers": {
+              "action": {
+                "choice": "vote",
+                "confidence": null,
+                "probabilities": {
+                  "cancel": 0.0,
+                  "confirm": 0.0,
+                  "generate": 0.01,
+                  "propose": 0.0,
+                  "reopen": 0.0,
+                  "rsvp": 0.0,
+                  "vote": 0.99
+                },
+                "type": "choice"
+              },
+              "route": {
+                "choice": "plan_card",
+                "confidence": null,
+                "probabilities": {
+                  "generate": 0.11,
+                  "plan_card": 0.87,
+                  "skip": 0.02
+                },
+                "type": "choice"
+              }
+            },
+            "model": "typesafe-ai/jev",
+            "usage": {
+              "input_tokens": 1384,
+              "output_tokens": 106
+            }
+          }
+        }
+      ],
+      "expected": "vote",
+      "generation": {
+        "cachedInputTokens": 4905,
+        "calls": 2,
+        "inputTokens": 5664,
+        "outputTokens": 50,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"vote\",\"eventId\":\"synthetic-event\",\"participantId\":\"bob\",\"optionId\":\"fri\",\"revision\":1}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_kAorZBdJHXcT1k9yjQyP7u53",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 38,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2706,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 501,
+                "cached_tokens": 2202
+              },
+              "total_tokens": 2744
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2958,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 252,
+                "cached_tokens": 2703
+              },
+              "total_tokens": 2970
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 5.8127999999999996e-05,
+      "generationCostUsd": 0.0011928,
+      "standardizedCostUsd": 0.001250928,
+      "cacheAdjustedCostUsd": 0.000368028
+    },
+    {
+      "actions": [
+        {
+          "action": "vote",
+          "eventId": "synthetic-event",
+          "optionId": "fri",
+          "participantId": "bob",
+          "revision": 1
+        }
+      ],
+      "arm": "baseline",
+      "case": "pip-vote",
+      "consumer": "pip",
+      "elapsedMs": 2221,
+      "error": null,
+      "evaluation": [],
+      "expected": "vote",
+      "generation": {
+        "cachedInputTokens": 5658,
+        "calls": 2,
+        "inputTokens": 5664,
+        "outputTokens": 50,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"vote\",\"eventId\":\"synthetic-event\",\"revision\":1,\"participantId\":\"bob\",\"optionId\":\"fri\"}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_GtWMSqxDtAFf9sMjiCTjoqGW",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 38,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2706,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2703
+              },
+              "total_tokens": 2744
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2958,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2955
+              },
+              "total_tokens": 2970
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0011928,
+      "standardizedCostUsd": 0.0011928,
+      "cacheAdjustedCostUsd": 0.00017436
+    },
+    {
+      "actions": [
+        {
+          "action": "rsvp",
+          "eventId": "synthetic-event",
+          "participantId": "bob",
+          "revision": 1,
+          "rsvp": "no"
+        }
+      ],
+      "arm": "baseline",
+      "case": "pip-decline",
+      "consumer": "pip",
+      "elapsedMs": 2614,
+      "error": null,
+      "evaluation": [],
+      "expected": "rsvp",
+      "generation": {
+        "cachedInputTokens": 4842,
+        "calls": 2,
+        "inputTokens": 5477,
+        "outputTokens": 51,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"rsvp\",\"eventId\":\"synthetic-event\",\"participantId\":\"bob\",\"rsvp\":\"no\",\"revision\":1}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_iyzHY8Qjurk1w4CLI5EfrGWO",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 39,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2643,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 438,
+                "cached_tokens": 2202
+              },
+              "total_tokens": 2682
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2834,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 191,
+                "cached_tokens": 2640
+              },
+              "total_tokens": 2846
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0011565999999999998,
+      "standardizedCostUsd": 0.0011565999999999998,
+      "cacheAdjustedCostUsd": 0.00028503999999999997
+    },
+    {
+      "actions": [
+        {
+          "action": "rsvp",
+          "eventId": "synthetic-event",
+          "participantId": "bob",
+          "revision": 1,
+          "rsvp": "no"
+        }
+      ],
+      "arm": "jev",
+      "case": "pip-decline",
+      "consumer": "pip",
+      "elapsedMs": 3175,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 986,
+          "error": null,
+          "response": {
+            "answers": {
+              "action": {
+                "choice": "rsvp",
+                "confidence": null,
+                "probabilities": {
+                  "cancel": 0.0,
+                  "confirm": 0.0,
+                  "generate": 0.01,
+                  "propose": 0.0,
+                  "reopen": 0.02,
+                  "rsvp": 0.97,
+                  "vote": 0.0
+                },
+                "type": "choice"
+              },
+              "route": {
+                "choice": "plan_card",
+                "confidence": null,
+                "probabilities": {
+                  "generate": 0.16,
+                  "plan_card": 0.83,
+                  "skip": 0.01
+                },
+                "type": "choice"
+              }
+            },
+            "model": "typesafe-ai/jev",
+            "usage": {
+              "input_tokens": 1273,
+              "output_tokens": 107
+            }
+          }
+        }
+      ],
+      "expected": "rsvp",
+      "generation": {
+        "cachedInputTokens": 5471,
+        "calls": 2,
+        "inputTokens": 5477,
+        "outputTokens": 51,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"rsvp\",\"eventId\":\"synthetic-event\",\"participantId\":\"bob\",\"rsvp\":\"no\",\"revision\":1}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_UdakWqfKSBr66Rza62qdGYDm",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 39,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2643,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2640
+              },
+              "total_tokens": 2682
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2834,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2831
+              },
+              "total_tokens": 2846
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 5.3466e-05,
+      "generationCostUsd": 0.0011565999999999998,
+      "standardizedCostUsd": 0.0012100659999999999,
+      "cacheAdjustedCostUsd": 0.000225286
+    },
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "digest-cancel",
+      "consumer": "digest",
+      "elapsedMs": 1692,
+      "error": null,
+      "evaluation": [],
+      "expected": "delete",
+      "generation": {
+        "cachedInputTokens": 1206,
+        "calls": 1,
+        "inputTokens": 1614,
+        "outputTokens": 163,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[{\"id\":\"cancel-design-review-2026-09-23\",\"title\":\"Cancel design review\",\"text\":\"Bob explicitly requested cancellation of the saved design review on September 23, 2026, from 10:00 to 11:00 UTC.\",\"sourceIds\":[\"new\",\"old\"],\"kind\":\"possible\",\"ownerAccountId\":\"bob\",\"dueAt\":null,\"existingTaskId\":null,\"startAt\":\"2026-09-23T10:00:00Z\",\"endAt\":\"2026-09-23T11:00:00Z\",\"timezone\":\"UTC\",\"calendarAction\":\"delete\",\"calendarScope\":\"occurrence\",\"existingEventId\":\"synthetic-review\",\"existingEventRevision\":1}] }",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 163,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1614,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 405,
+                "cached_tokens": 1206
+              },
+              "total_tokens": 1777
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [
+          {
+            "calendarAction": "delete",
+            "calendarScope": "occurrence",
+            "dueAt": null,
+            "endAt": "2026-09-23T11:00:00Z",
+            "existingEventId": "synthetic-review",
+            "existingEventRevision": 1,
+            "existingTaskId": null,
+            "id": "cancel-design-review-2026-09-23",
+            "kind": "possible",
+            "ownerAccountId": "bob",
+            "sourceIds": [
+              "new",
+              "old"
+            ],
+            "startAt": "2026-09-23T10:00:00Z",
+            "text": "Bob explicitly requested cancellation of the saved design review on September 23, 2026, from 10:00 to 11:00 UTC.",
+            "timezone": "UTC",
+            "title": "Cancel design review"
+          }
+        ],
+        "claims": [],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0005184,
+      "standardizedCostUsd": 0.0005184,
+      "cacheAdjustedCostUsd": 0.00030132
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "digest-cancel",
+      "consumer": "digest",
+      "elapsedMs": 2737,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 1064,
+          "error": "evaluation HTTP status 429",
+          "response": null
+        }
+      ],
+      "expected": "delete",
+      "generation": {
+        "cachedInputTokens": 1611,
+        "calls": 1,
+        "inputTokens": 1614,
+        "outputTokens": 174,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[{\"id\":\"cancel-design-review-2026-09-23\",\"title\":\"Cancel design review\",\"text\":\"Bob explicitly requested cancellation of the saved Design review on September 23, 2026, from 10:00 to 11:00 UTC. Human review is required; this has not been applied.\",\"sourceIds\":[\"new\",\"old\"],\"kind\":\"possible\",\"ownerAccountId\":\"bob\",\"dueAt\":null,\"existingTaskId\":null,\"startAt\":\"2026-09-23T10:00:00Z\",\"endAt\":\"2026-09-23T11:00:00Z\",\"timezone\":\"UTC\",\"calendarAction\":\"delete\",\"calendarScope\":\"occurrence\",\"existingEventId\":\"synthetic-review\",\"existingEventRevision\":1}]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 174,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1614,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 1611
+              },
+              "total_tokens": 1788
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [
+          {
+            "calendarAction": "delete",
+            "calendarScope": "occurrence",
+            "dueAt": null,
+            "endAt": "2026-09-23T11:00:00Z",
+            "existingEventId": "synthetic-review",
+            "existingEventRevision": 1,
+            "existingTaskId": null,
+            "id": "cancel-design-review-2026-09-23",
+            "kind": "possible",
+            "ownerAccountId": "bob",
+            "sourceIds": [
+              "new",
+              "old"
+            ],
+            "startAt": "2026-09-23T10:00:00Z",
+            "text": "Bob explicitly requested cancellation of the saved Design review on September 23, 2026, from 10:00 to 11:00 UTC. Human review is required; this has not been applied.",
+            "timezone": "UTC",
+            "title": "Cancel design review"
+          }
+        ],
+        "claims": [],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0005315999999999999,
+      "standardizedCostUsd": 0.0005315999999999999,
+      "cacheAdjustedCostUsd": 0.00024161999999999998
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "pip-nostalgia",
+      "consumer": "pip",
+      "elapsedMs": 2117,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 1052,
+          "error": "evaluation HTTP status 429",
+          "response": null
+        }
+      ],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 2202,
+        "calls": 1,
+        "inputTokens": 2511,
+        "outputTokens": 12,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2511,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 306,
+                "cached_tokens": 2202
+              },
+              "total_tokens": 2523
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0005166,
+      "standardizedCostUsd": 0.0005166,
+      "cacheAdjustedCostUsd": 0.00012024
+    },
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "pip-nostalgia",
+      "consumer": "pip",
+      "elapsedMs": 948,
+      "error": null,
+      "evaluation": [],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 2508,
+        "calls": 1,
+        "inputTokens": 2511,
+        "outputTokens": 12,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":null,\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 12,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2511,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2508
+              },
+              "total_tokens": 2523
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "hooksHandled": [],
+        "message": null
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0005166,
+      "standardizedCostUsd": 0.0005166,
+      "cacheAdjustedCostUsd": 6.516e-05
+    },
+    {
+      "actions": [
+        {
+          "action": "propose",
+          "conversationId": "synthetic-group",
+          "location": "the cafe",
+          "participants": [
+            {
+              "displayName": "Alice",
+              "organizer": true,
+              "participantId": "alice"
+            },
+            {
+              "displayName": "Bob",
+              "participantId": "bob"
+            }
+          ],
+          "sourceMessageIds": [
+            "new"
+          ],
+          "startAt": "2026-09-21T12:30:00Z",
+          "state": "awaitingConfirmation",
+          "title": "Team lunch"
+        }
+      ],
+      "arm": "jev",
+      "case": "pip-proposal",
+      "consumer": "pip",
+      "elapsedMs": 4150,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 1379,
+          "error": "evaluation HTTP status 429",
+          "response": null
+        }
+      ],
+      "expected": "propose",
+      "generation": {
+        "cachedInputTokens": 4716,
+        "calls": 2,
+        "inputTokens": 5251,
+        "outputTokens": 124,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"propose\",\"conversationId\":\"synthetic-group\",\"title\":\"Team lunch\",\"state\":\"awaitingConfirmation\",\"startAt\":\"2026-09-21T12:30:00Z\",\"location\":\"the cafe\",\"participants\":[{\"displayName\":\"Alice\",\"participantId\":\"alice\",\"organizer\":true},{\"displayName\":\"Bob\",\"participantId\":\"bob\"}],\"sourceMessageIds\":[\"new\"]}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_smSIYh5YoLP0UJi2w9Apg74n",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 94,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2517,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 312,
+                "cached_tokens": 2202
+              },
+              "total_tokens": 2611
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":\"I\u2019ve added the lunch plan to the card. Please respond there so we can lock it in.\",\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 30,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2734,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 217,
+                "cached_tokens": 2514
+              },
+              "total_tokens": 2764
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": "I\u2019ve added the lunch plan to the card. Please respond there so we can lock it in."
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.001199,
+      "standardizedCostUsd": 0.001199,
+      "cacheAdjustedCostUsd": 0.00035012
+    },
+    {
+      "actions": [
+        {
+          "action": "propose",
+          "conversationId": "synthetic-group",
+          "location": "the cafe",
+          "participants": [
+            {
+              "displayName": "Alice",
+              "organizer": true,
+              "participantId": "alice"
+            },
+            {
+              "displayName": "Bob",
+              "participantId": "bob"
+            }
+          ],
+          "sourceMessageIds": [
+            "new"
+          ],
+          "startAt": "2026-09-21T12:30:00Z",
+          "state": "awaitingConfirmation",
+          "title": "Team lunch"
+        }
+      ],
+      "arm": "baseline",
+      "case": "pip-proposal",
+      "consumer": "pip",
+      "elapsedMs": 2573,
+      "error": null,
+      "evaluation": [],
+      "expected": "propose",
+      "generation": {
+        "cachedInputTokens": 5245,
+        "calls": 2,
+        "inputTokens": 5251,
+        "outputTokens": 124,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"propose\",\"conversationId\":\"synthetic-group\",\"title\":\"Team lunch\",\"state\":\"awaitingConfirmation\",\"startAt\":\"2026-09-21T12:30:00Z\",\"location\":\"the cafe\",\"participants\":[{\"displayName\":\"Alice\",\"participantId\":\"alice\",\"organizer\":true},{\"displayName\":\"Bob\",\"participantId\":\"bob\"}],\"sourceMessageIds\":[\"new\"]}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_bvdYVVvNNdclWl8ASNfyMlNA",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 94,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2517,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2514
+              },
+              "total_tokens": 2611
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":\"I\u2019ve added the lunch plan to the card. Please respond there so we can lock it in.\",\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 30,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2734,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2731
+              },
+              "total_tokens": 2764
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": "I\u2019ve added the lunch plan to the card. Please respond there so we can lock it in."
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.001199,
+      "standardizedCostUsd": 0.001199,
+      "cacheAdjustedCostUsd": 0.00025489999999999996
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "digest-decision",
+      "consumer": "digest",
+      "elapsedMs": 1866,
+      "error": null,
+      "evaluation": [],
+      "expected": "item",
+      "generation": {
+        "cachedInputTokens": 1206,
+        "calls": 1,
+        "inputTokens": 1538,
+        "outputTokens": 213,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[{\"id\":\"release-date-version-2\",\"title\":\"Version 2 release date decided\",\"text\":\"Version 2 is scheduled for release on September 24, 2026 at 14:00 UTC.\",\"sourceIds\":[\"new\"],\"kind\":\"decision\",\"ownerAccountId\":null,\"dueAt\":\"2026-09-24T14:00:00Z\",\"existingTaskId\":null,\"startAt\":null,\"endAt\":null}],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[{\"id\":\"version-2-release-calendar-candidate\",\"title\":\"Release version 2\",\"text\":\"Create a calendar event for the version 2 release on September 24, 2026 at 14:00 UTC.\",\"sourceIds\":[\"new\"],\"kind\":\"possible\",\"ownerAccountId\":null,\"dueAt\":null,\"existingTaskId\":null,\"startAt\":\"2026-09-24T14:00:00Z\",\"endAt\":null,\"timezone\":\"UTC\",\"calendarAction\":\"create\"}]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 213,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1538,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 329,
+                "cached_tokens": 1206
+              },
+              "total_tokens": 1751
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [
+          {
+            "calendarAction": "create",
+            "dueAt": null,
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "version-2-release-calendar-candidate",
+            "kind": "possible",
+            "ownerAccountId": null,
+            "sourceIds": [
+              "new"
+            ],
+            "startAt": "2026-09-24T14:00:00Z",
+            "text": "Create a calendar event for the version 2 release on September 24, 2026 at 14:00 UTC.",
+            "timezone": "UTC",
+            "title": "Release version 2"
+          }
+        ],
+        "claims": [
+          {
+            "dueAt": "2026-09-24T14:00:00Z",
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "release-date-version-2",
+            "kind": "decision",
+            "ownerAccountId": null,
+            "sourceIds": [
+              "new"
+            ],
+            "startAt": null,
+            "text": "Version 2 is scheduled for release on September 24, 2026 at 14:00 UTC.",
+            "title": "Version 2 release date decided"
+          }
+        ],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0005632,
+      "standardizedCostUsd": 0.0005632,
+      "cacheAdjustedCostUsd": 0.00034612
+    },
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "digest-decision",
+      "consumer": "digest",
+      "elapsedMs": 1728,
+      "error": null,
+      "evaluation": [],
+      "expected": "item",
+      "generation": {
+        "cachedInputTokens": 1535,
+        "calls": 1,
+        "inputTokens": 1538,
+        "outputTokens": 213,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[{\"id\":\"release-date-version-2\",\"title\":\"Version 2 release date decided\",\"text\":\"Version 2 is scheduled for release on September 24, 2026 at 14:00 UTC.\",\"sourceIds\":[\"new\"],\"kind\":\"decision\",\"ownerAccountId\":null,\"dueAt\":\"2026-09-24T14:00:00Z\",\"existingTaskId\":null,\"startAt\":null,\"endAt\":null}],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[{\"id\":\"version-2-release-calendar-candidate\",\"title\":\"Release version 2\",\"text\":\"Create a calendar event for the version 2 release on September 24, 2026 at 14:00 UTC.\",\"sourceIds\":[\"new\"],\"kind\":\"possible\",\"ownerAccountId\":null,\"dueAt\":null,\"existingTaskId\":null,\"startAt\":\"2026-09-24T14:00:00Z\",\"endAt\":null,\"timezone\":\"UTC\",\"calendarAction\":\"create\"}]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 213,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1538,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 1535
+              },
+              "total_tokens": 1751
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": true,
+      "output": {
+        "calendarCandidates": [
+          {
+            "calendarAction": "create",
+            "dueAt": null,
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "version-2-release-calendar-candidate",
+            "kind": "possible",
+            "ownerAccountId": null,
+            "sourceIds": [
+              "new"
+            ],
+            "startAt": "2026-09-24T14:00:00Z",
+            "text": "Create a calendar event for the version 2 release on September 24, 2026 at 14:00 UTC.",
+            "timezone": "UTC",
+            "title": "Release version 2"
+          }
+        ],
+        "claims": [
+          {
+            "dueAt": "2026-09-24T14:00:00Z",
+            "endAt": null,
+            "existingTaskId": null,
+            "id": "release-date-version-2",
+            "kind": "decision",
+            "ownerAccountId": null,
+            "sourceIds": [
+              "new"
+            ],
+            "startAt": null,
+            "text": "Version 2 is scheduled for release on September 24, 2026 at 14:00 UTC.",
+            "title": "Version 2 release date decided"
+          }
+        ],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0005632,
+      "standardizedCostUsd": 0.0005632,
+      "cacheAdjustedCostUsd": 0.0002869
+    },
+    {
+      "actions": [
+        {
+          "action": "cancel",
+          "canceledBy": "alice",
+          "eventId": "synthetic-event",
+          "reason": "Organizer canceled Monday lunch for everyone.",
+          "revision": 1
+        }
+      ],
+      "arm": "baseline",
+      "case": "pip-cancel",
+      "consumer": "pip",
+      "elapsedMs": 2609,
+      "error": null,
+      "evaluation": [],
+      "expected": "cancel",
+      "generation": {
+        "cachedInputTokens": 4846,
+        "calls": 2,
+        "inputTokens": 5490,
+        "outputTokens": 59,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"cancel\",\"eventId\":\"synthetic-event\",\"canceledBy\":\"alice\",\"revision\":1,\"reason\":\"Organizer canceled Monday lunch for everyone.\"}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_pZAQQe5wXGMVcptq9OCWHpjP",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 44,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2647,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 442,
+                "cached_tokens": 2202
+              },
+              "total_tokens": 2691
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":\"Monday lunch is canceled.\",\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 15,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2843,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 196,
+                "cached_tokens": 2644
+              },
+              "total_tokens": 2858
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": "Monday lunch is canceled."
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0011688,
+      "standardizedCostUsd": 0.0011688,
+      "cacheAdjustedCostUsd": 0.00029652
+    },
+    {
+      "actions": [
+        {
+          "action": "cancel",
+          "canceledBy": "alice",
+          "eventId": "synthetic-event",
+          "reason": "Organizer canceled Monday lunch for everyone.",
+          "revision": 1
+        }
+      ],
+      "arm": "jev",
+      "case": "pip-cancel",
+      "consumer": "pip",
+      "elapsedMs": 3318,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 1248,
+          "error": "evaluation HTTP status 429",
+          "response": null
+        }
+      ],
+      "expected": "cancel",
+      "generation": {
+        "cachedInputTokens": 5484,
+        "calls": 2,
+        "inputTokens": 5490,
+        "outputTokens": 59,
+        "responses": [
+          {
+            "finishReason": "tool_calls",
+            "message": {
+              "annotations": [],
+              "content": null,
+              "refusal": null,
+              "role": "assistant",
+              "tool_calls": [
+                {
+                  "function": {
+                    "arguments": "{\"action\":\"cancel\",\"eventId\":\"synthetic-event\",\"canceledBy\":\"alice\",\"revision\":1,\"reason\":\"Organizer canceled Monday lunch for everyone.\"}",
+                    "name": "plan_card"
+                  },
+                  "id": "call_Apz7UunOQIZTON4IKbenvzat",
+                  "type": "function"
+                }
+              ]
+            },
+            "usage": {
+              "completion_tokens": 44,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2647,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2644
+              },
+              "total_tokens": 2691
+            }
+          },
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"message\":\"Monday lunch is canceled.\",\"hooksHandled\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 15,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 2843,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 2840
+              },
+              "total_tokens": 2858
+            }
+          }
+        ],
+        "toolRequests": 1
+      },
+      "material": true,
+      "output": {
+        "hooksHandled": [],
+        "message": "Monday lunch is canceled."
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.0011688,
+      "standardizedCostUsd": 0.0011688,
+      "cacheAdjustedCostUsd": 0.00018168
+    },
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "digest-joke",
+      "consumer": "digest",
+      "elapsedMs": 980,
+      "error": null,
+      "evaluation": [],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 1206,
+        "calls": 1,
+        "inputTokens": 1536,
+        "outputTokens": 19,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 19,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1536,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 327,
+                "cached_tokens": 1206
+              },
+              "total_tokens": 1555
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.00033,
+      "standardizedCostUsd": 0.00033,
+      "cacheAdjustedCostUsd": 0.00011291999999999998
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "digest-joke",
+      "consumer": "digest",
+      "elapsedMs": 842,
+      "error": null,
+      "evaluation": [],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 1533,
+        "calls": 1,
+        "inputTokens": 1536,
+        "outputTokens": 19,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 19,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1536,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 1533
+              },
+              "total_tokens": 1555
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.00033,
+      "standardizedCostUsd": 0.00033,
+      "cacheAdjustedCostUsd": 5.406e-05
+    },
+    {
+      "actions": [],
+      "arm": "jev",
+      "case": "digest-cat",
+      "consumer": "digest",
+      "elapsedMs": 1926,
+      "error": null,
+      "evaluation": [
+        {
+          "elapsedMs": 1041,
+          "error": "evaluation HTTP status 429",
+          "response": null
+        }
+      ],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 1206,
+        "calls": 1,
+        "inputTokens": 1531,
+        "outputTokens": 19,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 19,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1531,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 322,
+                "cached_tokens": 1206
+              },
+              "total_tokens": 1550
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.000329,
+      "standardizedCostUsd": 0.000329,
+      "cacheAdjustedCostUsd": 0.00011191999999999999
+    },
+    {
+      "actions": [],
+      "arm": "baseline",
+      "case": "digest-cat",
+      "consumer": "digest",
+      "elapsedMs": 830,
+      "error": null,
+      "evaluation": [],
+      "expected": "none",
+      "generation": {
+        "cachedInputTokens": 1528,
+        "calls": 1,
+        "inputTokens": 1531,
+        "outputTokens": 19,
+        "responses": [
+          {
+            "finishReason": "stop",
+            "message": {
+              "annotations": [],
+              "content": "{\"claims\":[],\"commitments\":[],\"suggestions\":[],\"calendarCandidates\":[]}",
+              "refusal": null,
+              "role": "assistant"
+            },
+            "usage": {
+              "completion_tokens": 19,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 1531,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 1528
+              },
+              "total_tokens": 1550
+            }
+          }
+        ],
+        "toolRequests": 0
+      },
+      "material": false,
+      "output": {
+        "calendarCandidates": [],
+        "claims": [],
+        "commitments": [],
+        "removedItemIds": [],
+        "suggestions": []
+      },
+      "qualityCheckPassed": true,
+      "reportedUsageComplete": true,
+      "type": "arm",
+      "evaluationCostUsd": 0,
+      "generationCostUsd": 0.000329,
+      "standardizedCostUsd": 0.000329,
+      "cacheAdjustedCostUsd": 5.396e-05
+    }
+  ]
+}

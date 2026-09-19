@@ -53,12 +53,38 @@ where
     C: CloudAgentRunClient + Sync,
     P: CloudModelProvider + Sync,
 {
+    run_with_router(
+        client,
+        provider,
+        run,
+        material,
+        crate::evaluation::routing::default_router(),
+    )
+    .await
+}
+
+pub async fn run_with_router<C, P>(
+    client: &C,
+    provider: &P,
+    run: &CloudAgentRun,
+    material: ProviderAuthMaterial,
+    router: &crate::evaluation::routing::Router,
+) -> Result<String, ModelLoopError>
+where
+    C: CloudAgentRunClient + Sync,
+    P: CloudModelProvider + Sync,
+{
+    use crate::evaluation::routing::{Consumer, Route};
     let input: Value = serde_json::from_str(&run.prompt)
         .map_err(|_| ModelLoopError::Provider("Invalid PiP sweep input".into()))?;
     if input.get("messages").and_then(Value::as_array).is_none() {
         return Err(ModelLoopError::Provider(
             "PiP sweep input has no messages".into(),
         ));
+    }
+    let route = router.route(Consumer::Pip, run, &input, &input).await;
+    if route == Route::Skip {
+        return Ok(normalize_output("silent"));
     }
     let mut auth = OpenAiProviderConfig::from_material(&material)?;
     auth.apply_runtime_route(&run.runtime_route, &material.provider);
@@ -67,6 +93,12 @@ where
         json!({"role":"system","content":run.system_prompt}),
         json!({"role":"user","content":format!("{instruction} Snapshot: {input}")}),
     ];
+    if let Route::PlanCard { action } = route {
+        // A routing hint is not an authorization or a preconstructed mutation.
+        messages.push(json!({"role":"system","content":format!(
+            "The routing evaluator suggests checking plan_card action {action}. Verify it against the evidence, construct all required arguments, and use the normal planner if another action or clarification is needed. All plan_card operations remain available."
+        )}));
+    }
     let catalog = tools();
     let mut used = 0;
     for _ in 0..MAX_MODEL_CALLS {
