@@ -227,6 +227,7 @@ pub fn run() {
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
