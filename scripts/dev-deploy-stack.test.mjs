@@ -14,6 +14,71 @@ const scriptPath = join(repoRoot, 'scripts/dev-deploy-stack.sh');
 const lockHelperPath = join(repoRoot, 'scripts/with-deploy-lock.sh');
 const SHA = 'b'.repeat(40);
 
+function runAllocationStep(context, response) {
+  const directory = mkdtempSync(join(tmpdir(), 'kordi-allocation-workflow-'));
+  context.after(() => rmSync(directory, { recursive: true, force: true }));
+  fs.mkdirSync(join(directory, 'scripts'));
+  fs.mkdirSync(join(directory, 'deploy/dev'), { recursive: true });
+  const allocator = join(directory, 'scripts/dev-stack-allocate.mjs');
+  if (response === undefined) {
+    fs.copyFileSync(join(repoRoot, 'scripts/dev-stack-allocate.mjs'), allocator);
+  } else {
+    writeFileSync(allocator, `console.log(${JSON.stringify(JSON.stringify(response))});\n`);
+  }
+  writeFileSync(join(directory, 'deploy/dev/stack-allocations.json'), JSON.stringify({
+    version: 1,
+    stacks: [{ id: 'issue-1234', owner: 'developer-one', createdAt: '2026-01-01T00:00:00Z' }],
+  }));
+  const workflow = fs.readFileSync(join(repoRoot, '.github/workflows/deploy-dev.yml'), 'utf8');
+  const match = workflow.match(/      - name: Validate stack allocation\n[\s\S]*?        run: \|\n([\s\S]*?)(?=\n      - name:)/);
+  assert.ok(match, 'allocation step must exist');
+  const script = match[1].replace(/^          /gm, '');
+  const outputFile = join(directory, 'outputs');
+  writeFileSync(outputFile, 'existing=preserved\n');
+  const result = spawnSync('bash', ['-c', script], {
+    cwd: directory,
+    encoding: 'utf8',
+    env: { PATH: process.env.PATH, RUNNER_TEMP: directory, GITHUB_OUTPUT: outputFile,
+      STACK_ID: 'issue-1234', ACTOR: 'developer-one' },
+  });
+  return { ...result, outputs: fs.readFileSync(outputFile, 'utf8'), directory };
+}
+
+test('workflow consumes the real allocator JSON and passes the deployment guard', (context) => {
+  const result = runAllocationStep(context);
+  assert.equal(result.status, 0, result.stderr);
+  const { plan } = JSON.parse(fs.readFileSync(join(result.directory, 'dev-stack-plan.json'), 'utf8'));
+  const outputs = Object.fromEntries(result.outputs.trim().split('\n').map((line) => line.split('=')));
+  assert.deepEqual(outputs, {
+    existing: 'preserved', compose_project: 'kordi-issue-1234', lock: 'stack-issue-1234',
+    api_port: String(plan.ports.api), minio_port: String(plan.ports.minio),
+    minio_console_port: String(plan.ports.minioConsole),
+  });
+  const deploy = runTransport(['deploy', '--stack', 'issue-1234', '--sha', SHA, '--dry-run'], {
+    KORDI_DEV_STACK_PROJECT: outputs.compose_project,
+    KORDI_DEV_API_PORT: outputs.api_port,
+    KORDI_DEV_MINIO_PORT: outputs.minio_port,
+    KORDI_DEV_MINIO_CONSOLE_PORT: outputs.minio_console_port,
+  });
+  assert.equal(deploy.status, 0, deploy.stderr);
+});
+
+test('workflow rejects missing or malformed plan fields before publishing any outputs', (context) => {
+  const plan = { composeProject: 'kordi-issue-1234', lock: 'stack-issue-1234',
+    ports: { api: 17142, minio: 19142, minioConsole: 20142 } };
+  for (const response of [
+    { ok: true, ...plan },
+    { ok: false, plan },
+    { ok: true, plan: { ...plan, lock: null } },
+    { ok: true, plan: { ...plan, ports: { ...plan.ports, minioConsole: null } } },
+    { ok: true, plan: { ...plan, ports: { ...plan.ports, api: 'null' } } },
+  ]) {
+    const result = runAllocationStep(context, response);
+    assert.notEqual(result.status, 0, JSON.stringify(response));
+    assert.equal(result.outputs, 'existing=preserved\n');
+  }
+});
+
 const baseEnv = Object.freeze({
   KORDI_DEV_GCP_PROJECT: 'test-project-123456',
   KORDI_DEV_SSH_ZONE: 'test-zone-a',
