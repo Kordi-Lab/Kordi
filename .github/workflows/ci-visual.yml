@@ -75,6 +75,16 @@ jobs:
       - name: Install visual-test browser
         run: pnpm --dir app/desktop exec playwright install chromium
 
+      - name: Install ffmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            brew install ffmpeg
+          fi
+          which ffmpeg
+          ffmpeg -version | head -n 1
+
       - name: Run visual checks
         run: pnpm check:visual
 

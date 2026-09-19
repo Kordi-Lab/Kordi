@@ -108,8 +108,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Report Xcode version
-        run: xcodebuild -version
+      - name: Select pinned Xcode
+        shell: bash
+        run: |
+          set -euo pipefail
+          pinned="/Applications/Xcode_26.3.app"
+          if [ ! -d "$pinned" ]; then
+            echo "Pinned Xcode not found at $pinned" >&2
+            echo "Available Xcode installations:" >&2
+            ls -d /Applications/Xcode*.app >&2 || true
+            exit 1
+          fi
+          sudo xcode-select -s "$pinned"
+          xcodebuild -version
 
       - name: Run iOS checks
         run: pnpm check:ios
