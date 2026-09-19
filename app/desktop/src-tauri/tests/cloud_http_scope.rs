@@ -3,7 +3,7 @@ use tauri::{
     ipc::{CallbackFn, InvokeBody},
     test::{get_ipc_response, mock_builder, MockRuntime, INVOKE_KEY},
     webview::InvokeRequest,
-    WebviewWindow,
+    Manager, WebviewWindow,
 };
 
 fn invoke(
@@ -28,10 +28,14 @@ fn invoke(
 
 #[test]
 fn cloud_http_capability_accepts_product_and_loopback_requests_only() {
+    let mut context = tauri::generate_context!();
+    context.config_mut().identifier =
+        format!("io.kordi.cloud.http-scope-test-{}", uuid::Uuid::new_v4());
     let app = mock_builder()
         .plugin(tauri_plugin_http::init())
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("build desktop with its real capabilities");
+    let cache = app.path().app_cache_dir().unwrap();
     let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
         .build()
         .unwrap();
@@ -69,4 +73,7 @@ fn cloud_http_capability_accepts_product_and_loopback_requests_only() {
             invoke(&window, "fetch_cancel", json!({ "rid": rid })).unwrap();
         }
     }
+    drop(window);
+    drop(app);
+    let _ = std::fs::remove_dir_all(cache);
 }

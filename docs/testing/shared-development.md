@@ -140,6 +140,7 @@ check the deployment result and host record.
 | `invalid_oauth_state` | Check that login start and provider callback reach the same backend. Run the doctor, correct the owning stack's callback setup, then begin a fresh login. |
 | `redirect_uri_mismatch` | Register the exact callback in the development provider application. See [OAuth setup](../development-environments.md#development-oauth-applications). |
 | Generic connection error while health succeeds | Inspect the app's transport error and native HTTP permissions. A local app permission/configuration error can fail before a request reaches the backend. |
+| Slow message acknowledgement | Compare server-local and tunneled request timings. Check [native connection reuse](cloud-http.md), client retries, and synchronization; PiP's reply delay is separate from ordinary sends. |
 | Existing account or history missing | Verify stack, API port, profile, and sign-in. Do not reset or create replacement fixtures as a first response. |
 | Deployment green but old backend still running | Inspect the actual deployment outcome, revision, and digests; a superseded candidate may have been skipped. |
 
