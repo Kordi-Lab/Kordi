@@ -119,7 +119,8 @@ test('direct processing entry stays gradual across a 40ms native frame gap', asy
     }
     return positions;
   });
-  expect(Math.abs(samples[0] - samples[samples.length - 1])).toBeGreaterThan(90);
+  const admittedRowHeight = await page.locator('[data-index="51"]').evaluate((row: HTMLElement) => row.offsetHeight);
+  expect(Math.abs(samples[0] - samples[samples.length - 1])).toBeGreaterThanOrEqual(admittedRowHeight);
   for (let i = 1; i < samples.length; i++) {
     expect(Math.abs(samples[i] - samples[i - 1])).toBeLessThanOrEqual(30);
     expect(samples[i]).toBeLessThanOrEqual(samples[i - 1] + 1);
