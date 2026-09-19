@@ -148,37 +148,26 @@ node scripts/record-deployment.mjs \
 
 ## 3. Operator adoption
 
-Wrap existing operator scripts with the shared lock. The wrapper runs the command as-is and
-propagates its exit code, so it composes with existing shells and CI steps.
+Use the protected [production promotion workflow](production-deployment.md) for product
+updates and the [development workflows](dev-deployment.md) for shared or allocated stacks.
+Those entrypoints acquire the lock on the destination host and hold it through image
+verification, rollout, health checks, recovery, and recording.
 
-```bash
-# Legacy single-host systemd path (sync/build runs locally; install runs on the host).
-scripts/with-deploy-lock.sh host-wide --timeout 900 -- \
-  bash bridges/cloud-server/deploy/sync-and-build.sh
+A lock acquired around `gcloud`, SSH, or a source-sync script on a laptop or hosted runner
+protects only that caller's filesystem. It does not serialize another operator touching the
+same server. Do not use a local wrapper around the legacy remote build scripts as a
+production locking mechanism. The legacy source-rebuild helpers are not the protected
+promotion path.
 
-# k3s deployment path. Use host-wide when the script touches shared host resources,
-# or stack-<id> when the script is scoped to one stack.
-scripts/with-deploy-lock.sh host-wide --timeout 900 -- \
-  bash bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh
+For a manual host-local operation, run the wrapper on the corresponding host with the same
+provisioned `KORDI_DEPLOY_LOCK_DIR` used by automation. The directory must have a shared
+operator group and writable lock files; separate per-user directories are not shared locks.
+Never remove a lock file while a deployment is active.
 
-# Isolated development stack.
-scripts/with-deploy-lock.sh stack-issue-1592 --timeout 900 -- \
-  bash scripts/dev-cloud-up.sh
-```
-
-A recorded deployment runs all of the following inside one `scripts/with-deploy-lock.sh`
-invocation, so the lock covers backup, deploy, verification, and recording:
-
-1. Acquire the lock with `scripts/with-deploy-lock.sh`.
-2. Create or identify the pre-deploy backup and record its identifier.
-3. Deploy the exact revision or immutable artifact digest.
-4. Verify rollout, health, and smoke checks (`scripts/dev-cloud-smoke.sh` for development
-   stacks).
-5. Write the deployment record with `--backup` and `--verification` while the lock is held.
-6. Release the lock by exiting the wrapper.
-
-Record the deployment even when verification fails, with the failure summary in
-`--verification`; a failed attempt is still deployment evidence.
+Record failed attempts as well as successful updates. `record-deployment.mjs --failed`
+allows an absent artifact when failure occurred before an image was produced. Backend bundle
+deployments retain structured host records and expose only safe outcome metadata in Actions.
+Application rollback and database restore remain different operations.
 
 ## 4. Application rollback versus database restore
 
