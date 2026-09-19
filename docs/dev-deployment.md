@@ -66,12 +66,15 @@ Keep infrastructure identifiers in environment secrets, never repository files o
 | `KORDI_BACKEND_PROJECT`, `KORDI_BACKEND_ZONE`, `KORDI_BACKEND_TARGET` | Explicit shared-development destination |
 | `KORDI_BACKEND_STATE` | Absolute host state/record directory owned by the deploy identity |
 | `KORDI_BACKEND_ENV_FILE` | Existing isolated development credentials file |
+| `KORDI_BACKEND_API_PORT` | Dedicated loopback API port; existing task ports are preserved |
+| `KORDI_BACKEND_LOCK_DIR` | Provisioned group-writable host lock directory shared with operators |
+| `KORDI_BACKEND_SSH_USER`, `KORDI_BACKEND_SSH_KEY` | Optional dedicated account/key when OS Login is unavailable; rotate the key and keep it environment-scoped |
 | `KORDI_BACKEND_COMPOSE_PROJECT` | Existing shared-development Compose project |
 | `KORDI_DEV_GCP_PROJECT`, `KORDI_DEV_SSH_ZONE`, `KORDI_DEV_SSH_TARGET` | Explicit allocated-stack destination |
 | `KORDI_DEV_STACK_ROOT` | Allocated-stack checkout root |
 
 The shared stack must already be provisioned with its isolated credentials and loopback API
-at port 17081. The host requires Python 3, Docker with Compose, and access to the shared
+at its explicitly configured loopback port. The host requires Python 3, Docker with Compose, and access to the shared
 host lock directory. Allocate permissions to this development host only; its identity must
 not access production services, credentials, or data.
 
