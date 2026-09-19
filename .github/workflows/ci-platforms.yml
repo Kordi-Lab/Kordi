@@ -1,0 +1,168 @@
+name: CI platforms
+
+on:
+  workflow_call:
+    inputs:
+      manifest:
+        description: Expected-work manifest produced by the blocking CI changes job.
+        required: true
+        type: string
+    outputs:
+      results:
+        description: Machine-readable completion results for the desktop and ios groups.
+        value: ${{ jobs.completion.outputs.results }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan platform checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      desktop: ${{ steps.applicable.outputs.desktop }}
+      ios: ${{ steps.applicable.outputs.ios }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Resolve applicability
+        id: applicable
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs check-manifest \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --expected-revision "$EXPECTED_REVISION"
+          for group in desktop ios; do
+            echo "$group=$(node scripts/check-ci-results.mjs applicable --manifest "$RUNNER_TEMP/ci-manifest.json" --group "$group")" >> "$GITHUB_OUTPUT"
+          done
+
+  desktop:
+    name: Desktop compile checks
+    needs: plan
+    if: needs.plan.outputs.desktop == 'true'
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7
+
+      - name: Run desktop checks
+        run: pnpm check:desktop
+
+  ios:
+    name: iOS simulator compile
+    needs: plan
+    if: needs.plan.outputs.ios == 'true'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Report Xcode version
+        run: xcodebuild -version
+
+      - name: Run iOS checks
+        run: pnpm check:ios
+
+  completion:
+    name: Complete platform results
+    needs:
+      - plan
+      - desktop
+      - ios
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      results: ${{ steps.publish.outputs.results }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Emit completion result
+        id: emit
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+          IOS_RESULT: ${{ needs.ios.result }}
+          REVISION: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs emit \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --result "desktop=$DESKTOP_RESULT" \
+            --result "ios=$IOS_RESULT" \
+            --sha "$REVISION" \
+            --run-id "$RUN_ID" \
+            --summary \
+            --fail-on-invalid \
+            --out "$RUNNER_TEMP/ci-results.json"
+
+      - name: Publish completion result
+        id: publish
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/ci-results.json" ]; then
+            {
+              echo "results<<CI_RESULTS_EOF"
+              cat "$RUNNER_TEMP/ci-results.json"
+              echo "CI_RESULTS_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
