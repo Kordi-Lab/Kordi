@@ -31,7 +31,7 @@ def create_backup(directory, run_id):
     started = datetime.now(timezone.utc).isoformat()
     with target.open("xb") as stream:
         os.chmod(target, 0o600)
-        process = subprocess.run(DATABASE + ["sh", "-ec", 'exec pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --no-acl'],
+        process = subprocess.run(DATABASE + ["env", "PGAPPNAME=kordi-cd-" + backup_id, "sh", "-ec", 'exec timeout 1800 pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --compress=1 --lock-wait-timeout=30s --no-owner --no-acl'],
                                  stdout=stream, stderr=subprocess.PIPE)
     if process.returncode:
         target.unlink()
@@ -65,7 +65,7 @@ def create_backup(directory, run_id):
         run(KUBE + ["--namespace", namespace, "wait", "--for=condition=Ready", "pod/restore", "--timeout=180s"])
         with target.open("rb") as stream:
             result = subprocess.run(KUBE + ["--namespace", namespace, "exec", "-i", "restore", "--",
-                                            "pg_restore", "-U", "restore", "-d", "restored", "--no-owner", "--no-acl", "--exit-on-error"],
+                                            "timeout", "1740", "pg_restore", "-U", "restore", "-d", "restored", "--no-owner", "--no-acl", "--exit-on-error"],
                                     stdin=stream, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         if result.returncode:
             raise RuntimeError("The backup did not restore successfully; production images were not changed")
