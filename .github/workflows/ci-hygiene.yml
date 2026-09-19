@@ -85,6 +85,14 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
           "$RUNNER_TEMP/actionlint" -color
 
+      - name: Set up the backend artifact exporter
+        if: hashFiles('scripts/backend_artifact.py') != ''
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Verify real Docker and OCI exports with synthetic images
+        if: hashFiles('scripts/test-backend-export.sh') != ''
+        run: bash scripts/test-backend-export.sh
+
       - name: Run hygiene checks
         shell: bash
         env:

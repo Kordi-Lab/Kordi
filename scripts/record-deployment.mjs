@@ -128,7 +128,7 @@ export function validateDeploymentOptions(options) {
     ['stack', validateStackId(options.stack)],
     ['sha', validateSha(options.sha)],
     ['actor', validateActor(options.actor)],
-    ['artifact', validateArtifactDigest(options.artifact)],
+    ['artifact', options.failed && !options.artifact ? valid() : validateArtifactDigest(options.artifact)],
     ['backup', validateOptionalText(options.backup, { label: 'backup', maxLength: 512 })],
     ['verification', validateOptionalText(options.verification, {
       label: 'verification',
@@ -193,7 +193,8 @@ export function buildRecord(options, now = new Date()) {
     stack: options.stack,
     revision: options.sha,
     actor: options.actor,
-    artifact: options.artifact,
+    artifact: options.artifact ?? null,
+    ...(options.failed ? { outcome: 'failure' } : {}),
     backup: redactText(normalizeOptional(options.backup)),
     verification: redactText(normalizeOptional(options.verification)),
     rollback: redactText(normalizeOptional(options.rollback)),
@@ -273,6 +274,10 @@ export function parseArguments(argv) {
     if (argument === '--') continue;
     if (argument === '--dry-run') {
       options.dryRun = true;
+      continue;
+    }
+    if (argument === '--failed') {
+      options.failed = true;
       continue;
     }
     if (argument === '--force') {

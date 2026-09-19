@@ -58,3 +58,6 @@
 /app/desktop/src-tauri/tauri.cloud.acceptance.conf.json @shuyhere @Jiaxin-Pei @ShenzheZhu
 /app/desktop/src-tauri/tauri.cloud.acceptance-bootstrap.conf.json @shuyhere @Jiaxin-Pei @ShenzheZhu
 /app/ios/project.yml @shuyhere @Jiaxin-Pei @ShenzheZhu
+
+# Shared backend build and host deployment contract
+/scripts/*backend* @shuyhere @Jiaxin-Pei @ShenzheZhu
