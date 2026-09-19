@@ -382,7 +382,9 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
       join(binDir, 'nc'),
       '#!/usr/bin/env bash\n[[ -f "$TEST_TUNNEL_READY" ]]\n',
     );
-    for (const command of ['gh', 'gcloud', 'curl', 'pnpm', 'nc']) {
+    // OAuth HTTP/state behavior is covered by check-dev-oauth.test.mjs; this fixture owns process lifecycles.
+    writeFileSync(join(binDir, 'node'), '#!/usr/bin/env bash\n[[ "$1" == */check-dev-oauth.mjs && "$2" == --api-base && "$3" == http://127.0.0.1:17081 ]] || exit 2\nprintf "fixture OAuth preflight verified\\n"\n');
+    for (const command of ['gh', 'gcloud', 'curl', 'pnpm', 'nc', 'node']) {
       chmodSync(join(binDir, command), 0o755);
     }
     writeFileSync(allowlistPath, 'example-maintainer\n');
@@ -424,6 +426,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
       'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --frontend production --port 1498|http://127.0.0.1:17081|community||||1',
     );
     assert.match(launched.stdout, /Verified Google and GitHub OAuth/);
+    assert.match(launched.stdout, /fixture OAuth preflight verified/);
 
     rmSync(tunnelReadyPath);
     const previewLaunched = spawnSync('bash', [scriptPath], {
