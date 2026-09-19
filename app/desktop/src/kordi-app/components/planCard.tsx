@@ -19,10 +19,10 @@ function formatWhen(startAt?: string | null, endAt?: string | null): string | nu
   const start = new Date(startAt);
   if (Number.isNaN(start.getTime())) return null;
   const date = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(start);
-  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(start);
+  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(start);
   const end = endAt ? new Date(endAt) : null;
   const endLabel = end && !Number.isNaN(end.getTime())
-    ? ` – ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(end)}`
+    ? ` – ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(end)}`
     : '';
   return `${date} · ${time}${endLabel}`;
 }
@@ -99,7 +99,7 @@ export function PlanCardContent({
   const isOpen = view.state !== 'canceled';
   const canRespond = !isVote && Boolean(self) && isOpen;
   const leading = isVote ? leadingOption(options) : null;
-  const canConfirm = Boolean(self?.organizer) && (isVote ? polling && leading !== null : view.state === 'awaiting_confirmation');
+  const canConfirm = Boolean(self?.organizer || (accountId && view.managerIds?.includes(accountId))) && (isVote ? polling && leading !== null : view.state === 'awaiting_confirmation');
   const onCalendar = !isVote && view.state === 'confirmed' && self?.rsvp === 'yes' && Boolean(view.startAt);
   const voterCount = new Set(options.flatMap((option) => option.votes)).size;
   const when = formatWhen(view.startAt, view.endAt);

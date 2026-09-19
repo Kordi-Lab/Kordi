@@ -1,4 +1,4 @@
-import { mergeCanonicalPlanCards } from './readModel/planCardEntries';
+import { mergeCanonicalPlanCards, preferTranscriptWithCanonicalPlanCards } from './readModel/planCardEntries';
 import { localRuntimeProgressForCanonicalPlaceholder } from './localRuntimeProgress';
 import {
 isCanonicalCloudSessionId,
@@ -32,7 +32,6 @@ sessionMetadata,
 sessionPrefersPersistedTitle,
 sessionUnreadCount,
 sessionViewMetadata,
-shouldUseCanonicalMessages,
 syntheticCollaborationTarget,
 syntheticConversation,
 syntheticParticipantSpaceId,
@@ -326,8 +325,7 @@ export function createCanonicalSessionReadModel(
     },
     preferMessages(sessionId, existingMessages) {
       const canonicalMessages = this.messages(sessionId);
-      return shouldUseCanonicalMessages(existingMessages, canonicalMessages)
-        ? canonicalMessages : mergeCanonicalPlanCards(existingMessages, canonicalMessages);
+      return preferTranscriptWithCanonicalPlanCards(existingMessages, canonicalMessages);
     },
     applyConversation(conversation, buildSubtitle) {
       const sessionId = conversation.canonicalSessionId ?? conversation.id;

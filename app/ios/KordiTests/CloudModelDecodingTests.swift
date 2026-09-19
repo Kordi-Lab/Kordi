@@ -1037,7 +1037,7 @@ private final class PlanCardConflictProtocol: URLProtocol {
             ? #"{"errorCode":"plan_card_revision_conflict","message":"Stale revision"}"#
             : failsRefresh
                 ? #"{"errorCode":"plan_card_unavailable","message":"Refresh unavailable"}"#
-                : #"{"eventId":"plan-test","revision":3,"state":"awaiting_confirmation","title":"Updated dinner","participants":[]}"#
+                : #"{"eventId":"plan-test","revision":3,"state":"awaiting_confirmation","title":"Updated dinner","participants":[],"managerIds":["admin"]}"#
         if !isAction { XCTAssertEqual(request.url?.path, "/v1/cloud/plan_cards/plan-test") }
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
             headerFields: ["Content-Type": "application/json"])!
@@ -1060,6 +1060,7 @@ struct PlanCardConflictRecoveryTests {
         #expect(updated.revision == 3)
         #expect(updated.state == .awaitingConfirmation)
         #expect(updated.title == "Updated dinner")
+        #expect(updated.managerIds == ["admin"])
     }
 
     @Test func failedRefreshSurfacesAnError() async {

@@ -125,6 +125,8 @@ pub struct PlanCardRow {
     #[serde(skip)]
     pub source_message_ids: Vec<String>,
     pub participants: Vec<PlanCardParticipantStatus>,
+    /// Current active organizers, chat owners, and admins allowed to confirm.
+    pub manager_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub options: Vec<PlanCardOption>,
     #[serde(skip_serializing_if = "Option::is_none")]

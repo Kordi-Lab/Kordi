@@ -1,3 +1,4 @@
+import { shouldUseCanonicalMessages } from './conversationMapping';
 import type { Message } from '@/kordi-app/types';
 import type { CanonicalMessageSortPosition } from './messageSort';
 
@@ -53,4 +54,9 @@ export function mergeCanonicalPlanCards(messages: Message[], canonicalMessages: 
     return { ...message, planCard: card };
   });
   return changed ? merged : messages;
+}
+
+export function preferTranscriptWithCanonicalPlanCards(existing: Message[], canonical: Message[]): Message[] {
+  return shouldUseCanonicalMessages(existing, canonical)
+    ? canonical : mergeCanonicalPlanCards(existing, canonical);
 }

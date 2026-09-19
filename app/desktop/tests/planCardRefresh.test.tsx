@@ -3,6 +3,7 @@ import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { CloudAuthClient, cloudMessageFromChatSync } from '../src/features/cloud/authClient';
 import { buildCloudAuthError } from '../src/features/cloud/cloudAuthError';
 import { planCardAction } from '../src/features/cloud/planCardClient';
@@ -100,4 +101,27 @@ test('pending actions freeze content, recover conflicts, and retain local state 
     previous.forEach((descriptor, key) => { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); });
     dom.window.close();
   }
+});
+
+
+test('only organizers and chat admins can confirm with just one answer', () => {
+  const oneAnswer: MessagePlanCard = { ...card, participants: [
+    { participantId: 'organizer', displayName: 'Organizer', organizer: true, rsvp: 'yes' },
+    { participantId: 'acct_b', displayName: 'Member', organizer: false, rsvp: 'pending' },
+    { participantId: 'third', displayName: 'Third member', organizer: false, rsvp: 'pending' },
+  ] };
+  const markup = renderToStaticMarkup(<PlanCardContent card={{ ...oneAnswer, managerIds: ['acct_b'] }} ownAccountId="acct_b" />);
+  assert.doesNotMatch(renderToStaticMarkup(<PlanCardContent card={oneAnswer} ownAccountId="acct_b" />), />Confirm<\/button>/);
+  assert.match(renderToStaticMarkup(<PlanCardContent card={oneAnswer} ownAccountId="organizer" />), />Confirm<\/button>/);
+  assert.match(markup, />Confirm<\/button>/);
+  assert.doesNotMatch(renderToStaticMarkup(<PlanCardContent card={{ ...oneAnswer, state: 'confirmed' }} ownAccountId="acct_b" />), />Confirm<\/button>/);
+  assert.doesNotMatch(renderToStaticMarkup(<PlanCardContent card={oneAnswer} ownAccountId="outsider" />), />Confirm<\/button>/);
+});
+
+
+test('updated card times render with the viewer timezone identified', () => {
+  const startAt = '2026-09-20T19:00:00-07:00';
+  const markup = renderToStaticMarkup(<PlanCardContent card={{ ...card, startAt }} ownAccountId="acct_b" />);
+  const label = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(startAt));
+  assert.ok(markup.includes(label));
 });

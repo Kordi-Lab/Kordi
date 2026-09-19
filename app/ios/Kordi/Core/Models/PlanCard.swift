@@ -103,13 +103,14 @@ struct PlanCard: Codable, Hashable {
     let location: String?
     let unresolvedFields: [String]
     let participants: [PlanCardParticipant]
+    let managerIds: [String]
     let options: [PlanCardOption]
     /// Which card this message shows: "vote" between options, or "event", the
     /// calendar card for the plan itself.
     var view: String?
 
     enum CodingKeys: String, CodingKey {
-        case eventId, revision, state, title, startAt, endAt, location, unresolvedFields, participants, options, view
+        case eventId, revision, state, title, startAt, endAt, location, unresolvedFields, participants, options, view, managerIds
     }
 
     enum CardView { case vote, event }
@@ -132,6 +133,7 @@ struct PlanCard: Codable, Hashable {
         endAt = try container.decodeIfPresent(String.self, forKey: .endAt)
         location = try container.decodeIfPresent(String.self, forKey: .location)
         unresolvedFields = (try? container.decodeIfPresent([String].self, forKey: .unresolvedFields)) ?? []
+        managerIds = (try? container.decodeIfPresent([String].self, forKey: .managerIds)) ?? []
         participants = (try? container.decodeIfPresent([PlanCardParticipant].self, forKey: .participants)) ?? []
         options = (try? container.decodeIfPresent([PlanCardOption].self, forKey: .options)) ?? []
         view = try? container.decodeIfPresent(String.self, forKey: .view)

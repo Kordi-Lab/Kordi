@@ -25,7 +25,7 @@ struct PlanCardView: View {
     private var votingOpen: Bool { isVote && view.isPolling }
     private var canRespond: Bool { !isVote && me != nil && view.state != .canceled && onAction != nil }
     private var canConfirm: Bool {
-        guard me?.organizer ?? false, onAction != nil else { return false }
+        guard (me?.organizer ?? false) || view.managerIds.contains(ownAccountId ?? ""), onAction != nil else { return false }
         return isVote ? votingOpen && view.leadingOption != nil : view.state == .awaitingConfirmation
     }
     private var onCalendar: Bool {
@@ -202,9 +202,9 @@ struct PlanCardView: View {
     }
 
     private func timeLabel(_ start: Date) -> String {
-        let startText = start.formatted(date: .omitted, time: .shortened)
+        let startText = "\(start.formatted(date: .omitted, time: .shortened)) \(TimeZone.current.abbreviation(for: start) ?? TimeZone.current.identifier)"
         guard let end = view.endAt.flatMap(Self.parseDate) else { return startText }
-        return "\(startText) – \(end.formatted(date: .omitted, time: .shortened))"
+        return "\(startText) – \(end.formatted(date: .omitted, time: .shortened)) \(TimeZone.current.abbreviation(for: end) ?? TimeZone.current.identifier)"
     }
 
     private static func parseDate(_ value: String) -> Date? {

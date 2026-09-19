@@ -220,6 +220,7 @@ export type MessagePlanCard = {
   location?: string | null;
   unresolvedFields: string[];
   participants: MessagePlanCardParticipant[];
+  managerIds?: string[];
   /** Concrete choices while the card is polling; each carries the voters' account ids. */
   options?: MessagePlanCardOption[];
   /** Which card this message shows: the vote between options, or the calendar card for the plan. */
