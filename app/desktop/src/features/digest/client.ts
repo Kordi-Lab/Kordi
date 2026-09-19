@@ -1,4 +1,5 @@
 import { cloudApiBaseUrl } from '@/features/cloud/authClient';
+import { cloudFetchImpl } from '@/features/cloud/cloudTransport';
 import { normalizeCalendarEvent } from './calendarImport';
 import { loadSession } from '@/features/cloud/session';
 import type { CalendarEvent, CalendarSyncResult, DigestResponse } from './types';
@@ -13,7 +14,7 @@ async function request<T>(accountId: string, path: string, method = 'GET', body?
   let timedOut = false;
   const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 15_000);
   try {
-    const response = await fetch(`${cloudApiBaseUrl()}/v1/cloud/${path}`, {
+    const response = await cloudFetchImpl()(`${cloudApiBaseUrl()}/v1/cloud/${path}`, {
       method, signal: controller.signal,
       headers: { Authorization: `Bearer ${session.token}`, 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),

@@ -63,6 +63,13 @@ those Rust request and response types; do not add a hand-maintained TypeScript
 mirror. The desktop Cloud client owns a separate API surface and should derive
 or generate cross-language types if it ever consumes this protocol directly.
 
+## Network proxy policy
+
+All clients share one proxy policy: explicit proxy environment wins, static
+system proxies are used as a fallback, PAC/PAD is bypassed by stacks that
+cannot evaluate it, loopback stays direct, and unroutable requests fail fast
+with an actionable error. See [network-proxy-policy.md](network-proxy-policy.md).
+
 ## Desktop background agent sessions
 
 Shared group and person chats keep their parent turn short when the model delegates a concrete, bounded, independent task through `task_operator.spawn`. Desktop creates a normal persisted child agent session, starts its turn through the existing chat manager, and returns the child session identifier to the parent immediately. The parent posts a normal response with a compact session link; progress, follow-ups, cancellation, and the final result stay in the child transcript.

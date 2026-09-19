@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Native attachment transport test</title></head>
+<body><output id="result">Loading</output>
+<script type="module">
+import { CloudAuthClient } from '/src/features/cloud/authClient.ts';
+import { recoverCloudAttachmentPreview } from '/src/features/cloud/cloudAttachmentPreviewRecovery.ts';
+import { mockNativeHttpInvoke } from '/tests/helpers/nativeHttp.ts';
+
+const canvas = document.createElement('canvas');
+canvas.width = canvas.height = 2;
+canvas.getContext('2d').fillRect(0, 0, 2, 2);
+const originalImage = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+const updates = [];
+window.__TAURI_INTERNALS__ = { invoke: mockNativeHttpInvoke(async (input, init) => {
+  if (String(input).endsWith('/content')) return new Response(originalImage);
+  if (String(input).endsWith('/preview') && init.method === 'POST') {
+    updates.push(JSON.parse(new TextDecoder().decode(init.body)));
+    return Response.json({ attachmentId: 'image', updatedLinks: 1 });
+  }
+  throw new Error('Unexpected fixture HTTP request.');
+}, async command => {
+  if (command === 'desktop_chat_cache_cloud_attachment') return '/synthetic/preview.png';
+  throw new Error(`Unexpected fixture native command: ${command}`);
+}) };
+
+try {
+  const client = new CloudAuthClient({ baseUrl: 'http://127.0.0.1:8787' });
+  const blob = await client.downloadAttachmentContent('synthetic-token', 'image');
+  const previewUrl = await recoverCloudAttachmentPreview({
+    client, token: 'synthetic-token',
+    attachment: { attachmentId: 'image', name: 'image.png', kind: 'image', mimeType: 'image/png', previewUrl: null },
+  });
+  document.querySelector('#result').textContent = JSON.stringify({
+    mimeType: blob.type,
+    recovered: Boolean(previewUrl?.startsWith('data:image/')),
+    updates: updates.length,
+  });
+} catch (error) {
+  document.querySelector('#result').textContent = String(error);
+}
+</script></body></html>

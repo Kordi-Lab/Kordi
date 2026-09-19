@@ -12,6 +12,7 @@ import {
 } from './cloudAgents';
 import type { CanonicalAvatarMutation } from './canonicalAvatar';
 import { avatarDataUrlBlob } from './canonicalAvatar';
+import { cloudFetchImpl } from './cloudTransport';
 
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
@@ -72,7 +73,7 @@ export class CloudAgentsClient {
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.fetchImpl = options.fetchImpl ?? cloudFetchImpl();
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
   }
 

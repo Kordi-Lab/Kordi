@@ -40,5 +40,9 @@ export async function downloadCloudAttachmentBlob({
       resource === 'content' ? 'Could not download attachment.' : 'Could not download attachment preview.',
     );
   }
-  return response.blob();
+  const blob = await response.blob();
+  // The native HTTP plugin exposes headers separately from Response's internal
+  // header list, so blob() can lose the server's MIME type.
+  const contentType = response.headers.get('content-type');
+  return !blob.type && contentType ? blob.slice(0, blob.size, contentType) : blob;
 }

@@ -23,6 +23,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "tray-icon"] }
 tauri-plugin-deep-link = "2.4.9"
+tauri-plugin-http = "2"
 tauri-plugin-updater = "2"
 tokio = { workspace = true }
 tokio-util = { workspace = true }
@@ -49,6 +50,7 @@ objc2-foundation = { version = "0.3", features = ["NSError", "NSLocale", "NSNoti
 objc2-speech = "0.3.2"
 
 [dev-dependencies]
+tauri = { version = "2", features = ["test"] }
 # The Tauri updater uses reqwest 0.13 while the rest of the native runtime uses
 # the workspace's reqwest 0.12. Keep the proxy integration test covering both.
 reqwest-updater-stack = { package = "reqwest", version = "0.13", default-features = false, features = ["blocking"] }
