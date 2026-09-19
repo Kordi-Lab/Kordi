@@ -24,7 +24,7 @@ if [ -n "${KORDI_BACKEND_SSH_KEY:-}" ]; then
   printf '%s\n' "$KORDI_BACKEND_SSH_KEY" > "$key_file"
   ssh=(gcloud compute ssh "$KORDI_BACKEND_SSH_USER@$KORDI_BACKEND_TARGET" --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet --plain --strict-host-key-checking=no
     --ssh-flag="-i $key_file" --ssh-flag='-o IdentitiesOnly=yes' --ssh-flag='-o StrictHostKeyChecking=accept-new')
-  scp+=(--plain --strict-host-key-checking=no --scp-flag="-i $key_file" --scp-flag='-o IdentitiesOnly=yes' --scp-flag='-o StrictHostKeyChecking=accept-new')
+  scp+=(--plain --strict-host-key-checking=no --scp-flag=-i --scp-flag="$key_file" --scp-flag=-oIdentitiesOnly=yes --scp-flag=-oStrictHostKeyChecking=accept-new)
   KORDI_BACKEND_TARGET="$KORDI_BACKEND_SSH_USER@$KORDI_BACKEND_TARGET"
 fi
 remote=""
@@ -40,7 +40,7 @@ cleanup() {
   fi
   exit "$status"
 }
-trap cleanup EXIT
+trap 'cleanup' EXIT
 remote="$("${ssh[@]}" --command 'umask 077; mktemp -d /tmp/kordi-backend.XXXXXXXX' 2>"$raw_log")"
 [[ "$remote" =~ ^/tmp/kordi-backend\.[a-zA-Z0-9]+$ ]] || exit 1
 "${scp[@]}" --recurse "$bundle" "$KORDI_BACKEND_TARGET:$remote/bundle" >>"$raw_log" 2>&1
