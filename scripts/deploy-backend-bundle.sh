@@ -45,6 +45,19 @@ cleanup() {
 trap 'cleanup' EXIT
 remote="$("${ssh[@]}" --command 'umask 077; mktemp -d /tmp/kordi-backend.XXXXXXXX' 2>"$raw_log")"
 [[ "$remote" =~ ^/tmp/kordi-backend\.[a-zA-Z0-9]+$ ]] || exit 1
+observed_sha="none"
+if [ "$environment" = dev ]; then
+  printf -v state_command '%q ' python3 -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); print(json.loads(p.read_text())["sha"] if p.exists() else "none")' "$KORDI_BACKEND_STATE/current.json"
+  observed_sha="$("${ssh[@]}" --command "$state_command" 2>>"$raw_log")"
+  ordering=0
+  node "$root/scripts/check-backend-order.mjs" "$observed_sha" "$sha" || ordering=$?
+  if [ "$ordering" -eq 3 ]; then
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then echo 'deployed=false' >> "$GITHUB_OUTPUT"; fi
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then echo 'A newer backend is already deployed; this older build queues no production promotion.' >> "$GITHUB_STEP_SUMMARY"; fi
+    exit 0
+  fi
+  [ "$ordering" -eq 0 ] || exit "$ordering"
+fi
 if [ -n "${KORDI_BACKEND_ARTIFACT_ID:-}" ]; then
   descriptor="$(mktemp)"
   chmod 600 "$descriptor"
@@ -62,7 +75,7 @@ if [ "$environment" = dev ]; then
   : "${KORDI_BACKEND_COMPOSE_PROJECT:?Missing development Compose project}"
   : "${KORDI_BACKEND_ENV_FILE:?Missing isolated development environment file}"
   files+=("$root/scripts/backend_deploy_dev.py" "$root/deploy/dev/compose.yaml")
-  arguments+=(--api-port "$KORDI_BACKEND_API_PORT" --project "$KORDI_BACKEND_COMPOSE_PROJECT" --env-file "$KORDI_BACKEND_ENV_FILE" --compose "$remote/compose.yaml")
+  arguments+=(--expected-current-sha "$observed_sha" --api-port "$KORDI_BACKEND_API_PORT" --project "$KORDI_BACKEND_COMPOSE_PROJECT" --env-file "$KORDI_BACKEND_ENV_FILE" --compose "$remote/compose.yaml")
 else
   : "${KORDI_BACKEND_BACKUP_ROOT:?Missing protected backup directory}"
   : "${KORDI_BACKEND_BACKUP_ID:?Missing verified backup identifier}"
@@ -79,4 +92,5 @@ status=0
 "${ssh[@]}" --command "umask 077; $command" >>"$raw_log" 2>&1 || status=$?
 # The result contains only public revision/digest identifiers and outcomes.
 "${scp[@]}" "$KORDI_BACKEND_TARGET:$remote/bundle/deployment-result.json" "$bundle/deployment-result.json" >>"$raw_log" 2>&1 || true
+if [ "$status" -eq 0 ] && [ -n "${GITHUB_OUTPUT:-}" ]; then echo 'deployed=true' >> "$GITHUB_OUTPUT"; fi
 exit "$status"
