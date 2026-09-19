@@ -140,6 +140,20 @@ jobs:
       - name: Cache Rust build outputs
         uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7
 
+      - name: Install workspace search prerequisite
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          if ! command -v rg >/dev/null 2>&1; then
+            if [ "$RUNNER_OS" = Linux ]; then
+              sudo apt-get update -qq
+              sudo apt-get install -y ripgrep
+            else
+              brew install ripgrep
+            fi
+          fi
+
       - name: Run workspace tests
         run: cargo test --workspace --locked --exclude kordi-cloud-server --exclude kordi-desktop
 
@@ -176,7 +190,10 @@ jobs:
         uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7
 
       - name: Build desktop without signing credentials
-        run: pnpm build:desktop
+        run: >-
+          pnpm --dir app/desktop tauri:build:cloud
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          --bundles app
 
   result:
     name: Post-merge CI required

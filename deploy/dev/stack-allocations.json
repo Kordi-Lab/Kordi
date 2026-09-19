@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "stacks": [
+    {
+      "id": "dev-xyimatvoid",
+      "owner": "xyimatvoid",
+      "createdAt": "2026-09-19T10:54:24Z",
+      "expiresAt": "2026-12-18T10:54:24Z"
+    },
+    {
+      "id": "dev-jiaxin-pei",
+      "owner": "Jiaxin-Pei",
+      "createdAt": "2026-09-19T10:54:24Z",
+      "expiresAt": "2026-12-18T10:54:24Z"
+    },
+    {
+      "id": "dev-tomcohen13",
+      "owner": "tomcohen13",
+      "createdAt": "2026-09-19T10:54:24Z",
+      "expiresAt": "2026-12-18T10:54:24Z"
+    },
+    {
+      "id": "dev-shenzhezhu",
+      "owner": "ShenzheZhu",
+      "createdAt": "2026-09-19T10:54:24Z",
+      "expiresAt": "2026-12-18T10:54:24Z"
+    },
+    {
+      "id": "dev-shuyhere",
+      "owner": "shuyhere",
+      "createdAt": "2026-09-19T10:54:24Z",
+      "expiresAt": "2026-12-18T10:54:24Z"
+    },
+    {
+      "id": "dev-richsomeday222",
+      "owner": "RichSomeday222",
+      "createdAt": "2026-09-19T10:54:24Z",
+      "expiresAt": "2026-12-18T10:54:24Z"
+    }
+  ]
+}
