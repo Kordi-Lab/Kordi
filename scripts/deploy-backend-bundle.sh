@@ -14,7 +14,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bundle="$(cd "$bundle" && pwd)"
 python3 "$root/scripts/backend_artifact.py" verify --directory "$bundle" --sha "$sha" --run-id "$run_id"
 ssh=(gcloud compute ssh "$KORDI_BACKEND_TARGET" --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
-scp=(gcloud compute scp --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
+scp=(gcloud compute scp --scp-flag=-C --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
 raw_log="$(mktemp)"
 key_file=""
 if [ -n "${KORDI_BACKEND_SSH_KEY:-}" ]; then

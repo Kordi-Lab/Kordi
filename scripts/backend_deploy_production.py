@@ -8,7 +8,7 @@ import re
 from backend_artifact import SERVICES, verify_bundle
 from backend_backup import verify_backup
 from backend_backup_create import create_backup
-from backend_deploy_common import health, lock, run, write_record, write_state
+from backend_deploy_common import health, lock, run, write_failure, write_record, write_state
 
 KUBECTL = ["sudo", "k3s", "kubectl", "--namespace", "kordi-cloud"]
 CONTAINERS = {"cloud-server": "server", "cloud-agent-runner": "runner"}
@@ -95,7 +95,8 @@ def deploy(args):
             record["outcome"] = "success"
             record["stage"] = "complete"
             write_state(args.state / "current.json", bundle)
-        except Exception:
+        except Exception as error:
+            write_failure(args.state, error)
             if applied and previous and args.schema_compatibility == "backward-compatible":
                 try:
                     apply_images(previous)

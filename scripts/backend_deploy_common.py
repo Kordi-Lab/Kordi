@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 import time
+import traceback
 import urllib.request
 
 
@@ -66,3 +67,17 @@ def write_state(path, data):
     temporary.write_text(json.dumps(data, indent=2) + "\n")
     os.chmod(temporary, 0o600)
     temporary.replace(path)
+
+
+def write_failure(state, error):
+    """Retain diagnostics only on the host; never put command output in public records."""
+    directory = state / "logs"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    output = getattr(error, "output", "") or ""
+    if isinstance(output, bytes):
+        output = output.decode("utf-8", errors="replace")
+    details = "".join(traceback.format_exception(error)) + "\n" + output
+    path = directory / f"failure-{time.time_ns()}.log"
+    with path.open("x") as stream:
+        os.chmod(path, 0o600)
+        stream.write(details[-65536:])

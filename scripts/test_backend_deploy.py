@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import tarfile
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -80,6 +81,22 @@ class BackendTests(unittest.TestCase):
         record = json.loads((self.directory / "deployment-result.json").read_text())
         self.assertEqual(record["outcome"], "failure")
         self.assertEqual(len(list((self.directory / "state/records").glob("*.json"))), 1)
+
+    def test_containerd_docker_manifest_identifiers_are_verified_against_the_approved_digest(self):
+        digest = self.manifest["images"]["cloud-server"]["digest"]
+        with patch("backend_deploy_dev.run", return_value=digest), patch("backend_deploy_dev.health"):
+            deploy(self.args())
+        self.assertEqual(json.loads((self.directory / "deployment-result.json").read_text())["outcome"], "success")
+
+    def test_command_diagnostics_stay_in_private_host_logs(self):
+        error = subprocess.CalledProcessError(1, ["fixture"], output="synthetic-private-diagnostic")
+        with patch("backend_deploy_dev.run", side_effect=error):
+            with self.assertRaises(subprocess.CalledProcessError):
+                deploy(self.args())
+        self.assertNotIn("synthetic-private-diagnostic", (self.directory / "deployment-result.json").read_text())
+        log = next((self.directory / "state/logs").glob("*.log"))
+        self.assertIn("synthetic-private-diagnostic", log.read_text())
+        self.assertEqual(log.stat().st_mode & 0o777, 0o600)
 
     def test_success_updates_both_images_without_building(self):
         calls = []
