@@ -17,14 +17,13 @@ import {
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
 import { loadSession } from '@/features/cloud/session';
-import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
 import { attachmentFileFamily, attachmentFileTileLabel, splitAttachmentName } from '@/features/chat/attachmentFileFamily';
+import { revealDesktopAttachment, saveDesktopAttachmentAs } from '@/features/chat/attachmentDesktopActions';
+import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
 import { attachmentFormatLabel } from '@/features/chat/composerAttachments';
 import {
   downloadDesktopAttachment,
   openDesktopExternalUrl,
-  revealDesktopAttachment,
-  saveDesktopAttachmentAs,
   storeDesktopChatAttachment,
 } from '@/lib/desktop';
 import type { MessageAttachment } from '../types';

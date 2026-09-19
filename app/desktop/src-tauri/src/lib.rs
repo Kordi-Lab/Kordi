@@ -373,7 +373,7 @@ pub fn run() {
             chat::attachments::live_photos::desktop_chat_prepare_live_photos,
             chat::attachments::desktop_chat_read_attachment,
             chat::attachments::desktop_chat_download_attachment,
-            chat::attachments::desktop_save_attachment_as,
+            chat::attachments::save_as::desktop_save_attachment_as,
             chat::attachments::cloud_upload::desktop_cloud_attachment_upload,
             chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,
             chat::artifacts::desktop_chat_artifact_preview,
