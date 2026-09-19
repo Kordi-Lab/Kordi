@@ -85,7 +85,7 @@ jobs:
     name: iOS simulator compile
     needs: plan
     if: needs.plan.outputs.ios == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -112,7 +112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          pinned="/Applications/Xcode_26.3.app"
+          pinned="/Applications/Xcode_26.6.app"
           if [ ! -d "$pinned" ]; then
             echo "Pinned Xcode not found at $pinned" >&2
             echo "Available Xcode installations:" >&2
