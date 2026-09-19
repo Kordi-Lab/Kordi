@@ -1,0 +1,188 @@
+name: Backend delivery
+
+on:
+  workflow_run:
+    workflows: [Post-merge CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Tested main revision to rebuild (blank means current main)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build tested backend bundle
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      checks: read
+      actions: read
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+      artifact: ${{ steps.bundle.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Resolve and authorize the tested revision
+        id: revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ inputs.sha || github.event.workflow_run.head_sha }}
+          SOURCE_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name || github.repository }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$SOURCE_REPOSITORY" = "$GITHUB_REPOSITORY"
+          sha="${REQUESTED_SHA:-$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)}"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$sha" --jq .merge_base_commit.sha)" = "$sha"
+          ready=false
+          for _attempt in $(seq 1 20); do
+            if node scripts/check-sha-readiness.mjs --sha "$sha" --branch main --check 'CI required' --check 'Post-merge CI required'; then
+              ready=true
+              break
+            fi
+            sleep 15
+          done
+          test "$ready" = true
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Checkout the tested source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ steps.revision.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Prepare the backend bundle directory
+        run: mkdir -p "$RUNNER_TEMP/backend-bundle"
+      - name: Build cloud-server once with both archive formats
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: source
+          file: source/bridges/cloud-server/Dockerfile.runtime
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          labels: org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
+          tags: docker.io/library/kordi-cloud-server:${{ steps.revision.outputs.sha }}
+          cache-from: type=gha,scope=backend-cloud-server,version=2
+          cache-to: type=gha,scope=backend-cloud-server,version=2,mode=max,ignore-error=true
+          outputs: |
+            type=docker,dest=${{ runner.temp }}/backend-bundle/cloud-server.docker.tar
+            type=oci,dest=${{ runner.temp }}/backend-bundle/cloud-server.oci.tar
+      - name: Build cloud-agent-runner once with both archive formats
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: source
+          file: source/bridges/cloud-agent-runner/Dockerfile.runtime
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          labels: org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
+          tags: docker.io/library/kordi-cloud-agent-runner:${{ steps.revision.outputs.sha }}
+          cache-from: type=gha,scope=backend-cloud-agent-runner,version=2
+          cache-to: type=gha,scope=backend-cloud-agent-runner,version=2,mode=max,ignore-error=true
+          outputs: |
+            type=docker,dest=${{ runner.temp }}/backend-bundle/cloud-agent-runner.docker.tar
+            type=oci,dest=${{ runner.temp }}/backend-bundle/cloud-agent-runner.oci.tar
+      - name: Bind both images to the tested revision and build run
+        env:
+          TARGET_SHA: ${{ steps.revision.outputs.sha }}
+        run: python3 scripts/backend_artifact.py create --directory "$RUNNER_TEMP/backend-bundle" --sha "$TARGET_SHA" --run-id "$GITHUB_RUN_ID"
+      - name: Store the immutable promotion bundle
+        id: bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: backend-bundle
+          path: ${{ runner.temp }}/backend-bundle
+          overwrite: true
+          compression-level: 0
+          retention-days: 30
+          if-no-files-found: error
+
+  development:
+    name: Update shared development backend
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: dev
+    concurrency:
+      group: backend-shared-development
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    env:
+      TARGET_SHA: ${{ needs.build.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Skip revisions superseded while building
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)" = "$TARGET_SHA" ]; then
+            echo 'deploy=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'A newer main revision superseded this build; shared development was not changed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: steps.current.outputs.deploy == 'true'
+        with:
+          name: backend-bundle
+          path: ${{ runner.temp }}/backend-bundle
+      - name: Authenticate to isolated development
+        if: steps.current.outputs.deploy == 'true'
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
+        with:
+          workload_identity_provider: ${{ secrets.KORDI_DEV_WIF_PROVIDER }}
+          service_account: ${{ secrets.KORDI_DEV_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f
+        if: steps.current.outputs.deploy == 'true'
+      - name: Deploy and verify on the development host
+        if: steps.current.outputs.deploy == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KORDI_BACKEND_ARTIFACT_ID: ${{ needs.build.outputs.artifact }}
+          KORDI_BACKEND_PROJECT: ${{ secrets.KORDI_BACKEND_PROJECT }}
+          KORDI_BACKEND_ZONE: ${{ secrets.KORDI_BACKEND_ZONE }}
+          KORDI_BACKEND_TARGET: ${{ secrets.KORDI_BACKEND_TARGET }}
+          KORDI_BACKEND_STATE: ${{ secrets.KORDI_BACKEND_STATE }}
+          KORDI_BACKEND_API_PORT: ${{ secrets.KORDI_BACKEND_API_PORT }}
+          KORDI_BACKEND_LOCK_DIR: ${{ secrets.KORDI_BACKEND_LOCK_DIR }}
+          KORDI_BACKEND_SSH_USER: ${{ secrets.KORDI_BACKEND_SSH_USER }}
+          KORDI_BACKEND_SSH_KEY: ${{ secrets.KORDI_BACKEND_SSH_KEY }}
+          KORDI_BACKEND_ENV_FILE: ${{ secrets.KORDI_BACKEND_ENV_FILE }}
+          KORDI_BACKEND_COMPOSE_PROJECT: ${{ secrets.KORDI_BACKEND_COMPOSE_PROJECT }}
+        run: bash scripts/deploy-backend-bundle.sh dev "$RUNNER_TEMP/backend-bundle" "$TARGET_SHA" "$GITHUB_RUN_ID"
+      - name: Publish deployment outcome
+        if: always() && steps.current.outputs.deploy == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: development-deployment-result
+          overwrite: true
+          path: ${{ runner.temp }}/backend-bundle/deployment-result.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Link the production promotion
+        if: success() && steps.current.outputs.deploy == 'true'
+        run: |
+          {
+            echo "Development verified revision \`$TARGET_SHA\`."
+            echo "Promote this exact bundle with build run ID \`$GITHUB_RUN_ID\` using Deploy production."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,152 @@
+name: CI hygiene
+
+on:
+  workflow_call:
+    inputs:
+      manifest:
+        description: Expected-work manifest produced by the blocking CI changes job.
+        required: true
+        type: string
+    outputs:
+      results:
+        description: Machine-readable completion results for the hygiene group.
+        value: ${{ jobs.completion.outputs.results }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan hygiene checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      hygiene: ${{ steps.applicable.outputs.hygiene }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Resolve applicability
+        id: applicable
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs check-manifest \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --expected-revision "$EXPECTED_REVISION"
+          echo "hygiene=$(node scripts/check-ci-results.mjs applicable --manifest "$RUNNER_TEMP/ci-manifest.json" --group hygiene)" >> "$GITHUB_OUTPUT"
+
+  hygiene:
+    name: Repository hygiene
+    needs: plan
+    if: needs.plan.outputs.hygiene == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate workflow YAML
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=1.7.12
+          checksum=8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+          archive="$RUNNER_TEMP/actionlint.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --connect-timeout 20 --max-time 120 --retry 3 --retry-all-errors \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+
+      - name: Set up the backend artifact exporter
+        if: hashFiles('scripts/backend_artifact.py') != ''
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+
+      - name: Verify real Docker and OCI exports with synthetic images
+        if: hashFiles('scripts/test-backend-export.sh') != ''
+        run: bash scripts/test-backend-export.sh
+
+      - name: Run hygiene checks
+        shell: bash
+        env:
+          KORDI_CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          KORDI_CI_HEAD: ${{ github.sha }}
+          KORDI_HYGIENE_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: pnpm check:hygiene
+
+  completion:
+    name: Complete hygiene results
+    needs:
+      - plan
+      - hygiene
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      results: ${{ steps.publish.outputs.results }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Emit completion result
+        id: emit
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          HYGIENE_RESULT: ${{ needs.hygiene.result }}
+          REVISION: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs emit \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --result "hygiene=$HYGIENE_RESULT" \
+            --sha "$REVISION" \
+            --run-id "$RUN_ID" \
+            --summary \
+            --fail-on-invalid \
+            --out "$RUNNER_TEMP/ci-results.json"
+
+      - name: Publish completion result
+        id: publish
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/ci-results.json" ]; then
+            {
+              echo "results<<CI_RESULTS_EOF"
+              cat "$RUNNER_TEMP/ci-results.json"
+              echo "CI_RESULTS_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi

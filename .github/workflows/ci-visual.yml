@@ -1,0 +1,175 @@
+name: CI visual
+
+on:
+  workflow_call:
+    inputs:
+      manifest:
+        description: Expected-work manifest produced by the blocking CI changes job.
+        required: true
+        type: string
+    outputs:
+      results:
+        description: Machine-readable completion results for the visual and browser groups.
+        value: ${{ jobs.completion.outputs.results }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan visual checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      visual: ${{ steps.applicable.outputs.visual }}
+      browser: ${{ steps.applicable.outputs.browser }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Resolve applicability
+        id: applicable
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs check-manifest \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --expected-revision "$EXPECTED_REVISION"
+          for group in visual browser; do
+            echo "$group=$(node scripts/check-ci-results.mjs applicable --manifest "$RUNNER_TEMP/ci-manifest.json" --group "$group")" >> "$GITHUB_OUTPUT"
+          done
+
+  visual:
+    name: Visual regression
+    needs: plan
+    if: needs.plan.outputs.visual == 'true'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install visual-test browser
+        run: pnpm --dir app/desktop exec playwright install chromium
+
+      - name: Install ffmpeg
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            brew install ffmpeg
+          fi
+          which ffmpeg
+          ffmpeg -version | head -n 1
+
+      - name: Run visual checks
+        run: pnpm check:visual
+
+  browser:
+    name: Browser suites
+    needs: plan
+    if: needs.plan.outputs.browser == 'true'
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install visual-test browser
+        run: pnpm --dir app/desktop exec playwright install chromium
+
+      - name: Run browser checks
+        run: pnpm check:browser
+
+  completion:
+    name: Complete visual results
+    needs:
+      - plan
+      - visual
+      - browser
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      results: ${{ steps.publish.outputs.results }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Emit completion result
+        id: emit
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          VISUAL_RESULT: ${{ needs.visual.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          REVISION: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs emit \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --result "visual=$VISUAL_RESULT" \
+            --result "browser=$BROWSER_RESULT" \
+            --sha "$REVISION" \
+            --run-id "$RUN_ID" \
+            --summary \
+            --fail-on-invalid \
+            --out "$RUNNER_TEMP/ci-results.json"
+
+      - name: Publish completion result
+        id: publish
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/ci-results.json" ]; then
+            {
+              echo "results<<CI_RESULTS_EOF"
+              cat "$RUNNER_TEMP/ci-results.json"
+              echo "CI_RESULTS_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi

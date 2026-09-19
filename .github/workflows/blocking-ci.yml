@@ -1,0 +1,157 @@
+name: Blocking CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blocking-ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Detect required checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      manifest: ${{ steps.select.outputs.manifest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select checks
+        id: select
+        shell: bash
+        env:
+          BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/ci-manifest.json"
+          selected=0
+          if node scripts/ci/select-checks.mjs --base "$BASE_REVISION" --head "$HEAD_REVISION" --out "$manifest" \
+            && node scripts/check-ci-results.mjs check-manifest --manifest "$manifest" --expected-revision "$HEAD_REVISION"; then
+            selected=1
+          fi
+          if [ "$selected" -ne 1 ]; then
+            echo "::warning::Change detection failed or produced an invalid manifest; running the conservative full suite."
+            node scripts/check-ci-results.mjs full-manifest \
+              --base "$BASE_REVISION" \
+              --head "$HEAD_REVISION" \
+              --mode fallback \
+              --reason "change detection failed or produced an invalid manifest" \
+              --out "$manifest"
+          fi
+          jq -c . "$manifest" > "$manifest.compact"
+          {
+            echo "manifest<<CI_MANIFEST_EOF"
+            cat "$manifest.compact"
+            echo "CI_MANIFEST_EOF"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Expected work"
+            echo '```json'
+            jq . "$manifest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload expected-work manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-expected-work
+          path: ${{ runner.temp }}/ci-manifest.json
+          retention-days: 7
+          if-no-files-found: error
+
+  frontend:
+    name: Frontend checks
+    needs: changes
+    uses: ./.github/workflows/ci-frontend.yml
+    with:
+      manifest: ${{ needs.changes.outputs.manifest }}
+
+  visual:
+    name: Visual and browser checks
+    needs: changes
+    uses: ./.github/workflows/ci-visual.yml
+    with:
+      manifest: ${{ needs.changes.outputs.manifest }}
+
+  rust:
+    name: Rust checks
+    needs: changes
+    uses: ./.github/workflows/ci-rust.yml
+    with:
+      manifest: ${{ needs.changes.outputs.manifest }}
+
+  hygiene:
+    name: Repository hygiene
+    needs: changes
+    uses: ./.github/workflows/ci-hygiene.yml
+    with:
+      manifest: ${{ needs.changes.outputs.manifest }}
+
+  platforms:
+    name: Platform compilation
+    needs: changes
+    uses: ./.github/workflows/ci-platforms.yml
+    with:
+      manifest: ${{ needs.changes.outputs.manifest }}
+
+  required:
+    name: CI required
+    if: always()
+    needs:
+      - changes
+      - frontend
+      - visual
+      - rust
+      - hygiene
+      - platforms
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Evaluate merge gate
+        shell: bash
+        env:
+          MANIFEST: ${{ needs.changes.outputs.manifest }}
+          FRONTEND_RESULTS: ${{ needs.frontend.outputs.results }}
+          VISUAL_RESULTS: ${{ needs.visual.outputs.results }}
+          RUST_RESULTS: ${{ needs.rust.outputs.results }}
+          HYGIENE_RESULTS: ${{ needs.hygiene.outputs.results }}
+          PLATFORMS_RESULTS: ${{ needs.platforms.outputs.results }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/ci-results"
+          mkdir -p "$results_dir"
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          write_result() {
+            local name="$1"
+            local payload="$2"
+            if [ -n "$payload" ]; then
+              printf '%s' "$payload" > "$results_dir/$name.json"
+            fi
+          }
+          write_result frontend "$FRONTEND_RESULTS"
+          write_result visual "$VISUAL_RESULTS"
+          write_result rust "$RUST_RESULTS"
+          write_result hygiene "$HYGIENE_RESULTS"
+          write_result platforms "$PLATFORMS_RESULTS"
+          node scripts/check-ci-results.mjs evaluate \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --results-dir "$results_dir" \
+            --expected-revision "$EXPECTED_REVISION" | tee -a "$GITHUB_STEP_SUMMARY"

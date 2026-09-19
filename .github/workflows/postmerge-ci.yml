@@ -1,0 +1,257 @@
+name: Post-merge CI
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postmerge-ci-${{ github.workflow }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  manifest:
+    name: Prepare full expected work
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      manifest: ${{ steps.full.outputs.manifest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build full manifest
+        id: full
+        shell: bash
+        env:
+          BASE_REVISION: ${{ github.event.before }}
+          HEAD_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          manifest="$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs full-manifest \
+            --base "$BASE_REVISION" \
+            --head "$HEAD_REVISION" \
+            --mode postmerge \
+            --fallback false \
+            --reason "post-merge full-suite coverage" \
+            --groups frontend,visual,browser,server,migrations,desktop,ios,hygiene,workspace,build-smoke \
+            --out "$manifest"
+          node scripts/check-ci-results.mjs check-manifest \
+            --manifest "$manifest" \
+            --expected-revision "$HEAD_REVISION"
+          jq -c . "$manifest" > "$manifest.compact"
+          {
+            echo "manifest<<CI_MANIFEST_EOF"
+            cat "$manifest.compact"
+            echo "CI_MANIFEST_EOF"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "### Expected post-merge work"
+            echo '```json'
+            jq . "$manifest"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload expected-work manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: postmerge-expected-work
+          path: ${{ runner.temp }}/ci-manifest.json
+          retention-days: 7
+          if-no-files-found: error
+
+  frontend:
+    name: Frontend checks
+    needs: manifest
+    uses: ./.github/workflows/ci-frontend.yml
+    with:
+      manifest: ${{ needs.manifest.outputs.manifest }}
+
+  visual:
+    name: Visual and browser checks
+    needs: manifest
+    uses: ./.github/workflows/ci-visual.yml
+    with:
+      manifest: ${{ needs.manifest.outputs.manifest }}
+
+  rust:
+    name: Rust checks
+    needs: manifest
+    uses: ./.github/workflows/ci-rust.yml
+    with:
+      manifest: ${{ needs.manifest.outputs.manifest }}
+
+  hygiene:
+    name: Repository hygiene
+    needs: manifest
+    uses: ./.github/workflows/ci-hygiene.yml
+    with:
+      manifest: ${{ needs.manifest.outputs.manifest }}
+
+  platforms:
+    name: Platform compilation
+    needs: manifest
+    uses: ./.github/workflows/ci-platforms.yml
+    with:
+      manifest: ${{ needs.manifest.outputs.manifest }}
+
+  workspace:
+    name: Workspace tests (${{ matrix.os }})
+    needs: manifest
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-15
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7
+
+      - name: Install workspace search prerequisite
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          if ! command -v rg >/dev/null 2>&1; then
+            if [ "$RUNNER_OS" = Linux ]; then
+              sudo apt-get update -qq
+              sudo apt-get install -y ripgrep
+            else
+              brew install ripgrep
+            fi
+          fi
+
+      - name: Run workspace tests
+        run: cargo test --workspace --locked --exclude kordi-cloud-server --exclude kordi-desktop
+
+  build-smoke:
+    name: Unsigned desktop build smoke
+    needs: manifest
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7
+
+      - name: Build desktop without signing credentials
+        run: >-
+          pnpm --dir app/desktop tauri:build:cloud
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          --bundles app
+
+  result:
+    name: Post-merge CI required
+    if: always()
+    needs:
+      - manifest
+      - frontend
+      - visual
+      - rust
+      - hygiene
+      - platforms
+      - workspace
+      - build-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Evaluate post-merge gate
+        shell: bash
+        env:
+          MANIFEST: ${{ needs.manifest.outputs.manifest }}
+          FRONTEND_RESULTS: ${{ needs.frontend.outputs.results }}
+          VISUAL_RESULTS: ${{ needs.visual.outputs.results }}
+          RUST_RESULTS: ${{ needs.rust.outputs.results }}
+          HYGIENE_RESULTS: ${{ needs.hygiene.outputs.results }}
+          PLATFORMS_RESULTS: ${{ needs.platforms.outputs.results }}
+          WORKSPACE_RESULT: ${{ needs.workspace.result }}
+          BUILD_SMOKE_RESULT: ${{ needs.build-smoke.result }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          results_dir="$RUNNER_TEMP/ci-results"
+          mkdir -p "$results_dir"
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          write_result() {
+            local name="$1"
+            local payload="$2"
+            if [ -n "$payload" ]; then
+              printf '%s' "$payload" > "$results_dir/$name.json"
+            fi
+          }
+          write_result frontend "$FRONTEND_RESULTS"
+          write_result visual "$VISUAL_RESULTS"
+          write_result rust "$RUST_RESULTS"
+          write_result hygiene "$HYGIENE_RESULTS"
+          write_result platforms "$PLATFORMS_RESULTS"
+          node scripts/check-ci-results.mjs emit \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --result "workspace=$WORKSPACE_RESULT" \
+            --result "build-smoke=$BUILD_SMOKE_RESULT" \
+            --sha "$EXPECTED_REVISION" \
+            --run-id "$GITHUB_RUN_ID" \
+            --out "$results_dir/plain-jobs.json" || true
+          node scripts/check-ci-results.mjs evaluate \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --results-dir "$results_dir" \
+            --expected-revision "$EXPECTED_REVISION" | tee -a "$GITHUB_STEP_SUMMARY"

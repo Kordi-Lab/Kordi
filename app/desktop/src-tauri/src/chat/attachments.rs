@@ -9,6 +9,7 @@ use super::DesktopStoredChatAttachment;
 mod cloud_cache;
 pub(crate) mod cloud_upload;
 pub(crate) mod live_photos;
+pub(crate) mod save_as;
 pub(crate) mod stream;
 
 use cloud_cache::download as download_cloud_attachment;

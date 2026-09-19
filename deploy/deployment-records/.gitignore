@@ -1,0 +1,6 @@
+# Deployment records are host-local operational evidence, not repository
+# content. They may contain operator notes and are archived according to
+# docs/deployment-runbook.md, so they must not be committed. This file keeps
+# the directory in Git without tracking any record.
+*
+!.gitignore

@@ -18,6 +18,17 @@ Do not commit or share provider tokens, auth tokens, database credentials, accou
 
 Before using this deploy path, select and authorize the target through [Development environment isolation](../../../docs/development-environments.md) and the [hosted environment preflight](../../../docs/hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Never treat an isolated development host as a product deployment target.
 
+## Deployment safety
+
+Wrap operator deployments with the shared lock and record the outcome. See the
+[deployment runbook](../../../docs/deployment-runbook.md) for lock ownership, timeout,
+crash recovery, cleanup, the deployment record format, and rollback versus database restore:
+
+```bash
+scripts/with-deploy-lock.sh host-wide --timeout 900 -- \
+  bash bridges/cloud-server/deploy/sync-and-build.sh
+```
+
 ## Required operator environment
 
 Set these locally before running helper scripts:

@@ -1,0 +1,123 @@
+name: CI frontend
+
+on:
+  workflow_call:
+    inputs:
+      manifest:
+        description: Expected-work manifest produced by the blocking CI changes job.
+        required: true
+        type: string
+    outputs:
+      results:
+        description: Machine-readable completion results for the frontend group.
+        value: ${{ jobs.completion.outputs.results }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.applicable.outputs.frontend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Resolve applicability
+        id: applicable
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs check-manifest \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --expected-revision "$EXPECTED_REVISION"
+          echo "frontend=$(node scripts/check-ci-results.mjs applicable --manifest "$RUNNER_TEMP/ci-manifest.json" --group frontend)" >> "$GITHUB_OUTPUT"
+
+  frontend:
+    name: Frontend checks
+    needs: plan
+    if: needs.plan.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@7088e561eb65bb68695d245aa206f005ef30921d
+        with:
+          version: 10.29.3
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run frontend checks
+        run: pnpm check:frontend
+
+  completion:
+    name: Complete frontend results
+    needs:
+      - plan
+      - frontend
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      results: ${{ steps.publish.outputs.results }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Emit completion result
+        id: emit
+        shell: bash
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          REVISION: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MANIFEST" > "$RUNNER_TEMP/ci-manifest.json"
+          node scripts/check-ci-results.mjs emit \
+            --manifest "$RUNNER_TEMP/ci-manifest.json" \
+            --result "frontend=$FRONTEND_RESULT" \
+            --sha "$REVISION" \
+            --run-id "$RUN_ID" \
+            --summary \
+            --fail-on-invalid \
+            --out "$RUNNER_TEMP/ci-results.json"
+
+      - name: Publish completion result
+        id: publish
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$RUNNER_TEMP/ci-results.json" ]; then
+            {
+              echo "results<<CI_RESULTS_EOF"
+              cat "$RUNNER_TEMP/ci-results.json"
+              echo "CI_RESULTS_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
