@@ -34,7 +34,7 @@ const TEXT_RULES = [
   {
     id: 'local-home-path',
     description: 'developer home-directory path',
-    pattern: /(?:\/Users\/(?!example(?:[\/\s<"'`]|$)|alice(?:[\/\s<"'`]|$)|owner(?:[\/\s<"'`]|$)|you(?:[\/\s<"'`]|$)|kordi-ci(?:[\/\s<"'`]|$)|\.\.\.(?:[\/\s<"'`]|$)|\*(?:[\/\s<"'`]|$)|\$\{RUNNER_ACCOUNT\}(?:[\/\s<"'`]|$))[^/\s<"'`]+|[A-Z]:\\Users\\(?!example(?:[\\\s<"'`]|$)|runner(?:[\\\s<"'`]|$)|user(?:[\\\s<"'`]|$))[^\\\s<"'`]+)/i,
+    pattern: /(?:\/Users\/(?!example(?:[\/\s<"'`]|$)|alice(?:[\/\s<"'`]|$)|owner(?:[\/\s<"'`]|$)|you(?:[\/\s<"'`]|$)|\.\.\.(?:[\/\s<"'`]|$)|\*(?:[\/\s<"'`]|$)|\$\{RUNNER_ACCOUNT\}(?:[\/\s<"'`]|$))[^/\s<"'`]+|[A-Z]:\\Users\\(?!example(?:[\\\s<"'`]|$)|runner(?:[\\\s<"'`]|$)|user(?:[\\\s<"'`]|$))[^\\\s<"'`]+)/i,
   },
   {
     id: 'production-instance',

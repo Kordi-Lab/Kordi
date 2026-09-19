@@ -159,7 +159,6 @@ test('development environment guide documents isolated remote access without pri
 test('operator documentation uses private product placeholders', () => {
   const operatorDocs = [
     'docs/release.md',
-    'docs/self-hosted-ci.md',
     'bridges/cloud-server/deploy/README.md',
     'bridges/cloud-server/deploy/k3s/README.md',
   ].map((path) => `${path}\n${readText(path)}`).join('\n\n');

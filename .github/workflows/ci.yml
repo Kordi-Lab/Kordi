@@ -6,6 +6,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -13,12 +16,14 @@ concurrency:
 jobs:
   frontend:
     name: Desktop frontend
-    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -30,6 +35,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -51,12 +57,14 @@ jobs:
 
   desktop-visual:
     name: Desktop visual regression
-    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    runs-on: macos-15
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -68,12 +76,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Install visual-test browser
         run: pnpm --dir app/desktop exec playwright install chromium
+
+      - name: Install ffmpeg for media fixtures
+        run: |
+          brew install ffmpeg
+          which ffmpeg
 
       - name: Compare transient surfaces
         run: pnpm --dir app/desktop test:visual --project chromium
@@ -94,32 +108,28 @@ jobs:
 
   rust:
     name: Rust checks
-    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Configure runner-local Rust build cache
-        shell: bash
-        run: |
-          mkdir -p "$HOME/Library/Caches/kordi-ci/cargo-target"
-          printf 'CARGO_TARGET_DIR=%s\n' "$HOME/Library/Caches/kordi-ci/cargo-target" >> "$GITHUB_ENV"
-
-      - name: Prepare Tauri sidecar placeholders
-        run: bash scripts/prepare-tauri-sidecar-placeholders.sh
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
       - name: Format check
         run: cargo fmt --all -- --check
 
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Clippy portable crates
+        run: cargo clippy --workspace --exclude kordi-desktop --all-targets -- -D warnings
 
       - name: Test session crate
         run: cargo test -p kordi-session
@@ -140,21 +150,46 @@ jobs:
       - name: Test desktop runtime
         run: cargo test -p kordi-cli desktop_runtime --no-default-features
 
-      - name: Test desktop Tauri crate
-        run: cargo test -p kordi-desktop --no-default-features
-
       - name: Test Cloud server
         run: cargo test -p kordi-cloud-server
 
-      - name: Prepare account-isolated test PostgreSQL
-        run: bash scripts/prepare-ci-postgres.sh
+      - name: Prepare pinned PostgreSQL 16.14 test container
+        run: docker pull postgres:16.14-alpine
 
       - name: Test database upgrade compatibility
         run: bash scripts/test-cloud-migrations.sh
 
+  rust-desktop:
+    name: Rust desktop checks (macOS)
+    runs-on: macos-15
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Prepare Tauri sidecar placeholders
+        run: bash scripts/prepare-tauri-sidecar-placeholders.sh
+
+      - name: Clippy desktop crate
+        run: cargo clippy -p kordi-desktop --all-targets -- -D warnings
+
+      - name: Test desktop Tauri crate
+        run: cargo test -p kordi-desktop --no-default-features
+
   hygiene:
     name: Repository hygiene
-    runs-on: [self-hosted, macOS, ARM64, kordi-ci]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
@@ -162,6 +197,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -209,3 +245,14 @@ jobs:
           node scripts/report-maintainability-audit.mjs --limit 20
           node scripts/check-maintainability-ratchet.mjs "$comparison"
           node scripts/check-eslint-suppressions-ratchet.mjs "$comparison"
+
+      - name: Verify the private denylist policy ran
+        shell: bash
+        env:
+          KORDI_PRIVACY_DENYLIST: ${{ secrets.KORDI_PRIVACY_DENYLIST }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KORDI_PRIVACY_DENYLIST:-}" ]; then
+            echo "::error::The private privacy denylist is unavailable for this event. Fork pull requests do not receive repository secrets, so the secret-free baseline ran but the complete privacy baseline did not. A reviewed fork policy is required before this check can pass."
+            exit 1
+          fi
