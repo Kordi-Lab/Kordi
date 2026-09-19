@@ -22,9 +22,9 @@ if [ -n "${KORDI_BACKEND_SSH_KEY:-}" ]; then
   key_file="$(mktemp)"
   chmod 600 "$key_file"
   printf '%s\n' "$KORDI_BACKEND_SSH_KEY" > "$key_file"
-  ssh=(gcloud compute ssh "$KORDI_BACKEND_SSH_USER@$KORDI_BACKEND_TARGET" --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet --plain
+  ssh=(gcloud compute ssh "$KORDI_BACKEND_SSH_USER@$KORDI_BACKEND_TARGET" --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet --plain --strict-host-key-checking=no
     --ssh-flag="-i $key_file" --ssh-flag='-o IdentitiesOnly=yes' --ssh-flag='-o StrictHostKeyChecking=accept-new')
-  scp+=(--plain --scp-flag="-i $key_file" --scp-flag='-o IdentitiesOnly=yes' --scp-flag='-o StrictHostKeyChecking=accept-new')
+  scp+=(--plain --strict-host-key-checking=no --scp-flag="-i $key_file" --scp-flag='-o IdentitiesOnly=yes' --scp-flag='-o StrictHostKeyChecking=accept-new')
   KORDI_BACKEND_TARGET="$KORDI_BACKEND_SSH_USER@$KORDI_BACKEND_TARGET"
 fi
 remote=""
