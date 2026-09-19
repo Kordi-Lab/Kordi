@@ -25,7 +25,8 @@ def deploy(args):
     # Read development credentials only from the existing isolated environment file.
     for name in ("POSTGRES_PASSWORD", "REDIS_PASSWORD", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
                  "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY", "KORDI_CLOUD_RUNNER_TOKEN",
-                 "KORDI_CHAT_SYNC_CURSOR_SECRET", "KORDI_OAUTH_GITHUB_CLIENT_ID",
+                 "KORDI_CHAT_SYNC_CURSOR_SECRET", "KORDI_PIP_FALLBACK_API_KEY",
+                 "KORDI_PIP_FALLBACK_BASE_URL", "KORDI_PIP_FALLBACK_MODEL", "KORDI_OAUTH_GITHUB_CLIENT_ID",
                  "KORDI_OAUTH_GITHUB_CLIENT_SECRET", "KORDI_OAUTH_GOOGLE_CLIENT_ID",
                  "KORDI_OAUTH_GOOGLE_CLIENT_SECRET"):
         os.environ.pop(name, None)

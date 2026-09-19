@@ -211,3 +211,15 @@ Two failure modes found and fixed during validation: the model sends optional
 strings as `""` (an empty `existingEventId` is now a new card, not a missing
 one), and it may send ambiguous times (`startAt`/`endAt` now require an RFC
 3339 offset and return a 400 that explains the format).
+
+
+### Optional provider fallback
+
+Development runners can configure `KORDI_PIP_FALLBACK_API_KEY`,
+`KORDI_PIP_FALLBACK_BASE_URL` (HTTPS), and `KORDI_PIP_FALLBACK_MODEL` in the
+private development environment file. Leave the key unset to disable fallback.
+The current provider remains primary. On a provider error, or after 90 seconds
+without its response, PiP switches once to the configured OpenAI-compatible
+provider and continues with the same tool history. Completed card actions are
+not replayed. A failure of the fallback ends the run and uses normal backoff.
+Never commit the key or put it in workflow logs.
