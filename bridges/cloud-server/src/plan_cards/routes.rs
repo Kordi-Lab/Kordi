@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     middleware,
     response::{IntoResponse, Response},
-    routing::post,
+    routing::{get, post},
     Extension, Json, Router,
 };
 use sqlx_core::query_as::query_as;
@@ -24,11 +24,33 @@ use super::wire::{blank_to_none, error, store_error, Rejection, Request};
 pub fn routes(state: Arc<ServerState>) -> Router {
     Router::new()
         .route("/v1/cloud/plan_cards", post(handle))
+        .route("/v1/cloud/plan_cards/:event_id", get(snapshot))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
         ))
         .with_state(state)
+}
+
+/// Read-only recovery for a client that missed a card update. Membership is
+/// checked on every read, including when the caller knows an old event id.
+async fn snapshot(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(event_id): Path<String>,
+) -> Response {
+    let row = match store::load(state.db_pool(), &event_id).await {
+        Ok(Some(row)) => row,
+        Ok(None) => return *store_error(super::models::PlanCardStoreError::NotFound),
+        Err(err) => return *store_error(err.into()),
+    };
+    let Ok(conversation_id) = Uuid::parse_str(&row.conversation_id) else {
+        return *store_error(super::models::PlanCardStoreError::Forbidden);
+    };
+    if !is_active_member(state.db_pool(), conversation_id, &session.account_id).await {
+        return *store_error(super::models::PlanCardStoreError::Forbidden);
+    }
+    Json(row).into_response()
 }
 
 async fn handle(

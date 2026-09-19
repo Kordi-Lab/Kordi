@@ -31,6 +31,7 @@ export type CloudAuthErrorCode =
   | 'wrong_group_invitation_account'
   | 'server_error'
   | 'network_error'
+  | 'plan_card_revision_conflict'
   | 'unknown';
 
 export class CloudAuthError extends Error {
@@ -70,7 +71,7 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'invalid_account_id', 'invalid_pubkey', 'self_contact', 'invalid_group_invitation',
   'group_invitation_expired', 'group_invitation_full', 'group_invitation_permission_denied',
   'group_invitation_missing', 'self_group_invitation', 'wrong_group_invitation_account',
-  'server_error',
+  'server_error', 'plan_card_revision_conflict',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {
