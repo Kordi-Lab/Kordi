@@ -26,6 +26,7 @@ const POSTMERGE = '.github/workflows/postmerge-ci.yml';
 function checkRun(overrides = {}) {
   return {
     id: 101,
+    app: { slug: 'github-actions' },
     name: 'CI required',
     head_sha: SHA,
     status: 'completed',
@@ -36,12 +37,14 @@ function checkRun(overrides = {}) {
 }
 
 function workflowRun(overrides = {}) {
-  return { id: 9001, path: BLOCKING, head_sha: SHA, ...overrides };
+  return { id: 9001, path: BLOCKING, head_sha: SHA, event: 'push', head_branch: 'main', repository: { full_name: REPO }, head_repository: { full_name: REPO, fork: false }, ...overrides };
 }
 
 function evaluate(checkRuns, options = {}) {
   return evaluateReadiness({
     sha: SHA,
+    repo: REPO,
+    branch: options.branch,
     checkRuns: normalizeCheckRuns(checkRuns, options.workflowRuns ?? [workflowRun()]),
     requiredChecks: options.requiredChecks,
     trustedWorkflows: options.trustedWorkflows,
@@ -92,7 +95,7 @@ test('workflow run identity is resolved from the job details URL', () => {
   assert.equal(workflowRunIdFromDetailsUrl(undefined), null);
 
   const index = buildWorkflowPathIndex([workflowRun({ id: 12345, path: POSTMERGE })]);
-  assert.equal(index.get('12345'), POSTMERGE);
+  assert.equal(index.get('12345').path, POSTMERGE);
   const normalized = normalizeCheckRuns(
     [checkRun({ details_url: 'https://github.com/acme/kordi/actions/runs/12345/job/678' })],
     [workflowRun({ id: 12345, path: POSTMERGE })],
@@ -300,4 +303,17 @@ test('runCli queries a local fixture server through --api-url', async () => {
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+ test('rejects forks, missing provenance, forged apps, and a newer failed rerun', () => {
+  for (const overrides of [
+    { head_repository: { full_name: 'fork/kordi', fork: true } },
+    { repository: { full_name: 'another/repo' } },
+    { event: 'pull_request_target' },
+    { head_sha: OTHER_SHA },
+    { head_repository: null },
+  ]) assert.equal(evaluate([checkRun()], { workflowRuns: [workflowRun(overrides)] }).passed, false);
+  assert.equal(evaluate([checkRun({ app: { slug: 'forged-app' } })]).passed, false);
+  assert.equal(evaluate([checkRun({ id: 1 }), checkRun({ id: 2, conclusion: 'failure' })]).passed, false);
+  assert.equal(evaluate([checkRun()], { branch: 'main', workflowRuns: [workflowRun({ event: 'pull_request' })] }).passed, false);
 });

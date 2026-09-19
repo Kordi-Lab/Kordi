@@ -61,7 +61,7 @@ export function buildWorkflowPathIndex(workflowRuns) {
     if (!run || typeof run !== 'object') continue;
     if (run.id === undefined || run.id === null) continue;
     if (typeof run.path !== 'string' || run.path.trim() === '') continue;
-    index.set(String(run.id), run.path);
+    index.set(String(run.id), run);
   }
   return index;
 }
@@ -69,11 +69,8 @@ export function buildWorkflowPathIndex(workflowRuns) {
 export function normalizeCheckRun(raw, workflowPaths = new Map()) {
   if (!raw || typeof raw !== 'object') return null;
   const runId = workflowRunIdFromDetailsUrl(raw.details_url ?? raw.detailsUrl);
-  const workflowPath = typeof raw.workflowPath === 'string'
-    ? raw.workflowPath
-    : runId && workflowPaths.has(runId)
-      ? workflowPaths.get(runId)
-      : null;
+  const workflow = runId ? workflowPaths.get(runId) : null;
+  const workflowPath = workflow?.path ?? null;
   return {
     id: raw.id ?? null,
     name: typeof raw.name === 'string' ? raw.name : '',
@@ -85,6 +82,8 @@ export function normalizeCheckRun(raw, workflowPaths = new Map()) {
     status: typeof raw.status === 'string' ? raw.status : '',
     conclusion: typeof raw.conclusion === 'string' ? raw.conclusion : null,
     workflowPath,
+    workflow,
+    appSlug: raw.app?.slug ?? null,
     detailsUrl: typeof raw.details_url === 'string'
       ? raw.details_url
       : typeof raw.detailsUrl === 'string'
@@ -113,6 +112,8 @@ export function evaluateReadiness({
   checkRuns = [],
   requiredChecks = DEFAULT_REQUIRED_CHECKS,
   trustedWorkflows = DEFAULT_TRUSTED_WORKFLOWS,
+  repo,
+  branch = null,
 }) {
   const trusted = new Set(trustedWorkflows);
   const report = {
@@ -158,8 +159,21 @@ export function evaluateReadiness({
       });
     }
 
-    const trustedExact = exact.filter((run) => run.workflowPath && trusted.has(run.workflowPath));
-    const untrusted = exact.filter((run) => !run.workflowPath || !trusted.has(run.workflowPath));
+    const trustedRun = (run) => {
+      const workflow = run.workflow;
+      return Boolean(repo && workflow && run.appSlug === 'github-actions'
+        && trusted.has(run.workflowPath)
+        && workflow.head_sha === sha
+        && workflow.repository?.full_name?.toLowerCase() === repo.toLowerCase()
+        && workflow.head_repository?.full_name?.toLowerCase() === repo.toLowerCase()
+        && workflow.head_repository?.fork === false
+        && ['push', 'pull_request'].includes(workflow.event)
+        && (!branch || (workflow.event === 'push' && workflow.head_branch === branch)));
+    };
+    // The most recent evidence is authoritative; an old success cannot hide a rerun failure.
+    const candidates = exact.filter(trustedRun).sort((a, b) => Number(b.id) - Number(a.id));
+    const trustedExact = candidates.slice(0, 1);
+    const untrusted = exact.filter((run) => !trustedRun(run));
     const successful = trustedExact.filter(
       (run) => run.status === 'completed' && run.conclusion === 'success',
     );
@@ -335,6 +349,9 @@ export function parseArguments(argv) {
       case '--workflow':
         options.workflows.push(takeValue());
         break;
+      case '--branch':
+        options.branch = takeValue();
+        break;
       case '--repo':
         options.repo = takeValue();
         break;
@@ -410,6 +427,8 @@ export async function runCli(argv, {
     checkRuns: normalizeCheckRuns(inputs.checkRuns, inputs.workflowRuns),
     requiredChecks,
     trustedWorkflows,
+    repo,
+    branch: options.branch ?? null,
   });
   report.repo = repo;
 

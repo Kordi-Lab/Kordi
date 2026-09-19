@@ -71,7 +71,8 @@
     "debug:cloud:up": "bash scripts/dev-cloud-up.sh",
     "debug:cloud:oauth": "bash scripts/dev-cloud-oauth-configure.sh",
     "debug:cloud:smoke": "bash scripts/dev-cloud-smoke.sh",
-    "debug:cloud:reset": "bash scripts/dev-cloud-reset.sh"
+    "debug:cloud:reset": "bash scripts/dev-cloud-reset.sh",
+    "deploy:dev": "node scripts/request-dev-deploy.mjs"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1085.0"

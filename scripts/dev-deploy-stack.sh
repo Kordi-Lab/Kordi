@@ -252,7 +252,9 @@ build_deploy_inner_script() {
       '  echo "[dev-deploy] Refusing: the stack path exists and is not a git checkout." >&2' \
       '  exit 1' \
       'fi' \
+      'new_checkout=false' \
       'if [ ! -d "$stack_dir/.git" ]; then' \
+      '  new_checkout=true' \
       "  mkdir -p $q_stack_root" \
       "  git clone --filter=blob:none --no-checkout $q_repository \"\$stack_dir\"" \
       'fi'
@@ -262,7 +264,7 @@ build_deploy_inner_script() {
       '  echo "[dev-deploy] Refusing: the stack checkout belongs to a different repository." >&2' \
       '  exit 1' \
       'fi' \
-      'if [ -n "$(git -C "$stack_dir" status --porcelain)" ]; then' \
+      'if [ "$new_checkout" = false ] && [ -n "$(git -C "$stack_dir" status --porcelain)" ]; then' \
       '  echo "[dev-deploy] Refusing: the stack checkout has local changes." >&2' \
       '  exit 1' \
       'fi'

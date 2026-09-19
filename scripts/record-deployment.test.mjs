@@ -347,3 +347,10 @@ test('formatRecordSummary reports absent optional fields explicitly', () => {
   assert.match(summary, /rollback: {5}not recorded/);
   assert.match(summary, /workflow: {5}not recorded/);
 });
+
+test('failed attempts can record an absent artifact without inventing a digest', () => {
+  const options = { ...validOptions(), failed: true, artifact: '' };
+  assert.equal(validateDeploymentOptions(options).ok, true);
+  assert.equal(validateDeploymentOptions({ ...options, failed: false }).ok, false);
+  assert.equal(buildRecord(options, NOW).outcome, 'failure');
+});

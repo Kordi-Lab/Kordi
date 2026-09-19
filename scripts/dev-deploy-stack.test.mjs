@@ -182,3 +182,36 @@ test('real transport runs through the host-side lock wrapper', (context) => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+// Execute the generated checkout section against a real synthetic Git repository.
+test('a newly allocated stack checks out successfully and existing dirty files remain protected', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'kordi-dev-first-checkout-'));
+  try {
+    const seed = join(directory, 'seed');
+    fs.mkdirSync(seed);
+    const git = (...args) => {
+      const result = spawnSync('git', args, { encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim();
+    };
+    git('init', '-q', seed);
+    writeFileSync(join(seed, 'fixture.txt'), 'synthetic source\n');
+    git('-C', seed, 'add', '.');
+    git('-C', seed, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com', 'commit', '-qm', 'Fixture');
+    const sha = git('-C', seed, 'rev-parse', 'HEAD');
+    const root = join(directory, 'stacks');
+    const result = runTransport(['deploy', '--stack', 'issue-1234', '--sha', sha, '--dry-run'], { KORDI_DEV_STACK_ROOT: root });
+    assert.equal(result.status, 0, result.stderr);
+    const marker = '[dev-deploy] remote script for stack issue-1234:\n';
+    const script = result.stdout.split(marker)[1].split('\ncd "$stack_dir"')[0]
+      .replaceAll(baseEnv.KORDI_DEV_REPOSITORY_URL, seed);
+    const first = spawnSync('bash', ['-c', script], { encoding: 'utf8' });
+    assert.equal(first.status, 0, first.stderr);
+    writeFileSync(join(root, 'issue-1234', 'fixture.txt'), 'local work\n');
+    const second = spawnSync('bash', ['-c', script], { encoding: 'utf8' });
+    assert.notEqual(second.status, 0);
+    assert.match(second.stderr, /local changes/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

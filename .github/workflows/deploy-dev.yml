@@ -27,11 +27,13 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      checks: read
+      actions: read
       id-token: write
     env:
       TARGET_SHA: ${{ inputs.sha }}
       STACK_ID: ${{ inputs.stack }}
-      ACTOR: ${{ github.actor }}
+      ACTOR: ${{ github.triggering_actor }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Refuse dispatch outside the default branch
@@ -68,31 +70,17 @@ jobs:
           set -euo pipefail
           node scripts/dev-stack-allocate.mjs validate-inputs --stack "$STACK_ID" --sha "$TARGET_SHA"
 
-      - name: Authorize deployer
+      - name: Authorize repository contributor
         shell: bash
         env:
-          DEPLOYERS: ${{ vars.KORDI_DEV_DEPLOYERS }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [ -z "${DEPLOYERS//[[:space:],]/}" ]; then
-            echo "::error::KORDI_DEV_DEPLOYERS is not configured; refusing every deployer."
-            exit 1
-          fi
-          normalized_actor="$(printf '%s' "$ACTOR" | tr '[:upper:]' '[:lower:]')"
-          authorized=0
-          while IFS= read -r candidate; do
-            candidate="$(printf '%s' "$candidate" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
-            [ -n "$candidate" ] || continue
-            if [ "$candidate" = "$normalized_actor" ]; then
-              authorized=1
-              break
-            fi
-          done < <(printf '%s' "$DEPLOYERS" | tr ',' '\n')
-          if [ "$authorized" -ne 1 ]; then
-            echo "::error::GitHub account @$ACTOR is not authorized to deploy development stacks."
-            exit 1
-          fi
-          echo "Authorized development deployer: @$ACTOR"
+          permission="$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$ACTOR/permission" --jq .permission)"
+          case "$permission" in
+            admin|write|maintain) ;;
+            *) echo '::error::Development deployment requires repository write access.'; exit 1 ;;
+          esac
 
       - name: Validate stack allocation
         id: allocation
@@ -112,6 +100,8 @@ jobs:
 
       - name: Validate checks for the exact revision
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ ! -f scripts/check-sha-readiness.mjs ]; then
@@ -134,10 +124,10 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          KORDI_DEV_GCP_PROJECT: ${{ vars.KORDI_DEV_GCP_PROJECT }}
-          KORDI_DEV_SSH_ZONE: ${{ vars.KORDI_DEV_SSH_ZONE }}
-          KORDI_DEV_SSH_TARGET: ${{ vars.KORDI_DEV_SSH_TARGET }}
-          KORDI_DEV_STACK_ROOT: ${{ vars.KORDI_DEV_STACK_ROOT }}
+          KORDI_DEV_GCP_PROJECT: ${{ secrets.KORDI_DEV_GCP_PROJECT }}
+          KORDI_DEV_SSH_ZONE: ${{ secrets.KORDI_DEV_SSH_ZONE }}
+          KORDI_DEV_SSH_TARGET: ${{ secrets.KORDI_DEV_SSH_TARGET }}
+          KORDI_DEV_STACK_ROOT: ${{ secrets.KORDI_DEV_STACK_ROOT }}
           KORDI_DEV_STACK_PROJECT: ${{ steps.allocation.outputs.compose_project }}
           KORDI_DEV_API_PORT: ${{ steps.allocation.outputs.api_port }}
           KORDI_DEV_MINIO_PORT: ${{ steps.allocation.outputs.minio_port }}
@@ -156,10 +146,10 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          KORDI_DEV_GCP_PROJECT: ${{ vars.KORDI_DEV_GCP_PROJECT }}
-          KORDI_DEV_SSH_ZONE: ${{ vars.KORDI_DEV_SSH_ZONE }}
-          KORDI_DEV_SSH_TARGET: ${{ vars.KORDI_DEV_SSH_TARGET }}
-          KORDI_DEV_STACK_ROOT: ${{ vars.KORDI_DEV_STACK_ROOT }}
+          KORDI_DEV_GCP_PROJECT: ${{ secrets.KORDI_DEV_GCP_PROJECT }}
+          KORDI_DEV_SSH_ZONE: ${{ secrets.KORDI_DEV_SSH_ZONE }}
+          KORDI_DEV_SSH_TARGET: ${{ secrets.KORDI_DEV_SSH_TARGET }}
+          KORDI_DEV_STACK_ROOT: ${{ secrets.KORDI_DEV_STACK_ROOT }}
           KORDI_DEV_STACK_PROJECT: ${{ steps.allocation.outputs.compose_project }}
           KORDI_DEV_API_PORT: ${{ steps.allocation.outputs.api_port }}
           KORDI_DEV_MINIO_PORT: ${{ steps.allocation.outputs.minio_port }}
@@ -171,24 +161,25 @@ jobs:
 
       - name: Record deployment
         id: record
-        if: steps.deploy.outcome == 'success' && steps.smoke.outcome == 'success'
+        if: always() && steps.deploy.outcome != 'skipped' && steps.deploy.outcome != ''
         shell: bash
         env:
           ARTIFACT_OUT: ${{ runner.temp }}/dev-artifact-digest.txt
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
         run: |
           set -euo pipefail
-          if [ ! -s "$ARTIFACT_OUT" ]; then
-            echo "::error::The deploy did not report an artifact digest; refusing to record an unverifiable deployment."
-            exit 1
-          fi
-          artifact="$(tr -d '[:space:]' < "$ARTIFACT_OUT")"
+          artifact=""
+          record_arguments=()
+          if [ "$DEPLOY_OUTCOME" != success ] || [ "$SMOKE_OUTCOME" != success ]; then record_arguments+=(--failed); fi
+          if [ -s "$ARTIFACT_OUT" ]; then artifact="$(tr -d '[:space:]' < "$ARTIFACT_OUT")"; fi
           record_output="$(node scripts/record-deployment.mjs \
             --environment dev \
             --stack "$STACK_ID" \
             --sha "$TARGET_SHA" \
             --actor "$ACTOR" \
-            --artifact "$artifact" \
-            --verification "smoke check passed; workflow run $RUN_URL" \
+            --artifact "$artifact" "${record_arguments[@]}" \
+            --verification "deploy=$DEPLOY_OUTCOME smoke=$SMOKE_OUTCOME; workflow run $RUN_URL" \
             --workflow "$RUN_URL")"
           printf '%s\n' "$record_output"
           record_path="$(printf '%s\n' "$record_output" | sed -n 's/^Deployment record: //p' | head -n 1)"
@@ -204,10 +195,10 @@ jobs:
         shell: bash
         env:
           KORDI_REDACT_VALUES: |
-            ${{ vars.KORDI_DEV_GCP_PROJECT }}
-            ${{ vars.KORDI_DEV_SSH_ZONE }}
-            ${{ vars.KORDI_DEV_SSH_TARGET }}
-            ${{ vars.KORDI_DEV_STACK_ROOT }}
+            ${{ secrets.KORDI_DEV_GCP_PROJECT }}
+            ${{ secrets.KORDI_DEV_SSH_ZONE }}
+            ${{ secrets.KORDI_DEV_SSH_TARGET }}
+            ${{ secrets.KORDI_DEV_STACK_ROOT }}
           DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
           SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
           RECORD_PATH: ${{ steps.record.outputs.path }}
