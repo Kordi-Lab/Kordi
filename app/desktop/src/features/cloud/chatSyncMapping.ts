@@ -316,18 +316,19 @@ export function inferConversationKind(
   return 'direct';
 }
 
-export function groupMemberAccountIdsFromEnvelope(body: string): string[] | null {
+export function groupMembershipFromEnvelope(body: string): { accountIds: string[]; changesMembership: boolean } | null {
   const encoded = body.trim().startsWith('kordi-cloud-group:')
     ? body.trim().slice('kordi-cloud-group:'.length)
     : '';
   if (!encoded) return null;
-  const envelope = decodeBase64UrlJson<{ participants?: Array<{ accountId?: unknown }> }>(encoded);
+  const envelope = decodeBase64UrlJson<{ kind?: string; participants?: Array<{ accountId?: unknown }> }>(encoded);
   if (!Array.isArray(envelope?.participants)) return null;
-  return [...new Set(envelope.participants.flatMap((participant) => (
+  const accountIds = [...new Set(envelope.participants.flatMap((participant) => (
     typeof participant?.accountId === 'string' && participant.accountId.trim()
       ? [participant.accountId.trim()]
       : []
   )))];
+  return { accountIds, changesMembership: envelope.kind === 'group-invite' || envelope.kind === 'group-update' };
 }
 
 export function conversationPeer(

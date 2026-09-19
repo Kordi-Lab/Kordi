@@ -42,6 +42,7 @@ function clientRecording(calls: string[]) {
 
 function groupEnvelope(accountIds: string[]) {
   return `kordi-cloud-group:${Buffer.from(JSON.stringify({
+    kind: 'group-update',
     participants: accountIds.map((accountId) => ({ accountId })),
   })).toString('base64url')}`;
 }

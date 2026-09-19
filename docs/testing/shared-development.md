@@ -102,6 +102,9 @@ automatically route an iOS app to `18181`; follow the approved
   group references, attachments, and any encrypted provider data. Verify the target
   encryption key, generated columns, triggers, and foreign-key integrity. Do not
   copy unrelated users' credentials, old sessions, or replay queued work.
+- Verify supporting account/default-agent profiles as well as foreign keys. Roster
+  and message projections join those profiles; a missing profile can hide a valid
+  member. Check that a regular member can send without a membership-edit request.
 - Keep source data and verified backups until the transfer has been accepted.
   Remove only task-owned temporary validation resources. Record incomplete uploads
   and pre-existing fixture inconsistencies privately rather than silently rewriting them.
