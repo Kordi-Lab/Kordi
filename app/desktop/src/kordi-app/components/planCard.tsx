@@ -2,10 +2,12 @@ import { CalendarCheck, CalendarClock, Check, ChevronRight, MapPin, Vote, X } fr
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { planCardAction, type PlanCardActionRequest } from '@/features/cloud/planCardClient';
+import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { loadSession } from '@/features/cloud/session';
 import type { MessagePlanCard, MessagePlanCardOption } from '@/kordi-app/types/message';
 import { planCardView } from '@/features/cloud/planCardSnapshot';
 import { isPipAvatarUrl, KORDI_PIP_TAG } from '@/features/pip/pipIdentity';
+import { shouldLoadAvatarThroughNativeProxy, useRemoteAvatarImage } from './remoteAvatarImage';
 
 const STATE_LABEL: Record<MessagePlanCard['state'], string> = {
   polling: 'Planning',
@@ -30,6 +32,37 @@ function formatWhen(startAt?: string | null, endAt?: string | null): string | nu
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return parts.slice(0, 2).map((part) => part[0]?.toUpperCase() ?? '').join('') || '?';
+}
+
+/**
+ * A participant's avatar: the profile picture the card carries, or their
+ * initials when the account has none. Remote images load through the desktop
+ * proxy so plan cards match every other avatar in the app.
+ */
+function PlanCardAvatar({ name, avatarUrl, className }: { name: string; avatarUrl?: string | null; className?: string }) {
+  const imageUrl = cloudAvatarImageUrl(avatarUrl);
+  const needsNativeProxy = shouldLoadAvatarThroughNativeProxy(imageUrl);
+  const remoteAvatar = useRemoteAvatarImage(imageUrl, needsNativeProxy);
+  const resolvedImageUrl = needsNativeProxy
+    ? (remoteAvatar.status === 'ready' ? remoteAvatar.dataUrl : null)
+    : imageUrl;
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const showImage = Boolean(resolvedImageUrl) && failedImageUrl !== resolvedImageUrl;
+  return (
+    <span className={cn('app-plan-card-avatar', className)}>
+      {showImage ? (
+        <img
+          src={resolvedImageUrl ?? undefined}
+          alt=""
+          className="app-plan-card-avatar-image"
+          draggable={false}
+          onError={() => setFailedImageUrl(resolvedImageUrl ?? null)}
+        />
+      ) : (
+        initials(name)
+      )}
+    </span>
+  );
 }
 
 function leadingOption(options: MessagePlanCardOption[]): MessagePlanCardOption | null {
@@ -102,6 +135,7 @@ export function PlanCardContent({
   const when = formatWhen(view.startAt, view.endAt);
   const going = view.participants.filter((participant) => participant.rsvp === 'yes').length;
   const nameOf = (participantId: string) => view.participants.find((participant) => participant.participantId === participantId)?.displayName ?? 'Member';
+  const avatarOf = (participantId: string) => view.participants.find((participant) => participant.participantId === participantId)?.avatarUrl ?? null;
   const totalVotes = options.reduce((sum, option) => sum + option.votes.length, 0);
   const percentOf = (option: MessagePlanCardOption) => (totalVotes === 0 ? 0 : Math.round((option.votes.length / totalVotes) * 100));
 
@@ -183,7 +217,7 @@ export function PlanCardContent({
                   <PlanCardPeopleList
                     label={`Votes for ${option.label}`}
                     ownAccountId={accountId}
-                    sections={[{ title: 'Voted', people: option.votes.map((voter) => ({ id: voter, name: nameOf(voter), organizer: false })) }]}
+                    sections={[{ title: 'Voted', people: option.votes.map((voter) => ({ id: voter, name: nameOf(voter), organizer: false, avatarUrl: avatarOf(voter) })) }]}
                   />
                 ) : null}
               </div>
@@ -245,7 +279,7 @@ function compactCount(value: number): string {
   return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}k`;
 }
 
-type PeopleSection = { title: string; people: { id: string; name: string; organizer: boolean }[] };
+type PeopleSection = { title: string; people: { id: string; name: string; organizer: boolean; avatarUrl?: string | null }[] };
 
 const PEOPLE_RENDER_LIMIT = 200;
 
@@ -292,7 +326,7 @@ function PlanCardPeopleList({ label, sections, ownAccountId }: { label: string; 
             <div className="app-plan-card-people-heading">{section.title} · {compactCount(section.count)}</div>
             {section.shown.map((person) => (
               <div key={person.id} className="app-plan-card-people-row">
-                <span className="app-plan-card-avatar">{initials(person.name)}</span>
+                <PlanCardAvatar name={person.name} avatarUrl={person.avatarUrl} />
                 <span className="app-plan-card-people-name">{person.name}{person.id === ownAccountId ? ' (you)' : ''}</span>
                 {person.organizer ? <span className="app-plan-card-people-role">Organizer</span> : null}
               </div>
@@ -318,13 +352,18 @@ function PlanCardAttendees({ participants, ownAccountId, open, onToggle }: {
   const shown = [...going, ...waiting, ...declined].slice(0, 4);
   const hidden = participants.length - shown.length;
   const counts = [`${compactCount(going.length)} going`, ...(declined.length ? [`${compactCount(declined.length)} can't`] : []), ...(waiting.length ? [`${compactCount(waiting.length)} no reply`] : [])].join(' · ');
-  const toPeople = (list: typeof participants) => list.map((participant) => ({ id: participant.participantId, name: participant.displayName, organizer: participant.organizer }));
+  const toPeople = (list: typeof participants) => list.map((participant) => ({ id: participant.participantId, name: participant.displayName, organizer: participant.organizer, avatarUrl: participant.avatarUrl }));
   return (
     <div className="app-plan-card-attendees-wrap">
       <button type="button" className="app-plan-card-attendees" onClick={onToggle} aria-expanded={open}>
         <span className="app-plan-card-avatar-stack" aria-hidden>
           {shown.map((participant) => (
-            <span key={participant.participantId} className={cn('app-plan-card-avatar', `app-plan-card-avatar-${participant.rsvp}`)}>{initials(participant.displayName)}</span>
+            <PlanCardAvatar
+              key={participant.participantId}
+              name={participant.displayName}
+              avatarUrl={participant.avatarUrl}
+              className={`app-plan-card-avatar-${participant.rsvp}`}
+            />
           ))}
           {hidden > 0 ? <span className="app-plan-card-avatar app-plan-card-avatar-more">+{compactCount(hidden)}</span> : null}
         </span>

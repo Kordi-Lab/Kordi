@@ -22,11 +22,13 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
       const participantId = typeof participant.participantId === 'string' ? participant.participantId : '';
       if (!participantId) return [];
       const rsvp: MessagePlanCardParticipant['rsvp'] = participant.rsvp === 'yes' || participant.rsvp === 'no' ? participant.rsvp : 'pending';
+      const avatarUrl = typeof participant.avatarUrl === 'string' && participant.avatarUrl.trim() ? participant.avatarUrl : null;
       return [{
         participantId,
         displayName: typeof participant.displayName === 'string' && participant.displayName.trim() ? participant.displayName : 'Member',
         organizer: participant.organizer === true,
         rsvp,
+        avatarUrl,
       }];
     })
     : [];
