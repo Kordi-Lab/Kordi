@@ -21,6 +21,8 @@ import type {
 } from './chatSyncTypes';
 import { cloudApiBaseUrl } from './cloudApiEnvironment';
 import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
+import { cloudFetchImpl, defaultCloudRequestTimeoutMs } from './cloudTransport';
+export { defaultCloudRequestTimeoutMs } from './cloudTransport';
 import type { CloudAttachmentDownloadUrlResult,CloudAttachmentFinalizeResult,CloudAttachmentInitiateResult,CloudAttachmentPreviewUpdateResult,CloudExpressiveMediaItem,CloudMessageAttachment,CloudVoiceMessage,SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 import { buildCloudAuthError,CloudAuthError } from './cloudAuthError';
 import type { CloudContactSummary } from './cloudContactTypes';
@@ -275,21 +277,6 @@ async function readJsonSafe(response: Response): Promise<unknown> {
   }
 }
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
-const LOCAL_TUNNEL_REQUEST_TIMEOUT_MS = 45_000;
-
-export function defaultCloudRequestTimeoutMs(baseUrl: string): number {
-  try {
-    const host = new URL(baseUrl).hostname.toLowerCase();
-    if (host === '127.0.0.1' || host === 'localhost' || host === '::1') {
-      return LOCAL_TUNNEL_REQUEST_TIMEOUT_MS;
-    }
-  } catch {
-    return DEFAULT_REQUEST_TIMEOUT_MS;
-  }
-  return DEFAULT_REQUEST_TIMEOUT_MS;
-}
-
 export class CloudAuthClient {
   listAgentSubsessionTasks(token: string, parentSessionId: string, after?: string) {
     return this.subsessionClient.listAgentSubsessionTasks(token, parentSessionId, after);
@@ -323,7 +310,7 @@ export class CloudAuthClient {
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
-    this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+    this.fetchImpl = options.fetchImpl ?? cloudFetchImpl();
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
     const deviceRegistration = options.deviceRegistration ?? installationDeviceRegistration;
     this.subsessionClient = new CloudAgentSubsessionClient((path, init, fallback) => this.send(path, init, fallback));
