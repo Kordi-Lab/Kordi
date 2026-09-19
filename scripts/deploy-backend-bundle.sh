@@ -14,9 +14,10 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 bundle="$(cd "$bundle" && pwd)"
 python3 "$root/scripts/backend_artifact.py" verify --directory "$bundle" --sha "$sha" --run-id "$run_id"
 ssh=(gcloud compute ssh "$KORDI_BACKEND_TARGET" --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
-scp=(gcloud compute scp --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
+scp=(gcloud compute scp --scp-flag=-C --project "$KORDI_BACKEND_PROJECT" --zone "$KORDI_BACKEND_ZONE" --tunnel-through-iap --quiet)
 raw_log="$(mktemp)"
 key_file=""
+descriptor=""
 if [ -n "${KORDI_BACKEND_SSH_KEY:-}" ]; then
   : "${KORDI_BACKEND_SSH_USER:?Missing dedicated SSH user}"
   key_file="$(mktemp)"
@@ -34,6 +35,7 @@ cleanup() {
     "${ssh[@]}" --command "rm -rf -- '$remote'" >>"$raw_log" 2>&1 || true
   fi
   rm -f "$raw_log"
+  if [ -n "$descriptor" ]; then rm -f "$descriptor"; fi
   if [ -n "$key_file" ]; then rm -f "$key_file"; fi
   if [ "$status" -ne 0 ]; then
     echo 'Backend deployment failed. Inspect the private host deployment records; raw infrastructure logs are not published.' >&2
@@ -43,7 +45,16 @@ cleanup() {
 trap 'cleanup' EXIT
 remote="$("${ssh[@]}" --command 'umask 077; mktemp -d /tmp/kordi-backend.XXXXXXXX' 2>"$raw_log")"
 [[ "$remote" =~ ^/tmp/kordi-backend\.[a-zA-Z0-9]+$ ]] || exit 1
-"${scp[@]}" --recurse "$bundle" "$KORDI_BACKEND_TARGET:$remote/bundle" >>"$raw_log" 2>&1
+if [ -n "${KORDI_BACKEND_ARTIFACT_ID:-}" ]; then
+  descriptor="$(mktemp)"
+  chmod 600 "$descriptor"
+  python3 "$root/scripts/fetch_backend_artifact.py" resolve --artifact-id "$KORDI_BACKEND_ARTIFACT_ID" --run-id "$run_id" > "$descriptor"
+  "${scp[@]}" "$root/scripts/fetch_backend_artifact.py" "$KORDI_BACKEND_TARGET:$remote/" >>"$raw_log" 2>&1
+  printf -v fetch_command '%q ' python3 "$remote/fetch_backend_artifact.py" fetch --directory "$remote/bundle"
+  "${ssh[@]}" --command "umask 077; $fetch_command" < "$descriptor" >>"$raw_log" 2>&1
+else
+  "${scp[@]}" --recurse "$bundle" "$KORDI_BACKEND_TARGET:$remote/bundle" >>"$raw_log" 2>&1
+fi
 files=("$root/scripts/backend_artifact.py" "$root/scripts/backend_deploy_common.py")
 arguments=(python3 "$remote/backend_deploy_dev.py" --bundle "$remote/bundle" --sha "$sha" --run-id "$run_id" --state "$KORDI_BACKEND_STATE")
 if [ "$environment" = dev ]; then
@@ -56,7 +67,7 @@ else
   : "${KORDI_BACKEND_BACKUP_ROOT:?Missing protected backup directory}"
   : "${KORDI_BACKEND_BACKUP_ID:?Missing verified backup identifier}"
   : "${KORDI_BACKEND_SCHEMA_COMPATIBILITY:?Missing schema compatibility declaration}"
-  files+=("$root/scripts/backend_deploy_production.py" "$root/scripts/backend_backup.py")
+  files+=("$root/scripts/backend_deploy_production.py" "$root/scripts/backend_backup.py" "$root/scripts/backend_backup_create.py")
   arguments=(python3 "$remote/backend_deploy_production.py" --bundle "$remote/bundle" --sha "$sha" --run-id "$run_id"
     --state "$KORDI_BACKEND_STATE" --backup-root "$KORDI_BACKEND_BACKUP_ROOT" --backup-id "$KORDI_BACKEND_BACKUP_ID"
     --schema-compatibility "$KORDI_BACKEND_SCHEMA_COMPATIBILITY")

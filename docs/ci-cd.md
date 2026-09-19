@@ -166,17 +166,22 @@ billing settings are recorded in the tracking issue (#1590). Cold-cache runs are
 tracked separately from warm runs, every check has a timeout, and target changes
 require a recorded reason.
 
-## Owner escalation
+## Administrator approval
 
-The primary owner is `@shuyhere`. Backup owners are recorded in
-`.github/CODEOWNERS`; add at least one eligible backup before enabling required
-owner review. Sensitive paths (workflows, selection and gate policy, shared
-check infrastructure, `CODEOWNERS`, deployment and release tooling, Tauri
-configuration, and signing/version sources) require an eligible `CODEOWNER`
-approval, and that same approval may satisfy the normal one-review requirement.
-When no owner is available, request an eligible backup in the pull request
-rather than merging sensitive changes unreviewed. Administrative bypasses must
-be recorded in the pull request and re-reviewed afterwards.
+CI/CD and release-sensitive paths are owned by the repository administrators listed in
+`.github/CODEOWNERS`. One administrator's approval is sufficient; it also satisfies the
+normal one-review requirement. A second administrator is not required.
+
+An administrator may authorize their own PR by merging it after the required checks pass.
+GitHub does not allow authors to submit an approving review on their own PR, so the current
+administrators have an explicit exception to the pull-request review requirement. The
+administrator's merge is the recorded authorization. This exception is limited to PR
+review requirements: `CI required` and the up-to-date branch requirement remain enforced
+for administrators. Approval by someone other than the last pusher is disabled.
+
+Production requires one administrator approval, and the administrator who triggered the
+promotion may approve it. Keep the administrator roster, review exceptions, CODEOWNERS,
+and production environment reviewers aligned when administrator membership changes.
 
 ## Deployments
 
