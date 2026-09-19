@@ -11,8 +11,6 @@ for service in cloud-server cloud-agent-runner; do
   docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
     --label "org.opencontainers.image.revision=$sha" \
     --tag "docker.io/library/kordi-$service:$sha" \
-    --cache-from "type=gha,scope=backend-$service" \
-    --cache-to "type=gha,scope=backend-$service,mode=max" \
     --output "type=docker,dest=$output/$service.docker.tar" \
     --output "type=oci,dest=$output/$service.oci.tar" \
     --file "bridges/$service/Dockerfile.runtime" .
