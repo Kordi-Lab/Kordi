@@ -84,6 +84,11 @@ jobs:
       - name: Install visual-test browser
         run: pnpm --dir app/desktop exec playwright install chromium
 
+      - name: Install ffmpeg for media fixtures
+        run: |
+          brew install ffmpeg
+          which ffmpeg
+
       - name: Compare transient surfaces
         run: pnpm --dir app/desktop test:visual --project chromium
 
