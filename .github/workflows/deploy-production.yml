@@ -1,6 +1,10 @@
 name: Deploy production
 
 on:
+  workflow_run:
+    workflows: [Backend delivery]
+    branches: [main]
+    types: [completed]
   workflow_dispatch:
     inputs:
       build_run_id:
@@ -30,6 +34,7 @@ concurrency:
 jobs:
   preflight:
     name: Verify production promotion evidence
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -37,6 +42,7 @@ jobs:
       checks: read
       actions: read
     outputs:
+      promotable: ${{ steps.evidence.outputs.promotable }}
       sha: ${{ steps.revision.outputs.sha }}
       bundle: ${{ steps.evidence.outputs.bundle }}
     steps:
@@ -48,32 +54,42 @@ jobs:
         id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id || github.event.workflow_run.id }}
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/main
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ] && ! gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts" --jq '.artifacts[].name' | grep -qx development-deployment-result; then
+            echo 'promotable=false' >> "$GITHUB_OUTPUT"
+            echo 'This build did not update development; no production promotion is queued.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           node scripts/check-backend-build.mjs "$BUILD_RUN_ID"
+          echo 'promotable=true' >> "$GITHUB_OUTPUT"
       - name: Download the exact bundle artifact
+        if: steps.evidence.outputs.promotable == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           artifact-ids: ${{ steps.evidence.outputs.bundle }}
           merge-multiple: true
           path: ${{ runner.temp }}/backend-bundle
-          run-id: ${{ inputs.build_run_id }}
+          run-id: ${{ inputs.build_run_id || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Download the exact development evidence
+        if: steps.evidence.outputs.promotable == 'true'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           artifact-ids: ${{ steps.evidence.outputs.development }}
           merge-multiple: true
           path: ${{ runner.temp }}/development-evidence
-          run-id: ${{ inputs.build_run_id }}
+          run-id: ${{ inputs.build_run_id || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Verify the bundle, development result, and main revision
+        if: steps.evidence.outputs.promotable == 'true'
         id: revision
         env:
           GH_TOKEN: ${{ github.token }}
-          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id || github.event.workflow_run.id }}
+          SCHEMA_COMPATIBILITY: ${{ inputs.schema_compatibility || 'forward-only' }}
         run: |
           set -euo pipefail
           bundle="$RUNNER_TEMP/backend-bundle"
@@ -86,10 +102,12 @@ jobs:
           test "$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$sha" --jq .merge_base_commit.sha)" = "$sha"
           node scripts/check-sha-readiness.mjs --sha "$sha" --branch main --check 'CI required' --check 'Post-merge CI required'
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Schema policy: $SCHEMA_COMPATIBILITY. Automatic promotions require a forward fix on failure; use a manual promotion to explicitly authorize compatible image rollback." >> "$GITHUB_STEP_SUMMARY"
           echo "Promote tested revision \`$sha\` from backend build \`$BUILD_RUN_ID\`. The destination host will verify the backup and hold the shared lock before updating either service." >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
     name: Promote approved backend images
+    if: needs.preflight.outputs.promotable == 'true'
     needs: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -108,7 +126,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ needs.preflight.outputs.sha }}
-          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id || github.event.workflow_run.id }}
         run: |
           set -euo pipefail
           node scripts/check-backend-build.mjs "$BUILD_RUN_ID"
@@ -118,7 +136,7 @@ jobs:
           artifact-ids: ${{ needs.preflight.outputs.bundle }}
           merge-multiple: true
           path: ${{ runner.temp }}/backend-bundle
-          run-id: ${{ inputs.build_run_id }}
+          run-id: ${{ inputs.build_run_id || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
       - name: Authenticate to production after approval
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
@@ -129,7 +147,7 @@ jobs:
       - name: Promote and verify on the production machine
         env:
           TARGET_SHA: ${{ needs.preflight.outputs.sha }}
-          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id || github.event.workflow_run.id }}
           KORDI_BACKEND_PROJECT: ${{ secrets.KORDI_BACKEND_PROJECT }}
           KORDI_BACKEND_ZONE: ${{ secrets.KORDI_BACKEND_ZONE }}
           KORDI_BACKEND_TARGET: ${{ secrets.KORDI_BACKEND_TARGET }}
@@ -138,8 +156,8 @@ jobs:
           KORDI_BACKEND_SSH_USER: ${{ secrets.KORDI_BACKEND_SSH_USER }}
           KORDI_BACKEND_SSH_KEY: ${{ secrets.KORDI_BACKEND_SSH_KEY }}
           KORDI_BACKEND_BACKUP_ROOT: ${{ secrets.KORDI_BACKEND_BACKUP_ROOT }}
-          KORDI_BACKEND_BACKUP_ID: ${{ inputs.backup }}
-          KORDI_BACKEND_SCHEMA_COMPATIBILITY: ${{ inputs.schema_compatibility }}
+          KORDI_BACKEND_BACKUP_ID: ${{ inputs.backup || 'auto' }}
+          KORDI_BACKEND_SCHEMA_COMPATIBILITY: ${{ inputs.schema_compatibility || 'forward-only' }}
         run: bash scripts/production-deploy.sh "$RUNNER_TEMP/backend-bundle" "$TARGET_SHA" "$BUILD_RUN_ID"
       - name: Publish deployment outcome
         if: always()

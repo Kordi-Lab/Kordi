@@ -5,6 +5,14 @@ It never rebuilds source on the product server and never deploys a mutable image
 
 ## Operator workflow
 
+A successful Backend delivery run automatically queues a production promotion after its
+matching development result is verified. An administrator, including the triggering user,
+can approve it in the production environment. Automatic promotions use `backup=auto` and
+conservative `forward-only` recovery; they never assume that reverting images is compatible
+with a changed schema. A superseded build that did not update development queues no promotion.
+
+To explicitly authorize compatible image rollback, or promote another verified bundle:
+
 1. Open a successful **Backend delivery** run and copy its run ID.
 2. Use `auto` for the backup input to create and restore a fresh PostgreSQL backup on
    the product host, or provide an existing verified receipt ID. Backup data never leaves
