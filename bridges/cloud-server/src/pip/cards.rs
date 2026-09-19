@@ -95,6 +95,7 @@ pub(crate) fn card_block_from_row(row: &PlanCardRow, view: &str) -> Value {
             "displayName": participant.display_name,
             "organizer": participant.organizer,
             "rsvp": participant.rsvp.as_db_str(),
+            "avatarUrl": participant.avatar_url,
         })).collect::<Vec<_>>(),
     })
 }
@@ -205,7 +206,7 @@ pub(crate) async fn sync_card_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan_cards::models::PlanCardRow;
+    use crate::plan_cards::models::{PlanCardParticipantStatus, PlanCardRow, PlanCardRsvp};
 
     fn row(revision: i64) -> PlanCardRow {
         PlanCardRow {
@@ -233,5 +234,32 @@ mod tests {
         let newer = refreshed_card_content(content, &row(7)).expect("newer revision applies");
         assert_eq!(newer["blocks"][0]["revision"], 7);
         assert_eq!(newer["blocks"][0]["view"], "event");
+    }
+
+    #[test]
+    fn a_card_block_carries_participant_avatars() {
+        let mut card = row(1);
+        card.participants = vec![
+            PlanCardParticipantStatus {
+                account_id: "acct_a".to_string(),
+                display_name: "Ada".to_string(),
+                organizer: true,
+                rsvp: PlanCardRsvp::Pending,
+                avatar_url: Some("https://cdn.example/a.png".to_string()),
+            },
+            PlanCardParticipantStatus {
+                account_id: "acct_b".to_string(),
+                display_name: "Bob".to_string(),
+                organizer: false,
+                rsvp: PlanCardRsvp::Pending,
+                avatar_url: None,
+            },
+        ];
+        let block = card_block_from_row(&card, "event");
+        assert_eq!(
+            block["participants"][0]["avatarUrl"],
+            "https://cdn.example/a.png"
+        );
+        assert!(block["participants"][1]["avatarUrl"].is_null());
     }
 }
