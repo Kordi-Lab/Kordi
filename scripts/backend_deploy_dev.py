@@ -35,6 +35,10 @@ def deploy(args):
         record = {"environment": "dev", "sha": args.sha, "buildRunId": args.run_id,
                   "images": bundle["images"], "outcome": "failure", "rollback": "not attempted", "stage": "load images"}
         try:
+            expected = getattr(args, "expected_current_sha", None)
+            current = json.loads(state_file.read_text())["sha"] if state_file.exists() else "none"
+            if expected is not None and current != expected:
+                raise ValueError("Deployed revision changed after ordering validation; retry against the current host state")
             for service in SERVICES:
                 run(["docker", "load", "--input", str(args.bundle / f"{service}.docker.tar")])
                 actual = run(["docker", "image", "inspect", "--format", "{{.Id}}", bundle["images"][service]["tag"]])
@@ -68,6 +72,7 @@ def main():
     parser.add_argument("--sha", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("--expected-current-sha")
     parser.add_argument("--project", required=True)
     parser.add_argument("--api-port", type=int, required=True)
     parser.add_argument("--env-file", type=Path, required=True)

@@ -15,8 +15,11 @@ Each image is exported as Docker and OCI archives from the same build. The bundl
 binds the revision, build run ID, image configuration IDs, OCI digests, and archive checksums.
 Build outputs are retained for 30 days. Production promotes this bundle without rebuilding.
 
-After building, the workflow serializes shared-development updates and checks that the
-revision is still current on `main`. A superseded build does not overwrite a newer backend.
+After building, the workflow serializes shared-development updates and compares the
+candidate with the revision actually deployed on the host. Unrelated new main commits do
+not prevent a tested backend from deploying. An older late-finishing build cannot overwrite
+a newer deployed revision. The host rechecks the observed state under its lock before any
+image or container changes.
 The deployment job uses the `dev` environment and short-lived OIDC credentials over IAP.
 All image verification, the host lock, Compose update, health checks, and durable records
 run on the destination machine. Both backend services use the built images with
@@ -78,9 +81,8 @@ at its explicitly configured loopback port. The host requires Python 3, Docker w
 host lock directory. Allocate permissions to this development host only; its identity must
 not access production services, credentials, or data.
 
-A manual **Backend delivery** run can retry a tested main revision. Only the current main
-revision updates shared development. Rerunning an older build remains useful for artifact
-recovery, but does not silently roll development backward.
+A manual **Backend delivery** run can retry a tested main revision. A tested revision can update shared development if it advances or matches the deployed
+revision. Rerunning an older build does not silently roll development backward.
 
 ## Cleanup and recovery
 
