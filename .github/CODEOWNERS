@@ -1,0 +1,61 @@
+# Primary owner for CI/CD, gate policy, and release-sensitive paths: @shuyhere
+# Backup owners: add at least one additional eligible owner below before enabling
+# required owner review, and keep the escalation path in docs/ci-cd.md current.
+# One eligible owner approval may satisfy both the sensitive-path rule and the
+# normal one-review requirement.
+
+/.github/workflows/ @shuyhere
+/.github/actionlint.yaml @shuyhere
+/.github/CODEOWNERS @shuyhere
+/scripts/ci/ @shuyhere
+/scripts/check-ci-results.mjs @shuyhere
+/scripts/check-ci-results.test.mjs @shuyhere
+/scripts/check-hygiene.sh @shuyhere
+/scripts/check-english-only-diff.sh @shuyhere
+/scripts/check-maintainability-ratchet.mjs @shuyhere
+/scripts/check-maintainability-ratchet.test.mjs @shuyhere
+/scripts/check-eslint-suppressions-ratchet.mjs @shuyhere
+/scripts/check-eslint-suppressions-ratchet.test.mjs @shuyhere
+/scripts/repository-privacy-guard.mjs @shuyhere
+/scripts/privacy-guard.test.mjs @shuyhere
+/scripts/prepare-ci-postgres.sh @shuyhere
+/scripts/test-cloud-migrations.sh @shuyhere
+/scripts/migration-ci-runtime.test.mjs @shuyhere
+/scripts/ci-hosted-config.test.mjs @shuyhere
+/scripts/prepare-tauri-sidecar-placeholders.sh @shuyhere
+/scripts/check-desktop-dependency-surface.mjs @shuyhere
+/scripts/rust-clippy-contract.test.mjs @shuyhere
+
+# Deployment, release, and signing tooling
+/deploy/ @shuyhere
+/scripts/record-deployment.mjs @shuyhere
+/scripts/record-deployment.test.mjs @shuyhere
+/scripts/deploy-lock.test.mjs @shuyhere
+/scripts/lib/deploy-lock.sh @shuyhere
+/scripts/with-deploy-lock.sh @shuyhere
+/scripts/check-sha-readiness.mjs @shuyhere
+/scripts/check-sha-readiness.test.mjs @shuyhere
+/scripts/production-deploy.sh @shuyhere
+/scripts/production-deploy.test.mjs @shuyhere
+/scripts/production-deploy-guard.mjs @shuyhere
+/scripts/production-deploy-guard.test.mjs @shuyhere
+/scripts/dev-deploy-stack.sh @shuyhere
+/scripts/dev-deploy-stack.test.mjs @shuyhere
+/scripts/dev-stack-allocate.mjs @shuyhere
+/scripts/dev-stack-allocate.test.mjs @shuyhere
+/scripts/publish-desktop-release.mjs @shuyhere
+/scripts/publishDesktopRelease*.test.mjs @shuyhere
+/scripts/rollback-desktop-beta-channel.mjs @shuyhere
+/scripts/rollback-desktop-beta-channel.test.mjs @shuyhere
+/scripts/clear-desktop-release-channel.mjs @shuyhere
+/scripts/clear-desktop-release-channel.test.mjs @shuyhere
+/scripts/build-macos-desktop.sh @shuyhere
+/scripts/macos-release-signing.mjs @shuyhere
+/scripts/macos-release-signing.test.mjs @shuyhere
+/scripts/lib/desktop-release-version.mjs @shuyhere
+/scripts/lib/macos-release-signing.mjs @shuyhere
+/app/desktop/src-tauri/tauri.conf.json @shuyhere
+/app/desktop/src-tauri/tauri.cloud.conf.json @shuyhere
+/app/desktop/src-tauri/tauri.cloud.acceptance.conf.json @shuyhere
+/app/desktop/src-tauri/tauri.cloud.acceptance-bootstrap.conf.json @shuyhere
+/app/ios/project.yml @shuyhere

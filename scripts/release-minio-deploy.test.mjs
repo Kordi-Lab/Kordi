@@ -18,7 +18,10 @@ const publisherPolicyPath = new URL('../bridges/cloud-server/deploy/k3s/policies
 const credentialScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const credentialUtilsPath = new URL('../bridges/cloud-server/deploy/k3s/release-credential-utils.sh', import.meta.url);
 const deployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh', import.meta.url);
-const ciWorkflowPath = new URL('../.github/workflows/ci.yml', import.meta.url);
+const rustWorkflowPath = new URL('../.github/workflows/ci-rust.yml', import.meta.url);
+const hygieneWorkflowPath = new URL('../.github/workflows/ci-hygiene.yml', import.meta.url);
+const hygieneRunnerPath = new URL('../scripts/ci/run-hygiene.sh', import.meta.url);
+const packageJsonPath = new URL('../package.json', import.meta.url);
 const execFileAsync = promisify(execFile);
 
 function policyActions(policy) {
@@ -372,8 +375,13 @@ exit 64
 });
 
 test('CI exercises release publisher contracts and the Cloud update server', async () => {
-  const workflow = await readFile(ciWorkflowPath, 'utf8');
+  const rustWorkflow = await readFile(rustWorkflowPath, 'utf8');
+  const hygieneWorkflow = await readFile(hygieneWorkflowPath, 'utf8');
+  const hygieneRunner = await readFile(hygieneRunnerPath, 'utf8');
+  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
 
-  assert.match(workflow, /run: pnpm test:scripts/);
-  assert.match(workflow, /run: cargo test -p kordi-cloud-server/);
+  assert.match(rustWorkflow, /run: pnpm check:server/);
+  assert.match(packageJson.scripts['check:server'], /cargo test -p kordi-cloud-server/);
+  assert.match(hygieneWorkflow, /run: pnpm check:hygiene/);
+  assert.match(hygieneRunner, /pnpm test:scripts/);
 });
