@@ -1,0 +1,313 @@
+name: Deploy development stack
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Full 40-character commit SHA that passed the applicable checks.
+        required: true
+        type: string
+      stack:
+        description: Allocated stack identifier from deploy/dev/stack-allocations.json.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-dev-${{ inputs.stack }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy development stack
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TARGET_SHA: ${{ inputs.sha }}
+      STACK_ID: ${{ inputs.stack }}
+      ACTOR: ${{ github.actor }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Refuse dispatch outside the default branch
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$DISPATCH_REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::Dispatch deploy-dev from $DEFAULT_BRANCH only so the run uses trusted workflow code."
+            exit 1
+          fi
+
+      - name: Checkout trusted workflow code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Prepare log directory
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/dev-deploy-raw" "$RUNNER_TEMP/dev-deploy-logs"
+
+      - name: Validate dispatch inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/dev-stack-allocate.mjs validate-inputs --stack "$STACK_ID" --sha "$TARGET_SHA"
+
+      - name: Authorize deployer
+        shell: bash
+        env:
+          DEPLOYERS: ${{ vars.KORDI_DEV_DEPLOYERS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOYERS//[[:space:],]/}" ]; then
+            echo "::error::KORDI_DEV_DEPLOYERS is not configured; refusing every deployer."
+            exit 1
+          fi
+          normalized_actor="$(printf '%s' "$ACTOR" | tr '[:upper:]' '[:lower:]')"
+          authorized=0
+          while IFS= read -r candidate; do
+            candidate="$(printf '%s' "$candidate" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+            [ -n "$candidate" ] || continue
+            if [ "$candidate" = "$normalized_actor" ]; then
+              authorized=1
+              break
+            fi
+          done < <(printf '%s' "$DEPLOYERS" | tr ',' '\n')
+          if [ "$authorized" -ne 1 ]; then
+            echo "::error::GitHub account @$ACTOR is not authorized to deploy development stacks."
+            exit 1
+          fi
+          echo "Authorized development deployer: @$ACTOR"
+
+      - name: Validate stack allocation
+        id: allocation
+        shell: bash
+        run: |
+          set -euo pipefail
+          plan_file="$RUNNER_TEMP/dev-stack-plan.json"
+          node scripts/dev-stack-allocate.mjs check --stack "$STACK_ID" --actor "$ACTOR"
+          node scripts/dev-stack-allocate.mjs plan --stack "$STACK_ID" --actor "$ACTOR" --json > "$plan_file"
+          {
+            echo "compose_project=$(jq -r '.composeProject' "$plan_file")"
+            echo "lock=$(jq -r '.lock' "$plan_file")"
+            echo "api_port=$(jq -r '.ports.api' "$plan_file")"
+            echo "minio_port=$(jq -r '.ports.minio' "$plan_file")"
+            echo "minio_console_port=$(jq -r '.ports.minioConsole' "$plan_file")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate checks for the exact revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f scripts/check-sha-readiness.mjs ]; then
+            echo "::error::scripts/check-sha-readiness.mjs is missing; refusing to treat missing readiness evidence as a pass."
+            exit 1
+          fi
+          node scripts/check-sha-readiness.mjs --sha "$TARGET_SHA" --check "CI required" 2>&1 \
+            | tee "$RUNNER_TEMP/dev-deploy-raw/readiness.log"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
+        with:
+          workload_identity_provider: ${{ secrets.KORDI_DEV_WIF_PROVIDER }}
+          service_account: ${{ secrets.KORDI_DEV_DEPLOY_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+
+      - name: Deploy stack
+        id: deploy
+        continue-on-error: true
+        shell: bash
+        env:
+          KORDI_DEV_GCP_PROJECT: ${{ vars.KORDI_DEV_GCP_PROJECT }}
+          KORDI_DEV_SSH_ZONE: ${{ vars.KORDI_DEV_SSH_ZONE }}
+          KORDI_DEV_SSH_TARGET: ${{ vars.KORDI_DEV_SSH_TARGET }}
+          KORDI_DEV_STACK_ROOT: ${{ vars.KORDI_DEV_STACK_ROOT }}
+          KORDI_DEV_STACK_PROJECT: ${{ steps.allocation.outputs.compose_project }}
+          KORDI_DEV_API_PORT: ${{ steps.allocation.outputs.api_port }}
+          KORDI_DEV_MINIO_PORT: ${{ steps.allocation.outputs.minio_port }}
+          KORDI_DEV_MINIO_CONSOLE_PORT: ${{ steps.allocation.outputs.minio_console_port }}
+          KORDI_DEV_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          KORDI_DEV_ARTIFACT_OUT: ${{ runner.temp }}/dev-artifact-digest.txt
+          KORDI_DEV_LOCK_TIMEOUT: "1800"
+        run: |
+          set -euo pipefail
+          bash scripts/dev-deploy-stack.sh deploy --stack "$STACK_ID" --sha "$TARGET_SHA" \
+            > "$RUNNER_TEMP/dev-deploy-raw/deploy.log" 2>&1
+
+      - name: Smoke test stack
+        id: smoke
+        if: steps.deploy.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          KORDI_DEV_GCP_PROJECT: ${{ vars.KORDI_DEV_GCP_PROJECT }}
+          KORDI_DEV_SSH_ZONE: ${{ vars.KORDI_DEV_SSH_ZONE }}
+          KORDI_DEV_SSH_TARGET: ${{ vars.KORDI_DEV_SSH_TARGET }}
+          KORDI_DEV_STACK_ROOT: ${{ vars.KORDI_DEV_STACK_ROOT }}
+          KORDI_DEV_STACK_PROJECT: ${{ steps.allocation.outputs.compose_project }}
+          KORDI_DEV_API_PORT: ${{ steps.allocation.outputs.api_port }}
+          KORDI_DEV_MINIO_PORT: ${{ steps.allocation.outputs.minio_port }}
+          KORDI_DEV_MINIO_CONSOLE_PORT: ${{ steps.allocation.outputs.minio_console_port }}
+        run: |
+          set -euo pipefail
+          bash scripts/dev-deploy-stack.sh smoke --stack "$STACK_ID" \
+            > "$RUNNER_TEMP/dev-deploy-raw/smoke.log" 2>&1
+
+      - name: Record deployment
+        id: record
+        if: steps.deploy.outcome == 'success' && steps.smoke.outcome == 'success'
+        shell: bash
+        env:
+          ARTIFACT_OUT: ${{ runner.temp }}/dev-artifact-digest.txt
+        run: |
+          set -euo pipefail
+          if [ ! -s "$ARTIFACT_OUT" ]; then
+            echo "::error::The deploy did not report an artifact digest; refusing to record an unverifiable deployment."
+            exit 1
+          fi
+          artifact="$(tr -d '[:space:]' < "$ARTIFACT_OUT")"
+          record_output="$(node scripts/record-deployment.mjs \
+            --environment dev \
+            --stack "$STACK_ID" \
+            --sha "$TARGET_SHA" \
+            --actor "$ACTOR" \
+            --artifact "$artifact" \
+            --verification "smoke check passed; workflow run $RUN_URL" \
+            --workflow "$RUN_URL")"
+          printf '%s\n' "$record_output"
+          record_path="$(printf '%s\n' "$record_output" | sed -n 's/^Deployment record: //p' | head -n 1)"
+          if [ -z "$record_path" ]; then
+            echo "::error::Unable to determine the deployment record path."
+            exit 1
+          fi
+          cp "$record_path" "$RUNNER_TEMP/dev-deploy-logs/deployment-record.json"
+          echo "path=$record_path" >> "$GITHUB_OUTPUT"
+
+      - name: Redact diagnostic logs
+        if: always()
+        shell: bash
+        env:
+          KORDI_REDACT_VALUES: |
+            ${{ vars.KORDI_DEV_GCP_PROJECT }}
+            ${{ vars.KORDI_DEV_SSH_ZONE }}
+            ${{ vars.KORDI_DEV_SSH_TARGET }}
+            ${{ vars.KORDI_DEV_STACK_ROOT }}
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          RECORD_PATH: ${{ steps.record.outputs.path }}
+        run: |
+          set -euo pipefail
+          export KORDI_RAW_LOG_DIR="$RUNNER_TEMP/dev-deploy-raw"
+          export KORDI_LOG_DIR="$RUNNER_TEMP/dev-deploy-logs"
+          node --input-type=module - <<'NODE'
+          import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { pathToFileURL } from 'node:url';
+          const rawDir = process.env.KORDI_RAW_LOG_DIR;
+          const outDir = process.env.KORDI_LOG_DIR;
+          mkdirSync(outDir, { recursive: true });
+          const { redactText } = await import(pathToFileURL(path.resolve('scripts/record-deployment.mjs')).href);
+          const values = (process.env.KORDI_REDACT_VALUES ?? '')
+            .split('\n')
+            .map((value) => value.trim())
+            .filter(Boolean);
+          const redact = (text) => {
+            let result = redactText(text);
+            for (const value of values) result = result.split(value).join('[redacted]');
+            return result;
+          };
+          const names = existsSync(rawDir)
+            ? readdirSync(rawDir).filter((name) => name.endsWith('.log'))
+            : [];
+          for (const name of names) {
+            const content = readFileSync(path.join(rawDir, name), 'utf8');
+            writeFileSync(path.join(outDir, name), redact(content), { encoding: 'utf8', mode: 0o600 });
+          }
+          const metadata = {
+            revision: process.env.TARGET_SHA,
+            stack: process.env.STACK_ID,
+            actor: process.env.ACTOR,
+            deployOutcome: process.env.DEPLOY_OUTCOME,
+            smokeOutcome: process.env.SMOKE_OUTCOME,
+            recordPath: process.env.RECORD_PATH || null,
+          };
+          writeFileSync(path.join(outDir, 'deployment-metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, {
+            encoding: 'utf8',
+            mode: 0o600,
+          });
+          NODE
+          for log in "$RUNNER_TEMP"/dev-deploy-logs/*.log; do
+            [ -e "$log" ] || continue
+            printf '\n===== %s =====\n' "$(basename "$log")"
+            cat "$log"
+          done
+
+      - name: Post job summary
+        if: always()
+        shell: bash
+        env:
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          RECORD_OUTCOME: ${{ steps.record.outcome }}
+          RECORD_PATH: ${{ steps.record.outputs.path }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Development deployment"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Revision | \`$TARGET_SHA\` |"
+            echo "| Stack | \`$STACK_ID\` |"
+            echo "| Actor | @$ACTOR |"
+            echo "| Deploy | $DEPLOY_OUTCOME |"
+            echo "| Smoke | $SMOKE_OUTCOME |"
+            echo "| Record | $RECORD_OUTCOME |"
+            if [ -n "$RECORD_PATH" ]; then
+              echo "| Deployment record | \`$RECORD_PATH\` |"
+            fi
+            echo
+            echo "Connection: the stack stays private behind the IAP tunnel. Follow the private connection procedure in [docs/dev-deployment.md](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/docs/dev-deployment.md); no public preview URL is exposed."
+            echo
+            echo "Diagnostic logs: [dev-deploy-diagnostics-${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload redacted diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dev-deploy-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/dev-deploy-logs
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Enforce deployment result
+        if: always()
+        shell: bash
+        env:
+          DEPLOY_OUTCOME: ${{ steps.deploy.outcome }}
+          SMOKE_OUTCOME: ${{ steps.smoke.outcome }}
+          RECORD_OUTCOME: ${{ steps.record.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$DEPLOY_OUTCOME" != "success" ] || [ "$SMOKE_OUTCOME" != "success" ] || [ "$RECORD_OUTCOME" != "success" ]; then
+            echo "::error::Development deployment did not complete (deploy=$DEPLOY_OUTCOME smoke=$SMOKE_OUTCOME record=$RECORD_OUTCOME)."
+            exit 1
+          fi
+          echo "Development deployment completed for stack $STACK_ID at revision $TARGET_SHA."
