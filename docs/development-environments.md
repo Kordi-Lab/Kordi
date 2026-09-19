@@ -7,6 +7,7 @@ Use this document before starting any Kordi preview, debug session, backend proc
 | Work | Required environment | Client origin |
 | --- | --- | --- |
 | Ordinary contributor or isolated feature work | Local Docker backend | `http://127.0.0.1:17081` |
+| Approved everyday desktop frontend and multi-account testing | Shared development backend through one approved shared connection | `http://127.0.0.1:18181` by default |
 | Approved isolated work on a remote development host | Private development host reached through an IAP-style SSH tunnel | `http://127.0.0.1:17081` through the tunnel |
 | Native iPhone backend development | `Kordi Beta` scheme plus either isolated backend above | `http://127.0.0.1:17081` |
 | Desktop-only production operator preview | Allowlisted operator launcher | `https://kordi.ai` |
@@ -30,9 +31,9 @@ If the impact, authorization, or environment identity is uncertain, stop and fai
 
 Assume every process, port, tunnel, desktop profile, simulator, worktree, data directory, and backend that the current task did not create belongs to another active debugging session.
 
-- Never stop, restart, erase, reset, reconfigure, delete, or reuse another session's resources, even when they appear stale or occupy the preferred port. An occupied resource is a reason to choose another resource, not permission to terminate it.
+- Never stop, restart, erase, reset, reconfigure, delete, or take over another session's resources, even when they appear stale or occupy the preferred port. An occupied resource is not permission to terminate it. Explicitly provisioned shared connections may be consumed through `pnpm dev:cloud:shared`; an arbitrary occupied port is not an approved shared connection.
 - Never use broad cleanup commands such as `pkill`, `killall`, `xcrun simctl shutdown all`, `xcrun simctl erase all`, or a project-wide Docker shutdown while parallel debugging may be active.
-- Give each task a unique worktree, local ports, `io.kordi.cloud.*` profile, app data directory, simulator device, DerivedData directory, logs, and tunnel lifecycle. Stop or erase only exact resource identifiers recorded when that task created them.
+- Give each task a unique worktree, frontend port, `io.kordi.cloud.*` profile, app data directory, simulator device, DerivedData directory, and logs. Isolated backends also need task-owned API ports and tunnel lifecycles. Shared previews retain the shared API port and do not own its tunnel. Stop or erase only exact resource identifiers recorded when that task created them.
 - Treat a development backend as shared whenever another session may depend on it. Do not rebuild, restart, reset, or change its environment; use a task-specific backend instead. If isolation is unavailable or ownership is uncertain, stop and ask rather than disturbing existing work.
 - A launcher or cleanup trap may terminate only the tunnel and child processes it created. It must not discover and kill an unrelated listener to reclaim a port.
 
@@ -134,6 +135,9 @@ http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
 The GitHub OAuth application callback URL must contain the complete path. In Google Auth Platform, add `http://127.0.0.1:17081` as an authorized JavaScript origin and add the complete Google callback URL as an authorized redirect URI.
 
 ### Concurrent previews and callback ports
+
+Follow the [shared development testing guide](testing/shared-development.md) for the
+complete daily workflow, two-account checks, data preservation, and CI/CD evidence.
 
 Frontend-only previews can share a development backend while keeping separate desktop profiles, application data, and frontend ports. Use a separate allocated backend stack for server changes, migrations, resets, or changes to OAuth configuration. Keep an established stack's callback port stable while other previews use it.
 

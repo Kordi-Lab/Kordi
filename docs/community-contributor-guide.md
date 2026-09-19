@@ -189,6 +189,11 @@ The local backend is intentionally inspectable by the developer who runs it. Pro
 
 If a maintainer asks for shared-environment validation, use only the approved non-production origin and test identity provided for that work. Never copy production secrets or data into a local or staging environment.
 
+Follow the [shared development testing guide](testing/shared-development.md) for
+the connection, separate profiles, and two-account checks. Shared data is persistent;
+do not apply the local reset/reseed commands to it. CI continues to use synthetic
+fixtures and does not require access to these accounts.
+
 The core-maintainer operator launcher is GitHub-allowlisted and is not part of the community workflow. Do not modify its allowlist or endpoint safeguards to make a contributor test pass.
 
 The isolated contributor backend cannot substitute for product-server validation. If approved core-maintainer work will affect or restart the product server, the operator must follow the [required environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug), work on the corresponding product-server machine, and validate the deployed product through `https://kordi.ai`.

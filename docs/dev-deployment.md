@@ -4,6 +4,11 @@ Every successful post-merge pipeline can update the shared development backend a
 Contributors can also deploy a tested branch to a privately allocated stack.
 Neither path exposes a public preview or uses production credentials.
 
+For everyday frontend work, use the shared backend with separate desktop profiles.
+Use an allocated stack for backend changes and destructive tests. The
+[shared development testing guide](testing/shared-development.md) covers setup,
+two-account acceptance checks, and preserving established fixtures.
+
 ## Shared development
 
 `backend-delivery.yml` starts after **Post-merge CI** succeeds on `main`. It verifies both
@@ -24,6 +29,8 @@ The deployment job uses the `dev` environment and short-lived OIDC credentials o
 All image verification, the host lock, Compose update, health checks, and durable records
 run on the destination machine. Both backend services use the built images with
 `--no-build`. The existing development environment file and volumes remain in use.
+An image update does not reset accounts, messages, or files. An allocated stack has
+its own data; connecting to it does not migrate shared test accounts automatically.
 
 The public workflow exposes revision/digest/outcome metadata only. Raw command output stays
 private. A failed deployment is recorded even when no image was applied. Development
@@ -41,6 +48,8 @@ Any contributor with repository write access can request deployment. The trigger
 current access and allocation ownership are checked server-side. Fork-origin evidence,
 missing credentials, expired allocations, port collisions, and unverified revisions fail closed.
 The workflow itself always runs from `main`; branch code receives no production privileges.
+The allocator's JSON result nests deployment fields under `plan`; the workflow validates
+that envelope before emitting the Compose project and port outputs.
 
 New stacks initialize their checkout before the dirty-tree guard is applied. Existing dirty
 checkouts are rejected so local operator changes cannot be overwritten.
@@ -56,6 +65,9 @@ Connect through the approved IAP tunnel using a task-owned loopback port. See
 [development environments](development-environments.md) and the
 [hosted developer guide](hosted-cloud-developer-guide.md). Desktop backend previews use the
 community profile; native iPhone backend tests use **Kordi Beta**.
+For remote stacks with different host and local ports, configure
+`KORDI_DEBUG_PUBLIC_API_PORT` for the local callback port and run `pnpm doctor:dev`
+against that local origin. Provider availability alone does not verify callback routing.
 
 ## Environment setup
 
