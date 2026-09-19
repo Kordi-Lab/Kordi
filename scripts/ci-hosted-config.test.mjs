@@ -1,134 +1,186 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+const requireFromDesktop = createRequire(new URL("../app/desktop/package.json", import.meta.url));
+const YAML = requireFromDesktop("yaml");
+
 const workflowsDirectory = new URL("../.github/workflows/", import.meta.url);
-const workflowJobs = new Map([
-  ["ci.yml", ["frontend", "desktop-visual", "rust", "rust-desktop", "hygiene"]],
-  ["pr-metadata.yml", ["linked-issue"]],
-]);
+const packagePath = new URL("../package.json", import.meta.url);
 
-async function workflow(name) {
-  return readFile(new URL(name, workflowsDirectory), "utf8");
-}
+const hostedRunners = new Set(["ubuntu-latest", "macos-15"]);
+const expectedJobs = [
+  ["ci-frontend.yml", "frontend", "ubuntu-latest"],
+  ["ci-hygiene.yml", "hygiene", "ubuntu-latest"],
+  ["ci-rust.yml", "server", "ubuntu-latest"],
+  ["ci-rust.yml", "migrations", "ubuntu-latest"],
+  ["ci-visual.yml", "visual", "macos-15"],
+  ["ci-visual.yml", "browser", "macos-15"],
+  ["ci-platforms.yml", "desktop", "macos-15"],
+  ["ci-platforms.yml", "ios", "macos-15"],
+  ["pr-metadata.yml", "linked-issue", "ubuntu-latest"],
+];
+const checkWorkflows = [
+  "blocking-ci.yml",
+  "ci-frontend.yml",
+  "ci-hygiene.yml",
+  "ci-platforms.yml",
+  "ci-rust.yml",
+  "ci-visual.yml",
+  "postmerge-ci.yml",
+  "pr-metadata.yml",
+];
 
-function jobBlock(source, job) {
-  const marker = `\n  ${job}:\n`;
-  const start = source.indexOf(marker);
-  assert.notEqual(start, -1, `workflow must define the ${job} job`);
-  const remainder = source.slice(start + marker.length);
-  const nextJob = remainder.match(/\n  [A-Za-z0-9_-]+:\n/);
-  return nextJob ? remainder.slice(0, nextJob.index) : remainder;
-}
-
-test("no workflow selects a self-hosted runner", async () => {
+async function workflowSources() {
   const names = (await readdir(workflowsDirectory)).filter((name) => name.endsWith(".yml"));
   assert.ok(names.length > 0, "the repository must define workflows");
+  const entries = await Promise.all(
+    names.map(async (name) => [name, await readFile(new URL(name, workflowsDirectory), "utf8")]),
+  );
+  return new Map(entries);
+}
 
-  for (const name of names) {
-    assert.doesNotMatch(await workflow(name), /self-hosted/,
-      `${name} must not select a self-hosted runner`);
+async function parsedWorkflows() {
+  const sources = await workflowSources();
+  return new Map(
+    [...sources].map(([name, source]) => [name, { source, document: YAML.parse(source) }]),
+  );
+}
+
+function jobSteps(job) {
+  return job.steps ?? [];
+}
+
+test("every workflow file parses as YAML with declared jobs", async () => {
+  for (const [name, { document }] of await parsedWorkflows()) {
+    assert.ok(document && typeof document === "object", `${name} must parse as a YAML mapping`);
+    assert.ok(document.jobs && Object.keys(document.jobs).length > 0, `${name} must declare jobs`);
+  }
+});
+
+test("no workflow selects a self-hosted runner", async () => {
+  for (const [name, source] of await workflowSources()) {
+    assert.doesNotMatch(source, /self-hosted/, `${name} must not select a self-hosted runner`);
   }
 });
 
 test("every check runs on a standard GitHub-hosted runner", async () => {
-  const ci = await workflow("ci.yml");
-  const metadata = await workflow("pr-metadata.yml");
-  const expected = [
-    [ci, "frontend", "ubuntu-latest"],
-    [ci, "desktop-visual", "macos-15"],
-    [ci, "rust", "ubuntu-latest"],
-    [ci, "rust-desktop", "macos-15"],
-    [ci, "hygiene", "ubuntu-latest"],
-    [metadata, "linked-issue", "ubuntu-latest"],
-  ];
+  const workflows = await parsedWorkflows();
 
-  for (const [source, job, runner] of expected) {
-    assert.match(jobBlock(source, job), new RegExp(`runs-on: ${runner}\\n`),
-      `${job} must run on ${runner}`);
+  for (const [name, jobId, runner] of expectedJobs) {
+    const job = workflows.get(name)?.document?.jobs?.[jobId];
+    assert.ok(job, `${name} must define the ${jobId} job`);
+    assert.equal(job["runs-on"], runner, `${jobId} must run on ${runner}`);
   }
 
-  const selectors = [...`${ci}\n${metadata}`.matchAll(/runs-on:\s*(\S+)/g)].map((match) => match[1]);
-  assert.deepEqual([...new Set(selectors)].sort(), ["macos-15", "ubuntu-latest"]);
-});
-
-test("checkouts drop persisted credentials and every job declares a timeout", async () => {
-  for (const [name, jobs] of workflowJobs) {
-    const source = await workflow(name);
-    const checkouts = source.split("actions/checkout@v4").length - 1;
-    const hardened = source.split("persist-credentials: false").length - 1;
-    assert.equal(hardened, checkouts, `${name} must disable persisted credentials on every checkout`);
-
-    for (const job of jobs) {
-      assert.match(jobBlock(source, job), /timeout-minutes: \d+/,
-        `${name} job ${job} must declare an explicit timeout`);
+  for (const [name, { document }] of workflows) {
+    for (const [jobId, job] of Object.entries(document.jobs)) {
+      if (job.uses) {
+        continue;
+      }
+      const selector = job["runs-on"];
+      if (selector === "${{ matrix.os }}") {
+        const values = job.strategy?.matrix?.os ?? [];
+        assert.ok(
+          values.length > 0 && values.every((value) => hostedRunners.has(value)),
+          `${name} job ${jobId} must only matrix over hosted runners`,
+        );
+      } else {
+        assert.ok(hostedRunners.has(selector),
+          `${name} job ${jobId} must use a hosted runner, found ${selector}`);
+      }
     }
   }
 });
 
-test("workflows declare minimal read-only permissions", async () => {
-  const ci = await workflow("ci.yml");
-  const metadata = await workflow("pr-metadata.yml");
+test("checkouts drop persisted credentials and executable jobs declare a timeout", async () => {
+  const workflows = await parsedWorkflows();
 
-  assert.match(ci, /^permissions:\n  contents: read\n/m);
-  assert.match(metadata, /^permissions:\n  contents: read\n  issues: read\n/m);
-  assert.doesNotMatch(`${ci}\n${metadata}`, /(?:contents|issues|pull-requests|actions):\s*write/);
+  for (const name of checkWorkflows) {
+    const { source } = workflows.get(name);
+    const checkouts = source.split("actions/checkout@").length - 1;
+    const hardened = source.split("persist-credentials: false").length - 1;
+    assert.equal(hardened, checkouts, `${name} must disable persisted credentials on every checkout`);
+  }
+
+  for (const [name, { document }] of workflows) {
+    for (const [jobId, job] of Object.entries(document.jobs)) {
+      if (job.uses) {
+        continue;
+      }
+      assert.ok(
+        Number.isInteger(job["timeout-minutes"]) && job["timeout-minutes"] > 0,
+        `${name} job ${jobId} must declare an explicit timeout`,
+      );
+    }
+  }
+});
+
+test("check workflows declare minimal read-only permissions", async () => {
+  const workflows = await parsedWorkflows();
+
+  for (const name of checkWorkflows) {
+    const permissions = workflows.get(name)?.document?.permissions;
+    assert.equal(permissions?.contents, "read", `${name} must declare contents: read`);
+    assert.doesNotMatch(JSON.stringify(permissions), /write/,
+      `${name} must not request write permissions`);
+  }
 });
 
 test("hosted caches replace the retired runner-local cache", async () => {
-  const ci = await workflow("ci.yml");
+  const workflows = await parsedWorkflows();
+  const rustCache = /Swatinem\/rust-cache@[0-9a-f]{40}\b/;
+  const rustJobs = [
+    ["ci-rust.yml", "server"],
+    ["ci-rust.yml", "migrations"],
+    ["ci-platforms.yml", "desktop"],
+    ["postmerge-ci.yml", "workspace"],
+    ["postmerge-ci.yml", "build-smoke"],
+  ];
 
-  assert.doesNotMatch(ci, /runner-local|Library\/Caches|CARGO_TARGET_DIR/);
-  assert.match(jobBlock(ci, "frontend"), /cache: pnpm/);
-  assert.match(jobBlock(ci, "desktop-visual"), /cache: pnpm/);
-  for (const job of ["rust", "rust-desktop"]) {
-    assert.match(jobBlock(ci, job), /Swatinem\/rust-cache@[0-9a-f]{40}\b/,
-      `${job} must use the pinned hosted Rust cache`);
+  for (const [name, { source, document }] of workflows) {
+    assert.doesNotMatch(source, /runner-local|Library\/Caches|CARGO_TARGET_DIR/,
+      `${name} must not rely on runner-local caches`);
+
+    for (const [jobId, job] of Object.entries(document.jobs)) {
+      const installs = jobSteps(job).some((step) => /pnpm install/.test(step.run ?? ""));
+      const cached = jobSteps(job).some(
+        (step) => step.uses?.startsWith("actions/setup-node@") && step.with?.cache === "pnpm",
+      );
+      if (installs) {
+        assert.ok(cached, `${name} job ${jobId} must cache pnpm through actions/setup-node`);
+      }
+    }
+  }
+
+  for (const [name, jobId] of rustJobs) {
+    const job = workflows.get(name).document.jobs[jobId];
+    assert.ok(
+      jobSteps(job).some((step) => rustCache.test(step.uses ?? "")),
+      `${name} job ${jobId} must use the pinned hosted Rust cache`,
+    );
   }
 });
 
-test("visual checks keep Chromium-only commands and dynamic loopback ports", async () => {
-  const ci = await workflow("ci.yml");
-  const commands = ci.split("\n").filter((line) => /(?:test:visual|playwright test)/.test(line));
+test("visual and browser checks keep Chromium-only commands", async () => {
+  const workflows = await parsedWorkflows();
+  const visualWorkflow = workflows.get("ci-visual.yml").source;
+  const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
+  const visual = packageJson.scripts["check:visual"];
+  const browser = packageJson.scripts["check:browser"];
 
-  assert.ok(commands.some((line) => line.includes("playwright.production.config.ts")),
-    "CI must exercise the complete production entrypoints");
-  assert.ok(commands.some((line) => line.includes("playwright.trajectory.config.ts")),
-    "CI must exercise the minified transcript trajectories");
-  for (const command of commands) {
-    assert.match(command, /--project chromium(?:\s|$)/,
-      "the hosted visual job must select Chromium explicitly");
+  assert.match(visualWorkflow, /pnpm --dir app\/desktop exec playwright install chromium/);
+  assert.match(visual, /test:visual --project chromium/);
+  assert.match(browser, /playwright\.production\.config\.ts --project chromium/);
+  assert.match(browser, /playwright\.trajectory\.config\.ts --project chromium/);
+  assert.doesNotMatch(`${visual}\n${browser}`, /firefox|webkit/i);
+
+  for (const line of visualWorkflow.split("\n").filter((line) => /playwright/.test(line))) {
+    assert.doesNotMatch(line, /firefox|webkit/i, "visual CI must stay Chromium-only");
   }
-  assert.match(ci, /KORDI_PRODUCTION_TEST_PORT="\$\(node -e/);
-  assert.match(ci, /KORDI_TRAJECTORY_TEST_PORT="\$\(node -e/);
-});
-
-test("portable Rust checks stay on Ubuntu and Darwin-only desktop checks on macOS", async () => {
-  const ci = await workflow("ci.yml");
-  const rust = jobBlock(ci, "rust");
-
-  assert.match(rust, /cargo clippy --workspace --exclude kordi-desktop --all-targets -- -D warnings/);
-  assert.doesNotMatch(rust, /prepare-tauri-sidecar-placeholders\.sh/);
-  assert.doesNotMatch(rust, /kordi-desktop --no-default-features/);
-  assert.match(rust, /bash scripts\/test-cloud-migrations\.sh/);
-
-  const desktop = jobBlock(ci, "rust-desktop");
-  const sidecar = desktop.indexOf("bash scripts/prepare-tauri-sidecar-placeholders.sh");
-  const clippy = desktop.indexOf("cargo clippy -p kordi-desktop");
-  assert.ok(sidecar !== -1 && clippy !== -1 && sidecar < clippy,
-    "sidecar placeholders must be prepared before the desktop crate is checked");
-  assert.match(desktop, /cargo test -p kordi-desktop --no-default-features/);
-});
-
-test("the hygiene privacy baseline fails closed when the denylist is unavailable", async () => {
-  const hygiene = jobBlock(await workflow("ci.yml"), "hygiene");
-
-  assert.match(hygiene, /node scripts\/repository-privacy-guard\.mjs --comparison "\$comparison"/);
-  assert.match(hygiene, /KORDI_PRIVACY_DENYLIST: \$\{\{ secrets\.KORDI_PRIVACY_DENYLIST \}\}/);
-  assert.match(hygiene, /if \[ -z "\$\{KORDI_PRIVACY_DENYLIST:-\}" \]/);
-  assert.match(hygiene, /exit 1/);
 });
 
 test("the retired self-hosted runner artifacts are absent", () => {

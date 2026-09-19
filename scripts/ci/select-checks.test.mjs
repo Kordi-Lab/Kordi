@@ -105,7 +105,7 @@ test('shared Rust dependency changes select server and desktop but not iOS', (t)
 });
 
 test('shared lockfiles select every group', (t) => {
-  for (const sharedPath of ['pnpm-lock.yaml', '.github/workflows/ci.yml', 'Cargo.lock']) {
+  for (const sharedPath of ['pnpm-lock.yaml', '.github/workflows/blocking-ci.yml', 'Cargo.lock']) {
     const fixture = changedFilesFixture(t, [sharedPath]);
     const manifest = manifestFrom(
       runSelection(['--changed-files', fixture, '--json', '--base', shaA, '--head', shaB]),

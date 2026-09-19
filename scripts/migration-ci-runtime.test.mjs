@@ -16,24 +16,28 @@ function jobBlock(source, job) {
 }
 
 test('migration CI prepares the pinned container before running the matrix', () => {
-  const workflow = read('../.github/workflows/ci.yml');
-  const rust = jobBlock(workflow, 'rust');
+  const workflow = read('../.github/workflows/ci-rust.yml');
+  const migrations = jobBlock(workflow, 'migrations');
+  const packageJson = JSON.parse(read('../package.json'));
+  const harness = read('./test-cloud-migrations.sh');
 
-  assert.match(rust, /runs-on: ubuntu-latest/);
-  assert.doesNotMatch(rust, /prepare-ci-postgres\.sh/);
+  assert.match(migrations, /runs-on: ubuntu-latest/);
+  assert.match(migrations, /run: pnpm check:migrations/);
+  assert.doesNotMatch(migrations, /prepare-ci-postgres\.sh/);
+  assert.doesNotMatch(migrations, /KORDI_MIGRATION_PG_BIN/);
+  assert.equal(packageJson.scripts['check:migrations'], 'bash scripts/test-cloud-migrations.sh');
   assert.ok(
-    rust.indexOf('docker pull postgres:16.14-alpine') <
-      rust.indexOf('bash scripts/test-cloud-migrations.sh'),
+    harness.indexOf('postgres:16.14-alpine') <
+      harness.indexOf('cargo test -p kordi-cloud-server --lib'),
     'the pinned PostgreSQL image must be prepared before the migration matrix runs',
   );
-  assert.match(rust, /Test database upgrade compatibility\s+run: bash scripts\/test-cloud-migrations\.sh/);
 });
 
 test('the migration harness stays pinned to PostgreSQL 16.14', () => {
-  const workflow = read('../.github/workflows/ci.yml');
+  const workflow = read('../.github/workflows/ci-rust.yml');
   const source = read('./test-cloud-migrations.sh');
   execFileSync('bash', ['-n', fileURLToPath(new URL('./test-cloud-migrations.sh', import.meta.url))]);
-  assert.match(workflow, /docker pull postgres:16\.14-alpine/);
+  assert.match(workflow, /pnpm check:migrations/);
   assert.match(source, /postgres:16\.14-alpine/);
 });
 
