@@ -456,6 +456,7 @@ test('group control envelopes replace canonical membership and remove omitted re
   });
   await client.syncCloudEvents('token', '0');
   const envelope = `kordi-cloud-group:${Buffer.from(JSON.stringify({
+    kind: 'group-update',
     participants: [{ accountId: 'acct_a' }, { accountId: 'acct_b' }],
   })).toString('base64url')}`;
   await client.sendMessage('token', 'acct_a', envelope, {
