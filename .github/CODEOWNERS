@@ -5,6 +5,7 @@
 # normal one-review requirement.
 
 /.github/workflows/ @shuyhere
+/.github/actionlint.yaml @shuyhere
 /.github/CODEOWNERS @shuyhere
 /scripts/ci/ @shuyhere
 /scripts/check-ci-results.mjs @shuyhere

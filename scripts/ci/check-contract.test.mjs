@@ -130,7 +130,7 @@ test('shared commands and legacy aliases are preserved', () => {
 test('platform-bound groups use macOS runners and portable groups use Linux', () => {
   const groups = new Map(loadInventory().groups.map((group) => [group.id, group]));
   for (const id of ['visual', 'browser', 'desktop', 'ios']) {
-    assert.ok(groups.get(id).runner.startsWith('macos'), id);
+    assert.ok(/^(macos|xcode)-/.test(groups.get(id).runner), id);
   }
   for (const id of ['frontend', 'server', 'migrations', 'hygiene']) {
     assert.equal(groups.get(id).runner, 'ubuntu-latest', id);

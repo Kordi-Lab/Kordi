@@ -21,7 +21,7 @@ consume. The runner is [`scripts/ci/run-check.mjs`](../scripts/ci/run-check.mjs)
 | `server` | `ci-rust.yml` | `pnpm check:server` | `ubuntu-latest` | cargo | 60 min | rustfmt, clippy, session/provider/tools/cloud-agent-runner/CLI/desktop-runtime/cloud-server tests |
 | `migrations` | `ci-rust.yml` | `pnpm check:migrations` | `ubuntu-latest` | cargo, pinned PostgreSQL | 45 min | database upgrade matrix, cloud agent runtime e2e, chat sync e2e |
 | `desktop` | `ci-platforms.yml` | `pnpm check:desktop` | `macos-15` | cargo, Xcode | 45 min | Tauri dependency surface, Tauri clippy, Tauri crate tests |
-| `ios` | `ci-platforms.yml` | `pnpm check:ios` | `macos-26` | Xcode 26.6 | 30 min | unsigned iOS simulator compilation |
+| `ios` | `ci-platforms.yml` | `pnpm check:ios` | `xcode-27` | Xcode 27.0 | 30 min | unsigned iOS simulator compilation |
 | `hygiene` | `ci-hygiene.yml` | `pnpm check:hygiene` | `ubuntu-latest` | node, pnpm, git | 15 min | privacy baseline, whitespace, maintainability ratchet, ESLint suppression ratchet, script tests |
 
 Selection paths per group are listed in the inventory. Groups without a
@@ -36,8 +36,10 @@ path filter (`always: true`) run for every change.
   requires the validated macOS environment because snapshot names
   include the platform (`-darwin.png`). Do not move screenshot comparison to
   Linux without reviewing and regenerating baselines.
-- `ios` uses `macos-26` with Xcode 26.6 selected explicitly because the app
-  targets iOS 26 APIs. The workflow fails loudly if the pinned Xcode path is
+- `ios` uses the `xcode-27` image with Xcode 27.0 selected explicitly, matching
+  the reference toolchain the iOS app is developed and released with. The image
+  is a GitHub preview and may queue; move to the stable label once it is
+  generally available. The workflow fails loudly if the pinned Xcode path is
   missing.
 - `browser` runs the Chromium production-entrypoint and trajectory suites on
   the `macos-15` reference runner initially. It may move to Linux only after

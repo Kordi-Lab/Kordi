@@ -21,7 +21,7 @@ credentials.
 | PostgreSQL | 16.14 | Migration checks use the pinned `postgres:16.14-alpine` container, or the pinned source build from `scripts/prepare-ci-postgres.sh` when containers are unavailable. |
 | Playwright Chromium | `@playwright/test` 1.61.1 from `app/desktop` | Installed per visual and browser job. |
 | macOS reference | `macos-15` | Visual baselines and Tauri compilation. |
-| iOS toolchain | `macos-26` with Xcode 26.6 pinned by path | Unsigned iOS simulator compilation only. No signing or distribution credentials exist in these jobs. |
+| iOS toolchain | `xcode-27` image with Xcode 27.0 pinned by path | Unsigned iOS simulator compilation only. The image is a GitHub preview and may queue; move to the stable label at GA. No signing or distribution credentials exist in these jobs. |
 
 A frontend-only contribution never allocates an Apple platform job and never
 requires local Xcode. An applicable platform check with missing prerequisites
@@ -42,7 +42,7 @@ also runnable directly:
 | `server` | `pnpm check:server` | `ubuntu-latest` | Portable fmt/lint/core/server Rust checks with the same features and test concurrency as CI. |
 | `migrations` | `pnpm check:migrations` | `ubuntu-latest` | Synthetic database upgrade matrix in the pinned PostgreSQL test environment. |
 | `desktop` | `pnpm check:desktop` | `macos-15` | macOS/Tauri compilation checks. |
-| `ios` | `pnpm check:ios` | `macos-26`, Xcode 26.6 pinned | Unsigned iOS simulator compilation (`app/ios`, `Kordi Beta` scheme, `CODE_SIGNING_ALLOWED=NO`; no signing credentials). |
+| `ios` | `pnpm check:ios` | `xcode-27`, Xcode 27.0 pinned | Unsigned iOS simulator compilation (`app/ios`, `Kordi Beta` scheme, `CODE_SIGNING_ALLOWED=NO`; no signing credentials). |
 | `hygiene` | `pnpm check:hygiene` | `ubuntu-latest` | Secret-free privacy baseline, whitespace, ratchets, script tests, generated-file checks, and workflow validation. |
 
 The hygiene workflow additionally runs `actionlint` (pinned binary with a

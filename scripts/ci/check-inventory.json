@@ -171,7 +171,7 @@
       "title": "iOS simulator compilation",
       "workflow": "ci-platforms.yml",
       "command": "pnpm check:ios",
-      "runner": "macos-26",
+      "runner": "xcode-27",
       "prerequisites": ["xcode"],
       "paths": [
         "app/ios/**",

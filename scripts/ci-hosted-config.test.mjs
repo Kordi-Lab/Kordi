@@ -11,7 +11,7 @@ const YAML = requireFromDesktop("yaml");
 const workflowsDirectory = new URL("../.github/workflows/", import.meta.url);
 const packagePath = new URL("../package.json", import.meta.url);
 
-const hostedRunners = new Set(["ubuntu-latest", "macos-15", "macos-26"]);
+const hostedRunners = new Set(["ubuntu-latest", "macos-15", "macos-26", "xcode-27"]);
 const expectedJobs = [
   ["ci-frontend.yml", "frontend", "ubuntu-latest"],
   ["ci-hygiene.yml", "hygiene", "ubuntu-latest"],
@@ -20,7 +20,7 @@ const expectedJobs = [
   ["ci-visual.yml", "visual", "macos-15"],
   ["ci-visual.yml", "browser", "macos-15"],
   ["ci-platforms.yml", "desktop", "macos-15"],
-  ["ci-platforms.yml", "ios", "macos-26"],
+  ["ci-platforms.yml", "ios", "xcode-27"],
   ["pr-metadata.yml", "linked-issue", "ubuntu-latest"],
 ];
 const checkWorkflows = [
