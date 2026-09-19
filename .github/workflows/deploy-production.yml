@@ -3,234 +3,148 @@ name: Deploy production
 on:
   workflow_dispatch:
     inputs:
-      sha:
-        description: Full 40-character commit SHA on the protected branch to deploy
-        required: true
-        type: string
-      artifact:
-        description: Immutable artifact digest (sha256:<64-hex> or <reference>@sha256:<64-hex>)
+      build_run_id:
+        description: Successful Backend delivery run that verified development
         required: true
         type: string
       backup:
-        description: Verified pre-deploy backup identifier
-        required: true
-        type: string
-      rollback_plan:
-        description: Rollback plan summary (application rollback versus database restore)
+        description: Host-owned backup receipt ID with a verified restore from the last 24 hours
         required: true
         type: string
       schema_compatibility:
-        description: Schema compatibility statement for the migrations in this revision
+        description: Whether the previous application images can run against the new schema
         required: true
-        type: string
-      confirm:
-        description: Optional acknowledgement; when set it must equal deploy-production
-        required: false
-        type: string
+        type: choice
+        options:
+          - backward-compatible
+          - forward-only
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-production-${{ github.workflow }}-${{ inputs.sha }}
+  group: backend-production
   cancel-in-progress: false
 
 jobs:
   preflight:
-    name: Production deployment preflight
+    name: Verify production promotion evidence
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       checks: read
       actions: read
+    outputs:
+      sha: ${{ steps.revision.outputs.sha }}
+      bundle: ${{ steps.evidence.outputs.bundle }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
-
-      - name: Validate inputs and build the deployment plan
-        shell: bash
-        env:
-          INPUT_SHA: ${{ inputs.sha }}
-          INPUT_ARTIFACT: ${{ inputs.artifact }}
-          INPUT_BACKUP: ${{ inputs.backup }}
-          INPUT_ROLLBACK_PLAN: ${{ inputs.rollback_plan }}
-          INPUT_SCHEMA_COMPATIBILITY: ${{ inputs.schema_compatibility }}
-          INPUT_CONFIRM: ${{ inputs.confirm }}
-          INPUT_ACTOR: ${{ github.actor }}
-          INPUT_WORKFLOW: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          arguments=(
-            --sha "$INPUT_SHA"
-            --artifact "$INPUT_ARTIFACT"
-            --backup "$INPUT_BACKUP"
-            --rollback-plan "$INPUT_ROLLBACK_PLAN"
-            --schema-compatibility "$INPUT_SCHEMA_COMPATIBILITY"
-            --actor "$INPUT_ACTOR"
-            --workflow "$INPUT_WORKFLOW"
-            --out "$RUNNER_TEMP/production-deploy-plan.json"
-          )
-          if [ -n "$INPUT_CONFIRM" ]; then
-            arguments+=(--confirm "$INPUT_CONFIRM")
-          fi
-          node scripts/production-deploy-guard.mjs "${arguments[@]}"
-
-      - name: Verify the revision is on the protected branch
-        shell: bash
+      - name: Validate the trusted build and current-attempt artifacts
+        id: evidence
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ inputs.sha }}
-          APPROVED_BRANCH: main
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
         run: |
           set -euo pipefail
-          comparison="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${APPROVED_BRANCH}...${TARGET_SHA}")" || {
-            echo "::error::The requested SHA is not a commit that can be compared against ${APPROVED_BRANCH}."
-            exit 1
-          }
-          status="$(printf '%s' "$comparison" | jq -r '.status')"
-          merge_base="$(printf '%s' "$comparison" | jq -r '.merge_base_commit.sha')"
-          base_commit="$(printf '%s' "$comparison" | jq -r '.base_commit.sha')"
-          case "$status" in
-            behind|identical) ;;
-            *)
-              echo "::error::The requested SHA is ${status} relative to ${APPROVED_BRANCH}; only revisions already merged into the protected branch may be deployed."
-              exit 1
-              ;;
-          esac
-          if [ "$merge_base" != "$TARGET_SHA" ]; then
-            echo "::error::The requested SHA is not an ancestor of ${APPROVED_BRANCH} (merge base ${merge_base})."
-            exit 1
-          fi
-          {
-            echo "### Protected branch check"
-            echo "- requested revision: \`${TARGET_SHA}\`"
-            echo "- protected branch: \`${APPROVED_BRANCH}\` at \`${base_commit}\`"
-            echo "- relation: \`${status}\`; ancestry is necessary but not sufficient evidence of readiness."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Verify exact-SHA readiness
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TARGET_SHA: ${{ inputs.sha }}
-        run: |
-          set -euo pipefail
-          node scripts/check-sha-readiness.mjs \
-            --repo "$GITHUB_REPOSITORY" \
-            --sha "$TARGET_SHA" \
-            --check "CI required" \
-            --check "Post-merge CI required" \
-            --json | tee "$RUNNER_TEMP/sha-readiness.json"
-          {
-            echo "### Exact-SHA readiness"
-            echo '```json'
-            cat "$RUNNER_TEMP/sha-readiness.json"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload preflight evidence
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+          test "$GITHUB_REF" = refs/heads/main
+          node scripts/check-backend-build.mjs "$BUILD_RUN_ID"
+      - name: Download the exact bundle artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: production-deployment-preflight
-          path: |
-            ${{ runner.temp }}/production-deploy-plan.json
-            ${{ runner.temp }}/sha-readiness.json
-          retention-days: 7
-          if-no-files-found: error
+          artifact-ids: ${{ steps.evidence.outputs.bundle }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/backend-bundle
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Download the exact development evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ steps.evidence.outputs.development }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/development-evidence
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Verify the bundle, development result, and main revision
+        id: revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          bundle="$RUNNER_TEMP/backend-bundle"
+          sha="$(jq -r .sha "$bundle/backend-manifest.json")"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          python3 scripts/backend_artifact.py verify --directory "$bundle" --sha "$sha" --run-id "$BUILD_RUN_ID"
+          jq -e --arg sha "$sha" --arg run "$BUILD_RUN_ID" --slurpfile bundle "$bundle/backend-manifest.json" \
+            '.environment == "dev" and .outcome == "success" and .sha == $sha and .buildRunId == $run and .images == $bundle[0].images' \
+            "$RUNNER_TEMP/development-evidence/deployment-result.json" > /dev/null
+          test "$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$sha" --jq .merge_base_commit.sha)" = "$sha"
+          node scripts/check-sha-readiness.mjs --sha "$sha" --branch main --check 'CI required' --check 'Post-merge CI required'
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Promote tested revision \`$sha\` from backend build \`$BUILD_RUN_ID\`. The destination host will verify the backup and hold the shared lock before updating either service." >> "$GITHUB_STEP_SUMMARY"
 
   deploy:
-    name: Deploy to production
+    name: Promote approved backend images
     needs: preflight
     runs-on: ubuntu-latest
-    timeout-minutes: 180
-    environment:
-      name: production
+    timeout-minutes: 60
+    environment: production
     permissions:
       contents: read
+      checks: read
+      actions: read
       id-token: write
     steps:
-      - name: Checkout deployment scripts
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
-
-      - name: Checkout the approved revision
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Revalidate readiness after approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ needs.preflight.outputs.sha }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+        run: |
+          set -euo pipefail
+          node scripts/check-backend-build.mjs "$BUILD_RUN_ID"
+          node scripts/check-sha-readiness.mjs --sha "$TARGET_SHA" --branch main --check 'CI required' --check 'Post-merge CI required'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          ref: ${{ inputs.sha }}
-          path: source
-          persist-credentials: false
-
-      - name: Authenticate with OIDC
+          artifact-ids: ${{ needs.preflight.outputs.bundle }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/backend-bundle
+          run-id: ${{ inputs.build_run_id }}
+          github-token: ${{ github.token }}
+      - name: Authenticate to production after approval
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
         with:
-          workload_identity_provider: ${{ vars.KORDI_PRODUCTION_WIF_PROVIDER }}
-          service_account: ${{ vars.KORDI_PRODUCTION_DEPLOY_SERVICE_ACCOUNT }}
-          create_credentials_file: true
-
-      - name: Install the environment-scoped SSH key when configured
-        shell: bash
+          workload_identity_provider: ${{ secrets.KORDI_PRODUCTION_WIF_PROVIDER }}
+          service_account: ${{ secrets.KORDI_PRODUCTION_DEPLOY_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f
+      - name: Promote and verify on the production machine
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.KORDI_PRODUCTION_SSH_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo "No environment-scoped SSH key configured; relying on short-lived OS Login credentials."
-            exit 0
-          fi
-          install -d -m 0700 "$HOME/.ssh"
-          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/google_compute_engine"
-          chmod 0600 "$HOME/.ssh/google_compute_engine"
-          ssh-keygen -y -f "$HOME/.ssh/google_compute_engine" > "$HOME/.ssh/google_compute_engine.pub"
-          chmod 0644 "$HOME/.ssh/google_compute_engine.pub"
-
-      - name: Deploy under the shared host-wide lock
-        shell: bash
-        env:
-          INPUT_SHA: ${{ inputs.sha }}
-          INPUT_ARTIFACT: ${{ inputs.artifact }}
-          INPUT_BACKUP: ${{ inputs.backup }}
-          INPUT_ROLLBACK_PLAN: ${{ inputs.rollback_plan }}
-          INPUT_SCHEMA_COMPATIBILITY: ${{ inputs.schema_compatibility }}
-          INPUT_CONFIRM: ${{ inputs.confirm }}
-          DEPLOY_ACTOR: ${{ github.actor }}
-          DEPLOY_WORKFLOW: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          DEPLOY_PROJECT: ${{ vars.KORDI_PRODUCTION_GCP_PROJECT }}
-          DEPLOY_ZONE: ${{ vars.KORDI_PRODUCTION_GCP_ZONE }}
-          DEPLOY_SSH_TARGET: ${{ vars.KORDI_PRODUCTION_SSH_TARGET }}
-          KORDI_DEPLOY_LOCK_DIR: ${{ vars.KORDI_PRODUCTION_DEPLOY_LOCK_DIR }}
-        run: |
-          set -euo pipefail
-          arguments=(
-            --sha "$INPUT_SHA"
-            --artifact "$INPUT_ARTIFACT"
-            --backup "$INPUT_BACKUP"
-            --rollback-plan "$INPUT_ROLLBACK_PLAN"
-            --schema-compatibility "$INPUT_SCHEMA_COMPATIBILITY"
-            --actor "$DEPLOY_ACTOR"
-            --workflow "$DEPLOY_WORKFLOW"
-            --project "$DEPLOY_PROJECT"
-            --zone "$DEPLOY_ZONE"
-            --ssh-target "$DEPLOY_SSH_TARGET"
-            --source-root "$GITHUB_WORKSPACE/source"
-            --public-origin "https://kordi.ai"
-            --record-dir "$RUNNER_TEMP/deployment-records"
-          )
-          if [ -n "$INPUT_CONFIRM" ]; then
-            arguments+=(--confirm "$INPUT_CONFIRM")
-          fi
-          scripts/production-deploy.sh "${arguments[@]}"
-
-      - name: Upload deployment record
+          TARGET_SHA: ${{ needs.preflight.outputs.sha }}
+          BUILD_RUN_ID: ${{ inputs.build_run_id }}
+          KORDI_BACKEND_PROJECT: ${{ secrets.KORDI_BACKEND_PROJECT }}
+          KORDI_BACKEND_ZONE: ${{ secrets.KORDI_BACKEND_ZONE }}
+          KORDI_BACKEND_TARGET: ${{ secrets.KORDI_BACKEND_TARGET }}
+          KORDI_BACKEND_STATE: ${{ secrets.KORDI_BACKEND_STATE }}
+          KORDI_BACKEND_LOCK_DIR: ${{ secrets.KORDI_BACKEND_LOCK_DIR }}
+          KORDI_BACKEND_SSH_USER: ${{ secrets.KORDI_BACKEND_SSH_USER }}
+          KORDI_BACKEND_SSH_KEY: ${{ secrets.KORDI_BACKEND_SSH_KEY }}
+          KORDI_BACKEND_BACKUP_ROOT: ${{ secrets.KORDI_BACKEND_BACKUP_ROOT }}
+          KORDI_BACKEND_BACKUP_ID: ${{ inputs.backup }}
+          KORDI_BACKEND_SCHEMA_COMPATIBILITY: ${{ inputs.schema_compatibility }}
+        run: bash scripts/production-deploy.sh "$RUNNER_TEMP/backend-bundle" "$TARGET_SHA" "$BUILD_RUN_ID"
+      - name: Publish deployment outcome
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: production-deployment-record
-          path: ${{ runner.temp }}/deployment-records
-          retention-days: 30
+          name: production-deployment-result
+          path: ${{ runner.temp }}/backend-bundle/deployment-result.json
           if-no-files-found: warn
+          retention-days: 30
