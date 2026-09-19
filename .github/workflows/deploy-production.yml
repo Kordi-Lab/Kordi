@@ -58,10 +58,13 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/main
-          if [ "$GITHUB_EVENT_NAME" = workflow_run ] && ! gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts" --jq '.artifacts[].name' | grep -qx development-deployment-result; then
-            echo 'promotable=false' >> "$GITHUB_OUTPUT"
-            echo 'This build did not update development; no production promotion is queued.' >> "$GITHUB_STEP_SUMMARY"
-            exit 0
+          if [ "$GITHUB_EVENT_NAME" = workflow_run ]; then
+            artifact_names="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts" --jq '.artifacts[].name')"
+            if ! grep -qx development-deployment-result <<< "$artifact_names"; then
+              echo 'promotable=false' >> "$GITHUB_OUTPUT"
+              echo 'This build did not update development; no production promotion is queued.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
           fi
           node scripts/check-backend-build.mjs "$BUILD_RUN_ID"
           echo 'promotable=true' >> "$GITHUB_OUTPUT"
