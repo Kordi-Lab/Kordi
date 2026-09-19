@@ -114,6 +114,7 @@ export type ChatSyncConversationInput = {
   sharedTitle?: string | null;
   accountId?: string | null;
   replaceMembers?: boolean;
+  /** Only explicit membership controls may reconcile a cached group's roster. */
   syncMembers?: boolean;
 };
 export type CloudThreadRead = { root_message_id: string; root_client_message_id: string; last_read_sequence: number };

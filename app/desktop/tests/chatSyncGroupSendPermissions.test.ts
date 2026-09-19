@@ -64,3 +64,14 @@ test('an explicit unauthorized membership update still fails and is not sent as 
   }), /not allowed/);
   assert.equal(calls.some((call) => call.url.endsWith('/messages')), false);
 });
+
+test('looking up an existing group does not edit a partial cached roster', async () => {
+  const { client, calls } = setup();
+  await client.syncCloudEvents('synthetic-token', '0');
+  const result = await client.ensureChatConversation('synthetic-token', {
+    accountId: 'acct_b', peerAccountId: 'acct_a', sessionId: group.legacy_session_id,
+    kind: 'group', memberAccountIds: ['acct_a', 'acct_b', 'acct_missing_profile'],
+  });
+  assert.equal(result.id, group.id);
+  assert.equal(calls.some((call) => call.url.endsWith('/members')), false);
+});

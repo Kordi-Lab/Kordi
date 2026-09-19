@@ -39,7 +39,7 @@ export class ChatSyncConversationClient {
     const cached = this.state.conversationBySessionId.get(sessionId);
     if (cached) {
       // A message's participant snapshot is context, not permission to edit the roster.
-      if (cached.kind !== 'group' || input.syncMembers === false) return cached;
+      if (cached.kind !== 'group' || input.syncMembers !== true) return cached;
       const activeMembers = new Set(cached.members
         .filter((member) => member.membership_state === 'active' && !isPipAccountId(member.account_id))
         .map((member) => member.account_id));
