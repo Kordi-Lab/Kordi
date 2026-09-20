@@ -1,4 +1,5 @@
 import type { Conversation, Message } from '@/kordi-app/types';
+import { preserveOutgoingTranscriptOrder, type OutgoingOrder } from './transcriptOutgoingOrder';
 
 function jsonValuesEqual(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
@@ -135,6 +136,7 @@ type PreparedTranscriptReferences = ReturnType<
   typeof preserveConversationTranscriptReferences
 > & {
   conversationCache: ReadonlyMap<string, Conversation>;
+  outgoingOrderCache: ReadonlyMap<string, OutgoingOrder>;
 };
 
 function conversationTranscriptKey(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
@@ -196,10 +198,18 @@ export function createTranscriptReferenceStabilizer(): TranscriptReferenceStabil
   let committedCache: TranscriptReferenceCache = new Map();
   let committedConversationCache: ReadonlyMap<string, Conversation> = new Map();
   let committedConversations: Conversation[] = [];
+  let committedOutgoingOrder: ReadonlyMap<string, OutgoingOrder> = new Map();
   return {
     prepare(conversations) {
+      const outgoingOrderCache = new Map<string, OutgoingOrder>();
+      const orderedConversations = conversations.map((conversation) => {
+        const key = conversationTranscriptKey(conversation);
+        const ordered = preserveOutgoingTranscriptOrder(committedOutgoingOrder.get(key), conversation.messages);
+        outgoingOrderCache.set(key, ordered.order);
+        return ordered.messages === conversation.messages ? conversation : { ...conversation, messages: ordered.messages };
+      });
       const prepared = preserveConversationTranscriptReferences(
-        conversations,
+        orderedConversations,
         committedCache,
       );
       const conversationCache = new Map<string, Conversation>();
@@ -220,12 +230,14 @@ export function createTranscriptReferenceStabilizer(): TranscriptReferenceStabil
         ...prepared,
         conversations: stableConversations,
         conversationCache,
+        outgoingOrderCache,
       };
     },
     commit(prepared) {
       committedCache = prepared.cache;
       committedConversationCache = prepared.conversationCache;
       committedConversations = prepared.conversations;
+      committedOutgoingOrder = prepared.outgoingOrderCache;
     },
   };
 }
