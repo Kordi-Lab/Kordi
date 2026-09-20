@@ -103,6 +103,10 @@ pub struct PlanCardParticipantStatus {
     pub display_name: String,
     pub organizer: bool,
     pub rsvp: PlanCardRsvp,
+    /// The account's profile avatar, so cards show faces instead of initials.
+    /// Absent when the account has no avatar; clients fall back to initials.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

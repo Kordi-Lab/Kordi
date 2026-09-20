@@ -41,14 +41,17 @@ struct PlanCardParticipant: Codable, Hashable, Identifiable {
     let displayName: String
     let organizer: Bool
     let rsvp: PlanCardRsvp
+    /// The account's profile avatar; nil when they have none, so initials show.
+    let avatarUrl: String?
 
     var id: String { participantId }
 
-    init(participantId: String, displayName: String, organizer: Bool, rsvp: PlanCardRsvp) {
+    init(participantId: String, displayName: String, organizer: Bool, rsvp: PlanCardRsvp, avatarUrl: String? = nil) {
         self.participantId = participantId
         self.displayName = displayName
         self.organizer = organizer
         self.rsvp = rsvp
+        self.avatarUrl = avatarUrl
     }
 
     init(from decoder: Decoder) throws {
@@ -57,6 +60,7 @@ struct PlanCardParticipant: Codable, Hashable, Identifiable {
         displayName = (try? container.decode(String.self, forKey: .displayName)) ?? "Member"
         organizer = (try? container.decode(Bool.self, forKey: .organizer)) ?? false
         rsvp = (try? container.decode(PlanCardRsvp.self, forKey: .rsvp)) ?? .pending
+        avatarUrl = try? container.decodeIfPresent(String.self, forKey: .avatarUrl)
     }
 }
 
@@ -134,7 +138,10 @@ struct PlanCard: Codable, Hashable {
         location = try container.decodeIfPresent(String.self, forKey: .location)
         unresolvedFields = (try? container.decodeIfPresent([String].self, forKey: .unresolvedFields)) ?? []
         managerIds = (try? container.decodeIfPresent([String].self, forKey: .managerIds)) ?? []
-        participants = (try? container.decodeIfPresent([PlanCardParticipant].self, forKey: .participants)) ?? []
+        // PiP manages the card but never attends it; it is not a participant
+        // for counts, lists, or faces.
+        participants = ((try? container.decodeIfPresent([PlanCardParticipant].self, forKey: .participants)) ?? [])
+            .filter { !KordiPipIdentity.isPip(accountId: $0.participantId) }
         options = (try? container.decodeIfPresent([PlanCardOption].self, forKey: .options)) ?? []
         view = try? container.decodeIfPresent(String.self, forKey: .view)
     }

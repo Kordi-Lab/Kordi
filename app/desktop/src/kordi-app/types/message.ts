@@ -197,6 +197,8 @@ export type MessagePlanCardParticipant = {
   displayName: string;
   organizer: boolean;
   rsvp: 'pending' | 'yes' | 'no';
+  /** The account's profile avatar; absent when they have none, so initials show. */
+  avatarUrl?: string | null;
 };
 
 /** A shared plan card snapshot carried by a PiP message. The server keeps the
