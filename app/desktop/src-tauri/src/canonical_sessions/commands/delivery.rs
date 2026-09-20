@@ -275,21 +275,21 @@ pub(super) fn update_canonical_message_delivery_in_db(
     if session_id.is_empty() {
         return Err("Session id is required".to_string());
     }
-    let status = validate_outbox_delivery_value(
+    let mut status = validate_outbox_delivery_value(
         request.status,
         &["sending", "delivered", "failed"],
         "status",
     )?;
-    let delivery_state = validate_outbox_delivery_value(
+    let mut delivery_state = validate_outbox_delivery_value(
         request.delivery_state,
         &["sending", "partial", "delivered", "failed"],
         "delivery state",
     )?;
-    let delivered_recipient_ids =
+    let mut delivered_recipient_ids =
         validate_recipient_ids(request.delivered_recipient_ids, "delivered recipient ids")?;
-    let pending_recipient_ids =
+    let mut pending_recipient_ids =
         validate_recipient_ids(request.pending_recipient_ids, "pending recipient ids")?;
-    let exhausted_recipient_ids =
+    let mut exhausted_recipient_ids =
         validate_recipient_ids(request.exhausted_recipient_ids, "exhausted recipient ids")?;
 
     let tx = conn
@@ -297,7 +297,7 @@ pub(super) fn update_canonical_message_delivery_in_db(
         .map_err(|err| err.to_string())?;
     let row = tx
         .query_row(
-            "SELECT session_id, content_text, content_json, created_at_ms
+            "SELECT session_id, content_text, content_json, created_at_ms, status
              FROM session_messages WHERE id = ?1",
             params![message_id],
             |row| {
@@ -306,12 +306,14 @@ pub(super) fn update_canonical_message_delivery_in_db(
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
                 ))
             },
         )
         .optional()
         .map_err(|err| err.to_string())?;
-    let Some((stored_session_id, content_text, content_json, created_at_ms)) = row else {
+    let Some((stored_session_id, content_text, content_json, created_at_ms, stored_status)) = row
+    else {
         tx.commit().map_err(|err| err.to_string())?;
         return Ok(None);
     };
@@ -330,6 +332,35 @@ pub(super) fn update_canonical_message_delivery_in_db(
         }
         None => Map::new(),
     };
+    // A drain may hold a pending snapshot while the foreground send (or sync)
+    // confirms the same message. Never turn that acknowledgement back into a
+    // clock or retry button when the older snapshot reaches native storage.
+    // Partial fanout still permits retrying its remaining recipients.
+    let confirmed = stored_status == "read"
+        || (stored_status == "delivered"
+            && matches!(
+                content.get("deliveryState").and_then(Value::as_str),
+                None | Some("delivered" | "read")
+            ));
+    if confirmed {
+        status = stored_status;
+        delivery_state = status.clone();
+        if let Some(existing) = content
+            .get("deliveredRecipientIds")
+            .and_then(Value::as_array)
+        {
+            delivered_recipient_ids.extend(
+                existing
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string),
+            );
+            delivered_recipient_ids.sort();
+            delivered_recipient_ids.dedup();
+        }
+        pending_recipient_ids.clear();
+        exhausted_recipient_ids.clear();
+    }
     content.insert(
         "deliveryState".to_string(),
         Value::String(delivery_state.clone()),
