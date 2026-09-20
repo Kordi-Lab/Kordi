@@ -7,8 +7,8 @@ use tokio::io::BufReader;
 use tokio::process::Command;
 use tracing::{debug, error, info};
 
-use super::types::{PluginHostError, RegisteredCommand, RegisteredTool, HOST_JS};
 use super::PluginHost;
+use super::types::{HOST_JS, PluginHostError, RegisteredCommand, RegisteredTool};
 
 impl PluginHost {
     /// Load plugins by spawning a Node.js process with the embedded host.js runtime.
