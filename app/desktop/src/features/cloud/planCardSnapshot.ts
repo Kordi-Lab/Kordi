@@ -63,6 +63,7 @@ export function normalizePlanCardSnapshot(value: unknown): MessagePlanCard | nul
       ? block.unresolvedFields.filter((field): field is string => typeof field === 'string')
       : [],
     participants,
+    managerIds: Array.isArray(block.managerIds) ? block.managerIds.filter((id): id is string => typeof id === 'string') : [],
     options,
   };
 }

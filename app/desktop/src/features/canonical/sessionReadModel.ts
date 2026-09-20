@@ -1,3 +1,4 @@
+import { mergeCanonicalPlanCards, preferTranscriptWithCanonicalPlanCards } from './readModel/planCardEntries';
 import { localRuntimeProgressForCanonicalPlaceholder } from './localRuntimeProgress';
 import {
 isCanonicalCloudSessionId,
@@ -31,7 +32,6 @@ sessionMetadata,
 sessionPrefersPersistedTitle,
 sessionUnreadCount,
 sessionViewMetadata,
-shouldUseCanonicalMessages,
 syntheticCollaborationTarget,
 syntheticConversation,
 syntheticParticipantSpaceId,
@@ -325,7 +325,7 @@ export function createCanonicalSessionReadModel(
     },
     preferMessages(sessionId, existingMessages) {
       const canonicalMessages = this.messages(sessionId);
-      return shouldUseCanonicalMessages(existingMessages, canonicalMessages) ? canonicalMessages : existingMessages;
+      return preferTranscriptWithCanonicalPlanCards(existingMessages, canonicalMessages);
     },
     applyConversation(conversation, buildSubtitle) {
       const sessionId = conversation.canonicalSessionId ?? conversation.id;
@@ -346,7 +346,7 @@ export function createCanonicalSessionReadModel(
           ? canonicalMessages
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
-      const hydratedWithReceipts = mergeCanonicalReadReceipts(hydratedMessages, canonicalMessages);
+      const hydratedWithReceipts = mergeCanonicalReadReceipts(mergeCanonicalPlanCards(hydratedMessages, canonicalMessages), canonicalMessages);
       const messages = presentLocalAgentMessages(
         dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedWithReceipts) : hydratedWithReceipts),
         options.localAgentDisplayName,

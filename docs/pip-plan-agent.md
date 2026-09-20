@@ -142,17 +142,25 @@ its reservation is released on the next stale-run check.
 
 ## How the card reaches the clients
 
-A plan shows as two separate cards, each its own card-only message apart from PiP's text: a vote card while the group chooses between options, and a calendar card for the plan itself, posted when a single option is proposed or a vote is confirmed. Both refresh in place as the plan changes. Each card message carries a single `plan_card` block with a `view` of `vote` or `event`: the card's
+A plan shows as two separate cards, each its own card-only message apart from PiP's text: a vote card while the group chooses between options, and a calendar card for the plan itself, posted when a single option is proposed or a vote is confirmed. Both refresh in place after each successful PiP tool action, including date, time, and location changes, even if a later step in the run fails. Each card message carries a single `plan_card` block with a `view` of `vote` or `event`: the card's
 identity, state, title, time, place, options with votes, unresolved fields,
 and every participant's RSVP. macOS
 (`app/desktop/src/kordi-app/components/planCard.tsx`) and iOS
 (`app/ios/Kordi/Features/Conversation/PlanCardView.swift`) render the block as
 a compact card in the style of the Kordi Support permission card: while the
 card polls, the options are the buttons; otherwise "I'm in" and "Can't make
-it", plus a confirm button for the organizer. Card instants are always RFC
-3339 with an offset.
+it", plus a Confirm button for the organizer and chat admins while the plan is awaiting confirmation. Confirmation does not require every member to respond; unanswered members remain pending. Cancel and reopen remain restricted to the organizer or a chat admin. Card instants are always RFC
+3339 with an offset. Clients display the viewer's local time with a timezone label. PiP uses an explicitly named timezone or the event location's timezone before falling back to the organizer's timezone, and applies clear message corrections to the same card.
 
-A member's button press goes to `POST /v1/cloud/plan_cards` as that member.
+A member's button press goes to `POST /v1/cloud/plan_cards` as that member. On
+`plan_card_revision_conflict`, desktop and iOS read the latest snapshot from
+`GET /v1/cloud/plan_cards/:event_id`, which requires active conversation
+membership. They refresh the card without replaying the rejected decision;
+the member can review the new details before confirming again. A failed
+refresh remains an actionable error. While an action is pending, the card
+keeps its displayed snapshot; afterward it uses the newest available revision
+and retains its last successful snapshot if the action fails.
+
 Votes and answers apply at any revision, so a member is never told to refresh
 first. After a successful change the route refreshes the card inside PiP's
 newest message that carries it, in place and without an edit marker, so
@@ -203,3 +211,15 @@ Two failure modes found and fixed during validation: the model sends optional
 strings as `""` (an empty `existingEventId` is now a new card, not a missing
 one), and it may send ambiguous times (`startAt`/`endAt` now require an RFC
 3339 offset and return a 400 that explains the format).
+
+
+### Optional provider fallback
+
+Development runners can configure `KORDI_PIP_FALLBACK_API_KEY`,
+`KORDI_PIP_FALLBACK_BASE_URL` (HTTPS), and `KORDI_PIP_FALLBACK_MODEL` in the
+private development environment file. Leave the key unset to disable fallback.
+The current provider remains primary. On a provider error, or after 90 seconds
+without its response, PiP switches once to the configured OpenAI-compatible
+provider and continues with the same tool history. Completed card actions are
+not replayed. A failure of the fallback ends the run and uses normal backoff.
+Never commit the key or put it in workflow logs.

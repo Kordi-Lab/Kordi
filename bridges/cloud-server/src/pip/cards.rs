@@ -83,6 +83,7 @@ pub(crate) fn card_block_from_row(row: &PlanCardRow, view: &str) -> Value {
         "view": view,
         "eventId": row.event_id,
         "revision": row.revision,
+        "managerIds": row.manager_ids,
         "state": row.state.as_db_str(),
         "title": row.title,
         "startAt": row.start_at,
@@ -220,6 +221,7 @@ mod tests {
             unresolved_fields: Vec::new(),
             source_message_ids: Vec::new(),
             participants: Vec::new(),
+            manager_ids: Vec::new(),
             options: Vec::new(),
             note: None,
         }
