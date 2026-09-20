@@ -11,19 +11,21 @@ struct PlanCardView: View {
 
     @State private var current: PlanCard?
     @State private var busy = false
+    @State private var pendingCard: PlanCard?
     @State private var notice: String?
     @State private var peopleSheet: PlanCardPeopleSheet.Content?
 
     private var view: PlanCard {
-        if let current, current.revision > card.revision { return current }
+        if busy, let pendingCard, pendingCard.eventId == card.eventId { return pendingCard }
+        if let current, current.eventId == card.eventId, current.revision > card.revision { return current }
         return card
     }
     private var me: PlanCardParticipant? { view.participant(ownAccountId) }
-    private var isVote: Bool { card.cardView == .vote }
+    private var isVote: Bool { (busy ? pendingCard ?? card : card).cardView == .vote }
     private var votingOpen: Bool { isVote && view.isPolling }
     private var canRespond: Bool { !isVote && me != nil && view.state != .canceled && onAction != nil }
     private var canConfirm: Bool {
-        guard me?.organizer ?? false, onAction != nil else { return false }
+        guard (me?.organizer ?? false) || view.managerIds.contains(ownAccountId ?? ""), onAction != nil else { return false }
         return isVote ? votingOpen && view.leadingOption != nil : view.state == .awaitingConfirmation
     }
     private var onCalendar: Bool {
@@ -200,9 +202,9 @@ struct PlanCardView: View {
     }
 
     private func timeLabel(_ start: Date) -> String {
-        let startText = start.formatted(date: .omitted, time: .shortened)
+        let startText = "\(start.formatted(date: .omitted, time: .shortened)) \(TimeZone.current.abbreviation(for: start) ?? TimeZone.current.identifier)"
         guard let end = view.endAt.flatMap(Self.parseDate) else { return startText }
-        return "\(startText) – \(end.formatted(date: .omitted, time: .shortened))"
+        return "\(startText) – \(end.formatted(date: .omitted, time: .shortened)) \(TimeZone.current.abbreviation(for: end) ?? TimeZone.current.identifier)"
     }
 
     private static func parseDate(_ value: String) -> Date? {
@@ -438,13 +440,18 @@ struct PlanCardView: View {
 
     private func perform(_ action: PlanCardAction) async {
         guard !busy, let onAction else { return }
+        var displayed = view
+        displayed.view = isVote ? "vote" : "event"
+        pendingCard = displayed
         busy = true
         notice = nil
-        defer { busy = false }
+        defer {
+            pendingCard = nil
+            busy = false
+        }
         if let updated = await onAction(action) {
             current = updated
         } else {
-            current = nil
             notice = "Could not update the plan. Try again."
         }
     }

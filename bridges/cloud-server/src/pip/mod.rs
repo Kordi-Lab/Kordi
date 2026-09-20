@@ -54,6 +54,8 @@ pub(crate) fn test_service_account() -> &'static str {
 }
 
 #[cfg(test)]
+mod card_update_tests;
+#[cfg(test)]
 mod membership_tests;
 #[cfg(test)]
 mod sweep_tests;

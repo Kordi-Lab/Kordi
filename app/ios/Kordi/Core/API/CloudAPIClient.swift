@@ -1181,13 +1181,24 @@ actor CloudAPIClient {
 
     /// Acts on a shared plan card as the signed-in member.
     func planCardAction(token: String, action: PlanCardAction) async throws -> PlanCard {
-        try await send(
-            path: "/v1/cloud/plan_cards",
-            method: "POST",
-            token: token,
-            body: action,
-            fallback: "Could not update the plan card."
-        )
+        do {
+            return try await send(
+                path: "/v1/cloud/plan_cards",
+                method: "POST",
+                token: token,
+                body: action,
+                fallback: "Could not update the plan card."
+            )
+        } catch let error as CloudAPIError where error.code == "plan_card_revision_conflict" {
+            // Refresh without replaying a decision against details the user has not seen.
+            let eventID = action.eventId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? action.eventId
+            return try await send(
+                path: "/v1/cloud/plan_cards/\(eventID)",
+                method: "GET",
+                token: token,
+                fallback: "Could not refresh the plan card. Try again."
+            )
+        }
     }
 
     func setReaction(
