@@ -117,6 +117,7 @@ async fn full_lifecycle_over_real_http() {
         "action": "propose",
         "conversationId": conversation_id.to_string(),
         "title": "Lunch this weekend?",
+        "startAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
         "state": "polling",
         "unresolvedFields": ["startAt", "location"],
         "participants": [

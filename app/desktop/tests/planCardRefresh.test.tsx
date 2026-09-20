@@ -15,7 +15,7 @@ import type { MessagePlanCard } from '../src/kordi-app/types/message';
 import { conversation, message } from './helpers/chatSyncCanonicalFixtures';
 const card: MessagePlanCard = {
   eventId: 'plan-test', revision: 2, view: 'event', state: 'awaiting_confirmation',
-  title: 'Dinner', unresolvedFields: [], options: [],
+  title: 'Dinner', startAt: '2030-10-01T19:00:00-07:00', unresolvedFields: [], options: [],
   participants: [{ participantId: 'acct_b', displayName: 'Member', organizer: true, rsvp: 'pending' }],
 };
 const refreshed: MessagePlanCard = { ...card, revision: 3, title: 'Updated dinner' };
@@ -124,4 +124,22 @@ test('updated card times render with the viewer timezone identified', () => {
   const markup = renderToStaticMarkup(<PlanCardContent card={{ ...card, startAt }} ownAccountId="acct_b" />);
   const label = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(startAt));
   assert.ok(markup.includes(label));
+});
+
+test('unscheduled plans cannot be confirmed and explain the missing time', () => {
+  const markup = renderToStaticMarkup(<PlanCardContent card={{ ...card, startAt: null }} ownAccountId="acct_b" />);
+  const dom = new JSDOM(markup);
+  const confirm = [...dom.window.document.querySelectorAll('button')].find((button) => button.textContent === 'Confirm');
+  assert.equal(confirm?.disabled, true);
+  assert.match(markup, /Set a date and time in chat before confirming/);
+  dom.window.close();
+});
+
+test('confirmed plans explain missing calendar prerequisites without claiming to be scheduled', () => {
+  const unscheduled = renderToStaticMarkup(<PlanCardContent card={{ ...card, startAt: null, state: 'confirmed' }} ownAccountId="acct_b" />);
+  assert.match(unscheduled, /Add a date and time in chat/);
+  assert.doesNotMatch(unscheduled, /On your calendar/);
+  const pending = renderToStaticMarkup(<PlanCardContent card={{ ...card, state: 'confirmed' }} ownAccountId="acct_b" />);
+  assert.match(pending, /Choose “I’m in” to add this plan to your calendar/);
+  assert.doesNotMatch(pending, /On your calendar/);
 });

@@ -144,13 +144,13 @@ pub async fn confirm(
     let mut tx = pool.begin().await?;
     lock_event(&mut tx, event_id).await?;
 
-    let current: Option<(Uuid, String, i64, serde_json::Value)> = query_as(
-        "SELECT conversation_id, state, revision, options FROM cloud_plan_cards WHERE event_id = $1",
+    let current: Option<(Uuid, String, i64, serde_json::Value, bool)> = query_as(
+        "SELECT conversation_id, state, revision, options, start_at IS NOT NULL FROM cloud_plan_cards WHERE event_id = $1",
     )
     .bind(event_id)
     .fetch_optional(&mut *tx)
     .await?;
-    let (conversation_id, state, current_revision, options) =
+    let (conversation_id, state, current_revision, options, has_start) =
         current.ok_or(PlanCardStoreError::NotFound)?;
     require_active_member(&mut *tx, conversation_id, confirmed_by).await?;
 
@@ -158,6 +158,11 @@ pub async fn confirm(
         "canceled" => {
             return Err(PlanCardStoreError::InvalidTransition(
                 "cannot confirm a canceled plan".to_string(),
+            ));
+        }
+        "confirmed" if !has_start => {
+            return Err(PlanCardStoreError::InvalidTransition(
+                "Set a date and time in chat before confirming this plan.".to_string(),
             ));
         }
         "confirmed" => {
@@ -184,6 +189,17 @@ pub async fn confirm(
         ),
         None => None,
     };
+
+    if !has_start
+        && chosen
+            .as_ref()
+            .and_then(|option| option.start_at.as_ref())
+            .is_none()
+    {
+        return Err(PlanCardStoreError::InvalidTransition(
+            "Set a date and time in chat before confirming this plan.".to_string(),
+        ));
+    }
 
     // Voting for the winning option is itself a way of saying "I'm in": mark
     // those voters as attending, but never downgrade an explicit "no".

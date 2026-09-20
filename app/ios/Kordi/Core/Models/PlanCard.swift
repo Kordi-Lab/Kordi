@@ -147,12 +147,29 @@ struct PlanCard: Codable, Hashable {
         options.filter { !$0.votes.isEmpty }.max { $0.votes.count < $1.votes.count }
     }
 
-    var startDate: Date? {
-        startAt.flatMap { value in
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    var startDate: Date? { startAt.flatMap(Self.parseDate) }
+
+    static func parseDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    func hasConfirmationTime(isVote: Bool) -> Bool {
+        ((isVote ? leadingOption?.startAt : nil) ?? startAt).flatMap(Self.parseDate) != nil
+    }
+
+    func calendarHint(ownAccountId: String?, isVote: Bool, canConfirm: Bool) -> String? {
+        if canConfirm && !hasConfirmationTime(isVote: isVote) {
+            return "Set a date and time in chat before confirming."
         }
+        if !isVote && state == .confirmed {
+            if startDate == nil { return "Add a date and time in chat to put this plan on calendars." }
+            if participant(ownAccountId)?.rsvp == .pending {
+                return "Choose ‘I’m in’ to add this plan to your calendar."
+            }
+        }
+        return nil
     }
 
     var goingCount: Int { participants.filter { $0.rsvp == .yes }.count }
