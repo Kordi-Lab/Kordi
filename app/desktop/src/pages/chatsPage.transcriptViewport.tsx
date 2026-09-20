@@ -212,6 +212,7 @@ export function useChatTranscriptViewport({
       scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}
       unreadCount={unreadCount}
       navigationAccessory={navigationAccessory}
+      gap={0}
       onScroll={() => onTranscriptScroll?.()}
       onTailChange={onTranscriptScroll}
       navigationRequest={navigationRequest}
