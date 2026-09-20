@@ -196,7 +196,18 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
             Err(forbidden("Plan cards are proposed by PiP."))
         }
         Request::Propose(propose) => {
-            let args = propose.into_args(actor.on_behalf_of_conversation)?;
+            let mut args = propose.into_args(actor.on_behalf_of_conversation)?;
+            // PiP manages the card but never attends it. The model sometimes
+            // lists the agent among the participants; never store it as one.
+            args.participants
+                .retain(|participant| participant.account_id != actor.account_id);
+            if args.participants.is_empty() {
+                return Err(error(
+                    "invalid_participants",
+                    "At least one participant is required.",
+                    StatusCode::BAD_REQUEST,
+                ));
+            }
             store::propose(pool, &actor.account_id, args)
                 .await
                 .map_err(store_error)

@@ -136,7 +136,10 @@ struct PlanCard: Codable, Hashable {
         endAt = try container.decodeIfPresent(String.self, forKey: .endAt)
         location = try container.decodeIfPresent(String.self, forKey: .location)
         unresolvedFields = (try? container.decodeIfPresent([String].self, forKey: .unresolvedFields)) ?? []
-        participants = (try? container.decodeIfPresent([PlanCardParticipant].self, forKey: .participants)) ?? []
+        // PiP manages the card but never attends it; it is not a participant
+        // for counts, lists, or faces.
+        participants = ((try? container.decodeIfPresent([PlanCardParticipant].self, forKey: .participants)) ?? [])
+            .filter { !KordiPipIdentity.isPip(accountId: $0.participantId) }
         options = (try? container.decodeIfPresent([PlanCardOption].self, forKey: .options)) ?? []
         view = try? container.decodeIfPresent(String.self, forKey: .view)
     }

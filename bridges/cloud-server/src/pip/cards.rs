@@ -112,10 +112,29 @@ fn card_blocks<'a>(content: &'a Value, event_id: &'a str) -> impl Iterator<Item 
         })
 }
 
+/// Whether a card block predates participant avatars: at least one participant
+/// has no `avatarUrl` key. Blocks written before avatars were carried are
+/// repaired on the next sync even when the card's revision has not moved, so an
+/// existing card does not have to change to show faces. A refreshed block
+/// always carries the key (null when the account has no avatar), so this fires
+/// at most once per block.
+fn block_needs_avatar_backfill(block: &Value) -> bool {
+    block
+        .get("participants")
+        .and_then(Value::as_array)
+        .map(|participants| {
+            participants
+                .iter()
+                .any(|participant| participant.get("avatarUrl").is_none())
+        })
+        .unwrap_or(true)
+}
+
 /// A carrier message's content with its card blocks for `row` brought up to
 /// `row`'s revision, keeping each block's view. A block already at the same or
 /// a newer revision is left alone, so a slower refresh never moves a card
-/// back. `None` when nothing changes.
+/// back, unless it still predates participant avatars. `None` when nothing
+/// changes.
 fn refreshed_card_content(mut content: Value, row: &PlanCardRow) -> Option<Value> {
     let mut changed = false;
     for block in content
@@ -127,7 +146,8 @@ fn refreshed_card_content(mut content: Value, row: &PlanCardRow) -> Option<Value
         let shows_card = block.get("type").and_then(Value::as_str) == Some("plan_card")
             && block.get("eventId").and_then(Value::as_str) == Some(row.event_id.as_str());
         let stored_revision = block.get("revision").and_then(Value::as_i64).unwrap_or(0);
-        if shows_card && stored_revision < row.revision {
+        let needs_backfill = shows_card && block_needs_avatar_backfill(block);
+        if shows_card && (stored_revision < row.revision || needs_backfill) {
             *block = card_block_from_row(row, block_view(block));
             changed = true;
         }
@@ -234,6 +254,39 @@ mod tests {
         let newer = refreshed_card_content(content, &row(7)).expect("newer revision applies");
         assert_eq!(newer["blocks"][0]["revision"], 7);
         assert_eq!(newer["blocks"][0]["view"], "event");
+    }
+
+    #[test]
+    fn a_card_block_without_avatars_is_backfilled_at_the_same_revision() {
+        let mut card = row(6);
+        card.participants = vec![PlanCardParticipantStatus {
+            account_id: "acct_a".to_string(),
+            display_name: "Ada".to_string(),
+            organizer: true,
+            rsvp: PlanCardRsvp::Pending,
+            avatar_url: Some("https://cdn.example/a.png".to_string()),
+        }];
+        // A pre-avatar block sitting at the card's current revision.
+        let legacy = json!({"blocks": [{
+            "type": "plan_card",
+            "view": "event",
+            "eventId": "plan_a",
+            "revision": 6,
+            "participants": [{
+                "participantId": "acct_a",
+                "displayName": "Ada",
+                "organizer": true,
+                "rsvp": "pending",
+            }],
+        }]});
+        let refreshed =
+            refreshed_card_content(legacy, &card).expect("a stale avatar block is backfilled");
+        assert_eq!(
+            refreshed["blocks"][0]["participants"][0]["avatarUrl"],
+            "https://cdn.example/a.png"
+        );
+        // Once the key is present the block is left alone at the same revision.
+        assert!(refreshed_card_content(refreshed, &card).is_none());
     }
 
     #[test]
