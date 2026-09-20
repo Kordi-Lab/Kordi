@@ -4,7 +4,29 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
-- Preserve pin and unpin actions as separate timestamped history entries synced
+## [0.0.2-beta.3] - 2026-09-20
+
+### Added
+
+- Added PiP, a built-in group planning agent that turns conversation context
+  into shared, confirmable plan cards with participant avatars and current
+  status.
+- Added automatic calendar synchronization for Digest and richer file actions
+  for desktop attachment chips.
+
+### Changed
+
+- Replaced reply modes with clearer Quote and Open discussion actions on macOS
+  and iOS, and refined message-run tails and discussion layout.
+- Made voice messaging feel immediate: Mac and iPhone send recordings before
+  transcription finishes, while iPhone hold-to-talk starts instantly.
+- Improved motion and rendering across desktop and iPhone, kept pending sends
+  stable during acknowledgement, and made plan cards stay current and
+  confirmable.
+
+### Fixed
+
+- Preserved pin and unpin actions as separate timestamped history entries synced
   across macOS and iOS, with account-private and shared visibility.
 - Fixed sending saved stickers in Cloud chats on Mac, which the server rejected
   as an unsupported attachment subtype. Mac now keeps stickers off the wire the
@@ -16,6 +38,13 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 - Removed the retired meme attachment feature, including its alt text and rights
   confirmation fields, along with the unreachable public sticker, meme, and GIF
   discovery code left behind when those grids were removed.
+- Kept Cloud traffic usable when automatic proxy configuration is unreachable.
+- Restored native iPhone voice transcription and corrected failed-message
+  ordering and removal.
+- Kept discussion indicators aligned without reserving an empty message row.
+- Made Agent and group routes fall back to an available configured provider and
+  compatible model when a saved route points at an unavailable provider, while
+  preserving ChatGPT OAuth aliases.
 
 ## [0.0.2-beta.2] - 2026-09-14
 
@@ -580,7 +609,8 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta2...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta3...HEAD
+[0.0.2-beta.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta2...V0.0.2.beta3
 [0.0.2-beta.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.2.beta1...V0.0.2.beta2
 [0.0.2-beta.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...V0.0.2.beta1
 [0.0.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta19.3...V0.0.1
