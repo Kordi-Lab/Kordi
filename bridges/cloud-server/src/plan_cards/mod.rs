@@ -27,6 +27,7 @@ pub(crate) use live_plan_card_sql;
 
 pub mod calendar;
 pub mod models;
+pub(crate) mod projection;
 mod revise;
 mod routes;
 mod runner;
@@ -42,6 +43,8 @@ pub use routes::routes;
 mod confirmation_tests;
 #[cfg(test)]
 mod http_tests;
+#[cfg(test)]
+mod projection_tests;
 #[cfg(test)]
 mod revise_tests;
 #[cfg(test)]

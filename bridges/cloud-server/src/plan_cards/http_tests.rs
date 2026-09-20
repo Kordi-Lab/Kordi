@@ -141,6 +141,7 @@ async fn full_lifecycle_over_real_http() {
     let pip = super::routes::Actor {
         account_id: jordan.clone(),
         on_behalf_of_conversation: Some(conversation_id),
+        represented_accounts: std::collections::BTreeSet::new(),
     };
     let card = super::routes::dispatch_row(&pool, &pip, request)
         .await

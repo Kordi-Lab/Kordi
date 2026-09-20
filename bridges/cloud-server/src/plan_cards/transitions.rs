@@ -66,6 +66,7 @@ pub async fn rsvp(
         .await?;
 
     let row = require_row(&mut tx, event_id).await?;
+    super::projection::enqueue(&mut *tx, &row).await?;
     tx.commit().await?;
     Ok(row)
 }
@@ -127,6 +128,7 @@ pub async fn vote(
     .await?;
 
     let row = require_row(&mut tx, event_id).await?;
+    super::projection::enqueue(&mut *tx, &row).await?;
     tx.commit().await?;
     Ok(row)
 }
@@ -237,6 +239,7 @@ pub async fn confirm(
     .await?;
 
     let row = require_row(&mut tx, event_id).await?;
+    super::projection::enqueue(&mut *tx, &row).await?;
     tx.commit().await?;
     Ok(row)
 }
@@ -279,6 +282,7 @@ pub async fn reopen(
     .await?;
 
     let row = require_row(&mut tx, event_id).await?;
+    super::projection::enqueue(&mut *tx, &row).await?;
     tx.commit().await?;
     Ok(row)
 }
@@ -322,6 +326,7 @@ pub async fn cancel(
     .await?;
 
     let row = require_row(&mut tx, event_id).await?;
+    super::projection::enqueue(&mut *tx, &row).await?;
     tx.commit().await?;
     Ok(row)
 }

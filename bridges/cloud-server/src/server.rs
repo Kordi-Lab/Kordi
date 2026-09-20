@@ -339,6 +339,7 @@ pub async fn run(
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
     crate::digest::spawn(state.clone());
     crate::pip::spawn(state.clone());
+    crate::plan_cards::projection::spawn(state.db_pool().clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
     if let Some(notifications) = state.notifications() {
         notifications.spawn_message_notification_worker(state.db_pool().clone());

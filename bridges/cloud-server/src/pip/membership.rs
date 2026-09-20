@@ -29,8 +29,10 @@ pub async fn join_conversation(
     .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
     if inserted {
         query(
-            "INSERT INTO cloud_pip_conversation_state (conversation_id, seen_sequence)
-             SELECT conversation_id, latest_message_sequence FROM cloud_chat_conversations
+            "INSERT INTO cloud_pip_conversation_state
+                 (conversation_id, seen_sequence, context_start_sequence)
+             SELECT conversation_id, latest_message_sequence, latest_message_sequence
+             FROM cloud_chat_conversations
              WHERE conversation_id = $1
              ON CONFLICT (conversation_id) DO UPDATE SET
                  seen_sequence = GREATEST(cloud_pip_conversation_state.seen_sequence,

@@ -34,7 +34,7 @@ async fn selected(pool: &PgPool, pip: &str, conversation_id: Uuid) -> bool {
         .execute(pool)
         .await
         .unwrap();
-    let rows: Vec<(Uuid, Option<String>, i64, i64, Value)> = query_as(super::store::SWEEP_SQL)
+    let rows: Vec<(Uuid, Option<String>, i64, i64, i64, Value)> = query_as(super::store::SWEEP_SQL)
         .bind(pip)
         .bind(1000_i64)
         .fetch_all(pool)

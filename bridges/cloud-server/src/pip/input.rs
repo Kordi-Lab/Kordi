@@ -29,6 +29,7 @@ pub(super) struct Candidate {
     pub legacy_session_id: String,
     pub latest_sequence: i64,
     pub seen_sequence: i64,
+    pub context_start_sequence: i64,
     pub hooks_fired: Value,
 }
 
@@ -128,11 +129,13 @@ pub(super) async fn build_input(
          FROM cloud_chat_messages message
          JOIN cloud_accounts account ON account.account_id = message.sender_account_id
          WHERE message.conversation_id = $1 AND message.deleted_at IS NULL
+           AND message.conversation_sequence > $2
            AND message.message_kind IN ('text', 'voice')
-         ORDER BY message.conversation_sequence DESC
-         LIMIT $2",
+          ORDER BY message.conversation_sequence DESC
+          LIMIT $3",
     )
     .bind(candidate.conversation_id)
+    .bind(candidate.context_start_sequence)
     .bind(context::CONTEXT_MESSAGE_FETCH)
     .fetch_all(pool)
     .await?;
@@ -152,6 +155,7 @@ pub(super) async fn build_input(
                 },
             )
             .collect(),
+        candidate.context_start_sequence,
         candidate.seen_sequence,
         &config.account_id,
     );
@@ -250,6 +254,7 @@ pub(super) async fn build_input(
             })
         }).collect::<Vec<_>>(),
         "organizerTimezone": organizer_timezone,
+        "contextStartSequence": candidate.context_start_sequence,
         "openCard": open_card,
         "messages": messages,
         "hooks": hooks,
@@ -268,6 +273,7 @@ mod tests {
             legacy_session_id: String::new(),
             latest_sequence: 0,
             seen_sequence: 0,
+            context_start_sequence: 0,
             hooks_fired,
         }
     }
