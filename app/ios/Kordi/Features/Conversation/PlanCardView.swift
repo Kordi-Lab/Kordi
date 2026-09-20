@@ -261,18 +261,15 @@ struct PlanCardView: View {
     }
 
     private func attendeeAvatar(_ participant: PlanCardParticipant) -> some View {
-        ZStack(alignment: .bottomTrailing) {
-            Text(initials(participant.displayName))
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(participant.rsvp == .yes ? Color.white : Color.primary.opacity(0.7))
-                .frame(width: 22, height: 22)
-                .background(
-                    participant.rsvp == .yes ? Color(red: 0.13, green: 0.60, blue: 0.38) : Color(uiColor: .systemGray5),
-                    in: Circle()
-                )
-                .overlay(Circle().strokeBorder(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2))
-                .opacity(participant.rsvp == .no ? 0.5 : 1)
-        }
+        IdentityAvatar(
+            name: participant.displayName,
+            imageSource: participant.avatarUrl?.nonEmpty,
+            kind: .person,
+            size: 22,
+            seed: participant.participantId
+        )
+        .overlay(Circle().strokeBorder(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2))
+        .opacity(participant.rsvp == .no ? 0.5 : 1)
     }
 
     // MARK: Vote card
@@ -454,12 +451,6 @@ struct PlanCardView: View {
         if accountId == ownAccountId { return "You" }
         return view.participants.first { $0.participantId == accountId }?.displayName ?? "Member"
     }
-
-    private func initials(_ name: String) -> String {
-        let parts = name.split(separator: " ").prefix(2)
-        let letters = parts.compactMap { $0.first }.map { String($0).uppercased() }
-        return letters.isEmpty ? "?" : letters.joined()
-    }
 }
 
 /// Everyone on a plan, or everyone who chose an option, in a searchable list
@@ -513,11 +504,13 @@ struct PlanCardPeopleSheet: View {
                         Section("\(section.0) · \(PlanCardView.compactCount(section.1.count))") {
                             ForEach(people) { person in
                                 HStack(spacing: 10) {
-                                    Text(initials(person.displayName))
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 30, height: 30)
-                                        .background(Color(uiColor: .systemGray5), in: Circle())
+                                    IdentityAvatar(
+                                        name: person.displayName,
+                                        imageSource: person.avatarUrl?.nonEmpty,
+                                        kind: .person,
+                                        size: 30,
+                                        seed: person.participantId
+                                    )
                                     Text(person.participantId == ownAccountId ? "\(person.displayName) (you)" : person.displayName)
                                         .font(.system(size: 15))
                                     Spacer()
@@ -542,12 +535,6 @@ struct PlanCardPeopleSheet: View {
                 }
             }
         }
-    }
-
-    private func initials(_ name: String) -> String {
-        let parts = name.split(separator: " ").prefix(2)
-        let letters = parts.compactMap { $0.first }.map { String($0).uppercased() }
-        return letters.isEmpty ? "?" : letters.joined()
     }
 }
 

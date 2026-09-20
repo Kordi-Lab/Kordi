@@ -111,10 +111,13 @@ async fn fetch_row(
         return Ok(None);
     };
 
-    let participant_rows: Vec<(String, String, bool, String)> = query_as(
-        "SELECT account_id, display_name, organizer, rsvp \
-         FROM cloud_plan_card_participants WHERE event_id = $1 \
-         ORDER BY organizer DESC, display_name ASC",
+    let participant_rows: Vec<(String, String, bool, String, Option<String>)> = query_as(
+        "SELECT participant.account_id, participant.display_name, participant.organizer, \
+                participant.rsvp, account.avatar_url \
+         FROM cloud_plan_card_participants participant \
+         LEFT JOIN cloud_accounts account ON account.account_id = participant.account_id \
+         WHERE participant.event_id = $1 \
+         ORDER BY participant.organizer DESC, participant.display_name ASC",
     )
     .bind(&event_id)
     .fetch_all(&mut *conn)
@@ -123,11 +126,12 @@ async fn fetch_row(
     let participants = participant_rows
         .into_iter()
         .map(
-            |(account_id, display_name, organizer, rsvp)| PlanCardParticipantStatus {
+            |(account_id, display_name, organizer, rsvp, avatar_url)| PlanCardParticipantStatus {
                 account_id,
                 display_name,
                 organizer,
                 rsvp: PlanCardRsvp::from_db_str(&rsvp).unwrap_or(PlanCardRsvp::Pending),
+                avatar_url,
             },
         )
         .collect();
