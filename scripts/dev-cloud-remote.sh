@@ -26,6 +26,7 @@ remote_ice_tcp_port="${KORDI_DEV_REMOTE_ICE_TCP_PORT:-}"
 media_tunnel="false"
 tunnel_pid=""
 desktop_pid=""
+retry_pid=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -50,6 +51,10 @@ fi
 cleanup() {
   local exit_status=$?
   trap - EXIT INT TERM
+  if [[ -n "$retry_pid" ]]; then
+    kill "$retry_pid" 2>/dev/null || true
+    wait "$retry_pid" 2>/dev/null || true
+  fi
   if [[ -n "$desktop_pid" ]]; then
     kill "$desktop_pid" 2>/dev/null || true
     wait "$desktop_pid" 2>/dev/null || true
@@ -190,6 +195,7 @@ for _attempt in $(seq 1 45); do
   if [[ -n "$tunnel_pid" ]] && ! kill -0 "$tunnel_pid" 2>/dev/null; then
     wait "$tunnel_pid" 2>/dev/null || true
     echo "[kordi-remote-dev] The IAP tunnel exited before the development API became healthy." >&2
+    echo "[kordi-remote-dev] If Google Cloud reports expired authentication, run gcloud auth login in another terminal, then restart this command." >&2
     exit 1
   fi
   sleep 1
@@ -228,8 +234,25 @@ fi
 if [[ "$connection_mode" == "connect" ]]; then
   echo "[kordi-remote-dev] Shared development connection ready at $api_base. Keep this terminal open."
   echo "[kordi-remote-dev] Launch each preview with pnpm dev:cloud:shared --profile <task-name> --port <frontend-port>."
-  wait "$tunnel_pid"
-  exit $?
+  reconnect_delay=2
+  connected_at=$SECONDS
+  while true; do
+    # A failed SSH wait must not terminate the supervisor under set -e.
+    wait "$tunnel_pid" || true
+    tunnel_pid=""
+    if (( SECONDS - connected_at >= 30 )); then reconnect_delay=2; fi
+    echo "[kordi-remote-dev] Shared connection interrupted; reconnecting in ${reconnect_delay}s."
+    echo "[kordi-remote-dev] If Google Cloud requires reauthentication, run gcloud auth login in another terminal. This connection will retry automatically."
+    # Waiting on a child keeps shutdown responsive even during the backoff.
+    sleep "$reconnect_delay" &
+    retry_pid=$!
+    wait "$retry_pid"
+    retry_pid=""
+    open_tunnel
+    connected_at=$SECONDS
+    if (( reconnect_delay < 30 )); then reconnect_delay=$((reconnect_delay * 2)); fi
+    if (( reconnect_delay > 30 )); then reconnect_delay=30; fi
+  done
 fi
 
 # A desktop preview receives only the loopback API origin. Server credentials
