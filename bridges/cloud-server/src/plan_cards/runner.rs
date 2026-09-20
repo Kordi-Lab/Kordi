@@ -102,6 +102,14 @@ pub async fn runner_action(
     };
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
+            // Publish each successful tool mutation, even if a later model
+            // step fails before the run completion callback.
+            if let Err(error) =
+                crate::pip::cards::sync_card_messages(state.db_pool(), &actor.account_id, &row)
+                    .await
+            {
+                eprintln!("[pip] Could not refresh the plan card after its action: {error}");
+            }
             // PiP knows the card as its own action left it, so only later
             // member responses wake the next sweep.
             if let Err(error) = crate::pip::cards::mark_card_seen(

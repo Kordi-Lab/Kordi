@@ -2,12 +2,18 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+connection_mode="${KORDI_DEV_CONNECTION_MODE:-owned}"
+case "$connection_mode" in
+  owned) default_api_port=17081 ;;
+  connect|shared) default_api_port=18181 ;;
+  *) echo "[kordi-remote-dev] Connection mode must be owned, connect, or shared." >&2; exit 2 ;;
+esac
 allowlist_file="${KORDI_REMOTE_DEV_GITHUB_ALLOWLIST_FILE:-$repo_root/deploy/dev/operator-github-allowlist.txt}"
 gcp_project="${KORDI_DEV_GCP_PROJECT:-}"
 ssh_zone="${KORDI_DEV_SSH_ZONE:-}"
 ssh_target="${KORDI_DEV_SSH_TARGET:-}"
-local_api_port="${KORDI_DEV_LOCAL_API_PORT:-17081}"
-remote_api_port="${KORDI_DEV_REMOTE_API_PORT:-17081}"
+local_api_port="${KORDI_DEV_LOCAL_API_PORT:-$default_api_port}"
+remote_api_port="${KORDI_DEV_REMOTE_API_PORT:-$default_api_port}"
 desktop_port="${KORDI_DEV_DESKTOP_PORT:-1422}"
 desktop_profile="${KORDI_DEV_DESKTOP_PROFILE:-dev-isolated}"
 desktop_title="${KORDI_DEV_DESKTOP_TITLE:-Kordi Dev}"
@@ -20,6 +26,26 @@ remote_ice_tcp_port="${KORDI_DEV_REMOTE_ICE_TCP_PORT:-}"
 media_tunnel="false"
 tunnel_pid=""
 desktop_pid=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --) shift ;;
+    --profile|--port|--title)
+      if [[ $# -lt 2 || -z "$2" ]]; then echo "[kordi-remote-dev] $1 requires a value." >&2; exit 2; fi
+      case "$1" in
+        --profile) desktop_profile="$2" ;;
+        --port) desktop_port="$2" ;;
+        --title) desktop_title="$2" ;;
+      esac
+      shift 2
+      ;;
+    *) echo "Usage: pnpm dev:cloud:shared --profile <task-name> --port <frontend-port> [--title <title>]" >&2; exit 2 ;;
+  esac
+done
+if [[ "$connection_mode" == "shared" && "$desktop_profile" == "dev-isolated" ]]; then
+  echo "[kordi-remote-dev] Shared previews require a distinct --profile for each task." >&2
+  exit 2
+fi
 
 cleanup() {
   local exit_status=$?
@@ -54,7 +80,8 @@ if [[ -n "$local_signaling_port$remote_signaling_port$local_ice_tcp_port$remote_
   fi
 fi
 
-required_commands=(curl gcloud gh pnpm)
+required_commands=(curl gh pnpm node)
+if [[ "$connection_mode" != "shared" ]]; then required_commands+=(gcloud); fi
 if [[ "$media_tunnel" == "true" ]]; then required_commands+=(nc); fi
 for command in "${required_commands[@]}"; do
   if ! command -v "$command" >/dev/null 2>&1; then
@@ -63,7 +90,7 @@ for command in "${required_commands[@]}"; do
   fi
 done
 
-if [[ -z "$gcp_project" || -z "$ssh_zone" || -z "$ssh_target" ]]; then
+if [[ "$connection_mode" != "shared" ]] && [[ -z "$gcp_project" || -z "$ssh_zone" || -z "$ssh_target" ]]; then
   echo "[kordi-remote-dev] Set KORDI_DEV_GCP_PROJECT, KORDI_DEV_SSH_ZONE, and KORDI_DEV_SSH_TARGET." >&2
   exit 1
 fi
@@ -109,12 +136,14 @@ if [[ "$allowed" != "true" ]]; then
 fi
 
 api_base="http://127.0.0.1:${local_api_port}"
-if curl --fail --silent --show-error --connect-timeout 1 --max-time 2 "$api_base/health" >/dev/null 2>&1; then
-  echo "[kordi-remote-dev] Local API port $local_api_port is already serving a process. Refusing an ambiguous tunnel target." >&2
-  exit 1
+if [[ "$connection_mode" != "shared" ]]; then
+  if curl --fail --silent --show-error --connect-timeout 1 --max-time 2 "$api_base/health" >/dev/null 2>&1; then
+    echo "[kordi-remote-dev] Local API port $local_api_port is already serving a process. Refusing an ambiguous tunnel target." >&2
+    exit 1
+  fi
 fi
 
-if [[ "$media_tunnel" == "true" ]]; then
+if [[ "$media_tunnel" == "true" && "$connection_mode" != "shared" ]]; then
   for port in "$local_signaling_port" "$local_ice_tcp_port"; do
     if nc -z 127.0.0.1 "$port" >/dev/null 2>&1; then
       echo "[kordi-remote-dev] Local media port $port is already serving a process." >&2
@@ -123,7 +152,6 @@ if [[ "$media_tunnel" == "true" ]]; then
   done
 fi
 
-echo "[kordi-remote-dev] Opening an IAP tunnel to the approved isolated development host."
 forward_args=(-L "127.0.0.1:${local_api_port}:127.0.0.1:${remote_api_port}")
 if [[ "$media_tunnel" == "true" ]]; then
   forward_args+=(
@@ -147,7 +175,10 @@ open_tunnel() {
   tunnel_pid=$!
 }
 
-open_tunnel
+if [[ "$connection_mode" != "shared" ]]; then
+  echo "[kordi-remote-dev] Opening an IAP tunnel to the approved isolated development host."
+  open_tunnel
+fi
 
 healthy="false"
 for _attempt in $(seq 1 45); do
@@ -156,7 +187,7 @@ for _attempt in $(seq 1 45); do
     healthy="true"
     break
   fi
-  if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+  if [[ -n "$tunnel_pid" ]] && ! kill -0 "$tunnel_pid" 2>/dev/null; then
     wait "$tunnel_pid" 2>/dev/null || true
     echo "[kordi-remote-dev] The IAP tunnel exited before the development API became healthy." >&2
     exit 1
@@ -177,7 +208,7 @@ if [[ "$media_tunnel" == "true" ]]; then
       media_healthy="true"
       break
     fi
-    if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+    if [[ -n "$tunnel_pid" ]] && ! kill -0 "$tunnel_pid" 2>/dev/null; then
       wait "$tunnel_pid" 2>/dev/null || true
       echo "[kordi-remote-dev] The IAP tunnel exited before call media became reachable." >&2
       exit 1
@@ -191,12 +222,14 @@ if [[ "$media_tunnel" == "true" ]]; then
 fi
 
 if [[ -z "$preview_path" ]]; then
-  capabilities="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
-    "$api_base/v1/cloud/auth/capabilities")"
-  if ! grep -q '"google"' <<<"$capabilities" || ! grep -q '"github"' <<<"$capabilities"; then
-    echo "[kordi-remote-dev] The development API must advertise both Google and GitHub OAuth before launch." >&2
-    exit 1
-  fi
+  node "$repo_root/scripts/check-dev-oauth.mjs" --api-base "$api_base"
+fi
+
+if [[ "$connection_mode" == "connect" ]]; then
+  echo "[kordi-remote-dev] Shared development connection ready at $api_base. Keep this terminal open."
+  echo "[kordi-remote-dev] Launch each preview with pnpm dev:cloud:shared --profile <task-name> --port <frontend-port>."
+  wait "$tunnel_pid"
+  exit $?
 fi
 
 # A desktop preview receives only the loopback API origin. Server credentials
@@ -229,7 +262,7 @@ pnpm dev:desktop:profile -- \
 desktop_pid=$!
 
 while kill -0 "$desktop_pid" 2>/dev/null; do
-  if ! kill -0 "$tunnel_pid" 2>/dev/null; then
+  if [[ -n "$tunnel_pid" ]] && ! kill -0 "$tunnel_pid" 2>/dev/null; then
     wait "$tunnel_pid" 2>/dev/null || true
     echo "[kordi-remote-dev] The IAP tunnel exited; reconnecting."
     open_tunnel

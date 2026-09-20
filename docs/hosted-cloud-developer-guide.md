@@ -2,6 +2,12 @@
 
 This guide explains how developers should choose an environment, test, and deploy against a hosted environment. It is the canonical policy for Kordi preview and debug sessions that may use remote hosted infrastructure. Read [Development environment isolation](development-environments.md) first for the complete local, remote development, and product decision matrix. Any host or release validation that includes voice or video must also follow [Hosting Kordi voice and video calls](call-hosting.md).
 
+For everyday desktop work with approved development access, start with
+[Shared development and CI/CD testing](testing/shared-development.md). It uses one
+shared connection, separate desktop profiles, and persistent test accounts. Use
+an allocated stack for backend changes. The shared setup replaces the legacy
+per-preview tunnel recipe below for ordinary shared-development testing.
+
 Production API is `https://kordi.ai`, but that does not make it the correct target for every operator session. Apply the preflight below before launching a preview, debug session, tunnel, deploy, or server restart.
 
 Do not put tokens, provider credentials, database credentials, account secrets, or private operator host details in GitHub issues, PRs, screenshots, commits, or shared logs.
@@ -16,6 +22,7 @@ Determine whether the requested settings, code, or test can affect a product ser
 | Desktop-only remote operator preview | Check the active GitHub account against `deploy/dev/operator-github-allowlist.txt`, then use the approved operator launcher against `https://kordi.ai`. |
 | Isolated local development | Use the loopback Docker backend, an explicit loopback origin, and an isolated named desktop profile. This path cannot substitute for product-server validation. |
 | Approved isolated remote development | Reach the private development host through an IAP-style SSH tunnel, keep its API bound to loopback, and use the same isolated named profile. This path cannot substitute for product-server validation. |
+| Approved shared desktop development | Use `pnpm dev:cloud:connect` once and `pnpm dev:cloud:shared` for each distinct profile. Verify OAuth routing with `pnpm doctor:dev`; preserve shared test data and the shared tunnel lifecycle. |
 | Unknown impact or missing required access | Fail closed. Never silently fall back to a local community/debug-server profile, switch origins, or bypass endpoint/account checks as if it validated the product server. |
 
 ### Product-server-affecting path

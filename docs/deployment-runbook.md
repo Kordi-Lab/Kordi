@@ -1,9 +1,9 @@
 # Deployment runbook
 
-This runbook covers the Phase 1 operational-safety interfaces from the CI/CD redesign:
-shared deployment locking, deployment records, and the non-production rollback/restore
-rehearsal. It does not add deployment automation. Existing operator scripts keep working
-unchanged; operators wrap them with the shared lock and record the outcome.
+This runbook covers shared deployment locking, deployment records, and the
+non-production rollback/restore rehearsal. Automatic shared-development delivery and
+protected production promotion use destination-host locks and durable records.
+Manual operator changes must coordinate with those same locks and record their outcome.
 
 Related documents:
 
@@ -11,6 +11,9 @@ Related documents:
 - [Hosted cloud developer guide](hosted-cloud-developer-guide.md)
 - [Database upgrade validation](database-upgrade-validation.md)
 - [Local development with an isolated backend](self-hosted-debug.md)
+- [Shared development testing and data preservation](testing/shared-development.md)
+- [Automatic development delivery](dev-deployment.md)
+- [Protected production promotion](production-deployment.md)
 
 ## 1. Shared deployment locks
 
@@ -28,6 +31,12 @@ Take the narrowest lock that protects the resources you touch. Take `host-wide` 
 two deployments really cannot proceed at the same time.
 
 ### Location and ownership
+
+The shell wrapper and Python backend-delivery helpers must be configured to use the
+same provisioned directory. Backend delivery receives `KORDI_BACKEND_LOCK_DIR`; set
+`KORDI_DEPLOY_LOCK_DIR` to that same host path for a manual shell-wrapper operation.
+The Python helpers use the shared lock file but do not create the shell wrapper's
+`.owner` metadata. The details below describe that shell wrapper.
 
 - Locks live in `${KORDI_DEPLOY_LOCK_DIR:-/tmp/kordi-deploy-locks}` on the machine that
   executes the deployment.

@@ -117,6 +117,7 @@ async fn full_lifecycle_over_real_http() {
         "action": "propose",
         "conversationId": conversation_id.to_string(),
         "title": "Lunch this weekend?",
+        "startAt": (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339(),
         "state": "polling",
         "unresolvedFields": ["startAt", "location"],
         "participants": [
@@ -150,7 +151,47 @@ async fn full_lifecycle_over_real_http() {
     let event_id = card["eventId"].as_str().unwrap().to_string();
     assert_eq!(card["participants"].as_array().unwrap().len(), 3);
 
-    // A member who is not the organizer cannot decide the plan for everyone.
+    // Conflict recovery is read-only and requires current membership.
+    let snapshot_url = format!("{base}/v1/cloud/plan_cards/{event_id}");
+    let response = client.get(&snapshot_url).send().await.unwrap();
+    assert_eq!(response.status(), 401);
+    let outsider = format!("outsider-{suffix}");
+    seed_account(&pool, &outsider).await;
+    let outsider_token = bearer_token_for(&pool, &outsider).await;
+    let response = client
+        .get(&snapshot_url)
+        .bearer_auth(&outsider_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 403);
+    let response = client
+        .get(&snapshot_url)
+        .bearer_auth(&jordan_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let snapshot: Value = response.json().await.unwrap();
+    assert_eq!(snapshot, card);
+
+    // An ordinary chat member who is not on the plan cannot confirm it.
+    query("INSERT INTO cloud_chat_conversation_members(conversation_id,account_id) VALUES($1,$2)")
+        .bind(conversation_id)
+        .bind(&outsider)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let response = client
+        .post(format!("{base}/v1/cloud/plan_cards"))
+        .bearer_auth(&outsider_token)
+        .json(&json!({"action":"confirm","eventId":event_id,"revision":1,"confirmedBy":outsider}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 403);
+
+    // A non-organizer participant still cannot cancel the plan for everyone.
     let response = client
         .post(format!("{base}/v1/cloud/plan_cards"))
         .bearer_auth(&riya_token)
@@ -169,15 +210,35 @@ async fn full_lifecycle_over_real_http() {
         "only the organizer or an admin cancels"
     );
 
-    // Confirm.
+    // An ordinary participant cannot confirm; a chat admin can, even with
+    // only the organizer answered and everyone else still pending.
+    let denied = client
+        .post(format!("{base}/v1/cloud/plan_cards"))
+        .bearer_auth(&riya_token)
+        .json(&json!({"action":"confirm","eventId":event_id,"revision":1,"confirmedBy":riya}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), 403);
+    query("UPDATE cloud_chat_conversation_members SET role='admin' WHERE conversation_id=$1 AND account_id=$2")
+        .bind(conversation_id).bind(&riya).execute(&pool).await.unwrap();
+    assert_eq!(
+        card["participants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|p| p["rsvp"] != "pending")
+            .count(),
+        1
+    );
     let response = client
         .post(format!("{base}/v1/cloud/plan_cards"))
-        .bearer_auth(&jordan_token)
+        .bearer_auth(&riya_token)
         .json(&json!({
             "action": "confirm",
             "eventId": event_id,
             "revision": 1,
-            "confirmedBy": jordan,
+            "confirmedBy": riya,
         }))
         .send()
         .await
@@ -186,6 +247,35 @@ async fn full_lifecycle_over_real_http() {
     let card: Value = response.json().await.unwrap();
     assert_eq!(card["state"], "confirmed");
     assert_eq!(card["revision"], 2);
+    assert!(card["managerIds"]
+        .as_array()
+        .unwrap()
+        .contains(&json!(riya)));
+
+    let response = client
+        .post(format!("{base}/v1/cloud/plan_cards"))
+        .bearer_auth(&jordan_token)
+        .json(
+            &json!({"action": "cancel", "eventId": event_id, "revision": 1, "canceledBy": jordan}),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 409);
+    let error: Value = response.json().await.unwrap();
+    assert_eq!(error["errorCode"], "plan_card_revision_conflict");
+    let response = client
+        .get(&snapshot_url)
+        .bearer_auth(&jordan_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let snapshot: Value = response.json().await.unwrap();
+    assert_eq!(
+        snapshot, card,
+        "reading recovery state must not mutate the plan"
+    );
 
     // Riya declines — over HTTP, as Riya, with Riya's own token. The route
     // must reject a participantId that doesn't match the caller's own

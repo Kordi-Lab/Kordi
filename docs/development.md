@@ -2,7 +2,7 @@
 
 This document keeps the top-level development commands for the Kordi monorepo in one place.
 
-New contributors should begin with [Development environment isolation](development-environments.md), then use [`self-hosted-debug.md`](self-hosted-debug.md) for the complete isolated backend and desktop workflow, multi-account testing, production access boundaries, troubleshooting, and cleanup.
+Begin with [Development environment isolation](development-environments.md). Developers with approved shared access should use the [shared development testing guide](testing/shared-development.md) for daily frontend and two-account checks. New contributors without that access can use [`self-hosted-debug.md`](self-hosted-debug.md) for the isolated local workflow.
 
 Run commands from:
 
@@ -29,7 +29,32 @@ See [Required preflight before preview or debug](hosted-cloud-developer-guide.md
 
 ## Desktop
 
-### Start the product app
+### Shared development for everyday frontend testing
+
+Use one approved connection and a distinct profile and frontend port for each preview:
+
+```bash
+# Connection terminal, after exporting private target settings and the local allowlist
+pnpm dev:cloud:connect
+
+# Preview terminals, with the same local allowlist and API port
+pnpm dev:cloud:shared --profile test-a --port 1438
+pnpm dev:cloud:shared --profile test-b --port 1439
+
+# Diagnose the running connection
+pnpm doctor:dev --api-base http://127.0.0.1:18181
+```
+
+The API default is `18181`; `1438` and `1439` are frontend ports. Established test
+accounts and their history remain in the shared backend across image updates.
+Closing a preview does not close the shared connection. See the
+[full setup and acceptance checklist](testing/shared-development.md) before launch.
+
+These are explicit commands; the `pnpm dev` alias does not provision a shared
+connection automatically. Backend changes and destructive tests use an allocated
+stack or the isolated local backend below.
+
+### Start an isolated local backend and app
 
 ```bash
 pnpm debug:cloud:up
@@ -39,7 +64,7 @@ pnpm dev:desktop:profile -- \
   --profile dev-isolated --title "Kordi Dev" --port 1422
 ```
 
-The named profile launches Kordi Desktop with a separate native account store, a gray development icon, and no production updater endpoint. Development launches fail closed unless you explicitly select a non-production API origin. Product and allowlisted operator previews retain the color icon. The recommended default is the isolated Docker backend described in [`self-hosted-debug.md`](self-hosted-debug.md).
+The named profile launches Kordi Desktop with a separate native account store, a gray development icon, and no production updater endpoint. Development launches fail closed unless you explicitly select a non-production API origin. Product and allowlisted operator previews retain the color icon. The isolated Docker backend is the default for contributors without shared access and for tests that need independent backend data.
 
 Production API:
 
@@ -131,12 +156,16 @@ pnpm build:registry
 
 ## Shared validation
 
+Use the CI selector to run the checks applicable to your change:
+
 ```bash
-pnpm lint
-pnpm typecheck:web
-pnpm check:rust
-pnpm check
+pnpm check:ci
+pnpm check:ci --all
 ```
+
+Individual check commands and readiness gates are listed in the [CI/CD contract](ci-cd.md).
+Use synthetic fixtures for automated tests and established development accounts for
+the [live two-account acceptance check](testing/shared-development.md#two-account-acceptance-check).
 
 For hosted desktop debugging, multi-user sync checks, and operator tunnel rules, see [`hosted-cloud-developer-guide.md`](hosted-cloud-developer-guide.md).
 For native iPhone development, see [`ios-development.md`](ios-development.md).

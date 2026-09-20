@@ -7531,6 +7531,7 @@ final class AppModel: ObservableObject {
             case "rate_limited": return "Too many attempts. Wait a moment, then try again."
             case "invalid_session", "account_missing": return "Your session expired. Sign in again."
             case "network_error": return "Kordi Cloud is unavailable. Check your connection and try again."
+            case "proxy_unreachable": return error.message.nonEmpty ?? "Kordi can't reach this network's proxy. Check the proxy settings or connect to another network."
             case "invalid_redirect": return "This Kordi build is not yet allowed to finish social sign-in."
             case "oauth_not_configured": return "This sign-in provider is temporarily unavailable."
             default: return error.message.nonEmpty ?? fallback
@@ -7555,7 +7556,7 @@ final class AppModel: ObservableObject {
 
     private func recordCloudConnectionFailure(_ error: Error) {
         guard let error = error as? CloudAPIError,
-              error.code == "network_error" || error.statusCode >= 500 else { return }
+              error.code == "network_error" || error.code == "proxy_unreachable" || error.statusCode >= 500 else { return }
         if cloudConnectionState != .unavailable { cloudConnectionState = .unavailable }
         if messageSyncState != .offline { messageSyncState = .offline }
     }

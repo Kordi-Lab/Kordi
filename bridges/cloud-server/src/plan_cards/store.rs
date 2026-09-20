@@ -136,6 +136,19 @@ async fn fetch_row(
         )
         .collect();
 
+    let managers: Vec<(String,)> = query_as(
+        "SELECT member.account_id FROM cloud_chat_conversation_members member
+         WHERE member.conversation_id = $1 AND member.membership_state = 'active'
+           AND (member.role IN ('owner','admin') OR EXISTS (
+             SELECT 1 FROM cloud_plan_card_participants participant
+             WHERE participant.event_id = $2 AND participant.account_id = member.account_id
+               AND participant.organizer)) ORDER BY member.account_id",
+    )
+    .bind(conversation_id)
+    .bind(&event_id)
+    .fetch_all(&mut *conn)
+    .await?;
+
     Ok(Some(PlanCardRow {
         event_id,
         conversation_id: conversation_id.to_string(),
@@ -148,6 +161,7 @@ async fn fetch_row(
         unresolved_fields: json_string_array(unresolved_fields),
         source_message_ids: json_string_array(source_message_ids),
         participants,
+        manager_ids: managers.into_iter().map(|(id,)| id).collect(),
         options: options_from_json(options),
         note,
     }))

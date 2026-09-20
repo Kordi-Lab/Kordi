@@ -270,10 +270,11 @@ final class CloudModelDecodingTests: XCTestCase {
         ))
     }
 
-    func testDefaultClientUsesConfiguredOriginAndWaitsForConnectivity() {
+    func testDefaultClientUsesConfiguredOriginAndFailsFast() {
         XCTAssertEqual(CloudAPIClient.productionBaseURL.absoluteString, "https://kordi.ai")
-        XCTAssertTrue(CloudAPIClient.reliableSession.configuration.waitsForConnectivity)
+        XCTAssertFalse(CloudAPIClient.reliableSession.configuration.waitsForConnectivity)
         XCTAssertEqual(CloudAPIClient.reliableSession.configuration.timeoutIntervalForRequest, 30)
+        XCTAssertEqual(CloudAPIClient.reliableSession.configuration.timeoutIntervalForResource, 90)
     }
 
     func testCloudSessionVisibilityDecodesMacHiddenAndDeletedSessions() throws {
@@ -1022,5 +1023,70 @@ final class CanonicalHistoryProjectionTests: XCTestCase {
         ])
         XCTAssertEqual(message.createdAt, "2026-09-11T07:30:00Z")
         XCTAssertNil(message.canonicalHistoryLocalMessageId)
+    }
+}
+
+private final class PlanCardConflictProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let isAction = request.httpMethod == "POST"
+        let failsRefresh = request.value(forHTTPHeaderField: "X-Test-Refresh") == "fail"
+        let status = isAction ? 409 : failsRefresh ? 503 : 200
+        let body = isAction
+            ? #"{"errorCode":"plan_card_revision_conflict","message":"Stale revision"}"#
+            : failsRefresh
+                ? #"{"errorCode":"plan_card_unavailable","message":"Refresh unavailable"}"#
+                : #"{"eventId":"plan-test","revision":3,"state":"awaiting_confirmation","title":"Updated dinner","participants":[],"managerIds":["admin"]}"#
+        if !isAction { XCTAssertEqual(request.url?.path, "/v1/cloud/plan_cards/plan-test") }
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+struct PlanCardConflictRecoveryTests {
+    @Test func refreshesStaleConfirmationWithoutReplayingIt() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [PlanCardConflictProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let api = CloudAPIClient(session: session)
+        let updated = try await api.planCardAction(token: "synthetic",
+            action: PlanCardAction(action: "confirm", eventId: "plan-test", revision: 2, confirmedBy: "member"))
+        #expect(updated.revision == 3)
+        #expect(updated.state == .awaitingConfirmation)
+        #expect(updated.title == "Updated dinner")
+        #expect(updated.managerIds == ["admin"])
+    }
+
+    @Test func failedRefreshSurfacesAnError() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [PlanCardConflictProtocol.self]
+        config.httpAdditionalHeaders = ["X-Test-Refresh": "fail"]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        do {
+            _ = try await CloudAPIClient(session: session).planCardAction(token: "synthetic",
+                action: PlanCardAction(action: "confirm", eventId: "plan-test", revision: 2, confirmedBy: "member"))
+            Issue.record("A failed refresh must surface an error")
+        } catch let error as CloudAPIError {
+            #expect(error.statusCode == 503)
+        } catch { Issue.record("Unexpected error: \(error)") }
+    }
+}
+
+
+struct PlanCardCalendarReadinessTests {
+    @Test func missingTimeAndPendingAttendanceHaveActionableGuidance() throws {
+        let missingTime = try JSONDecoder().decode(PlanCard.self, from: Data(#"{"eventId":"plan","revision":1,"state":"awaiting_confirmation","title":"Dinner","participants":[]}"#.utf8))
+        #expect(!missingTime.hasConfirmationTime(isVote: false))
+        #expect(missingTime.calendarHint(ownAccountId: "member", isVote: false, canConfirm: true)?.contains("date and time") == true)
+        let pending = try JSONDecoder().decode(PlanCard.self, from: Data(#"{"eventId":"plan","revision":2,"state":"confirmed","title":"Dinner","startAt":"2030-10-01T19:00:00-07:00","participants":[{"participantId":"member","displayName":"Member","organizer":false,"rsvp":"pending"}]}"#.utf8))
+        #expect(pending.hasConfirmationTime(isVote: false))
+        #expect(pending.calendarHint(ownAccountId: "member", isVote: false, canConfirm: false)?.contains("I’m in") == true)
     }
 }

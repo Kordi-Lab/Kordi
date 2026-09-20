@@ -111,7 +111,7 @@ fn install_macos_proxy_environment() {
             );
         } else {
             eprintln!(
-                "[kordi] macOS automatic proxy configuration is enabled but cannot be represented by the native HTTP stack. Configure a static Web Proxy/Secure Web Proxy or launch Kordi with HTTPS_PROXY."
+                "[kordi] macOS automatic proxy configuration is enabled but cannot be represented by the native HTTP stack; native traffic continues directly so an unreachable PAC cannot stall the app. Configure a static Web Proxy/Secure Web Proxy or launch Kordi with HTTPS_PROXY to route through a proxy."
             );
         }
     }

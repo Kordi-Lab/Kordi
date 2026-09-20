@@ -114,3 +114,5 @@
   padding: 1px 6px; border-radius: 999px; background: #fff4d6; color: #5a3d00;
 }
 :root[data-theme="dark"] .app-sender-tag, .dark .app-sender-tag { background: #3a2c0c; color: #fff1c9; }
+
+.app-plan-card-guidance { font-size: 11px; line-height: 14px; color: var(--utility-muted-text); }

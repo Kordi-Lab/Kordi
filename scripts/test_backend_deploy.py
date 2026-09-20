@@ -98,6 +98,14 @@ class BackendTests(unittest.TestCase):
         self.assertIn("synthetic-private-diagnostic", log.read_text())
         self.assertEqual(log.stat().st_mode & 0o777, 0o600)
 
+    def test_ordering_state_is_rechecked_under_the_host_lock(self):
+        args = self.args()
+        args.expected_current_sha = "b" * 40
+        with patch("backend_deploy_dev.run") as command:
+            with self.assertRaises(ValueError):
+                deploy(args)
+        command.assert_not_called()
+
     def test_success_updates_both_images_without_building(self):
         calls = []
         image_id = self.manifest["images"]["cloud-server"]["imageId"]

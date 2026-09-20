@@ -7,6 +7,7 @@ Use this document before starting any Kordi preview, debug session, backend proc
 | Work | Required environment | Client origin |
 | --- | --- | --- |
 | Ordinary contributor or isolated feature work | Local Docker backend | `http://127.0.0.1:17081` |
+| Approved everyday desktop frontend and multi-account testing | Shared development backend through one approved shared connection | `http://127.0.0.1:18181` by default |
 | Approved isolated work on a remote development host | Private development host reached through an IAP-style SSH tunnel | `http://127.0.0.1:17081` through the tunnel |
 | Native iPhone backend development | `Kordi Beta` scheme plus either isolated backend above | `http://127.0.0.1:17081` |
 | Desktop-only production operator preview | Allowlisted operator launcher | `https://kordi.ai` |
@@ -30,9 +31,9 @@ If the impact, authorization, or environment identity is uncertain, stop and fai
 
 Assume every process, port, tunnel, desktop profile, simulator, worktree, data directory, and backend that the current task did not create belongs to another active debugging session.
 
-- Never stop, restart, erase, reset, reconfigure, delete, or reuse another session's resources, even when they appear stale or occupy the preferred port. An occupied resource is a reason to choose another resource, not permission to terminate it.
+- Never stop, restart, erase, reset, reconfigure, delete, or take over another session's resources, even when they appear stale or occupy the preferred port. An occupied resource is not permission to terminate it. Explicitly provisioned shared connections may be consumed through `pnpm dev:cloud:shared`; an arbitrary occupied port is not an approved shared connection.
 - Never use broad cleanup commands such as `pkill`, `killall`, `xcrun simctl shutdown all`, `xcrun simctl erase all`, or a project-wide Docker shutdown while parallel debugging may be active.
-- Give each task a unique worktree, local ports, `io.kordi.cloud.*` profile, app data directory, simulator device, DerivedData directory, logs, and tunnel lifecycle. Stop or erase only exact resource identifiers recorded when that task created them.
+- Give each task a unique worktree, frontend port, `io.kordi.cloud.*` profile, app data directory, simulator device, DerivedData directory, and logs. Isolated backends also need task-owned API ports and tunnel lifecycles. Shared previews retain the shared API port and do not own its tunnel. Stop or erase only exact resource identifiers recorded when that task created them.
 - Treat a development backend as shared whenever another session may depend on it. Do not rebuild, restart, reset, or change its environment; use a task-specific backend instead. If isolation is unavailable or ownership is uncertain, stop and ask rather than disturbing existing work.
 - A launcher or cleanup trap may terminate only the tunnel and child processes it created. It must not discover and kill an unrelated listener to reclaim a port.
 
@@ -84,7 +85,7 @@ pnpm dev:cloud:remote
 The launcher refuses occupied local media ports, mismatched advertised ICE/TCP
 ports, and signaling or media listeners that do not become reachable.
 
-The launcher verifies the active GitHub account against the ignored local allowlist, creates an IAP loopback tunnel, waits for the health endpoint, requires both development OAuth providers, and launches the gray isolated desktop profile. Exiting the desktop command also closes its tunnel. It refuses to reuse an already-serving local port because that would make the remote target ambiguous.
+The launcher verifies the active GitHub account against the ignored local allowlist, creates an IAP loopback tunnel, checks both development OAuth callbacks and a temporary state round trip, and launches the gray isolated desktop profile. Exiting the desktop command also closes its tunnel. It refuses to reuse an already-serving local port because that would make the remote target ambiguous.
 
 For transport-only diagnosis, the equivalent low-level tunnel is:
 
@@ -124,7 +125,7 @@ For Beta development, start the local stack or keep the approved development-hos
 
 ## Development OAuth applications
 
-Create separate developer-owned OAuth applications with these exact callback URLs:
+Create separate developer-owned OAuth applications. For the default local API port, use these callback URLs:
 
 ```text
 http://127.0.0.1:17081/v1/cloud/auth/oauth/github/callback
@@ -132,6 +133,60 @@ http://127.0.0.1:17081/v1/cloud/auth/oauth/google/callback
 ```
 
 The GitHub OAuth application callback URL must contain the complete path. In Google Auth Platform, add `http://127.0.0.1:17081` as an authorized JavaScript origin and add the complete Google callback URL as an authorized redirect URI.
+
+### Concurrent previews and callback ports
+
+Follow the [shared development testing guide](testing/shared-development.md) for the
+complete daily workflow, two-account checks, data preservation, and CI/CD evidence.
+
+Frontend-only previews can share a development backend while keeping separate desktop profiles, application data, and frontend ports. Use a separate allocated backend stack for server changes, migrations, resets, or changes to OAuth configuration. Keep an established stack's callback port stable while other previews use it.
+
+For everyday frontend work, start one shared connection in a dedicated terminal using your private development target settings and local GitHub allowlist:
+
+```bash
+pnpm dev:cloud:connect
+```
+
+The shared connection defaults to local and remote API port `18181`, separate from the single-task `17081` default. Configure the shared backend and development OAuth applications for that port once. If your allocated shared ports differ, export `KORDI_DEV_LOCAL_API_PORT` and `KORDI_DEV_REMOTE_API_PORT` explicitly. Leave the connection terminal running while previews use it.
+
+Then launch each frontend checkout in its own terminal, with a distinct profile and frontend port:
+
+```bash
+pnpm dev:cloud:shared --profile feature-a --port 1438
+pnpm dev:cloud:shared --profile feature-b --port 1439
+```
+
+Shared previews validate the existing connection and callbacks, retain the GitHub allowlist check, and never create or close the shared tunnel. Export the same `KORDI_DEV_LOCAL_API_PORT` in each preview terminal if you changed the connection default. Closing one preview leaves the others connected. Test accounts and backend data are shared; use `pnpm dev:cloud:remote` with explicit task ports when backend isolation is needed.
+
+There are two different return addresses: the provider callback returns to the backend, and `redirectAfter` subsequently returns to the individual app window. Changing the app profile or its frontend port does not change the backend's provider callback.
+
+For a remote stack, the host API port and local tunnel port can differ. Set the following in that stack's ignored development environment file on the backend host, using ports allocated to the task:
+
+```dotenv
+KORDI_DEBUG_API_PORT=17191
+KORDI_DEBUG_PUBLIC_API_PORT=17083
+```
+
+This keeps the remote API bound to port `17191` and advertises provider callbacks on local port `17083`. Recreate only the owning stack's `cloud-server` with its explicit Compose project and environment file. Point the task's tunnel at its allocated remote port. Do not change another task's stack or repurpose its local listener.
+
+Register these callbacks in the separate development OAuth applications:
+
+```text
+http://127.0.0.1:17083/v1/cloud/auth/oauth/google/callback
+http://127.0.0.1:17083/v1/cloud/auth/oauth/github/callback
+```
+
+Google web OAuth clients require an exact registered redirect URI, including the port. GitHub documents a port exception for loopback callback URLs, but the backend must still generate the correct callback and use it during code exchange. See [Google's redirect URI rules](https://developers.google.com/identity/protocols/oauth2/web-server) and [GitHub's loopback callback rules](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#loopback-redirect-urls).
+
+Before signing in, check the running tunnel from any checkout:
+
+```bash
+pnpm doctor:dev --api-base http://127.0.0.1:17083
+```
+
+The check verifies health, both providers, exact callback routing, and a one-use state round trip. It cancels only its own test states, never opens a provider sign-in page, and does not print authorization URLs or credentials. It cannot inspect provider-console registrations or grant account consent; finish with a fresh interactive sign-in. The remote launcher runs this check automatically for login-enabled previews.
+
+If the diagnostic reports a callback mismatch, correct the owning stack and provider registration before retrying. Refreshing an old callback URL cannot repair missing or already-consumed OAuth state. Do not move or copy OAuth state between databases.
 
 Kordi-controlled development and product servers must report both `google` and `github` from `/v1/cloud/auth/capabilities` before OAuth testing begins. The desktop login surface keeps both official entry points available even if capability discovery is delayed or temporarily fails; provider-start errors remain visible and actionable instead of degrading the page to password-only guidance.
 

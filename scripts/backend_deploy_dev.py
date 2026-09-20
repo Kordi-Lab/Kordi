@@ -25,7 +25,8 @@ def deploy(args):
     # Read development credentials only from the existing isolated environment file.
     for name in ("POSTGRES_PASSWORD", "REDIS_PASSWORD", "MINIO_ROOT_USER", "MINIO_ROOT_PASSWORD",
                  "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY", "KORDI_CLOUD_RUNNER_TOKEN",
-                 "KORDI_CHAT_SYNC_CURSOR_SECRET", "KORDI_OAUTH_GITHUB_CLIENT_ID",
+                 "KORDI_CHAT_SYNC_CURSOR_SECRET", "KORDI_PIP_FALLBACK_API_KEY",
+                 "KORDI_PIP_FALLBACK_BASE_URL", "KORDI_PIP_FALLBACK_MODEL", "KORDI_OAUTH_GITHUB_CLIENT_ID",
                  "KORDI_OAUTH_GITHUB_CLIENT_SECRET", "KORDI_OAUTH_GOOGLE_CLIENT_ID",
                  "KORDI_OAUTH_GOOGLE_CLIENT_SECRET"):
         os.environ.pop(name, None)
@@ -35,6 +36,10 @@ def deploy(args):
         record = {"environment": "dev", "sha": args.sha, "buildRunId": args.run_id,
                   "images": bundle["images"], "outcome": "failure", "rollback": "not attempted", "stage": "load images"}
         try:
+            expected = getattr(args, "expected_current_sha", None)
+            current = json.loads(state_file.read_text())["sha"] if state_file.exists() else "none"
+            if expected is not None and current != expected:
+                raise ValueError("Deployed revision changed after ordering validation; retry against the current host state")
             for service in SERVICES:
                 run(["docker", "load", "--input", str(args.bundle / f"{service}.docker.tar")])
                 actual = run(["docker", "image", "inspect", "--format", "{{.Id}}", bundle["images"][service]["tag"]])
@@ -68,6 +73,7 @@ def main():
     parser.add_argument("--sha", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--state", type=Path, required=True)
+    parser.add_argument("--expected-current-sha")
     parser.add_argument("--project", required=True)
     parser.add_argument("--api-port", type=int, required=True)
     parser.add_argument("--env-file", type=Path, required=True)

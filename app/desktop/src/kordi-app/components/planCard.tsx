@@ -21,10 +21,10 @@ function formatWhen(startAt?: string | null, endAt?: string | null): string | nu
   const start = new Date(startAt);
   if (Number.isNaN(start.getTime())) return null;
   const date = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }).format(start);
-  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(start);
+  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(start);
   const end = endAt ? new Date(endAt) : null;
   const endLabel = end && !Number.isNaN(end.getTime())
-    ? ` – ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(end)}`
+    ? ` – ${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(end)}`
     : '';
   return `${date} · ${time}${endLabel}`;
 }
@@ -101,6 +101,7 @@ export function PlanCardContent({
     return () => { cancelled = true; };
   }, [ownAccountId]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [pendingCard, setPendingCard] = useState<MessagePlanCard | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [localState, setLocalState] = useState<MessagePlanCard | null>(null);
   // Which people list is open: `attendees`, or `voters:<optionId>`.
@@ -118,10 +119,12 @@ export function PlanCardContent({
       window.removeEventListener('keydown', close);
     };
   }, [panel]);
-  // A click updates the card at once; a newer snapshot from the transcript
-  // then takes over, so the card never sticks on an old local result.
-  const view = localState && localState.revision > card.revision ? { ...localState, view: card.view } : card;
-  const isVote = planCardView(card) === 'vote';
+  // Keep the visible snapshot stable until the action settles, then use the
+  // newest action result or transcript snapshot without rolling back on errors.
+  const latest = localState?.eventId === card.eventId && localState.revision > card.revision
+    ? { ...localState, view: planCardView(card) } : card;
+  const view = busy && pendingCard?.eventId === card.eventId ? pendingCard : latest;
+  const isVote = planCardView(view) === 'vote';
   const accountId = ownAccountId ?? sessionAccountId;
   const self = accountId ? view.participants.find((participant) => participant.participantId === accountId) : undefined;
   const options = view.options ?? [];
@@ -129,8 +132,16 @@ export function PlanCardContent({
   const isOpen = view.state !== 'canceled';
   const canRespond = !isVote && Boolean(self) && isOpen;
   const leading = isVote ? leadingOption(options) : null;
-  const canConfirm = Boolean(self?.organizer) && (isVote ? polling && leading !== null : view.state === 'awaiting_confirmation');
-  const onCalendar = !isVote && view.state === 'confirmed' && self?.rsvp === 'yes' && Boolean(view.startAt);
+  const canConfirm = Boolean(self?.organizer || (accountId && view.managerIds?.includes(accountId))) && (isVote ? polling && leading !== null : view.state === 'awaiting_confirmation');
+  const confirmationStart = leading?.startAt ?? view.startAt;
+  const hasConfirmationTime = Boolean(confirmationStart && Number.isFinite(Date.parse(confirmationStart)));
+  const calendarHint = canConfirm && !hasConfirmationTime
+    ? 'Set a date and time in chat before confirming.'
+    : !isVote && view.state === 'confirmed' && !hasConfirmationTime
+      ? 'Add a date and time in chat to put this plan on calendars.'
+      : !isVote && view.state === 'confirmed' && self?.rsvp === 'pending'
+        ? 'Choose “I’m in” to add this plan to your calendar.' : null;
+  const onCalendar = !isVote && view.state === 'confirmed' && self?.rsvp === 'yes' && hasConfirmationTime;
   const voterCount = new Set(options.flatMap((option) => option.votes)).size;
   const when = formatWhen(view.startAt, view.endAt);
   const going = view.participants.filter((participant) => participant.rsvp === 'yes').length;
@@ -141,6 +152,7 @@ export function PlanCardContent({
 
   const act = async (label: string, request: PlanCardActionRequest) => {
     if (busy) return;
+    setPendingCard(view);
     setBusy(label);
     setNotice(null);
     try {
@@ -152,9 +164,9 @@ export function PlanCardContent({
       const updated = await planCardAction(session.token, request);
       setLocalState(updated);
     } catch (error) {
-      setLocalState(null);
       setNotice(error instanceof Error ? error.message : 'Could not update the plan.');
     } finally {
+      setPendingCard(null);
       setBusy(null);
     }
   };
@@ -259,8 +271,8 @@ export function PlanCardContent({
             <button
               type="button"
               className="app-plan-card-button app-plan-card-button-primary"
-              disabled={Boolean(busy)}
-              title={leading ? `Confirm ${leading.label} for everyone` : 'Confirm for everyone'}
+              disabled={Boolean(busy) || !hasConfirmationTime}
+              title={leading ? `Confirm ${leading.label} for attending members` : 'Confirm for attending members'}
               onClick={() => { void act('confirm', { action: 'confirm', eventId: view.eventId, revision: view.revision, confirmedBy: accountId ?? '', ...(leading ? { optionId: leading.id } : {}) }); }}
             >
               Confirm
@@ -269,7 +281,7 @@ export function PlanCardContent({
         </div>
       ) : null}
       {onCalendar ? <div className="app-plan-card-calendar-note"><CalendarCheck size={11} aria-hidden /> On your calendar</div> : null}
-      {notice ? <div className="app-plan-card-notice" role="status">{notice}</div> : null}
+      {notice || calendarHint ? <div className={notice ? "app-plan-card-notice" : "app-plan-card-guidance"} role="status">{notice ?? calendarHint}</div> : null}
     </section>
   );
 }
