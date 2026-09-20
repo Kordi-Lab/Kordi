@@ -1,6 +1,6 @@
 import type { Agent } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import { cloudAgentRuntimeRouteForTargetCloudAgent } from '@/features/cloud/cloudAgentRuntime';
+import { cloudAgentRuntimeRouteForTargetCloudAgent } from '@/features/cloud/cloudAgentTargetRuntimeRoute';
 
 function text(value?: string | null) {
   return value?.trim() ?? '';

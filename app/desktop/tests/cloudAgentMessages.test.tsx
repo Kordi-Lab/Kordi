@@ -24,9 +24,9 @@ import {
 import {
   cloudGroupAgentRuntimeSessionId,
   cloudAgentRuntimeRouteForSession,
-  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from '../src/features/cloud/cloudAgentRuntime';
+import { cloudAgentRuntimeRouteForTargetCloudAgent } from '../src/features/cloud/cloudAgentTargetRuntimeRoute';
 import {
   buildCloudCollaborationHost,
   cloudMessageToCollaborationMessage,

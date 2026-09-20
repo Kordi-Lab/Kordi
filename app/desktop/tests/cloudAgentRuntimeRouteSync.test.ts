@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { resolveDefaultCloudAgentRuntimeRoute } from '../src/app/useKordiDefaultCloudAgentRuntimeRoute';
 import type { CloudMessage } from '../src/features/cloud/authClient';
+import { resolveCloudAgentRuntimeRouteChange } from '../src/features/cloud/cloudAgentRuntimeRouteChange';
 import { runtimeRoutesMatch } from '../src/features/cloud/cloudAgentRuntimeRoute';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from '../src/features/cloud/cloudAgentMessages';
 import {
@@ -14,6 +16,7 @@ import {
   latestCloudAgentRuntimeRouteChangeBeforeRequest,
   modelFromAgentModelChangeNotice,
 } from '../src/features/cloud/cloudAgentRuntime';
+import type { DesktopAuthState } from '../src/kordi-app/types';
 
 test('explicit cloud sessions keep independent runtime route identities for the same peer', () => {
   for (const suffix of ['one', 'two']) {
@@ -72,6 +75,171 @@ test('OpenAI provider aliases preserve the executing auth profile across route u
   ), {
     model: 'openai/gpt-5.6-sol', authProvider: 'openai',
     authChoice: 'local-active-oauth', thinking: 'max',
+  });
+});
+
+test('configured ChatGPT auth replaces a stale Anthropic choice for an OpenAI model', () => {
+  const desktopAuthState: DesktopAuthState = {
+    authPath: '/redacted/auth.json',
+    hasAnyAuth: true,
+    providers: [{
+      id: 'openai-codex',
+      label: 'ChatGPT',
+      statusSummary: 'Connected',
+      loginHint: '',
+      envVar: '',
+      helpUrl: '',
+      supportsOAuth: true,
+      supportsApiKey: false,
+      configured: true,
+      authority: null,
+      baseUrl: null,
+      preferredModel: 'openai/gpt-6-astra',
+      options: [{
+        value: 'profile:chatgpt',
+        profileId: 'chatgpt',
+        method: 'OAuth',
+        source: 'Kordi auth',
+        label: 'ChatGPT account',
+        active: true,
+      }],
+    }],
+  };
+  const authOptions = [{
+    providerId: 'openai-codex',
+    providerLabel: 'ChatGPT',
+    methodLabel: 'OAuth',
+    value: 'profile:chatgpt',
+    label: 'ChatGPT account',
+    active: true,
+  }];
+  const resolvedLocalRoute = resolveDefaultCloudAgentRuntimeRoute({
+    activeLoginProviderId: 'openai-codex',
+    authOptions,
+    chatModelOptions: [{ value: 'openai/gpt-6-astra', label: 'GPT-6 Astra' }],
+    desktopAuthState,
+    isNativeShell: true,
+    preferredModelValueForProvider: () => 'openai/gpt-6-astra',
+    resolveComposerProviderId: () => 'openai',
+    selectedModel: 'openai/gpt-6-astra',
+    selectedThinking: 'high',
+  });
+
+  assert.deepEqual(resolveCloudAgentRuntimeRouteChange({
+    authOptions,
+    input: {
+      sessionId: 'session:self-agent:openai',
+      model: 'openai/gpt-6-astra',
+      authProvider: 'anthropic',
+      authChoice: 'local-active-oauth',
+      thinking: 'high',
+    },
+    resolvedLocalRoute,
+  }), {
+    model: 'openai/gpt-6-astra',
+    authProvider: 'openai-codex',
+    authChoice: 'local-active-oauth',
+    thinking: 'high',
+  });
+});
+
+test('configured ChatGPT auth replaces a generic OpenAI OAuth alias', () => {
+  assert.deepEqual(resolveCloudAgentRuntimeRouteChange({
+    authOptions: [{
+      providerId: 'openai-codex', providerLabel: 'ChatGPT', methodLabel: 'OAuth',
+      value: 'profile:chatgpt', label: 'ChatGPT account', active: true,
+    }],
+    input: {
+      sessionId: 'session:group:openai',
+      model: 'openai/gpt-6-astra',
+      authProvider: 'openai',
+      authChoice: 'local-active-oauth',
+      thinking: 'medium',
+    },
+    resolvedLocalRoute: {
+      model: 'openai/gpt-6-astra',
+      authProvider: 'openai-codex',
+      authChoice: 'local-active-oauth',
+      thinking: 'medium',
+    },
+  }), {
+    model: 'openai/gpt-6-astra',
+    authProvider: 'openai-codex',
+    authChoice: 'local-active-oauth',
+    thinking: 'medium',
+  });
+});
+
+test('an unavailable model provider falls back to the configured local provider and model', () => {
+  assert.deepEqual(resolveCloudAgentRuntimeRouteChange({
+    authOptions: [{
+      providerId: 'openai-codex', providerLabel: 'ChatGPT', methodLabel: 'OAuth',
+      value: 'profile:chatgpt', label: 'ChatGPT account', active: true,
+    }],
+    input: {
+      sessionId: 'session:group:fallback',
+      model: 'anthropic/claude-opus-4-1',
+      authProvider: 'anthropic',
+      authChoice: 'local-active-oauth',
+      thinking: 'high',
+    },
+    resolvedLocalRoute: {
+      model: 'openai/gpt-6-astra',
+      authProvider: 'openai-codex',
+      authChoice: 'local-active-oauth',
+      thinking: 'medium',
+    },
+  }), {
+    model: 'openai/gpt-6-astra',
+    authProvider: 'openai-codex',
+    authChoice: 'local-active-oauth',
+    thinking: 'high',
+  });
+});
+
+test('route changes preserve an explicit provider alias from the selected model family', () => {
+  assert.deepEqual(resolveCloudAgentRuntimeRouteChange({
+    authOptions: [{
+      providerId: 'openai-codex', providerLabel: 'ChatGPT', methodLabel: 'OAuth',
+      value: 'profile:chatgpt', label: 'ChatGPT account', active: true,
+    }],
+    input: {
+      sessionId: 'session:self-agent:openai-alias',
+      model: 'openai/gpt-6-astra',
+      authProvider: 'openai-codex',
+      authChoice: 'profile:chatgpt',
+    },
+    resolvedLocalRoute: {
+      model: 'openai/gpt-6-astra', authProvider: 'openai',
+      authChoice: 'local-active-oauth',
+    },
+  }), {
+    model: 'openai/gpt-6-astra',
+    authProvider: 'openai-codex',
+    authChoice: 'local-active-oauth',
+  });
+});
+
+test('route changes preserve an explicit provider for an unqualified model', () => {
+  assert.deepEqual(resolveCloudAgentRuntimeRouteChange({
+    authOptions: [{
+      providerId: 'anthropic', providerLabel: 'Anthropic', methodLabel: 'OAuth',
+      value: 'profile:claude', label: 'Claude account', active: true,
+    }],
+    input: {
+      sessionId: 'session:self-agent:anthropic',
+      model: 'claude-opus-4-1',
+      authProvider: 'anthropic',
+      authChoice: 'profile:claude',
+    },
+    resolvedLocalRoute: {
+      model: 'anthropic/claude-opus-4-1', authProvider: 'anthropic',
+      authChoice: 'local-active-oauth',
+    },
+  }), {
+    model: 'anthropic/claude-opus-4-1',
+    authProvider: 'anthropic',
+    authChoice: 'local-active-oauth',
   });
 });
 
