@@ -39,6 +39,8 @@ pub use runner::runner_action;
 pub use routes::routes;
 
 #[cfg(test)]
+mod confirmation_tests;
+#[cfg(test)]
 mod http_tests;
 #[cfg(test)]
 mod revise_tests;

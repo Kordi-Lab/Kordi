@@ -1078,3 +1078,15 @@ struct PlanCardConflictRecoveryTests {
         } catch { Issue.record("Unexpected error: \(error)") }
     }
 }
+
+
+struct PlanCardCalendarReadinessTests {
+    @Test func missingTimeAndPendingAttendanceHaveActionableGuidance() throws {
+        let missingTime = try JSONDecoder().decode(PlanCard.self, from: Data(#"{"eventId":"plan","revision":1,"state":"awaiting_confirmation","title":"Dinner","participants":[]}"#.utf8))
+        #expect(!missingTime.hasConfirmationTime(isVote: false))
+        #expect(missingTime.calendarHint(ownAccountId: "member", isVote: false, canConfirm: true)?.contains("date and time") == true)
+        let pending = try JSONDecoder().decode(PlanCard.self, from: Data(#"{"eventId":"plan","revision":2,"state":"confirmed","title":"Dinner","startAt":"2030-10-01T19:00:00-07:00","participants":[{"participantId":"member","displayName":"Member","organizer":false,"rsvp":"pending"}]}"#.utf8))
+        #expect(pending.hasConfirmationTime(isVote: false))
+        #expect(pending.calendarHint(ownAccountId: "member", isVote: false, canConfirm: false)?.contains("I’m in") == true)
+    }
+}

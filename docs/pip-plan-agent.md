@@ -149,7 +149,7 @@ and every participant's RSVP. macOS
 (`app/ios/Kordi/Features/Conversation/PlanCardView.swift`) render the block as
 a compact card in the style of the Kordi Support permission card: while the
 card polls, the options are the buttons; otherwise "I'm in" and "Can't make
-it", plus a Confirm button for the organizer and chat admins while the plan is awaiting confirmation. Confirmation does not require every member to respond; unanswered members remain pending. Cancel and reopen remain restricted to the organizer or a chat admin. Card instants are always RFC
+it", plus a Confirm button for the organizer and chat admins while the plan is awaiting confirmation. Confirmation requires an exact start date and time, but does not require every member to respond. Unanswered members remain pending, including an admin who confirms without choosing "I'm in". Only attending members get personal calendar entries. Cancel and reopen remain restricted to the organizer or a chat admin. Card instants are always RFC
 3339 with an offset. Clients display the viewer's local time with a timezone label. PiP uses an explicitly named timezone or the event location's timezone before falling back to the organizer's timezone, and applies clear message corrections to the same card.
 
 A member's button press goes to `POST /v1/cloud/plan_cards` as that member. On
