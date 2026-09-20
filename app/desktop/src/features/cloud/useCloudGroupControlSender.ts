@@ -146,6 +146,14 @@ export function useCloudGroupControlSender({
         .catch((error) => reportWarning('[cloud-group] fallback claim failed', error));
       return Promise.resolve();
     };
+    const followUpAfterDelivery = (sent: readonly CloudMessage[], requestMessageId: string) => {
+      // The message is already acknowledged and persisted. Background refresh
+      // and agent work must not hold the conversation's next outgoing message.
+      void claimFallbackAfterPreparation(sent, requestMessageId, session.token)
+        .catch((error) => reportWarning('[cloud-group] fallback claim failed', error));
+      void syncDiff()
+        .catch((error) => reportWarning('[cloud-group] post-send sync failed', error));
+    };
     const groupTitle = cloudGroupTitleForOutgoingControl({
       kind: input.kind,
       groupTitle: input.groupTitle,
@@ -307,10 +315,7 @@ export function useCloudGroupControlSender({
         });
       }
       if (sentAny) {
-        await Promise.all([
-          claimFallbackAfterPreparation(sentMessages, canonicalMessageId, session.token),
-          syncDiff().catch(() => {}),
-        ]);
+        followUpAfterDelivery(sentMessages, canonicalMessageId);
       }
       return;
     }
@@ -353,10 +358,7 @@ export function useCloudGroupControlSender({
     sent.forEach(mergeMessage);
     if (sent.length > 0) {
       if (input.kind === 'group-message' && canonicalMessageId) {
-        await Promise.all([
-          claimFallbackAfterPreparation(sent, canonicalMessageId, session.token),
-          syncDiff(),
-        ]);
+        followUpAfterDelivery(sent, canonicalMessageId);
         return;
       }
       await syncDiff();
