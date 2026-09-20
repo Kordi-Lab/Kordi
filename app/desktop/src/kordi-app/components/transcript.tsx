@@ -658,7 +658,7 @@ function MessageBubbleView({
           <MessageHoverTime msg={msg} side="peer" />
         </div>
         {msg.threadSummary?.replyCount ? (
-          <div className="flex min-h-7 items-center">
+          <div className="flex items-center">
             <ThreadReplyLine
               count={msg.threadSummary.replyCount}
               unread={msg.threadSummary.unread}
@@ -913,7 +913,7 @@ function MessageBubbleView({
       />
       {msg.threadSummary?.replyCount ? (
         <div className={cn(
-          'flex min-h-7 items-center',
+          'flex items-center',
           isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start',
         )}>
           <ThreadReplyLine
