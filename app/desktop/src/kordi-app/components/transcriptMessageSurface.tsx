@@ -10,7 +10,9 @@ type TranscriptMessageSurfaceProps = ComponentPropsWithoutRef<'div'> & {
   compact: boolean;
   detachedImageGroup: boolean;
   enter: boolean;
+  groupedWithPrevious: boolean;
   side: 'own' | 'peer' | 'agent';
+  tail: boolean;
 };
 
 export function TranscriptMessageSurface({
@@ -22,10 +24,14 @@ export function TranscriptMessageSurface({
   compact,
   detachedImageGroup,
   enter,
+  groupedWithPrevious,
   side,
+  tail,
   ...props
 }: TranscriptMessageSurfaceProps) {
-  const backdrop = side === 'agent' ? null : <MessageBubbleShapeBackdrop side={side} />;
+  const backdrop = side === 'agent'
+    ? null
+    : <MessageBubbleShapeBackdrop side={side} tail={tail} groupedWithPrevious={groupedWithPrevious} />;
   const captionClassName = cn(
     'relative w-fit max-w-full shadow-sm',
     enter && 'app-message-bubble-enter',

@@ -4,14 +4,88 @@ import SwiftUI
 import UIKit
 
 enum MessageBubbleGeometry {
-    static func shape(for author: MessageAuthor) -> UnevenRoundedRectangle {
-        UnevenRoundedRectangle(
-            topLeadingRadius: 12,
-            bottomLeadingRadius: author == .me ? 12 : 4,
-            bottomTrailingRadius: author == .me ? 4 : 12,
-            topTrailingRadius: 12,
+    /// Kordi runs a squarer corner pair than Telegram Web K's 5/15.
+    static let outerRadius: CGFloat = 6
+    static let innerRadius: CGFloat = 4
+
+    /// `tail` squares off the lower outer corner so the tail can ride it, and is only granted
+    /// to the final message of a run. `groupedWithPrevious` tightens the stacked corner.
+    static func shape(
+        for author: MessageAuthor,
+        groupedWithPrevious: Bool = false,
+        tail: Bool = true
+    ) -> UnevenRoundedRectangle {
+        guard author != .agent else {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: 12,
+                bottomLeadingRadius: 12,
+                bottomTrailingRadius: 4,
+                topTrailingRadius: 12,
+                style: .continuous
+            )
+        }
+
+        let stacked = groupedWithPrevious ? innerRadius : outerRadius
+
+        if author == .me {
+            return UnevenRoundedRectangle(
+                topLeadingRadius: outerRadius,
+                bottomLeadingRadius: outerRadius,
+                bottomTrailingRadius: tail ? 0 : innerRadius,
+                topTrailingRadius: stacked,
+                style: .continuous
+            )
+        }
+
+        return UnevenRoundedRectangle(
+            topLeadingRadius: stacked,
+            bottomLeadingRadius: tail ? 0 : innerRadius,
+            bottomTrailingRadius: outerRadius,
+            topTrailingRadius: outerRadius,
             style: .continuous
         )
+    }
+}
+
+/// Telegram Web K's message tail (`#message-tail-filled`, an 11x20 symbol) reduced to the part
+/// that sits outside the bubble: it rides the bubble edge 17pt up from the bottom, reaches
+/// 6.675pt past it, and rounds its tip with a 1pt arc. The bubble edge is this shape's trailing
+/// edge, so outgoing bubbles mirror it.
+struct MessageBubbleTail: Shape {
+    static let height: CGFloat = 17
+    static let reach: CGFloat = 6.675
+    /// The tip's 1pt arc pushes the outline 0.326pt past the tail's own reach.
+    static let overshoot: CGFloat = 0.326
+    static let width: CGFloat = reach + overshoot
+
+    func path(in rect: CGRect) -> Path {
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(
+                x: rect.minX + x / Self.width * rect.width,
+                y: rect.minY + y / Self.height * rect.height
+            )
+        }
+
+        var path = Path()
+        path.move(to: point(Self.width, Self.height))
+        path.addLine(to: point(1.001, Self.height))
+        path.addCurve(
+            to: point(0.326, 15.262),
+            control1: point(0.084, 17.001),
+            control2: point(-0.351, 15.88)
+        )
+        path.addCurve(
+            to: point(5.951, 8.782),
+            control1: point(2.505, 13.267),
+            control2: point(4.047, 11.107)
+        )
+        path.addCurve(
+            to: point(Self.width, 0),
+            control1: point(6.125, 5.767),
+            control2: point(6.808, 2.84)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 
@@ -36,6 +110,8 @@ struct MessageBubble: View, Equatable {
     let selectionMode: Bool
     let isSelected: Bool
     let allowsQuotedReplies: Bool
+    var groupedWithPrevious = false
+    var groupedWithNext = false
     let threadReplyCount: Int
     var threadHasUnread = false
     var threadAgentState: BackgroundAgentSession.State? = nil
@@ -124,6 +200,8 @@ struct MessageBubble: View, Equatable {
             && lhs.selectionMode == rhs.selectionMode
             && lhs.isSelected == rhs.isSelected
             && lhs.allowsQuotedReplies == rhs.allowsQuotedReplies
+            && lhs.groupedWithPrevious == rhs.groupedWithPrevious
+            && lhs.groupedWithNext == rhs.groupedWithNext
             && lhs.threadReplyCount == rhs.threadReplyCount
             && lhs.threadHasUnread == rhs.threadHasUnread
             && lhs.threadAgentState == rhs.threadAgentState
@@ -197,6 +275,7 @@ struct MessageBubble: View, Equatable {
                 }
 
                 messageSurface
+                    .background(alignment: bubbleTailAlignment) { bubbleTail }
                     .confirmationDialog(
                         "Pin this message?",
                         isPresented: Binding(
@@ -1011,8 +1090,39 @@ struct MessageBubble: View, Equatable {
         return action.source
     }
 
+    /// Only the final message of a run is allowed to grow a tail. Agent bubbles stay plain.
+    private var showsBubbleTail: Bool {
+        message.author != .agent
+            && !groupedWithNext
+            && !usesBorderlessImageSurface
+            && !usesDetachedImageGroup
+    }
+
+    private var bubbleTailAlignment: Alignment {
+        message.author == .me ? .bottomTrailing : .bottomLeading
+    }
+
     private var bubbleShape: UnevenRoundedRectangle {
-        MessageBubbleGeometry.shape(for: message.author)
+        MessageBubbleGeometry.shape(
+            for: message.author,
+            groupedWithPrevious: groupedWithPrevious,
+            tail: showsBubbleTail
+        )
+    }
+
+    @ViewBuilder
+    private var bubbleTail: some View {
+        if showsBubbleTail {
+            // Mirror the bubble's own two fills so the tail never reads as a separate patch.
+            ZStack {
+                MessageBubbleTail().fill(bubbleColor)
+                MessageBubbleTail().fill(lightAppearanceBubbleTintColor)
+            }
+            .frame(width: MessageBubbleTail.width, height: MessageBubbleTail.height)
+            .scaleEffect(x: message.author == .me ? -1 : 1, anchor: .center)
+            .offset(x: message.author == .me ? MessageBubbleTail.width : -MessageBubbleTail.width)
+            .allowsHitTesting(false)
+        }
     }
 
     /// One quiet line under the bubble that names the quoted message and jumps back to it.

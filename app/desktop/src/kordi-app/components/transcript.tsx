@@ -857,8 +857,8 @@ function MessageBubbleView({
           data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
           attachmentPreview={<AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={hasOnlyBorderlessMediaAttachments || Boolean(standaloneEmojiItem)}
           bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
-          enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)}
-          side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'}
+          enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)} groupedWithPrevious={isGroupedWithPrevious}
+          side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} tail={!isGroupedWithNext}
           data-transcript-density={compactDensity}
           onClick={(event) => {
             if (!selectableInSelectionMode) return;

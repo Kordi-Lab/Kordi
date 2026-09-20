@@ -1459,6 +1459,8 @@ struct ConversationView: View {
                     selectionMode: !selectedMessageIDs.isEmpty,
                     isSelected: selectedMessageIDs.contains(message.id),
                     allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                    groupedWithPrevious: presentation.groupedWithPrevious,
+                    groupedWithNext: presentation.groupedWithNext,
                     threadReplyCount: threadReplyCount,
                     threadHasUnread: threadHasUnread,
                     threadAgentState: threadAgentState,

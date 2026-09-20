@@ -74,7 +74,7 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 
 .app-message-bubble {
   --app-message-bubble-enter-x: 0px;
-  --app-message-bubble-tail-width: 8px;
+  --app-message-bubble-tail-reach: 6.675px;
   position: relative;
   isolation: isolate;
   overflow: visible;
@@ -112,7 +112,7 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
   top: 0;
   z-index: 0;
   display: block;
-  width: calc(100% + var(--app-message-bubble-tail-width));
+  width: calc(100% + var(--app-message-bubble-tail-reach));
   height: 100%;
   overflow: visible;
   pointer-events: none;
@@ -120,11 +120,11 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 }
 
 .app-message-bubble-own .app-message-bubble-shape {
-  right: calc(-1 * var(--app-message-bubble-tail-width));
+  right: calc(-1 * var(--app-message-bubble-tail-reach));
 }
 
 .app-message-bubble-peer .app-message-bubble-shape {
-  left: calc(-1 * var(--app-message-bubble-tail-width));
+  left: calc(-1 * var(--app-message-bubble-tail-reach));
 }
 
 .app-message-mention {

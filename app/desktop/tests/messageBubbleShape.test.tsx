@@ -49,6 +49,19 @@ test('bubble backdrop renders one seamless vector path instead of separate tail 
   assert.doesNotMatch(peerBackdrop, /<rect|<polygon|<circle/);
 });
 
+test('the shape canvas reserves the tail reach so the tail never leaves the viewport', () => {
+  const ownBackdrop = renderToStaticMarkup(<MessageBubbleShapeBackdrop side="own" />);
+  const peerBackdrop = renderToStaticMarkup(<MessageBubbleShapeBackdrop side="peer" />);
+
+  // Own reserves it on the trailing edge, peer on the leading edge.
+  assert.match(ownBackdrop, /viewBox="0 0 154\.675 44"/);
+  assert.match(peerBackdrop, /viewBox="-6\.675 0 154\.675 44"/);
+
+  const shellCss = readDesktopShellCss();
+  assert.match(shellCss, /--app-message-bubble-tail-reach:\s*6\.675px/);
+  assert.match(shellCss, /\.app-message-bubble-shape\s*{[\s\S]*width:\s*calc\(100% \+ var\(--app-message-bubble-tail-reach\)\)/);
+});
+
 test('bubble CSS uses the seamless shape layer with natural motion and no stitched pseudo-tail', () => {
   const shellCss = readDesktopShellCss();
   const baseBubbleRule = shellCss.match(/\.app-message-bubble\s*\{[^}]*\}/)?.[0] ?? '';
@@ -68,34 +81,47 @@ test('bubble CSS uses the seamless shape layer with natural motion and no stitch
   assert.doesNotMatch(shellCss, /\.app-message-bubble-peer::after/);
 });
 
-test('bubble path uses very square corners instead of rounded pill corners', () => {
+test('bubble path uses the squarer Kordi corner pair on both sides', () => {
   const ownPath = messageBubbleShapePath('own', { width: 220, height: 64 });
   const peerPath = messageBubbleShapePath('peer', { width: 220, height: 64 });
 
-  assert.match(ownPath, /^M 8 0 H 204 C 208 0 212 4 212 8/);
-  assert.match(peerPath, /^M 212 0 H 16 C 12 0 8 4 8 8/);
-  assert.doesNotMatch(ownPath, /^M 17 0/);
-  assert.doesNotMatch(peerPath, /^M 220 0 H 25/);
+  assert.match(ownPath, /^M 6 0 H 214 C 217 0 220 3 220 6/);
+  assert.match(peerPath, /^M 6 0 H 214 C 217 0 220 3 220 6/);
 });
 
-test('bubble path keeps the tail compact at the lower side for tall messages', () => {
+test('a run tightens the stacked corner while the outer corner stays rounded', () => {
+  const standalone = messageBubbleShapePath('peer', { width: 220, height: 64 });
+  const insideRun = messageBubbleShapePath('peer', { width: 220, height: 64 }, { groupedWithPrevious: true });
+
+  assert.match(standalone, /^M 6 0/);
+  assert.match(insideRun, /^M 4 0 H 214 C 217 0 220 3 220 6/);
+});
+
+test('only the last bubble of a run grows a tail', () => {
+  const tailed = messageBubbleShapePath('peer', { width: 220, height: 64 });
+  const grouped = messageBubbleShapePath('peer', { width: 220, height: 64 }, { tail: false });
+  const tailedOwn = messageBubbleShapePath('own', { width: 220, height: 64 });
+  const groupedOwn = messageBubbleShapePath('own', { width: 220, height: 64 }, { tail: false });
+
+  // Telegram tail: rides the edge 17px up, reaches 6.675px past it, closes with a 1px arc.
+  assert.match(tailed, /A 1 1 0 0 1 -6\.675 62\.262/);
+  assert.match(tailedOwn, /A 1 1 0 0 0 226 64/);
+  assert.doesNotMatch(grouped, /A 1 1/);
+  assert.doesNotMatch(groupedOwn, /A 1 1/);
+
+  // Without a tail the in-run bubble keeps the tight radius on its stacked side only.
+  assert.match(grouped, /V 58 C 220 61 217 64 214 64 H 4 C 2 64 0 62 0 60 V 6/);
+  assert.match(groupedOwn, /V 60 C 220 62 218 64 216 64 H 6 C 3 64 0 61 0 58 V 6/);
+});
+
+test('the tail stays pinned to the bottom of tall messages', () => {
   const ownTallPath = messageBubbleShapePath('own', { width: 220, height: 240 });
   const peerTallPath = messageBubbleShapePath('peer', { width: 220, height: 240 });
 
-  assert.match(ownTallPath, /V\s*226/);
-  assert.match(peerTallPath, /V\s*226/);
+  assert.match(ownTallPath, /V 223 C 220\.193 225\.84 220\.876 228\.767 222\.05 231\.782/);
+  assert.match(peerTallPath, /A 1 1 0 0 1 -6\.675 238\.262/);
   assert.doesNotMatch(ownTallPath, /V\s*158/);
   assert.doesNotMatch(peerTallPath, /V\s*158/);
-});
-
-test('bubble path uses a small bottom-corner tail like the reference, not a side flap', () => {
-  const ownPath = messageBubbleShapePath('own', { width: 220, height: 240 });
-  const peerPath = messageBubbleShapePath('peer', { width: 220, height: 240 });
-
-  assert.match(ownPath, /220\s+240/);
-  assert.match(peerPath, /0\s+240/);
-  assert.doesNotMatch(ownPath, /\b220\s+231\b/);
-  assert.doesNotMatch(peerPath, /\b0\s+231\b/);
 });
 
 test('human bubble styling avoids visible outline seams around the WhatsApp-style tail', () => {
