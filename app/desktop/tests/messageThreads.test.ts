@@ -70,6 +70,90 @@ test('Agent turn roots render the existing discussion entry for owners and other
   }
 });
 
+test('discussion entries stay close to human bubbles and agent-turn roots without losing alignment', () => {
+  const threadSummary = { replyCount: 3 };
+  const ownRoot: Message = {
+    ...message('own-root', 'Own root'),
+    role: 'user',
+    sender: 'Me',
+    isOwnMessage: true,
+    threadSummary,
+  };
+  const peerRoot: Message = {
+    ...message('peer-root', 'Peer root'),
+    isOwnMessage: false,
+    threadSummary,
+  };
+  const agentRoot: Message = {
+    ...message('agent-root', ''),
+    role: 'external-agent',
+    sender: 'Researcher',
+    senderType: 'agent',
+    threadSummary,
+    turn: {
+      id: 'turn',
+      sessionId: 'session',
+      prompt: '',
+      status: 'complete',
+      message: '',
+      assistantText: 'ACK',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: true,
+    },
+  };
+  const render = (msg: Message) => renderToStaticMarkup(createElement(MessageBubble, {
+    msg,
+    onOpenMessageThread: () => {},
+  }));
+
+  for (const [root, expectedAlignment] of [
+    [ownRoot, ['justify-end', 'pr-10']],
+    [peerRoot, ['justify-start', 'pl-10']],
+    [agentRoot, []],
+  ] as const) {
+    const wrapperClassName = render(root).match(
+      /<div class="([^"]*)"><button type="button" class="app-message-reply-line[^"]*" aria-label="Open discussion with 3 messages">/,
+    )?.[1];
+    assert.ok(wrapperClassName, 'discussion entry should render inside its layout wrapper');
+    const classes = new Set(wrapperClassName.split(/\s+/));
+    assert(classes.has('flex'));
+    assert(classes.has('items-center'));
+    assert.equal(classes.has('min-h-7'), false, 'discussion wrapper must not reserve 28px of vertical height');
+    for (const className of expectedAlignment) assert(classes.has(className));
+  }
+});
+
+test('human message rows keep compact spacing when the sender changes', () => {
+  const render = (msg: Message, grouping?: {
+    previous?: boolean;
+    next?: boolean;
+  }) => renderToStaticMarkup(createElement(MessageBubble, {
+    msg,
+    isGroupedWithPrevious: grouping?.previous,
+    isGroupedWithNext: grouping?.next,
+  }));
+  const rowClasses = (markup: string) => new Set(
+    markup.match(/data-transcript-message-root="true"[^>]*class="([^"]*)"/)?.[1].split(/\s+/),
+  );
+
+  for (const msg of [
+    { ...message('own-row', 'Own message'), role: 'user' as const, sender: 'Me', isOwnMessage: true },
+    { ...message('peer-row', 'Peer message'), isOwnMessage: false },
+  ]) {
+    const standaloneClasses = rowClasses(render(msg));
+    assert(standaloneClasses.has('pt-0.5'));
+    assert(standaloneClasses.has('pb-0.5'));
+    assert.equal(standaloneClasses.has('pt-1'), false);
+    assert.equal(standaloneClasses.has('pb-1'), false);
+
+    const groupedClasses = rowClasses(render(msg, { previous: true, next: true }));
+    assert(groupedClasses.has('pt-0.5'));
+    assert(groupedClasses.has('pb-0'));
+  }
+});
+
 test('thread unread state uses monotonic cloud sequences and excludes the viewers own messages', () => {
   const rootId = '10000000-0000-4000-8000-000000000001';
   const root = {...message('local-root','Root'),reactionTargetMessageId:rootId};

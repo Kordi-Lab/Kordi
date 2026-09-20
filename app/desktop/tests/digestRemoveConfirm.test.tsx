@@ -1,17 +1,11 @@
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { digestClient } from '../src/features/digest/client';
+import DigestPage from '../src/features/digest/DigestPage';
 import type { CalendarEvent, DigestResponse } from '../src/features/digest/types';
-
-const css = registerHooks({ load(url, context, next) {
-  return url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : next(url, context);
-} });
-const { default: DigestPage } = await import('../src/features/digest/DigestPage');
-css.deregister();
 
 test('removing an event asks in a separate pop-up, keeps the page still, and shows invitation notes as text', async () => {
   const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });

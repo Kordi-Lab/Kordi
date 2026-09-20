@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
+use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use super::models::{Input, Item, Output};
@@ -170,7 +170,7 @@ pub(super) async fn drop_pip_conflicts(
 /// Applied the moment PiP confirms or changes a plan: removes competing
 /// calendar suggestions from the saved digests of the plan's members.
 pub async fn clear_saved_conflicts(
-    pool: &PgPool,
+    tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
     account_ids: &[String],
     plan: &TrackedPlan,
 ) -> Result<(), sqlx_core::Error> {
@@ -183,7 +183,7 @@ pub async fn clear_saved_conflicts(
          WHERE account_id = ANY($1) AND snapshot_json IS NOT NULL",
     )
     .bind(account_ids)
-    .fetch_all(pool)
+    .fetch_all(&mut **tx)
     .await?;
     for (account_id, snapshot, input, revision) in digests {
         let Ok(mut output) = serde_json::from_value::<Output>(snapshot) else {
@@ -213,7 +213,6 @@ pub async fn clear_saved_conflicts(
         };
         // Only the snapshot this was read from is rewritten: a digest saved in
         // the meantime was produced with PiP's plans already applied.
-        let mut tx = pool.begin().await?;
         let written = query(
             "UPDATE cloud_account_digests
              SET snapshot_json = $2, revision = revision + 1, updated_at = now()
@@ -222,11 +221,11 @@ pub async fn clear_saved_conflicts(
         .bind(&account_id)
         .bind(updated)
         .bind(revision)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
         if written.rows_affected() > 0 {
             crate::chat_sync::store::append_account_hint(
-                &mut tx,
+                tx,
                 &account_id,
                 "digest.updated",
                 &serde_json::json!({"updated": true}),
@@ -234,7 +233,6 @@ pub async fn clear_saved_conflicts(
             .await
             .map_err(|_| sqlx_core::Error::Protocol("Could not publish digest update.".into()))?;
         }
-        tx.commit().await?;
     }
     Ok(())
 }

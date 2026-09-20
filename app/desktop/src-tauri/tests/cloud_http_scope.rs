@@ -27,7 +27,7 @@ fn invoke(
 }
 
 #[test]
-fn cloud_http_capability_accepts_product_and_loopback_requests_only() {
+fn cloud_http_capability_accepts_only_supported_kordi_origins() {
     let app = mock_builder()
         .plugin(tauri_plugin_http::init())
         .build(tauri::generate_context!())
@@ -38,18 +38,20 @@ fn cloud_http_capability_accepts_product_and_loopback_requests_only() {
 
     for (url, allowed) in [
         ("https://kordi.ai/v1/cloud/auth/capabilities", true),
-        ("http://127.0.0.1:17083/v1/cloud/auth/capabilities", true),
-        ("http://localhost:17083/v1/cloud/auth/capabilities", true),
-        ("http://[::1]:17083/v1/cloud/auth/capabilities", true),
-        ("https://127.0.0.1:17083/v1/cloud/auth/capabilities", true),
-        ("https://localhost:17083/v1/cloud/auth/capabilities", true),
-        ("https://[::1]:17083/v1/cloud/auth/capabilities", true),
+        ("http://127.0.0.1:17081/v1/cloud/auth/capabilities", true),
+        ("http://127.0.0.1:18181/v1/cloud/auth/capabilities", true),
+        ("http://127.0.0.1:17082/v1/cloud/auth/capabilities", false),
+        ("http://localhost:17081/v1/cloud/auth/capabilities", false),
+        ("http://[::1]:17081/v1/cloud/auth/capabilities", false),
+        ("https://127.0.0.1:17081/v1/cloud/auth/capabilities", false),
+        ("https://localhost:17081/v1/cloud/auth/capabilities", false),
+        ("https://[::1]:17081/v1/cloud/auth/capabilities", false),
+        ("http://kordi.ai/v1/cloud/auth/capabilities", false),
         ("https://example.com/v1/cloud/auth/capabilities", false),
         (
-            "http://127.0.0.1.example.com:17083/v1/cloud/auth/capabilities",
+            "http://127.0.0.1.example.com:17081/v1/cloud/auth/capabilities",
             false,
         ),
-        ("http://[::2]:17083/v1/cloud/auth/capabilities", false),
     ] {
         // fetch constructs the scoped request; fetch_send is deliberately never
         // invoked, so the test cannot contact any of these destinations.

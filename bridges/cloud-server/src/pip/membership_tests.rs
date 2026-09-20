@@ -66,8 +66,8 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
             .unwrap(),
         "joining again changes nothing"
     );
-    let (seen, latest): (i64, i64) = query_as(
-        "SELECT state.seen_sequence, conversation.latest_message_sequence
+    let (seen, context_start, latest): (i64, i64, i64) = query_as(
+        "SELECT state.seen_sequence, state.context_start_sequence, conversation.latest_message_sequence
          FROM cloud_pip_conversation_state state
          JOIN cloud_chat_conversations conversation USING (conversation_id)
          WHERE conversation_id = $1",
@@ -78,7 +78,10 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
     .unwrap();
     assert!(latest >= 2);
     assert_eq!(seen, latest, "history from before PiP joined is not new");
-
+    assert_eq!(
+        context_start, latest,
+        "history from before PiP joined is never provider context"
+    );
     let notified: Vec<(String,)> = query_as(
         "SELECT account_id FROM cloud_chat_user_sync_events
          WHERE conversation_id = $1 AND event_type = 'membership.updated'

@@ -658,7 +658,7 @@ function MessageBubbleView({
           <MessageHoverTime msg={msg} side="peer" />
         </div>
         {msg.threadSummary?.replyCount ? (
-          <div className="flex min-h-7 items-center">
+          <div className="flex items-center">
             <ThreadReplyLine
               count={msg.threadSummary.replyCount}
               unread={msg.threadSummary.unread}
@@ -795,8 +795,8 @@ function MessageBubbleView({
       onPointerCancel={handleRowSelectionDragEnd}
       className={cn(
         'flex w-full flex-col gap-1',
-        useHumanCompactDensity ? 'pt-0.5' : (isGroupedWithPrevious ? 'pt-0.5' : 'pt-1'),
-        useHumanCompactDensity ? (isGroupedWithNext ? 'pb-0' : 'pb-0.5') : (isGroupedWithNext ? 'pb-0' : 'pb-1'),
+        'pt-0.5',
+        isGroupedWithNext ? 'pb-0' : 'pb-0.5',
         useHumanCompactDensity ? 'app-message-row-contact-compact' : '',
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,61rem)]' : '',
@@ -913,7 +913,7 @@ function MessageBubbleView({
       />
       {msg.threadSummary?.replyCount ? (
         <div className={cn(
-          'flex min-h-7 items-center',
+          'flex items-center',
           isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start',
         )}>
           <ThreadReplyLine

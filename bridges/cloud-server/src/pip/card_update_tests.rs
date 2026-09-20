@@ -36,8 +36,9 @@ async fn tool_time_changes_refresh_the_same_message_before_run_completion() {
         .unwrap();
     let run = format!("pip_{}", Uuid::new_v4().simple());
     let now = chrono::Utc::now().to_rfc3339();
-    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,created_at,updated_at) VALUES($1,$1,$1,$2,$3,$3,'running','{}','test-runner',$4,$4)")
-        .bind(&run).bind(&session).bind(&pip).bind(now).execute(&pool).await.unwrap();
+    let lease_expires_at = (chrono::Utc::now() + chrono::Duration::minutes(5)).to_rfc3339();
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,lease_expires_at,created_at,updated_at) VALUES($1,$1,$1,$2,$3,$3,'running','{}','test-runner',$4,$5,$5)")
+        .bind(&run).bind(&session).bind(&pip).bind(lease_expires_at).bind(now).execute(&pool).await.unwrap();
     let state = Arc::new(
         ServerState::new(pool.clone(), EventBus::noop()).with_pip(super::PipService::new(config)),
     );
@@ -75,4 +76,23 @@ async fn tool_time_changes_refresh_the_same_message_before_run_completion() {
             .await
             .unwrap();
     assert_eq!(count, 1, "the existing card is refreshed, not reposted");
+
+    query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=(now()-interval '1 second')::text WHERE run_id=$1")
+        .bind(&run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let rejected = crate::plan_cards::runner_action(
+        &state,
+        &run,
+        "test-runner",
+        json!({
+            "action": "rsvp",
+            "eventId": card["eventId"],
+            "participantId": member,
+            "rsvp": "yes"
+        }),
+    )
+    .await;
+    assert_eq!(rejected.status(), 404, "expired leases cannot mutate cards");
 }

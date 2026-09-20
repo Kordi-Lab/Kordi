@@ -32,11 +32,11 @@ import {
 } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteAfterModelChange,
-  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
   cloudSelfAgentRuntimeSessionId,
   latestCloudAgentRuntimeRouteChangeBeforeRequest,
 } from './cloudAgentRuntime';
+import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import {
   cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageDisplayText,

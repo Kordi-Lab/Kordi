@@ -40,6 +40,32 @@ export type WhatsNewRuntime = {
 };
 
 const CURATED_RELEASE_HIGHLIGHTS: Readonly<Record<string, readonly WhatsNewHighlight[]>> = {
+  '0.0.2-beta.3': [
+    {
+      category: 'Group planning',
+      title: 'Turn conversations into shared plans with PiP',
+      detail: 'PiP creates current, confirmable plan cards from group context and keeps participants and status in sync.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Voice messages',
+      title: 'Send voice messages without waiting for transcription',
+      detail: 'Mac and iPhone send recordings immediately while transcription completes, and iPhone hold-to-talk starts faster.',
+      kind: 'general',
+    },
+    {
+      category: 'Discussions and replies',
+      title: 'Quote messages or open a focused discussion',
+      detail: 'Clearer reply actions, steadier message layout, and refined bubble tails make conversation threads easier to follow.',
+      kind: 'collaboration',
+    },
+    {
+      category: 'Reliable agents',
+      title: 'Use an available provider automatically',
+      detail: 'Agent and group sessions recover stale routes by selecting a configured provider and compatible model without showing a false no-provider error.',
+      kind: 'general',
+    },
+  ],
   '0.0.2-beta.2': [
     {
       category: 'Desktop chats',

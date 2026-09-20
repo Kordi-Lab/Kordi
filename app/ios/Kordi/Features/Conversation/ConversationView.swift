@@ -1604,8 +1604,8 @@ struct ConversationView: View {
                         .padding(.bottom, 2)
                     }
                 }
-                .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
-                .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+                .padding(.top, presentation.rowTopPadding)
+                .padding(.bottom, presentation.rowBottomPadding)
                 .onGeometryChange(for: CGRect.self) { [
                     tracksCapture = (messageActionMessage?.id == message.id && messageActionAttachment == nil)
                         || pendingMessageDeletion?.message.id == message.id
@@ -3422,6 +3422,9 @@ struct ConversationMessagePresentation: Equatable {
     let groupedWithNext: Bool
     let showsAvatar: Bool
     let outgoingAvatarGroupID: String?
+
+    var rowTopPadding: CGFloat { 2 }
+    var rowBottomPadding: CGFloat { groupedWithNext ? 0 : 2 }
 }
 
 enum ConversationTimelinePresentation {

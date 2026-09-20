@@ -13,9 +13,9 @@ import {
 } from '../src/features/cloud/cloudGroupMessages';
 import {
   agentRuntimeRouteChangeNotice,
-  cloudAgentRuntimeRouteForTargetCloudAgent,
   encodeCloudAgentRuntimeRouteChange,
 } from '../src/features/cloud/cloudAgentRuntime';
+import { cloudAgentRuntimeRouteForTargetCloudAgent } from '../src/features/cloud/cloudAgentTargetRuntimeRoute';
 import type { DesktopChatMessageRoute } from '../src/lib/desktop';
 
 const iosRoute = {
@@ -142,6 +142,93 @@ test('a cross-device request route is authoritative before its model-change noti
     model: 'openai-codex/gpt-5.6-sol',
     authProvider: 'openai-codex',
     authChoice: 'synced-openai-oauth',
+    thinking: 'high',
+  });
+});
+
+test('an existing malformed route rebinds to the local auth for its qualified model provider', () => {
+  assert.deepEqual(cloudAgentRuntimeRouteForTargetCloudAgent({
+    requestRoute: {
+      model: 'openai/gpt-6-astra',
+      authProvider: 'anthropic',
+      authChoice: 'local-active-oauth',
+      thinking: 'medium',
+    },
+    fallbackRoute: {
+      model: 'openai/gpt-6-astra',
+      authProvider: 'openai-codex',
+      authChoice: 'local-active-oauth',
+      thinking: 'high',
+    },
+  }), {
+    model: 'openai/gpt-6-astra',
+    authProvider: 'openai-codex',
+    authChoice: 'local-active-oauth',
+    thinking: 'medium',
+  });
+});
+
+test('a group agent definition rebinds stale auth to its qualified model provider', () => {
+  assert.deepEqual(cloudAgentRuntimeRouteForTargetCloudAgent({
+    targetCloudAgentId: 'cloud_agent_self',
+    cloudAgentDefinitionsById: {
+      cloud_agent_self: {
+        agentId: 'cloud_agent_self',
+        ownerAccountId: 'acct_me',
+        accessScope: 'participant_conversations',
+        status: 'active',
+        name: 'My Kordi',
+        role: null,
+        description: null,
+        systemPrompt: null,
+        sourceSummary: null,
+        boundaries: [],
+        resources: [],
+        skills: [],
+        modelRouting: {
+          defaultModel: 'openai/gpt-6-astra',
+          defaultAuthProvider: 'openai',
+          defaultAuthChoice: 'local-active-oauth',
+          thinking: 'medium',
+        },
+        createdAt: '2026-09-20T00:00:00Z',
+        updatedAt: '2026-09-20T00:00:00Z',
+        archivedAt: null,
+      },
+    },
+    fallbackRoute: {
+      model: 'openai/gpt-6-astra',
+      authProvider: 'openai-codex',
+      authChoice: 'local-active-oauth',
+      thinking: 'high',
+    },
+  }), {
+    model: 'openai/gpt-6-astra',
+    authProvider: 'openai-codex',
+    authChoice: 'local-active-oauth',
+    thinking: 'medium',
+  });
+});
+
+test('group execution falls back to the configured provider when a persisted request provider is unavailable', () => {
+  assert.deepEqual(cloudAgentRuntimeRouteForTargetCloudAgent({
+    targetCloudAgentId: 'cloud_agent_self',
+    fallbackRoute: {
+      model: 'openai/gpt-6-astra',
+      authProvider: 'openai-codex',
+      authChoice: 'local-active-oauth',
+      thinking: 'medium',
+    },
+    requestRoute: {
+      model: 'anthropic/claude-opus-4-1',
+      authProvider: 'anthropic',
+      authChoice: 'local-active-oauth',
+      thinking: 'high',
+    },
+  }), {
+    model: 'openai/gpt-6-astra',
+    authProvider: 'openai-codex',
+    authChoice: 'local-active-oauth',
     thinking: 'high',
   });
 });

@@ -29,12 +29,8 @@
       "identifier": "http:default",
       "allow": [
         { "url": "https://kordi.ai" },
-        { "url": "http://127.0.0.1:*" },
-        { "url": "http://localhost:*" },
-        { "url": "http://[\\:\\:1]:*" },
-        { "url": "https://127.0.0.1:*" },
-        { "url": "https://localhost:*" },
-        { "url": "https://[\\:\\:1]:*" }
+        { "url": "http://127.0.0.1:17081" },
+        { "url": "http://127.0.0.1:18181" }
       ]
     },
     "updater:default"

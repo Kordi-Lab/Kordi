@@ -84,6 +84,7 @@ async fn only_members_can_be_on_a_card_and_runs_stay_in_their_chat() {
     let run = super::routes::Actor {
         account_id: jordan.clone(),
         on_behalf_of_conversation: Some(home),
+        represented_accounts: std::collections::BTreeSet::from([maya.clone()]),
     };
     let cancel: super::wire::Request = serde_json::from_value(serde_json::json!({
         "action": "cancel", "eventId": elsewhere.event_id,

@@ -5,10 +5,7 @@ import {
   type SetStateAction,
 } from 'react';
 
-import {
-  portableCloudAgentAuthChoice,
-  resolveDefaultCloudAgentRuntimeRoute,
-} from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
+import { resolveDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import {
   applySynchronizedCloudAgentRuntimeRoutes,
@@ -18,8 +15,8 @@ import {
   encodeCloudAgentRuntimeRouteChange,
   type CloudAgentRuntimeRouteChangeInput,
 } from '@/features/cloud/cloudAgentRuntime';
+import { resolveCloudAgentRuntimeRouteChange } from '@/features/cloud/cloudAgentRuntimeRouteChange';
 import { cloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
-import { canonicalCloudProviderId } from '@/features/cloud/providerAuthSnapshot';
 import { runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
@@ -187,37 +184,10 @@ export function useCloudAgentRuntimeRouteSync({
       selectedModel: model,
       selectedThinking: input.thinking,
     });
-    const modelProvider = model.includes('/')
-      ? model.slice(0, model.indexOf('/')).trim()
-      : null;
-    const requestedProvider = input.authProvider?.trim()
-      || modelProvider
-      || resolvedLocalRoute?.authProvider
-      || null;
-    const resolvedProvider = resolvedLocalRoute?.authProvider?.trim() ?? null;
-    const providersMatch = Boolean(
-      requestedProvider
-      && resolvedProvider
-      && canonicalCloudProviderId(requestedProvider)
-        === canonicalCloudProviderId(resolvedProvider),
-    );
-    const requestedAuthOption = composerAuthByScope.optionsByScope.chat.find(
-      (option) => option.value === input.authChoice
-        && canonicalCloudProviderId(option.providerId)
-          === canonicalCloudProviderId(requestedProvider),
-    );
-    const requestedAuthChoice = portableCloudAgentAuthChoice(
-      input.authChoice,
-      requestedAuthOption?.methodLabel,
-    );
-    const nextRoute = compactCloudAgentRuntimeRoute({
-      model: requestedProvider && !model.includes('/')
-        ? `${requestedProvider}/${model}`
-        : model,
-      thinking: input.thinking ?? resolvedLocalRoute?.thinking ?? null,
-      authProvider: requestedProvider,
-      authChoice: requestedAuthChoice
-        ?? (providersMatch ? resolvedLocalRoute?.authChoice : null),
+    const nextRoute = resolveCloudAgentRuntimeRouteChange({
+      authOptions: composerAuthByScope.optionsByScope.chat,
+      input,
+      resolvedLocalRoute,
     });
     const runtimeSessionId = cloudAgentRuntimeSessionId(
       normalizedAccountId,

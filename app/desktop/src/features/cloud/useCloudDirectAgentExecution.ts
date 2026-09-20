@@ -39,9 +39,9 @@ import {
 } from './cloudAgentMessages';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
-  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
 } from './cloudAgentRuntime';
+import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import {
   cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageDisplayText,

@@ -22,6 +22,16 @@ export function runtimeRouteProvider(
     : null;
 }
 
+export function runtimeRouteModelProvider(
+  route?: DesktopChatMessageRoute | null,
+): string | null {
+  const model = cleanRuntimeRouteText(route?.model);
+  const separatorIndex = model?.indexOf('/') ?? -1;
+  return model && separatorIndex > 0
+    ? canonicalCloudProviderId(model.slice(0, separatorIndex))
+    : null;
+}
+
 export function qualifiedRouteModel(
   route?: DesktopChatMessageRoute | null,
 ): string | null {

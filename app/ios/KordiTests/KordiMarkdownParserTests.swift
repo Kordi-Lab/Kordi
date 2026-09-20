@@ -1000,6 +1000,22 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(presentation[2].groupedWithNext)
     }
 
+    func testTimelinePresentationKeepsSenderTransitionsCompact() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let presentation = ConversationTimelinePresentation.make(
+            messages: [
+                timelineMessage(id: "own-1", author: .me, name: "You", date: start),
+                timelineMessage(id: "own-2", author: .me, name: "You", date: start.addingTimeInterval(20)),
+                timelineMessage(id: "peer-1", author: .person, name: "Maya", date: start.addingTimeInterval(40))
+            ],
+            selfAccountId: "acct_me",
+            participants: []
+        )
+
+        XCTAssertEqual(presentation[0].rowBottomPadding + presentation[1].rowTopPadding, 2)
+        XCTAssertEqual(presentation[1].rowBottomPadding + presentation[2].rowTopPadding, 4)
+    }
+
     func testTimelinePresentationBreaksAGroupAtTheTimestampBoundary() {
         let start = Date(timeIntervalSince1970: 1_000)
         let messages = [

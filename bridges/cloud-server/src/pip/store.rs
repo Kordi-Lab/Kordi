@@ -86,10 +86,11 @@ pub(super) const SWEEP_SQL: &str = concat!(
  RETURNING state.conversation_id,
            (SELECT legacy_session_id FROM cloud_chat_conversations
              WHERE conversation_id = state.conversation_id),
-           (SELECT latest_message_sequence FROM cloud_chat_conversations
-             WHERE conversation_id = state.conversation_id),
-           state.seen_sequence,
-           state.hooks_fired"
+            (SELECT latest_message_sequence FROM cloud_chat_conversations
+              WHERE conversation_id = state.conversation_id),
+            state.seen_sequence,
+            state.context_start_sequence,
+            state.hooks_fired"
 );
 
 #[derive(Debug, Deserialize)]
@@ -120,8 +121,10 @@ pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core
     // A chat PiP is already in but has no state yet starts at its newest
     // message, like a chat PiP just joined.
     query(
-        "INSERT INTO cloud_pip_conversation_state (conversation_id, seen_sequence)
-         SELECT conversation.conversation_id, conversation.latest_message_sequence
+        "INSERT INTO cloud_pip_conversation_state
+             (conversation_id, seen_sequence, context_start_sequence)
+         SELECT conversation.conversation_id, conversation.latest_message_sequence,
+                conversation.latest_message_sequence
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
            ON member.conversation_id = conversation.conversation_id
@@ -134,15 +137,21 @@ pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core
     .execute(pool)
     .await?;
 
-    let candidates: Vec<(Uuid, Option<String>, i64, i64, Value)> = query_as(SWEEP_SQL)
+    let candidates: Vec<(Uuid, Option<String>, i64, i64, i64, Value)> = query_as(SWEEP_SQL)
         .bind(&config.account_id)
         .bind(SWEEP_BATCH)
         .fetch_all(pool)
         .await?;
 
     let mut queued = 0;
-    for (conversation_id, legacy_session_id, latest_sequence, seen_sequence, hooks_fired) in
-        candidates
+    for (
+        conversation_id,
+        legacy_session_id,
+        latest_sequence,
+        seen_sequence,
+        context_start_sequence,
+        hooks_fired,
+    ) in candidates
     {
         let Some(legacy_session_id) = legacy_session_id else {
             continue;
@@ -152,6 +161,7 @@ pub async fn sweep(pool: &PgPool, config: &PipConfig) -> Result<usize, sqlx_core
             legacy_session_id,
             latest_sequence,
             seen_sequence,
+            context_start_sequence,
             hooks_fired,
         };
         if enqueue(pool, config, &candidate).await? {

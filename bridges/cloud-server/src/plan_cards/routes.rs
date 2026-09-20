@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeSet, sync::Arc};
 
 use axum::{
     extract::{Path, State},
@@ -61,6 +61,7 @@ async fn handle(
     let actor = Actor {
         account_id: session.account_id.clone(),
         on_behalf_of_conversation: None,
+        represented_accounts: BTreeSet::new(),
     };
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
@@ -91,6 +92,7 @@ async fn handle(
 pub(crate) struct Actor {
     pub account_id: String,
     pub on_behalf_of_conversation: Option<Uuid>,
+    pub represented_accounts: BTreeSet<String>,
 }
 
 async fn is_active_member(pool: &PgPool, conversation_id: Uuid, account_id: &str) -> bool {
@@ -114,7 +116,10 @@ async fn may_act_for(pool: &PgPool, actor: &Actor, acting_for: &str) -> bool {
         return true;
     }
     match actor.on_behalf_of_conversation {
-        Some(conversation_id) => is_active_member(pool, conversation_id, acting_for).await,
+        Some(conversation_id) if actor.represented_accounts.contains(acting_for) => {
+            is_active_member(pool, conversation_id, acting_for).await
+        }
+        Some(_) => false,
         None => false,
     }
 }
@@ -148,12 +153,9 @@ async fn require_in_scope(pool: &PgPool, actor: &Actor, event_id: &str) -> Resul
 /// decide from what members said in the chat.
 async fn require_plan_manager(
     pool: &PgPool,
-    actor: &Actor,
+    account_id: &str,
     event_id: &str,
 ) -> Result<(), Rejection> {
-    if actor.on_behalf_of_conversation.is_some() {
-        return Ok(());
-    }
     let allowed: (bool,) = query_as(
         "SELECT EXISTS(SELECT 1 FROM cloud_plan_card_participants
                        WHERE event_id = $1 AND account_id = $2 AND organizer)
@@ -165,7 +167,7 @@ async fn require_plan_manager(
                          AND member.role IN ('owner', 'admin'))",
     )
     .bind(event_id)
-    .bind(&actor.account_id)
+    .bind(account_id)
     .fetch_one(pool)
     .await
     .map_err(|err| store_error(err.into()))?;
@@ -189,16 +191,7 @@ pub(crate) async fn dispatch_row(
     actor: &Actor,
     request: Request,
 ) -> Result<PlanCardRow, Rejection> {
-    let row = apply(pool, actor, request).await?;
-    // A confirmed plan lives on each attending member's Kordi calendar; a
-    // decline or cancellation takes it off again. Never fails the action.
-    if let Err(error) = super::calendar::sync_plan(pool, &row).await {
-        eprintln!(
-            "[pip] Could not sync plan {} to calendars: {error}",
-            row.event_id
-        );
-    }
-    Ok(row)
+    apply(pool, actor, request).await
 }
 
 async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCardRow, Rejection> {
@@ -284,7 +277,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     "confirmedBy must match the authenticated account.",
                 ));
             }
-            require_plan_manager(pool, actor, &event_id).await?;
+            require_plan_manager(pool, &confirmed_by, &event_id).await?;
             let option_id = blank_to_none(option_id);
             store::confirm(
                 pool,
@@ -309,7 +302,9 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     StatusCode::BAD_REQUEST,
                 ));
             }
-            require_plan_manager(pool, actor, &event_id).await?;
+            if actor.on_behalf_of_conversation.is_none() {
+                require_plan_manager(pool, &actor.account_id, &event_id).await?;
+            }
             store::reopen(pool, &event_id, revision, &actor.account_id, &reason)
                 .await
                 .map_err(store_error)
@@ -325,7 +320,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     "canceledBy must match the authenticated account.",
                 ));
             }
-            require_plan_manager(pool, actor, &event_id).await?;
+            require_plan_manager(pool, &canceled_by, &event_id).await?;
             store::cancel(pool, &event_id, revision, &canceled_by, reason.as_deref())
                 .await
                 .map_err(store_error)

@@ -444,4 +444,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "digest failure backoff",
         sql: include_str!("../../../migrations/0098_digest_failure_backoff.sql"),
     },
+    EmbeddedMigration {
+        version: 99,
+        description: "durable plan-card projection and immutable PiP context",
+        sql: include_str!("../../../migrations/0099_plan_card_projection_and_pip_context.sql"),
+    },
 ];

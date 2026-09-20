@@ -38,10 +38,13 @@ pub(crate) struct ContextMessage {
 /// messages) are left out; the open card is its own field.
 pub(crate) fn budget_messages(
     mut newest_first: Vec<ContextMessage>,
+    context_start_sequence: i64,
     seen_sequence: i64,
     pip_account_id: &str,
 ) -> Vec<Value> {
-    newest_first.retain(|message| !message.text.trim().is_empty());
+    newest_first.retain(|message| {
+        message.sequence > context_start_sequence && !message.text.trim().is_empty()
+    });
     let mut used = 0usize;
     let mut kept = Vec::new();
     for mut message in newest_first {
@@ -451,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn message_budget_keeps_the_newest_and_marks_new_ones() {
+    fn message_budget_excludes_pre_join_history_and_marks_only_unseen_messages() {
         let long = "x".repeat(MESSAGE_CHAR_LIMIT + 100);
         let messages: Vec<ContextMessage> = (0..30)
             .rev()
@@ -465,10 +468,19 @@ mod tests {
                 created_at: String::new(),
             })
             .collect();
-        let kept = budget_messages(messages, 27, "acct_pip");
+        let kept = budget_messages(messages, 10, 27, "acct_pip");
         assert!(kept.len() < 30);
+        assert!(kept
+            .iter()
+            .all(|message| message["sequence"].as_i64().unwrap() > 10));
         assert_eq!(kept.last().unwrap()["sequence"], 29);
         assert_eq!(kept.last().unwrap()["isNew"], true);
+        assert_eq!(
+            kept.iter()
+                .filter(|message| message["isNew"] == true)
+                .count(),
+            2
+        );
         assert!(kept
             .iter()
             .all(|m| m["text"].as_str().unwrap().chars().count() <= MESSAGE_CHAR_LIMIT + 1));

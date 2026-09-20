@@ -7,7 +7,7 @@
 use serde_json::json;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
+use sqlx_postgres::Postgres;
 use uuid::Uuid;
 
 use super::models::{PlanCardRow, PlanCardRsvp, PlanCardState};
@@ -16,7 +16,10 @@ fn calendar_event_id(event_id: &str) -> String {
     format!("plan:{event_id}")
 }
 
-pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core::Error> {
+pub(super) async fn sync_plan(
+    tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
+    row: &PlanCardRow,
+) -> Result<(), sqlx_core::Error> {
     let calendar_id = calendar_event_id(&row.event_id);
     let attending = row.state == PlanCardState::Confirmed && row.start_at.is_some();
     let title: Option<(Option<String>, Option<String>)> =
@@ -27,7 +30,7 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
                      WHERE conversation_id = $1",
                 )
                 .bind(conversation_id)
-                .fetch_optional(pool)
+                .fetch_optional(&mut **tx)
                 .await?
             }
             Err(_) => None,
@@ -69,14 +72,7 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
             title: row.title.clone(),
             start_at: start.map(|value| value.with_timezone(&chrono::Utc)),
         };
-        if let Err(error) =
-            crate::digest::pip_guard::clear_saved_conflicts(pool, &members, &plan).await
-        {
-            eprintln!(
-                "[pip] Could not clear digest suggestions for {}: {error}",
-                row.event_id
-            );
-        }
+        crate::digest::pip_guard::clear_saved_conflicts(tx, &members, &plan).await?;
     }
     let mut calendar_changed: Vec<String> = Vec::new();
 
@@ -105,7 +101,7 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
             .bind(&participant.account_id)
             .bind(&calendar_id)
             .bind(payload)
-            .execute(pool)
+            .execute(&mut **tx)
             .await?;
             if written.rows_affected() > 0 {
                 calendar_changed.push(participant.account_id.clone());
@@ -115,7 +111,7 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
                 query("DELETE FROM cloud_calendar_events WHERE account_id = $1 AND event_id = $2")
                     .bind(&participant.account_id)
                     .bind(&calendar_id)
-                    .execute(pool)
+                    .execute(&mut **tx)
                     .await?;
             if removed.rows_affected() > 0 {
                 calendar_changed.push(participant.account_id.clone());
@@ -123,6 +119,6 @@ pub async fn sync_plan(pool: &PgPool, row: &PlanCardRow) -> Result<(), sqlx_core
         }
     }
     // A calendar PiP changed is a digest change for that person.
-    crate::digest::changes::mark_accounts(pool, &calendar_changed).await?;
+    crate::digest::changes::mark_accounts(&mut **tx, &calendar_changed).await?;
     Ok(())
 }

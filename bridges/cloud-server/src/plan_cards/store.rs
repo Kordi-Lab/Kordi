@@ -80,7 +80,7 @@ fn rfc3339_instant(value: Option<String>) -> Option<String> {
     })
 }
 
-async fn fetch_row(
+pub(super) async fn fetch_row(
     conn: &mut PgConnection,
     event_id: &str,
 ) -> Result<Option<PlanCardRow>, sqlx_core::Error> {
@@ -381,6 +381,7 @@ pub async fn propose(
     }
 
     let row = require_row(&mut tx, &event_id).await?;
+    super::projection::enqueue(&mut *tx, &row).await?;
     tx.commit().await?;
     Ok(row)
 }

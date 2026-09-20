@@ -27,9 +27,9 @@ import {
   promptTextForCloudAgentMention,
 } from './cloudAgentMessages';
 import {
-  cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudGroupAgentRequestRuntimeSessionId,
 } from './cloudAgentRuntime';
+import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
