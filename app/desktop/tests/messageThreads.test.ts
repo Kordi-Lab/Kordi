@@ -125,6 +125,35 @@ test('discussion entries stay close to human bubbles and agent-turn roots withou
   }
 });
 
+test('human message rows keep compact spacing when the sender changes', () => {
+  const render = (msg: Message, grouping?: {
+    previous?: boolean;
+    next?: boolean;
+  }) => renderToStaticMarkup(createElement(MessageBubble, {
+    msg,
+    isGroupedWithPrevious: grouping?.previous,
+    isGroupedWithNext: grouping?.next,
+  }));
+  const rowClasses = (markup: string) => new Set(
+    markup.match(/data-transcript-message-root="true"[^>]*class="([^"]*)"/)?.[1].split(/\s+/),
+  );
+
+  for (const msg of [
+    { ...message('own-row', 'Own message'), role: 'user' as const, sender: 'Me', isOwnMessage: true },
+    { ...message('peer-row', 'Peer message'), isOwnMessage: false },
+  ]) {
+    const standaloneClasses = rowClasses(render(msg));
+    assert(standaloneClasses.has('pt-0.5'));
+    assert(standaloneClasses.has('pb-0.5'));
+    assert.equal(standaloneClasses.has('pt-1'), false);
+    assert.equal(standaloneClasses.has('pb-1'), false);
+
+    const groupedClasses = rowClasses(render(msg, { previous: true, next: true }));
+    assert(groupedClasses.has('pt-0.5'));
+    assert(groupedClasses.has('pb-0'));
+  }
+});
+
 test('thread unread state uses monotonic cloud sequences and excludes the viewers own messages', () => {
   const rootId = '10000000-0000-4000-8000-000000000001';
   const root = {...message('local-root','Root'),reactionTargetMessageId:rootId};

@@ -795,8 +795,8 @@ function MessageBubbleView({
       onPointerCancel={handleRowSelectionDragEnd}
       className={cn(
         'flex w-full flex-col gap-1',
-        useHumanCompactDensity ? 'pt-0.5' : (isGroupedWithPrevious ? 'pt-0.5' : 'pt-1'),
-        useHumanCompactDensity ? (isGroupedWithNext ? 'pb-0' : 'pb-0.5') : (isGroupedWithNext ? 'pb-0' : 'pb-1'),
+        'pt-0.5',
+        isGroupedWithNext ? 'pb-0' : 'pb-0.5',
         useHumanCompactDensity ? 'app-message-row-contact-compact' : '',
         align,
         isAgentMessage ? 'w-full max-w-[min(100%,61rem)]' : '',
