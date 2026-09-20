@@ -1,19 +1,13 @@
 import assert from 'node:assert/strict';
-import { registerHooks } from 'node:module';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { digestClient } from '../src/features/digest/client';
+import DigestPage from '../src/features/digest/DigestPage';
 import { DigestStore, digestStoreFor } from '../src/features/digest/store';
 import { CLOUD_SESSION_CHANGED_EVENT } from '../src/features/cloud/session';
 import type { DigestResponse } from '../src/features/digest/types';
-
-const css = registerHooks({ load(url, context, next) {
-  return url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : next(url, context);
-} });
-const { default: DigestPage } = await import('../src/features/digest/DigestPage');
-css.deregister();
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

@@ -17,7 +17,6 @@ import { DigestRelatedLinks } from './DigestRelatedLinks';
 import { DigestSplit } from './DigestSplit';
 import { useCalendarPreview } from './useCalendarPreview';
 import { MarkdownContent } from '@/kordi-app/components/markdown';
-import './digest.css';
 
 const timeLabel=(value:string)=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
 const localInput=(value?:string|null)=>{if(!value)return '';const d=new Date(value);return `${dateKey(d)}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
