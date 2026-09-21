@@ -7,9 +7,10 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 ### Fixed
 
 - Kept macOS transcript scrolling steady in long histories. Message rows are
-  now estimated from the rendered bubble (sender header, body line height,
-  Markdown list spacing, and the pane's actual width) instead of one generic
-  row, so scrolling no longer shifts the visible content by the estimate error.
+  now estimated from the rendered bubble (Agent header, inline sender line,
+  grouped-run spacing, standalone emoji, body line height, Markdown list
+  spacing, and the pane's actual width) instead of one generic row, so
+  scrolling no longer shifts the visible content by the estimate error.
 
 ## [0.0.2-beta.3] - 2026-09-20
 

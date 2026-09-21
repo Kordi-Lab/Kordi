@@ -39,8 +39,8 @@ test('a one-line message reserves a compact row instead of a generic floor', () 
 
 test('the same text wraps into more lines in a narrow pane', () => {
   const text = 'word '.repeat(60);
-  const narrow = estimateTranscriptMessageHeight(message({ text }), false, 40);
-  const wide = estimateTranscriptMessageHeight(message({ text }), false, 120);
+  const narrow = estimateTranscriptMessageHeight(message({ text }), false, { contentColumns: 40 });
+  const wide = estimateTranscriptMessageHeight(message({ text }), false, { contentColumns: 120 });
   assert.ok(narrow > wide, 'a narrow pane must reserve more height for the same text');
 });
 
@@ -57,6 +57,13 @@ test('markdown list items reserve their spacing', () => {
     estimateTranscriptMessageHeight(message({ text: '1. one\n2. two\n3. three' }))
       > estimateTranscriptMessageHeight(message({ text: 'one\ntwo\nthree' })),
   );
+});
+
+test('the inline sender line is reserved only for the first message of a run', () => {
+  const peer = message({ role: 'person', sender: 'Person', showSenderMeta: true, text: 'hi' });
+  const first = estimateTranscriptMessageHeight(peer);
+  const grouped = estimateTranscriptMessageHeight(peer, false, { isGroupedWithPrevious: true });
+  assert.ok(first > grouped, 'the first message of a grouped run shows the sender line');
 });
 
 test('viewport width maps to a bounded body-text column count', () => {

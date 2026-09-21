@@ -8,7 +8,6 @@ import '../../src/index.css';
 
 // Mirrors a busy group chat: runs of short messages from the same sender
 // (grouped rows, only the first shows the sender line) plus standalone emoji.
-// These shapes are what a real long history scrolls through.
 const SHORT_TEXTS = ['eq', 'wq', 'qw', 'e', 'qwdqw', 'wqd', 'dqwd', 'fwd', 'wdq', 'w', 'dqw', 'ok', 'yes', 'no'];
 
 type Row = { message: Message; groupedWithPrevious: boolean; groupedWithNext: boolean };
@@ -21,6 +20,8 @@ function buildRows(): Row[] {
     const text = emoji ? '\u{1F600}' : SHORT_TEXTS[index % SHORT_TEXTS.length];
     const previousOwn = (index - 1) % 7 < 3;
     const nextOwn = (index + 1) % 7 < 3;
+    const sameAsPrevious = index > 0 && previousOwn === own;
+    const sameAsNext = index < 299 && nextOwn === own;
     rows.push({
       message: {
         id: `row-${index}`,
@@ -31,24 +32,24 @@ function buildRows(): Row[] {
         text,
         time: '10:00',
       },
-      groupedWithPrevious: index > 0 && previousOwn === own,
-      groupedWithNext: index < 299 && nextOwn === own,
+      groupedWithPrevious: sameAsPrevious,
+      groupedWithNext: sameAsNext,
     });
   }
   return rows;
 }
 
-function Stability() {
+function ShapeProbe() {
   const [items] = useState(buildRows);
   return <main style={{ height: 680, width: 800, display: 'flex', flexDirection: 'column' }}>
     <VirtualTranscript
       items={items}
-      sessionKey="synthetic-history-stability"
+      sessionKey="synthetic-shapes"
       getItemKey={row => row.message.id!}
       estimateSize={row => estimateTranscriptMessageHeight(row.message, false, { isGroupedWithPrevious: row.groupedWithPrevious, isGroupedWithNext: row.groupedWithNext })}
       scrollStyle={{ height: 600 }}
       renderItem={row => (
-        <div data-message-id={row.message.id}>
+        <div data-message-id={row.message.id} data-estimate={estimateTranscriptMessageHeight(row.message, false, { isGroupedWithPrevious: row.groupedWithPrevious, isGroupedWithNext: row.groupedWithNext })}>
           <MessageBubble
             msg={row.message}
             isGroupedWithPrevious={row.groupedWithPrevious}
@@ -59,4 +60,4 @@ function Stability() {
     />
   </main>;
 }
-createRoot(document.getElementById('root')!).render(<Stability />);
+createRoot(document.getElementById('root')!).render(<ShapeProbe />);

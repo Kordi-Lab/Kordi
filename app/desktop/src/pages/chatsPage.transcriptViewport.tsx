@@ -221,7 +221,15 @@ export function useChatTranscriptViewport({
       items={timelineEntries}
       passiveUpdateKey={passiveUpdateKey}
       messageContentKey={messageContentKey}
-      estimateSize={(entry) => 'pinActivity' in entry ? PIN_ACTIVITY_ESTIMATED_HEIGHT : estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]), transcriptColumns)}
+      estimateSize={(entry) => 'pinActivity' in entry ? PIN_ACTIVITY_ESTIMATED_HEIGHT : estimateTranscriptMessageHeight(
+        entry.message,
+        Boolean(timeSeparators[entry.originalIndex]),
+        {
+          contentColumns: transcriptColumns,
+          isGroupedWithPrevious: isGroupedWithAdjacentHumanMessage(transcriptMessages, entry.originalIndex, -1, timeSeparators),
+          isGroupedWithNext: isGroupedWithAdjacentHumanMessage(transcriptMessages, entry.originalIndex, 1, timeSeparators),
+        },
+      )}
       sessionKey={sessionKey}
       scrollRef={scrollRef}
       scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}
