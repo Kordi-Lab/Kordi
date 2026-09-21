@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {placeWeekEntries,weekDays,weekEntries} from '../src/features/digest/weekLayout';
+import {placeWeekEntries,weekDays,weekEntries,weekNowMarker} from '../src/features/digest/weekLayout';
 import {isPendingCalendarProposal,proposalEvent,proposalSeries} from '../src/features/digest/calendarProposal';
 import type {CalendarEvent,DigestItem} from '../src/features/digest/types';
 
@@ -28,4 +28,14 @@ test('model-selected series cancellation targets all and only the saved series, 
   assert.equal(weekEntries([...events,other],[item]).filter(entry=>entry.proposal).length,3);
   assert.throws(()=>proposalEvent({...item,existingSeriesId:'unavailable'},events,[]),/series changed/);
   assert.equal(isPendingCalendarProposal({...item,calendarAction:'create',calendarScope:null,existingSeriesId:null},events),false);
+});
+
+test('the current-time marker only appears inside today’s week, at the elapsed minutes of the day',()=>{
+  const previous=process.env.TZ;process.env.TZ='Asia/Riyadh';
+  try{
+    const days=weekDays('2026-09-21');
+    assert.deepEqual(weekNowMarker(days,new Date('2026-09-21T18:30:00+03:00')),{dayIndex:1,top:18.5*64});
+    assert.deepEqual(weekNowMarker(days,new Date('2026-09-22T00:00:00+03:00')),{dayIndex:2,top:0});
+    assert.equal(weekNowMarker(days,new Date('2026-10-05T09:00:00+03:00')),null);
+  }finally{if(previous===undefined)delete process.env.TZ;else process.env.TZ=previous;}
 });

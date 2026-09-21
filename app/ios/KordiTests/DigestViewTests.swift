@@ -996,6 +996,21 @@ final class DigestViewTests: XCTestCase {
         let overnight = DigestCalendarEvent(id: "night", title: "Handoff", startAt: "2026-09-10T23:30:00Z", endAt: "2026-09-11T00:30:00Z")
         XCTAssertTrue(DigestDate.event(overnight, occursOn: day, calendar: calendar))
     }
+    func testCurrentTimeMarkerOnlyAppearsOnTodayAndBeforeTheNextEvent() throws {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
+        let morning = DigestCalendarEvent(id: "morning", title: "Standup", startAt: "2026-09-21T09:00:00Z")
+        let afternoon = DigestCalendarEvent(id: "afternoon", title: "Review", startAt: "2026-09-21T15:00:00Z")
+        let today = try XCTUnwrap(DigestDate.parse("2026-09-21T12:00:00Z"))
+        // Midday sits between the two events, so the marker leads the afternoon one.
+        XCTAssertEqual(DigestDate.nowMarkerIndex(among: [morning, afternoon], on: today, now: try XCTUnwrap(DigestDate.parse("2026-09-21T12:00:00Z")), calendar: calendar), 1)
+        // Before every event it leads the list; after all of them it trails it.
+        XCTAssertEqual(DigestDate.nowMarkerIndex(among: [morning, afternoon], on: today, now: try XCTUnwrap(DigestDate.parse("2026-09-21T08:00:00Z")), calendar: calendar), 0)
+        XCTAssertEqual(DigestDate.nowMarkerIndex(among: [morning, afternoon], on: today, now: try XCTUnwrap(DigestDate.parse("2026-09-21T23:00:00Z")), calendar: calendar), 2)
+        XCTAssertEqual(DigestDate.nowMarkerIndex(among: [], on: today, now: try XCTUnwrap(DigestDate.parse("2026-09-21T12:00:00Z")), calendar: calendar), 0)
+        // A day that is not today carries no marker.
+        let otherDay = try XCTUnwrap(DigestDate.parse("2026-09-22T12:00:00Z"))
+        XCTAssertNil(DigestDate.nowMarkerIndex(among: [morning, afternoon], on: otherDay, now: try XCTUnwrap(DigestDate.parse("2026-09-21T12:00:00Z")), calendar: calendar))
+    }
     func testRollingContractKeepsUnknownOwnershipAndExactSources() throws {
         let json = #"{"accountId":"viewer","snapshot":{"claims":[],"commitments":[{"id":"followup","title":"Review draft","text":"No owner agreed","kind":"possible","sourceIds":["message"]}],"suggestions":[],"calendarCandidates":[]},"sources":[{"id":"message","conversationId":"conversation","sessionId":"session","sessionTitle":"Planning","senderAccountId":"author","senderName":"Alex","text":"Could someone review this?","createdAt":"2026-09-07T09:00:00Z","version":1}],"partial":false,"revision":1,"updatedAt":"2026-09-07T09:01:00Z","status":"ready","feedback":[]}"#
         let response = try JSONDecoder().decode(RollingDigestResponse.self, from: Data(json.utf8))

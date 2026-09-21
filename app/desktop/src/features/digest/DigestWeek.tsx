@@ -1,12 +1,15 @@
-import {useLayoutEffect,useMemo,useRef,type CSSProperties,type MouseEvent} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type MouseEvent} from 'react';
 import {ChevronLeft,ChevronRight} from 'lucide-react';
 import {dateKey,eventOnDay} from './calendar';
-import {placeWeekEntries,weekDays,weekEntries,weekHourHeight,type WeekEntry} from './weekLayout';
+import {placeWeekEntries,weekDays,weekEntries,weekHourHeight,weekNowMarker,type WeekEntry} from './weekLayout';
 import type {CalendarEvent,DigestItem} from './types';
 
 export function DigestWeek({day,events,candidates,onDay,onBack,onEvent,onCandidate}:{day:string;events:CalendarEvent[];candidates:DigestItem[];onDay:(day:string)=>void;onBack:(event:MouseEvent<HTMLButtonElement>)=>void;onEvent:(event:CalendarEvent)=>void;onCandidate:(item:DigestItem)=>void}){
   const days=useMemo(()=>weekDays(day),[day]);
   const entries=useMemo(()=>weekEntries(events,candidates),[events,candidates]);
+  const [now,setNow]=useState(()=>new Date());
+  useEffect(()=>{const timer=window.setInterval(()=>setNow(new Date()),30000);return()=>window.clearInterval(timer);},[]);
+  const nowMarker=useMemo(()=>weekNowMarker(days,now),[days,now]);
   const scroll=useRef<HTMLDivElement>(null),grid=useRef<HTMLDivElement>(null),heading=useRef<HTMLHeadingElement>(null),lastFocus=useRef('');
   useLayoutEffect(()=>{heading.current?.focus({preventScroll:true});},[]);
   useLayoutEffect(()=>{
@@ -32,7 +35,7 @@ export function DigestWeek({day,events,candidates,onDay,onBack,onEvent,onCandida
     <div className="digest-week-scroll" ref={scroll} tabIndex={0} role="region" aria-label="Weekly schedule">
       <div className="digest-week-columns digest-week-heading"><span/>{days.map(date=><button key={date} aria-pressed={date===day} onClick={()=>onDay(date)}>{new Date(date+'T12:00:00').toLocaleDateString(undefined,{weekday:'short',day:'numeric'})}</button>)}</div>
       {entries.some(entry=>entry.allDay&&days.some(date=>eventOnDay(entry,date)))&&<div className="digest-week-columns digest-week-all-day"><span>All day</span>{days.map(date=><div key={date}>{entries.filter(entry=>entry.allDay&&eventOnDay(entry,date)).map(entry=>button(entry))}</div>)}</div>}
-      <div ref={grid} className="digest-week-columns digest-week-time-grid"><div className="digest-week-hours">{Array.from({length:24},(_,hour)=><span key={hour} style={{top:hour*weekHourHeight}}>{new Date(2026,0,1,hour).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}</span>)}</div>{days.map(date=><div key={date} className={`digest-week-day${date===day?' selected':''}`} aria-label={new Date(date+'T12:00:00').toLocaleDateString(undefined,{dateStyle:'full'})}>{placeWeekEntries(entries,date).map(({entry,start,end,lane,lanes})=>button(entry,{top:start*weekHourHeight/60,height:Math.max(18,(end-start)*weekHourHeight/60),left:`calc(${lane*100/lanes}% + 2px)`,width:`calc(${100/lanes}% - 4px)`}))}</div>)}</div>
+      <div ref={grid} className="digest-week-columns digest-week-time-grid"><div className="digest-week-hours">{Array.from({length:24},(_,hour)=><span key={hour} style={{top:hour*weekHourHeight}}>{new Date(2026,0,1,hour).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'})}</span>)}</div>{days.map((date,index)=><div key={date} className={`digest-week-day${date===day?' selected':''}`} aria-label={new Date(date+'T12:00:00').toLocaleDateString(undefined,{dateStyle:'full'})}>{placeWeekEntries(entries,date).map(({entry,start,end,lane,lanes})=>button(entry,{top:start*weekHourHeight/60,height:Math.max(18,(end-start)*weekHourHeight/60),left:`calc(${lane*100/lanes}% + 2px)`,width:`calc(${100/lanes}% - 4px)`}))}{nowMarker&&index===nowMarker.dayIndex&&<span className="digest-week-now-dot" style={{top:nowMarker.top}} aria-hidden="true"/>}</div>)}{nowMarker&&<div className="digest-week-now" style={{top:nowMarker.top}} aria-hidden="true"/>}</div>
     </div>
   </section>;
 }

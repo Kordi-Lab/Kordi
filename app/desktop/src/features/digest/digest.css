@@ -3,12 +3,14 @@
   --digest-muted: var(--utility-muted-text, #737985);
   --digest-line: var(--app-divider, #e5e7eb);
   --digest-accent: var(--app-markdown-link, #4977c8);
+  --digest-now: #f97316;
   container-type: size;
   width: 100%; height: 100%; min-width: 0; min-height: 0; flex: 1;
   display: flex; flex-direction: column;
   padding: 20px 28px 24px;
   color: var(--digest-text); font-family: inherit; font-size: 13px; line-height: 1.5;
 }
+.kordi-app.theme-light .digest-page { --digest-now: #ea580c; }
 .digest-page h1 { margin: 0; font-size: 18px; line-height: 28px; font-weight: 600; letter-spacing: -.01em; }
 .digest-page h2 { margin: 0 0 12px; font-size: 13px; line-height: 20px; font-weight: 600; }
 .digest-page h3 { margin: 0; font-size: 13px; line-height: 20px; font-weight: 500; }
@@ -144,6 +146,11 @@
 .digest-page .digest-week-event.proposed { border-style: dashed; border-left-width: 1px; }
 .digest-page .digest-week-event.digest-cancellation { color: var(--digest-cancel-text); border-color: var(--app-transient-danger-border, #9f123955); background: color-mix(in srgb,var(--digest-cancel-text) 10%,var(--app-transient-surface-fallback, #fcfcfd)); }
 .digest-page .digest-week-event.all-day { position: relative; width: 100%; }
+/* Current-time indicator, drawn only while today is inside the displayed week. */
+.digest-week-time-grid { position: relative; }
+.digest-week-hours { z-index: 2; }
+.digest-week-now { position: absolute; left: 64px; right: 0; height: 0; border-top: 2px solid var(--digest-now); pointer-events: none; z-index: 1; }
+.digest-week-now-dot { position: absolute; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--digest-now); box-shadow: 0 0 0 2px var(--app-transient-surface-fallback, #fcfcfd); transform: translateY(-50%); pointer-events: none; z-index: 1; }
 .digest-calendar-connections { display: grid; gap: 4px; }
 .digest-page .digest-calendar-connections button { display: flex; gap: 9px; align-items: center; border: 0; padding: 6px 8px; margin-left: -8px; text-align: left; }
 .digest-calendar-connections button svg { flex: none; color: var(--digest-muted); }
