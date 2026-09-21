@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { resolveTranscriptPlanCards } from '@/features/cloud/planCardSnapshot';
 import { Split } from 'lucide-react';
 
@@ -8,7 +8,7 @@ import { collectConversationImageAttachments, shouldPreviewAttachmentInline } fr
 import { createTranscriptTimeSeparatorCache } from '@/features/chat/transcriptTimestamps';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
-import { estimateTranscriptMessageHeight } from '@/features/chat/transcriptHeightEstimate';
+import { estimateTranscriptMessageHeight, transcriptContentColumns } from '@/features/chat/transcriptHeightEstimate';
 import { MessageBubble } from '@/kordi-app/components';
 import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 import type { Message } from '@/kordi-app/types';
@@ -165,6 +165,21 @@ export function useChatTranscriptViewport({
   }, [onLoadOlderMessages]);
   const handleLoadOlderMessages = useCallback(() => loadOlderMessagesRef.current?.(), []);
   const canLoadOlderMessages = Boolean(onLoadOlderMessages);
+  // Estimated row heights decide where an unmeasured message sits. A narrow pane
+  // wraps the same text into more lines, so track the viewport width instead of
+  // assuming one desktop column count.
+  const [transcriptViewportWidth, setTranscriptViewportWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return undefined;
+    const update = () => setTranscriptViewportWidth(element.clientWidth);
+    update();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [scrollRef]);
+  const transcriptColumns = transcriptContentColumns(transcriptViewportWidth);
   const timeSeparatorCache = useMemo(() => createTranscriptTimeSeparatorCache(), []);
   const timeSeparators = useMemo(
     () => timeSeparatorCache(transcriptMessages),
@@ -206,7 +221,7 @@ export function useChatTranscriptViewport({
       items={timelineEntries}
       passiveUpdateKey={passiveUpdateKey}
       messageContentKey={messageContentKey}
-      estimateSize={(entry) => 'pinActivity' in entry ? PIN_ACTIVITY_ESTIMATED_HEIGHT : estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]))}
+      estimateSize={(entry) => 'pinActivity' in entry ? PIN_ACTIVITY_ESTIMATED_HEIGHT : estimateTranscriptMessageHeight(entry.message, Boolean(timeSeparators[entry.originalIndex]), transcriptColumns)}
       sessionKey={sessionKey}
       scrollRef={scrollRef}
       scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}
@@ -329,6 +344,7 @@ export function useChatTranscriptViewport({
     passiveUpdateKey, messageContentKey,
     pinBoundaries,
     timelineEntries,
+    transcriptColumns,
     activeForkSourceSessionId,
     activeForkSourceTitle,
     animateLatestAppend,

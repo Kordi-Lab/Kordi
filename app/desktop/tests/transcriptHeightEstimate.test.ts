@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Message } from '../src/kordi-app/types';
-import { estimateTranscriptMessageHeight } from '../src/features/chat/transcriptHeightEstimate';
+import { estimateTranscriptMessageHeight, transcriptContentColumns } from '../src/features/chat/transcriptHeightEstimate';
 
 function message(overrides: Partial<Message> = {}): Message {
   return { role: 'person', text: '', time: '10:00', ...overrides };
@@ -29,4 +29,39 @@ test('unknown media and collapsed collages stay conservative without reserving e
   assert.equal(estimateTranscriptMessageHeight(message({ attachments: [attachment] })), 276);
   assert.ok(estimateTranscriptMessageHeight(message({ attachments: Array.from({ length: 30 }, () => attachment) })) < 500);
   assert.ok(estimateTranscriptMessageHeight(message({ attachments: [{ kind: 'file', name: 'clip.mp4' }] })) > 250);
+});
+
+test('a one-line message reserves a compact row instead of a generic floor', () => {
+  // The rendered one-line bubble is roughly 44px tall. Over-reserving here is
+  // what made the transcript apply a large scroll correction while scrolling.
+  assert.ok(estimateTranscriptMessageHeight(message({ text: 'Thanks!' })) <= 50);
+});
+
+test('the same text wraps into more lines in a narrow pane', () => {
+  const text = 'word '.repeat(60);
+  const narrow = estimateTranscriptMessageHeight(message({ text }), false, 40);
+  const wide = estimateTranscriptMessageHeight(message({ text }), false, 120);
+  assert.ok(narrow > wide, 'a narrow pane must reserve more height for the same text');
+});
+
+test('Agent messages reserve their sender header above person messages', () => {
+  const text = 'Sounds good, I will take a look.';
+  assert.ok(
+    estimateTranscriptMessageHeight(message({ role: 'owned-agent', sender: 'Agent', text }))
+      > estimateTranscriptMessageHeight(message({ role: 'person', sender: 'Person', text })),
+  );
+});
+
+test('markdown list items reserve their spacing', () => {
+  assert.ok(
+    estimateTranscriptMessageHeight(message({ text: '1. one\n2. two\n3. three' }))
+      > estimateTranscriptMessageHeight(message({ text: 'one\ntwo\nthree' })),
+  );
+});
+
+test('viewport width maps to a bounded body-text column count', () => {
+  assert.equal(transcriptContentColumns(0), 96);
+  assert.equal(transcriptContentColumns(800), 96);
+  assert.equal(transcriptContentColumns(100), 40);
+  assert.equal(transcriptContentColumns(100_000), 140);
 });
