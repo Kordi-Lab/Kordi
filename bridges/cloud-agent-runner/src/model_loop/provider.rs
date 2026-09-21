@@ -280,7 +280,7 @@ impl CloudModelProvider for OpenAiCompatibleProvider {
         messages: &[Value],
         tools: &[Value],
     ) -> Result<ModelProviderResponse, ModelLoopError> {
-        let request = completion_request_from_cloud_messages(auth, messages, tools);
+        let request = completion_request_from_cloud_messages(auth, messages, tools)?;
         let events = match auth.provider.as_str() {
             "anthropic" => {
                 self.anthropic
@@ -301,9 +301,12 @@ fn completion_request_from_cloud_messages(
     auth: &OpenAiProviderConfig,
     messages: &[Value],
     tools: &[Value],
-) -> CompletionRequest {
+) -> Result<CompletionRequest, ModelLoopError> {
     let (system_prompt, messages) = split_system_messages(messages);
-    CompletionRequest {
+    let system_prompt =
+        kordi_provider::with_active_model_context(&system_prompt, &auth.model, &auth.provider)
+            .map_err(|error| ModelLoopError::Provider(error.to_string()))?;
+    Ok(CompletionRequest {
         system_prompt,
         messages,
         tools: tools.to_vec(),
@@ -314,7 +317,7 @@ fn completion_request_from_cloud_messages(
         max_tokens: (auth.provider == "anthropic").then_some(ANTHROPIC_MAX_TOKENS),
         stream: true,
         thinking: Some(auth.thinking.clone()),
-    }
+    })
 }
 
 fn split_system_messages(messages: &[Value]) -> (String, Vec<Value>) {

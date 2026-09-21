@@ -71,6 +71,29 @@ fn request(content: Value) -> CompletionRequest {
     }
 }
 
+#[tokio::test]
+async fn outgoing_requests_preserve_active_model_context() {
+    for route in [Route::Chat, Route::OAuth, Route::Anthropic, Route::Google] {
+        let mut request = request(json!("hello"));
+        request.system_prompt = kordi_provider::with_active_model_context(
+            "Keep these instructions",
+            &request.model,
+            "fixture-provider",
+        )
+        .unwrap();
+        let expected = request.system_prompt.clone();
+        let (body, result) = capture(route, request, false).await;
+        result.unwrap();
+        let actual = match route {
+            Route::Chat => &body["messages"][0]["content"],
+            Route::OAuth => &body["instructions"],
+            Route::Anthropic => &body["system"][0]["text"],
+            Route::Google => &body["systemInstruction"]["parts"][0]["text"],
+        };
+        assert_eq!(actual, &json!(expected), "{route:?}");
+    }
+}
+
 async fn capture(
     route: Route,
     request: CompletionRequest,

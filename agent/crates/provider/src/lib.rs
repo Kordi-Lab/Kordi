@@ -4,6 +4,7 @@ pub mod anthropic;
 mod error;
 pub mod google;
 mod images;
+mod model_context;
 pub mod openai;
 pub mod registry;
 pub mod resolver;
@@ -19,6 +20,7 @@ pub use error::{
     is_retryable_error_message as is_retryable_provider_error_message, unexpected_response,
     unexpected_response_with_sensitive_values,
 };
+pub use model_context::{ModelContextError, with_active_model_context};
 pub use streaming::{CollectedResponse, CollectedToolCall};
 pub use traits::Provider;
 pub use types::{

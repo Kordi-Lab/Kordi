@@ -6,6 +6,28 @@ use super::{
 };
 use serde_json::json;
 
+#[test]
+fn active_model_context_preserves_oauth_identity_preamble() {
+    let mut request = completion_request("fixture-model", None);
+    request.system_prompt =
+        crate::with_active_model_context(&request.system_prompt, &request.model, "anthropic")
+            .unwrap();
+    for auth in [ProviderAuthMode::ApiKey, ProviderAuthMode::OAuth] {
+        let body = build_anthropic_request_body(&request, auth, request.messages.clone(), vec![]);
+        let system = body["system"].as_array().unwrap();
+        assert_eq!(system.last().unwrap()["text"], request.system_prompt);
+        if auth == ProviderAuthMode::OAuth {
+            assert_eq!(system.len(), 2);
+            assert_eq!(
+                system[0]["text"],
+                "You are Claude Code, Anthropic's official CLI for Claude."
+            );
+        } else {
+            assert_eq!(system.len(), 1);
+        }
+    }
+}
+
 fn completion_request(model: &str, thinking: Option<&str>) -> CompletionRequest {
     CompletionRequest {
         system_prompt: "Be precise".to_string(),

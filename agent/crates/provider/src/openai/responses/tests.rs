@@ -8,6 +8,19 @@ use std::collections::HashMap;
 use tokio_util::sync::CancellationToken;
 
 #[test]
+fn responses_payload_preserves_active_model_context() {
+    let mut request = completion_request("gpt-5.4");
+    request.system_prompt =
+        crate::with_active_model_context(&request.system_prompt, &request.model, "openai").unwrap();
+    let body = build_responses_request_body(&request, super::super::prepare_messages(&request));
+    assert_eq!(body["input"][0]["role"], "system");
+    assert_eq!(
+        body["input"][0]["content"][0]["text"],
+        request.system_prompt
+    );
+}
+
+#[test]
 fn final_responses_request_preserves_images_after_chat_format_conversion() {
     use base64::Engine;
     let red = base64::engine::general_purpose::STANDARD.encode(fixtures::RED_BLUE);
