@@ -47,36 +47,60 @@ struct DigestMonthGrid: View {
                 }
             }
             Divider()
-            Text(selectedDay.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).font(.subheadline.weight(.semibold))
-            let proposed = proposals(on: selectedDay).sorted { ($0.startAt ?? "") < ($1.startAt ?? "") }
-            let scheduled = events.filter { event in DigestDate.event(event, occursOn: selectedDay) && !proposed.contains { $0.calendarCancellationTargets(event) } }.sorted { $0.startAt < $1.startAt }
-            if scheduled.isEmpty && proposed.isEmpty { Text("No events on this day").font(.footnote).foregroundStyle(.secondary) }
-            ForEach(scheduled) { event in
-                Button { onSelect(event) } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(event.allDay ? "All day" : DigestDate.parse(event.startAt)?.formatted(date: .omitted, time: .shortened) ?? "")
-                            .font(.caption).foregroundStyle(.secondary).frame(width: 62, alignment: .leading)
-                        RoundedRectangle(cornerRadius: 2).fill(Color.accentColor).frame(width: 3, height: 32)
-                        Text(event.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary).frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-                    }.padding(.vertical, 6).frame(minHeight: 44)
-                }.buttonStyle(.plain)
-            }
-            ForEach(proposed) { item in
-                let occurrence = events.first { item.calendarCancellationTargets($0) && DigestDate.event($0, occursOn: selectedDay) }
-                Button { onReview(item) } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(occurrence?.allDay == true ? "All day" : DigestDate.parse(occurrence?.startAt ?? item.startAt)?.formatted(date: .omitted, time: .shortened) ?? "")
-                            .font(.caption).foregroundStyle(.secondary).frame(width: 62, alignment: .leading)
-                        RoundedRectangle(cornerRadius: 2).stroke(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 3, height: 32)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(item.title).font(.subheadline.weight(.medium)).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.primary)
-                            Text(item.calendarAction == "delete" ? "Cancellation to review" : "To review").font(.caption).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-                    }.padding(.vertical, 6).frame(minHeight: 44)
-                }.buttonStyle(.plain).accessibilityLabel(item.calendarAction == "delete" ? "Review cancellation of \(item.title)" : "Review \(item.title)")
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                let now = context.date
+                let proposed = proposals(on: selectedDay).sorted { ($0.startAt ?? "") < ($1.startAt ?? "") }
+                let scheduled = events.filter { event in DigestDate.event(event, occursOn: selectedDay) && !proposed.contains { $0.calendarCancellationTargets(event) } }.sorted { $0.startAt < $1.startAt }
+                // The current-time marker only belongs on today, placed where it falls between events.
+                let nowIndex = DigestDate.nowMarkerIndex(among: scheduled, on: selectedDay, now: now)
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(selectedDay.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).font(.subheadline.weight(.semibold))
+                    ForEach(Array(scheduled.enumerated()), id: \.element.id) { index, event in
+                        if index == nowIndex { nowMarker(now) }
+                        Button { onSelect(event) } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Text(event.allDay ? "All day" : DigestDate.parse(event.startAt)?.formatted(date: .omitted, time: .shortened) ?? "")
+                                    .font(.caption).foregroundStyle(.secondary).frame(width: 62, alignment: .leading)
+                                RoundedRectangle(cornerRadius: 2).fill(Color.accentColor).frame(width: 3, height: 32)
+                                Text(event.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary).frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                            }.padding(.vertical, 6).frame(minHeight: 44)
+                        }.buttonStyle(.plain)
+                    }
+                    if nowIndex == scheduled.count { nowMarker(now) }
+                    if scheduled.isEmpty && proposed.isEmpty { Text("No events on this day").font(.footnote).foregroundStyle(.secondary) }
+                    ForEach(proposed) { item in
+                        let occurrence = events.first { item.calendarCancellationTargets($0) && DigestDate.event($0, occursOn: selectedDay) }
+                        Button { onReview(item) } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Text(occurrence?.allDay == true ? "All day" : DigestDate.parse(occurrence?.startAt ?? item.startAt)?.formatted(date: .omitted, time: .shortened) ?? "")
+                                    .font(.caption).foregroundStyle(.secondary).frame(width: 62, alignment: .leading)
+                                RoundedRectangle(cornerRadius: 2).stroke(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 3, height: 32)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.title).font(.subheadline.weight(.medium)).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.primary)
+                                    Text(item.calendarAction == "delete" ? "Cancellation to review" : "To review").font(.caption).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.secondary)
+                                }.frame(maxWidth: .infinity, alignment: .leading)
+                                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                            }.padding(.vertical, 6).frame(minHeight: 44)
+                        }.buttonStyle(.plain).accessibilityLabel(item.calendarAction == "delete" ? "Review cancellation of \(item.title)" : "Review \(item.title)")
+                    }
+                }
             }
         }
+    }
+
+    /// The current time inside today's list: a time label, dot and rule, matching the desktop week view's indicator.
+    @ViewBuilder private func nowMarker(_ now: Date) -> some View {
+        HStack(spacing: 12) {
+            Text(now.formatted(date: .omitted, time: .shortened))
+                .font(.caption.weight(.medium)).foregroundStyle(KordiTheme.nowIndicator).frame(width: 62, alignment: .leading)
+            HStack(spacing: 0) {
+                Circle().fill(KordiTheme.nowIndicator).frame(width: 7, height: 7)
+                Rectangle().fill(KordiTheme.nowIndicator).frame(height: 2)
+            }
+        }
+        .frame(minHeight: 28)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Current time, \(now.formatted(date: .omitted, time: .shortened))")
     }
 }
