@@ -449,4 +449,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "durable plan-card projection and immutable PiP context",
         sql: include_str!("../../../migrations/0099_plan_card_projection_and_pip_context.sql"),
     },
+    EmbeddedMigration {
+        version: 100,
+        description: "account-scoped desktop projects",
+        sql: include_str!("../../../migrations/0100_chat_projects.sql"),
+    },
 ];

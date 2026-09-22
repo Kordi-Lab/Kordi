@@ -48,3 +48,5 @@
 @import './styles/transient-surfaces.css';
 @import './styles/whats-new.css';
 @import './features/digest/digest.css';
+@import "./features/projects/chatProjects.css";
+@import "./features/projects/projectImport.css";

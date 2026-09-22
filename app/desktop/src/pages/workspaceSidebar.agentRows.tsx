@@ -1,3 +1,4 @@
+import { canChooseChatProject } from '@/features/projects/chatProjects';
 import { BellOff, Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
@@ -18,12 +19,14 @@ import type { SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
 
 export function AgentSidebarRow({
   descriptor,
+  projectGrouped = false,
   model,
   activeConvId,
   onSelectChatSession,
   onOpenSessionContextMenu,
 }: {
   descriptor: ChatSidebarRow;
+  projectGrouped?: boolean;
   model: WorkspaceChatSidebarModel;
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
@@ -95,6 +98,7 @@ export function AgentSidebarRow({
         type="button"
         data-testid="agent-session-row"
         data-agent-session-row={session.id}
+        data-session-project-grouped={projectGrouped || undefined}
         data-session-preview={sessionPreview}
         data-session-preview-line={sessionPreview}
         data-session-updated-at={rowTimeLabel}
@@ -120,7 +124,7 @@ export function AgentSidebarRow({
           if (!target) return;
           event.preventDefault();
           event.stopPropagation();
-          onOpenSessionContextMenu(target);
+          onOpenSessionContextMenu({ ...target, canChooseProject: canChooseChatProject(conversation) });
         }}
         className={cn(
           'app-session-row app-agent-session-row w-full px-2.5 py-1 text-left text-white',

@@ -415,3 +415,6 @@ mod subsessions;
 
 #[path = "cloud_agent_runtime_e2e/attachment_backfill.rs"]
 mod attachment_backfill;
+
+#[path = "cloud_agent_runtime_e2e/projects.rs"]
+mod projects;

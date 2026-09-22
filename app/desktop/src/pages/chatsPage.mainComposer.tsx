@@ -1,3 +1,5 @@
+import { ChatProjectPicker } from '@/features/projects/ChatProjectPicker';
+import { canChooseChatProject } from '@/features/projects/chatProjects';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -338,9 +340,12 @@ export function MainComposer({
           )}
         >
           <div
-            className="flex shrink-0 items-center gap-2 overflow-visible pr-1"
+            className="flex min-w-0 flex-wrap items-center gap-2 overflow-visible pr-1"
             data-composer-left-actions="true"
           >
+            {!editingMessage && !voiceSurfaceActive && canChooseChatProject(conversation) ? (
+              <ChatProjectPicker key={conversation.id} sessionId={conversation.id} disabled={display.activeLiveTurnIsRunning} />
+            ) : null}
             {!editingMessage && useCompactRouteMenu ? (
               <CompactComposerModelMenu
                 scope="chat"

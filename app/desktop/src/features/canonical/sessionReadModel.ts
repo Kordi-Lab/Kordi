@@ -281,7 +281,7 @@ export function createCanonicalSessionReadModel(
     ? [indexes.latestActivityMessageBySessionId.get(sessionId)!]
     : [];
   const chatSessions = canonicalState.sessions
-    .filter((session) => session.kind !== 'project' && session.status !== 'archived'
+    .filter((session) => session.status !== 'archived'
       && !isCloudAgentRuntimeSessionId(session.id) && !session.id.startsWith('draft:'))
     .sort((left, right) => sessionActivityAtMs(right) - sessionActivityAtMs(left));
   const hasSelfReadLatestMessage = (sessionId: string) => {

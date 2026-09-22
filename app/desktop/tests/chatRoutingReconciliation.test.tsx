@@ -9,7 +9,8 @@ import { mapCanonicalMessage } from '../src/features/canonical/readModel/message
 import { mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
 import type { Message } from '../src/kordi-app/types';
 
-test('workspace sorts a newly active local session ahead of older canonical sessions', () => {
+for (const inProject of [false, true]) {
+test(`workspace keeps ${inProject ? 'project' : 'local'} runtime sessions in Agent Chat with their transcript`, () => {
   const activeSessionId = 'local-newly-active';
   const olderSessionId = 'local-older-canonical';
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
@@ -53,7 +54,7 @@ test('workspace sorts a newly active local session ahead of older canonical sess
             usedPercent: null,
             autoCompaction: false,
           },
-          project: null,
+          project: inProject ? { root: '/tmp/project', name: 'Project' } : null,
           reflectionLessonArtifacts: [],
           messages: [{
             role: 'user',
@@ -74,7 +75,7 @@ test('workspace sorts a newly active local session ahead of older canonical sess
           workspaceRoot: '/tmp/kordi',
           lastActivities: [],
         },
-        projects: [],
+        projects: inProject ? [{ id: 'project:/tmp/project', root: '/tmp/project', name: 'Project', sessions: [{ id: 'project-background', title: 'Project background', updatedAtMs: 500, updatedAtLabel: '10:00', messageCount: 1, draft: false }] }] : [],
         modelOptions: [],
         slashCommands: [],
       } as never,
@@ -148,7 +149,11 @@ test('workspace sorts a newly active local session ahead of older canonical sess
     [activeSessionId, olderSessionId],
   );
   assert.equal(viewModels?.activeConv.id, activeSessionId);
+  assert.equal(viewModels?.activeConv.desktopRuntimeBacked, true);
+  assert.equal(viewModels?.activeConv.messages[0]?.text, 'new activity');
+  if (inProject) assert.equal(viewModels?.chatConversations.find((conversation) => conversation.id === 'project-background')?.desktopRuntimeBacked, true);
 });
+}
 
 test('runtime transcript reconciliation renders one failure when canonical and desktop rows encode it differently', () => {
   const failure = 'ChatGPT OAuth credentials are not usable. Sign in to ChatGPT again, or switch this provider to an OpenAI API key.';

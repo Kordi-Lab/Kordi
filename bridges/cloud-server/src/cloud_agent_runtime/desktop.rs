@@ -148,6 +148,25 @@ pub(super) async fn claim(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
+    match crate::projects::session_device(
+        state.db_pool(),
+        &session.account_id,
+        &input.run.session_id,
+    )
+    .await
+    {
+        Ok(Some(device)) if device != session.device_id => {
+            return Json(json!({"acquired":false})).into_response()
+        }
+        Err(error) => {
+            return run_error_response(
+                "project routing",
+                "Could not resolve this project device.",
+                error.into(),
+            )
+        }
+        _ => {}
+    }
     match super::subsession_execution::claim(
         state.db_pool(),
         &session,

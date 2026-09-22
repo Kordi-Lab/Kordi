@@ -11,6 +11,9 @@ struct ChatHomeView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let channel: ChatChannel
     @State private var searchText = ""
+    @State private var collapsedProjectIDs = Set<String>()
+    @State private var projectTarget: ConversationSummary?
+    @State private var showingProjectPicker = false
     @State private var newChatMode: NewChatMode?
     @State private var composedConversation: ConversationSummary?
     @State private var expandedGroupSpaceIds = Set<String>()
@@ -171,6 +174,14 @@ struct ChatHomeView: View {
                     space: space,
                     startsInInviteMode: ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
                 )
+            }
+        }
+        .sheet(isPresented: $showingProjectPicker) { ChatProjectPicker(conversation: projectTarget) }
+        .task(id: model.account?.accountId) {
+            guard channel == .agent else { return }
+            while !Task.isCancelled {
+                await model.refreshProjects()
+                do { try await Task.sleep(for: .seconds(10)) } catch { break }
             }
         }
         .navigationDestination(item: $composedConversation) { selected in
@@ -463,7 +474,23 @@ struct ChatHomeView: View {
             onRefresh: { await model.refreshWorkspace() }
         ) {
             archivedChatsEntry
-            if agentSessions.isEmpty {
+            if model.isPreviewMode && ProcessInfo.processInfo.arguments.contains("--preview-projects") {
+                Text("Design preview · Demo data").font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 16)
+            }
+            HStack {
+                Text("Projects").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button { projectTarget = nil; showingProjectPicker = true } label: {
+                    Image(systemName: "plus").frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add project")
+            }
+            .padding(.horizontal, 16)
+            if let error = model.projectError {
+                Text(error).font(.footnote).foregroundStyle(KordiTheme.destructiveText).padding(.horizontal, 16)
+            }
+            if agentSessions.isEmpty && model.projectDevices.flatMap(\.projects).isEmpty {
                 ContentUnavailableView(
                     searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
                     systemImage: searchQuery.isEmpty ? "sparkles" : "magnifyingglass",
@@ -471,13 +498,64 @@ struct ChatHomeView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 360)
             } else {
-                ForEach(agentSessions) { item in
-                    agentSessionActionRow(item)
-                }
+                projectSessionList
             }
         }
         .id(pinLayoutIdentity)
         .accessibilityLabel("Agent chats")
+    }
+
+    private var projectSessionList: some View {
+        let sections = ChatProjectSections.build(conversations: model.projectConversations, devices: model.projectDevices, search: searchQuery, collapsedForks: collapsedAgentForkParentIds, pinned: model.pinnedSessionIds)
+        return ForEach(sections) { section in
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    if !collapsedProjectIDs.insert(section.id).inserted { collapsedProjectIDs.remove(section.id) }
+                } label: {
+                    HStack(spacing: 7) {
+                        if let project = section.project {
+                            Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down").font(.caption2)
+                            Image(systemName: "folder")
+                            Text(project.name)
+                            Spacer()
+                            if section.device?.online == false { Text("Offline").font(.caption2).foregroundStyle(.secondary) }
+                        } else {
+                            Text("Recents")
+                            Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down").font(.caption2)
+                        }
+                    }
+                    .padding(.trailing, section.project == nil ? 0 : 44)
+                    .font(.subheadline)
+                    .foregroundStyle(section.project == nil ? .secondary : .primary)
+                    .frame(minHeight: 44)
+                    .padding(.horizontal, 16)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(collapsedProjectIDs.contains(section.id) ? "Collapsed" : "Expanded")
+                .overlay(alignment: .trailing) {
+                    if let project = section.project, let device = section.device, device.online {
+                        Button {
+                            let draft = AgentSessionFactory.makeDefault(ownAccountId: model.account?.accountId ?? "")
+                            Task {
+                                do {
+                                    try await model.assignProject(project, device: device, conversation: draft)
+                                    openConversation(draft)
+                                } catch { model.projectError = error.localizedDescription }
+                            }
+                        } label: { Image(systemName: "plus").font(.subheadline).frame(width: 44, height: 44) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("New session in \(project.name)")
+                    }
+                }
+                if !collapsedProjectIDs.contains(section.id) {
+                    ForEach(section.sessions) { item in
+                        agentSessionActionRow(item)
+                            .padding(.leading, section.project == nil ? 0 : 20)
+                    }
+                }
+            }
+        }
     }
 
     private func destination(for conversation: ConversationSummary) -> some View {
@@ -583,6 +661,7 @@ struct ChatHomeView: View {
         } label: {
             AgentSessionRow(
                 conversation: item.conversation,
+                compact: true,
                 isFork: item.isFork,
                 isPinned: model.pinnedSessionIds.contains(item.conversation.sessionId),
                 isMuted: model.mutedSessionIds.contains(item.conversation.sessionId)
@@ -684,6 +763,10 @@ struct ChatHomeView: View {
 
     @ViewBuilder
     private func sessionContextMenu(for conversation: ConversationSummary) -> some View {
+        if model.canChooseProject(conversation) {
+            Button("Move to project", systemImage: "folder") { projectTarget = conversation; showingProjectPicker = true }
+                .disabled(conversation.agentActivity == .replying)
+        }
         if conversation.kind != .group
             || conversation.canManageGroup(accountId: model.account?.accountId) {
             Button {

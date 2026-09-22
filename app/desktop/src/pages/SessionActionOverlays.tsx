@@ -1,3 +1,4 @@
+import { ChatProjectPicker } from '@/features/projects/ChatProjectPicker';
 import { useState } from 'react';
 import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, LoaderCircle, Mail, Pin, PinOff, Trash2 } from 'lucide-react';
 
@@ -15,6 +16,7 @@ export type SessionContextMenuTarget = {
   x: number;
   y: number;
   canRename?: boolean;
+  canChooseProject?: boolean;
   archived?: boolean;
   pinned?: boolean;
   muted?: boolean;
@@ -91,6 +93,7 @@ export function SessionContextMenu({
             Rename…
           </button>
         ) : null}
+        {target.canChooseProject ? <ChatProjectPicker key={target.sessionId} sessionId={target.sessionId} menuLabel /> : null}
         {!target.archived ? (
           <button
             type="button"

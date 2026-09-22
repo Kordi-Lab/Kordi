@@ -22,7 +22,7 @@ export type ChatSidebarSessionInput = {
 };
 
 export function estimatedChatSidebarRowSize(row?: ChatSidebarRow) {
-  return row?.kind === 'session' ? 46 : 64;
+  return row?.kind === 'session' ? 46 : row?.key.startsWith('project-group:') ? 32 : 64;
 }
 
 export function buildChatSidebarRows({
