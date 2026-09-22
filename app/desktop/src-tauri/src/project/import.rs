@@ -7,8 +7,8 @@ use std::{
 use tokio::process::Command;
 
 use super::{
-    default_new_project_parent, load_project_settings_for_root, register_project_folder,
-    resolve_explicit_project_folder, DesktopProjectSettings,
+    default_new_project_parent, load_project_settings_for_root, resolve_explicit_project_folder,
+    DesktopProjectSettings,
 };
 
 fn github_repository(raw: &str) -> Result<String, String> {
@@ -194,6 +194,9 @@ pub async fn desktop_project_clone_github(
     parent_dir: Option<String>,
 ) -> Result<DesktopProjectSettings, String> {
     let repository = github_repository(&repository)?;
+    // Account activation can change the process storage root while Git is running.
+    // Keep registration bound to the database that initiated this operation.
+    let database = project_registration_database();
     let parent = parent_dir
         .as_deref()
         .filter(|path| !path.trim().is_empty())
@@ -228,13 +231,58 @@ pub async fn desktop_project_clone_github(
     let root = std::fs::canonicalize(&destination)
         .map_err(|_| "Could not resolve the cloned project folder.".to_string())?;
     // Register without writing project settings into the user's checkout.
-    register_project_folder(&root, None)?;
+    register_cloned_project(&database, &root)?;
     Ok(load_project_settings_for_root(&root))
+}
+
+fn project_registration_database() -> PathBuf {
+    kordi_core::config::session_db_path(&kordi_core::settings::Settings::load_global().storage)
+}
+
+fn register_cloned_project(database: &Path, root: &Path) -> Result<(), String> {
+    let connection = kordi_session::store::open_db(database).map_err(|error| error.to_string())?;
+    kordi_session::store::upsert_project(
+        &connection,
+        &format!("project:{}", root.display()),
+        &root.display().to_string(),
+        None,
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn clone_registration_stays_with_the_initiating_account() {
+        let _guard = crate::test_support::lock_process_environment();
+        let previous = std::env::var_os("KORDI_STORAGE_ROOT");
+        let directory =
+            std::env::temp_dir().join(format!("kordi-clone-account-{}", uuid::Uuid::new_v4()));
+        std::env::set_var("KORDI_STORAGE_ROOT", directory.join("first"));
+        let initiating_database = project_registration_database();
+        std::env::set_var("KORDI_STORAGE_ROOT", directory.join("second"));
+        let other_database = project_registration_database();
+        let outcome = register_cloned_project(&initiating_database, &directory.join("repository"));
+        match previous {
+            Some(value) => std::env::set_var("KORDI_STORAGE_ROOT", value),
+            None => std::env::remove_var("KORDI_STORAGE_ROOT"),
+        }
+        outcome.unwrap();
+        assert_ne!(initiating_database, other_database);
+        let first = kordi_session::store::open_db(&initiating_database).unwrap();
+        let second = kordi_session::store::open_db(&other_database).unwrap();
+        assert_eq!(
+            kordi_session::store::list_projects(&first).unwrap().len(),
+            1
+        );
+        assert!(kordi_session::store::list_projects(&second)
+            .unwrap()
+            .is_empty());
+        drop(first);
+        drop(second);
+        std::fs::remove_dir_all(directory).unwrap();
+    }
     #[test]
     fn repository_input_rejects_other_hosts_credentials_options_and_traversal() {
         for input in [
