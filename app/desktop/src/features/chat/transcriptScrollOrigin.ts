@@ -1,6 +1,7 @@
 import type { Virtualizer } from '@tanstack/react-virtual';
 
 type TranscriptVirtualizer = Virtualizer<HTMLDivElement, HTMLElement>;
+export const TRANSCRIPT_SCROLL_SETTLE_MS = 250;
 
 /** Keep native wheel/momentum scrolling independent of above-viewport resizes. */
 export function createTranscriptScrollOrigin() {
@@ -23,13 +24,16 @@ export function createTranscriptScrollOrigin() {
       instance.options.paddingStart = 0;
       instance.scrollOffset = top;
       instance.options.onChange(instance, false);
-      viewport.scrollTo({ top, behavior: 'instant' });
+      // Replace any unfinished tail-navigation target as well as the DOM
+      // offset. Otherwise the virtualizer can reconcile that stale target on
+      // its next frame and pull a history reader back toward the latest row.
+      instance.scrollToOffset(top, { align: 'start', behavior: 'instant' });
     },
     wheel(instance: TranscriptVirtualizer) {
       current = instance;
       active = true;
       clearTimeout(timer);
-      timer = setTimeout(origin.settle, 250);
+      timer = setTimeout(origin.settle, TRANSCRIPT_SCROLL_SETTLE_MS);
     },
     scroll(instance: TranscriptVirtualizer) {
       if (!active) return;
@@ -42,7 +46,7 @@ export function createTranscriptScrollOrigin() {
         return;
       }
       clearTimeout(timer);
-      timer = setTimeout(origin.settle, 250);
+      timer = setTimeout(origin.settle, TRANSCRIPT_SCROLL_SETTLE_MS);
     },
     preserve(delta: number, instance: TranscriptVirtualizer) {
       if (!active) return false;

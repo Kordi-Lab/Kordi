@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { TRANSCRIPT_SCROLL_SETTLE_MS } from '../../src/features/chat/transcriptScrollOrigin';
 
 const image = '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="640"><rect width="480" height="640" fill="#537fab"/></svg>';
 
@@ -22,12 +23,17 @@ test('upward scrolling measures image and quote rows before displaying them', as
   await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
   await viewport.evaluate(element => { element.scrollTop = 14000; });
   await page.waitForTimeout(500);
-  await viewport.evaluate(element => {
+  await viewport.evaluate((element, settleMs) => {
     const gaps: number[] = [];
     const writes: number[] = [];
+    let lastWheelAt = -Infinity;
+    element.addEventListener('wheel', () => { lastWheelAt = performance.now(); }, { capture: true, passive: true });
     const scrollTo = element.scrollTo.bind(element);
     element.scrollTo = (options?: ScrollToOptions | number, y?: number) => {
-      writes.push(typeof options === 'number' ? y ?? 0 : options?.top ?? 0);
+      // Slow CI can pause between injected wheel events long enough for the
+      // expected idle rebase. Assert against actual gesture timing, not the
+      // nominal delay between test-driver commands.
+      if (performance.now() - lastWheelAt < settleMs) writes.push(typeof options === 'number' ? y ?? 0 : options?.top ?? 0);
       if (typeof options === 'number') scrollTo(options, y ?? 0);
       else scrollTo(options);
     };
@@ -44,7 +50,7 @@ test('upward scrolling measures image and quote rows before displaying them', as
       requestAnimationFrame(() => setTimeout(sample, 0));
     };
     sample();
-  });
+  }, TRANSCRIPT_SCROLL_SETTLE_MS);
   const box = (await viewport.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   for (let step = 0; step < 10; step += 1) {
