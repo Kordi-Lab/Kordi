@@ -204,7 +204,6 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   handleLogoutProvider: (providerId: string) => Promise<void>;
   themeMode: ThemeMode;
   setThemeMode: Dispatch<SetStateAction<ThemeMode>>;
-
   showRightDetailRail: boolean;
   isDetailPanelCollapsed: boolean;
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
@@ -223,6 +222,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   loadOlderCanonicalSessionMessages: (sessionId: string) => Promise<void>;
   onProjectTranscriptScroll: () => void;
   onChatTranscriptScroll: () => void;
+  onCompanionReadPresentationChange: (sessionId: string | null) => void;
   activeSourcePreview: EditFilePreview | null;
   setActiveSourcePreview: Dispatch<SetStateAction<EditFilePreview | null>>;
   activeArtifactId: string | null;
@@ -533,7 +533,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showChatDetailRail'
   | 'activeConv'
   | 'activeConversationUsesCollaboration'
-  | 'onChatTranscriptScroll'
+  | 'onChatTranscriptScroll' | 'onCompanionReadPresentationChange'
   | 'filteredChatSlashCommands'
   | 'chatMentionTargetsForText'
   | 'acceptChatSlashCommand' | 'acceptChatMentionTarget'

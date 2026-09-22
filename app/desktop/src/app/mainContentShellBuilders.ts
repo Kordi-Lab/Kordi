@@ -55,6 +55,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     canonicalHasOlderBySessionId: args.canonicalHasOlderBySessionId,
     onLoadOlderCanonicalSessionMessages: args.loadOlderCanonicalSessionMessages,
     onTranscriptScroll: args.onChatTranscriptScroll,
+    onCompanionReadPresentationChange: args.onCompanionReadPresentationChange,
     onOpenSource: (file) => {
       args.setActiveSourcePreview(file);
       args.setActiveDetailTab('artifacts');

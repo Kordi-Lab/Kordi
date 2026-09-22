@@ -295,6 +295,7 @@ export function useKordiAppShellComposition({
         loadOlderHistory,
       onProjectTranscriptScroll,
       onChatTranscriptScroll,
+      onCompanionReadPresentationChange: refs.setReadableCompanionSessionId,
       activeSourcePreview: ui.settingsUi.activeSourcePreview,
       setActiveSourcePreview: ui.settingsUi.setActiveSourcePreview,
       activeArtifactId: ui.settingsUi.activeArtifactId,

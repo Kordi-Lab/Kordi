@@ -500,7 +500,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
     setQueuedDesktopMessagesBySession,
     cachedChatSessionMessages, cachedProjectSessionMessages,
     cachedDesktopSessionSourceMessages, hydratedDesktopSessionIds,
-    localSessionUnreadCounts,
+    localSessionUnreadCounts, clearUnreadForSession,
     setLocalSessionUnreadCounts,
     incrementUnreadForSession,
     isDesktopSessionTranscriptCached,

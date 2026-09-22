@@ -261,6 +261,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         activeConv: args.activeConv,
         activeConversationUsesCollaboration: args.activeConversationUsesCollaboration,
         onChatTranscriptScroll: args.onChatTranscriptScroll,
+        onCompanionReadPresentationChange: args.onCompanionReadPresentationChange,
         filteredChatSlashCommands: args.filteredChatSlashCommands,
         chatMentionTargetsForText: args.chatMentionTargetsForText,
         acceptChatSlashCommand: args.acceptChatSlashCommand,

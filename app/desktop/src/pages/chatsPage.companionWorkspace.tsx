@@ -1,3 +1,4 @@
+import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentation';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useEffect, useRef, useState } from 'react';
 import { GripVertical, RefreshCw } from 'lucide-react';
@@ -73,6 +74,7 @@ type ChatCompanionWorkspaceProps = {
   >;
   transcript: Pick<
     ChatsPageTranscript,
+    | 'onCompanionReadPresentationChange'
     | 'canonicalHasOlderBySessionId'
     | 'onLoadOlderCanonicalSessionMessages'
     | 'queuedDesktopMessagesBySession'
@@ -98,6 +100,13 @@ export function ChatCompanionWorkspace({
   runtime,
 }: ChatCompanionWorkspaceProps) {
   const conversation = session.conversation;
+  const onTranscriptScroll = useCompanionReadPresentation({
+    sessionId: conversation?.agentSubsessionId ? null : conversation?.canonicalSessionId ?? conversation?.id ?? null,
+    isPresented: layoutModel.isVisible && destinations.value === 'messages'
+      && !session.transcript.isLoading && !session.transcript.loadError,
+    scrollRef: session.refs.transcriptScroll,
+    onChange: transcript.onCompanionReadPresentationChange,
+  });
   const [companionAttachments, setCompanionAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const companionAttachmentsRef = useRef<ChatAttachment[]>([]);
@@ -306,6 +315,7 @@ export function ChatCompanionWorkspace({
           sessionKey: conversation.id,
           messages: transcriptMessages,
           scrollRef: session.refs.transcriptScroll,
+          onTranscriptScroll,
           unreadCount: conversation.unread,
           scrollClassName:
             'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
