@@ -17,6 +17,7 @@ Run the desktop Vite development server using the repository's isolated developm
 - Import tests for validated repository inputs and retrying session activation without cloning twice.
 - Browser tests for grouping, moving sessions, local/GitHub import, keyboard use and both appearances.
 - Native tests for execution-directory persistence, empty project projection, paths with spaces and existing-directory protection.
+- iOS UI coverage opens the composer picker, moves a session, detaches it to Recents, and verifies collapse and expansion.
 
 ## iPhone and Mac
 

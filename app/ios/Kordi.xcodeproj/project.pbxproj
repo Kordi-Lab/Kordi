@@ -136,6 +136,7 @@
 		A88CA76CF666A1E80301894E /* ChatProjectTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58F22A6FF1DD97C440DBE41F /* ChatProjectTests.swift */; };
 		A90F6112B48BF0BCAF72886B /* GroupSpaceSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDB063759C8072686227B4C1 /* GroupSpaceSummary.swift */; };
 		ADAFE64FFE54941BDDDC6908 /* SessionRuntimeRouteStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C0162644ADAD950961A3EF /* SessionRuntimeRouteStoreTests.swift */; };
+		AEF12BB62E357DB67A5FB3DE /* ChatProjectUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B544A2A7286723AE54544B1 /* ChatProjectUITests.swift */; };
 		AF598700C5EE149CD1F16DD7 /* CameraImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7F1BB7067E03988558968A0 /* CameraImagePicker.swift */; };
 		B390B8EDCC28336BF19EDCFD /* SessionFilesSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B253DEC14935BAE03D80365F /* SessionFilesSheet.swift */; };
 		B41CEC7F2405B39CDF400491 /* MediaCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8BE8ED2C03AEBF0EAA5F045 /* MediaCacheTests.swift */; };
@@ -253,6 +254,7 @@
 		065C96F4684935A21E2C862E /* NetworkProxyPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProxyPolicyTests.swift; sourceTree = "<group>"; };
 		092A3B6DDEAE95871DABB253 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationSendMotionIntegrationTests.swift; sourceTree = "<group>"; };
+		0B544A2A7286723AE54544B1 /* ChatProjectUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatProjectUITests.swift; sourceTree = "<group>"; };
 		0B7E8E86F8830C031FE1EC87 /* GroupManagementSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupManagementSheet.swift; sourceTree = "<group>"; };
 		0DB3A982982A43712453EAFF /* BlobEmoji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlobEmoji.swift; sourceTree = "<group>"; };
 		0DE75382D6C8FA0FC7A711C7 /* ShareExtensionSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionSupport.swift; sourceTree = "<group>"; };
@@ -603,6 +605,7 @@
 		542B5E1E83E1BD88FFFB837C /* KordiDeletionUITests */ = {
 			isa = PBXGroup;
 			children = (
+				0B544A2A7286723AE54544B1 /* ChatProjectUITests.swift */,
 				95C1CA4FAB75E8423430A5D4 /* MessageDeletionUITests.swift */,
 				BAEE1601DBAF76F3A4F885A6 /* MessageForwardingUITests.swift */,
 				F93CA48DD086B4999869484F /* SubsessionConversationUITests.swift */,
@@ -1097,6 +1100,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AEF12BB62E357DB67A5FB3DE /* ChatProjectUITests.swift in Sources */,
 				CA7AAFD93DE8D988CBFCDD2E /* MessageDeletionUITests.swift in Sources */,
 				43FDCB7848B6423B72A2BFA3 /* MessageForwardingUITests.swift in Sources */,
 				FF7230221C6B44664FFCDA6F /* SubsessionConversationUITests.swift in Sources */,

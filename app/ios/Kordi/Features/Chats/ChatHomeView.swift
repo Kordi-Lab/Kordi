@@ -527,7 +527,7 @@ struct ChatHomeView: View {
                     .padding(.trailing, section.project == nil ? 0 : 44)
                     .font(.subheadline)
                     .foregroundStyle(section.project == nil ? .secondary : .primary)
-                    .frame(minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .padding(.horizontal, 16)
                     .contentShape(Rectangle())
                 }
@@ -543,7 +543,10 @@ struct ChatHomeView: View {
                                     openConversation(draft)
                                 } catch { model.projectError = error.localizedDescription }
                             }
-                        } label: { Image(systemName: "plus").font(.subheadline).frame(width: 44, height: 44) }
+                        } label: {
+                            Image(systemName: "plus").font(.subheadline)
+                                .frame(width: 44, height: 44).contentShape(Rectangle())
+                        }
                         .buttonStyle(.plain)
                         .accessibilityLabel("New session in \(project.name)")
                     }
