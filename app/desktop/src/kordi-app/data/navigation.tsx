@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
-import { Factory, MessageSquare, Users, NotebookPen } from 'lucide-react';
+import { MessageSquare, Users, NotebookPen } from 'lucide-react';
 
+import { FactoryRobotIcon } from '../components/FactoryRobotIcon';
 import type { NavId } from '../types';
 
 type NavItem = { id: NavId; label: string; icon: ComponentType<{ className?: string }> };
@@ -8,7 +9,7 @@ type NavItem = { id: NavId; label: string; icon: ComponentType<{ className?: str
 export const navItems: NavItem[] = [
   { id: 'chats', label: 'Chats', icon: MessageSquare },
   { id: 'contacts', label: 'Contacts', icon: Users },
-  { id: 'agents', label: 'Factory', icon: Factory },
+  { id: 'agents', label: 'Factory', icon: FactoryRobotIcon },
   { id: 'digest', label: 'Digest', icon: NotebookPen },
 ];
 
