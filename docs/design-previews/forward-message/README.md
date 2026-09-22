@@ -1,0 +1,13 @@
+# Forward message proposal
+
+Standalone, interactive design preview using synthetic conversations. No API calls, account data, or messaging side effects. Open `index.html` through a loopback static server; `states.html` shows interaction and recovery states.
+
+The proposal keeps Kordi's typography, blue action color, compact list rows, and single-destination forwarding. Search covers names, usernames, parent groups, sessions, and group members. Recent chats sort by last activity. Type filters narrow results without hiding the selected destination. Every row names the parent group or direct-chat username; duplicate session titles remain distinguishable. The source message includes its group and session path. The footer repeats the full destination before forwarding.
+
+Nothing is selected on open. Enter in search does not forward. Arrow keys navigate results; Enter or Space selects a row. Native dialog behavior contains keyboard focus, supports Escape, and returns focus to the opener. Comments remain editable across search and selection changes. Sending and success are simulated; query parameters expose loading, error, empty, and interaction states for review.
+
+This directory retains the approved standalone proposal. The implemented application dialog lives in `app/desktop/src/pages/MessageForwardDialog.tsx`, with destination data built in `app/desktop/src/features/chat/messageForwarding.ts`. The real component can be reviewed with synthetic data at `/tests/visual/messageForward.html` on the desktop Vite development server. Add `?theme=dark`, `?batch`, or `?error` to inspect those states. The component preview simulates transport; the app uses its existing forwarding transports.
+
+The implementation searches available conversations and accepted direct contacts, including contacts with no chat history. It uses real parent-group names, participant names, public Kordi IDs, and activity timestamps. Display copy follows the review: All, People, Groups, Agents; Direct message; no header subtitle or sort subtitle; a minimal success state. Sending uses stable per-message request IDs, waits for completion, and preserves completed batch progress across retries.
+
+Validation: browser checks covered parent-group search, no-match recovery, selection and comment persistence, Enter behavior in search, simulated forwarding, and error retry. Layout was inspected at 320, 375, 414, and 768 CSS pixels; the destination list shrinks to keep the footer available. Checked text color pairs exceed WCAG 4.5:1. JavaScript syntax and whitespace checks pass. This does not validate the production data or send path.

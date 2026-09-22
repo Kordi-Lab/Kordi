@@ -145,7 +145,8 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-long-message-actions` | Tall formatted message for menu scrolling and layout checks; combine with `--preview-data --preview-contact-chat` |
 | `--preview-formatted-message-actions` | Short formatted message for menu wrapping and return-position checks; combine with `--preview-data --preview-contact-chat` |
 | `--preview-tool-failure` | Completed My Kordi turn with one diagnostic tool failure |
-| `--preview-forward-message` | Forward-message destination picker |
+| `--preview-forward-message` | Searchable forward-message picker; combine with `--preview-data --preview-contact-chat` |
+| `--preview-forward-batch` | Add to the forward-message preview to select four sample text messages |
 | `--preview-message-details` | Message delivery/read details |
 | `--preview-session-detail` | Info, Artifacts, and Tasks session sheet |
 | `--preview-agent-model` | Agent model selection |

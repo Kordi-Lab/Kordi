@@ -254,6 +254,8 @@ struct ConversationView: View {
     @State private var highlightedMessageID: String?
     @State private var selectedMessageIDs = Set<String>()
     @State private var forwardRequest: MessageForwardRequest?
+    @State private var completedForwardDestination: ConversationSummary?
+    @State private var didPresentForwardPreview = false
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
     @State private var unpinTarget: PinnedMessageItem?
@@ -1176,14 +1178,7 @@ struct ConversationView: View {
                     showAgentModel = true
                 }
             }
-            if ProcessInfo.processInfo.arguments.contains("--preview-forward-message"),
-               forwardRequest == nil,
-               let message = messages.last {
-                forwardRequest = MessageForwardRequest(
-                    sourceConversation: conversation,
-                    messages: [message]
-                )
-            }
+            presentForwardPreviewIfNeeded()
             if ProcessInfo.processInfo.arguments.contains("--preview-message-details"),
                detailsMessage == nil,
                let message = messages.last(where: { ($0.readByCount ?? 0) > 0 }) {
@@ -1342,10 +1337,10 @@ struct ConversationView: View {
         .navigationDestination(item: $selectedBackgroundSession) { session in
             AgentSubsessionView(sessionId: session.sessionId)
         }
-        .sheet(item: $forwardRequest) { request in
+        .sheet(item: $forwardRequest, onDismiss: finishForwardDismissal) { request in
             ForwardMessageSheet(request: request) { destination in
                 selectedMessageIDs.removeAll()
-                forwardedDestination = destination
+                completedForwardDestination = destination
             }
         }
         .sheet(item: $detailsMessage) { message in
@@ -1401,6 +1396,23 @@ struct ConversationView: View {
         .navigationDestination(item: $forwardedDestination) { destination in
             ConversationView(conversation: destination)
         }
+    }
+
+    private func presentForwardPreviewIfNeeded() {
+        guard model.isPreviewMode, ProcessInfo.processInfo.arguments.contains("--preview-forward-message"),
+              conversation.id == "person:acct_maya", !didPresentForwardPreview, forwardRequest == nil else { return }
+        let textMessages = messages.filter { !$0.text.isEmpty && $0.attachments.isEmpty && $0.voiceMessage == nil }
+        guard let message = textMessages.last else { return }
+        didPresentForwardPreview = true
+        let sources = ProcessInfo.processInfo.arguments.contains("--preview-forward-batch")
+            ? Array(textMessages.suffix(4)) : [message]
+        forwardRequest = MessageForwardRequest(sourceConversation: conversation, messages: sources)
+    }
+
+    private func finishForwardDismissal() {
+        guard let destination = completedForwardDestination else { return }
+        completedForwardDestination = nil
+        forwardedDestination = destination
     }
 
     @ViewBuilder

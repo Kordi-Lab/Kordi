@@ -1,12 +1,9 @@
 import { createElement, useCallback, useState } from 'react';
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { cloudGroupMessageSessionId, cloudGroupTargetAccountIds } from '@/features/cloud/cloudGroupMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
-import type { CloudAccount } from '@/features/cloud/authClient';
-import type { UseCloudCollaborationStateResult } from '@/features/cloud/useCloudCollaborationState';
 import {
   collaborationGroupSessionParticipants,
   collaborationGroupSessionSendTargets,
@@ -16,7 +13,6 @@ import {
 import {
   forwardMessageSourceFromMessage,
   messageActionSourceFromMessage,
-  type ForwardMessageSource,
 } from '@/features/chat/messageActionMetadata';
 import { threadRootSource } from '@/features/chat/messageThreads';
 import {
@@ -24,6 +20,8 @@ import {
 } from '@/features/chat/messageSelection';
 import {
   buildForwardDestinations,
+  forwardContactConversationId,
+  forwardDestinationPath,
   createForwardedMessageDrafts,
   orderedForwardSourcesForMessageIds,
   revealForwardedMessageInDestination,
@@ -33,54 +31,22 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions'
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { navigateToTranscriptMessageOrScrollBottom, scrollTranscriptToBottom } from '@/features/chat/transcriptNavigation';
 import type {
-  CanonicalSessionState,
-  ComposerQuoteState,
-  Conversation,
-  DesktopCollaborationState,
+  Contact,
   Message,
 } from '@/kordi-app/types';
-import { appendCanonicalMessage } from '@/lib/desktop';
+import { appendCanonicalMessageFast } from '@/lib/desktop';
+import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { useMessageSelectionActions } from './useMessageSelectionActions';
 import { useKordiMessageMutations } from './useKordiMessageMutations';
 
-type MessageActionCloudTransport = Pick<
-  UseCloudCollaborationStateResult,
-  | 'prepareCloudForwardAttachments'
-  | 'sendCloudCollaborationMessage'
-  | 'sendCloudGroupControl'
-  | 'setCloudMessageReaction'
-  | 'editCloudMessage'
-  | 'deleteCloudMessage'
->;
+import type { ForwardBatchProgress, ForwardDialogState, UseKordiMessageActionsArgs } from './useKordiMessageActions.types';
 
-type UseKordiMessageActionsArgs = {
-  activeConversation: Conversation;
-  conversations: Conversation[];
-  draftSessionId: string;
-  isNativeShell: boolean;
-  transcriptScrollRef: MutableRefObject<HTMLDivElement | null>;
-  setActiveConversationId: (conversationId: string) => void;
-  setDesktopChatError: (message: string | null) => void;
-  setChatQuoteBySessionId: Dispatch<
-    SetStateAction<Record<string, ComposerQuoteState | null>>
-  >;
-  canonicalState: CanonicalSessionState | null;
-  setCanonicalState: Dispatch<
-    SetStateAction<CanonicalSessionState | null>
-  >;
-  account: CloudAccount | null;
-  collaborationState: DesktopCollaborationState | null;
-  cloudTransport: MessageActionCloudTransport;
-};
-
-type ForwardDialogState = {
-  sources: ForwardMessageSource[];
-  destinations: ForwardDestination[];
-};
+const EMPTY_CONTACTS: Contact[] = [];
 
 export function useKordiMessageActions({
   activeConversation,
   conversations,
+  contacts = EMPTY_CONTACTS,
   draftSessionId,
   isNativeShell,
   transcriptScrollRef,
@@ -95,6 +61,7 @@ export function useKordiMessageActions({
 }: UseKordiMessageActionsArgs) {
   const [forwardDialog, setForwardDialog] =
     useState<ForwardDialogState | null>(null);
+  const [forwardProgress] = useState(() => new WeakMap<ForwardDialogState, ForwardBatchProgress>());
   const {
     prepareCloudForwardAttachments,
     sendCloudCollaborationMessage,
@@ -169,10 +136,11 @@ export function useKordiMessageActions({
     const destinations = buildForwardDestinations(
       conversations,
       LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+      contacts,
     );
-    if (!destinations.length) return;
-    setForwardDialog({ sources: [source], destinations });
-  }, [conversations, sourceForSelectableMessage]);
+    const origin = destinations.find((destination) => destination.conversationId === activeConversation.id);
+    setForwardDialog({ sources: [source], destinations, sourceLabel: origin ? forwardDestinationPath(origin) : activeConversation.name });
+  }, [activeConversation.id, activeConversation.name, contacts, conversations, sourceForSelectableMessage]);
 
   const onReactMessage = useCallback(async (message: Message, reaction: string) => {
     const conversationId = message.reactionConversationId?.trim();
@@ -243,10 +211,11 @@ export function useKordiMessageActions({
     const destinations = buildForwardDestinations(
       conversations,
       LOCAL_DRAFT_CHAT_CONVERSATION_ID,
+      contacts,
     );
-    if (!destinations.length) return;
-    setForwardDialog({ sources, destinations });
-  }, [conversations, orderedSelectedMessageSources]);
+    const origin = destinations.find((destination) => destination.conversationId === activeConversation.id);
+    setForwardDialog({ sources, destinations, sourceLabel: origin ? forwardDestinationPath(origin) : activeConversation.name });
+  }, [activeConversation.id, activeConversation.name, contacts, conversations, orderedSelectedMessageSources]);
 
   const revealForward = useCallback((
     destinationConversationId: string,
@@ -266,35 +235,45 @@ export function useKordiMessageActions({
     });
   }, [setActiveConversationId, transcriptScrollRef]);
 
-  const confirmForwardMessage = useCallback((
+  const confirmForwardMessage = useCallback(async (
     destination: ForwardDestination,
     caption: string,
+    onProgress?: (completed: number) => void,
   ) => {
     const senderIdentityId =
       canonicalState?.profile.humanIdentityId?.trim();
     const sources = forwardDialog?.sources ?? [];
-    if (!senderIdentityId || sources.length === 0) return;
+    if (!forwardDialog || sources.length === 0) throw new Error('The selected messages are no longer available.');
     const destinationConversation = conversations.find((conversation) => (
       conversation.id === destination.conversationId
       || conversation.id === destination.id
       || conversation.canonicalSessionId === destination.id
     )) ?? null;
-    if (!destinationConversation) {
-      setDesktopChatError('Forward destination is no longer available.');
-      return;
+    const contactAvailable = contacts.some((contact) => contact.id === destination.contactId && forwardContactConversationId(contact) === destination.conversationId);
+    if (!destinationConversation && !contactAvailable) {
+      throw new Error('This destination is no longer available. Close this dialog and choose another chat.');
     }
     const drafts = createForwardedMessageDrafts({ sources, caption });
-    const now = Date.now();
-    setForwardDialog(null);
-    onCancelMessageSelection();
+    let progress = forwardProgress.get(forwardDialog);
+    if (!progress) {
+      progress = { destinationId: destination.id, requestIds: sources.map(() => crypto.randomUUID()), now: Date.now(), nextIndex: 0, appended: new Set(), lastMessageId: null };
+      forwardProgress.set(forwardDialog, progress);
+    }
+    if (progress.destinationId !== destination.id) throw new Error('Retry with the original destination.');
+    const completeMessage = (index: number) => {
+      progress.nextIndex = index + 1;
+      onProgress?.(progress.nextIndex);
+    };
+    onProgress?.(progress.nextIndex);
+    const now = progress.now;
     const directCloudConversationId =
       isCloudCollaborationConversationId(destination.conversationId)
         ? destination.conversationId
         : null;
     if (directCloudConversationId) {
-      setActiveConversationId(directCloudConversationId);
-      void (async () => {
-        for (const draft of drafts) {
+      try {
+        for (const [index, draft] of drafts.entries()) {
+          if (index < progress.nextIndex) continue;
           const voiceAttachment = draft.voiceMessage ? [{
             kind: 'file' as const,
             name: 'Voice message.m4a',
@@ -315,59 +294,66 @@ export function useKordiMessageActions({
             directCloudConversationId,
             body,
             attachments,
-            draft.voiceMessage ? {
-              messageKind: 'voice',
-              voiceMessage: {
-                mimeType: draft.voiceMessage.mimeType,
-                durationMs: draft.voiceMessage.durationMs,
-                waveformSamples: draft.voiceMessage.waveformSamples,
-                transcript: draft.voiceMessage.transcript,
-              },
-            } : {},
+            {
+              clientMessageId: progress.requestIds[index],
+              ...(draft.voiceMessage ? {
+                messageKind: 'voice',
+                voiceMessage: {
+                  mimeType: draft.voiceMessage.mimeType,
+                  durationMs: draft.voiceMessage.durationMs,
+                  waveformSamples: draft.voiceMessage.waveformSamples,
+                  transcript: draft.voiceMessage.transcript,
+                },
+              } : {}),
+            },
           );
+          completeMessage(index);
         }
+        onCancelMessageSelection();
         revealForward(directCloudConversationId);
-      })().catch((error: unknown) => {
-        setDesktopChatError(
-          error instanceof Error
-            ? error.message
-            : 'Unable to forward messages',
-        );
-      });
+      } catch {
+        throw new Error('Couldn’t finish forwarding. Try again to continue with the remaining messages.');
+      }
       return;
     }
-    void (async () => {
-      let lastForwardMessageId: string | null = null;
+    if (!senderIdentityId || !destinationConversation) throw new Error('Your account is not ready to forward. Close this dialog and try again.');
+    try {
+      let lastForwardMessageId: string | null = progress.lastMessageId;
       for (const [index, draft] of drafts.entries()) {
+        if (index < progress.nextIndex) continue;
         const source = sources[index];
         if (!source) continue;
         const forwardMessageId =
           `msg:forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`;
         lastForwardMessageId = forwardMessageId;
-        const nextState = await appendCanonicalMessage({
-          id: forwardMessageId,
-          sessionId: destination.id,
-          senderIdentityId,
-          senderRole: 'user',
-          messageKind: draft.voiceMessage ? 'voice' : 'text',
-          contentText: draft.text,
-          content: {
-            ...(draft.attachments.length > 0
-              ? { attachments: draft.attachments }
-              : {}),
-            ...(draft.voiceMessage ? { voiceMessage: draft.voiceMessage } : {}),
-            forwardedFrom: draft.forwardedFrom,
-            messageAction: draft.messageAction,
-          },
-          createdAtMs: now + index,
-          parentMessageId: null,
-          status: 'sent',
-          sourceTransport: 'desktop-forward',
-          sourceEventId:
-            `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`,
-        });
-        setCanonicalState(nextState);
-        if (!account) continue;
+        progress.lastMessageId = forwardMessageId;
+        if (!progress.appended.has(forwardMessageId)) {
+          const row = await appendCanonicalMessageFast({
+            id: forwardMessageId,
+            sessionId: destination.id,
+            senderIdentityId,
+            senderRole: 'user',
+            messageKind: draft.voiceMessage ? 'voice' : 'text',
+            contentText: draft.text,
+            content: {
+              ...(draft.attachments.length > 0
+                ? { attachments: draft.attachments }
+                : {}),
+              ...(draft.voiceMessage ? { voiceMessage: draft.voiceMessage } : {}),
+              forwardedFrom: draft.forwardedFrom,
+              messageAction: draft.messageAction,
+            },
+            createdAtMs: now + index,
+            parentMessageId: null,
+            status: 'sent',
+            sourceTransport: 'desktop-forward',
+            sourceEventId:
+              `desktop-forward:${destination.id}:${source.sourceMessageId}:${now}:${index}`,
+          });
+          setCanonicalState((current) => mergeCanonicalMessageRow(current, row));
+          progress.appended.add(forwardMessageId);
+        }
+        if (!account) { completeMessage(index); continue; }
         const groupScope = {
           canonicalSessionId: destination.id,
           participantSpaceId: destinationConversation.participantSpaceId,
@@ -375,7 +361,7 @@ export function useKordiMessageActions({
           canonicalParticipants:
             destinationConversation.canonicalParticipants,
         };
-        if (!isCollaborationGroupSession(groupScope)) continue;
+        if (!isCollaborationGroupSession(groupScope)) { completeMessage(index); continue; }
         const activeCollaborationHost =
           collaborationState?.hosts.find((host) => (
             host.id === collaborationState.activeHostId
@@ -397,7 +383,7 @@ export function useKordiMessageActions({
           selfCollaborationNodeIds,
         );
         const targetAccountIds = cloudGroupTargetAccountIds(targets);
-        if (targetAccountIds.length === 0) continue;
+        if (targetAccountIds.length === 0) { completeMessage(index); continue; }
         const groupSpaceId =
           collaborationGroupSessionSpaceId(groupScope);
         const attachments = await prepareCloudForwardAttachments(
@@ -412,6 +398,8 @@ export function useKordiMessageActions({
         await sendCloudGroupControl({
           targetAccountIds,
           kind: 'group-message',
+          completion: 'acknowledged',
+          retryFailed: true,
           groupId: cloudGroupMessageSessionId({
             activeConvCanonicalSessionId: destination.id,
             activeGroupSessionSpaceId: groupSpaceId,
@@ -438,35 +426,34 @@ export function useKordiMessageActions({
           },
           attachments,
         });
+        completeMessage(index);
       }
+      onCancelMessageSelection();
       revealForward(destination.conversationId, lastForwardMessageId);
-    })().catch((error: unknown) => {
-      setDesktopChatError(
-        error instanceof Error
-          ? error.message
-          : 'Unable to forward messages',
-      );
-    });
+    } catch {
+      throw new Error('Couldn’t finish forwarding. Try again to continue with the remaining messages.');
+    }
   }, [
     account,
     canonicalState?.profile.humanIdentityId,
     collaborationState,
     conversations,
-    forwardDialog?.sources,
+    contacts,
+    forwardDialog,
+    forwardProgress,
     onCancelMessageSelection,
     prepareCloudForwardAttachments,
     revealForward,
     sendCloudCollaborationMessage,
     sendCloudGroupControl,
-    setActiveConversationId,
     setCanonicalState,
-    setDesktopChatError,
   ]);
 
   const messageForwardDialog = forwardDialog
     ? createElement(MessageForwardDialog, {
         sources: forwardDialog.sources,
         destinations: forwardDialog.destinations,
+        sourceLabel: forwardDialog.sourceLabel,
         onClose: () => setForwardDialog(null),
         onForward: confirmForwardMessage,
       })
