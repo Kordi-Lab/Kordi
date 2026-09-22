@@ -21,8 +21,16 @@ export function createPinActivity(id: string, label: string, occurredAt: string 
 
 // Preserve the existing transcript order (including request/reply grouping).
 // Only the notice is inserted, without changing real message identities or indices.
-export function insertPinActivities(entries: readonly MessageTimelineEntry[], activities: readonly PinActivity[] = []): PinTimelineEntry[] {
-  const unique = new Map(activities.filter((event) => Number.isFinite(event.timestampMs)).map((event) => [event.id, event]));
+export function insertPinActivities(entries: readonly MessageTimelineEntry[], activities: readonly PinActivity[] = [], hasOlderMessages = false): PinTimelineEntry[] {
+  // The activity feed can include events whose surrounding messages have not
+  // loaded yet. Showing those events early creates holes inside the visible
+  // timeline that the next history page fills, displacing messages below them.
+  const oldestLoadedTimestamp = hasOlderMessages
+    ? entries.reduce((oldest, { message }) => Number.isFinite(message.timestampMs)
+      ? Math.min(oldest, message.timestampMs!) : oldest, Infinity)
+    : -Infinity;
+  const unique = new Map(activities.filter((event) => Number.isFinite(event.timestampMs)
+    && event.timestampMs >= oldestLoadedTimestamp).map((event) => [event.id, event]));
   const sorted = [...unique.values()].sort((a, b) => a.timestampMs - b.timestampMs || (a.sequence ?? 0) - (b.sequence ?? 0) || a.id.localeCompare(b.id));
   const rows: PinTimelineEntry[] = [];
   let index = 0;

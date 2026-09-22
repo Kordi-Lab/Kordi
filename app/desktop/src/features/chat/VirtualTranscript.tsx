@@ -1,5 +1,5 @@
-import { useTranscriptViewportAnchor } from './useTranscriptViewportAnchor';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { useTranscriptViewportAnchor } from './useTranscriptViewportAnchor';
 import {
   useCallback,
   useEffect,
@@ -12,14 +12,13 @@ import {
 } from 'react';
 import { TranscriptWindowRows } from './TranscriptItemContent';
 import { createTranscriptContentMeasure } from './transcriptContentMeasure';
+import { useTranscriptVirtualizerOptions, useMeasureTranscriptRows } from './useTranscriptVirtualizer';
 import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
 import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   shouldPrefetchTranscriptHistory,
-  TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
-  TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
 import {
   useVirtualTranscriptNavigation,
@@ -99,12 +98,6 @@ export function VirtualTranscript<Item>({
     if (scrollRef) scrollRef.current = node;
   }, [scrollRef]);
 
-  const itemKeyAt = useCallback((index: number) => {
-    const item = items[index];
-    const itemKey = item === undefined ? `missing:${index}` : getItemKey(item, index);
-    return `${sessionKey.length}:${sessionKey}:${typeof itemKey}:${String(itemKey)}`;
-  }, [getItemKey, items, sessionKey]);
-
   const contentMeasureRef = useRef<ReturnType<typeof createTranscriptContentMeasure> | null>(null);
   contentMeasureRef.current ??= createTranscriptContentMeasure(() => (
     !mountedRef.current || tailAlignmentActiveRef.current || viewportWasAtTailRef.current
@@ -113,36 +106,26 @@ export function VirtualTranscript<Item>({
 
   const passiveViewport = useTranscriptViewportAnchor({ sessionKey, updateKey: passiveUpdateKey,
     contentKey: `${messageContentKey ?? ''}|${String(tailKey ?? '')}`, viewportRef: internalScrollRef });
-  const virtualizer = useVirtualizer({
-    measureElement: contentMeasureRef.current,
-    count: items.length,
-    getScrollElement: () => internalScrollRef.current,
-    estimateSize: (index) => {
-      const item = items[index];
-      return item === undefined
-        ? TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT
-        : estimateSize?.(item, index) ?? TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT;
-    },
-    getItemKey: itemKeyAt,
-    overscan: TRANSCRIPT_WINDOW_OVERSCAN,
-    gap,
-    anchorTo: passiveViewport.preserving || stableDisclosureActive || (animateTailResize && isAtTail) ? 'start' : 'end',
-    useFlushSync: false,
-    directDomUpdates: true,
-    directDomUpdatesMode: 'transform',
+  const { options: virtualizerOptions, scrollOrigin } = useTranscriptVirtualizerOptions({
+    items, sessionKey, getItemKey, estimateSize, scrollClassName, scrollStyle,
+    animateTailResize, gap, preserving: passiveViewport.preserving, stableDisclosureActive, isAtTail,
+    internalScrollRef, sizeContainerRef, measureElement: contentMeasureRef.current,
   });
+  const virtualizer = useVirtualizer(virtualizerOptions);
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = passiveViewport.preserving || stableDisclosureActive
     ? preserveMeasuredDisclosurePosition
     : animateTailResize && isAtTail ? () => false : (virtualizer.scrollRect?.height ?? 0) > 0
       ? (item, delta, instance) => preserveMeasuredTranscriptRow(
           item, delta, instance, tailAlignmentActiveRef, tailAlignmentTargetRef,
-        )
+        ) && !scrollOrigin.preserve(delta, instance)
       : undefined;
+
+  useMeasureTranscriptRows(virtualizer, sizeContainerRef, viewportWasAtTailRef, tailAlignmentActiveRef);
 
   const pagingEnabled = hasOlder && Boolean(onLoadOlder);
   const olderLoadScopeRef = useRef({ sessionKey, pagingEnabled });
   const committedOlderLoadScopeRef = useRef({ sessionKey, pagingEnabled });
-  olderLoadScopeRef.current = { sessionKey, pagingEnabled };
+  useLayoutEffect(() => { olderLoadScopeRef.current = { sessionKey, pagingEnabled }; }, [sessionKey, pagingEnabled]);
 
   const oldestItemKey = items.length > 0 ? String(getItemKey(items[0]!, 0)) : 'empty';
   const newestItemKey = items.length > 0 ? String(getItemKey(items[items.length - 1]!, items.length - 1)) : 'empty';
@@ -256,6 +239,7 @@ export function VirtualTranscript<Item>({
 
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     if (alignedSessionRef.current?.sessionKey !== sessionKey) return;
+    scrollOrigin.scroll(virtualizer);
     const element = event.currentTarget;
     const distanceFromTail = transcriptLayoutMaxScrollTop(element) - element.scrollTop;
     const isAtTail = distanceFromTail <= Math.max(4, gap);
@@ -273,15 +257,17 @@ export function VirtualTranscript<Item>({
     onScroll?.(event);
     if (isAtTail || tailAlignmentActiveRef.current || !shouldPrefetchTranscriptHistory(element.scrollTop, element.clientHeight)) return;
     void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
-  }, [cancelTailAlignment, gap, items.length, oldestItemKey, onScroll, requestOlder, sessionKey]);
+  }, [cancelTailAlignment, gap, items.length, oldestItemKey, onScroll, requestOlder, scrollOrigin, sessionKey, virtualizer]);
 
   const handleWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
     handleUserWheel(event);
+    if (event.deltaY) scrollOrigin.wheel(virtualizer);
     const element = event.currentTarget;
     if (event.deltaY < 0 && shouldPrefetchTranscriptHistory(element.scrollTop, element.clientHeight)) void requestOlder(`scroll:${sessionKey}:${items.length}:${oldestItemKey}`);
-  }, [handleUserWheel, items.length, oldestItemKey, requestOlder, sessionKey]);
+  }, [handleUserWheel, items.length, oldestItemKey, requestOlder, scrollOrigin, sessionKey, virtualizer]);
 
   const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    scrollOrigin.settle();
     const target = event.target;
     if (!(target instanceof Element)) return;
     const control = target.closest<HTMLElement>('[data-transcript-stable-disclosure="true"]');
@@ -358,7 +344,7 @@ export function VirtualTranscript<Item>({
       stableDisclosureResizeObserverRef.current = resizeObserver;
     }
     scheduleStableDisclosureRelease(anchor);
-  }, [cancelStableDisclosureRelease, cancelTailAlignment, disconnectStableDisclosureResizeObserver, scheduleStableDisclosureRelease, sessionKey]);
+  }, [cancelStableDisclosureRelease, cancelTailAlignment, disconnectStableDisclosureResizeObserver, scheduleStableDisclosureRelease, scrollOrigin, sessionKey]);
 
   useLayoutEffect(() => {
     const anchor = stableDisclosureAnchorRef.current;
@@ -464,12 +450,13 @@ export function VirtualTranscript<Item>({
   }, [passiveViewport, animateLatestAppend, animateTailResize, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   const scrollToLatest = useCallback(() => {
+    scrollOrigin.settle();
     passiveViewport.release();
     viewportWasAtTailRef.current = true;
     setIsAtTail(true);
     if (items.length > 0) virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
     scheduleTailAlignment();
-  }, [passiveViewport, items.length, scheduleTailAlignment, virtualizer]);
+  }, [passiveViewport, items.length, scheduleTailAlignment, scrollOrigin, virtualizer]);
 
   useEffect(() => {
     const element = internalScrollRef.current;
@@ -492,9 +479,10 @@ export function VirtualTranscript<Item>({
     virtualizer,
   });
   const scrollToNavigationIndex = useCallback((index: number) => {
+    scrollOrigin.settle();
     passiveViewport.release();
     virtualizer.scrollToIndex(index, { align: 'center' });
-  }, [passiveViewport, virtualizer]);
+  }, [passiveViewport, scrollOrigin, virtualizer]);
   const {
     navigationTargetIndex,
     pendingNavigationRequest,

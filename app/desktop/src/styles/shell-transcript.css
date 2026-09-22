@@ -1,5 +1,8 @@
 [data-virtual-transcript-scroll] {
   outline: none;
+  /* VirtualTranscript owns row-size and prepend compensation. Native anchoring
+     would move scrollTop first and make the virtualizer compensate twice. */
+  overflow-anchor: none;
 }
 
 [data-virtual-transcript-scroll][data-transcript-keyboard-focus='true']:focus {

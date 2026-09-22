@@ -64,6 +64,7 @@
         "app/desktop/vite.trajectory.config.js",
         "app/desktop/playwright.production.config.ts",
         "app/desktop/playwright.trajectory.config.ts",
+        "app/desktop/playwright.history.config.ts",
         "app/desktop/package.json",
         "shared/blob-emoji/**",
         "shared/noto-emoji/**",
@@ -74,7 +75,7 @@
       "always": false,
       "serial": false,
       "timeoutMinutes": 30,
-      "outputs": ["production entrypoint checks", "transcript trajectory checks"]
+      "outputs": ["production entrypoint checks", "transcript trajectory checks", "Chromium and WebKit transcript history checks"]
     },
     {
       "id": "server",

@@ -3,9 +3,8 @@ import { attachmentImageDisplaySize, attachmentVideoDisplaySize, isAnimatedGifAt
 
 // Initial estimates only. The virtualizer retains actual measurements by
 // stable message key and corrects geometry without moving the reading anchor.
-// Accuracy still matters: every pixel an estimate misses is a scroll correction
-// applied while the reader is moving, which shows up as vertical jitter. Model
-// the rendered bubble instead of a single generic row.
+// Better estimates reduce measurement corrections, but reading stability must
+// not depend on exact estimates for every Markdown or media shape.
 
 /** Body text line height of a rendered message bubble. */
 const MESSAGE_LINE_HEIGHT = 21;

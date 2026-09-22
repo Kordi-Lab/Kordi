@@ -54,17 +54,14 @@ function estimate(row: Row) {
 function SessionChange() {
   const [session, setSession] = useState('a');
   const [rows, setRows] = useState(() => buildRows(100, 120, 'a'));
-  const [cold, setCold] = useState(false);
   const enter = (key: string) => {
     setSession(key);
-    setCold(false);
     setRows(buildRows(100, 120, key));
   };
   const enterCold = (key: string) => {
     setSession(key);
-    setCold(true);
     setRows([]);
-    setTimeout(() => { setRows(buildRows(100, 120, key)); setCold(false); }, 120);
+    setTimeout(() => { setRows(buildRows(100, 120, key)); }, 120);
   };
   const prepend = () => setRows(current => [
     ...buildRows(100 - 60, 60, session),

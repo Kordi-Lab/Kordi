@@ -40,7 +40,7 @@ const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/me
 const appModelSource = readKordiAppModelImplementationSource;
 const collaborationNavigationActionsSource = () => readFileSync(new URL('../src/app/useKordiCollaborationNavigationActions.ts', import.meta.url), 'utf8');
 const queuedMessageActionsSource = () => readFileSync(new URL('../src/app/useKordiQueuedMessageActions.ts', import.meta.url), 'utf8');
-const virtualTranscriptSource = () => ['VirtualTranscript.tsx', 'TranscriptItemContent.tsx'].map(file => readFileSync(new URL(`../src/features/chat/${file}`, import.meta.url), 'utf8')).join('\n');
+const virtualTranscriptSource = () => ['VirtualTranscript.tsx', 'useTranscriptVirtualizer.ts', 'TranscriptItemContent.tsx'].map(file => readFileSync(new URL(`../src/features/chat/${file}`, import.meta.url), 'utf8')).join('\n');
 const virtualTranscriptNavigationSource = () => readFileSync(new URL('../src/features/chat/useVirtualTranscriptNavigation.ts', import.meta.url), 'utf8');
 
 function blockBetween(source: string, startNeedle: string, endNeedle: string): string {
@@ -262,7 +262,7 @@ test('chat transcripts use measured virtualization instead of manual spacer wind
   const virtual = virtualTranscriptSource();
 
   assert.match(pane, /<VirtualTranscript/, 'main and side transcripts should render through the measured virtualizer');
-  assert.match(virtual, /useVirtualizer\(\{/, 'the shared transcript should use TanStack virtualization');
+  assert.match(virtual, /useVirtualizer\(/, 'the shared transcript should use TanStack virtualization');
   assert.match(virtual, /ref=\{measureElement\}/, 'variable-height rows should be measured');
   assert.match(virtual, /overscan: TRANSCRIPT_WINDOW_OVERSCAN/, 'the mounted range should use bounded overscan');
   assert.doesNotMatch(pane, /data-transcript-window-spacer/, 'manual spacer nodes should be removed');

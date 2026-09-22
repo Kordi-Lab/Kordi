@@ -189,7 +189,7 @@ export function useChatTranscriptViewport({
     () => collectConversationImageAttachments(transcriptMessages),
     [transcriptMessages],
   );
-  const timelineEntries = useMemo(() => insertPinActivities(transcriptEntries, pinActivities), [transcriptEntries, pinActivities]);
+  const timelineEntries = useMemo(() => insertPinActivities(transcriptEntries, pinActivities, hasOlderMessages), [transcriptEntries, pinActivities, hasOlderMessages]);
   const pinBoundaries = useMemo(() => {
     const before = new Set<number>();
     const after = new Set<number>();
