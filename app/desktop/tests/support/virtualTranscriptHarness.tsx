@@ -141,6 +141,7 @@ export function rows(prefix: string, start: number, count: number, height = 50):
 }
 
 export function virtualRowStart(node: HTMLElement) {
+  if (node.style.top) return Number.parseFloat(node.style.top);
   const transform = node.style.transform;
   return Number.parseFloat(
     transform.match(/translate(?:3d|Y)\([^,]*,?\s*([-\d.]+)px/)?.[1] ?? '0',

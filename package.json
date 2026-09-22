@@ -50,7 +50,7 @@
     "check:rust:deps": "node scripts/check-desktop-dependency-surface.mjs",
     "check:rust:test": "pnpm check:rust:deps && pnpm check:rust:test:core && pnpm check:rust:test:desktop",
     "check:visual": "pnpm --dir app/desktop test:visual --project chromium",
-    "check:browser": "pnpm --dir app/desktop exec playwright test -c playwright.production.config.ts --project chromium && pnpm --dir app/desktop exec playwright test -c playwright.trajectory.config.ts --project chromium",
+    "check:browser": "pnpm --dir app/desktop exec playwright test -c playwright.production.config.ts --project chromium && pnpm --dir app/desktop exec playwright test -c playwright.trajectory.config.ts --project chromium && pnpm --dir app/desktop exec playwright test -c playwright.history.config.ts",
     "check:server": "pnpm check:rust:fmt && cargo clippy --workspace --exclude kordi-desktop --all-targets -- -D warnings && cargo test -p kordi-session && cargo test -p kordi-provider --locked && cargo test -p kordi-tools read::tests --locked && cargo test -p kordi-cloud-agent-runner --locked -- --test-threads=1 && cargo test -p kordi-cli --lib && cargo test -p kordi-cli desktop_runtime --no-default-features && cargo test -p kordi-cloud-server",
     "check:migrations": "bash scripts/test-cloud-migrations.sh",
     "check:desktop": "bash scripts/prepare-tauri-sidecar-placeholders.sh && node scripts/check-desktop-dependency-surface.mjs && cargo clippy -p kordi-desktop --all-targets -- -D warnings && cargo test -p kordi-desktop --no-default-features",

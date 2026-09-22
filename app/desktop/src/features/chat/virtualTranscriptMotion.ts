@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
 type TranscriptVirtualizer = {
+  options?: { scrollMargin?: number };
   getTotalSize: () => number;
   getVirtualItems: () => Array<{ index: number; size: number; start?: number }>;
   measureElement: (node: HTMLDivElement | null) => void;
@@ -81,7 +82,7 @@ export function alignAndRevealMeasuredTranscriptRows({
   const measuredRows = new Map(virtualizer.getVirtualItems().map(item => [item.index, item]));
   for (const row of rows) {
     const item = measuredRows.get(Number(row.dataset.index));
-    if (item?.start !== undefined) row.style.transform = `translate3d(0px, ${item.start}px, 0px)`;
+    if (item?.start !== undefined) row.style.top = `${item.start - (virtualizer.options?.scrollMargin ?? 0)}px`;
   }
   alignToTail();
   if (reduceMotion) {

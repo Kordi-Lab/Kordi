@@ -30,6 +30,15 @@ test('pin timestamps use the supplied event time and never invent a current time
   assert.deepEqual(insertPinActivities([], [activity]), [{ pinActivity: activity }]);
 });
 
+test('older pin activity waits for its surrounding history page', () => {
+  const latestPage = entries([later]);
+  assert.deepEqual(insertPinActivities(latestPage, [activity], true), latestPage);
+  const loadedHistory = entries([earlier, later]);
+  assert.deepEqual(insertPinActivities(loadedHistory, [activity], true), [loadedHistory[0], { pinActivity: activity }, loadedHistory[1]]);
+  assert.deepEqual(insertPinActivities(latestPage, [activity], false), [{ pinActivity: activity }, latestPage[0]]);
+  assert.deepEqual(insertPinActivities([], [activity], true), []);
+});
+
 test('the mounted transcript renders the pin with a timestamp before subsequently received messages', async () => {
   await installVirtualTranscriptHarness();
   const { useChatTranscriptViewport } = await import('../src/pages/chatsPage.transcriptViewport');

@@ -21,12 +21,65 @@ export async function installTranscriptTrajectoryRecorder() {
   const previous = new WeakMap<Element, { value: string; at: number }>();
   let frames: number[][] = [];
   let enabled = true;
+  const observed = new WeakSet<HTMLElement>();
+  const cleanups: Array<() => void> = [];
+  const watchScroll = (viewport: HTMLElement) => {
+    if (observed.has(viewport)) return;
+    observed.add(viewport);
+    // Separate numeric event records distinguish physical input from our own
+    // corrections. Never retain stack text, message keys, URLs, or content.
+    const record = (kind: number, values: number[]) => {
+      if (enabled) frames.push([Date.now(), 2, documentStartedAt, identity(viewport), kind, ...values].map(round));
+    };
+    const cause = () => {
+      const stack = new Error().stack ?? '';
+      return ['applyScrollAdjustment', '_willUpdate', 'alignViewportToTail', 'restore', 'scrollToIndex', 'scrollBy']
+        .findIndex(name => stack.includes(name)) + 1;
+    };
+    const wheel = (event: WheelEvent) => record(1, [event.deltaX, event.deltaY, event.deltaMode, viewport.scrollTop]);
+    const scroll = () => record(2, [viewport.scrollTop, viewport.scrollHeight]);
+    viewport.addEventListener('wheel', wheel, { passive: true, capture: true });
+    viewport.addEventListener('scroll', scroll, { passive: true });
+    const ownScrollTo = Object.getOwnPropertyDescriptor(viewport, 'scrollTo');
+    const ownScrollTop = Object.getOwnPropertyDescriptor(viewport, 'scrollTop');
+    const nativeScrollTo = viewport.scrollTo.bind(viewport);
+    viewport.scrollTo = function (...args: [ScrollToOptions?] | [number, number]) {
+      const before = viewport.scrollTop;
+      Reflect.apply(nativeScrollTo, viewport, args);
+      record(4, [typeof args[0] === 'number' ? args[1]! : args[0]?.top ?? before, before, viewport.scrollTop, cause()]);
+    };
+    let prototype = Object.getPrototypeOf(viewport) as object | null;
+    while (prototype && !Object.getOwnPropertyDescriptor(prototype, 'scrollTop')) prototype = Object.getPrototypeOf(prototype) as object | null;
+    const descriptor = prototype ? Object.getOwnPropertyDescriptor(prototype, 'scrollTop') : undefined;
+    if (descriptor?.get && descriptor.set) {
+      const getScrollTop = descriptor.get.bind(viewport) as () => number;
+      const setScrollTop = descriptor.set.bind(viewport) as (value: number) => void;
+      Object.defineProperty(viewport, 'scrollTop', { configurable: true,
+        get: getScrollTop,
+        set: (value: number) => {
+          const before = getScrollTop();
+          setScrollTop(value);
+          record(3, [value, before, getScrollTop(), cause()]);
+        },
+      });
+    }
+    cleanups.push(() => {
+      viewport.removeEventListener('wheel', wheel, true);
+      viewport.removeEventListener('scroll', scroll);
+      if (ownScrollTo) Object.defineProperty(viewport, 'scrollTo', ownScrollTo);
+      else delete (viewport as Partial<HTMLElement>).scrollTo;
+      if (ownScrollTop) Object.defineProperty(viewport, 'scrollTop', ownScrollTop);
+      else if (descriptor) delete (viewport as Partial<HTMLElement>).scrollTop;
+    });
+  };
   let writes = Promise.resolve();
   const flush = () => {
     if (!frames.length) return;
     const batch = frames; frames = [];
     writes = writes.then(async () => {
-      if (enabled) enabled = await invoke<boolean>('desktop_transcript_trace', { frames: batch }).catch(() => false);
+      for (let offset = 0; enabled && offset < batch.length; offset += 120) {
+        enabled = await invoke<boolean>('desktop_transcript_trace', { frames: batch.slice(offset, offset + 120) }).catch(() => false);
+      }
     });
   };
   let end = performance.now() + 10 * 60_000;
@@ -37,10 +90,15 @@ export async function installTranscriptTrajectoryRecorder() {
     // Occluded native windows suspend frames; that wait must not use the capture budget.
     if (frameAt - previousFrameAt > 1000) end += frameAt - previousFrameAt;
     previousFrameAt = frameAt;
-    if (!enabled || frameAt > end) { flush(); return; }
+    if (!enabled || frameAt > end) {
+      flush();
+      cleanups.forEach(cleanup => cleanup());
+      return;
+    }
     const at = Date.now();
     const shell = document.querySelector('.app-shell');
     for (const viewport of document.querySelectorAll<HTMLElement>('[data-virtual-transcript-scroll]')) {
+      watchScroll(viewport);
       const rect = viewport.getBoundingClientRect();
       const pane = viewport.closest('.app-chat-pane-layout');
       const rows = [...viewport.querySelectorAll<HTMLElement>('[data-transcript-window-item]')].slice(0, 100);

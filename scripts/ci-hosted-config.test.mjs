@@ -165,7 +165,7 @@ test("hosted caches replace the retired runner-local cache", async () => {
   }
 });
 
-test("visual and browser checks keep Chromium-only commands", async () => {
+test("visual baselines use Chromium and transcript history also runs in WebKit", async () => {
   const workflows = await parsedWorkflows();
   const visualWorkflow = workflows.get("ci-visual.yml").source;
   const packageJson = JSON.parse(await readFile(packagePath, "utf8"));
@@ -176,11 +176,10 @@ test("visual and browser checks keep Chromium-only commands", async () => {
   assert.match(visual, /test:visual --project chromium/);
   assert.match(browser, /playwright\.production\.config\.ts --project chromium/);
   assert.match(browser, /playwright\.trajectory\.config\.ts --project chromium/);
-  assert.doesNotMatch(`${visual}\n${browser}`, /firefox|webkit/i);
-
-  for (const line of visualWorkflow.split("\n").filter((line) => /playwright/.test(line))) {
-    assert.doesNotMatch(line, /firefox|webkit/i, "visual CI must stay Chromium-only");
-  }
+  assert.match(browser, /playwright\.history\.config\.ts(?:\s*&&|$)/);
+  assert.match(visualWorkflow, /pnpm --dir app\/desktop exec playwright install webkit/);
+  const visualJob = workflows.get("ci-visual.yml").document.jobs.visual;
+  assert.doesNotMatch(JSON.stringify(visualJob), /firefox|webkit/i, "screenshot baselines stay Chromium-only");
 });
 
 test("the retired self-hosted runner artifacts are absent", () => {
