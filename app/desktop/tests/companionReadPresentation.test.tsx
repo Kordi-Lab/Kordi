@@ -46,11 +46,17 @@ async function mount() {
   for (const [key, value] of Object.entries(replacements)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
   const localReads: string[] = [];
   const cloudReads: string[] = [];
+  const pendingReads: (() => void)[] = [];
+  const readWaiters = new Set<() => void>();
   mockIPC((command, args) => {
     assert.equal(command, 'desktop_canonical_mark_session_read');
     const { sessionId, messageId } = (args as { request: { sessionId: string; messageId: string } }).request;
     localReads.push(messageId);
-    return { sessionId, identityId: 'human:me', lastSeenAtMs: 1, lastReadMessageId: messageId, lastReadSequenceNum: Number(messageId.split(':').at(-1)) };
+    const result = new Promise(resolve => {
+      pendingReads.push(() => resolve({ sessionId, identityId: 'human:me', lastSeenAtMs: 1, lastReadMessageId: messageId, lastReadSequenceNum: Number(messageId.split(':').at(-1)) }));
+    });
+    for (const notify of readWaiters) notify();
+    return result;
   });
   const markRead = async (ids: string[]) => { cloudReads.push(...ids); };
   const scrollRef = { current: { scrollHeight: 1000, scrollTop: 800, clientHeight: 200 } as HTMLDivElement };
@@ -88,6 +94,28 @@ async function mount() {
   await render();
   return {
     localReads, cloudReads, render,
+    async completeRead(count: number) {
+      // Native invocation loads asynchronously; act alone does not await IPC.
+      await act(async () => {
+        if (localReads.length < count) {
+          await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              readWaiters.delete(notify);
+              reject(new Error(`Expected ${count} native reads, received ${localReads.length}`));
+            }, 5_000);
+            const notify = () => {
+              if (localReads.length < count) return;
+              clearTimeout(timer);
+              readWaiters.delete(notify);
+              resolve();
+            };
+            readWaiters.add(notify);
+            notify();
+          });
+        }
+        pendingReads[count - 1]();
+      });
+    },
     count: () => Number(host.querySelector('[data-unread-count]')?.getAttribute('data-unread-count') ?? 0),
     scroll: async (atLatest?: boolean) => { await act(async () => { scroll(atLatest); }); },
     focus: async (value: boolean) => { focused = value; await act(async () => { dom.window.dispatchEvent(new dom.window.Event(value ? 'focus' : 'blur')); }); },
@@ -111,17 +139,21 @@ test('reading the companion clears its Agent badge contribution and preserves un
     assert.equal(h.count(), 2);
     assert.deepEqual(h.localReads, []);
     await h.scroll();
+    await h.completeRead(1);
     assert.deepEqual(h.localReads, [`${agentId}:1`]);
     assert.deepEqual(h.cloudReads, [agentId]);
     assert.equal(h.count(), 1);
     await h.reply(2);
+    await h.completeRead(2);
     assert.deepEqual(h.localReads, [`${agentId}:1`, `${agentId}:2`]);
     assert.equal(h.count(), 1);
     await h.scroll(false);
     await h.reply(3);
     assert.equal(h.localReads.length, 2);
+    assert.equal(h.cloudReads.length, 2);
     assert.equal(h.count(), 2);
     await h.scroll(true);
+    await h.completeRead(3);
     assert.equal(h.count(), 1);
   } finally { await h.close(); }
 });
@@ -132,13 +164,18 @@ test('companion replies remain unread while the app is unfocused or hidden', asy
     await h.focus(false);
     await h.scroll(true);
     assert.equal(h.localReads.length, 0);
+    assert.equal(h.cloudReads.length, 0);
     await h.focus(true);
+    await h.completeRead(1);
     assert.equal(h.count(), 1);
     await h.visibility(false);
     await h.reply(2);
     assert.equal(h.localReads.length, 1);
+    assert.equal(h.cloudReads.length, 1);
     await h.visibility(true);
+    await h.completeRead(2);
     assert.equal(h.localReads.length, 2);
+    assert.equal(h.cloudReads.length, 2);
   } finally { await h.close(); }
 });
 
@@ -148,17 +185,23 @@ test('hidden destinations, panel closure, and session switching cannot read an u
     await h.render({ presented: false });
     await h.scroll(true);
     assert.equal(h.localReads.length, 0);
+    assert.equal(h.cloudReads.length, 0);
     await h.render({ presented: true });
     assert.equal(h.localReads.length, 0);
+    assert.equal(h.cloudReads.length, 0);
     await h.scroll(true);
+    await h.completeRead(1);
     assert.equal(h.count(), 1);
     await h.render({ sessionId: otherId });
     assert.equal(h.localReads.length, 1);
+    assert.equal(h.cloudReads.length, 1);
     await h.scroll(true);
+    await h.completeRead(2);
     assert.equal(h.count(), 0);
     await h.render({ mounted: false });
     await h.reply(2);
     assert.equal(h.localReads.length, 2);
+    assert.equal(h.cloudReads.length, 2);
     assert.equal(h.count(), 1);
   } finally { await h.close(); }
 });
@@ -168,12 +211,17 @@ test('returning from a hidden destination requires a fresh transcript position',
   const h = await mount();
   try {
     await h.scroll(true);
+    await h.completeRead(1);
     await h.render({ presented: false });
     await h.reply(2);
     assert.equal(h.localReads.length, 1);
+    assert.equal(h.cloudReads.length, 1);
     await h.render({ presented: true });
     assert.equal(h.localReads.length, 1);
+    assert.equal(h.cloudReads.length, 1);
     await h.scroll(true);
+    await h.completeRead(2);
     assert.equal(h.localReads.length, 2);
+    assert.equal(h.cloudReads.length, 2);
   } finally { await h.close(); }
 });
