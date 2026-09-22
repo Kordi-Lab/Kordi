@@ -26,8 +26,10 @@ test('full workspace groups sessions, preserves drafts and moves a session betwe
   await page.getByRole('dialog', { name: 'Choose project' }).getByRole('button', { name: 'website', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Project: website', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Ask your agent…', exact: true })).toHaveText('Keep my project draft');
-  await expect(kordiGroup).toContainText('3');
-  await expect(page.locator('.chat-project-group').filter({ hasText: 'website' })).toContainText('3');
+  await kordiGroup.click();
+  await expect(page.locator('[data-agent-session-row="chat-2"]')).toBeVisible();
+  await expect(page.locator('[data-agent-session-row]')).toHaveCount(4);
+  await kordiGroup.click();
   await page.locator('[data-agent-session-row="chat-2"]').click({ button: 'right' });
   await page.getByRole('button', { name: 'Move to project', exact: true }).click();
   await page.getByRole('dialog', { name: 'Choose project' }).getByRole('button', { name: 'No project', exact: true }).click();
@@ -43,7 +45,8 @@ test('full workspace groups sessions, preserves drafts and moves a session betwe
 
 test('GitHub selection and local selection update the actual sidebar and composer', async ({ page }, testInfo) => {
   await page.goto(preview);
-  await page.getByRole('button', { name: 'Add project', exact: true }).click();
+  await page.getByRole('button', { name: 'Project: kordi', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('button', { name: /GitHub repository/ }).click();
   await page.getByRole('button', { name: /demo-workspace\/personal-site/ }).click();
   await page.screenshot({ path: testInfo.outputPath('github-import.png') });
@@ -65,7 +68,8 @@ test('repository URL validation, dark theme and session switching work', async (
   await page.locator('[data-agent-session-row="chat-4"]').click();
   await expect(page.getByRole('button', { name: 'Project: website', exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('workspace-dark.png') });
-  await page.getByRole('button', { name: 'Add project', exact: true }).click();
+  await page.getByRole('button', { name: 'Project: website', exact: true }).click();
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByRole('button', { name: /GitHub repository/ }).click();
   const search = page.getByRole('textbox', { name: 'Search repositories or paste a GitHub URL' });
   await search.fill('https://example.com/owner/repo');

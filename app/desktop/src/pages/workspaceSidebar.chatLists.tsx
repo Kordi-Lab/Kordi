@@ -29,8 +29,6 @@ export function WorkspaceChatLists({
   onOpenAgentCreate: () => void;
 }) {
   const projects = useChatProjects();
-  const [creatingProject, setCreatingProject] = useState<string | null>(null);
-  const [projectError, setProjectError] = useState('');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const grouped = useMemo(() => projectChatGroups(
     model.agentSidebarRows, projects?.projects ?? [], collapsed, !model.chatSearch && !model.showArchived,
@@ -78,9 +76,7 @@ export function WorkspaceChatLists({
       </div> : null}
       {projects?.enabled && projects.projects.length > 0 ? <div className="chat-project-section-label">
         <span>Projects</span>
-        {projects.openImporter ? <button type="button" aria-label="Add project to Agent Chat" onClick={() => projects.openImporter?.()}><Plus size={13} /></button> : null}
       </div> : null}
-      {projectError ? <p role="alert" className="chat-project-error">{projectError}</p> : null}
       <VirtualChatList
         rows={grouped.rows}
         activeSessionId={model.activeSidebarRowSessionId}
@@ -99,16 +95,8 @@ export function WorkspaceChatLists({
             </> : <>
               <ChevronRight size={12} className={!collapsed.has(descriptor.spaceId) ? 'rotate-90' : ''} />
               <Folder size={13} /><span>{grouped.groups.get(descriptor.spaceId)?.name}</span>
-              <small>{grouped.groups.get(descriptor.spaceId)?.rows.length}</small>
             </>}
           </button>
-          {projects?.enabled && !model.showArchived && projects.projects.find((project) => project.id === descriptor.spaceId)?.root ? <button type="button" className="chat-project-new-session" aria-label={`New session in ${grouped.groups.get(descriptor.spaceId)?.name}`} disabled={Boolean(creatingProject)} onClick={() => {
-            const root = projects.projects.find((project) => project.id === descriptor.spaceId)?.root;
-            if (!root) return;
-            setCreatingProject(descriptor.spaceId); setProjectError('');
-            setCollapsed((current) => { const next = new Set(current); next.delete(descriptor.spaceId); return next; });
-            void projects.assign('', root).catch((reason: unknown) => setProjectError(reason instanceof Error ? reason.message : 'Unable to create a session.')).finally(() => setCreatingProject(null));
-          }}><Plus size={13} /></button> : null}
           </div>
         ) : (
           <AgentSidebarRow

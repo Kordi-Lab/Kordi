@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { FolderPlus, Moon, PanelLeft, Plus, Sun } from 'lucide-react';
+import { Moon, PanelLeft, Plus, Sun } from 'lucide-react';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
 import { buildParticipantSpaces, filterParticipantSpaces } from '../../src/features/chat/participantSpaces';
 import { ChatProjectsContext, type ChatProject, projectForChat } from '../../src/features/projects/chatProjects';
@@ -183,7 +183,6 @@ function ProjectWorkspacePreview() {
       <div>
         <button aria-label="Toggle sessions" onClick={() => setSidebarVisible((current) => !current)}><PanelLeft size={15} /></button>
         <button onClick={() => newSession()}><Plus size={15} /><span>New session</span></button>
-        <button onClick={() => setImportSessionId(activeId)}><FolderPlus size={15} /><span>Add project</span></button>
         <button aria-label="Toggle appearance" onClick={() => setAppearance((current) => current === 'light' ? 'dark' : 'light')}>{appearance === 'light' ? <Moon size={15} /> : <Sun size={15} />}</button>
       </div>
     </div>

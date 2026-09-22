@@ -41,8 +41,6 @@
 .chat-project-group:hover { color: var(--utility-foreground); }
 
 .chat-project-section-label { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 0; color: var(--utility-muted-text); font-size: 11px; }
-.chat-project-section-label button { padding: 4px; border-radius: 5px; }
-.chat-project-section-label button:hover { background: var(--app-control-bg); }
 
 .chat-project-session-list .chat-project-group { color: var(--utility-foreground); font-size: 12px; }
 .chat-project-session-list .app-agent-session-row { padding-left: 10px; min-height: 32px; height: 32px; }
@@ -58,6 +56,4 @@
 .chat-recents-heading { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 10px; color: var(--utility-muted-text); font-size: 12px; }
 .chat-recents-heading:hover { color: var(--utility-foreground); }
 .chat-recents-heading:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; border-radius: 6px; }
-.chat-project-new-session { padding: 6px; margin-right: 4px; border-radius: 6px; color: var(--utility-muted-text); }
-.chat-project-new-session:hover { background: var(--app-control-bg); color: var(--utility-foreground); }
 .chat-project-session-list .app-session-meta-inline { min-width: 0; }

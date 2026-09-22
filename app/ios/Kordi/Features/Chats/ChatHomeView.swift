@@ -477,16 +477,11 @@ struct ChatHomeView: View {
             if model.isPreviewMode && ProcessInfo.processInfo.arguments.contains("--preview-projects") {
                 Text("Design preview · Demo data").font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 16)
             }
-            HStack {
+            if !model.projectDevices.flatMap(\.projects).isEmpty {
                 Text("Projects").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button { projectTarget = nil; showingProjectPicker = true } label: {
-                    Image(systemName: "plus").frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Add project")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
             if let error = model.projectError {
                 Text(error).font(.footnote).foregroundStyle(KordiTheme.destructiveText).padding(.horizontal, 16)
             }
@@ -524,7 +519,6 @@ struct ChatHomeView: View {
                             Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down").font(.caption2)
                         }
                     }
-                    .padding(.trailing, section.project == nil ? 0 : 44)
                     .font(.subheadline)
                     .foregroundStyle(section.project == nil ? .secondary : .primary)
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -533,24 +527,6 @@ struct ChatHomeView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityValue(collapsedProjectIDs.contains(section.id) ? "Collapsed" : "Expanded")
-                .overlay(alignment: .trailing) {
-                    if let project = section.project, let device = section.device, device.online {
-                        Button {
-                            let draft = AgentSessionFactory.makeDefault(ownAccountId: model.account?.accountId ?? "")
-                            Task {
-                                do {
-                                    try await model.assignProject(project, device: device, conversation: draft)
-                                    openConversation(draft)
-                                } catch { model.projectError = error.localizedDescription }
-                            }
-                        } label: {
-                            Image(systemName: "plus").font(.subheadline)
-                                .frame(width: 44, height: 44).contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("New session in \(project.name)")
-                    }
-                }
                 if !collapsedProjectIDs.contains(section.id) {
                     ForEach(section.sessions) { item in
                         agentSessionActionRow(item)

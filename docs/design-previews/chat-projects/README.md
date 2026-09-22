@@ -21,7 +21,7 @@ Run the desktop Vite development server using the repository's isolated developm
 
 ## iPhone and Mac
 
-iPhone uses the same Projects and Recents structure with Dynamic Type and native sheets. The project chip sits below the composer. Long-press a session to move it; a project folder's plus button creates a session in that workspace. Local folder selection opens the system picker on the connected Mac. GitHub discovery uses that Mac's signed-in GitHub CLI, and cloning stays on the Mac.
+iPhone uses the same Projects and Recents structure with Dynamic Type and native sheets. The project chip sits below the composer and includes the import entry. Long-press a session to move it. Project headers contain no session counts or add buttons. Local folder selection opens the system picker on the connected Mac. GitHub discovery uses that Mac's signed-in GitHub CLI, and cloning stays on the Mac.
 
 Project discovery is account-scoped and publishes opaque IDs, names and session membership. Filesystem roots and credentials remain on the Mac. Commands are claimed once by the addressed device; membership is published before a successful acknowledgement. Offline devices remain discoverable, with actions disabled. Project tasks cannot fall back to cloud execution or another Mac's filesystem. Changing projects is blocked while a task is active.
 
