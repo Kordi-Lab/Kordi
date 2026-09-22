@@ -8,13 +8,14 @@ import {
   render,
   rows,
   transcript,
+  virtualRowStart,
 } from './support/virtualTranscriptHarness';
 
 const animations = new WeakMap<HTMLElement, { frames: Keyframe[]; cancelled: boolean }>();
 test.before(async () => {
   await installVirtualTranscriptHarness();
   HTMLElement.prototype.getBoundingClientRect = function() {
-    const y = Number(this.style.transform.match(/translate3d\([^,]+,\s*([-\d.]+)px/)?.[1] ?? 0);
+    const y = virtualRowStart(this);
     const offset = Number.parseFloat(this.style.translate.split(/\s+/)[1] ?? '0') || 0;
     const scrollTop = this.closest<HTMLElement>('[data-virtual-transcript-scroll]')?.scrollTop ?? 0;
     return { top: y + offset - scrollTop, bottom: y + offset - scrollTop + this.offsetHeight,

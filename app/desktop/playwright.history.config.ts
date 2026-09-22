@@ -4,7 +4,7 @@ import process from 'node:process';
 const port = Number(process.env.KORDI_HISTORY_TEST_PORT ?? 62358);
 const baseURL = `http://127.0.0.1:${port}`;
 export default defineConfig({
-  testDir: './tests/visual', testMatch: ['transcriptHistory.spec.ts', 'transcriptEntry.spec.ts'], workers: 1,
+  testDir: './tests/visual', testMatch: ['transcriptHistory.spec.ts', 'transcriptEntry.spec.ts', 'transcriptHistoryScrollStability.spec.ts', 'transcriptEstimateAccuracy.spec.ts', 'transcriptSessionChange.spec.ts', 'transcriptHistoryLoading.spec.ts', 'transcriptHistoryBoundary.spec.ts', 'transcriptHistoryMedia.spec.ts'], workers: 1,
   reporter: 'line', use: { baseURL, reducedMotion: 'reduce' },
   projects: [
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },

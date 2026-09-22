@@ -3,6 +3,12 @@ import {isPendingCalendarProposal,proposalSeries} from './calendarProposal';
 import type {CalendarEvent,DigestItem} from './types';
 
 export const weekHourHeight=64;
+/** Where the current-time indicator sits in the displayed week, or null when today is not in it. */
+export function weekNowMarker(days:string[],now:Date):{dayIndex:number;top:number}|null{
+  const dayIndex=days.indexOf(dateKey(now));
+  if(dayIndex<0)return null;
+  return {dayIndex,top:(now.getHours()*60+now.getMinutes()+now.getSeconds()/60)*weekHourHeight/60};
+}
 export type WeekEntry={key:string;title:string;startAt:string;endAt?:string|null;allDay:boolean;event?:CalendarEvent;proposal?:DigestItem};
 export function weekDays(day:string):string[]{
   const start=new Date(day+'T12:00:00');start.setDate(start.getDate()-start.getDay());

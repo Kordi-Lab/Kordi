@@ -118,6 +118,9 @@ jobs:
       - name: Install visual-test browser
         run: pnpm --dir app/desktop exec playwright install chromium
 
+      - name: Install transcript history WebKit browser
+        run: pnpm --dir app/desktop exec playwright install webkit
+
       - name: Run browser checks
         run: pnpm check:browser
 

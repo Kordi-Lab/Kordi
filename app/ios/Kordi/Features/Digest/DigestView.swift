@@ -38,7 +38,12 @@ struct DigestView: View {
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var notifications: KordiNotificationCoordinator
-    @State private var pane = DigestPane.brief
+    @State private var pane: DigestPane = {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview-digest-calendar") { return .calendar }
+#endif
+        return .brief
+    }()
     private var digest: RollingDigestResponse? { model.rollingDigestSnapshot }
     private var events: [DigestCalendarEvent] {
         let removed = model.digestMutationState.removedEventIDs
@@ -258,10 +263,8 @@ struct DigestView: View {
                 Button("Today") { month = Date(); selectedCalendarDay = month }.font(.caption)
                 Button { changeMonth(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Next month")
             }.buttonStyle(.plain)
-            if calendarReadState == .content {
-                DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
-                if events.isEmpty, !model.digestMutationState.hasPendingRemoval { Text("No saved events.").font(.footnote).foregroundStyle(.secondary) }
-            }
+            DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
+            if events.isEmpty, calendarReadState == .content, !model.digestMutationState.hasPendingRemoval { Text("No saved events.").font(.footnote).foregroundStyle(.secondary) }
             Text("Shown in \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
             Text("From your chats").font(.subheadline.weight(.semibold))

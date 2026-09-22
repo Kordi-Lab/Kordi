@@ -394,10 +394,10 @@ test('fresh group sends claim fallback before waiting for a background Cloud syn
   const source = cloudGroupControlSenderSource();
   const outboxBlockStart = source.indexOf('const sentMessages: CloudMessage[] = [];');
   const outboxBlock = source.slice(outboxBlockStart, outboxBlockStart + 3200);
-  assert.match(outboxBlock, /await Promise\.all\(\[[\s\S]*claimFallbackAfterPreparation\(\s*sentMessages,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
+  assert.match(outboxBlock, /await finishPostSendWork\(Promise\.all\(\[[\s\S]*claimFallbackAfterPreparation\(\s*sentMessages,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
   const directSendBlockStart = source.indexOf('const sent = fulfilledCloudGroupSends(results);', outboxBlockStart);
   const directSendBlock = source.slice(directSendBlockStart, directSendBlockStart + 1800);
-  assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFallbackAfterPreparation\(\s*sent,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
+  assert.match(directSendBlock, /await finishPostSendWork\(Promise\.all\(\[[\s\S]*claimFallbackAfterPreparation\(\s*sent,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
   // Without agent-request preparation the claim starts immediately; preparation never blocks the send.
   assert.match(source, /if \(!prepare\) return claimFreshFallback\(sent, requestMessageId, token\);/);
   assert.match(source, /void prepare\(sent\)[\s\S]*?\.then\(\(\) => claimFreshFallback\(sent, requestMessageId, token\)\)/);

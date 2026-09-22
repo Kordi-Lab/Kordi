@@ -31,6 +31,8 @@ export type SendCloudGroupControlInput = {
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];
   retryFailed?: boolean;
+  /** Forwarding can finish at delivery acknowledgement while sync and agent work continue. */
+  completion?: 'acknowledged';
   /**
    * Runs after delivery and before a fresh fallback run is claimed, without
    * blocking the send. Agent-bound voice messages store their transcript here.

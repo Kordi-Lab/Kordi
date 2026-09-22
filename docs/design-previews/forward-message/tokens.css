@@ -1,0 +1,34 @@
+/* Hallmark · component-scope · Kordi Quiet Signal · blue accent */
+/* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+:root {
+  color-scheme: light;
+  --color-canvas: oklch(96.6% .004 260);
+  --color-paper: oklch(99.5% .001 260);
+  --color-ink: oklch(23% .025 260);
+  --color-muted: oklch(49% .018 260);
+  --color-rule: oklch(89% .008 260);
+  --color-accent: oklch(54.6% .215 263);
+  --color-accent-ink: oklch(100% 0 0);
+  --color-selected: oklch(96% .021 260);
+  --color-focus: oklch(44% .19 265);
+  --color-avatar: oklch(92% .026 250);
+  --color-agent: oklch(47% .09 295);
+  --color-agent-bg: oklch(94% .025 295);
+  --color-error: oklch(47% .17 25);
+  --color-error-bg: oklch(97% .015 25);
+  --color-success: oklch(42% .10 155);
+  --color-overlay: oklch(30% .015 260 / .14);
+  --color-shadow: oklch(20% .025 260 / .14);
+  --color-clear: transparent;
+  --font-body: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --radius-control: 12px;
+  --radius-surface: 20px;
+  --radius-circle: 999px;
+}

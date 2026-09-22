@@ -4,6 +4,29 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+### Changed
+
+- Simplified message forwarding on macOS and iOS with searchable people, groups,
+  and agents, recent activity ordering, visible group context, compact layouts,
+  and brief translucent success confirmations.
+
+### Fixed
+
+- Made batch forwarding report delivery progress and resume failed sends without
+  resending completed messages. macOS forwarding no longer waits for a full
+  local-state reload or background group synchronization after delivery.
+
+- Preserved the reading position when older history removes date and sender
+  headers, and when partially visible messages grow. Transcript anchors now
+  account for pane padding and avoid duplicate browser scroll compensation.
+  Older pin notices now load with their surrounding message history, preventing
+  later pages from inserting messages among already visible notices.
+  Newly mounted image and quote rows are measured before paint during scrolling,
+  avoiding overlap and flashes while waiting for asynchronous resize delivery.
+  Above-screen height changes now preserve the reading point through the list's
+  layout origin during wheel gestures, with one scroll correction after settling.
+  Improved height estimates for grouped messages, emoji, and wrapped text.
+
 ## [0.0.2-beta.3] - 2026-09-20
 
 ### Added

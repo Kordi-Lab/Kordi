@@ -212,4 +212,10 @@ enum DigestDate {
         let range = calendar.dateInterval(of: .day, for: date)
         return range.map { start < $0.end && end > $0.start } ?? false
     }
+    /// Position of the current-time marker among `scheduled` events on `day`, or nil when `day` is not today.
+    /// The marker goes before the first event that starts after `now`, so an in-progress event stays above it.
+    static func nowMarkerIndex(among scheduled: [DigestCalendarEvent], on day: Date, now: Date, calendar: Calendar = .current) -> Int? {
+        guard calendar.isDate(day, inSameDayAs: now) else { return nil }
+        return scheduled.firstIndex { (parse($0.startAt) ?? .distantFuture) > now } ?? scheduled.count
+    }
 }
