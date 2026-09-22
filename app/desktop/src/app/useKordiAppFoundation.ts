@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-
+import { useCompanionSessionRead } from '@/app/useCompanionSessionRead';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useActiveConversationReadPresentation } from '@/app/useActiveConversationReadPresentation';
 import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavigation';
@@ -140,7 +140,7 @@ export function useKordiAppFoundation({
     cachedProjectSessionMessages,
     cachedDesktopSessionSourceMessages,
     hydratedDesktopSessionIds,
-    localSessionUnreadCounts,
+    localSessionUnreadCounts, clearUnreadForSession,
     isDesktopSessionTranscriptCached,
     preloadDesktopSessionTranscript,
     setVisibleLocalSessionId,
@@ -174,7 +174,6 @@ export function useKordiAppFoundation({
     projectRoutingGroups,
     isNativeShell,
   });
-
   const { canMarkRead, setIsTranscriptAtLatest } = useActiveConversationReadPresentation({ activeNav, activeConversationId: activeConvId });
   const {
     visibleSettingsSections,
@@ -314,7 +313,11 @@ export function useKordiAppFoundation({
       !isDesktopAuthLoading && Boolean(defaultCloudAgentRuntimeRoute),
     desktopAuthState, providerAuthSyncIntent,
   });
-
+  const setReadableCompanionSessionId = useCompanionSessionRead({
+    enabled: activeNav === 'chats', account: cloudSession.account,
+    canonicalState: canonicalSessionState, setCanonicalState: setCanonicalSessionState,
+    markRead: markCloudSessionsRead, localSessionUnreadCounts, clearUnreadForSession,
+  });
   const {
     inheritCloudAgentRuntimeRoute,
     publishCloudAgentRuntimeRouteChange,
@@ -365,8 +368,7 @@ export function useKordiAppFoundation({
     canonicalState: canonicalSessionState,
     collaborationState: desktopCollaborationState,
   });
-  const syncLocalAvatarSeeds = (seeds: LocalAvatarSeeds) =>
-    assignLocalAvatarSeeds(localAvatarSeedsRef, seeds);
+  const syncLocalAvatarSeeds = (seeds: LocalAvatarSeeds) => assignLocalAvatarSeeds(localAvatarSeedsRef, seeds);
   useKordiCanonicalPageHydration({
     activeConversationId: activeConvId,
     activeProjectSessionId,
@@ -395,7 +397,7 @@ export function useKordiAppFoundation({
     refs: {
       composerControlsRef, chatAttachmentInputRef, chatTranscriptScrollRef,
       shouldAutoFollowChatRef, lastSeenArtifactByContextRef,
-      setChatTranscriptAtLatest: setIsTranscriptAtLatest,
+      setChatTranscriptAtLatest: setIsTranscriptAtLatest, setReadableCompanionSessionId,
       syncLocalAvatarSeeds,
     },
     canonical: {

@@ -171,6 +171,7 @@ export type KordiShellCompositionArgs = {
     | 'loadOlderCanonicalSessionMessages'
     | 'onProjectTranscriptScroll'
     | 'onChatTranscriptScroll'
+    | 'onCompanionReadPresentationChange'
     | 'activeSourcePreview'
     | 'setActiveSourcePreview'
     | 'activeArtifactId'

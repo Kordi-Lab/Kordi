@@ -102,6 +102,7 @@ export type ChatsPageTranscript = {
   canonicalHasOlderBySessionId?: Record<string, boolean>;
   onLoadOlderCanonicalSessionMessages?: (sessionId: string) => Promise<void>;
   onTranscriptScroll: (isAtLatest?: boolean) => void;
+  onCompanionReadPresentationChange?: (sessionId: string | null) => void;
   onOpenSource: (file: EditFilePreview) => void;
   onClearSourcePreview?: () => void;
   onOpenArtifact: (artifactId: string) => void;
