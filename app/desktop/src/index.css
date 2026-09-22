@@ -26,6 +26,7 @@
 @import './styles/shell-media-lightbox.css';
 @import './styles/shell-transcript-timeline.css';
 @import './styles/shell-message-actions.css';
+@import './styles/shell-message-forward.css';
 @import './styles/shell-live-answer.css';
 @import './styles/shell-diff.css';
 @import './styles/shell-sidebar.css';

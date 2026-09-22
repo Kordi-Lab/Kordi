@@ -146,6 +146,13 @@ export function useCloudGroupControlSender({
         .catch((error) => reportWarning('[cloud-group] fallback claim failed', error));
       return Promise.resolve();
     };
+    const finishPostSendWork = async (work: Promise<unknown>) => {
+      if (input.completion === 'acknowledged') {
+        void work.catch((error) => reportWarning('[cloud-group] post-send work failed', error));
+      } else {
+        await work;
+      }
+    };
     const groupTitle = cloudGroupTitleForOutgoingControl({
       kind: input.kind,
       groupTitle: input.groupTitle,
@@ -307,10 +314,15 @@ export function useCloudGroupControlSender({
         });
       }
       if (sentAny) {
-        await Promise.all([
+        await finishPostSendWork(Promise.all([
           claimFallbackAfterPreparation(sentMessages, canonicalMessageId, session.token),
           syncDiff().catch(() => {}),
-        ]);
+        ]));
+      }
+      if (input.completion === 'acknowledged' && outcome && (
+        outcome.pendingRecipientIds.length > 0 || (outcome.exhaustedRecipientIds?.length ?? 0) > 0
+      )) {
+        throw new Error('Group message has not been delivered yet. Try again.');
       }
       return;
     }
@@ -353,10 +365,10 @@ export function useCloudGroupControlSender({
     sent.forEach(mergeMessage);
     if (sent.length > 0) {
       if (input.kind === 'group-message' && canonicalMessageId) {
-        await Promise.all([
+        await finishPostSendWork(Promise.all([
           claimFallbackAfterPreparation(sent, canonicalMessageId, session.token),
           syncDiff(),
-        ]);
+        ]));
         return;
       }
       await syncDiff();

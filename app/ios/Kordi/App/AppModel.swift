@@ -1648,6 +1648,8 @@ final class AppModel: ObservableObject {
         agentContext: String? = nil,
         to conversation: ConversationSummary,
         retrying retryMessage: ChatMessage? = nil,
+        forwardingOperationID: String? = nil,
+        onDelivered: () -> Void = {},
         onStaged: (String?) -> Void = { _ in }
     ) async {
         var didStage = false
@@ -1697,7 +1699,9 @@ final class AppModel: ObservableObject {
                 in: text, selectedTarget: mentionTarget, targets: mentionTargets(for: conversation),
                 senderAccountId: account.accountId, participants: hydratedGroupParticipants(conversation, account: account)
             ) : mentionTarget
-        let localId = retryMessage?.id ?? "ios_\(UUID().uuidString.lowercased())"
+        let localId = retryMessage?.id
+            ?? forwardingOperationID.map { "ios_forward_\($0)" }
+            ?? "ios_\(UUID().uuidString.lowercased())"
         let clientMessageId = retryMessage?.clientMessageId
             ?? CloudAPIClient.stableOperationUUID(localId)
         let routedAgent = mentionTarget?.kind == .agent ? mentionTarget : nil
@@ -1759,7 +1763,7 @@ final class AppModel: ObservableObject {
         if let agentContext = agentContext?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
             pendingAgentContextByMessageId[localId] = agentContext
         }
-        if retryMessage == nil {
+        if retryMessage == nil && !messagesByConversation[conversation.id, default: []].contains(where: { $0.id == localId }) {
             messagesByConversation[conversation.id, default: []].append(optimistic)
         } else {
             replaceMessage(localId, with: optimistic)
@@ -1813,6 +1817,7 @@ final class AppModel: ObservableObject {
             setMessageDeliveryState(localId, conversationId: conversation.id, state: .read)
             clearPendingSendMetadata(localId)
             if requestsAgentRun { completeAgentRequest(conversationId: conversation.id) }
+            onDelivered()
             return
         }
 
@@ -1890,6 +1895,7 @@ final class AppModel: ObservableObject {
                 ))
                 outgoingAttachments.forEach { $0.discardOwnedFile() }
                 clearPendingSendMetadata(localId)
+                onDelivered()
                 let dispatchesAgent = mentionTarget?.kind == .agent && messageAction?.kind != "forward"
                 let dispatchGroupAgent: (String) -> Void = { [weak self] userText in
                     guard let self else { return }
@@ -1963,6 +1969,7 @@ final class AppModel: ObservableObject {
             cloudConnectionState = .connected
             outgoingAttachments.forEach { $0.discardOwnedFile() }
             clearPendingSendMetadata(localId)
+            onDelivered()
 
             let dispatchesAgent = conversation.kind == .agent || routedAgent != nil || routesToSupportAgent
             let dispatchDirectAgent: (String) -> Void = { [weak self] userText in
@@ -2060,43 +2067,50 @@ final class AppModel: ObservableObject {
         _ sourceMessages: [ChatMessage],
         caption: String,
         from sourceConversation: ConversationSummary,
-        to destination: ConversationSummary
+        to destination: ConversationSummary,
+        batch: MessageForwardBatch
     ) async -> Bool {
-        guard !sourceMessages.isEmpty else { return false }
-        let cleanCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        for (index, message) in sourceMessages.enumerated() {
+        guard let accountID = account?.accountId, token != nil,
+              destination.subsessionId == nil else {
+            batch.fail("Your account is not ready to forward. Close this sheet and try again.")
+            return false
+        }
+        let cleanCaption = sourceMessages.count == 1 ? caption.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        return await batch.run(sourceIDs: sourceMessages.map(\.id), destinationID: destination.sessionId,
+                               accountID: accountID, caption: cleanCaption) { index, operationID in
+            guard self.account?.accountId == accountID else { return false }
+            let message = sourceMessages[index]
+            let localID = "ios_forward_\(operationID)"
             let source = message.forwardSource(sessionId: sourceConversation.sessionId)
+            var delivered = false
             if let voiceMessage = message.voiceMessage {
-                guard let pendingVoice = await forwardingVoiceMessage(voiceMessage) else { return false }
-                await send(
-                    cleanCaption.nonEmpty ?? voiceMessage.transcript,
-                    voiceMessage: pendingVoice,
-                    messageAction: .forward(source),
-                    to: destination
-                )
-                guard messagesByConversation[destination.id]?.last?.deliveryState != .failed else {
+                let voice: PendingVoiceMessage?
+                if let saved = pendingVoiceDraftsByMessageId[localID] { voice = saved }
+                else { voice = await forwardingVoiceMessage(voiceMessage) }
+                guard let pendingVoice = voice else { return false }
+                guard self.account?.accountId == accountID else {
+                    pendingVoice.attachment.discardOwnedFile()
                     return false
                 }
-                continue
+                await send(cleanCaption.nonEmpty ?? voiceMessage.transcript, voiceMessage: pendingVoice,
+                           messageAction: .forward(source), to: destination, forwardingOperationID: operationID,
+                           onDelivered: { delivered = true })
+            } else {
+                let fallback = message.text.nonEmpty ?? Self.attachmentSummary(message.attachments)
+                let prepared: [PendingAttachment]?
+                if let saved = pendingAttachmentDraftsByMessageId[localID] { prepared = saved }
+                else { prepared = await forwardingAttachments(message.attachments) }
+                guard let attachments = prepared else { return false }
+                guard self.account?.accountId == accountID else {
+                    attachments.forEach { $0.discardOwnedFile() }
+                    return false
+                }
+                await send(cleanCaption.nonEmpty ?? fallback, attachments: attachments,
+                           messageAction: .forward(source), to: destination, forwardingOperationID: operationID,
+                           onDelivered: { delivered = true })
             }
-            let fallback = message.text.nonEmpty ?? Self.attachmentSummary(message.attachments)
-            let text = sourceMessages.count == 1 && index == 0
-                ? cleanCaption.nonEmpty ?? fallback
-                : fallback
-            guard let attachments = await forwardingAttachments(message.attachments) else {
-                return false
-            }
-            await send(
-                text,
-                attachments: attachments,
-                messageAction: .forward(source),
-                to: destination
-            )
-            guard messagesByConversation[destination.id]?.last?.deliveryState != .failed else {
-                return false
-            }
+            return delivered && self.account?.accountId == accountID
         }
-        return true
     }
 
     private func forwardingVoiceMessage(_ voiceMessage: VoiceMessage) async -> PendingVoiceMessage? {

@@ -74,7 +74,7 @@ test('buildForwardDestinations exposes dense selectable chat labels', () => {
   assert.equal(destinations[0].conversationId, 'conv:one');
   assert.equal(destinations[0].subtitle, 'Agent chat');
   assert.equal(destinations[1].subtitle, 'Group chat');
-  assert.equal(destinations[2].subtitle, 'Person chat');
+  assert.equal(destinations[2].subtitle, 'Direct message');
 });
 
 test('revealForwardedMessageInDestination selects destination before revealing forwarded message', () => {
@@ -109,7 +109,7 @@ test('revealForwardedMessageInDestination can switch and fall back to bottom for
   assert.deepEqual(calls, ['select:bridge:cloud-person:peer', 'latest']);
 });
 
-test('forward confirmation requires an existing destination, appends there, and opens it without creating a session', () => {
+test('forward confirmation validates an existing destination or accepted contact and opens it without creating a session', () => {
   const modelSource = readFileSync(new URL('../src/app/useKordiMessageActions.ts', import.meta.url), 'utf8');
   const start = modelSource.indexOf('const confirmForwardMessage = useCallback');
   const end = modelSource.indexOf('  const messageForwardDialog = forwardDialog', start);
@@ -118,8 +118,8 @@ test('forward confirmation requires an existing destination, appends there, and 
   const body = modelSource.slice(start, end);
 
   assert.match(body, /const destinationConversation = conversations\.find/);
-  assert.match(body, /if \(!destinationConversation\)/);
-  assert.match(body, /appendCanonicalMessage\(/);
+  assert.match(body, /if \(!destinationConversation && !contactAvailable\)/);
+  assert.match(body, /appendCanonicalMessageFast\(/);
   assert.match(body, /sendCloudCollaborationMessage\(\s*directCloudConversationId/);
   assert.match(body, /prepareCloudForwardAttachments\(\s*draft\.attachments/);
   assert.match(body, /attachments: draft\.attachments/);
@@ -204,4 +204,40 @@ test('MessageForwardDialog uses theme-safe shell classes and exposes forward mod
   assert.match(markup, /data-message-forward-mode="single"/);
   assert.match(markup, /app-transient-divider/);
   assert.doesNotMatch(markup, /bg-\[#101820\]/);
+});
+
+test('forward destinations preserve group context, search public identities, and sort by activity', async () => {
+  const { conversation, contact } = await import('./helpers/workspaceSidebarParticipantSpacesFixtures');
+  const { filterForwardDestinations, forwardDestinationPath } = await import('../src/features/chat/messageForwarding');
+  const group = (id: string, title: string, updatedAt: number) => conversation({
+    id, canonicalSessionId: id, name: 'General', type: 'group', participantSpaceId: id,
+    metadata: { groupSpaceId: id, customName: title }, _updatedAtMs: updatedAt,
+  });
+  const people = contact({ id: 'cloud:avery', name: 'Avery Morgan', entityType: 'user', sourceHostId: 'cloud', sourceParticipantId: 'avery', contactStatus: 'accepted', subtitle: '@123456789' });
+  const input = [group('session:group:research', 'Research circle', 100), group('session:group:product', 'Product team', 200)];
+  const destinations = buildForwardDestinations(input, undefined, [people, { ...people, id: 'pending', sourceParticipantId: 'pending', contactStatus: 'pending' }]);
+  assert.deepEqual(destinations.map((item) => item.label), ['General', 'General', 'Avery Morgan']);
+  assert.equal(forwardDestinationPath(destinations[0]), 'Product team › General');
+  assert.equal(forwardDestinationPath(destinations[1]), 'Research circle › General');
+  assert.equal(forwardDestinationPath(destinations[2]), 'Avery Morgan · @123456789');
+  assert.equal(filterForwardDestinations(destinations, 'research')[0].id, 'session:group:research');
+  assert.equal(filterForwardDestinations(destinations, '123456789', 'person')[0].label, 'Avery Morgan');
+  assert.equal(filterForwardDestinations(destinations, 'morgan avery', 'person').length, 1);
+  assert.equal(filterForwardDestinations(destinations, 'Morgan', 'agent').length, 0);
+  assert.equal(input[0].id, 'session:group:research');
+});
+
+test('forward destinations omit temporary resources and deduplicate accepted contacts', async () => {
+  const { conversation, contact } = await import('./helpers/workspaceSidebarParticipantSpacesFixtures');
+  const { forwardContactConversationId } = await import('../src/features/chat/messageForwarding');
+  const person = contact({ id: 'cloud:alice', entityType: 'user', sourceHostId: 'cloud', sourceParticipantId: 'alice', contactStatus: 'accepted', subtitle: '@123456789' });
+  const id = forwardContactConversationId(person)!;
+  const destinations = buildForwardDestinations([
+    conversation({ id, canonicalSessionId: 'session:direct-person:alice', _updatedAtMs: 300 }),
+    conversation({ id: 'draft:local', transientDraft: true }),
+    conversation({ id: 'execution', agentSubsessionId: 'execution-resource' }),
+  ], undefined, [person]);
+  assert.equal(destinations.length, 1);
+  assert.equal(destinations[0].identityLabel, '@123456789');
+  assert.equal(destinations[0].updatedAtMs, 300);
 });

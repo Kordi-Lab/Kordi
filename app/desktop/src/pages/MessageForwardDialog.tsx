@@ -1,135 +1,144 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Send, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Bot, Check, Forward, Search, Users, X } from 'lucide-react';
 
-import type { ForwardDestination } from '@/features/chat/messageForwarding';
+import { AppDialog } from '@/components/ui/dialog';
+import { filterForwardDestinations, forwardDestinationPath, type ForwardDestination } from '@/features/chat/messageForwarding';
 import type { ForwardMessageSource } from '@/features/chat/messageActionMetadata';
+import { formatDesktopLastActiveLabel } from '@/lib/time';
 
 export type MessageForwardDialogProps = {
   sources: ForwardMessageSource[];
   destinations: ForwardDestination[];
+  sourceLabel?: string;
   onClose: () => void;
-  onForward: (destination: ForwardDestination, caption: string) => void;
+  onForward: (destination: ForwardDestination, caption: string, onProgress?: (completed: number) => void) => void | Promise<void>;
 };
 
+const filters = [['all', 'All'], ['person', 'People'], ['group', 'Groups'], ['agent', 'Agents']] as const;
+
 function sourcePreview(source: ForwardMessageSource) {
-  return source.textPreview || `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}`;
+  return source.textPreview || (source.voiceMessage ? 'Voice message' : `${source.attachmentCount} attachment${source.attachmentCount === 1 ? '' : 's'}`);
 }
 
-export function MessageForwardDialog({
-  sources,
-  destinations,
-  onClose,
-  onForward,
-}: MessageForwardDialogProps) {
-  const [selectedId, setSelectedId] = useState(destinations[0]?.id ?? '');
+function DestinationAvatar({ destination }: { destination: ForwardDestination }) {
+  const [failed, setFailed] = useState(false);
+  return <span className={`forward-avatar forward-avatar-${destination.kind ?? 'group'}`} aria-hidden="true">
+    {destination.profileImageUrl && !failed
+      ? <img src={destination.profileImageUrl} alt="" onError={() => setFailed(true)} />
+      : destination.kind === 'person'
+        ? destination.label.split(/\s+/).slice(0, 2).map((part) => Array.from(part)[0]).join('').toLocaleUpperCase()
+        : destination.kind === 'agent' ? <Bot /> : <Users />}
+  </span>;
+}
+
+export function MessageForwardDialog({ sources, destinations, sourceLabel, onClose, onForward }: MessageForwardDialogProps) {
+  const [selectedId, setSelectedId] = useState('');
   const [caption, setCaption] = useState('');
-  const selectedDestination = useMemo(
-    () => destinations.find((destination) => destination.id === selectedId) ?? null,
-    [destinations, selectedId],
-  );
-  const primarySource = sources[0] ?? null;
-  const isBatch = sources.length > 1;
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [status, setStatus] = useState<'idle' | 'sending' | 'error' | 'success' | 'closing'>('idle');
+  const [error, setError] = useState('');
+  const [completed, setCompleted] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const submittingRef = useRef(false);
+  const successRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  const succeeded = status === 'success' || status === 'closing';
 
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-      if (event.key === 'Enter' && !event.shiftKey && selectedDestination) {
-        event.preventDefault();
-        onForward(selectedDestination, isBatch ? '' : caption);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [caption, isBatch, onClose, onForward, selectedDestination]);
+    if (!succeeded) return;
+    successRef.current?.focus();
+    const fade = window.setTimeout(() => setStatus('closing'), 2000);
+    const close = window.setTimeout(() => onCloseRef.current(), 2200);
+    return () => { window.clearTimeout(fade); window.clearTimeout(close); };
+  }, [succeeded]);
+  const selected = destinations.find((destination) => destination.id === selectedId);
+  const visible = useMemo(() => filterForwardDestinations(destinations, query, filter), [destinations, query, filter]);
+  const isBatch = sources.length > 1;
+  const busy = status === 'sending';
+  // A retry continues the same batch; changing its destination could resend completed messages.
+  const locked = busy || status === 'error';
 
-  return (
-    <div
-      className="app-transient-overlay app-overlay fixed inset-0 z-[260] flex items-center justify-center p-4 backdrop-blur-[10px]"
-      style={{ WebkitAppRegion: 'no-drag' as const }}
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="message-forward-dialog-title"
-        data-message-forward-dialog="true"
-        data-message-forward-mode={isBatch ? 'batch' : 'single'}
-        className="app-transient-surface app-message-forward-dialog w-full max-w-[380px] overflow-hidden rounded-[20px] border"
-      >
-        <header className="app-transient-divider flex items-start justify-between gap-3 border-b px-4 py-3">
-          <div className="min-w-0 flex-1">
-            <h2 id="message-forward-dialog-title" className="text-[13px] font-semibold text-[color:var(--utility-foreground)]">
-              {isBatch ? `Forward ${sources.length} messages` : 'Forward message'}
-            </h2>
-            {!isBatch && primarySource ? (
-              <p className="mt-1 max-w-[290px] truncate text-[11px] text-[color:var(--utility-muted-text)]">
-                {primarySource.senderLabel}: {sourcePreview(primarySource)}
-              </p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            className="app-button-quiet grid h-7 w-7 place-items-center rounded-full p-0"
-            onClick={onClose}
-            aria-label="Close forward dialog"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+  function clearSearch() {
+    setQuery(''); setFilter('all'); searchRef.current?.focus();
+  }
+
+  async function forward() {
+    if (!selected || !sources.length || submittingRef.current || succeeded) return;
+    submittingRef.current = true;
+    setStatus('sending'); setError('');
+    try {
+      await onForward(selected, isBatch ? '' : caption, setCompleted);
+      setStatus('success');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Couldn’t forward the message. Try again.');
+      setStatus('error');
+    } finally {
+      submittingRef.current = false;
+    }
+  }
+
+  return <AppDialog
+    titleId="message-forward-dialog-title"
+    onDismiss={onClose}
+    dismissDisabled={busy}
+    busy={busy}
+    className={`app-transient-surface app-message-forward-dialog${succeeded ? " forward-confirmation" : ""}${status === "closing" ? " forward-confirmation-exit" : ""}`}
+    backdropClassName={`forward-overlay${succeeded ? " forward-confirmation-overlay" : ""}`}
+  >
+    <div className="forward-content" data-message-forward-dialog="true" data-message-forward-mode={isBatch ? 'batch' : 'single'}>
+      {succeeded ? <section ref={successRef} className="forward-success" role="status" tabIndex={-1}>
+        <span className="forward-success-mark" aria-hidden="true"><Check /></span>
+        <h2 id="message-forward-dialog-title">{isBatch ? 'Messages forwarded' : 'Message forwarded'}</h2>
+      </section> : <>
+        <header className="forward-header">
+          <h2 id="message-forward-dialog-title">{isBatch ? `Forward ${sources.length} messages` : 'Forward message'}</h2>
+          <button type="button" className="forward-icon-button" onClick={onClose} disabled={busy} aria-label="Close forward dialog"><X aria-hidden="true" /></button>
         </header>
-
-        <div className="max-h-[280px] overflow-y-auto px-2 py-2" data-message-forward-destinations="true">
-          {destinations.length === 0 ? (
-            <p className="px-2 py-5 text-center text-[12px] text-[color:var(--utility-muted-text)]">No chats available to forward to.</p>
-          ) : destinations.map((destination) => {
-            const selected = destination.id === selectedId;
-            return (
-              <button
-                key={destination.id}
-                type="button"
-                className={`app-transient-row flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition ${selected ? 'app-transient-row-selected' : ''}`}
-                data-message-forward-destination={destination.id}
-                aria-pressed={selected}
-                onClick={() => setSelectedId(destination.id)}
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-[12px] font-medium">{destination.label}</span>
-                  {destination.subtitle ? <span className="block truncate text-[10px] text-[color:var(--utility-muted-text)]">{destination.subtitle}</span> : null}
-                </span>
-                {selected ? <span className="h-2 w-2 rounded-full bg-[color:var(--app-sidebar-accent)]" aria-hidden="true" /> : null}
-              </button>
-            );
-          })}
-        </div>
-
-        <footer className="app-transient-divider border-t p-3">
-          {!isBatch ? (
-            <textarea
-              className="mb-3 min-h-[52px] w-full resize-none rounded-[14px] border border-[color:var(--app-transient-border)] bg-[color:var(--app-transient-raised-bg)] px-3 py-2 text-[12px] text-[color:var(--app-transient-text)] outline-none placeholder:text-[color:var(--app-transient-muted-text)]"
-              placeholder="Add a comment…"
-              value={caption}
-              onChange={(event) => setCaption(event.target.value)}
-            />
-          ) : null}
-          <div className="flex justify-end gap-2">
-            <button type="button" className="app-button-quiet rounded-full px-3 py-1.5 text-[12px]" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-full bg-[color:var(--app-sidebar-accent)] px-3 py-1.5 text-[12px] font-semibold text-[color:var(--app-sidebar-accent-text)] transition disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!selectedDestination || sources.length === 0}
-              onClick={() => {
-                if (selectedDestination) onForward(selectedDestination, isBatch ? '' : caption);
-              }}
-            >
-              <Send className="h-3.5 w-3.5" aria-hidden="true" />
-              Forward
-            </button>
+        {!isBatch && sources[0] ? <section className="forward-source" aria-label="Message being forwarded">
+          {sourceLabel ? <div className="forward-source-path"><Forward aria-hidden="true" /><span>From {sourceLabel}</span></div> : null}
+          <p>{sources[0].senderLabel}: {sourcePreview(sources[0])}</p>
+        </section> : null}
+        <div className="forward-picker">
+          <label className="sr-only" htmlFor="forward-search">Send to</label>
+          <div className="forward-search">
+            <Search aria-hidden="true" />
+            <input ref={searchRef} id="forward-search" type="search" placeholder="Search people, groups, or agents" autoFocus autoComplete="off" value={query} aria-controls="forward-destinations" onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+              if (event.key === 'Enter') event.preventDefault();
+              if (event.key === 'ArrowDown') { event.preventDefault(); resultsRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); }
+            }} />
+            {query ? <button type="button" className="forward-icon-button" aria-label="Clear search" onClick={() => { setQuery(''); searchRef.current?.focus(); }}><X aria-hidden="true" /></button> : null}
           </div>
+          <div className="forward-filters" role="group" aria-label="Destination type">
+            {filters.map(([value, label]) => <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</button>)}
+          </div>
+          <div className="forward-list-heading"><h3 id="forward-list-title">{query.trim() ? 'Search results' : 'Recent chats'}</h3>{query.trim() ? <span>{visible.length} {visible.length === 1 ? 'result' : 'results'}</span> : null}</div>
+          <div id="forward-destinations" ref={resultsRef} className="forward-destinations" role="group" aria-labelledby="forward-list-title" data-message-forward-destinations="true" onKeyDown={(event) => {
+            if (!['ArrowDown', 'ArrowUp'].includes(event.key)) return;
+            const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+            if (!buttons.length) return;
+            event.preventDefault();
+            const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+            buttons[(index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+          }}>
+            {visible.map((destination) => <button key={destination.id} type="button" className="forward-destination" disabled={locked} data-message-forward-destination={destination.id} aria-pressed={selectedId === destination.id} onClick={() => setSelectedId(destination.id)}>
+              <DestinationAvatar destination={destination} />
+              <span className="forward-identity"><span className="forward-row-title">{destination.label}</span><span className="forward-row-context">{[destination.parentLabel, destination.subtitle, destination.identityLabel].filter(Boolean).join(' · ')}</span></span>
+              <span className="forward-row-meta"><span>{destination.updatedAtLabel || (destination.updatedAtMs ? formatDesktopLastActiveLabel(destination.updatedAtMs) : '')}</span><span className="forward-selection-check">{selectedId === destination.id ? <Check aria-hidden="true" /> : null}</span></span>
+            </button>)}
+            {!visible.length ? <div className="forward-empty"><Search aria-hidden="true" /><h3>{destinations.length ? 'No matching destinations' : 'No chats available to forward to.'}</h3>{destinations.length ? <><p>Try a name, group name, or Kordi ID.</p><button type="button" onClick={clearSearch}>Clear search and filters</button></> : null}</div> : null}
+          </div>
+          <span className="sr-only" role="status">{visible.length} destinations found.</span>
+        </div>
+        <footer className="app-transient-divider forward-footer">
+          {selected ? <div className="forward-selection-summary" aria-live="polite">To <strong>{forwardDestinationPath(selected)}</strong></div> : null}
+          {!isBatch ? <><label className="sr-only" htmlFor="forward-comment">Add a comment (optional)</label><textarea id="forward-comment" rows={1} placeholder="Add a comment (optional)" disabled={locked} value={caption} onChange={(event) => setCaption(event.target.value)} /></> : null}
+          {status === 'error' ? <p className="forward-error" role="alert">{error}</p> : null}
+          <div className="forward-actions"><button type="button" className="forward-secondary" disabled={busy} onClick={onClose}>Cancel</button><button type="button" className="forward-primary" disabled={!selected || !sources.length || busy} aria-busy={busy || undefined} onClick={() => { void forward(); }}><Forward aria-hidden="true" /><span aria-live="polite">{busy ? isBatch ? `Forwarding ${completed}/${sources.length}…` : 'Forwarding…' : status === 'error' ? 'Try again' : 'Forward'}</span></button></div>
         </footer>
-      </section>
+      </>}
     </div>
-  );
+  </AppDialog>;
 }

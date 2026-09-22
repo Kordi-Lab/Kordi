@@ -221,7 +221,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     messageForwardDialog, messageDeleteDialog,
   } = useKordiMessageActions({
     activeConversation: activeConv,
-    conversations: chatConversations,
+    conversations: chatConversations, contacts: cloudContacts,
     draftSessionId: chatDraftSessionId,
     isNativeShell,
     transcriptScrollRef: chatTranscriptScrollRef,

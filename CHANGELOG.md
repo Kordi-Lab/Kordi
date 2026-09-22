@@ -4,7 +4,17 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ## [Unreleased]
 
+### Changed
+
+- Simplified message forwarding on macOS and iOS with searchable people, groups,
+  and agents, recent activity ordering, visible group context, compact layouts,
+  and brief translucent success confirmations.
+
 ### Fixed
+
+- Made batch forwarding report delivery progress and resume failed sends without
+  resending completed messages. macOS forwarding no longer waits for a full
+  local-state reload or background group synchronization after delivery.
 
 - Preserved the reading position when older history removes date and sender
   headers, and when partially visible messages grow. Transcript anchors now
