@@ -23,6 +23,9 @@
       --chip-hover: #f5f0fb;
       --preview: #f9f7fd;
       --focus: #8058b5;
+      --file-pdf: #c62828;
+      --file-sheet: #15803d;
+      --file-archive: #b45309;
       --shadow: 0 24px 72px #27334b1c, 0 3px 12px #27334b0d;
     }
     * { box-sizing: border-box; }
@@ -44,7 +47,7 @@
     .sidebar-label { margin: 0 10px 8px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
     .room { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: var(--own); color: var(--text); font-size: 13px; font-weight: 700; }
     .room-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: #d6caed; color: #624494; }
-    .main { display: flex; flex-direction: column; min-width: 0; }
+    .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
     .chat-header { display: flex; align-items: center; gap: 11px; height: 64px; flex: 0 0 auto; padding: 0 24px; border-bottom: 1px solid var(--line); }
     .chat-avatar { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 12px; background: #dfd2f2; color: #624494; font-size: 15px; font-weight: 800; }
     .chat-name { font-size: 14px; font-weight: 740; }
@@ -62,6 +65,15 @@
     .inline-link:hover { color: var(--link-hover); text-decoration: underline; }
     .link-glyph { display: inline-block; margin-right: 3px; font-size: .94em; vertical-align: -.04em; }
     .inline-logo { width: 14px; height: 14px; margin-right: 4px; object-fit: contain; vertical-align: -.13em; }
+    .inline-file { color: #c62828; }
+    .file-chip { display: flex; align-items: center; gap: 9px; width: min(320px, 100%); margin-top: 7px; padding: 8px 9px; border: 1px solid #2025321c; border-radius: 12px; background: #2025320a; line-height: 1.25; }
+    .file-chip[data-family="pdf"] { --file: var(--file-pdf); }
+    .file-chip[data-family="sheet"] { --file: var(--file-sheet); }
+    .file-chip[data-family="archive"] { --file: var(--file-archive); }
+    .file-tile { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border: 1px solid color-mix(in srgb, var(--file) 28%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--file) 16%, transparent); color: var(--file); font-size: 9px; font-weight: 800; letter-spacing: .04em; }
+    .file-name { overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .file-meta { color: var(--file); font-size: 10.5px; font-weight: 700; }
+    .file-size { color: var(--muted); font-weight: 500; }
     .standalone-bubble { width: min(390px, 100%); padding: 0; border: 0 !important; background: transparent !important; }
     .rich-card { display: grid; grid-template-columns: minmax(0, 1fr) 84px; overflow: hidden; min-height: 98px; border: 1px solid var(--own-line); border-radius: 12px; background: var(--preview); color: inherit; text-decoration: none; }
     .rich-card:hover { border-color: var(--link); }
@@ -84,8 +96,10 @@
     .stage.iphone .standalone-bubble { width: min(315px, 100%); }
     .stage.iphone .composer { padding: 10px 13px 18px; }
     .stage.iphone .caption { justify-content: center; }
-    body.dark { color-scheme: dark; --page: #10131b; --window: #191d27; --sidebar: #151923; --line: #313746; --text: #f0eef7; --muted: #aaa9b8; --agent: #252a36; --own: #40344f; --own-line: #5c4a70; --link: #d3abef; --link-hover: #ead0fc; --chip: #30283e; --chip-hover: #514061; --preview: #2a2536; --shadow: 0 24px 72px #0008; }
+    body.dark { color-scheme: dark; --page: #10131b; --window: #191d27; --sidebar: #151923; --line: #313746; --text: #f0eef7; --muted: #aaa9b8; --agent: #252a36; --own: #40344f; --own-line: #5c4a70; --link: #d3abef; --link-hover: #ead0fc; --chip: #30283e; --chip-hover: #514061; --preview: #2a2536; --shadow: 0 24px 72px #0008; --file-pdf: #f87171; --file-sheet: #86efac; --file-archive: #fcd34d; }
     body.dark .rich-art { background: linear-gradient(135deg, #6d5286, #493a60); color: #f2e4ff; }
+    body.dark .inline-file { color: #f87171; }
+    body.dark .file-chip { border-color: #ffffff1c; background: #ffffff0a; }
     body.dark .segmented button[aria-pressed="true"] { color: #eed4ff; }
     @media (max-width: 720px) { .toolbar { align-items: flex-start; flex-direction: column; padding: 19px 16px 16px; } .stage { padding: 0 12px 22px; } .window { grid-template-columns: 1fr; min-height: 620px; } .sidebar { display: none; } .conversation { padding: 20px 17px; } .message { max-width: 92%; } }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
@@ -110,11 +124,13 @@
           <article class="message own"><div class="byline">You · URL only</div><div class="bubble standalone-bubble"><a class="rich-card" href="https://kordi.ai/updates/releases/latest/Kordi.dmg" target="_blank" rel="noopener noreferrer" aria-label="Open Kordi.dmg on kordi.ai"><span class="rich-copy"><span class="rich-site">kordi.ai</span><span class="rich-title">Kordi</span><span class="rich-path">/updates/releases/latest/Kordi.dmg</span></span><span class="rich-art" aria-hidden="true">K</span></a></div></article>
           <article class="message"><div class="byline">Kordi</div><div class="bubble"><p>Your URL-only message shows the full card immediately. My references remain part of the sentence.</p></div></article>
           <article class="message own"><div class="byline">You · URL in a sentence</div><div class="bubble"><p>Can you also check <a class="inline-link" href="https://kordi.ai/docs" target="_blank" rel="noopener noreferrer"><span class="link-glyph" aria-hidden="true">▣</span>kordi.ai/docs</a>?</p></div></article>
+          <article class="message"><div class="byline">Kordi · file reference</div><div class="bubble"><p>The <a class="inline-link" href="https://example.net/release-checklist.pdf" target="_blank" rel="noopener noreferrer"><span class="link-glyph inline-file" aria-hidden="true">▣</span>release checklist</a> covers the final checks.</p></div></article>
+          <article class="message"><div class="byline">Maya · attachments</div><div class="bubble"><p>I attached the release files.</p><div class="file-chip" data-family="pdf"><span class="file-tile">PDF</span><div><div class="file-name">Release-checklist.pdf</div><div class="file-meta">PDF <span class="file-size">· 248 KB</span></div></div></div><div class="file-chip" data-family="sheet"><span class="file-tile">XLSX</span><div><div class="file-name">Rollout-tracker.xlsx</div><div class="file-meta">XLSX <span class="file-size">· 42 KB</span></div></div></div><div class="file-chip" data-family="archive"><span class="file-tile">ZIP</span><div><div class="file-name">Source-bundle.zip</div><div class="file-meta">ZIP <span class="file-size">· 819 KB</span></div></div></div></div></article>
         </div>
         <div class="composer"><div class="composer-field">Message Product chat</div><span class="send" aria-hidden="true">↑</span></div>
       </div>
     </section>
-    <div class="caption"><span><strong>Assistant reference:</strong> inline, no duplicate card</span><span><strong>Your URL-only message:</strong> full card immediately</span><span><strong>URL in a sentence:</strong> stays inline</span></div>
+    <div class="caption"><span><strong>Assistant reference:</strong> inline, no duplicate card</span><span><strong>Your URL-only message:</strong> full card immediately</span><span><strong>URL in a sentence:</strong> stays inline</span><span><strong>Files:</strong> colored references and compact attachments</span></div>
   </main>
   <script>
     const stage = document.getElementById('stage');
