@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import { CLOUD_LOGIN_WINDOW_DRAG_STYLE } from '@/app/windowDrag';
 import { CloudAuthError, type CloudOAuthProvider } from '@/features/cloud/authClient';
+import { isCloudOAuthCancelled } from '@/features/cloud/cloudOAuthCancellation';
 import {
   readLoginModePreference,
   writeLoginModePreference,
@@ -210,13 +211,16 @@ export function CloudLoginPage({
     try {
       await onSocialSignIn(provider);
     } catch (caught) {
-      if (caught instanceof CloudAuthError) {
+      if (isCloudOAuthCancelled(caught)) {
+        return;
+      } else if (caught instanceof CloudAuthError) {
         setSubmitError(cloudLoginErrorMessage(caught, showDebugAuthDiagnostics));
       } else if (caught instanceof Error) {
         setSubmitError(caught.message);
       } else {
         setSubmitError('Could not start social sign-in.');
       }
+    } finally {
       setSocialProvider(null);
     }
   }

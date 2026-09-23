@@ -14,6 +14,7 @@ const MAX_LOOPBACK_REQUEST_BYTES: usize = 64 * 1024;
 #[derive(Default)]
 pub struct CloudOAuthLoopbackState {
     pending: Mutex<HashMap<String, oneshot::Receiver<Result<String, String>>>>,
+    cancellations: Mutex<HashMap<String, oneshot::Sender<()>>>,
 }
 
 #[derive(Serialize)]
@@ -37,13 +38,24 @@ pub async fn cloud_oauth_loopback_prepare(
         .port();
     let redirect_url = format!("http://127.0.0.1:{port}/oauth/{request_id}");
     let (tx, rx) = oneshot::channel();
+    let (cancel_tx, cancel_rx) = oneshot::channel();
     state
         .pending
         .lock()
         .map_err(|_| "OAuth callback state is unavailable.".to_string())?
         .insert(request_id.clone(), rx);
+    state
+        .cancellations
+        .lock()
+        .map_err(|_| "OAuth callback state is unavailable.".to_string())?
+        .insert(request_id.clone(), cancel_tx);
 
-    tokio::spawn(run_loopback_listener(listener, request_id.clone(), tx));
+    tokio::spawn(run_loopback_listener(
+        listener,
+        request_id.clone(),
+        tx,
+        cancel_rx,
+    ));
 
     Ok(CloudOAuthLoopbackStart {
         request_id,
@@ -64,24 +76,62 @@ pub async fn cloud_oauth_loopback_wait(
         .remove(request_id.trim())
         .ok_or_else(|| "OAuth callback was not started.".to_string())?;
     let timeout = Duration::from_millis(timeout_ms.unwrap_or(180_000).clamp(1_000, 600_000));
-    match tokio::time::timeout(timeout, rx).await {
+    let result = match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(result)) => result,
         Ok(Err(_)) => Err("OAuth callback listener stopped before sign-in completed.".to_string()),
         Err(_) => Err("OAuth sign-in timed out. Try again.".to_string()),
+    };
+    if let Some(cancel) = state
+        .cancellations
+        .lock()
+        .map_err(|_| "OAuth callback state is unavailable.".to_string())?
+        .remove(request_id.trim())
+    {
+        let _ = cancel.send(());
     }
+    result
+}
+
+#[tauri::command]
+pub async fn cloud_oauth_loopback_cancel(
+    state: State<'_, CloudOAuthLoopbackState>,
+    request_id: String,
+) -> Result<(), String> {
+    state
+        .pending
+        .lock()
+        .map_err(|_| "OAuth callback state is unavailable.".to_string())?
+        .remove(request_id.trim());
+    if let Some(cancel) = state
+        .cancellations
+        .lock()
+        .map_err(|_| "OAuth callback state is unavailable.".to_string())?
+        .remove(request_id.trim())
+    {
+        let _ = cancel.send(());
+    }
+    Ok(())
 }
 
 async fn run_loopback_listener(
     listener: TcpListener,
     request_id: String,
     tx: oneshot::Sender<Result<String, String>>,
+    cancel_rx: oneshot::Receiver<()>,
 ) {
     let mut sender = Some(tx);
     let deadline = tokio::time::sleep(Duration::from_secs(5 * 60));
     tokio::pin!(deadline);
+    tokio::pin!(cancel_rx);
 
     loop {
         tokio::select! {
+            _ = &mut cancel_rx => {
+                if let Some(tx) = sender.take() {
+                    let _ = tx.send(Err("OAuth sign-in was canceled.".to_string()));
+                }
+                return;
+            }
             _ = &mut deadline => {
                 if let Some(tx) = sender.take() {
                     let _ = tx.send(Err("OAuth sign-in timed out. Try again.".to_string()));

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { UseCloudSessionResult } from './useCloudSession';
+import { CloudOAuthCancelledError } from './cloudOAuthCancellation';
 
-export type CloudAuthTransition = 'signing-in' | 'signing-out';
+export type CloudAuthTransition = 'signing-in' | 'signing-out' | 'social-signing-in';
 export const CLOUD_AUTH_COVER_MS = 180;
 
 /** Let the cover paint before auth can replace the current page or resize it. */
@@ -32,17 +33,22 @@ export function useCloudAuthTransition({ signIn, signUp, signInWithProvider, sig
   const [activity, setActivity] = useState<CloudAuthTransition | null>(null);
   const mounted = useRef(true);
   const pending = useRef<Promise<void> | null>(null);
+  const socialAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; };
+    return () => {
+      mounted.current = false;
+      socialAbort.current?.abort();
+    };
   }, []);
-  const run = useCallback((next: CloudAuthTransition, action: () => Promise<void>): Promise<void> => {
+  const run = useCallback((next: CloudAuthTransition, action: () => Promise<void>, signal?: AbortSignal): Promise<void> => {
     if (pending.current) return pending.current;
     setActivity(next);
     const operation = (async () => {
       try {
         await waitForCloudAuthCover();
         if (!mounted.current) return;
+        if (signal?.aborted) throw new CloudOAuthCancelledError();
         await action();
       } finally {
         pending.current = null;
@@ -59,8 +65,23 @@ export function useCloudAuthTransition({ signIn, signUp, signInWithProvider, sig
     (...args) => run('signing-in', () => signUp(...args)), [run, signUp],
   );
   const social = useCallback<AuthActions['signInWithProvider']>(
-    (...args) => run('signing-in', () => signInWithProvider(...args)), [run, signInWithProvider],
+    (provider) => {
+      if (pending.current) return pending.current;
+      const controller = new AbortController();
+      socialAbort.current = controller;
+      return run(
+        'social-signing-in',
+        () => signInWithProvider(provider, controller.signal),
+        controller.signal,
+      ).finally(() => {
+        if (socialAbort.current === controller) socialAbort.current = null;
+      });
+    },
+    [run, signInWithProvider],
   );
+  const cancelSocialSignIn = useCallback(() => {
+    socialAbort.current?.abort();
+  }, []);
   const leave = useCallback(() => run('signing-out', signOut), [run, signOut]);
-  return { activity, signIn: enter, signUp: register, socialSignIn: social, signOut: leave };
+  return { activity, signIn: enter, signUp: register, socialSignIn: social, cancelSocialSignIn, signOut: leave };
 }

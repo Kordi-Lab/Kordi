@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   activateDesktopCloudAccountStorage,
+  cancelDesktopCloudOAuthLoopback,
   openDesktopExternalUrl,
   prepareDesktopCloudOAuthLoopback,
   waitForDesktopCloudOAuthLoopback,
@@ -21,6 +22,11 @@ import {
   type CloudProfileUpdateInput,
 } from './authClient';
 import { cloudAccountsEqual } from './cloudAccountState';
+import {
+  isCloudOAuthCancelled,
+  throwIfCloudOAuthCancelled,
+  waitForCloudOAuthOrCancellation,
+} from './cloudOAuthCancellation';
 import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
@@ -49,7 +55,7 @@ export type UseCloudSessionResult = {
     avatarSeed: string;
     avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
   }): Promise<void>;
-  signInWithProvider(provider: CloudOAuthProvider): Promise<void>;
+  signInWithProvider(provider: CloudOAuthProvider, signal?: AbortSignal): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
   signOut(this: void): Promise<void>;
   clearError(): void;
@@ -378,13 +384,26 @@ export function useCloudSession({
   );
 
   const signInWithProvider = useCallback(
-    async (provider: CloudOAuthProvider) => {
+    async (provider: CloudOAuthProvider, signal?: AbortSignal) => {
+      let loopback: Awaited<ReturnType<typeof prepareDesktopCloudOAuthLoopback>> = null;
+      let completed = false;
       try {
-        const loopback = await prepareDesktopCloudOAuthLoopback();
+        throwIfCloudOAuthCancelled(signal);
+        loopback = await prepareDesktopCloudOAuthLoopback();
+        throwIfCloudOAuthCancelled(signal);
         if (loopback) {
-          const result = await authClient.startOAuth(provider, loopback.redirectUrl);
-          await openDesktopExternalUrl(result.authUrl);
-          const fragment = await waitForDesktopCloudOAuthLoopback(loopback.requestId);
+          const result = await waitForCloudOAuthOrCancellation(
+            authClient.startOAuth(provider, loopback.redirectUrl),
+            signal,
+          );
+          throwIfCloudOAuthCancelled(signal);
+          await waitForCloudOAuthOrCancellation(openDesktopExternalUrl(result.authUrl), signal);
+          throwIfCloudOAuthCancelled(signal);
+          const fragment = await waitForCloudOAuthOrCancellation(
+            waitForDesktopCloudOAuthLoopback(loopback.requestId),
+            signal,
+          );
+          throwIfCloudOAuthCancelled(signal);
           const oauthResult = parseCloudOAuthHashResult(fragment);
           if (!oauthResult) {
             throw new CloudAuthError('unknown', 'OAuth sign-in did not return a valid Kordi session.', 0);
@@ -396,17 +415,23 @@ export function useCloudSession({
             setAuthenticated,
             reloadWindow: reloadForAccountStorageSwitch,
           });
+          completed = true;
           return;
         }
 
         const redirectAfter = typeof window !== 'undefined'
           ? `${window.location.origin}${window.location.pathname}`
           : 'http://127.0.0.1/';
-        const result = await authClient.startOAuth(provider, redirectAfter);
+        const result = await waitForCloudOAuthOrCancellation(
+          authClient.startOAuth(provider, redirectAfter),
+          signal,
+        );
+        throwIfCloudOAuthCancelled(signal);
         if (typeof window !== 'undefined') {
           window.location.assign(result.authUrl);
         }
       } catch (caught) {
+        if (isCloudOAuthCancelled(caught)) throw caught;
         if (caught instanceof CloudAuthError) {
           setError(caught);
           throw caught;
@@ -418,6 +443,10 @@ export function useCloudSession({
         );
         setError(wrapped);
         throw wrapped;
+      } finally {
+        if (loopback && !completed) {
+          await cancelDesktopCloudOAuthLoopback(loopback.requestId).catch(() => undefined);
+        }
       }
     },
     [authClient, reloadForAccountStorageSwitch, setAuthenticated],

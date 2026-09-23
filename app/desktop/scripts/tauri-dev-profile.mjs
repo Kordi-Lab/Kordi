@@ -5,9 +5,11 @@ import { spawnSync } from 'node:child_process';
 
 import {
   buildBeforeDevCommand,
+  desktopDevCapabilities,
   resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from './tauri-dev-env.mjs';
+import { resolveCloudDevApiBase } from './cloud-dev-endpoint.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -153,6 +155,7 @@ const beforeDevCommand = buildBeforeDevCommand({
 });
 
 const baseConfig = JSON.parse(readFileSync(tauriConfigPath, 'utf8'));
+const defaultCapability = JSON.parse(readFileSync(join(appRoot, 'src-tauri', 'capabilities', 'default.json'), 'utf8'));
 const nextConfig = {
   ...baseConfig,
   productName: title,
@@ -169,6 +172,10 @@ const nextConfig = {
   },
   app: {
     ...baseConfig.app,
+    security: {
+      ...baseConfig.app.security,
+      capabilities: desktopDevCapabilities(defaultCapability, resolveCloudDevApiBase(process.env)),
+    },
     windows: (baseConfig.app?.windows ?? []).map((window, index) => (
       index === 0
         ? { ...window, title }

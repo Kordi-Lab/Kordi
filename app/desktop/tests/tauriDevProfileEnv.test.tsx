@@ -4,11 +4,24 @@ import { test } from 'node:test';
 
 import {
   buildBeforeDevCommand,
+  desktopDevCapabilities,
   resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from '../scripts/tauri-dev-env.mjs';
 
 const appShellFrameSource = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
+const defaultCapability = JSON.parse(readFileSync(new URL('../src-tauri/capabilities/default.json', import.meta.url), 'utf8'));
+
+test('named desktop preview permits only its configured loopback API port', () => {
+  const [capability] = desktopDevCapabilities(defaultCapability, 'http://127.0.0.1:17642');
+  const httpPermission = capability.permissions.find((permission: { identifier?: string }) => permission.identifier === 'http:default');
+  assert.ok(httpPermission);
+  assert.ok(httpPermission.allow.some((scope: { url: string }) => scope.url === 'http://127.0.0.1:17642'));
+  assert.ok(!defaultCapability.permissions.find((permission: { identifier?: string }) => permission.identifier === 'http:default').allow.some((scope: { url: string }) => scope.url === 'http://127.0.0.1:17642'));
+
+  const [remoteCapability] = desktopDevCapabilities(defaultCapability, 'https://test.example');
+  assert.deepEqual(remoteCapability, defaultCapability);
+});
 
 test('native startup preserves the title selected by a named Tauri profile', () => {
   const source = readFileSync(new URL('../src-tauri/src/lib.rs', import.meta.url), 'utf8');

@@ -292,6 +292,15 @@ test('cloud starting timeout provides an explicit retry action', () => {
   assert.match(markup, /button/);
 });
 
+test('pending social sign-in offers a cancel action', () => {
+  const markup = renderToStaticMarkup(createElement(CloudStartingScreen, {
+    onCancelSignIn: () => {},
+  }));
+
+  assert.match(markup, /Cancel sign-in/);
+  assert.match(markup, /<button/);
+});
+
 test('cloud starting dots are flat and non-glowy in CSS', () => {
   const css = readDesktopShellCss();
   const dotBlock = cssBlock(css, '.app-cloud-starting-dot');

@@ -136,6 +136,10 @@ export async function waitForDesktopCloudOAuthLoopback(requestId: string, timeou
   return invokeDesktop<string>('cloud_oauth_loopback_wait', { requestId, timeoutMs });
 }
 
+export async function cancelDesktopCloudOAuthLoopback(requestId: string): Promise<void> {
+  return invokeDesktop<void>('cloud_oauth_loopback_cancel', { requestId });
+}
+
 export async function downloadDesktopAttachment(path: string, name?: string | null) {
   return invokeDesktop<string>('desktop_chat_download_attachment', { path, name: name ?? null });
 }
