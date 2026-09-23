@@ -557,7 +557,22 @@ enum PreviewData {
                 author: .person, authorName: "Maya Chen",
                 text: "https://example.org/review-checklist",
                 createdAt: now.addingTimeInterval(-120), deliveryState: .delivered,
-                errorMessage: nil, requestMessageId: nil)
+                errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "links-file-reference", conversationId: conversationId,
+                author: .agent, authorName: "Research Agent",
+                text: "The [release checklist](https://example.net/release-checklist.pdf) covers the final checks.",
+                createdAt: now.addingTimeInterval(-60), deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "links-file-attachment", conversationId: conversationId,
+                author: .person, authorName: "Maya Chen",
+                text: "I attached the checklist as a file.",
+                createdAt: now, deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: nil,
+                attachments: [ChatAttachment(
+                    attachmentId: "att_preview_link_showcase_checklist",
+                    name: "Release-checklist.pdf", kind: .file,
+                    mimeType: "application/pdf", sizeBytes: 248_320, previewURL: nil
+                )])
         ]
     }
 

@@ -121,7 +121,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-contact-chat` | Direct conversation |
 | `--preview-incoming-message` | Debug-only incoming-message demo: combine with `--preview-data --preview-contact-chat` to open older history and receive one sample message after three seconds |
 | `--preview-theme-contrast` | Synthetic mentions, receipts, inline URLs, and link-preview cards; combine with `--preview-data --preview-contact-chat --preview-theme-controls` |
-| `--preview-link-showcase` | Offline group chat with inline agent references, a favicon, URL-only cards from both sides, and a card without artwork; combine with `--preview-data` |
+| `--preview-link-showcase` | Offline group chat with inline agent references, a favicon, URL-only cards from both sides, a card without artwork, a direct PDF reference, and a file attachment; combine with `--preview-data` |
 | `--preview-bubble-width` | Message bubble width and delivery-state stress cases |
 | `--preview-direct-call` | Active one-to-one voice call |
 | `--preview-group-call` | Active group video chat |

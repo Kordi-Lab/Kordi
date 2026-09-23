@@ -100,6 +100,19 @@ export function safeExternalHttpHref(value: string): string | null {
   }
 }
 
+const documentExtensions = new Set([
+  'csv', 'doc', 'docx', 'dmg', 'epub', 'md', 'numbers', 'pages', 'pdf',
+  'ppt', 'pptx', 'rtf', 'txt', 'xls', 'xlsx', 'zip',
+]);
+
+export function isDirectFileLink(href: string): boolean {
+  const safeHref = safeExternalHttpHref(href);
+  if (!safeHref) return false;
+  const filename = new URL(safeHref).pathname.split('/').pop() ?? '';
+  const extension = filename.split('.').pop()?.toLowerCase() ?? '';
+  return filename.includes('.') && documentExtensions.has(extension);
+}
+
 export function compactExternalLinkLabel(label: string, href: string, maxLength = 48) {
   if (label !== href || label.length <= maxLength) return label;
   const url = new URL(href);

@@ -80,7 +80,7 @@ test('keeps links in human release announcements inline without a duplicate card
     assert.equal((html.match(/<li\b/g) ?? []).length, 3);
     assert.match(html, /<strong[^>]*>GIF<\/strong>/);
     assert.match(html, /data-mention-kind="all"[^>]*aria-label="@all, all people in this group"/);
-    assert.match(html, /data-site-icon-host="kordi\.ai"/);
+    assert.match(html, /data-file-reference="true"/);
     assert.doesNotMatch(html, /class="app-message-link-preview"/);
   }
 });
@@ -100,13 +100,13 @@ test('shows one full card for a human URL-only message and an inline link for ag
   const agentHtml = renderToStaticMarkup(createElement(MessageBubble, {
     msg: humanMessage({ role: 'owned-agent', sender: 'Kordi', senderType: 'agent', isOwnMessage: false, text: `See [release notes](${url}).` }),
   }));
-  assert.match(agentHtml, /data-site-icon-host="kordi\.ai"/);
+  assert.match(agentHtml, /data-file-reference="true"/);
   assert.doesNotMatch(agentHtml, /class="app-message-link-preview"/);
 
   const agentBareUrlHtml = renderToStaticMarkup(createElement(MessageBubble, {
     msg: humanMessage({ role: 'owned-agent', sender: 'Kordi', senderType: 'agent', isOwnMessage: false, text: url }),
   }));
-  assert.match(agentBareUrlHtml, /data-site-icon-host="kordi\.ai"/);
+  assert.match(agentBareUrlHtml, /data-file-reference="true"/);
   assert.doesNotMatch(agentBareUrlHtml, /class="app-message-link-preview"/);
 });
 

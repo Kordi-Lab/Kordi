@@ -10,6 +10,7 @@ import {
 } from '../src/kordi-app/components/messageInlineContent';
 import {
   openExternalMessageLink,
+  isDirectFileLink,
   parseMessageInlineParts,
   safeExternalHttpHref,
   siteIconDescriptorForHref,
@@ -74,6 +75,18 @@ test('plain message content tokenizes structured mentions and safe URLs without 
   );
   assert.equal(urlMention.filter((part) => part.type === 'link').length, 1);
   assert.equal(urlMention.filter((part) => part.type === 'mention').length, 0);
+});
+
+test('direct document links use a file glyph while site pages keep a favicon slot', () => {
+  assert.equal(isDirectFileLink('https://example.net/release-checklist.pdf?version=2'), true);
+  assert.equal(isDirectFileLink('https://example.net/release-checklist'), false);
+  assert.equal(isDirectFileLink('file:///release-checklist.pdf'), false);
+
+  const document = renderToStaticMarkup(createElement(MessageInlineContent, {
+    text: 'Read https://example.net/release-checklist.pdf',
+  }));
+  assert.match(document, /data-file-reference="true"/);
+  assert.doesNotMatch(document, /data-site-icon-host=/);
 });
 
 test('plain message content renders known Blob Emoji shortcodes inline', () => {

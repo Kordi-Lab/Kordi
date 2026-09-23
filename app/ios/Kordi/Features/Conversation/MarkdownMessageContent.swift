@@ -707,9 +707,15 @@ private struct InlineMarkdownText: View {
     }
 
     private func siteIcon(for url: URL) -> Image {
+        if Self.isDirectFileLink(url) { return Image(systemName: "doc.text") }
         let host = url.host?.lowercased() ?? ""
         return (siteIcons[host] ?? PreviewData.linkShowcaseSiteIcon(for: host))
             .map { Image(uiImage: $0) } ?? Image(systemName: "link")
+    }
+
+    private static func isDirectFileLink(_ url: URL) -> Bool {
+        ["csv", "doc", "docx", "dmg", "epub", "md", "numbers", "pages", "pdf",
+         "ppt", "pptx", "rtf", "txt", "xls", "xlsx", "zip"].contains(url.pathExtension.lowercased())
     }
 
     @MainActor
@@ -717,6 +723,7 @@ private struct InlineMarkdownText: View {
         var seenHosts = Set<String>()
         let hosts = parts.compactMap { part -> String? in
             guard case let .link(_, url) = part,
+                  !Self.isDirectFileLink(url),
                   let host = url.host?.lowercased(),
                   host.contains("."),
                   !host.hasSuffix(".local"),
