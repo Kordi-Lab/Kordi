@@ -86,6 +86,7 @@ test('direct document links use a file glyph while site pages keep a favicon slo
     text: 'Read https://example.net/release-checklist.pdf',
   }));
   assert.match(document, /data-file-reference="true"/);
+  assert.match(document, /data-file-family="pdf"/);
   assert.doesNotMatch(document, /data-site-icon-host=/);
 });
 

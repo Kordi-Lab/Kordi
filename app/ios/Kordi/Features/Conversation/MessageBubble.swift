@@ -2594,34 +2594,49 @@ private struct MessageFileAttachmentCard: View {
     let onShare: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 4) {
             Button(action: onOpen) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.secondary.opacity(0.1))
-                    Image(systemName: "doc.text.fill")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Text(String(attachment.formatLabel.prefix(4)))
+                        .font(.system(size: 9, weight: .heavy, design: .rounded))
+                        .tracking(0.3)
+                        .foregroundStyle(family.tint)
+                        .frame(width: 38, height: 38)
+                        .background(family.tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 9))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 9)
+                                .strokeBorder(family.tint.opacity(0.24), lineWidth: 0.5)
+                        }
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 0) {
+                            Text(nameBase)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Text(nameExtension)
+                                .fixedSize()
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        HStack(spacing: 4) {
+                            Text(attachment.formatLabel)
+                                .fontWeight(.bold)
+                                .foregroundStyle(family.tint)
+                            if let size = attachment.sizeLabel {
+                                Text("· \(size)")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .font(.caption)
+                        .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(width: 50, height: 50)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Review \(attachment.name)")
-
-            Button(action: onOpen) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(attachment.name)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.plain)
 
             Menu {
                 Button(action: onOpen) {
@@ -2634,13 +2649,12 @@ private struct MessageFileAttachmentCard: View {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 44)
+                    .frame(width: 32, height: 42)
             }
             .accessibilityLabel("More actions for \(attachment.name)")
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 2)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .frame(maxWidth: 310)
         .background(Color(uiColor: .systemBackground).opacity(0.72), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay {
@@ -2649,8 +2663,17 @@ private struct MessageFileAttachmentCard: View {
         }
     }
 
-    private var subtitle: String {
-        [attachment.formatLabel, attachment.sizeLabel].compactMap { $0 }.joined(separator: " · ")
+    private var family: KordiFileFamily {
+        KordiFileFamily.forFile(name: attachment.name, mimeType: attachment.mimeType)
+    }
+
+    private var nameExtension: String {
+        let ext = URL(fileURLWithPath: attachment.name).pathExtension
+        return ext.isEmpty ? "" : ".\(ext)"
+    }
+
+    private var nameBase: String {
+        String(attachment.name.dropLast(nameExtension.count))
     }
 }
 

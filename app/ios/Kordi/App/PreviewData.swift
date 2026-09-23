@@ -565,13 +565,22 @@ enum PreviewData {
                 errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "links-file-attachment", conversationId: conversationId,
                 author: .person, authorName: "Maya Chen",
-                text: "I attached the checklist as a file.",
+                text: "I attached the release files.",
                 createdAt: now, deliveryState: .delivered,
                 errorMessage: nil, requestMessageId: nil,
                 attachments: [ChatAttachment(
                     attachmentId: "att_preview_link_showcase_checklist",
                     name: "Release-checklist.pdf", kind: .file,
                     mimeType: "application/pdf", sizeBytes: 248_320, previewURL: nil
+                ), ChatAttachment(
+                    attachmentId: "att_preview_link_showcase_tracker",
+                    name: "Rollout-tracker.xlsx", kind: .file,
+                    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    sizeBytes: 41_700, previewURL: nil
+                ), ChatAttachment(
+                    attachmentId: "att_preview_link_showcase_bundle",
+                    name: "Source-bundle.zip", kind: .file,
+                    mimeType: "application/zip", sizeBytes: 819_200, previewURL: nil
                 )])
         ]
     }

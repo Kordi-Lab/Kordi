@@ -700,7 +700,7 @@ private struct InlineMarkdownText: View {
                 return result + Text(attributedText([part]))
             }
             return result
-                + Text(siteIcon(for: url)).foregroundColor(inlineAccent ?? KordiTheme.signalBlue)
+                + Text(siteIcon(for: url)).foregroundColor(siteIconColor(for: url))
                 + Text(" ")
                 + Text(attributedText([part]))
         }
@@ -711,6 +711,12 @@ private struct InlineMarkdownText: View {
         let host = url.host?.lowercased() ?? ""
         return (siteIcons[host] ?? PreviewData.linkShowcaseSiteIcon(for: host))
             .map { Image(uiImage: $0) } ?? Image(systemName: "link")
+    }
+
+    private func siteIconColor(for url: URL) -> Color {
+        Self.isDirectFileLink(url)
+            ? KordiFileFamily.forFile(name: url.lastPathComponent).tint
+            : (inlineAccent ?? KordiTheme.signalBlue)
     }
 
     private static func isDirectFileLink(_ url: URL) -> Bool {
@@ -763,6 +769,7 @@ private struct InlineMarkdownText: View {
                             .resizable()
                             .scaledToFit()
                             .frame(width: 14, height: 14)
+                            .foregroundStyle(siteIconColor(for: url))
                             .accessibilityHidden(true)
                         BlobEmojiInlineFlowLayout(spacing: 2) {
                             ForEach(Array(labelParts.enumerated()), id: \.offset) { _, labelPart in
@@ -780,7 +787,7 @@ private struct InlineMarkdownText: View {
                         .resizable()
                         .scaledToFit()
                         .frame(width: 14, height: 14)
-                        .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
+                        .foregroundStyle(siteIconColor(for: url))
                         .accessibilityHidden(true)
                     Text(attributedText([part]))
                         .font(font)

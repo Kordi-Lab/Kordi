@@ -55,6 +55,56 @@ enum KordiTheme {
     }
 }
 
+enum KordiFileFamily: String {
+    case pdf, doc, sheet, slides, code, archive, image, video, audio, design, generic
+
+    static func forFile(name: String, mimeType: String? = nil) -> Self {
+        let ext = URL(fileURLWithPath: name).pathExtension.lowercased()
+        switch ext {
+        case "pdf": return .pdf
+        case "doc", "docx", "txt", "md", "markdown", "rtf", "pages", "odt": return .doc
+        case "xls", "xlsx", "csv", "tsv", "numbers", "ods": return .sheet
+        case "ppt", "pptx", "key", "odp": return .slides
+        case "json", "xml", "yaml", "yml", "js", "jsx", "ts", "tsx", "py", "rb", "go", "rs",
+             "java", "c", "cc", "cpp", "h", "hpp", "cs", "swift", "kt", "php", "sh", "bash",
+             "zsh", "sql", "html", "htm", "css", "scss", "less", "toml", "ini", "env", "lock", "ipynb": return .code
+        case "zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "lz", "lzma", "zst": return .archive
+        case "png", "jpg", "jpeg", "gif", "webp", "heic", "heif", "bmp", "tif", "tiff", "svg", "avif", "ico": return .image
+        case "mp4", "mov", "m4v", "mkv", "webm", "avi", "wmv", "flv", "mpeg", "mpg", "3gp": return .video
+        case "mp3", "wav", "m4a", "aac", "flac", "ogg", "oga", "opus", "aiff", "wma": return .audio
+        case "fig", "sketch", "psd", "ai", "xd", "indd", "afdesign", "afphoto", "blend": return .design
+        default: break
+        }
+        let mime = mimeType?.lowercased() ?? ""
+        if mime == "application/pdf" { return .pdf }
+        if mime.hasPrefix("image/") { return .image }
+        if mime.hasPrefix("video/") { return .video }
+        if mime.hasPrefix("audio/") { return .audio }
+        if mime.contains("spreadsheet") || mime == "text/csv" { return .sheet }
+        if mime.contains("presentation") { return .slides }
+        if mime.contains("zip") || mime.contains("compressed") || mime.contains("tar") { return .archive }
+        if mime.contains("json") || mime.contains("xml") || mime.contains("yaml") { return .code }
+        if mime.hasPrefix("text/") { return .doc }
+        return .generic
+    }
+
+    var tint: Color {
+        switch self {
+        case .pdf: KordiTheme.adaptive(light: 0xC62828, dark: 0xF87171)
+        case .doc: KordiTheme.adaptive(light: 0x2563EB, dark: 0x93C5FD)
+        case .sheet: KordiTheme.adaptive(light: 0x15803D, dark: 0x86EFAC)
+        case .slides: KordiTheme.adaptive(light: 0xC2410C, dark: 0xFDBA74)
+        case .code: KordiTheme.adaptive(light: 0x0F766E, dark: 0x5EEAD4)
+        case .archive: KordiTheme.adaptive(light: 0xB45309, dark: 0xFCD34D)
+        case .image: KordiTheme.adaptive(light: 0x7C3AED, dark: 0xC4B5FD)
+        case .video: KordiTheme.adaptive(light: 0xBE185D, dark: 0xF9A8D4)
+        case .audio: KordiTheme.adaptive(light: 0x0E7490, dark: 0x67E8F9)
+        case .design: KordiTheme.adaptive(light: 0xA21CAF, dark: 0xF0ABFC)
+        case .generic: KordiTheme.adaptive(light: 0x64748B, dark: 0xCBD5E1)
+        }
+    }
+}
+
 enum KordiChatTheme: String, CaseIterable, Identifiable {
     case quiet
     case midnight

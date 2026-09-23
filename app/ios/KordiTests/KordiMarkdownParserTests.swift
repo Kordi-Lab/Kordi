@@ -199,6 +199,14 @@ struct MessageGestureRegistrationTests {
 }
 
 final class KordiMarkdownParserTests: XCTestCase {
+    func testFileFamiliesMatchTheDesktopAttachmentChips() {
+        XCTAssertEqual(KordiFileFamily.forFile(name: "Release-checklist.pdf"), .pdf)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "Rollout-tracker.xlsx"), .sheet)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "Source-bundle.zip"), .archive)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "download", mimeType: "application/pdf"), .pdf)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "unknown.bin"), .generic)
+    }
+
     func testCallAvatarResolverPrefersTheCallParticipantProfileImage() {
         let participant = CloudCallParticipant(
             accountId: "acct_peer",

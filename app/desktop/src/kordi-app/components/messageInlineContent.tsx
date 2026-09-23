@@ -4,6 +4,7 @@ import { FileText, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
 import { NotoEmojiImage } from '@/features/emoji/NotoEmojiImage';
+import { attachmentFileFamily } from '@/features/chat/attachmentFileFamily';
 import type { MessageMention } from '../types';
 import {
   compactExternalLinkLabel,
@@ -20,6 +21,7 @@ import {
 
 export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
   const isFile = isDirectFileLink(href);
+  const fileFamily = isFile ? attachmentFileFamily({ name: new URL(href).pathname }) : null;
   const descriptor = isFile ? null : siteIconDescriptorForHref(href);
   const requestUrl = descriptor?.requestUrl ?? null;
   const shouldLoad = shouldLoadAvatarThroughNativeProxy(requestUrl);
@@ -33,6 +35,7 @@ export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
     <span
       className="app-message-link-site-icon"
       data-file-reference={isFile ? 'true' : undefined}
+      data-file-family={fileFamily ?? undefined}
       data-site-icon-host={descriptor?.hostname}
       data-site-icon-state={failedDataUrl && failedDataUrl === remoteIcon.dataUrl ? 'failed' : remoteIcon.status}
       aria-hidden="true"
