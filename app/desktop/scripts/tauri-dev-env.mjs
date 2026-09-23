@@ -36,18 +36,14 @@ export function resolveDesktopDevUrl({ host, port, path = '' }) {
 export function desktopDevCapabilities(defaultCapability, cloudApiBase) {
   const capability = structuredClone(defaultCapability);
   const apiUrl = new URL(cloudApiBase);
-  if (apiUrl.protocol !== 'http:' || apiUrl.hostname !== '127.0.0.1') {
-    return [capability];
+  if (!['http:', 'https:'].includes(apiUrl.protocol)) {
+    throw new Error('Desktop Cloud API must use HTTP(S).');
   }
-
-  const origin = apiUrl.origin;
   const httpPermission = capability.permissions.find(
     permission => typeof permission === 'object' && permission.identifier === 'http:default',
   );
   if (!httpPermission) throw new Error('Desktop capability is missing the HTTP permission.');
-  if (!httpPermission.allow.some(scope => scope.url === origin)) {
-    httpPermission.allow.push({ url: origin });
-  }
+  httpPermission.allow = [{ url: apiUrl.origin }];
   return [capability];
 }
 
