@@ -708,7 +708,8 @@ private struct InlineMarkdownText: View {
 
     private func siteIcon(for url: URL) -> Image {
         let host = url.host?.lowercased() ?? ""
-        return siteIcons[host].map { Image(uiImage: $0) } ?? Image(systemName: "link")
+        return (siteIcons[host] ?? PreviewData.linkShowcaseSiteIcon(for: host))
+            .map { Image(uiImage: $0) } ?? Image(systemName: "link")
     }
 
     @MainActor
@@ -727,6 +728,7 @@ private struct InlineMarkdownText: View {
 
         for host in hosts where siteIcons[host] == nil {
             guard !Task.isCancelled else { return }
+            if PreviewData.isLinkShowcase { continue }
             let source = "https://\(host)/favicon.ico"
             guard let image = await AvatarImageLoader.image(from: source) else { continue }
             let renderer = UIGraphicsImageRenderer(size: CGSize(width: 14, height: 14))

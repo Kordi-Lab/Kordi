@@ -11,6 +11,11 @@ struct PreviewFixture {
 }
 
 enum PreviewData {
+    static var isLinkShowcase: Bool {
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("--preview-data") && arguments.contains("--preview-link-showcase")
+    }
+
     static func make(now: Date = Date()) -> PreviewFixture {
         let previewAvatarSource = ProcessInfo.processInfo.environment["KORDI_PREVIEW_AVATAR_SOURCE"]?.nonEmpty
         let avatarSeed = "preview_account"
@@ -99,11 +104,12 @@ enum PreviewData {
         let showsDeleteResurrection = ProcessInfo.processInfo.arguments.contains(
             "--preview-delete-resurrection"
         )
+        let showsLinkShowcase = isLinkShowcase
         let conversations = [
             ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: showsToolFailure ? "Tool failure recovery" : "Plan the mobile release", lastMessage: showsToolFailure ? "The useful result is ready." : "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "BabyTREE"),
             ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
-            ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: showsMentionAttention ? "@Alex Please review the notification copy." : "@all I also added the device matrix.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: showsMentionAttention ? 2 : 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
+            ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: showsLinkShowcase ? "Link preview showcase" : "Mobile builders", displayName: "main", lastMessage: showsLinkShowcase ? "https://example.org/review-checklist" : showsMentionAttention ? "@Alex Please review the notification copy." : "@all I also added the device matrix.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: showsLinkShowcase ? 0 : showsMentionAttention ? 2 : 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
                 CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: previewAvatarSource, role: "self"),
                 CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya Chen", avatarUrl: previewAvatarSource, role: "admin"),
                 CloudGroupParticipant(accountId: "acct_ethan", displayName: "Ethan Park", avatarUrl: nil, role: "person")
@@ -191,10 +197,9 @@ enum PreviewData {
                     requestMessageId: nil
                 )
             ],
-            "group:mobile": groupConversation(
-                now: now,
-                includesMentionAttention: showsMentionAttention
-            ),
+            "group:mobile": showsLinkShowcase
+                ? linkShowcaseConversation(now: now)
+                : groupConversation(now: now, includesMentionAttention: showsMentionAttention),
             "group:mobile-release": [
                 ChatMessage(id: "gm2", conversationId: "group:mobile-release", author: .person, authorName: "Ethan Park", text: "I added the device testing notes.", createdAt: now.addingTimeInterval(-240), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ]
@@ -485,6 +490,75 @@ enum PreviewData {
 #else
         return nil
 #endif
+    }
+
+    @MainActor
+    static func linkShowcaseMetadata(for url: URL) -> LPLinkMetadata? {
+#if DEBUG
+        guard isLinkShowcase, let host = url.host,
+              ["example.com", "example.org"].contains(host) else { return nil }
+        let metadata = LPLinkMetadata()
+        metadata.originalURL = url
+        metadata.url = url
+        metadata.title = host == "example.com" ? "Kordi release" : "Review checklist"
+        if host == "example.com" {
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 160))
+            let image = renderer.image { context in
+                UIColor(red: 0.31, green: 0.28, blue: 0.52, alpha: 1).setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 240, height: 160))
+                let title = "K"
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 84, weight: .bold),
+                    .foregroundColor: UIColor.white
+                ]
+                title.draw(at: CGPoint(x: 85, y: 30), withAttributes: attributes)
+            }
+            metadata.imageProvider = NSItemProvider(object: image)
+        }
+        return metadata
+#else
+        return nil
+#endif
+    }
+
+    static func linkShowcaseSiteIcon(for host: String) -> UIImage? {
+#if DEBUG
+        guard isLinkShowcase, host == "github.com" else { return nil }
+        return UIImage(named: "GitHubMark")
+#else
+        return nil
+#endif
+    }
+
+    static func linkShowcaseConversation(now: Date) -> [ChatMessage] {
+        let conversationId = "group:mobile"
+        return [
+            ChatMessage(id: "links-agent-reference", conversationId: conversationId,
+                author: .agent, authorName: "Research Agent",
+                text: "Read the [GitHub issue](https://github.com/Kordi-Lab/Kordi/issues/1643) and [migration guide](https://example.net/migration) before the release.",
+                createdAt: now.addingTimeInterval(-360), deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "links-human-prose", conversationId: conversationId,
+                author: .me, authorName: "You",
+                text: "The release notes are at https://example.net/notes.",
+                createdAt: now.addingTimeInterval(-300), deliveryState: .read,
+                errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "links-agent-bare-url", conversationId: conversationId,
+                author: .agent, authorName: "Research Agent",
+                text: "https://github.com/Kordi-Lab/Kordi/issues/1643",
+                createdAt: now.addingTimeInterval(-240), deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "links-own-card", conversationId: conversationId,
+                author: .me, authorName: "You",
+                text: "https://example.com/releases/latest/Kordi.dmg",
+                createdAt: now.addingTimeInterval(-180), deliveryState: .read,
+                errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "links-peer-card", conversationId: conversationId,
+                author: .person, authorName: "Maya Chen",
+                text: "https://example.org/review-checklist",
+                createdAt: now.addingTimeInterval(-120), deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: nil)
+        ]
     }
 
     private static func themeContrastConversation(now: Date) -> [ChatMessage] {
