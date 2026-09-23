@@ -5,6 +5,7 @@ import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { useCloudAuthTransition, waitForCloudAuthCover } from '../src/features/cloud/useCloudAuthTransition';
+import { CloudOAuthCancelledError } from '../src/features/cloud/cloudOAuthCancellation';
 
 test('auth mutations wait for the loading cover; failure restores the form state', async () => {
   const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });
@@ -78,6 +79,65 @@ test('a throttled or hidden WebKit window cannot indefinitely delay starting aut
   try {
     await waitForCloudAuthCover();
   } finally {
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});
+
+test('canceling social sign-in restores the login state and permits an immediate retry', async () => {
+  const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });
+  const values = {
+    window: dom.window, document: dom.window.document,
+    requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window),
+    cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window),
+    IS_REACT_ACT_ENVIRONMENT: true,
+  };
+  const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(values)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  const root = createRoot(document.getElementById('root')!);
+  let transition!: ReturnType<typeof useCloudAuthTransition>;
+  let attempts = 0;
+  const actions = {
+    signIn: async () => {},
+    signUp: async () => {},
+    signInWithProvider: async (_provider: 'google' | 'github', signal?: AbortSignal) => {
+      attempts += 1;
+      if (attempts === 1) {
+        await new Promise<void>((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new CloudOAuthCancelledError()), { once: true });
+        });
+      }
+    },
+    signOut: async () => {},
+  };
+  function Probe() {
+    transition = useCloudAuthTransition(actions);
+    return createElement('div', null, transition.activity ?? 'form');
+  }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    let first!: Promise<unknown>;
+    await act(async () => {
+      first = transition.socialSignIn('google').catch(error => error);
+    });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 350)); });
+    assert.equal(attempts, 1);
+    assert.equal(document.getElementById('root')!.textContent, 'social-signing-in');
+
+    await act(async () => {
+      transition.cancelSocialSignIn();
+      assert.ok(await first instanceof CloudOAuthCancelledError);
+    });
+    assert.equal(document.getElementById('root')!.textContent, 'form');
+
+    await act(async () => { await transition.socialSignIn('google'); });
+    assert.equal(attempts, 2);
+    assert.equal(document.getElementById('root')!.textContent, 'form');
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
     for (const [key, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, key, descriptor);
       else Reflect.deleteProperty(globalThis, key);

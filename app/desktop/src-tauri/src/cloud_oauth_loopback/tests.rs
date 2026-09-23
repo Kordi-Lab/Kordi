@@ -227,3 +227,41 @@ mod request_tests {
         client.await.unwrap();
     }
 }
+
+mod cancellation_tests {
+    use std::time::Duration;
+
+    use tokio::net::{TcpListener, TcpStream};
+    use tokio::sync::oneshot;
+    use tokio::time::timeout;
+
+    use super::super::run_loopback_listener;
+
+    #[tokio::test]
+    async fn cancellation_closes_the_listener_without_waiting_for_timeout() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (result_tx, result_rx) = oneshot::channel();
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        let task = tokio::spawn(run_loopback_listener(
+            listener,
+            "cloud_oauth_cancelled".to_string(),
+            result_tx,
+            cancel_rx,
+        ));
+
+        cancel_tx.send(()).unwrap();
+        assert_eq!(
+            timeout(Duration::from_secs(1), result_rx)
+                .await
+                .unwrap()
+                .unwrap(),
+            Err("OAuth sign-in was canceled.".to_string())
+        );
+        timeout(Duration::from_secs(1), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(TcpStream::connect(address).await.is_err());
+    }
+}
