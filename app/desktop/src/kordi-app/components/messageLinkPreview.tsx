@@ -2,9 +2,9 @@ import { memo, useEffect, useMemo, useState } from 'react';
 
 import { isNativeDesktopShell } from '@/lib/desktop';
 import {
-  firstExternalMessageLink,
   openExternalMessageLink,
   safeExternalHttpHref,
+  standaloneExternalMessageLink,
 } from './messageLinks';
 import {
   shouldLoadAvatarThroughNativeProxy,
@@ -105,6 +105,6 @@ function LinkPreviewCard({ href, label }: { href: string; label: string }) {
 }
 
 export const MessageLinkPreview = memo(function MessageLinkPreview({ text }: { text: string }) {
-  const link = useMemo(() => firstExternalMessageLink(text), [text]);
+  const link = useMemo(() => standaloneExternalMessageLink(text), [text]);
   return link ? <LinkPreviewCard key={link.href} href={link.href} label={link.label} /> : null;
 });

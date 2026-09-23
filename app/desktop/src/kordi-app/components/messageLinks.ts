@@ -213,6 +213,15 @@ export function firstExternalMessageLink(text: string): Omit<MessageLinkMatch, '
   return externalMessageLinks(text, 1)[0] ?? null;
 }
 
+export function standaloneExternalMessageLink(text: string): Omit<MessageLinkMatch, 'matchedLength'> | null {
+  const candidate = text.trim();
+  if (!/^https?:\/\/[^\s<>"']+$/i.test(candidate) || splitBareHttpUrl(candidate).href !== candidate) {
+    return null;
+  }
+  const href = safeExternalHttpHref(candidate);
+  return href ? { href, label: candidate } : null;
+}
+
 function rememberSiteIconDescriptor(hostname: string, descriptor: SiteIconDescriptor) {
   if (siteIconDescriptorCache.has(hostname)) siteIconDescriptorCache.delete(hostname);
   while (siteIconDescriptorCache.size >= MAX_SITE_ICON_DESCRIPTOR_CACHE_ENTRIES) {

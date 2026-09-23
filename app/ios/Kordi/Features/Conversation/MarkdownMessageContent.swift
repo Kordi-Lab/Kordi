@@ -325,6 +325,16 @@ enum KordiMarkdownParser {
         externalURLs(in: text, limit: 1).first
     }
 
+    static func standaloneExternalURL(in text: String) -> URL? {
+        let candidate = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard candidate.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return nil }
+        let parts = parseInline(candidate)
+        guard parts.count == 1,
+              case let .link(label, url) = parts[0],
+              label == candidate else { return nil }
+        return url
+    }
+
     static func externalURLs(in text: String, limit: Int = 10) -> [URL] {
         guard limit > 0 else { return [] }
         var urls: [URL] = []
@@ -659,6 +669,7 @@ struct MarkdownMessageContent: View {
 private struct InlineMarkdownText: View {
     let text: String
     let font: Font
+    @State private var siteIcons: [String: UIImage] = [:]
     @Environment(\.composerMentionTargets) private var mentionTargets
     @Environment(\.messageMentions) private var mentions
     @Environment(\.messageInlineAccent) private var inlineAccent
@@ -667,16 +678,61 @@ private struct InlineMarkdownText: View {
 
     var body: some View {
         let parts = KordiMarkdownParser.parseInline(text)
-        if requiresInlineFlow(parts) {
-            BlobEmojiInlineFlowLayout(spacing: 2) {
-                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                    inlineView(part)
+        Group {
+            if requiresInlineFlow(parts) {
+                BlobEmojiInlineFlowLayout(spacing: 2) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                        inlineView(part)
+                    }
                 }
+            } else {
+                textWithLinkIcons(parts)
+                    .font(font)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-        } else {
-            Text(attributedText(parts))
-                .font(font)
-                .fixedSize(horizontal: false, vertical: true)
+        }
+        .task(id: text) { await loadSiteIcons(for: parts) }
+    }
+
+    private func textWithLinkIcons(_ parts: [KordiMarkdownInlinePart]) -> Text {
+        parts.reduce(Text("")) { result, part in
+            guard case let .link(_, url) = part else {
+                return result + Text(attributedText([part]))
+            }
+            return result
+                + Text(siteIcon(for: url)).foregroundColor(inlineAccent ?? KordiTheme.signalBlue)
+                + Text(" ")
+                + Text(attributedText([part]))
+        }
+    }
+
+    private func siteIcon(for url: URL) -> Image {
+        let host = url.host?.lowercased() ?? ""
+        return siteIcons[host].map { Image(uiImage: $0) } ?? Image(systemName: "link")
+    }
+
+    @MainActor
+    private func loadSiteIcons(for parts: [KordiMarkdownInlinePart]) async {
+        var seenHosts = Set<String>()
+        let hosts = parts.compactMap { part -> String? in
+            guard case let .link(_, url) = part,
+                  let host = url.host?.lowercased(),
+                  host.contains("."),
+                  !host.hasSuffix(".local"),
+                  !host.contains(":"),
+                  !host.allSatisfy({ $0.isNumber || $0 == "." }),
+                  seenHosts.insert(host).inserted else { return nil }
+            return host
+        }.prefix(4)
+
+        for host in hosts where siteIcons[host] == nil {
+            guard !Task.isCancelled else { return }
+            let source = "https://\(host)/favicon.ico"
+            guard let image = await AvatarImageLoader.image(from: source) else { continue }
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 14, height: 14))
+            siteIcons[host] = renderer.image { _ in
+                image.draw(in: CGRect(x: 0, y: 0, width: 14, height: 14))
+            }
         }
     }
 
@@ -693,9 +749,16 @@ private struct InlineMarkdownText: View {
             let labelParts = KordiMarkdownParser.parseInline(label)
             if containsRichEmoji(labelParts) {
                 Link(destination: url) {
-                    BlobEmojiInlineFlowLayout(spacing: 2) {
-                        ForEach(Array(labelParts.enumerated()), id: \.offset) { _, labelPart in
-                            linkLabelView(labelPart)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        siteIcon(for: url)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 14, height: 14)
+                            .accessibilityHidden(true)
+                        BlobEmojiInlineFlowLayout(spacing: 2) {
+                            ForEach(Array(labelParts.enumerated()), id: \.offset) { _, labelPart in
+                                linkLabelView(labelPart)
+                            }
                         }
                     }
                 }
@@ -704,8 +767,10 @@ private struct InlineMarkdownText: View {
                 .accessibilityLabel(linkLabelAccessibilityText(labelParts))
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Image(systemName: "link")
-                        .font(.caption.weight(.medium))
+                    siteIcon(for: url)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 14, height: 14)
                         .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
                         .accessibilityHidden(true)
                     Text(attributedText([part]))

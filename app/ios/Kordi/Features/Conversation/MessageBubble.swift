@@ -751,20 +751,20 @@ struct MessageBubble: View, Equatable {
             }
 
             if hasVisibleMessageText {
-                MarkdownMessageContent(
-                    text: message.text,
-                    mentionTargets: mentionTargets,
-                    mentions: message.mentions,
-                    inlineAccent: bubbleInlineAccentColor,
-                    personMentionAccent: bubblePersonMentionColor,
-                    agentMentionAccent: bubbleAgentMentionColor,
-                    allowsTextSelection: isActionPresented && actionAttachment == nil,
-                    onOpenPersonMention: onOpenMentionProfile
-                )
-                    .foregroundStyle(bubbleTextColor)
-
-                if let url = KordiMarkdownParser.firstExternalURL(in: message.text) {
+                if let url = standaloneLinkPreviewURL {
                     MessageLinkPreview(url: url, foreground: bubbleTextColor, secondaryForeground: bubbleTextColor.opacity(0.88))
+                } else {
+                    MarkdownMessageContent(
+                        text: message.text,
+                        mentionTargets: mentionTargets,
+                        mentions: message.mentions,
+                        inlineAccent: bubbleInlineAccentColor,
+                        personMentionAccent: bubblePersonMentionColor,
+                        agentMentionAccent: bubbleAgentMentionColor,
+                        allowsTextSelection: isActionPresented && actionAttachment == nil,
+                        onOpenPersonMention: onOpenMentionProfile
+                    )
+                        .foregroundStyle(bubbleTextColor)
                 }
             }
 
@@ -1009,6 +1009,14 @@ struct MessageBubble: View, Equatable {
             message.author != .agent
                 || Self.hasVisibleAgentResponseText(text)
         )
+    }
+
+    private var standaloneLinkPreviewURL: URL? {
+        guard message.author != .agent,
+              message.attachments.isEmpty,
+              message.voiceMessage == nil,
+              message.planCard == nil else { return nil }
+        return KordiMarkdownParser.standaloneExternalURL(in: message.text)
     }
 
     static func emojiOnlyItem(in text: String) -> EmojiPickerItem? {

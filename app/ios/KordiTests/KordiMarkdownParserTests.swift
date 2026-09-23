@@ -360,6 +360,21 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testStandaloneExternalURLRequiresOnlyTheBareURL() {
+        let url = "https://example.com/report"
+        XCTAssertEqual(KordiMarkdownParser.standaloneExternalURL(in: "  \(url)\n")?.absoluteString, url)
+        for text in [
+            "Read \(url)",
+            "[Report](\(url))",
+            "`\(url)`",
+            "\(url).",
+            "\(url) another line",
+            "https://user:secret@example.com/report"
+        ] {
+            XCTAssertNil(KordiMarkdownParser.standaloneExternalURL(in: text))
+        }
+    }
+
     @MainActor
     func testLinkPreviewMetadataCacheDeduplicatesAndCachesFailures() async throws {
         let metadata = LPLinkMetadata()

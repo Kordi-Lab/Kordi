@@ -9,7 +9,7 @@ import {
   loadLinkPreviewMetadata,
 } from '../src/kordi-app/components/linkPreviewMetadata';
 import { MessageLinkPreview } from '../src/kordi-app/components/messageLinkPreview';
-import { firstExternalMessageLink } from '../src/kordi-app/components/messageLinks';
+import { firstExternalMessageLink, standaloneExternalMessageLink } from '../src/kordi-app/components/messageLinks';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('link preview extraction skips code and preserves a markdown destination', () => {
@@ -18,6 +18,22 @@ test('link preview extraction skips code and preserves a markdown destination', 
 
   assert.deepEqual(link, { href: destination, label: 'Review' });
   assert.equal(firstExternalMessageLink('```\nhttps://ignored.example\n```'), null);
+});
+
+test('only a bare URL sent by itself qualifies for a full card', () => {
+  const url = 'https://example.com/report';
+  assert.deepEqual(standaloneExternalMessageLink(`  ${url}\n`), { href: url, label: url });
+  for (const text of [
+    `Read ${url}`,
+    `[Report](${url})`,
+    `\`${url}\``,
+    `${url}.`,
+    `${url}\nAnother line`,
+    'https://user:secret@example.com/report',
+  ]) {
+    assert.equal(standaloneExternalMessageLink(text), null);
+    assert.equal(renderToStaticMarkup(createElement(MessageLinkPreview, { text })), '');
+  }
 });
 
 test('link preview renders a compact fallback without showing query parameters', () => {
@@ -87,9 +103,9 @@ test('link preview failures use a short retry cooldown', async () => {
   }
 });
 
-test('domain-only citation labels fall back to the page path instead of repeating the host', () => {
+test('standalone URL fallback uses the page path instead of repeating the host', () => {
   const html = renderToStaticMarkup(createElement(MessageLinkPreview, {
-    text: '[openai.com](https://openai.com/index/introducing-gpt-5/)',
+    text: 'https://openai.com/index/introducing-gpt-5/',
   }));
   assert.match(html, /app-message-link-preview-title">introducing gpt 5<\/span>/);
 });
@@ -104,7 +120,7 @@ test('native metadata renders the page title and thumbnail with the compact path
       description: 'A description that should not expand the preview card.',
     }) as T);
     const html = renderToStaticMarkup(createElement(MessageLinkPreview, {
-      text: `[example.com](${href})`,
+      text: href,
     }));
     assert.match(html, /data-link-preview-state="ready"/);
     assert.match(html, /app-message-link-preview-title">Introducing a model<\/span>/);

@@ -39,7 +39,7 @@ import { messageBubblePropsEqual } from './messageBubbleMemo';
 import { MessageContextMenuHost } from './messageContextMenuHost';
 import { MessageInlineContent } from './messageInlineContent';
 import { MessageLinkPreview } from './messageLinkPreview';
-import { firstExternalMessageLink } from './messageLinks';
+import { standaloneExternalMessageLink } from './messageLinks';
 import { MessageReactionChips } from './messageReactions';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { SupportContactAnswer,SupportContactTypingIndicator } from './transcriptAssistantAnswer';
@@ -685,8 +685,9 @@ function MessageBubbleView({
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
-  const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const hasLinkPreview = hasText && !msg.callActivity && Boolean(firstExternalMessageLink(msg.text));
+  const hasVoice = Boolean(msg.voiceMessage); const hasPlanCard = Boolean(msg.planCard); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0);
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
+  const hasLinkPreview = (isOwnHumanMessage || isPeerHumanMessage) && hasText && !msg.callActivity && !hasVoice && !hasPlanCard && !hasAttachments && Boolean(standaloneExternalMessageLink(msg.text));
   const hasGroupedImageAttachments = hasAttachments && (msg.attachments?.length ?? 0) > 1 && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasDetachedImageGroup = hasGroupedImageAttachments && hasText;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
   const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !hasPlanCard && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
@@ -746,7 +747,11 @@ function MessageBubbleView({
               ) : hasText ? (
                 msg.supportContactResponse
                   ? <SupportContactAnswer text={msg.text} />
-                  : <>{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <HumanMessageMarkdown message={msg} onOpenSenderProfile={onOpenSenderProfile} />}{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>
+                  : hasLinkPreview
+                    ? <MessageLinkPreview text={msg.text} />
+                    : msg.callActivity
+                      ? <TranscriptCallActivityContent message={msg} />
+                      : <HumanMessageMarkdown message={msg} onOpenSenderProfile={onOpenSenderProfile} />
               ) : null}
             </div>
             {!hasOnlyBorderlessMediaAttachments && !hasVoice ? (
@@ -764,7 +769,7 @@ function MessageBubbleView({
         <>
           <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
             {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}{msg.planCard ? <PlanCardContent card={msg.planCard} /> : null}
-            {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <><MarkdownContent text={msg.text} showLinkIcons copySurface="message" />{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>) : null}
+            {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
           </div>
           {(msg.statusChips?.length || footerDetail) ? (
             <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>
