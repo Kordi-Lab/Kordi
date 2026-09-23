@@ -344,7 +344,8 @@ private struct RootView: View {
             AccountAuthenticationPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail") {
             AccountAuthenticationDetailPreview(providerID: "openai")
-        } else if (ProcessInfo.processInfo.arguments.contains("--preview-markdown")
+        } else if (ProcessInfo.processInfo.arguments.contains("--preview-link-showcase")
+            || ProcessInfo.processInfo.arguments.contains("--preview-markdown")
             || ProcessInfo.processInfo.arguments.contains("--preview-short-trajectory")
             || ProcessInfo.processInfo.arguments.contains("--preview-tool-failure")
             || ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
@@ -366,6 +367,9 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")),
            let conversation = model.conversations.first(where: {
+               if ProcessInfo.processInfo.arguments.contains("--preview-link-showcase") {
+                   return $0.id == "group:mobile"
+               }
                if ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat") {
                    return $0.id == "group:mobile-release"
                }

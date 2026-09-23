@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kordi · Contextual message links</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --page: #eef1f5;
+      --window: #ffffff;
+      --sidebar: #f5f6f9;
+      --line: #e4e7ed;
+      --text: #202532;
+      --muted: #687080;
+      --agent: #f3f5f8;
+      --own: #e8e3f5;
+      --own-line: #d8cfed;
+      --link: #7754a8;
+      --link-hover: #5d3a91;
+      --chip: #ffffff;
+      --chip-hover: #f5f0fb;
+      --preview: #f9f7fd;
+      --focus: #8058b5;
+      --file-pdf: #c62828;
+      --file-sheet: #15803d;
+      --file-archive: #b45309;
+      --shadow: 0 24px 72px #27334b1c, 0 3px 12px #27334b0d;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--page); color: var(--text); }
+    button, a { font: inherit; }
+    button:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 1150px; margin: 0 auto; padding: 26px 24px 20px; }
+    .eyebrow { margin: 0 0 4px; color: var(--link); font-size: 11px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 22px; letter-spacing: -.035em; }
+    .toolbar-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+    .segmented { display: inline-flex; gap: 3px; border: 1px solid var(--line); border-radius: 11px; background: var(--window); padding: 4px; }
+    .segmented button { min-height: 34px; padding: 0 13px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 650; }
+    .segmented button[aria-pressed="true"] { background: var(--own); color: var(--link-hover); }
+    .stage { max-width: 1150px; margin: 0 auto; padding: 0 24px 40px; }
+    .window { display: grid; grid-template-columns: 214px minmax(0, 1fr); height: min(740px, calc(100vh - 178px)); min-height: 570px; overflow: hidden; border: 1px solid var(--line); border-radius: 19px; background: var(--window); box-shadow: var(--shadow); transition: width .2s ease, border-radius .2s ease; }
+    .sidebar { padding: 20px 12px; border-right: 1px solid var(--line); background: var(--sidebar); }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 0 11px 32px; font-size: 16px; font-weight: 800; letter-spacing: -.04em; }
+    .brand-mark { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 9px; background: #7655a7; color: white; font-size: 16px; }
+    .sidebar-label { margin: 0 10px 8px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    .room { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 10px; background: var(--own); color: var(--text); font-size: 13px; font-weight: 700; }
+    .room-icon { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; background: #d6caed; color: #624494; }
+    .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    .chat-header { display: flex; align-items: center; gap: 11px; height: 64px; flex: 0 0 auto; padding: 0 24px; border-bottom: 1px solid var(--line); }
+    .chat-avatar { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 12px; background: #dfd2f2; color: #624494; font-size: 15px; font-weight: 800; }
+    .chat-name { font-size: 14px; font-weight: 740; }
+    .chat-subtitle { color: var(--muted); font-size: 11px; }
+    .conversation { display: flex; flex: 1; flex-direction: column; gap: 21px; min-height: 0; overflow: auto; padding: 28px max(24px, 8%); }
+    .date { align-self: center; margin-bottom: 1px; color: var(--muted); font-size: 11px; }
+    .message { display: flex; flex-direction: column; align-items: flex-start; max-width: min(630px, 85%); gap: 5px; }
+    .message.own { align-self: flex-end; align-items: flex-end; }
+    .byline { padding: 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; }
+    .bubble { min-width: 0; padding: 13px 15px; border-radius: 15px 15px 15px 5px; background: var(--agent); font-size: 14px; line-height: 1.62; }
+    .own .bubble { border: 1px solid var(--own-line); border-radius: 15px 15px 5px 15px; background: var(--own); }
+    .bubble p { margin: 0; }
+    .bubble p + p { margin-top: 9px; }
+    .inline-link { display: inline; color: var(--link); font-weight: 680; text-decoration: none; overflow-wrap: anywhere; }
+    .inline-link:hover { color: var(--link-hover); text-decoration: underline; }
+    .link-glyph { display: inline-block; margin-right: 3px; font-size: .94em; vertical-align: -.04em; }
+    .inline-logo { width: 14px; height: 14px; margin-right: 4px; object-fit: contain; vertical-align: -.13em; }
+    .inline-file { color: #c62828; }
+    .file-chip { display: flex; align-items: center; gap: 9px; width: min(320px, 100%); margin-top: 7px; padding: 8px 9px; border: 1px solid #2025321c; border-radius: 12px; background: #2025320a; line-height: 1.25; }
+    .file-chip[data-family="pdf"] { --file: var(--file-pdf); }
+    .file-chip[data-family="sheet"] { --file: var(--file-sheet); }
+    .file-chip[data-family="archive"] { --file: var(--file-archive); }
+    .file-tile { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border: 1px solid color-mix(in srgb, var(--file) 28%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--file) 16%, transparent); color: var(--file); font-size: 9px; font-weight: 800; letter-spacing: .04em; }
+    .file-name { overflow: hidden; font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .file-meta { color: var(--file); font-size: 10.5px; font-weight: 700; }
+    .file-size { color: var(--muted); font-weight: 500; }
+    .standalone-bubble { width: min(390px, 100%); padding: 0; border: 0 !important; background: transparent !important; }
+    .rich-card { display: grid; grid-template-columns: minmax(0, 1fr) 84px; overflow: hidden; min-height: 98px; border: 1px solid var(--own-line); border-radius: 12px; background: var(--preview); color: inherit; text-decoration: none; }
+    .rich-card:hover { border-color: var(--link); }
+    .rich-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: 12px; }
+    .rich-site { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .rich-title { margin-top: 3px; font-size: 14px; font-weight: 750; }
+    .rich-path { overflow: hidden; margin-top: 3px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .rich-art { display: grid; min-height: 99px; place-items: center; background: linear-gradient(135deg, #c8b6e3, #e7def4); color: #694b9a; font-size: 44px; font-weight: 800; }
+    .composer { display: flex; align-items: center; gap: 10px; min-height: 62px; padding: 10px 22px; border-top: 1px solid var(--line); }
+    .composer-field { display: flex; align-items: center; flex: 1; min-height: 38px; padding: 0 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); font-size: 12px; }
+    .send { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; background: #7857a8; color: #fff; font-size: 18px; }
+    .caption { display: flex; flex-wrap: wrap; gap: 9px 20px; padding: 16px 2px 0; color: var(--muted); font-size: 12px; }
+    .caption strong { color: var(--text); }
+    .stage.iphone .window { width: min(390px, 100%); height: 730px; min-height: 0; margin: 0 auto; grid-template-columns: 1fr; border-radius: 36px; border-width: 6px; }
+    .stage.iphone .sidebar { display: none; }
+    .stage.iphone .chat-header { height: 78px; padding: 17px 19px 0; }
+    .stage.iphone .conversation { padding: 22px 17px; gap: 18px; }
+    .stage.iphone .message { max-width: 92%; }
+    .stage.iphone .bubble { font-size: 13.5px; }
+    .stage.iphone .standalone-bubble { width: min(315px, 100%); }
+    .stage.iphone .composer { padding: 10px 13px 18px; }
+    .stage.iphone .caption { justify-content: center; }
+    body.dark { color-scheme: dark; --page: #10131b; --window: #191d27; --sidebar: #151923; --line: #313746; --text: #f0eef7; --muted: #aaa9b8; --agent: #252a36; --own: #40344f; --own-line: #5c4a70; --link: #d3abef; --link-hover: #ead0fc; --chip: #30283e; --chip-hover: #514061; --preview: #2a2536; --shadow: 0 24px 72px #0008; --file-pdf: #f87171; --file-sheet: #86efac; --file-archive: #fcd34d; }
+    body.dark .rich-art { background: linear-gradient(135deg, #6d5286, #493a60); color: #f2e4ff; }
+    body.dark .inline-file { color: #f87171; }
+    body.dark .file-chip { border-color: #ffffff1c; background: #ffffff0a; }
+    body.dark .segmented button[aria-pressed="true"] { color: #eed4ff; }
+    @media (max-width: 720px) { .toolbar { align-items: flex-start; flex-direction: column; padding: 19px 16px 16px; } .stage { padding: 0 12px 22px; } .window { grid-template-columns: 1fr; min-height: 620px; } .sidebar { display: none; } .conversation { padding: 20px 17px; } .message { max-width: 92%; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <div><p class="eyebrow">Interactive design preview</p><h1>Contextual message links</h1></div>
+    <div class="toolbar-controls" aria-label="Preview controls">
+      <div class="segmented" aria-label="Device"><button type="button" data-device="desktop" aria-pressed="true">Desktop</button><button type="button" data-device="iphone" aria-pressed="false">iPhone</button></div>
+      <div class="segmented" aria-label="Appearance"><button type="button" data-theme="light" aria-pressed="true">Light</button><button type="button" data-theme="dark" aria-pressed="false">Dark</button></div>
+    </div>
+  </header>
+  <main class="stage" id="stage">
+    <section class="window" aria-label="Kordi conversation preview">
+      <aside class="sidebar"><div class="brand"><span class="brand-mark">K</span> Kordi</div><p class="sidebar-label">Chats</p><div class="room"><span class="room-icon">✦</span> Product chat</div></aside>
+      <div class="main">
+        <div class="chat-header"><span class="chat-avatar">✦</span><div><div class="chat-name">Product chat</div><div class="chat-subtitle">Kordi and you</div></div></div>
+        <div class="conversation">
+          <div class="date">Today</div>
+          <article class="message"><div class="byline">Kordi</div><div class="bubble"><p>The release is ready. Read the <a class="inline-link" href="https://kordi.ai/updates" target="_blank" rel="noopener noreferrer"><span class="link-glyph" aria-hidden="true">▣</span>release notes</a> and the <a class="inline-link" href="https://github.com/Kordi-Lab/Kordi/issues" target="_blank" rel="noopener noreferrer"><img class="inline-logo" src="https://github.com/favicon.ico" alt="" onerror="this.replaceWith(document.createTextNode('▣ '))">open issues</a> before installing.</p></div></article>
+          <article class="message own"><div class="byline">You · URL only</div><div class="bubble standalone-bubble"><a class="rich-card" href="https://kordi.ai/updates/releases/latest/Kordi.dmg" target="_blank" rel="noopener noreferrer" aria-label="Open Kordi.dmg on kordi.ai"><span class="rich-copy"><span class="rich-site">kordi.ai</span><span class="rich-title">Kordi</span><span class="rich-path">/updates/releases/latest/Kordi.dmg</span></span><span class="rich-art" aria-hidden="true">K</span></a></div></article>
+          <article class="message"><div class="byline">Kordi</div><div class="bubble"><p>Your URL-only message shows the full card immediately. My references remain part of the sentence.</p></div></article>
+          <article class="message own"><div class="byline">You · URL in a sentence</div><div class="bubble"><p>Can you also check <a class="inline-link" href="https://kordi.ai/docs" target="_blank" rel="noopener noreferrer"><span class="link-glyph" aria-hidden="true">▣</span>kordi.ai/docs</a>?</p></div></article>
+          <article class="message"><div class="byline">Kordi · file reference</div><div class="bubble"><p>The <a class="inline-link" href="https://example.net/release-checklist.pdf" target="_blank" rel="noopener noreferrer"><span class="link-glyph inline-file" aria-hidden="true">▣</span>release checklist</a> covers the final checks.</p></div></article>
+          <article class="message"><div class="byline">Maya · attachments</div><div class="bubble"><p>I attached the release files.</p><div class="file-chip" data-family="pdf"><span class="file-tile">PDF</span><div><div class="file-name">Release-checklist.pdf</div><div class="file-meta">PDF <span class="file-size">· 248 KB</span></div></div></div><div class="file-chip" data-family="sheet"><span class="file-tile">XLSX</span><div><div class="file-name">Rollout-tracker.xlsx</div><div class="file-meta">XLSX <span class="file-size">· 42 KB</span></div></div></div><div class="file-chip" data-family="archive"><span class="file-tile">ZIP</span><div><div class="file-name">Source-bundle.zip</div><div class="file-meta">ZIP <span class="file-size">· 819 KB</span></div></div></div></div></article>
+        </div>
+        <div class="composer"><div class="composer-field">Message Product chat</div><span class="send" aria-hidden="true">↑</span></div>
+      </div>
+    </section>
+    <div class="caption"><span><strong>Assistant reference:</strong> inline, no duplicate card</span><span><strong>Your URL-only message:</strong> full card immediately</span><span><strong>URL in a sentence:</strong> stays inline</span><span><strong>Files:</strong> colored references and compact attachments</span></div>
+  </main>
+  <script>
+    const stage = document.getElementById('stage');
+    document.querySelectorAll('[data-device]').forEach(button => button.addEventListener('click', () => {
+      stage.classList.toggle('iphone', button.dataset.device === 'iphone');
+      document.querySelectorAll('[data-device]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+    }));
+    document.querySelectorAll('[data-theme]').forEach(button => button.addEventListener('click', () => {
+      document.body.classList.toggle('dark', button.dataset.theme === 'dark');
+      document.querySelectorAll('[data-theme]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+    }));
+  </script>
+</body>
+</html>

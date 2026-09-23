@@ -1,12 +1,15 @@
 import { expect, test } from '@playwright/test';
 
-test('link previews stay compact with long tracking URLs', async ({ page }, testInfo) => {
+test('standalone link cards stay compact while agent references remain inline', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 760, height: 720 });
   await page.goto('/tests/visual/mediaLightboxGallery.html?theme=light&surface=link-preview');
   await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
 
   const cards = page.locator('.app-message-link-preview');
-  await expect(cards).toHaveCount(2);
+  await expect(cards).toHaveCount(1);
+  const agentReference = page.getByLabel('Link preview message 2');
+  await expect(agentReference.locator('[data-external-message-link="true"]')).toHaveCount(1);
+  await expect(agentReference.locator('.app-message-link-preview')).toHaveCount(0);
   await expect(cards.first()).toHaveAccessibleName(/xiaohongshu\.com/);
   await expect(cards.first()).not.toContainText('xsec_token');
   const wideBox = await cards.first().boundingBox();
