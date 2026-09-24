@@ -199,6 +199,14 @@ struct MessageGestureRegistrationTests {
 }
 
 final class KordiMarkdownParserTests: XCTestCase {
+    func testFileFamiliesMatchTheDesktopAttachmentChips() {
+        XCTAssertEqual(KordiFileFamily.forFile(name: "Release-checklist.pdf"), .pdf)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "Rollout-tracker.xlsx"), .sheet)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "Source-bundle.zip"), .archive)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "download", mimeType: "application/pdf"), .pdf)
+        XCTAssertEqual(KordiFileFamily.forFile(name: "unknown.bin"), .generic)
+    }
+
     func testCallAvatarResolverPrefersTheCallParticipantProfileImage() {
         let participant = CloudCallParticipant(
             accountId: "acct_peer",
@@ -358,6 +366,21 @@ final class KordiMarkdownParserTests: XCTestCase {
             KordiMarkdownParser.firstExternalURL(in: text)?.absoluteString,
             "https://example.com/report?token=redacted"
         )
+    }
+
+    func testStandaloneExternalURLRequiresOnlyTheBareURL() {
+        let url = "https://example.com/report"
+        XCTAssertEqual(KordiMarkdownParser.standaloneExternalURL(in: "  \(url)\n")?.absoluteString, url)
+        for text in [
+            "Read \(url)",
+            "[Report](\(url))",
+            "`\(url)`",
+            "\(url).",
+            "\(url) another line",
+            "https://user:secret@example.com/report"
+        ] {
+            XCTAssertNil(KordiMarkdownParser.standaloneExternalURL(in: text))
+        }
     }
 
     @MainActor

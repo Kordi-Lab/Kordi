@@ -2,9 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   activateDesktopCloudAccountStorage,
-  openDesktopExternalUrl,
-  prepareDesktopCloudOAuthLoopback,
-  waitForDesktopCloudOAuthLoopback,
   type DesktopCloudAccountStorageActivation,
 } from '@/lib/desktop';
 
@@ -21,6 +18,10 @@ import {
   type CloudProfileUpdateInput,
 } from './authClient';
 import { cloudAccountsEqual } from './cloudAccountState';
+import {
+  isCloudOAuthCancelled,
+} from './cloudOAuthCancellation';
+import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
 import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
@@ -49,7 +50,7 @@ export type UseCloudSessionResult = {
     avatarSeed: string;
     avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
   }): Promise<void>;
-  signInWithProvider(provider: CloudOAuthProvider): Promise<void>;
+  signInWithProvider(provider: CloudOAuthProvider, signal?: AbortSignal): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
   signOut(this: void): Promise<void>;
   clearError(): void;
@@ -378,17 +379,10 @@ export function useCloudSession({
   );
 
   const signInWithProvider = useCallback(
-    async (provider: CloudOAuthProvider) => {
+    async (provider: CloudOAuthProvider, signal?: AbortSignal) => {
       try {
-        const loopback = await prepareDesktopCloudOAuthLoopback();
-        if (loopback) {
-          const result = await authClient.startOAuth(provider, loopback.redirectUrl);
-          await openDesktopExternalUrl(result.authUrl);
-          const fragment = await waitForDesktopCloudOAuthLoopback(loopback.requestId);
-          const oauthResult = parseCloudOAuthHashResult(fragment);
-          if (!oauthResult) {
-            throw new CloudAuthError('unknown', 'OAuth sign-in did not return a valid Kordi session.', 0);
-          }
+        const oauthResult = await startCloudOAuthSignIn(authClient, provider, signal);
+        if (oauthResult) {
           await completeCloudAuthResult({
             result: oauthResult,
             currentAccountId: accountIdRef.current,
@@ -396,17 +390,9 @@ export function useCloudSession({
             setAuthenticated,
             reloadWindow: reloadForAccountStorageSwitch,
           });
-          return;
-        }
-
-        const redirectAfter = typeof window !== 'undefined'
-          ? `${window.location.origin}${window.location.pathname}`
-          : 'http://127.0.0.1/';
-        const result = await authClient.startOAuth(provider, redirectAfter);
-        if (typeof window !== 'undefined') {
-          window.location.assign(result.authUrl);
         }
       } catch (caught) {
+        if (isCloudOAuthCancelled(caught)) throw caught;
         if (caught instanceof CloudAuthError) {
           setError(caught);
           throw caught;

@@ -67,6 +67,21 @@ button[data-attachment-file-chip]:focus-visible {
 [data-attachment-file-chip][data-file-family='design'] { --attachment-file: var(--attachment-file-design); }
 [data-attachment-file-chip][data-file-family='generic'] { --attachment-file: var(--attachment-file-generic); }
 
+.app-message-link-site-icon[data-file-reference='true'] {
+  color: var(--attachment-file, var(--attachment-file-generic));
+}
+.app-message-link-site-icon[data-file-family='pdf'] { --attachment-file: var(--attachment-file-pdf); }
+.app-message-link-site-icon[data-file-family='doc'] { --attachment-file: var(--attachment-file-doc); }
+.app-message-link-site-icon[data-file-family='sheet'] { --attachment-file: var(--attachment-file-sheet); }
+.app-message-link-site-icon[data-file-family='slides'] { --attachment-file: var(--attachment-file-slides); }
+.app-message-link-site-icon[data-file-family='code'] { --attachment-file: var(--attachment-file-code); }
+.app-message-link-site-icon[data-file-family='archive'] { --attachment-file: var(--attachment-file-archive); }
+.app-message-link-site-icon[data-file-family='image'] { --attachment-file: var(--attachment-file-image); }
+.app-message-link-site-icon[data-file-family='video'] { --attachment-file: var(--attachment-file-video); }
+.app-message-link-site-icon[data-file-family='audio'] { --attachment-file: var(--attachment-file-audio); }
+.app-message-link-site-icon[data-file-family='design'] { --attachment-file: var(--attachment-file-design); }
+.app-message-link-site-icon[data-file-family='generic'] { --attachment-file: var(--attachment-file-generic); }
+
 .app-attachment-file-tile {
   display: grid;
   width: 34px;

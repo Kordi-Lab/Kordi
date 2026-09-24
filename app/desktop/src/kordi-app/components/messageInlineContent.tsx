@@ -1,12 +1,14 @@
 import { Fragment, memo, useMemo, useState, type ReactNode } from 'react';
-import { Link2 } from 'lucide-react';
+import { FileText, Link2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
 import { NotoEmojiImage } from '@/features/emoji/NotoEmojiImage';
+import { attachmentFileFamily } from '@/features/chat/attachmentFileFamily';
 import type { MessageMention } from '../types';
 import {
   compactExternalLinkLabel,
+  isDirectFileLink,
   openExternalMessageLink,
   parseMessageInlineParts,
   safeExternalHttpHref,
@@ -18,7 +20,9 @@ import {
 } from './remoteAvatarImage';
 
 export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
-  const descriptor = siteIconDescriptorForHref(href);
+  const isFile = isDirectFileLink(href);
+  const fileFamily = isFile ? attachmentFileFamily({ name: new URL(href).pathname }) : null;
+  const descriptor = isFile ? null : siteIconDescriptorForHref(href);
   const requestUrl = descriptor?.requestUrl ?? null;
   const shouldLoad = shouldLoadAvatarThroughNativeProxy(requestUrl);
   const remoteIcon = useRemoteAvatarImage(requestUrl, shouldLoad);
@@ -30,11 +34,15 @@ export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
   return (
     <span
       className="app-message-link-site-icon"
+      data-file-reference={isFile ? 'true' : undefined}
+      data-file-family={fileFamily ?? undefined}
       data-site-icon-host={descriptor?.hostname}
       data-site-icon-state={failedDataUrl && failedDataUrl === remoteIcon.dataUrl ? 'failed' : remoteIcon.status}
       aria-hidden="true"
     >
-      {loadedDataUrl ? (
+      {isFile ? (
+        <FileText />
+      ) : loadedDataUrl ? (
         <img
           src={loadedDataUrl}
           alt=""

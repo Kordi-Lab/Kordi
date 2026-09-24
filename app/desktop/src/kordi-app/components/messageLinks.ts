@@ -100,6 +100,19 @@ export function safeExternalHttpHref(value: string): string | null {
   }
 }
 
+const documentExtensions = new Set([
+  'csv', 'doc', 'docx', 'dmg', 'epub', 'md', 'numbers', 'pages', 'pdf',
+  'ppt', 'pptx', 'rtf', 'txt', 'xls', 'xlsx', 'zip',
+]);
+
+export function isDirectFileLink(href: string): boolean {
+  const safeHref = safeExternalHttpHref(href);
+  if (!safeHref) return false;
+  const filename = new URL(safeHref).pathname.split('/').pop() ?? '';
+  const extension = filename.split('.').pop()?.toLowerCase() ?? '';
+  return filename.includes('.') && documentExtensions.has(extension);
+}
+
 export function compactExternalLinkLabel(label: string, href: string, maxLength = 48) {
   if (label !== href || label.length <= maxLength) return label;
   const url = new URL(href);
@@ -211,6 +224,15 @@ export function externalMessageLinks(text: string, limit = 10): Omit<MessageLink
 
 export function firstExternalMessageLink(text: string): Omit<MessageLinkMatch, 'matchedLength'> | null {
   return externalMessageLinks(text, 1)[0] ?? null;
+}
+
+export function standaloneExternalMessageLink(text: string): Omit<MessageLinkMatch, 'matchedLength'> | null {
+  const candidate = text.trim();
+  if (!/^https?:\/\/[^\s<>"']+$/i.test(candidate) || splitBareHttpUrl(candidate).href !== candidate) {
+    return null;
+  }
+  const href = safeExternalHttpHref(candidate);
+  return href ? { href, label: candidate } : null;
 }
 
 function rememberSiteIconDescriptor(hostname: string, descriptor: SiteIconDescriptor) {

@@ -33,6 +33,20 @@ export function resolveDesktopDevUrl({ host, port, path = '' }) {
   return new URL(previewPath, `${origin}/`).toString();
 }
 
+export function desktopDevCapabilities(defaultCapability, cloudApiBase) {
+  const capability = structuredClone(defaultCapability);
+  const apiUrl = new URL(cloudApiBase);
+  if (!['http:', 'https:'].includes(apiUrl.protocol)) {
+    throw new Error('Desktop Cloud API must use HTTP(S).');
+  }
+  const httpPermission = capability.permissions.find(
+    permission => typeof permission === 'object' && permission.identifier === 'http:default',
+  );
+  if (!httpPermission) throw new Error('Desktop capability is missing the HTTP permission.');
+  httpPermission.allow = [{ url: apiUrl.origin }];
+  return [capability];
+}
+
 export function buildBeforeDevCommand({ title, host, port, frontendMode = 'development', env = process.env }) {
   if (!['development', 'production'].includes(frontendMode)) throw new Error('Frontend mode must be development or production.');
   const cloudApiBase = resolveCloudDevApiBase(env);

@@ -77,6 +77,9 @@ final class LinkPreviewMetadataCache {
 
     private static func fetch(_ url: URL) async -> LinkPreviewMetadataValue {
 #if DEBUG
+        if let metadata = PreviewData.linkShowcaseMetadata(for: url) {
+            return LinkPreviewMetadataValue(metadata: metadata)
+        }
         if let metadata = PreviewData.themeContrastLinkMetadata(for: url) {
             return LinkPreviewMetadataValue(metadata: metadata)
         }

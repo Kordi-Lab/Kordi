@@ -253,7 +253,7 @@ function CloudEditionRoot({
     enabled: cloudSessionOverride === undefined,
   });
   const session = cloudSessionOverride ?? liveSession;
-  const { activity, signIn, signUp, socialSignIn, signOut } = useCloudAuthTransition({
+  const { activity, signIn, signUp, socialSignIn, cancelSocialSignIn, signOut } = useCloudAuthTransition({
     ...session, signOut: liveSession.signOut,
   });
   const presentedSession = useMemo(() => ({ ...liveSession, signOut }), [liveSession, signOut]);
@@ -287,6 +287,7 @@ function CloudEditionRoot({
           visible={!(signedOut && loginReady)}
           status={status === 'authenticated' && sync.status === 'error' ? 'error' : 'syncing'}
           onRetry={sync.onRetry}
+          onCancelSignIn={signedOut && activity === 'social-signing-in' ? cancelSocialSignIn : undefined}
         />
         {signedOut ? (
           <div className="app-cloud-login-surface" data-ready={loginReady} inert={!loginReady}>

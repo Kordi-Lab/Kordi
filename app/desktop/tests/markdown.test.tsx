@@ -53,7 +53,7 @@ test('emphasizes mentions in agent markdown regardless of markdown weight', () =
   assert.match(html, /<strong[^>]*>[^<]*<span class="[^"]*app-message-mention-agent[^"]*"[^>]*>@EthanParksKordi<\/span><\/strong>/);
 });
 
-test('renders human release announcements with Markdown blocks and the independent link preview', () => {
+test('keeps links in human release announcements inline without a duplicate card', () => {
   const text = [
     '@all We released a new version.',
     '* Update resource and cache handling',
@@ -80,8 +80,34 @@ test('renders human release announcements with Markdown blocks and the independe
     assert.equal((html.match(/<li\b/g) ?? []).length, 3);
     assert.match(html, /<strong[^>]*>GIF<\/strong>/);
     assert.match(html, /data-mention-kind="all"[^>]*aria-label="@all, all people in this group"/);
-    assert.match(html, /class="app-message-link-preview"/);
+    assert.match(html, /data-file-reference="true"/);
+    assert.doesNotMatch(html, /class="app-message-link-preview"/);
   }
+});
+
+test('shows one full card for a human URL-only message and an inline link for agent references', () => {
+  const url = 'https://kordi.ai/updates/releases/latest/Kordi.dmg';
+  for (const msg of [
+    humanMessage({ text: url }),
+    humanMessage({ role: 'person', sender: 'Peer', isOwnMessage: false, text: url }),
+  ]) {
+    const html = renderToStaticMarkup(createElement(MessageBubble, { msg }));
+    assert.equal((html.match(/class="app-message-link-preview"/g) ?? []).length, 1);
+    assert.doesNotMatch(html, /data-external-message-link="true"/);
+    assert.doesNotMatch(html, />Open link</);
+  }
+
+  const agentHtml = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: humanMessage({ role: 'owned-agent', sender: 'Kordi', senderType: 'agent', isOwnMessage: false, text: `See [release notes](${url}).` }),
+  }));
+  assert.match(agentHtml, /data-file-reference="true"/);
+  assert.doesNotMatch(agentHtml, /class="app-message-link-preview"/);
+
+  const agentBareUrlHtml = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: humanMessage({ role: 'owned-agent', sender: 'Kordi', senderType: 'agent', isOwnMessage: false, text: url }),
+  }));
+  assert.match(agentBareUrlHtml, /data-file-reference="true"/);
+  assert.doesNotMatch(agentBareUrlHtml, /class="app-message-link-preview"/);
 });
 
 test('keeps structured person mentions actionable inside human Markdown blocks', () => {
