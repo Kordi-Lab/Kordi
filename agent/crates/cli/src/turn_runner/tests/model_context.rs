@@ -94,7 +94,8 @@ fn assert_route(request: &CompletionRequest, model: &str, provider: &str) {
     assert_eq!(
         request
             .system_prompt
-            .matches("<kordi_model_context>")
+            .lines()
+            .filter(|line| *line == "<kordi_model_context>")
             .count(),
         1
     );
@@ -165,16 +166,26 @@ async fn active_model_context_preserves_fenced_examples_in_provider_requests() {
 }
 
 #[tokio::test]
-async fn active_model_context_rejects_malformed_prompt_before_provider_dispatch() {
+async fn active_model_context_escapes_stray_delimiters_and_still_dispatches() {
     let provider = Arc::new(CapturingProvider::default());
     let mut config = config(provider.clone(), "model-a");
+    // Workspace instructions are user-controlled; a stray reserved line must
+    // not block every turn in that workspace.
     config.system_prompt = "private instructions\n<kordi_model_context>".into();
-    let (tx, _rx) = mpsc::unbounded_channel();
-    let (_, result) = run_turn(config, tx, "hello".into()).await;
-    let error = result.unwrap_err().to_string();
-    assert!(error.contains("Malformed active model context"));
-    assert!(!error.contains("private instructions"));
-    assert!(provider.requests.lock().unwrap().is_empty());
+    let returned = execute(config).await;
+    assert_eq!(
+        returned.system_prompt,
+        "private instructions\n<kordi_model_context>"
+    );
+    let requests = provider.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_route(&requests[0].0, "model-a", &requests[0].1);
+    assert!(
+        requests[0]
+            .0
+            .system_prompt
+            .starts_with("private instructions\n\\<kordi_model_context>\n\n")
+    );
 }
 
 #[tokio::test]

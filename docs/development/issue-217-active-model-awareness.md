@@ -1,18 +1,17 @@
 # Issue #217: Active model awareness in the system prompt
 
 - Issue: [Add active model awareness to the system prompt](https://github.com/Kordi-Lab/Kordi/issues/217)
-- Design review baseline: `a9c1b48112b482b9f3076f5868c93480e21dae21`
-- Status: implemented locally with automated request-capture and serialization validation. No live provider smoke test or deployment performed.
+- Status: implemented with automated request-capture and serialization tests. No live provider smoke test has been performed.
 
 ## Problem
 
-At the design review baseline, Kordi knew which model to call, but the inspected local and cloud agent request builders did not add that information to the system prompt. The provider request's `model` field selects the model at the API level; it does not automatically become text the model can read.
+Before this change, Kordi knew which model to call, but the inspected local and cloud agent request builders did not add that information to the system prompt. The provider request's `model` field selects the model at the API level; it does not automatically become text the model can read.
 
 For example, after a user switches from model A to model B, the next API request can correctly target B while its system prompt still contains no explicit runtime model metadata. A model's answer to "Which model are you?" is not reliable evidence of the configured route.
 
 The desired behavior is to include the selected model identifier and provider in each request made by the local agent turn runner and cloud fallback model loop, update them on the next request after a switch, and keep the information scoped to that request. This describes Kordi's selected configuration, not independently verified provider internals or model capabilities. The first-release scope and exclusions are defined below.
 
-## Code path at the design review baseline
+## Code path before this change
 
 ### Local desktop execution
 
@@ -59,7 +58,7 @@ pub fn with_active_model_context(
     base_prompt: &str,
     model_id: &str,
     provider: &str,
-) -> Result<String, ModelContextError>
+) -> String
 ```
 
 Example appended block:
@@ -83,7 +82,7 @@ The helper has the following formatting contract:
 - Reserve the exact opening and closing delimiter lines shown above. Find all complete, non-nested reserved blocks and remove them before appending one current block. Multiple old blocks must not leave stale metadata behind. Recognize delimiter lines at prompt boundaries as well as between lines; tag text embedded in prose is ordinary text.
 - Preserve every byte outside removed blocks, including existing whitespace. Remove one immediately preceding `\n\n` with a block when present; that separator is part of the reserved envelope. Append exactly `\n\n` followed by the canonical block to a nonempty remaining prompt; append just the block to an empty prompt. The generated block has no trailing newline. Do not trim the remaining prompt.
 - Treat delimiter lines inside Markdown fenced code blocks as literal examples and preserve them, including unmatched or nested example tags. Recognize backtick and tilde fences with up to three leading spaces; closing fences must use the same marker, be at least as long, and contain only trailing spaces or tabs. If a code fence runs to the end of the prompt, preserve its contents and append its closing fence before adding runtime metadata. This keeps metadata outside the example and makes repeated application stable.
-- Outside fenced code blocks, treat unmatched, reversed, or nested reserved delimiter lines as malformed input. Return `ModelContextError` without a partial result; callers report a formatting error and do not dispatch the request. Never guess a metadata closing boundary or silently delete the remaining instructions. Error messages must not include prompt contents. Inline delimiter examples remain ordinary text.
+- Outside fenced code blocks, escape unmatched, reversed, or nested reserved delimiter lines in place by prefixing a backslash (`\<kordi_model_context>`), then rescan, because the escape can change which later lines are fenced. For nested openings, escape the outer opening so the text before the inner block survives. The system prompt includes user-controlled workspace instructions, so a stray line must never block the request, guess a closing boundary, or delete instructions. Log only the number of escaped lines, never prompt contents. Inline delimiter examples remain ordinary text.
 - Require byte-for-byte idempotence for identical metadata, including whitespace: applying the helper twice must equal applying it once. Produce deterministic output without timestamps, random IDs, or global mutable state.
 - Append the block after the base instructions to preserve the stable prompt prefix where possible. This is not a guarantee of provider cache reuse.
 
@@ -100,7 +99,7 @@ request.system_prompt = with_active_model_context(
     &request.system_prompt,
     &request.model,
     &config.model.provider,
-)?;
+);
 ```
 
 If the hook changes the model ID, metadata follows the rewritten ID. The provider remains the runtime's selected provider: the request hook cannot replace the provider object through `CompletionRequest`.
@@ -111,7 +110,7 @@ Final injection also occurs before `request_metrics_snapshot()` is taken, so req
 
 ### 3. Use the helper in the cloud request builder
 
-In `completion_request_from_cloud_messages()`, call the helper after `split_system_messages()` using `auth.model` and `auth.provider`. Change the builder to return a `Result` and propagate formatting failures through `next_response()` as a `ModelLoopError`, without sending a provider request or including prompt contents in the error.
+In `completion_request_from_cloud_messages()`, call the helper after `split_system_messages()` using `auth.model` and `auth.provider`. The helper cannot fail, so the builder keeps its existing signature.
 
 Use the configuration after `apply_runtime_route()`, rather than rereading a saved account default. Preserve the original system instructions, messages, tools, and thinking settings.
 
@@ -150,7 +149,7 @@ Use deterministic tests that inspect the final request. Existing mock providers 
 | Field encoding | Quotes, backslashes, CR/LF, Unicode control and separator characters, and delimiter-like values remain single-line encoded data and decode to the normalized input. |
 | Block replacement | Zero, one, or multiple complete old blocks produce exactly one current block. Text outside reserved envelopes is preserved byte for byte. |
 | Idempotence | Repeated calls with identical metadata produce byte-identical output, including for empty prompts and prompts with trailing whitespace. |
-| Malformed delimiters | Unmatched, reversed, or nested delimiter lines produce a formatting error without dispatching a provider request or exposing prompt text. Inline tag examples remain unchanged. |
+| Stray delimiters | Unmatched, reversed, or nested delimiter lines are escaped in place, the request is still dispatched, surrounding instructions are preserved, and repeated application stays byte-identical. Inline tag examples remain unchanged. |
 | Provider serialization | The outgoing provider payload preserves the complete generated block and existing system instructions in the appropriate API field. |
 
 Extend `agent/crates/cli/src/desktop_runtime/tests/route_switch.rs` or add adjacent coverage to connect model switching to request construction. Add local request-capture tests rather than only testing the helper in isolation.
@@ -170,31 +169,11 @@ Tests can satisfy the issue's debug-verification requirement without logging ful
 
 An optional live smoke test can switch models between two turns in an approved isolated development environment. Follow the repository's preview preflight before launching it. Judge correctness from captured request metadata; the model's self-description is supplementary evidence only.
 
-## Implementation verification (2026-09-21)
-
-The shared helper is implemented in `agent/crates/provider/src/model_context.rs` and called by both primary request builders. Local request-capture tests cover independent sessions, model switching, repeated tool rounds, extension rewrites, and malformed prompt rejection. Desktop route tests capture requests after provider switches and session restoration. The extension fixture loads only its explicit test plugin rather than discovering user extensions.
-
-Provider tests inspect loopback HTTP payloads for Chat Completions, Codex OAuth, Anthropic, and Google. Separate adapter tests verify OpenAI Responses serialization and preservation of the Anthropic OAuth identity preamble. Cloud tests cover runtime route overrides, multiple system messages, unchanged tools and thinking settings, and malformed prompt rejection before dispatch.
-
-Completed test commands:
+## Validation commands
 
 ```sh
 cargo test -p kordi-provider --locked
 cargo test -p kordi-cli -p kordi-cloud-agent-runner --lib --no-default-features --features kordi-cli/desktop-runtime --locked -- --test-threads=1
 ```
 
-Results: 152 provider tests, 265 CLI library tests, and 43 cloud runner library tests passed. Two existing opt-in tests remained ignored: the interactive native desktop smoke test and the credential-dependent live fallback test. The CLI suite initially encountered sandbox restrictions on loopback listeners; the authorized rerun outside that sandbox passed.
-
-Additional checks passed: `cargo fmt --all -- --check`, explicit rustfmt checking of the included desktop route test file, `pnpm check:english`, and Clippy for all targets in the three changed crates with `--no-default-features --features kordi-cli/desktop-runtime --locked -- -D warnings`. The new, untracked source and document files were also checked for English-only content separately.
-
-The auxiliary summary and bridge listener exclusions above remain in effect. These results establish request construction and payload preservation; they do not attest provider internals or guarantee a model's self-description.
-
-### Review follow-up: preserve fenced examples
-
-The initial delimiter scanner also interpreted tags inside fenced code examples as runtime metadata. Complete examples lost their contents, and examples showing only an opening tag blocked request construction. The scanner now excludes fenced examples while retaining validation of runtime blocks outside them. An unclosed code fence is terminated before appending metadata, without changing the original example bytes.
-
-Focused validation after this fix passed 19 tests: 12 provider library tests selected by `model_context`, five local turn-runner tests, and two cloud request-builder tests. Coverage includes complete and unmatched example tags, backtick and tilde fences, indentation, CRLF, mismatched or shorter closing fences, unclosed fences, repeated application, model switching, and preservation of examples in local and cloud requests. Rustfmt checks for the changed Rust files and `git diff --check` also passed. No live provider requests were made for this follow-up.
-
-### CI maintainability follow-up
-
-The request builder and its context hook now live in `agent/crates/cli/src/turn_runner/runner/request.rs`. Shared model, metrics, and tool-context test fixtures live in `agent/crates/cli/src/turn_runner/tests/support.rs`. This keeps the existing oversized runner and test modules from growing, as required by the maintainability check. The extraction preserves request construction and test behavior.
+The request builder and its context hook live in `agent/crates/cli/src/turn_runner/runner/request.rs`, and shared turn-runner test fixtures live in `agent/crates/cli/src/turn_runner/tests/support.rs`, so the oversized runner and test modules do not grow. These tests establish request construction and payload preservation; they do not attest provider internals or guarantee a model's self-description.

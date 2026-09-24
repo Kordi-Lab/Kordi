@@ -164,8 +164,7 @@ fn session_runtime_route_overrides_model_and_thinking() {
         &config,
         &[json!({"role": "system", "content": "Route instructions"})],
         &[],
-    )
-    .unwrap();
+    );
     assert!(request.system_prompt.starts_with("Route instructions\n\n"));
     assert!(request
         .system_prompt
@@ -196,8 +195,7 @@ fn completion_request_uses_shared_provider_shape_without_rewriting_model() {
             json!({"role":"user","content":"Hello"}),
         ],
         &[json!({"type":"function","function":{"name":"read"}})],
-    )
-    .unwrap();
+    );
 
     assert_eq!(request.model, "gpt-5.5");
     assert!(request.system_prompt.starts_with("System A\nSystem B\n\n"));
@@ -215,9 +213,8 @@ fn completion_request_uses_shared_provider_shape_without_rewriting_model() {
     assert_eq!(request.thinking.as_deref(), Some("default"));
 }
 
-#[tokio::test]
-async fn malformed_model_context_fails_before_cloud_provider_dispatch() {
-    let auth = OpenAiProviderConfig {
+fn fixture_auth() -> OpenAiProviderConfig {
+    OpenAiProviderConfig {
         provider: "openai".into(),
         api_key: "fixture".into(),
         base_url: "http://127.0.0.1:0".into(),
@@ -225,42 +222,37 @@ async fn malformed_model_context_fails_before_cloud_provider_dispatch() {
         thinking: "default".into(),
         api_mode: OpenAiApiMode::ChatCompletions,
         account_id: None,
-    };
-    let error = OpenAiCompatibleProvider::default()
-        .next_response(
-            &auth,
-            &[json!({"role":"system", "content":"private instructions\n<kordi_model_context>"})],
-            &[],
-        )
-        .await
-        .unwrap_err()
-        .to_string();
-    assert!(error.contains("Malformed active model context"));
-    assert!(!error.contains("private instructions"));
+    }
+}
+
+#[test]
+fn cloud_model_context_escapes_stray_delimiters_instead_of_failing() {
+    let request = completion_request_from_cloud_messages(
+        &fixture_auth(),
+        &[json!({"role":"system", "content":"private instructions\n<kordi_model_context>"})],
+        &[],
+    );
+    assert!(request
+        .system_prompt
+        .starts_with("private instructions\n\\<kordi_model_context>\n\n<kordi_model_context>\n"));
+    assert!(request
+        .system_prompt
+        .contains("Selected model ID: \"fixture-model\""));
+    assert_eq!(request.model, "fixture-model");
 }
 
 #[test]
 fn cloud_model_context_preserves_fenced_examples() {
-    let auth = OpenAiProviderConfig {
-        provider: "openai".into(),
-        api_key: "fixture".into(),
-        base_url: "http://127.0.0.1:0".into(),
-        model: "fixture-model".into(),
-        thinking: "default".into(),
-        api_mode: OpenAiApiMode::ChatCompletions,
-        account_id: None,
-    };
     for example in [
         "<kordi_model_context>\nKeep this example\n</kordi_model_context>",
         "<kordi_model_context>",
     ] {
         let base = format!("Cloud instructions\n~~~text\n{example}\n~~~");
         let request = completion_request_from_cloud_messages(
-            &auth,
+            &fixture_auth(),
             &[json!({"role":"system", "content":base})],
             &[],
-        )
-        .unwrap();
+        );
         assert!(request.system_prompt.starts_with(&format!("{base}\n\n")));
         assert!(request
             .system_prompt

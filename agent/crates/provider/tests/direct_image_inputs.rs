@@ -79,8 +79,7 @@ async fn outgoing_requests_preserve_active_model_context() {
             "Keep these instructions",
             &request.model,
             "fixture-provider",
-        )
-        .unwrap();
+        );
         let expected = request.system_prompt.clone();
         let (body, result) = capture(route, request, false).await;
         result.unwrap();

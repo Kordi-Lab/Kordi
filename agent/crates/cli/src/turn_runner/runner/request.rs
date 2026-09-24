@@ -68,7 +68,7 @@ pub(super) async fn build_request(
         &request.system_prompt,
         &request.model,
         &config.model.provider,
-    )?;
+    );
 
     Ok((request, mutation_flags))
 }

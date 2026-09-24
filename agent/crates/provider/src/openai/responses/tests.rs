@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 fn responses_payload_preserves_active_model_context() {
     let mut request = completion_request("gpt-5.4");
     request.system_prompt =
-        crate::with_active_model_context(&request.system_prompt, &request.model, "openai").unwrap();
+        crate::with_active_model_context(&request.system_prompt, &request.model, "openai");
     let body = build_responses_request_body(&request, super::super::prepare_messages(&request));
     assert_eq!(body["input"][0]["role"], "system");
     assert_eq!(

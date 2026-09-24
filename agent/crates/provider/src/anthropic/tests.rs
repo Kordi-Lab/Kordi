@@ -10,8 +10,7 @@ use serde_json::json;
 fn active_model_context_preserves_oauth_identity_preamble() {
     let mut request = completion_request("fixture-model", None);
     request.system_prompt =
-        crate::with_active_model_context(&request.system_prompt, &request.model, "anthropic")
-            .unwrap();
+        crate::with_active_model_context(&request.system_prompt, &request.model, "anthropic");
     for auth in [ProviderAuthMode::ApiKey, ProviderAuthMode::OAuth] {
         let body = build_anthropic_request_body(&request, auth, request.messages.clone(), vec![]);
         let system = body["system"].as_array().unwrap();
