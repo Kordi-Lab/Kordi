@@ -229,7 +229,7 @@ impl DesktopRuntimeSession {
     }
 }
 
-fn build_turn_config(
+pub(super) fn build_turn_config(
     setup: &mut crate::session_bootstrap::SessionRuntimeSetup,
     cancel: tokio_util::sync::CancellationToken,
     execution_policy: kordi_tools::ExecutionPolicy,

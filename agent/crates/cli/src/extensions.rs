@@ -116,6 +116,13 @@ impl fmt::Debug for ExtensionCommandRegistry {
 }
 
 impl ExtensionCommandRegistry {
+    #[cfg(test)]
+    pub(crate) async fn from_test_plugin(cwd: &Path, path: &Path) -> Result<Self> {
+        let (_, commands, _) =
+            plugin_runtime::build_plugin_runtime(cwd, false, &[path.to_path_buf()]).await?;
+        Ok(commands)
+    }
+
     pub(crate) fn bind_session_context(
         &mut self,
         conn: Arc<Mutex<rusqlite::Connection>>,

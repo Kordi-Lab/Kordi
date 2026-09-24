@@ -303,6 +303,8 @@ fn completion_request_from_cloud_messages(
     tools: &[Value],
 ) -> CompletionRequest {
     let (system_prompt, messages) = split_system_messages(messages);
+    let system_prompt =
+        kordi_provider::with_active_model_context(&system_prompt, &auth.model, &auth.provider);
     CompletionRequest {
         system_prompt,
         messages,
