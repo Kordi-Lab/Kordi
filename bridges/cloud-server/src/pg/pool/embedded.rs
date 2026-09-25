@@ -449,4 +449,34 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "durable plan-card projection and immutable PiP context",
         sql: include_str!("../../../migrations/0099_plan_card_projection_and_pip_context.sql"),
     },
+    EmbeddedMigration {
+        version: 100,
+        description: "provider auth profile labels",
+        sql: include_str!("../../../migrations/0100_provider_auth_profile_labels.sql"),
+    },
+    EmbeddedMigration {
+        version: 101,
+        description: "provider auth model hint",
+        sql: include_str!("../../../migrations/0101_provider_auth_model_hint.sql"),
+    },
+    EmbeddedMigration {
+        version: 102,
+        description: "provider auth login sessions",
+        sql: include_str!("../../../migrations/0102_provider_auth_login_sessions.sql"),
+    },
+    EmbeddedMigration {
+        version: 103,
+        description: "provider auth login session method",
+        sql: include_str!("../../../migrations/0103_provider_auth_login_session_method.sql"),
+    },
+    EmbeddedMigration {
+        version: 104,
+        description: "provider auth payload version",
+        sql: include_str!("../../../migrations/0104_provider_auth_payload_version.sql"),
+    },
+    EmbeddedMigration {
+        version: 105,
+        description: "provider auth snapshot readiness",
+        sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
+    },
 ];

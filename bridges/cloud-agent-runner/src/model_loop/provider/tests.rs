@@ -150,13 +150,15 @@ fn session_runtime_route_overrides_model_and_thinking() {
     };
     let mut config = OpenAiProviderConfig::from_material(&material).unwrap();
 
-    config.apply_runtime_route(
-        &AgentRuntimeRoute {
-            default_model: Some("openai-codex/gpt-5.6-sol".to_string()),
-            thinking: Some("high".to_string()),
-        },
-        &material.provider,
-    );
+    config
+        .apply_runtime_route(
+            &AgentRuntimeRoute {
+                default_model: Some("openai-codex/gpt-5.6-sol".to_string()),
+                thinking: Some("high".to_string()),
+            },
+            &material.provider,
+        )
+        .unwrap();
 
     assert_eq!(config.model, "gpt-5.6-sol");
     assert_eq!(config.thinking, "high");
@@ -306,4 +308,121 @@ fn stream_events_convert_to_final_text() {
         response,
         ModelProviderResponse::FinalText("hello world".to_string())
     );
+}
+
+fn material(provider: &str, payload: Value) -> ProviderAuthMaterial {
+    ProviderAuthMaterial {
+        snapshot_id: "snap".to_string(),
+        provider: provider.to_string(),
+        auth_choice: "default".to_string(),
+        payload,
+    }
+}
+
+fn route(model: Option<&str>) -> AgentRuntimeRoute {
+    AgentRuntimeRoute {
+        default_model: model.map(ToString::to_string),
+        thinking: None,
+    }
+}
+
+#[test]
+fn custom_snapshot_keeps_its_model_and_the_route_model_wins() {
+    let custom = material(
+        "custom",
+        json!({
+            "apiKey": "key",
+            "baseUrl": "https://llm.example.com/v1",
+            "model": "deepseek-chat"
+        }),
+    );
+    let mut config = OpenAiProviderConfig::from_material(&custom).unwrap();
+    assert_eq!(config.base_url, "https://llm.example.com/v1");
+    assert_eq!(config.model, "deepseek-chat");
+    config.apply_runtime_route(&route(None), "custom").unwrap();
+    assert_eq!(config.model, "deepseek-chat");
+    config
+        .apply_runtime_route(&route(Some("custom/deepseek-reasoner")), "custom")
+        .unwrap();
+    assert_eq!(config.model, "deepseek-reasoner");
+}
+
+#[test]
+fn custom_snapshot_without_a_model_fails_instead_of_using_a_default() {
+    for payload in [
+        json!({ "apiKey": "key", "baseUrl": "https://llm.example.com/v1" }),
+        json!({ "apiKey": "key", "baseUrl": "https://llm.example.com/v1", "model": " " }),
+        json!({ "apiKey": "key", "baseUrl": "https://llm.example.com/v1", "model": "m".repeat(161) }),
+    ] {
+        let mut config = OpenAiProviderConfig::from_material(&material("custom", payload)).unwrap();
+        let error = config
+            .apply_runtime_route(&route(None), "custom")
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            ModelLoopError::Provider(CUSTOM_MODEL_MISSING.to_string()).to_string()
+        );
+    }
+    // A route model is enough on its own.
+    let mut config = OpenAiProviderConfig::from_material(&material(
+        "custom",
+        json!({ "apiKey": "key", "baseUrl": "https://llm.example.com/v1" }),
+    ))
+    .unwrap();
+    config
+        .apply_runtime_route(&route(Some("custom/deepseek-chat")), "custom")
+        .unwrap();
+    assert_eq!(config.model, "deepseek-chat");
+    // Owner-local custom endpoints stay rejected.
+    let local = material(
+        "custom",
+        json!({ "apiKey": "key", "baseUrl": "http://192.168.1.20/v1", "model": "deepseek-chat" }),
+    );
+    let error = OpenAiProviderConfig::from_material(&local).unwrap_err();
+    assert!(error.to_string().contains("owner-local provider endpoints"));
+}
+
+#[test]
+fn providers_outside_the_known_families_keep_their_stored_models() {
+    for (provider, model) in [
+        ("cerebras", "llama-4-scout-17b"),
+        ("mistral", "mistral-large-latest"),
+        ("groq", "openai/gpt-oss-120b"),
+        ("openrouter", "anthropic/claude-sonnet-5"),
+        ("custom", "claude-sonnet-5"),
+    ] {
+        let config = OpenAiProviderConfig::from_material(&material(
+            provider,
+            json!({ "apiKey": "key", "baseUrl": "https://llm.example.com/v1", "model": model }),
+        ))
+        .unwrap();
+        assert_eq!(config.model, model, "{provider}");
+    }
+}
+
+#[test]
+fn another_vendors_model_on_a_known_family_snapshot_is_replaced() {
+    let openai = OpenAiProviderConfig::from_material(&material(
+        "openai",
+        json!({ "apiKey": "key", "model": "claude-sonnet-5" }),
+    ))
+    .unwrap();
+    assert_eq!(openai.model, "gpt-4.1-mini");
+    let anthropic = OpenAiProviderConfig::from_material(&material(
+        "anthropic",
+        json!({ "apiKey": "key", "model": "gpt-5.6-sol" }),
+    ))
+    .unwrap();
+    assert_eq!(anthropic.model, "claude-sonnet-5");
+}
+
+#[test]
+fn another_providers_model_is_rejected() {
+    use super::model_choice::model_fits_provider;
+    assert!(!model_fits_provider("gpt-5.6-sol", "anthropic"));
+    assert!(!model_fits_provider("openai/gpt-5.6-sol", "anthropic"));
+    assert!(!model_fits_provider("claude-sonnet-5", "openai"));
+    assert!(model_fits_provider("claude-sonnet-5", "anthropic"));
+    assert!(model_fits_provider("gpt-5.6-sol", "openai-codex"));
+    assert!(model_fits_provider("llama-3.3-70b-versatile", "groq"));
 }
