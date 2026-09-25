@@ -32,6 +32,7 @@ if [[ ! -f "$env_file" ]]; then
     printf 'MINIO_ROOT_PASSWORD=%s\n' "$(openssl rand -hex 24)"
     printf 'KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)"
     printf 'KORDI_CLOUD_RUNNER_TOKEN=%s\n' "$(openssl rand -hex 32)"
+    printf 'KORDI_OMP_ROUTE_WORKER_TOKEN=%s\n' "$(openssl rand -hex 32)"
     printf 'KORDI_CHAT_SYNC_CURSOR_SECRET=%s\n' "$(openssl rand -hex 32)"
     printf 'KORDI_OAUTH_GITHUB_CLIENT_ID=\n'
     printf 'KORDI_OAUTH_GITHUB_CLIENT_SECRET=\n'
@@ -56,12 +57,20 @@ if ! grep -q '^KORDI_CHAT_SYNC_CURSOR_SECRET=' "$env_file"; then
   echo "[kordi-debug] Added an isolated chat-sync secret to the existing deploy/dev/.env"
 fi
 
+if ! grep -q '^KORDI_OMP_ROUTE_WORKER_TOKEN=' "$env_file"; then
+  umask 077
+  printf 'KORDI_OMP_ROUTE_WORKER_TOKEN=%s\n' "$(openssl rand -hex 32)" >>"$env_file"
+  chmod 600 "$env_file"
+  echo "[kordi-debug] Added an isolated OMP route worker token to the existing deploy/dev/.env"
+fi
+
 # Compose gives the parent shell precedence over --env-file. Clear every
 # server-side credential that this stack interpolates so a maintainer's
 # production environment cannot silently override the isolated dev file.
 unset POSTGRES_PASSWORD REDIS_PASSWORD
 unset MINIO_ROOT_USER MINIO_ROOT_PASSWORD
 unset KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY KORDI_CLOUD_RUNNER_TOKEN
+unset KORDI_OMP_ROUTE_WORKER_TOKEN
 unset KORDI_CHAT_SYNC_CURSOR_SECRET
 unset KORDI_PIP_FALLBACK_API_KEY KORDI_PIP_FALLBACK_BASE_URL KORDI_PIP_FALLBACK_MODEL
 unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET

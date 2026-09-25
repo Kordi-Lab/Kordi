@@ -1,0 +1,14 @@
+{
+  "name": "kordi-omp-provider-routing-probe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "probe": "bun run probe-cli.ts",
+    "export-catalog": "bun run export-catalog.ts"
+  },
+  "dependencies": {
+    "@oh-my-pi/pi-ai": "18.2.11",
+    "@oh-my-pi/pi-catalog": "18.2.11"
+  }
+}
