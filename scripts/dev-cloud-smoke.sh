@@ -15,7 +15,7 @@ fi
 api_port="${KORDI_DEBUG_API_PORT:-$(sed -n 's/^KORDI_DEBUG_API_PORT=//p' "$env_file" | tail -1)}"
 api_port="${api_port:-17081}"
 
-for service in postgres redis nats minio cloud-server cloud-agent-runner; do
+for service in postgres redis nats minio cloud-server cloud-agent-runner omp-route-worker; do
   container_id="$("${compose[@]}" ps -q "$service")"
   if [[ -z "$container_id" ]] || [[ "$(docker inspect -f '{{.State.Running}}' "$container_id")" != "true" ]]; then
     echo "[kordi-debug] Service is not running: $service" >&2
@@ -23,6 +23,23 @@ for service in postgres redis nats minio cloud-server cloud-agent-runner; do
     exit 1
   fi
 done
+
+# The OMP route worker is reachable only on the Compose network; its healthcheck probes GET /health.
+worker_healthy="false"
+for _attempt in $(seq 1 60); do
+  worker_id="$("${compose[@]}" ps -q omp-route-worker)"
+  if [[ -n "$worker_id" ]] \
+    && [[ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$worker_id")" == "healthy" ]]; then
+    worker_healthy="true"
+    break
+  fi
+  sleep 1
+done
+if [[ "$worker_healthy" != "true" ]]; then
+  echo "[kordi-debug] OMP route worker did not become healthy" >&2
+  "${compose[@]}" ps omp-route-worker >&2
+  exit 1
+fi
 
 health_url="http://127.0.0.1:${api_port}/health"
 healthy="false"

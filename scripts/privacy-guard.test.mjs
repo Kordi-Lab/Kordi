@@ -88,6 +88,23 @@ test('text rules reject credential material, personal metadata, and production h
   }
 });
 
+test('home-directory rules ignore lowercase URL paths but still catch macOS and Windows homes', () => {
+  const developer = ['private', 'developer'].join('-');
+  const macHome = ['', 'Users', developer, 'project'].join('/');
+  const windowsHome = ['C:', 'Users', developer, 'project'].join('\\');
+
+  assert.deepEqual(inspectText('https://app.fireworks.ai/settings/users/api-keys'), []);
+  assert.deepEqual(inspectText(['', 'Users', 'example', 'project'].join('/')), []);
+  assert.equal(inspectText(macHome).some((finding) => finding.rule === 'local-home-path'), true);
+  for (const contents of [windowsHome, windowsHome.toLowerCase()]) {
+    assert.equal(
+      inspectText(contents).some((finding) => finding.rule === 'local-windows-home-path'),
+      true,
+      contents.slice(0, 3),
+    );
+  }
+});
+
 test('private organization terms can be supplied without committing them', () => {
   const privateTerm = ['private', 'identity'].join('-');
   const findings = inspectText(`owner=${privateTerm}`, { denylist: privateTerm });

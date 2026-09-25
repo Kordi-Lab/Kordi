@@ -15,7 +15,9 @@ import urllib.parse
 import urllib.request
 import zipfile
 
-FILES = {"backend-manifest.json"} | {f"{service}.{kind}.tar" for service in ("cloud-server", "cloud-agent-runner") for kind in ("docker", "oci")}
+# This script is copied to the host alone, so it repeats backend_artifact.SERVICES; a test keeps them equal.
+FILES = {"backend-manifest.json"} | {f"{service}.{kind}.tar" for service in ("cloud-server", "cloud-agent-runner", "omp-route-worker")
+                                     for kind in ("docker", "oci")}
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):

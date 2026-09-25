@@ -88,6 +88,15 @@ jobs:
       - name: Run visual checks
         run: pnpm check:visual
 
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: visual-test-results-${{ github.job }}
+          path: app/desktop/test-results
+          retention-days: 7
+          if-no-files-found: warn
+
   browser:
     name: Browser suites
     needs: plan
@@ -123,6 +132,15 @@ jobs:
 
       - name: Run browser checks
         run: pnpm check:browser
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: visual-test-results-${{ github.job }}
+          path: app/desktop/test-results
+          retention-days: 7
+          if-no-files-found: warn
 
   completion:
     name: Complete visual results
