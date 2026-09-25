@@ -11,17 +11,45 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
     let subtitle: String
     let systemImage: String
     let runtime: Runtime
+    /// Kordi compatibility endpoint sent with saved API keys; OMP does not publish one.
     let baseURL: String?
     let defaultModel: String?
+    /// Fields below come from the OMP catalog when it lists this provider.
+    let authKind: String?
+    let acceptsAPIKey: Bool
+    let models: [String]
 
-    var acceptsAPIKeyOnPhone: Bool { runtime == .cloudAPI }
+    init(
+        id: String,
+        name: String,
+        subtitle: String,
+        systemImage: String,
+        runtime: Runtime,
+        baseURL: String?,
+        defaultModel: String?,
+        authKind: String? = nil,
+        acceptsAPIKey: Bool? = nil,
+        models: [String] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.subtitle = subtitle
+        self.systemImage = systemImage
+        self.runtime = runtime
+        self.baseURL = baseURL
+        self.defaultModel = defaultModel
+        self.authKind = authKind
+        self.acceptsAPIKey = acceptsAPIKey ?? (runtime == .cloudAPI)
+        self.models = models
+    }
 
-    var queryProviderIDs: [String] {
-        switch id {
-        case "openai": ["openai", "openai-codex", "codex"]
-        case "google": ["google", "google-gemini"]
-        default: [id]
-        }
+    var acceptsAPIKeyOnPhone: Bool { acceptsAPIKey }
+
+    /// OMP may report `acceptsApiKey: false` for a provider that still reads a key
+    /// from an `*_API_KEY` environment variable. `*_TOKEN` variables hold
+    /// vendor-issued tokens, not API keys, and do not enable key entry.
+    static func catalogAcceptsAPIKey(_ auth: OMPProviderAuthPolicy) -> Bool {
+        auth.acceptsApiKey || auth.envVars.contains { $0.hasSuffix("_API_KEY") }
     }
 
     static let all: [ProviderAuthenticationDefinition] = [
@@ -108,9 +136,125 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
         ),
     ]
 
+    static let custom = ProviderAuthenticationDefinition(
+        id: "custom", name: "Custom API", subtitle: "OpenAI-compatible endpoint",
+        systemImage: "slider.horizontal.3", runtime: .cloudAPI,
+        baseURL: nil, defaultModel: nil
+    )
+
+    /// Builds a definition from OMP. When OMP and Kordi both know a provider, OMP
+    /// supplies the identity, name, models, and authentication policy; Kordi keeps
+    /// only its icon and compatibility endpoint. OMP's login policy decides
+    /// whether a key works: an `env-only` provider without a key variable
+    /// takes none, whatever `auth` says.
+    static func fromCatalog(_ entry: OMPProviderCatalogEntry) -> ProviderAuthenticationDefinition {
+        let local = definition(for: entry.id)
+        let supportsChatGPT = canonicalID(entry.id) == "openai"
+        let acceptsAPIKey = entry.login != nil || entry.auth != nil
+            ? entry.loginPolicy.acceptsAPIKeyMethod
+            : local?.acceptsAPIKey ?? !entry.models.isEmpty
+        return ProviderAuthenticationDefinition(
+            id: entry.id,
+            name: entry.auth?.name?.nonEmpty ?? entry.name?.nonEmpty ?? derivedName(entry.id),
+            subtitle: catalogSubtitle(
+                authKind: entry.auth?.kind,
+                acceptsAPIKey: acceptsAPIKey,
+                supportsChatGPT: supportsChatGPT,
+                signInStyles: ProviderLoginMethod.methods(for: entry).map(\.style).filter { $0 != .apiKey },
+                modelCount: entry.models.count
+            ),
+            systemImage: local?.systemImage ?? "sparkles",
+            runtime: acceptsAPIKey || supportsChatGPT ? .cloudAPI : .mac,
+            baseURL: local?.baseURL,
+            defaultModel: entry.defaultModel?.nonEmpty ?? entry.models.first,
+            authKind: entry.auth?.kind,
+            acceptsAPIKey: acceptsAPIKey,
+            models: entry.models
+        )
+    }
+
+    /// The provider list shown in Settings: every OMP provider with models, one row
+    /// per provider family, plus Kordi's Mac-only providers and any provider that
+    /// has saved accounts but is missing from OMP. Custom API stays last.
+    static func merged(
+        catalog: [OMPProviderCatalogEntry],
+        savedProviderIDs: [String]
+    ) -> [ProviderAuthenticationDefinition] {
+        var entriesByFamily: [String: OMPProviderCatalogEntry] = [:]
+        for entry in catalog where !entry.models.isEmpty && entry.id != custom.id {
+            let family = canonicalID(entry.id)
+            // `openai` and `openai-codex` share one row; the entry whose id names
+            // the family keeps its OMP id.
+            if let current = entriesByFamily[family], current.id == family { continue }
+            if entriesByFamily[family] == nil || entry.id == family {
+                entriesByFamily[family] = entry
+            }
+        }
+        var definitions = entriesByFamily.isEmpty
+            ? all
+            : entriesByFamily.values.map { fromCatalog($0) }
+        var families = Set(definitions.map { canonicalID($0.id) })
+        let savedFamilies = Set(savedProviderIDs.map(canonicalID))
+        for local in all where !families.contains(local.id)
+            && (local.runtime == .mac || savedFamilies.contains(local.id)) {
+            definitions.append(local)
+            families.insert(local.id)
+        }
+        for family in savedFamilies.sorted() where !family.isEmpty
+            && family != custom.id && !families.contains(family) {
+            definitions.append(ProviderAuthenticationDefinition(
+                id: family,
+                name: derivedName(family),
+                subtitle: "Saved account",
+                systemImage: "sparkles",
+                runtime: .mac,
+                baseURL: nil,
+                defaultModel: nil
+            ))
+            families.insert(family)
+        }
+        definitions.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        definitions.append(custom)
+        return definitions
+    }
+
+    private static func derivedName(_ providerID: String) -> String {
+        providerID
+            .split(separator: "-")
+            .map { $0.uppercased().count <= 3 ? $0.uppercased() : $0.capitalized }
+            .joined(separator: " ")
+    }
+
+    /// Names the ways to add an account on iPhone, from OMP's login methods.
+    /// Only providers with no iPhone method point to the Mac.
+    private static func catalogSubtitle(
+        authKind: String?,
+        acceptsAPIKey: Bool,
+        supportsChatGPT: Bool,
+        signInStyles: [ProviderLoginMethod.Style],
+        modelCount: Int
+    ) -> String {
+        let access: String
+        if supportsChatGPT {
+            access = acceptsAPIKey ? "ChatGPT account or API key" : "ChatGPT account"
+        } else if let style = signInStyles.first {
+            let signIn = style == .vendorToken ? "Vendor token" : "Subscription sign-in"
+            access = acceptsAPIKey ? "\(signIn) or API key" : signIn
+        } else if acceptsAPIKey {
+            access = "API key"
+        } else {
+            switch authKind {
+            case "native": access = "Provider credentials on Mac"
+            case "custom": access = "Custom setup on Mac"
+            default: access = "Set up on Mac"
+            }
+        }
+        return "\(access) · \(modelCount) \(modelCount == 1 ? "model" : "models")"
+    }
+
     static func canonicalID(_ provider: String) -> String {
         switch provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-        case "openai-codex", "codex": "openai"
+        case "openai-codex", "codex", "openai-codex-device": "openai"
         case "google-gemini": "google"
         default: provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
@@ -120,15 +264,22 @@ struct ProviderAuthenticationDefinition: Identifiable, Hashable {
         let canonicalProviderID = canonicalID(providerID)
         return all.first { $0.id == canonicalProviderID }
     }
+}
 
-    static func preferredFallbackSnapshot(
-        in snapshots: [String: CloudProviderAuthSnapshot],
-        excluding providerID: String? = nil
-    ) -> CloudProviderAuthSnapshot? {
-        let excluded = providerID.map(canonicalID)
-        return snapshots.values
-            .filter { canonicalID($0.provider) != excluded }
-            .max { left, right in left.createdAt < right.createdAt }
+extension OMPProviderCatalog {
+    static let pinnedResourceName = "omp-provider-catalog"
+
+    /// The OMP provider catalog bundled with the app. It is decoded once and used
+    /// until a live catalog is fetched, including offline and in preview data.
+    static let pinned: [OMPProviderCatalogEntry] = pinnedProviders(in: .main)
+
+    static func pinnedProviders(in bundle: Bundle) -> [OMPProviderCatalogEntry] {
+        guard let url = bundle.url(forResource: pinnedResourceName, withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let catalog = try? JSONDecoder().decode(OMPProviderCatalog.self, from: data) else {
+            return []
+        }
+        return catalog.providers
     }
 }
 

@@ -5,9 +5,14 @@ struct AgentModelPicker: View {
     let conversation: ConversationSummary
     let onDismiss: () -> Void
     @State private var selectedProvider = ""
+    @State private var selectedAuthChoice = ""
     @State private var selectedModel = ""
     @State private var selectedThinking = "medium"
     @State private var isSaving = false
+    @State private var isTesting = false
+    @State private var routeTestResult: CloudProviderRouteTest?
+    @State private var showsManualModel = false
+    @State private var manualModelID = ""
 
     static let modelNamesByProvider = [
         "openai": [
@@ -54,6 +59,16 @@ struct AgentModelPicker: View {
 
     private var routing: CloudModelRouting { model.runtimeRouting(for: conversation) }
     private var canEdit: Bool { model.canChangeRuntimeRouting(for: conversation) }
+    private var selectedAccountIsUnavailable: Bool {
+        !selectedAuthChoice.isEmpty && account(for: selectedAuthChoice) == nil
+    }
+    private var isCustomProvider: Bool {
+        ProviderAuthenticationDefinition.canonicalID(selectedProvider) == ProviderAuthenticationDefinition.custom.id
+    }
+
+    private func account(for choice: String) -> CloudProviderAuthSnapshot? {
+        model.authenticationSnapshots(for: selectedProvider).first { $0.authChoice == choice }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -83,8 +98,18 @@ struct AgentModelPicker: View {
                     title: "Provider",
                     options: providers,
                     selection: $selectedProvider,
-                    isEnabled: canEdit && !providers.isEmpty,
+                    isEnabled: canEdit && !providers.isEmpty && !isTesting,
                     optionLabel: providerLabel
+                )
+
+                Divider()
+
+                AgentModelMenuRow(
+                    title: "Account",
+                    options: accountChoices,
+                    selection: $selectedAuthChoice,
+                    isEnabled: canEdit && !accountChoices.isEmpty && !isTesting,
+                    optionLabel: accountLabel
                 )
 
                 Divider()
@@ -93,7 +118,7 @@ struct AgentModelPicker: View {
                     title: "Model",
                     options: routes,
                     selection: $selectedModel,
-                    isEnabled: canEdit && !selectedProvider.isEmpty && !routes.isEmpty,
+                    isEnabled: canEdit && !selectedProvider.isEmpty && !routes.isEmpty && !isTesting,
                     optionLabel: modelLabel
                 )
 
@@ -103,11 +128,28 @@ struct AgentModelPicker: View {
                     title: "Thinking level",
                     options: selectedProvider.isEmpty ? [] : thinkingLevels,
                     selection: $selectedThinking,
-                    isEnabled: canEdit && !selectedProvider.isEmpty,
+                    isEnabled: canEdit && !selectedProvider.isEmpty && !isTesting,
                     optionLabel: thinkingLabel
                 )
             }
             .padding(.horizontal, 12)
+
+            if selectedProvider == "custom" || showsManualModel {
+                TextField("Model ID", text: $manualModelID)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 12)
+                    .onChange(of: manualModelID) { _, value in
+                        if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            selectedModel = "\(selectedProvider)/\(value.trimmingCharacters(in: .whitespacesAndNewlines))"
+                        }
+                    }
+            } else {
+                Button("Enter another model ID") { showsManualModel = true }
+                    .font(.caption)
+                    .padding(.horizontal, 12)
+            }
 
             if !canEdit {
                 Label("Only the agent owner can change this model route.", systemImage: "lock")
@@ -115,8 +157,65 @@ struct AgentModelPicker: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 12)
             }
+            if selectedAccountIsUnavailable {
+                Label("Account unavailable. Choose another saved account or reconnect it in Settings → Authentication.", systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 12)
+                    .accessibilityIdentifier("agent-model-account-unavailable")
+            }
+
+            if isTesting {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Testing route through OMP…")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("agent-model-route-test-pending")
+            } else if let routeTestResult {
+                // Every value shown here comes from the server-confirmed result.
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Route confirmed", systemImage: "checkmark.circle.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.green)
+                    Text("Runner \(routeTestResult.runner) · \(routeTestResult.accountLabel) · \(modelLabel(routeTestResult.model))")
+                        .font(.footnote)
+                    Text(routeTestResult.response)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("agent-model-route-test-result")
+            } else if let error = model.providerAuthenticationErrorMessage?.nonEmpty,
+                      error != OMPBackendSupport.unavailableMessage {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 12)
+            }
 
             HStack {
+                Button {
+                    testRoute()
+                } label: {
+                    if isTesting {
+                        ProgressView()
+                    } else {
+                        Text("Test route")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .frame(minHeight: 44)
+                .disabled(!canEdit || isSaving || isTesting || selectedModel.isEmpty || selectedAuthChoice.isEmpty
+                    || selectedAccountIsUnavailable || model.ompBackendUnavailable)
+                .accessibilityLabel("Test route")
+                .accessibilityIdentifier("agent-model-test-route")
                 Spacer()
                 Button {
                     save()
@@ -129,20 +228,49 @@ struct AgentModelPicker: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .frame(minHeight: 44)
-                .disabled(!canEdit || isSaving || selectedModel.isEmpty)
+                .disabled(!canEdit || isSaving || isTesting || selectedModel.isEmpty || selectedAuthChoice.isEmpty || selectedAccountIsUnavailable)
+                .accessibilityLabel("Save")
+                .accessibilityIdentifier("agent-model-save")
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
+            Text(model.ompBackendUnavailable
+                ? OMPBackendSupport.unavailableMessage
+                : "Test route runs one short hosted model request and may use provider quota.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .accessibilityIdentifier("agent-model-test-route-note")
         }
         .frame(maxWidth: .infinity)
         .modifier(ComposerFloatingPanelSurfaceModifier())
         .onAppear { loadSelection() }
+        .task {
+            if !model.hasLiveOMPProviderCatalog && !model.ompBackendUnavailable {
+                await model.refreshOMPProviderCatalog()
+            }
+        }
         .onChange(of: selectedProvider) { _, provider in
+            routeTestResult = nil
             selectCompatibleModel(for: provider)
+            selectCompatibleAccount(for: provider)
+        }
+        .onChange(of: selectedAuthChoice) { previous, choice in
+            routeTestResult = nil
+            if isCustomProvider, !previous.isEmpty {
+                // A Custom API endpoint serves only the model its account names.
+                manualModelID = ""
+                selectedModel = account(for: choice)?.modelHint?.nonEmpty.map { "\(selectedProvider)/\($0)" } ?? ""
+            } else if !routes.contains(selectedModel) {
+                selectedModel = routes.first ?? ""
+            }
         }
         .onChange(of: selectedModel) { _, value in
+            routeTestResult = nil
             selectedThinking = Self.normalizedThinking(selectedThinking, for: value)
         }
+        .onChange(of: selectedThinking) { _, _ in routeTestResult = nil }
         .onChange(of: routing) { _, _ in
             guard !isSaving else { return }
             loadSelection()
@@ -154,7 +282,7 @@ struct AgentModelPicker: View {
     }
 
     private var providers: [String] {
-        let available = model.providerAuthSnapshots.keys.sorted { left, right in
+        var available = model.providerAuthSnapshots.keys.sorted { left, right in
             let leftCreatedAt = model.providerAuthSnapshots[left]?.createdAt ?? ""
             let rightCreatedAt = model.providerAuthSnapshots[right]?.createdAt ?? ""
             if leftCreatedAt == rightCreatedAt { return left < right }
@@ -162,26 +290,37 @@ struct AgentModelPicker: View {
         }
         guard let routeProvider = routing.defaultAuthProvider?.nonEmpty.map(
             ProviderAuthenticationDefinition.canonicalID
-        ), let index = available.firstIndex(of: routeProvider) else {
+        ) else { return available }
+        if let index = available.firstIndex(of: routeProvider) {
+            available.remove(at: index)
+        } else if routing.defaultAuthChoice?.nonEmpty == nil {
             return available
         }
-        return [available[index]] + available.enumerated().compactMap {
-            $0.offset == index ? nil : $0.element
-        }
+        // A routed provider whose last account was removed stays listed, so the
+        // route shows Account unavailable instead of moving to another provider.
+        return [routeProvider] + available
     }
 
     private var routes: [String] {
         guard let provider = selectedProvider.nonEmpty else { return [] }
         let canonicalProvider = ProviderAuthenticationDefinition.canonicalID(provider)
-        let names = Self.modelNamesByProvider[canonicalProvider]
-            ?? ProviderAuthenticationDefinition.all
-                .first(where: { $0.id == canonicalProvider })?
+        let selectedAccount = account(for: selectedAuthChoice)
+        let catalogProvider = selectedAccount?.provider == "openai-codex" ? "openai-codex" : canonicalProvider
+        let catalogModels = model.ompProviderCatalog
+            .first { $0.id == catalogProvider }?.models ?? []
+        let names = (catalogModels.isEmpty ? nil : Array(catalogModels.prefix(30)))
+            ?? Self.modelNamesByProvider[canonicalProvider]
+            ?? model.authenticationProviderDefinitions
+                .first(where: { ProviderAuthenticationDefinition.canonicalID($0.id) == canonicalProvider })?
                 .defaultModel.map { [$0] }
             ?? []
         let suggested = names.map { name in
             "\(provider)/\(name)"
         }
-        let current = routing.defaultModel?.nonEmpty.flatMap { currentModel in
+        // A Custom API route's model belongs to the account it was saved with.
+        let routedAccount = !isCustomProvider || selectedAuthChoice == routing.defaultAuthChoice
+        let current = routing.defaultModel?.nonEmpty.flatMap { currentModel -> String? in
+            guard routedAccount else { return nil }
             let currentProvider = currentModel.split(separator: "/", maxSplits: 1)
                 .first.map(String.init)
             return ProviderAuthenticationDefinition.canonicalID(currentProvider ?? "")
@@ -189,28 +328,37 @@ struct AgentModelPicker: View {
                 ? currentModel
                 : nil
         }
-        return (suggested + [current].compactMap { $0 })
+        let savedModel = selectedAccount?.modelHint?.nonEmpty.map { "\(provider)/\($0)" }
+        let manualModel = manualModelID.nonEmpty.map { "\(provider)/\($0)" }
+        return ([savedModel, manualModel, current].compactMap { $0 } + suggested)
             .reduce(into: []) { options, option in
                 if !options.contains(option) { options.append(option) }
             }
     }
 
+    private var accountChoices: [String] {
+        let saved = model.authenticationSnapshots(for: selectedProvider).map(\.authChoice)
+        guard ProviderAuthenticationDefinition.canonicalID(routing.defaultAuthProvider ?? "")
+            == ProviderAuthenticationDefinition.canonicalID(selectedProvider),
+              let routed = routing.defaultAuthChoice?.nonEmpty,
+              !saved.contains(routed) else { return saved }
+        return [routed] + saved
+    }
+
+    private func accountLabel(_ choice: String) -> String {
+        let accounts = model.authenticationSnapshots(for: selectedProvider)
+        guard let index = accounts.firstIndex(where: { $0.authChoice == choice }) else { return "Account unavailable" }
+        if let label = accounts[index].label?.nonEmpty { return label }
+        return "\(ProviderAccountMethod.label(for: accounts[index], catalog: model.ompProviderCatalog)) \(index + 1)"
+    }
+
     private func providerLabel(_ providerID: String) -> String {
         guard let providerID = providerID.nonEmpty else { return "No Provider" }
         let canonicalID = ProviderAuthenticationDefinition.canonicalID(providerID)
-        let provider = ProviderAuthenticationDefinition.all
-            .first(where: { $0.id == canonicalID })?
-            .name
+        let provider = model.authenticationProviderDefinitions
+            .first(where: { ProviderAuthenticationDefinition.canonicalID($0.id) == canonicalID })?
+            .shortName
             ?? providerID.replacingOccurrences(of: "_", with: " ").capitalized
-        let routeChoice = ProviderAuthenticationDefinition.canonicalID(
-            routing.defaultAuthProvider ?? ""
-        ) == canonicalID ? routing.defaultAuthChoice?.nonEmpty : nil
-        let choice = routeChoice
-            ?? model.authenticationSnapshot(for: providerID)?.authChoice.nonEmpty
-        if let choice {
-            let choice = choice.replacingOccurrences(of: "_", with: " ")
-            return "\(provider) · \(choice)"
-        }
         return provider
     }
 
@@ -220,6 +368,10 @@ struct AgentModelPicker: View {
         )
         selectedProvider = routeProvider.flatMap { providers.contains($0) ? $0 : nil }
             ?? providers.first
+            ?? ""
+        let routeChoice = routeProvider == selectedProvider ? routing.defaultAuthChoice : nil
+        selectedAuthChoice = routeChoice.flatMap { accountChoices.contains($0) ? $0 : nil }
+            ?? accountChoices.first
             ?? ""
         let routeModel = routing.defaultModel?.nonEmpty
         let routeModelProvider = routeModel.flatMap { value in
@@ -245,6 +397,13 @@ struct AgentModelPicker: View {
         selectedModel = routes.first ?? ""
     }
 
+    private func selectCompatibleAccount(for provider: String) {
+        // `accountChoices` keeps a routed account that was removed, so the route
+        // stays attached to it until the owner explicitly picks another account.
+        guard !accountChoices.contains(selectedAuthChoice) else { return }
+        selectedAuthChoice = accountChoices.first ?? ""
+    }
+
     private func save() {
         guard !isSaving else { return }
         isSaving = true
@@ -252,11 +411,29 @@ struct AgentModelPicker: View {
             let saved = await model.updateRuntimeRouting(
                 for: conversation,
                 provider: selectedProvider,
+                authChoice: selectedAuthChoice,
                 model: selectedModel,
                 thinking: Self.normalizedThinking(selectedThinking, for: selectedModel)
             )
             isSaving = false
             if saved { onDismiss() }
+        }
+    }
+
+    /// Tests the selection on screen without saving it; only Save changes the route.
+    private func testRoute() {
+        guard !isSaving, !isTesting, !selectedAccountIsUnavailable else { return }
+        isTesting = true
+        routeTestResult = nil
+        model.clearProviderAuthenticationError()
+        Task {
+            routeTestResult = await model.testProviderRoute(
+                provider: selectedProvider,
+                authChoice: selectedAuthChoice,
+                model: selectedModel,
+                thinking: Self.normalizedThinking(selectedThinking, for: selectedModel)
+            )
+            isTesting = false
         }
     }
 
@@ -269,91 +446,5 @@ struct AgentModelPicker: View {
     private func thinkingLabel(_ value: String) -> String {
         guard !value.isEmpty else { return "-" }
         return value == "xhigh" ? "Extra High" : value.capitalized
-    }
-}
-
-private struct AgentModelMenuRow: View {
-    let title: String
-    let options: [String]
-    @Binding var selection: String
-    var isEnabled = true
-    var optionLabel: (String) -> String = { $0 }
-    @State private var isOptionsPresented = false
-
-    private var selectedLabel: String {
-        optionLabel(selection.nonEmpty ?? options.first ?? "")
-    }
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Text(title)
-                .lineLimit(1)
-                .layoutPriority(1)
-
-            Button {
-                isOptionsPresented = true
-            } label: {
-                HStack(spacing: 5) {
-                    Text(selectedLabel)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .foregroundStyle(.primary)
-
-                    if isEnabled && !options.isEmpty {
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(KordiTheme.signalBlue)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .contentShape(Rectangle())
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .buttonStyle(.plain)
-            .disabled(!isEnabled)
-            .accessibilityLabel(title)
-            .accessibilityValue(selectedLabel)
-            .popover(
-                isPresented: $isOptionsPresented,
-                attachmentAnchor: .rect(.bounds),
-                arrowEdge: .bottom
-            ) {
-                ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(options, id: \.self) { option in
-                            let isSelected = selection == option
-                            Button {
-                                selection = option
-                                isOptionsPresented = false
-                            } label: {
-                                Text(optionLabel(option))
-                                    .font(.body.weight(isSelected ? .semibold : .regular))
-                                    .foregroundStyle(isSelected ? KordiTheme.signalBlue : .primary)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .frame(minHeight: 44)
-                                    .background(
-                                        isSelected
-                                            ? KordiTheme.signalBlue.opacity(0.12)
-                                            : Color.clear,
-                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    )
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityValue(isSelected ? "Selected" : "Not selected")
-                            .accessibilityAddTraits(isSelected ? .isSelected : [])
-                        }
-                    }
-                    .padding(8)
-                }
-                .frame(width: 290)
-                .frame(height: min(CGFloat(options.count) * 46 + 16, 360))
-                .presentationCompactAdaptation(.popover)
-            }
-        }
-        .frame(minHeight: 44)
     }
 }

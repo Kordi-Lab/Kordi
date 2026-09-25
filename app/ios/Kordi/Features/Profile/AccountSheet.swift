@@ -44,6 +44,8 @@ struct AccountSheet: View {
             .preferredColorScheme(preferredColorScheme)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            // Start chat opens the conversation behind this sheet.
+            .onChange(of: model.startedAgentChatRevision) { _, _ in dismiss() }
         }
     }
 
@@ -75,8 +77,17 @@ struct AccountSheet: View {
                 }
 
                 NavigationLink(value: AccountSettingsRoute.authentication) {
-                    SettingsNavigationLabel(title: "Authentication", systemImage: "key")
+                    HStack {
+                        SettingsNavigationLabel(title: "Authentication", systemImage: "key")
+                        Spacer(minLength: 8)
+                        if !model.providerAuthProfiles.isEmpty {
+                            let count = model.providerAuthProfiles.count
+                            Text("\(count) \(count == 1 ? "account" : "accounts")")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+                .accessibilityIdentifier("settings-authentication")
 
                 NavigationLink(value: AccountSettingsRoute.notifications) {
                     SettingsNavigationLabel(title: "Notifications", systemImage: "bell")
@@ -771,373 +782,6 @@ private struct ProfileSettingsView: View {
     }
 }
 
-private struct ProviderAuthenticationView: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        List {
-            Section {
-                HStack(spacing: 11) {
-                    Image(systemName: model.providerAuthSnapshots.isEmpty ? "key" : "checkmark.shield.fill")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(model.providerAuthSnapshots.isEmpty ? Color.secondary : Color.green)
-                        .frame(width: 32, height: 32)
-                        .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.providerAuthSnapshots.isEmpty ? "Add provider access" : "Authentication synced")
-                            .font(.body.weight(.semibold))
-                        Text(authenticationSummary)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-
-            Section("Providers") {
-                ForEach(ProviderAuthenticationDefinition.all) { provider in
-                    NavigationLink {
-                        ProviderAuthenticationDetailView(provider: provider)
-                    } label: {
-                        ProviderAuthenticationRow(
-                            provider: provider,
-                            snapshot: model.authenticationSnapshot(for: provider.id)
-                        )
-                    }
-                }
-            }
-
-            if let error = model.providerAuthenticationErrorMessage.nonEmpty {
-                Section {
-                    AuthenticationErrorRow(error: error) {
-                        Task { await model.refreshProviderAuthentication() }
-                    }
-                }
-            }
-
-            Section {} footer: {
-                Text("API keys are encrypted in your Kordi account and available to Cloud sessions on iPhone and Mac. Local-model access stays on your Mac.")
-            }
-        }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
-        .navigationTitle("Authentication")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await model.refreshProviderAuthentication() }
-                } label: {
-                    if model.isRefreshingProviderAuthentication {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-                .disabled(model.isRefreshingProviderAuthentication)
-                .accessibilityLabel("Refresh authentication")
-            }
-        }
-        .refreshable { await model.refreshProviderAuthentication() }
-        .task {
-            if model.providerAuthSnapshots.isEmpty {
-                await model.refreshProviderAuthentication()
-            }
-        }
-    }
-
-    private var authenticationSummary: String {
-        let count = model.providerAuthSnapshots.count
-        return count == 0 ? "Choose a provider below to connect it." : "\(count) \(count == 1 ? "provider" : "providers") available across your Kordi account."
-    }
-}
-
-private struct ProviderAuthenticationRow: View {
-    let provider: ProviderAuthenticationDefinition
-    let snapshot: CloudProviderAuthSnapshot?
-
-    var body: some View {
-        HStack(spacing: 11) {
-            ProviderAuthenticationIcon(provider: provider, size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(provider.name)
-                    .font(.body.weight(.medium))
-                Text(snapshot == nil ? provider.subtitle : savedAccessLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            if snapshot != nil {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 8, height: 8)
-                    .accessibilityLabel("Connected")
-            }
-        }
-        .padding(.vertical, 1)
-    }
-
-    private var savedAccessLabel: String {
-        guard let snapshot else { return provider.subtitle }
-        let choice = snapshot.authChoice.lowercased()
-        if choice.contains("oauth") { return "Subscription account" }
-        if choice.contains("api") || choice.contains("key") { return "API key" }
-        return "Saved access"
-    }
-}
-
-private struct ProviderAuthenticationIcon: View {
-    let provider: ProviderAuthenticationDefinition
-    let size: CGFloat
-
-    var body: some View {
-        Image(systemName: provider.systemImage)
-            .font(.body.weight(.semibold))
-            .foregroundStyle(tint)
-            .frame(width: size, height: size)
-            .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
-            .accessibilityHidden(true)
-    }
-
-    private var tint: Color {
-        switch provider.id {
-        case "openai": .teal
-        case "anthropic": .brown
-        case "github-copilot": .indigo
-        case "google": .blue
-        case "groq": .purple
-        case "openrouter": .cyan
-        case "xai": .primary
-        default: .orange
-        }
-    }
-}
-
-private struct ProviderAuthenticationDetailView: View {
-    @EnvironmentObject private var model: AppModel
-    let provider: ProviderAuthenticationDefinition
-
-    @State private var apiKey = ""
-    @State private var isSaving = false
-    @State private var saved = false
-    @State private var showRemoveConfirmation = false
-    @FocusState private var apiKeyFocused: Bool
-
-    private var snapshot: CloudProviderAuthSnapshot? {
-        model.authenticationSnapshot(for: provider.id)
-    }
-
-    var body: some View {
-        List {
-            Section {
-                HStack(spacing: 11) {
-                    ProviderAuthenticationIcon(provider: provider, size: 40)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(provider.name)
-                            .font(.body.weight(.semibold))
-                        Text(provider.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                }
-                .padding(.vertical, 2)
-            }
-
-            if let snapshot {
-                Section("Current access") {
-                    HStack(spacing: 11) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Connected")
-                                .font(.body.weight(.medium))
-                            HStack(spacing: 4) {
-                                Text(methodLabel(snapshot.authChoice))
-                                if let date = ISO8601DateFormatter().date(from: snapshot.createdAt) {
-                                    Text("·")
-                                    Text(date.formatted(date: .abbreviated, time: .omitted))
-                                }
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 8)
-                        Text("Synced")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                    }
-                    .accessibilityElement(children: .combine)
-                }
-            }
-
-            if provider.acceptsAPIKeyOnPhone {
-                Section {
-                    HStack(spacing: 10) {
-                        Image(systemName: "key")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 20)
-                            .accessibilityHidden(true)
-                        SecureField("Paste API key", text: $apiKey)
-                            .textContentType(.password)
-                            .keyboardType(.asciiCapable)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .privacySensitive()
-                            .focused($apiKeyFocused)
-                    }
-
-                    Button {
-                        Task { await saveAPIKey() }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isSaving { ProgressView().controlSize(.small) }
-                            Text(apiKeyActionTitle)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                    .disabled(isSaving || apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                } header: {
-                    Text(snapshot == nil ? "Connect with API key" : "Change access")
-                } footer: {
-                    Text("Encrypted in your Kordi account and available to Cloud sessions on iPhone and Mac. The key is cleared from this screen after saving.")
-                }
-            } else {
-                Section {
-                    HStack(alignment: .top, spacing: 11) {
-                        Image(systemName: "macbook")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 22)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(macRuntimeTitle)
-                                .font(.body.weight(.medium))
-                            Text(macRuntimeDetail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                } header: {
-                    Text("Mac runtime")
-                }
-            }
-
-            if let error = model.providerAuthenticationErrorMessage.nonEmpty {
-                Section {
-                    AuthenticationErrorRow(error: error) {
-                        Task { await model.refreshProviderAuthentication() }
-                    }
-                }
-            }
-
-            if snapshot != nil {
-                Section("Advanced") {
-                    Button("Remove saved access", role: .destructive) {
-                        showRemoveConfirmation = true
-                    }
-                }
-            }
-        }
-        .listStyle(.insetGrouped)
-        .environment(\.defaultMinListRowHeight, 44)
-        .navigationTitle(provider.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    Task { await model.refreshProviderAuthentication() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(model.isRefreshingProviderAuthentication)
-                .accessibilityLabel("Refresh authentication")
-            }
-        }
-        .onAppear { model.clearProviderAuthenticationError() }
-        .confirmationDialog(
-            "Remove \(provider.name) access?",
-            isPresented: $showRemoveConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Remove saved access", role: .destructive) {
-                guard let snapshot else { return }
-                Task { _ = await model.revokeProviderAuthentication(snapshot) }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Cloud sessions using this saved access may stop until another profile is available.")
-        }
-    }
-
-    private func saveAPIKey() async {
-        guard !isSaving else { return }
-        isSaving = true
-        defer { isSaving = false }
-        saved = await model.saveProviderAPIKey(provider: provider, apiKey: apiKey)
-        if saved {
-            apiKey = ""
-            apiKeyFocused = false
-        }
-    }
-
-    private var apiKeyActionTitle: String {
-        if isSaving { return "Saving…" }
-        if saved { return "Saved" }
-        return snapshot == nil ? "Save API key" : "Replace with this API key"
-    }
-
-    private func methodLabel(_ authChoice: String) -> String {
-        let normalized = authChoice.lowercased()
-        if normalized.contains("oauth") { return "Subscription account" }
-        if normalized.contains("api") || normalized.contains("key") { return "API key" }
-        return authChoice.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-
-    private var macRuntimeTitle: String {
-        switch provider.id {
-        case "github-copilot": "Sign in with GitHub on your Mac"
-        case "lm-studio", "ollama": "Connect the local runtime on your Mac"
-        default: "Managed by Kordi on your Mac"
-        }
-    }
-
-    private var macRuntimeDetail: String {
-        switch provider.id {
-        case "github-copilot":
-            "Copilot uses an interactive GitHub subscription login. Open Settings → Authentication on your Mac, then refresh this page to see its Cloud access status."
-        case "lm-studio", "ollama":
-            "This provider runs on your Mac's local network and cannot run directly on iPhone or Kordi Cloud. Configure it in Settings → Authentication on your Mac."
-        default:
-            "Open Settings → Authentication on your Mac to add or switch this access, then refresh this page."
-        }
-    }
-}
-
-private struct AuthenticationErrorRow: View {
-    let error: String
-    let retry: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
-                .padding(.top, 2)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(error)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                Button("Try again", action: retry)
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: 32)
-            }
-        }
-        .padding(.vertical, 2)
-        .accessibilityElement(children: .contain)
-    }
-}
-
 private struct AppearanceSettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
@@ -1533,12 +1177,16 @@ struct AccountAuthenticationPreview: View {
 }
 
 struct AccountAuthenticationDetailPreview: View {
+    @EnvironmentObject private var model: AppModel
     let providerID: String
 
     var body: some View {
         NavigationStack {
-            if let provider = ProviderAuthenticationDefinition.all.first(where: { $0.id == providerID }) {
+            if let provider = PreviewLoginSteps.definition(for: providerID, in: model.authenticationProviderDefinitions) {
                 ProviderAuthenticationDetailView(provider: provider)
+                    .navigationDestination(item: $model.startedAgentChat) { chat in
+                        ConversationView(conversation: chat)
+                    }
             }
         }
         .tint(KordiTheme.signalBlue)
