@@ -61,7 +61,7 @@ where
     P: CloudModelProvider + Sync,
 {
     let mut auth = OpenAiProviderConfig::from_material(&auth_material)?;
-    auth.apply_runtime_route(&run.runtime_route, &auth_material.provider);
+    auth.apply_runtime_route(&run.runtime_route, &auth_material.provider)?;
     let mut tools = prompt::tool_catalog();
     if run.subsession_id.is_some() {
         tools.retain(|tool| {

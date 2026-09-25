@@ -216,14 +216,8 @@ pub(super) async fn runner_response_from_row(
         row.1 = "cancelled".into();
         row.2.clear();
     }
-    let provider_auth_available: Option<(String,)> = query_as(
-        "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
-         WHERE account_id = $1 AND revoked_at IS NULL \
-         ORDER BY created_at DESC LIMIT 1",
-    )
-    .bind(&row.3)
-    .fetch_optional(pool)
-    .await?;
+    let provider_auth_available =
+        super::super::provider_auth::snapshot_available_for_route(pool, &row.3, &row.7).await?;
     Ok(RunnerRunResponse {
         turn_identity: super::identity::identity_for_run(pool, &row.0).await?,
         history_messages: super::super::subsession_execution::history(pool, &row.0).await?,
@@ -238,7 +232,7 @@ pub(super) async fn runner_response_from_row(
         session_id: row.5,
         sandbox_id: row.6,
         runtime_route: serde_json::from_value(row.7).unwrap_or_default(),
-        provider_auth_available: provider_auth_available.is_some(),
+        provider_auth_available,
         response_message_id: row.8,
         error_code: row.9,
         error_message: row.10,
