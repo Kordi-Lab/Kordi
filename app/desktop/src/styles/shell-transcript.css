@@ -30,6 +30,14 @@
   text-decoration-line: underline;
 }
 
+/* A link nested in bold/italic emphasis must pick up the wrapper's weight/style
+   instead of the fixed weight above winning as a same-element declaration. */
+strong .app-markdown-link,
+em .app-markdown-link {
+  font-weight: inherit;
+  font-style: inherit;
+}
+
 .app-markdown-link-muted {
   color: color-mix(in oklab, var(--app-markdown-link) 72%, var(--utility-muted-text));
 }
