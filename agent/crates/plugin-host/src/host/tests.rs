@@ -304,3 +304,38 @@ async fn test_execute_command_ignores_invalid_stdout_notifications() {
     host.kill().await;
     let _ = std::fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn runtime_publication_never_exposes_a_partial_script() {
+    use super::lifecycle::publish_runtime;
+    use std::sync::{Arc, Barrier};
+    let root =
+        std::env::temp_dir().join(format!("kordi-runtime-publication-{}", std::process::id()));
+    std::fs::create_dir_all(&root).unwrap();
+    let path = root.join("host.js");
+    let first = vec![b'a'; 16_384];
+    publish_runtime(&path, &first).unwrap();
+    let barrier = Arc::new(Barrier::new(2));
+    let writer_path = path.clone();
+    let writer_barrier = barrier.clone();
+    let writer = std::thread::spawn(move || {
+        writer_barrier.wait();
+        for index in 0..500 {
+            let contents = vec![if index % 2 == 0 { b'a' } else { b'b' }; 16_384];
+            publish_runtime(&writer_path, &contents).unwrap();
+        }
+    });
+    barrier.wait();
+    let mut partial = false;
+    for _ in 0..2_000 {
+        let contents = std::fs::read(&path).unwrap();
+        partial |= contents.len() != 16_384
+            || !(contents.iter().all(|b| *b == b'a') || contents.iter().all(|b| *b == b'b'));
+    }
+    writer.join().unwrap();
+    std::fs::remove_dir_all(root).unwrap();
+    assert!(
+        !partial,
+        "Node must only observe a complete old or new runtime script"
+    );
+}

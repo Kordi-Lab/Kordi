@@ -25,7 +25,7 @@ impl PluginHost {
         std::fs::create_dir_all(&temp_dir)
             .map_err(|e| PluginHostError::Io(format!("create temp dir: {e}")))?;
         let host_js_path = temp_dir.join("host.js");
-        std::fs::write(&host_js_path, HOST_JS)
+        publish_runtime(&host_js_path, HOST_JS.as_bytes())
             .map_err(|e| PluginHostError::Io(format!("write host.js: {e}")))?;
 
         // Build args: host.js + plugin paths
@@ -141,4 +141,37 @@ impl Drop for PluginHost {
     fn drop(&mut self) {
         let _ = self.child.start_kill();
     }
+}
+
+pub(super) fn publish_runtime(
+    destination: &std::path::Path,
+    contents: &[u8],
+) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::sync::atomic::Ordering;
+    static NEXT_WRITE: AtomicU64 = AtomicU64::new(0);
+    // Node may already be opening the published file. Never truncate that
+    // inode: complete a separate file, then atomically replace the name.
+    let (temporary, mut file) = loop {
+        let id = NEXT_WRITE.fetch_add(1, Ordering::Relaxed);
+        let temporary = destination.with_extension(format!("{}.{id}.tmp", std::process::id()));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(file) => break (temporary, file),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    };
+    let result = (|| {
+        file.write_all(contents)?;
+        drop(file);
+        std::fs::rename(&temporary, destination)
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(temporary);
+    }
+    result
 }
