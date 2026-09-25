@@ -2,6 +2,8 @@ import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useCallback } from 'react';
 
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
+import { isHostedOnlyAccountChoice } from '@/features/cloud/routeAccountChoice';
+import { useHostedComposerRouting } from './useHostedComposerRouting';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
 import { pickDesktopChatAttachmentPaths } from '@/lib/cloudAttachmentUpload';
@@ -120,7 +122,18 @@ export function useComposerInputActions({
     setDesktopChatError,
     shouldAutoFollowChatRef,
     publishCloudAgentRuntimeRouteChange,
+    resolveChatRuntimeRoute,
   } = messageRuntime;
+  // Hosted accounts run on Kordi Cloud: their choices apply a session route instead of this Mac's runtime.
+  const routeComposerChange = useHostedComposerRouting({
+    isNativeShell, setComposerSelections, setDesktopChatError, publishCloudAgentRuntimeRouteChange, resolveChatRuntimeRoute,
+  });
+  const desktopActiveSessionId = desktopChatState?.activeSessionId;
+  const routeTargetSessionId = useCallback((scope: ComposerScope) => (scope === 'chat' && activeConversationUsesCollaboration
+    ? activeConvCanonicalSessionId?.trim() || activeConvId.trim()
+    : composerConfigTargetSessionId({
+      scope, activeConversationUsesCollaboration, activeConvId, activeConvCanonicalSessionId, activeProjectSessionId, desktopActiveSessionId,
+    })), [activeConvCanonicalSessionId, activeConvId, activeConversationUsesCollaboration, activeProjectSessionId, desktopActiveSessionId]);
   const toggleComposerSelector = useCallback((scope: ComposerScope, type: ComposerSelectorType) => {
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   }, [setOpenComposerSelector]);
@@ -145,6 +158,13 @@ export function useComposerInputActions({
     const nextThinkingValue = type === 'thinking' ? value : nextModelThinkingValue;
     const modelChanged = Boolean(nextModelValue && nextModelValue !== currentSelection.model);
     const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== currentSelection.thinking);
+    if (!isolatedTarget && (type === 'model' || type === 'thinking') && await routeComposerChange(scope, routeTargetSessionId(scope), {
+      model: type === 'model' ? value : null,
+      thinking: nextThinkingValue ?? currentSelection.thinking,
+    })) {
+      setOpenComposerSelector(null);
+      return;
+    }
     let nextSelection: ComposerSelection = currentSelection;
     if (type === 'provider' && resolvedModelValue) {
       nextSelection = {
@@ -280,6 +300,8 @@ export function useComposerInputActions({
     preferredModelValueForProvider,
     publishCloudAgentRuntimeRouteChange,
     refreshDesktopChat,
+    routeComposerChange,
+    routeTargetSessionId,
     setComposerSelections,
     setDesktopChatError,
     setDesktopChatState,
@@ -288,7 +310,8 @@ export function useComposerInputActions({
   ]);
 
   const selectComposerAuthChoice = useCallback(async (scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => {
-    await handleSelectAuthChoice(providerId, choice);
+    // Hosted accounts have no active flag on this device; the route carries them.
+    if (!isHostedOnlyAccountChoice(choice)) await handleSelectAuthChoice(providerId, choice);
 
     const isolatedTarget = typeof configTargetOverride === 'object' && configTargetOverride !== null
       ? configTargetOverride
@@ -297,6 +320,12 @@ export function useComposerInputActions({
     const currentProviderId = resolveComposerProviderId(scope, currentSelection.model);
     const normalizedProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
     const nextModelValue = preferredModelValueForProvider(providerId) ?? preferredModelValueForProvider(normalizedProviderId);
+    if (!isolatedTarget && await routeComposerChange(scope, routeTargetSessionId(scope), {
+      model: nextModelValue, thinking: currentSelection.thinking, choice: { providerId, authChoice: choice },
+    })) {
+      setOpenComposerSelector(null);
+      return;
+    }
     const currentModelValue = currentSelection.model.toLowerCase();
     const shouldSwitchModelForAuth = normalizedProviderId !== currentProviderId
       || providerId === 'openai-codex'
@@ -307,17 +336,25 @@ export function useComposerInputActions({
     }
 
     setOpenComposerSelector((current: ComposerSelectorState) => (current?.scope === scope && current.type === 'auth' ? null : current));
-  }, [composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, resolveComposerProviderId, selectComposerValue, setOpenComposerSelector]);
+  }, [composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, resolveComposerProviderId, routeComposerChange, routeTargetSessionId, selectComposerValue, setOpenComposerSelector]);
 
   const selectComposerProviderChoice = useCallback(async (scope: ComposerScope, option: MinimalProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => {
     const normalizedProviderId = normalizeSelectedProviderId(option.providerId) ?? option.providerId;
     const choice = option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
 
-    if (choice) {
+    if (choice && !isHostedOnlyAccountChoice(choice)) {
       await handleSelectAuthChoice(option.providerId, choice);
     }
 
     const nextModelValue = preferredModelValueForProvider(option.providerId) ?? preferredModelValueForProvider(normalizedProviderId);
+    // A hosted account opens its own model on Kordi Cloud; a local account leaves Kordi Cloud.
+    const isolated = typeof configTargetOverride === 'object' && configTargetOverride !== null;
+    if (!isolated && choice && await routeComposerChange(scope, routeTargetSessionId(scope), {
+      model: nextModelValue, thinking: composerSelections[scope].thinking, choice: { providerId: option.providerId, authChoice: choice },
+    })) {
+      setOpenComposerSelector(null);
+      return;
+    }
     if (nextModelValue) {
       await selectComposerValue(scope, 'model', nextModelValue, configTargetOverride);
       return;
@@ -330,7 +367,7 @@ export function useComposerInputActions({
     }
 
     await selectComposerValue(scope, 'provider', normalizedProviderId, configTargetOverride);
-  }, [handleSelectAuthChoice, preferredModelValueForProvider, selectComposerValue, setDesktopChatError, setOpenComposerSelector]);
+  }, [composerSelections, handleSelectAuthChoice, preferredModelValueForProvider, routeComposerChange, routeTargetSessionId, selectComposerValue, setDesktopChatError, setOpenComposerSelector]);
 
   const updateComposerDraft = useCallback((scope: ComposerScope, value: string, target: HTMLTextAreaElement | HTMLDivElement) => {
     const sessionId = scope === 'chat' ? activeConvId : activeProjectSessionId;

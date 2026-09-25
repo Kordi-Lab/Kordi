@@ -2,6 +2,7 @@
 export type CloudProviderAuthSnapshotInput = {
   provider: string;
   authChoice: string;
+  label?: string | null;
   payload: unknown;
 };
 
@@ -9,8 +10,27 @@ export type CloudProviderAuthSnapshot = {
   snapshotId: string;
   provider: string;
   authChoice: string;
+  label?: string | null;
+  modelHint?: string | null;
   createdAt: string;
   revokedAt: string | null;
+  /** `needs-reconnect` when the hosted copy can no longer refresh, for example a desktop sign-in whose access token expired. */
+  status?: string | null;
+};
+
+export type CloudProviderRouteTestInput = {
+  provider: string;
+  authChoice: string;
+  model: string;
+  thinking: string;
+};
+
+export type CloudProviderRouteTestResult = {
+  runner: 'OMP';
+  provider: string;
+  accountLabel: string;
+  model: string;
+  response: string;
 };
 
 export type CloudAgentRunClaimInput = {

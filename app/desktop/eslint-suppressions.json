@@ -411,14 +411,6 @@
       "count": 1
     }
   },
-  "src/kordi-app/auth/AuthPage.tsx": {
-    "react-hooks/exhaustive-deps": {
-      "count": 1
-    },
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    }
-  },
   "src/kordi-app/auth/LmStudioModelControlCenter.tsx": {
     "@typescript-eslint/no-floating-promises": {
       "count": 2

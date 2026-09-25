@@ -7,6 +7,7 @@ import {
   type CloudAgentRuntimeRouteChangeInput,
 } from './cloudAgentRuntime';
 import { canonicalCloudProviderId } from './providerAuthSnapshot';
+import { isAccountAuthChoice } from './routeAccountChoice';
 
 export function resolveCloudAgentRuntimeRouteChange({
   authOptions,
@@ -28,6 +29,17 @@ export function resolveCloudAgentRuntimeRouteChange({
     && canonicalCloudProviderId(inputProvider)
       === canonicalCloudProviderId(modelProvider),
   );
+  // A route that names one account keeps it, even when this device cannot
+  // see that account: another account is never substituted silently.
+  const inputChoice = input.authChoice?.trim() ?? '';
+  if (inputProvider && isAccountAuthChoice(inputChoice) && (!modelProvider || inputProviderMatchesModel)) {
+    return compactCloudAgentRuntimeRoute({
+      model: modelProvider ? model : `${inputProvider}/${model}`,
+      thinking: input.thinking ?? resolvedLocalRoute?.thinking ?? null,
+      authProvider: inputProvider,
+      authChoice: inputChoice,
+    });
+  }
   const resolvedProvider = resolvedLocalRoute?.authProvider?.trim() ?? null;
   const resolvedProviderMatchesModel = Boolean(
     resolvedProvider

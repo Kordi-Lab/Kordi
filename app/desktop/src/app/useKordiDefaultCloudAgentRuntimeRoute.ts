@@ -7,6 +7,8 @@ import {
 import type { ComposerAuthOption, ComposerModelOption } from '@/kordi-app/components';
 import type { ComposerScope, DesktopAuthState } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import { DEVICE_ACTIVE_CHOICES, isAccountAuthChoice, isHostedOnlyAccountChoice } from '@/features/cloud/routeAccountChoice';
+import { registeredAccountChoices } from '@/features/cloud/hostedAccountRegistry';
 
 type DefaultCloudAgentRuntimeRouteArgs = {
   activeLoginProviderId: string | null;
@@ -26,9 +28,9 @@ export function portableCloudAgentAuthChoice(
 ) {
   const value = choice?.trim();
   if (!value) return null;
-  if (value === 'local-active-oauth' || value === 'local-active-api-key' || value === 'ios-api-key') {
-    return value;
-  }
+  // Account choices (profile:, ios-codex:, ios-api-key:, cloud-api-key:,
+  // cloud-login:) and device-active aliases are portable as they are.
+  if (isAccountAuthChoice(value) || DEVICE_ACTIVE_CHOICES.has(value)) return value;
   const method = methodLabel?.trim().toLowerCase() ?? '';
   if (method.includes('oauth')) return 'local-active-oauth';
   if (method.includes('api key')) return 'local-active-api-key';
@@ -56,6 +58,18 @@ export function resolveDefaultCloudAgentRuntimeRoute({
   const selectedProvider = normalizedSelectedProviderId
     ? authProviders.find((provider) => provider.id === normalizedSelectedProviderId)
     : null;
+  // A Custom API model, or a provider this Mac has no account for, runs on its
+  // hosted account and never falls back to another provider's model.
+  const hostedOptions = authOptions.filter((option) => (
+    (option.providerId === selectedProviderId || option.providerId === normalizedSelectedProviderId)
+    && isHostedOnlyAccountChoice(option.value, registeredAccountChoices())
+  ));
+  if (normalizedSelectedProviderId === 'custom' || (hostedOptions.length > 0 && !selectedProvider?.configured)) {
+    const account = hostedOptions.find((option) => option.active) ?? hostedOptions[0];
+    return account && chatModel.includes('/')
+      ? { model: chatModel, authProvider: account.providerId, authChoice: account.value, thinking: selectedThinking ?? null }
+      : null;
+  }
   const selectedModelIsAvailable = chatModelOptions.some((option) => option.value === chatModel);
 
   let routeModel: string | null =

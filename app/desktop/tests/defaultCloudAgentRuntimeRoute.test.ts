@@ -49,9 +49,9 @@ const activeOpenAiAuthOption = {
   active: true,
 };
 
-test('portable cloud routes use credential-method aliases instead of local profile ids', () => {
-  assert.equal(portableCloudAgentAuthChoice('profile:chatgpt', 'OAuth'), 'local-active-oauth');
-  assert.equal(portableCloudAgentAuthChoice('profile:api-key', 'OpenAI API key'), 'local-active-api-key');
+test('portable cloud routes keep explicit profile selectors', () => {
+  assert.equal(portableCloudAgentAuthChoice('profile:chatgpt', 'OAuth'), 'profile:chatgpt');
+  assert.equal(portableCloudAgentAuthChoice('profile:api-key', 'OpenAI API key'), 'profile:api-key');
 });
 
 test('default cloud agent route stays disabled outside the native shell', () => {

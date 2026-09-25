@@ -15,6 +15,7 @@ export type DesktopAuthSyncIntent = {
   accountId?: string;
   deviceId?: string;
   providerId: string;
+  profileId?: string;
   reason: DesktopAuthUpdateReason;
   revision: number;
 };
@@ -39,6 +40,7 @@ type DesktopAuthUpdatedMessage = {
   sourceId?: string;
   reason?: DesktopAuthUpdateReason;
   providerId?: string;
+  profileId?: string;
 };
 
 function createDesktopAuthSourceId() {
@@ -106,6 +108,7 @@ export function desktopAuthSyncIntentFromAnotherSource(
     ...(value.accountId ? { accountId: value.accountId } : {}),
     ...(value.deviceId ? { deviceId: value.deviceId } : {}),
     providerId: value.providerId.trim(),
+    ...(value.profileId ? { profileId: value.profileId } : {}),
     reason: value.reason,
     revision: value.at,
   };
@@ -114,6 +117,7 @@ export function desktopAuthSyncIntentFromAnotherSource(
 export async function broadcastDesktopAuthUpdated(
   reason: DesktopAuthUpdateReason,
   providerId?: string,
+  profileId?: string,
 ) {
   if (typeof BroadcastChannel === 'undefined') return;
 
@@ -128,6 +132,7 @@ export async function broadcastDesktopAuthUpdated(
       deviceId: session?.deviceId,
       reason,
       providerId: providerId?.trim() || undefined,
+      profileId: profileId?.trim() || undefined,
     } satisfies DesktopAuthUpdatedMessage);
     channel.close();
   } catch {

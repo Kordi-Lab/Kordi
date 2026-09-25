@@ -1,5 +1,6 @@
 pub mod lm_studio;
 mod local_providers;
+pub mod login_callback_capture;
 pub mod ollama;
 
 use std::collections::HashMap;
@@ -7,7 +8,6 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::State;
-
 mod provider_snapshot;
 #[cfg(test)]
 use provider_snapshot::cloud_provider_auth_snapshot_model;

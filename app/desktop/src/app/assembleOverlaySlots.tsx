@@ -6,6 +6,7 @@ import { openLocalAgentChatFromArgs } from '@/app/openLocalAgentChat';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
 
 import type { OverlayShellArgs } from '@/app/kordiShellSlots.types';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 function OverlayPortal({ children }: { children: ReactNode }) {
   if (typeof document === 'undefined') return <>{children}</>;
@@ -13,7 +14,7 @@ function OverlayPortal({ children }: { children: ReactNode }) {
 }
 
 export function assembleOverlaySlots(args: OverlayShellArgs) {
-  const onEnterChat = (preferredModelValue?: string) => openLocalAgentChatFromArgs(args, preferredModelValue);
+  const onEnterChat = (preferredModelValue?: string, route?: DesktopChatMessageRoute) => openLocalAgentChatFromArgs(args, preferredModelValue, route);
 
   const authGate = args.showAuthGate ? (
     <div
