@@ -1,4 +1,7 @@
-import { Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useChatProjects } from '@/features/projects/chatProjects';
+import { projectChatGroups } from '@/features/projects/projectChatGroups';
+import { ChevronRight, Folder, Plus } from 'lucide-react';
 
 import { AgentSidebarRow } from '@/pages/workspaceSidebar.agentRows';
 import type { ContactSidebarRowActions } from '@/pages/workspaceSidebar.contactRows';
@@ -25,6 +28,11 @@ export function WorkspaceChatLists({
   contactActions: ContactSidebarRowActions;
   onOpenAgentCreate: () => void;
 }) {
+  const projects = useChatProjects();
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const grouped = useMemo(() => projectChatGroups(
+    model.agentSidebarRows, projects?.projects ?? [], collapsed, !model.chatSearch && !model.showArchived,
+  ), [model.agentSidebarRows, projects?.projects, collapsed, model.chatSearch, model.showArchived]);
   if (model.chatChannel === 'contact') {
     return (
       <VirtualChatList
@@ -66,14 +74,34 @@ export function WorkspaceChatLists({
           <span>New session</span>
         </button>
       </div> : null}
+      {projects?.enabled && projects.projects.length > 0 ? <div className="chat-project-section-label">
+        <span>Projects</span>
+      </div> : null}
       <VirtualChatList
-        rows={model.agentSidebarRows}
+        rows={grouped.rows}
         activeSessionId={model.activeSidebarRowSessionId}
-        scrollClassName="app-workspace-session-scroll min-h-0 flex-1"
+        scrollClassName="app-workspace-session-scroll chat-project-session-list min-h-0 flex-1"
         dataMode="agent-sessions-flat"
-        renderRow={(descriptor) => (
+        renderRow={(descriptor) => descriptor.kind === 'space' ? (
+          <div className="chat-project-group-row"><button type="button" className={descriptor.spaceId === 'unassigned' ? 'chat-recents-heading' : 'chat-project-group'} aria-expanded={!collapsed.has(descriptor.spaceId)}
+            onClick={() => setCollapsed((current) => {
+              const next = new Set(current);
+              if (next.has(descriptor.spaceId)) next.delete(descriptor.spaceId); else next.add(descriptor.spaceId);
+              return next;
+            })}>
+            {descriptor.spaceId === 'unassigned' ? <>
+              <span>Recents</span>
+              <ChevronRight size={12} className={!collapsed.has(descriptor.spaceId) ? 'rotate-90' : ''} aria-hidden="true" />
+            </> : <>
+              <ChevronRight size={12} className={!collapsed.has(descriptor.spaceId) ? 'rotate-90' : ''} />
+              <Folder size={13} /><span>{grouped.groups.get(descriptor.spaceId)?.name}</span>
+            </>}
+          </button>
+          </div>
+        ) : (
           <AgentSidebarRow
             descriptor={descriptor}
+            projectGrouped={grouped.projectBySession.has(descriptor.sessionId)}
             model={model}
             activeConvId={activeConvId}
             onSelectChatSession={contactActions.onSelectChatSession}

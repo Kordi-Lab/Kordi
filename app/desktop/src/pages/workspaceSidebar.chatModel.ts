@@ -1,3 +1,5 @@
+import { useChatProjects } from '@/features/projects/chatProjects';
+import { projectScopedSidebarSessions } from '@/features/projects/projectChatGroups';
 import { useCallback, useMemo, useState } from 'react';
 
 import { buildForkLineage } from '@/features/chat/forkLineage';
@@ -61,6 +63,7 @@ export function useWorkspaceChatSidebarModel(
   chats: WorkspaceSidebarChats,
   options: WorkspaceChatSidebarModelOptions = {},
 ) {
+  const projects = useChatProjects();
   const {
     chatConversations,
     participantSpaces,
@@ -268,10 +271,10 @@ export function useWorkspaceChatSidebarModel(
   );
   const flatAgentSessions = useMemo(
     () =>
-      visibleAgentParticipantSpaces
+      projectScopedSidebarSessions(visibleAgentParticipantSpaces
         .flatMap((space) =>
           space.sessions.map((session) => ({ session, space })),
-        )
+        ), projects?.projects ?? [])
         .sort(
           (left, right) =>
             Number(pinnedSessionIds.has(participantSpaceSessionPreferenceId(right.session)))
@@ -279,7 +282,7 @@ export function useWorkspaceChatSidebarModel(
             || right.session.updatedAtMs - left.session.updatedAtMs
             || left.session.title.localeCompare(right.session.title),
         ),
-    [pinnedSessionIds, visibleAgentParticipantSpaces],
+    [pinnedSessionIds, visibleAgentParticipantSpaces, projects?.projects],
   );
   const agentForkLineage = useMemo(
     () => buildForkLineage(flatAgentSessions.map(({ session }) => session)),
@@ -441,6 +444,7 @@ export function useWorkspaceChatSidebarModel(
   ).reduce((count, space) => count + space.sessions.length, 0);
 
   return {
+    chatSearch,
     visibleParticipantSpaces,
     visibleContactParticipantSpaces,
     activeParticipantSpaceId,

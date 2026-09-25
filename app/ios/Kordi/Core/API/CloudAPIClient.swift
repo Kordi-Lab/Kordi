@@ -2170,6 +2170,11 @@ actor CloudAPIClient {
         }
     }
 
+    func prepareProjectConversation(token: String, sessionID: String) async throws {
+        let accountID = try requireActiveAccountId()
+        _ = try await ensureChatConversation(token: token, sessionId: sessionID, kind: "ai", memberAccountIds: [accountID])
+    }
+
     private func ensureChatConversation(
         token: String,
         sessionId: String,

@@ -1,3 +1,5 @@
+import { useProjectSync } from '@/features/projects/projectSync';
+import { isNativeDesktopShell } from '@/lib/desktop';
 import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -29,6 +31,7 @@ export function useDesktopAgentReadiness({
   account, client, runtimeReady = true, cloudAgentDefinitionsById, reportWarning,
 }: Pick<CloudSelfAgentExecutionInput, 'account' | 'client' | 'runtimeReady' | 'cloudAgentDefinitionsById' | 'reportWarning'>) {
   const accountId = account?.accountId;
+  useProjectSync(isNativeDesktopShell() && runtimeReady, accountId);
   const agentIdsKey = JSON.stringify(runtimeReady && accountId
     ? [...new Set([defaultCloudAgentId(accountId), ...Object.values(cloudAgentDefinitionsById ?? {})
       .filter(agent => agent.ownerAccountId === accountId && agent.status !== 'archived')

@@ -1,3 +1,4 @@
+import { localProjectSessions } from '@/features/projects/localProjectSessions';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {useThreadAttention} from '@/features/cloud/threadAttention';
 import {
@@ -8,7 +9,6 @@ import {
 } from 'react';
 import { createCollaborationConversationMapper } from '@/features/collaboration/conversationProjectionCache';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
-import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
@@ -24,7 +24,6 @@ import {
 import { createCanonicalSessionReadModel, presentLocalAgentMessages } from '@/features/canonical/sessionReadModel';
 import { canonicalLocalAgentAvatarSeed } from '@/features/canonical/avatarIdentity';
 import {
-  isLocalDraftChatConversationId,
   isProjectDraftSessionId,
 } from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
@@ -247,26 +246,7 @@ export function useWorkspaceViewModels({
       || canonicalSessionState?.profile.id
       || getLocalProfileAvatarSeed();
 
-    const activeSessionSummary = !desktopChatState.activeSession.project
-      && !isCloudAgentRuntimeSessionId(desktopChatState.activeSession.id)
-      && !isLocalDraftChatConversationId(desktopChatState.activeSession.id)
-      && !desktopChatState.sessions.some((session) => session.id === desktopChatState.activeSession.id)
-      ? {
-          id: desktopChatState.activeSession.id,
-          title: desktopChatState.activeSession.title || 'New session',
-          subtitle: desktopChatState.activeSession.subtitle,
-          updatedAtLabel: desktopChatState.activeSession.updatedAtLabel,
-          updatedAtMs: desktopChatState.activeSession.updatedAtMs,
-          messageCount: desktopChatState.activeSession.messageCount,
-          draft: desktopChatState.activeSession.draft,
-          forkedFromSessionId: desktopChatState.activeSession.forkedFromSessionId ?? null,
-          forkedFromMessageId: desktopChatState.activeSession.forkedFromMessageId ?? null,
-        }
-      : null;
-    const rawSessionSummaries = activeSessionSummary
-      ? [activeSessionSummary, ...desktopChatState.sessions]
-      : desktopChatState.sessions;
-    const sessionSummaries = rawSessionSummaries.filter((session) => !isCloudAgentRuntimeSessionId(session.id));
+    const { projectRootBySession, sessionSummaries } = localProjectSessions(desktopChatState);
 
     return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
@@ -310,6 +290,7 @@ export function useWorkspaceViewModels({
         id: session.id,
         canonicalSessionId: session.id,
         localSessionCwd: isActiveSession ? desktopChatState.activeSession.cwd : null,
+        metadata: projectRootBySession.has(session.id) ? { projectRoot: projectRootBySession.get(session.id) } : undefined,
         desktopRuntimeBacked: true,
         desktopRuntimeTranscriptLoaded: hydratedDesktopSessionIds.has(session.id) || cachedDesktopSessionSourceMessages[session.id] !== undefined || cachedChatSessionMessages[session.id] !== undefined,
         name: session.title,

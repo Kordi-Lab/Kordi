@@ -121,3 +121,28 @@ pub(super) fn environment_prompt(
         "{base}\n\n<local_execution_context>\n{facts}\n{permissions}\nThe model provider's location does not change tool execution: file and shell tools run on this device. Resolve relative paths against workingDirectory and ~ against homeDirectory. A folder reference selects that folder when unambiguous. Use history tools before asking the owner to repeat available chat context. For action requests, continue through tool execution and verification, or identify a concrete blocker. Never report an issue created, a file read, or an app inspected without supporting results. Use local_app for Mac application discovery and automation when available; browser_fetch uses a fresh headless profile and cannot access the owner's signed-in browser tabs.\n</local_execution_context>{instructions}"
     )
 }
+
+/// Explicit project selection supersedes a workspace previously selected in a prompt.
+pub(super) fn persist_selected_workspace(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    workspace: &Path,
+) -> Result<()> {
+    let parent_id = kordi_session::store::get_session(conn, session_id)?
+        .and_then(|row| row.leaf_id)
+        .map(EntryId);
+    kordi_session::store::append_entry(
+        conn,
+        session_id,
+        &SessionEntry::Custom {
+            base: EntryBase {
+                id: EntryId::generate(),
+                parent_id,
+                timestamp: chrono::Utc::now(),
+            },
+            custom_type: WORKSPACE_ENTRY.into(),
+            data: Some(serde_json::json!({"path": workspace})),
+        },
+    )?;
+    Ok(())
+}

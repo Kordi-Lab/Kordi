@@ -80,13 +80,22 @@ pub(super) fn resolve_project_root_input(
     } else {
         cwd.join(candidate)
     };
-    std::fs::create_dir_all(&resolved).map_err(|err| err.to_string())?;
+    if !resolved.is_dir() {
+        return Err("Project folder is unavailable. Choose an existing local folder.".to_string());
+    }
     Ok(std::fs::canonicalize(&resolved).unwrap_or(resolved))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unavailable_project_is_not_silently_recreated() {
+        let root = std::env::temp_dir().join(format!("kordi-missing-{}", uuid::Uuid::new_v4()));
+        assert!(resolve_project_root_input(&root, root.to_str().unwrap()).is_err());
+        assert!(!root.exists());
+    }
 
     #[test]
     fn expand_home_project_path_uses_home_for_tilde_prefix() {
