@@ -171,7 +171,12 @@ fn open_with_cache(path: &Path, cache: &ConnectionCache) -> Result<DatabaseConne
         )
         .map_err(|err| err.to_string())?;
     }
-    initialize_schema(&conn)?;
+    // Only a cold open needs migration and validation. Pooled handles were
+    // validated before they were returned, and foreign_keys is a connection
+    // setting that survives with the handle.
+    if !reused {
+        initialize_schema(&conn)?;
+    }
     let key = connection_cache_key(&conn, &normalized)?;
     Ok(DatabaseConnection {
         conn: Some(conn),
