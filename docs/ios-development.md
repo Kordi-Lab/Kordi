@@ -150,16 +150,22 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-forward-batch` | Add to the forward-message preview to select four sample text messages |
 | `--preview-message-details` | Message delivery/read details |
 | `--preview-session-detail` | Info, Artifacts, and Tasks session sheet |
-| `--preview-agent-model` | Agent model selection |
+| `--preview-agent-model` | Agent model sheet with separate Provider, Account, Model, and Thinking controls. Each launch starts from the Work route. Test route shows a pending state, then a synthetic offline result with runner `OMP`, the account name, and the model |
+| `--preview-account-unavailable` | Combine with `--preview-data --preview-agent-model`: the routed Work account has been removed, so the route stays attached to it, shows Account unavailable, and disables Test route and Save until another account is chosen |
+| `--preview-provider-unavailable` | Combine with `--preview-data --preview-agent-model`: every OpenAI account has been removed and one Anthropic account remains, so the sheet keeps the routed OpenAI provider selected and shows Account unavailable |
 | `--preview-contact-model` | Session model selection in a contact chat |
 | `--preview-syncing` | Active message-sync indicator and motion state |
-| `--preview-account` | Account settings |
-| `--preview-authentication` | Provider-authentication catalog |
-| `--preview-authentication-detail` | Provider-authentication detail |
+| `--preview-account` | Account settings with the saved-account count |
+| `--preview-authentication` | Provider-authentication catalog from the bundled OMP catalog, with connected providers listed first |
+| `--preview-authentication-detail` | OpenAI detail with no inputs: Saved accounts (Work and Personal ChatGPT accounts) and an Add account row listing Device code, ChatGPT sign-in, and API key |
+| `--preview-login-steps=<provider>[:<method>]` | Turns on preview data by itself and opens a provider's Add account flow against an offline simulator that uses the bundled catalog's texts and follows the hosted worker. The provider screen has only Saved accounts and an Add account row; with more than one method, a picker lists Browser sign-in, Device code, API key, or Vendor token; the login screen then shows an Account name field and a transcript of OMP's steps. `anthropic` shows the sign-in link, then the appended paste step; `kimi-code` and `openai-codex-device` show device code `PRVW-2468`; `cloudflare-ai-gateway` shows a masked prompt; `cerebras`, `groq`, or `anthropic:api-key` open the API key screen. After Save or Continue the screen stays on Verifying with OMP while the simulated OMP checks the value. A value starting with `invalid` then fails the sign-in as OMP's rejection, with Try again; any other value completes the session, and Done returns to the provider with the new account highlighted |
+| `--preview-codex-device-login` | Alias for `--preview-login-steps=openai-codex-device`; also turns on preview data by itself |
 | `--preview-appearance` | Appearance settings |
 | `--preview-profile` | Profile settings |
 
 Focused arguments that require conversation fixtures should be combined with `--preview-data` unless their preview root installs data itself.
+
+Provider previews read the OMP provider catalog bundled from `shared/omp-catalog/omp-provider-catalog.json`. Add account runs OMP's login steps through the hosted login-session API (`/v1/cloud/agent-provider-auth/login/...`); provider tokens stay on Kordi Cloud. With preview data, the app never fetches the live catalog, starts a hosted login session, opens a sign-in page, or calls the route-test endpoint. `KordiDeletionUITests/ProviderAccountsUITests` exercises these states offline.
 
 For physical-device motion comparisons, use the Beta scheme with `SWIFT_OPTIMIZATION_LEVEL=-O` and `SWIFT_COMPILATION_MODE=wholemodule`, keeping its Beta/Debug definitions and isolated preview data. This removes unoptimized compiler overhead without changing the app environment. Compare the same interactions and content; passing functional UI tests alone does not establish frame-rate or hitch performance.
 

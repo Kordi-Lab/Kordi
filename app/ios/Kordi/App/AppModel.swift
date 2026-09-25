@@ -30,6 +30,22 @@ enum KordiPreviewModePersistence {
         return launchRequested
 #endif
     }
+
+    /// Arguments that turn on preview data by themselves, so a preview screen
+    /// never runs against the scheme's backend.
+    private static let launchArguments: Set<String> = [
+        "--preview-launching", "--preview-data", "--preview-background-stop", "--preview-markdown",
+        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices",
+        "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
+        "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
+        "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
+        "--preview-group-detail", "--preview-group-invite", "--preview-media", "--preview-media-messages",
+        "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
+    ]
+
+    static func launchRequested(by arguments: [String]) -> Bool {
+        arguments.contains { launchArguments.contains($0) || $0.hasPrefix(PreviewLoginSteps.argumentPrefix) }
+    }
 }
 
 enum AgentPromptContext {
@@ -229,6 +245,29 @@ final class AppModel: ObservableObject {
     @Published private(set) var sessionPinsByID: [String: CloudSessionPin] = [:]
     @Published private(set) var providerAuthSnapshot: CloudProviderAuthSnapshot?
     @Published private(set) var providerAuthSnapshots: [String: CloudProviderAuthSnapshot] = [:]
+    @Published private(set) var providerAuthProfiles: [CloudProviderAuthSnapshot] = []
+    /// Starts as the catalog bundled with the app and is replaced only by a
+    /// successful live fetch.
+    @Published private(set) var ompProviderCatalog: [OMPProviderCatalogEntry] = OMPProviderCatalog.pinned
+    @Published private(set) var hasLiveOMPProviderCatalog = false
+    /// The backend answered a provider-auth route with 404 or
+    /// `provider_auth_not_configured`. Saved accounts and the bundled catalog
+    /// keep working; OMP actions are disabled until a catalog fetch succeeds.
+    @Published private(set) var ompBackendUnavailable = false
+    /// The account each provider family uses for Start chat. A provider without
+    /// an entry uses its newest account.
+    @Published private(set) var activeAuthChoiceByProvider: [String: String] = [:]
+    /// A new agent chat to open; the main navigation consumes it.
+    @Published var startedAgentChat: ConversationSummary?
+    @Published private(set) var startedAgentChatRevision = 0
+    private lazy var previewLoginSimulator = PreviewProviderLoginSimulator(catalog: ompProviderCatalog)
+
+    var authenticationProviderDefinitions: [ProviderAuthenticationDefinition] {
+        ProviderAuthenticationDefinition.merged(
+            catalog: ompProviderCatalog,
+            savedProviderIDs: providerAuthProfiles.map(\.provider)
+        )
+    }
     @Published private(set) var isRefreshingProviderAuthentication = false
     @Published private(set) var isRefreshingFactory = false
     @Published private(set) var providerAuthenticationErrorMessage: String?
@@ -333,31 +372,7 @@ final class AppModel: ObservableObject {
         sessionRuntimeRouteStore: SessionRuntimeRouteStore = SessionRuntimeRouteStore(),
         previewMode: Bool = KordiPreviewModePersistence.resolve(
             arguments: ProcessInfo.processInfo.arguments,
-            launchRequested: ProcessInfo.processInfo.arguments.contains("--preview-launching")
-                || ProcessInfo.processInfo.arguments.contains("--preview-data")
-                || ProcessInfo.processInfo.arguments.contains("--preview-background-stop")
-                || ProcessInfo.processInfo.arguments.contains("--preview-markdown")
-                || ProcessInfo.processInfo.arguments.contains("--preview-login")
-                || ProcessInfo.processInfo.arguments.contains("--preview-signup")
-                || ProcessInfo.processInfo.arguments.contains("--preview-account")
-                || ProcessInfo.processInfo.arguments.contains("--preview-devices")
-                || ProcessInfo.processInfo.arguments.contains("--preview-authentication")
-                || ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail")
-                || ProcessInfo.processInfo.arguments.contains("--preview-contacts")
-                || ProcessInfo.processInfo.arguments.contains("--preview-new-chat")
-                || ProcessInfo.processInfo.arguments.contains("--preview-add-contact")
-                || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
-                || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")
-                || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
-                || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
-                || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
-                || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
-                || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
-                || ProcessInfo.processInfo.arguments.contains("--preview-media")
-                || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
-                || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
-                || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
-                || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
+            launchRequested: KordiPreviewModePersistence.launchRequested(by: ProcessInfo.processInfo.arguments)
         ),
         previewHistoryLoadDelay: Duration? = nil,
         previewLaunchFlow: Bool = ProcessInfo.processInfo.environment["KORDI_PREVIEW_LAUNCH_FLOW"] == "1"
@@ -585,6 +600,12 @@ final class AppModel: ObservableObject {
         pendingSessionPinActions = [:]
         providerAuthSnapshot = nil
         providerAuthSnapshots = [:]
+        providerAuthProfiles = []
+        ompProviderCatalog = OMPProviderCatalog.pinned
+        hasLiveOMPProviderCatalog = false
+        ompBackendUnavailable = false
+        activeAuthChoiceByProvider = [:]
+        startedAgentChat = nil
         devices = []
         deviceOperationIds = [:]
         deviceErrorMessage = nil
@@ -669,7 +690,7 @@ final class AppModel: ObservableObject {
             async let fetchedRequests = api.listContactRequests(token: token)
             async let ownedAgents = api.listAgents(token: token)
             async let fetchedVisibility = api.listSessionVisibility(token: token)
-            async let fetchedAuth = try? api.currentProviderAuthSnapshot(token: token)
+            async let fetchedAuth = try? api.listProviderAuthSnapshots(token: token)
             async let fetchedDevices = try? api.listDevices(token: token)
             async let canonicalLatestMessages = api.bootstrapChatLatestMessages(token: token)
             async let fetchedActiveCalls = try? api.activeCalls(token: token)
@@ -678,7 +699,7 @@ final class AppModel: ObservableObject {
             self.account = canonicalAccount
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             // Profile updates must not be discarded if unrelated workspace data fails.
-            let (presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical, activeCalls) = try await (
+            let (presence, requests, owned, visibility, authProfiles, deviceList, latestCanonical, activeCalls) = try await (
                 fetchedPresence, fetchedRequests, ownedAgents,
                 fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages,
                 fetchedActiveCalls
@@ -706,14 +727,11 @@ final class AppModel: ObservableObject {
                 )
             }
             hasObservedOwnedAgentRouting = true
-            providerAuthSnapshot = authSnapshot
+            if let authProfiles { applyProviderAuthProfiles(authProfiles) }
             if let deviceList {
                 devices = deviceList
                 currentDeviceId = deviceList.first(where: \.currentDevice)?.deviceId
                 deviceReviewRequired = deviceList.contains { $0.needsReview && !$0.currentDevice }
-            }
-            if let authSnapshot {
-                providerAuthSnapshots[ProviderAuthenticationDefinition.canonicalID(authSnapshot.provider)] = authSnapshot
             }
             sharedCloudAgents = normalizedSharedCloudAgents(shared)
             if SessionVisibilitySnapshotPolicy.shouldApply(
@@ -974,64 +992,19 @@ final class AppModel: ObservableObject {
     }
 
     func refreshProviderAuthentication() async {
-        guard let token, !isRefreshingProviderAuthentication else { return }
+        // Preview data keeps its offline provider fixtures.
+        guard let token, !previewMode, !isRefreshingProviderAuthentication else { return }
         isRefreshingProviderAuthentication = true
         providerAuthenticationErrorMessage = nil
         defer { isRefreshingProviderAuthentication = false }
 
         do {
-            // Treat one unfiltered request as the connectivity check. Provider-specific
-            // lookups are best effort so one slow alias cannot invalidate every saved
-            // access profile or turn an unrelated background error into a page error.
-            let latestSnapshot = try await api.currentProviderAuthSnapshot(token: token)
-            let queried = await withTaskGroup(
-                of: (String, CloudProviderAuthSnapshot?, Bool).self,
-                returning: [String: [(CloudProviderAuthSnapshot?, Bool)]].self
-            ) { group in
-                for definition in ProviderAuthenticationDefinition.all {
-                    for queryProviderID in definition.queryProviderIDs {
-                        group.addTask {
-                            do {
-                                let snapshot = try await self.api.currentProviderAuthSnapshot(
-                                    token: token,
-                                    provider: queryProviderID
-                                )
-                                return (definition.id, snapshot, true)
-                            } catch {
-                                return (definition.id, nil, false)
-                            }
-                        }
-                    }
-                }
-                var results: [String: [(CloudProviderAuthSnapshot?, Bool)]] = [:]
-                for await (providerID, snapshot, succeeded) in group {
-                    results[providerID, default: []].append((snapshot, succeeded))
-                }
-                return results
-            }
-
-            var snapshots = providerAuthSnapshots
-            for definition in ProviderAuthenticationDefinition.all {
-                guard let results = queried[definition.id] else { continue }
-                let successfulSnapshots = results.compactMap { result in
-                    result.1 ? result.0 : nil
-                }
-                if let newest = successfulSnapshots.max(by: { $0.createdAt < $1.createdAt }) {
-                    snapshots[definition.id] = newest
-                } else if results.allSatisfy({ $0.1 }) {
-                    snapshots[definition.id] = nil
-                }
-            }
-            if let latestSnapshot {
-                snapshots[ProviderAuthenticationDefinition.canonicalID(latestSnapshot.provider)] = latestSnapshot
-            }
-            providerAuthSnapshot = latestSnapshot
-            let authenticationChanged = providerAuthSnapshots != snapshots
-            providerAuthSnapshots = snapshots
+            let profiles = try await api.listProviderAuthSnapshots(token: token)
+            let authenticationChanged = providerAuthProfiles != profiles
+            applyProviderAuthProfiles(profiles)
             reconcilePendingProviderAuthentication()
             if authenticationChanged {
                 sessionRuntimeRouteRevision &+= 1
-                await reconcileUnavailableProviderRuntimeRoutes()
             }
             providerAuthenticationErrorMessage = nil
         } catch {
@@ -1042,65 +1015,189 @@ final class AppModel: ObservableObject {
         }
     }
 
+    @discardableResult
     func saveProviderAPIKey(
         provider: ProviderAuthenticationDefinition,
-        apiKey: String
-    ) async -> Bool {
-        guard let token, provider.acceptsAPIKeyOnPhone else { return false }
+        apiKey: String,
+        label: String,
+        replacing: CloudProviderAuthSnapshot? = nil,
+        baseURLOverride: String? = nil,
+        modelOverride: String? = nil
+    ) async -> CloudProviderAuthSnapshot? {
+        guard let token, provider.acceptsAPIKeyOnPhone else { return nil }
         let cleanKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanKey.isEmpty else {
             providerAuthenticationErrorMessage = "Enter an API key."
-            return false
+            return nil
+        }
+        if provider.id == "custom" {
+            guard let endpoint = baseURLOverride.flatMap(URL.init(string:)),
+                  endpoint.scheme == "https", let host = endpoint.host?.lowercased(),
+                  !["localhost"].contains(host),
+                  !host.hasSuffix(".localhost"), !host.hasSuffix(".local"), !host.hasSuffix(".internal"),
+                  !host.allSatisfy({ $0.isNumber || $0 == "." }), !host.contains(":"),
+                  endpoint.user == nil, endpoint.password == nil,
+                  endpoint.query == nil, endpoint.fragment == nil,
+                  let modelID = modelOverride?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
+                  modelID.count <= 120 else {
+                providerAuthenticationErrorMessage = "Enter a public HTTPS base URL and model ID."
+                return nil
+            }
+        }
+        let savedLabel = label.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+            ?? "API key \(authenticationSnapshots(for: provider.id).filter { $0.authChoice.contains("api") }.count + 1)"
+        if previewMode {
+            // Preview data saves locally and never sends the key anywhere.
+            let snapshot = CloudProviderAuthSnapshot(
+                snapshotId: "provider_auth_preview_key_\(UUID().uuidString.prefix(8).lowercased())",
+                provider: provider.id,
+                authChoice: replacing?.authChoice ?? "ios-api-key:preview-\(UUID().uuidString.prefix(8).lowercased())",
+                label: savedLabel,
+                modelHint: modelOverride?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
+                createdAt: ISO8601DateFormatter().string(from: Date()),
+                revokedAt: nil
+            )
+            recordAddedAccount(snapshot)
+            return snapshot
         }
         var payload = ["apiKey": cleanKey]
         if let baseURL = provider.baseURL { payload["baseUrl"] = baseURL }
         if let defaultModel = provider.defaultModel { payload["model"] = defaultModel }
+        if let baseURLOverride { payload["baseUrl"] = baseURLOverride.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let modelOverride { payload["model"] = modelOverride.trimmingCharacters(in: .whitespacesAndNewlines) }
         do {
             let snapshot = try await api.publishProviderAuthSnapshot(
                 token: token,
                 provider: provider.id,
-                authChoice: "ios-api-key",
+                authChoice: replacing?.authChoice ?? "ios-api-key:\(UUID().uuidString.lowercased())",
+                label: savedLabel,
                 payload: payload
             )
-            providerAuthSnapshot = snapshot
-            providerAuthSnapshots[provider.id] = snapshot
-            sessionRuntimeRouteRevision &+= 1
-            await reconcileUnavailableProviderRuntimeRoutes()
-            providerAuthenticationErrorMessage = nil
-            return true
+            recordAddedAccount(snapshot)
+            return snapshot
         } catch {
             providerAuthenticationErrorMessage = authenticationUserFacing(
                 error,
                 fallback: "Could not save \(provider.name) authentication."
             )
-            return false
+            return nil
         }
     }
 
+    /// Starts OMP login sessions against Kordi Cloud, or against the offline
+    /// simulator for preview data, which never contacts a server.
+    func makeProviderLoginTransport() -> (any ProviderLoginTransport)? {
+        if previewMode { return previewLoginSimulator }
+        guard let token else {
+            providerAuthenticationErrorMessage = "Sign in to Kordi before adding an account."
+            return nil
+        }
+        return CloudProviderLoginTransport(api: api, token: token)
+    }
+
+    func markOMPBackendUnavailable() {
+        ompBackendUnavailable = true
+    }
+
+    /// Shows an account saved by a completed login session immediately.
+    func recordProviderLogin(_ snapshot: ProviderLoginSnapshot) {
+        recordAddedAccount(CloudProviderAuthSnapshot(
+            snapshotId: snapshot.snapshotId,
+            provider: snapshot.provider,
+            authChoice: snapshot.authChoice,
+            label: snapshot.label,
+            createdAt: ISO8601DateFormatter().string(from: Date()),
+            revokedAt: nil
+        ))
+        if !previewMode {
+            Task { await refreshProviderAuthentication() }
+        }
+    }
+
+    /// Adds a saved account. It becomes active when the provider had none;
+    /// otherwise the provider keeps its current active account.
+    private func recordAddedAccount(_ snapshot: CloudProviderAuthSnapshot) {
+        let family = ProviderAuthenticationDefinition.canonicalID(snapshot.provider)
+        let previous = authenticationSnapshots(for: snapshot.provider)
+            .filter { $0.authChoice != snapshot.authChoice }
+        if previous.isEmpty {
+            activeAuthChoiceByProvider[family] = snapshot.authChoice
+        } else if let current = activeAccount(for: snapshot.provider) {
+            activeAuthChoiceByProvider[family] = current.authChoice
+        }
+        upsertProviderAuthProfile(snapshot)
+        sessionRuntimeRouteRevision &+= 1
+        providerAuthenticationErrorMessage = nil
+    }
+
+    func activeAccount(for providerID: String) -> CloudProviderAuthSnapshot? {
+        let accounts = authenticationSnapshots(for: providerID)
+        let family = ProviderAuthenticationDefinition.canonicalID(providerID)
+        if let choice = activeAuthChoiceByProvider[family],
+           let active = accounts.first(where: { $0.authChoice == choice }) {
+            return active
+        }
+        return accounts.first
+    }
+
+    func makeAccountActive(_ snapshot: CloudProviderAuthSnapshot) {
+        activeAuthChoiceByProvider[ProviderAuthenticationDefinition.canonicalID(snapshot.provider)] = snapshot.authChoice
+    }
+
+    /// The model Start chat uses: the account's saved model, else OMP's default
+    /// for the account's provider, else the provider row's default.
+    func preferredModel(
+        for account: CloudProviderAuthSnapshot,
+        provider: ProviderAuthenticationDefinition
+    ) -> String? {
+        // A Custom API endpoint serves only the model its account names.
+        if ProviderAuthenticationDefinition.canonicalID(account.provider) == ProviderAuthenticationDefinition.custom.id {
+            return account.modelHint?.nonEmpty
+        }
+        return account.modelHint?.nonEmpty
+            ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.defaultModel?.nonEmpty
+            ?? ompProviderCatalog.first(where: { $0.id == account.provider })?.models.first
+            ?? provider.defaultModel?.nonEmpty
+            ?? provider.models.first
+    }
+
+    /// Opens a new chat with the default Kordi agent routed to the given
+    /// account, or the provider's active one, and its preferred model.
+    @discardableResult
+    func startAgentChat(with provider: ProviderAuthenticationDefinition, snapshotID: String? = nil) async -> ConversationSummary? {
+        let chosen = snapshotID.flatMap { id in authenticationSnapshots(for: provider.id).first { $0.snapshotId == id } }
+        guard let active = chosen ?? activeAccount(for: provider.id),
+              let modelID = preferredModel(for: active, provider: provider),
+              let ownAccountID = account?.accountId else { return nil }
+        let template = conversations.first {
+            $0.kind == .agent && $0.agentId == CanonicalAvatarSystem.defaultAgentId && !$0.isLocalDraft
+        }
+        let session = template.map { makeAgentSession(from: $0) }
+            ?? AgentSessionFactory.makeDefault(ownAccountId: ownAccountID)
+        let saved = await updateRuntimeRouting(
+            for: session,
+            provider: active.provider,
+            authChoice: active.authChoice,
+            model: modelID,
+            thinking: AgentModelPicker.normalizedThinking("medium", for: modelID)
+        )
+        guard saved else { return nil }
+        startedAgentChat = session
+        startedAgentChatRevision &+= 1
+        return session
+    }
+
     func revokeProviderAuthentication(_ snapshot: CloudProviderAuthSnapshot) async -> Bool {
+        if previewMode {
+            applyProviderAuthProfiles(providerAuthProfiles.filter { $0.snapshotId != snapshot.snapshotId })
+            sessionRuntimeRouteRevision &+= 1
+            return true
+        }
         guard let token else { return false }
-        let providerID = ProviderAuthenticationDefinition.canonicalID(snapshot.provider)
-        let queryProviderIDs = ProviderAuthenticationDefinition.definition(for: providerID)?
-            .queryProviderIDs ?? [snapshot.provider]
         do {
-            for queryProviderID in queryProviderIDs {
-                for _ in 0..<16 {
-                    guard let activeSnapshot = try await api.currentProviderAuthSnapshot(
-                        token: token,
-                        provider: queryProviderID
-                    ) else { break }
-                    _ = try await api.revokeProviderAuthSnapshot(
-                        token: token,
-                        snapshotId: activeSnapshot.snapshotId
-                    )
-                }
-            }
-            providerAuthSnapshots[providerID] = nil
-            if providerAuthSnapshot.map({
-                ProviderAuthenticationDefinition.canonicalID($0.provider)
-            }) == providerID {
-                providerAuthSnapshot = nil
-            }
+            _ = try await api.revokeProviderAuthSnapshot(token: token, snapshotId: snapshot.snapshotId)
+            applyProviderAuthProfiles(providerAuthProfiles.filter { $0.snapshotId != snapshot.snapshotId })
+            sessionRuntimeRouteRevision &+= 1
             await refreshProviderAuthentication()
             return true
         } catch {
@@ -1116,52 +1213,134 @@ final class AppModel: ObservableObject {
         providerAuthSnapshots[ProviderAuthenticationDefinition.canonicalID(providerID)]
     }
 
+    func authenticationSnapshots(for providerID: String) -> [CloudProviderAuthSnapshot] {
+        let canonicalID = ProviderAuthenticationDefinition.canonicalID(providerID)
+        return providerAuthProfiles.filter {
+            ProviderAuthenticationDefinition.canonicalID($0.provider) == canonicalID
+        }
+    }
+
+    private func applyProviderAuthProfiles(_ profiles: [CloudProviderAuthSnapshot]) {
+        let ordered = profiles.sorted {
+            $0.createdAt == $1.createdAt
+                ? $0.snapshotId > $1.snapshotId
+                : $0.createdAt > $1.createdAt
+        }
+        providerAuthProfiles = ordered
+        providerAuthSnapshot = ordered.first
+        var latest: [String: CloudProviderAuthSnapshot] = [:]
+        for profile in ordered {
+            let providerID = ProviderAuthenticationDefinition.canonicalID(profile.provider)
+            if latest[providerID] == nil { latest[providerID] = profile }
+        }
+        providerAuthSnapshots = latest
+    }
+
+    private func upsertProviderAuthProfile(_ profile: CloudProviderAuthSnapshot) {
+        applyProviderAuthProfiles(providerAuthProfiles.filter {
+            $0.authChoice != profile.authChoice
+                || ProviderAuthenticationDefinition.canonicalID($0.provider)
+                    != ProviderAuthenticationDefinition.canonicalID(profile.provider)
+        } + [profile])
+    }
+
     var hasConfiguredProviderAuthentication: Bool {
         !providerAuthSnapshots.isEmpty
     }
 
-    private func reconcileUnavailableProviderRuntimeRoutes() async {
-        let fallback = ProviderAuthenticationDefinition.preferredFallbackSnapshot(
-            in: providerAuthSnapshots
-        )
-        let fallbackProvider = fallback.map {
-            ProviderAuthenticationDefinition.canonicalID($0.provider)
-        }
-        let fallbackModel = fallbackProvider
-            .flatMap { ProviderAuthenticationDefinition.definition(for: $0)?.defaultModel }
+    func clearProviderAuthenticationError() {
+        providerAuthenticationErrorMessage = nil
+    }
 
-        var reconciledSessionIDs = Set<String>()
-        for conversation in conversations {
-            guard reconciledSessionIDs.insert(conversation.sessionId).inserted,
-                  canChangeRuntimeRouting(for: conversation) else { continue }
-            var routing = sessionRuntimeRouteStore.route(
-                accountId: account?.accountId,
-                sessionId: conversation.sessionId
-            ) ?? defaultRuntimeRouting(for: conversation)
-            guard let routeProvider = routing.defaultAuthProvider?.nonEmpty,
-                  authenticationSnapshot(for: routeProvider) == nil else { continue }
-
-            guard let fallback, let fallbackProvider, let fallbackModel else {
-                if routing.defaultAuthChoice != nil {
-                    routing.defaultAuthChoice = nil
-                    saveSessionRuntimeRoute(routing, sessionId: conversation.sessionId)
-                }
-                continue
-            }
-            _ = await updateRuntimeRouting(
-                for: conversation,
-                provider: fallbackProvider,
-                model: fallbackModel,
-                thinking: routing.thinking?.nonEmpty ?? "medium"
-            )
-            if providerAuthSnapshot?.snapshotId != fallback.snapshotId {
-                providerAuthSnapshot = fallback
-            }
+    func refreshOMPProviderCatalog() async {
+        // Preview data keeps the bundled catalog without a network request.
+        guard let token, !previewMode else { return }
+        await refreshOMPProviderCatalog { [api] in
+            try await api.ompProviderCatalog(token: token)
         }
     }
 
-    func clearProviderAuthenticationError() {
+    /// Replaces the bundled catalog only with a successful, non-empty response.
+    /// A failed fetch keeps the current catalog and does not surface an error:
+    /// the bundled catalog remains a complete provider list.
+    func refreshOMPProviderCatalog(using load: () async throws -> OMPProviderCatalog) async {
+        let catalog: OMPProviderCatalog
+        do {
+            catalog = try await load()
+        } catch {
+            if OMPBackendSupport.isUnavailable(error) { ompBackendUnavailable = true }
+            return
+        }
+        ompBackendUnavailable = false
+        guard catalog.providers.contains(where: { !$0.models.isEmpty }) else { return }
+        ompProviderCatalog = catalog.providers.map { entry in
+            entry.withLogin(from: OMPProviderCatalog.pinned.first { $0.id == entry.id })
+        }
+        hasLiveOMPProviderCatalog = true
+    }
+
+    func testProviderRoute(
+        provider: String,
+        authChoice: String,
+        model: String,
+        thinking: String
+    ) async -> CloudProviderRouteTest? {
+        if previewMode {
+            return await previewProviderRouteTest(provider: provider, authChoice: authChoice, model: model)
+        }
+        guard let token else {
+            providerAuthenticationErrorMessage = "Sign in to Kordi before testing this route."
+            return nil
+        }
         providerAuthenticationErrorMessage = nil
+        do {
+            return try await api.testProviderRoute(
+                token: token,
+                provider: provider,
+                authChoice: authChoice,
+                model: model,
+                thinking: thinking
+            )
+        } catch {
+            if OMPBackendSupport.isUnavailable(error) {
+                ompBackendUnavailable = true
+                providerAuthenticationErrorMessage = OMPBackendSupport.unavailableMessage
+            } else {
+                providerAuthenticationErrorMessage = authenticationUserFacing(
+                    error,
+                    fallback: "Could not test this provider route."
+                )
+            }
+            return nil
+        }
+    }
+
+    /// Offline stand-in for the hosted route test. It mirrors the server response
+    /// shape so the pending and confirmed states can be reviewed without a network.
+    private func previewProviderRouteTest(
+        provider: String,
+        authChoice: String,
+        model: String
+    ) async -> CloudProviderRouteTest? {
+        providerAuthenticationErrorMessage = nil
+        guard let account = authenticationSnapshots(for: provider).first(where: {
+            $0.authChoice == authChoice
+        }) else {
+            providerAuthenticationErrorMessage = "Account unavailable. Choose another saved account."
+            return nil
+        }
+        do {
+            try await Task.sleep(for: .milliseconds(2_500))
+        } catch {
+            return nil
+        }
+        return CloudProviderRouteTest(
+            runner: "OMP",
+            provider: account.provider,
+            accountLabel: account.label?.nonEmpty ?? "Saved account",
+            model: model,
+            response: "Preview reply: this offline fixture stands in for one short hosted OMP turn."
+        )
     }
 
     func appDidEnterBackground() {
@@ -4649,8 +4828,8 @@ final class AppModel: ObservableObject {
             if canonicalProviderID(modelProvider) == canonicalProviderID(provider) {
                 return model
             }
-            if let defaultModel = ProviderAuthenticationDefinition.all
-                .first(where: { $0.id == canonicalProviderID(provider) })?
+            if let defaultModel = authenticationProviderDefinitions
+                .first(where: { canonicalProviderID($0.id) == canonicalProviderID(provider) })?
                 .defaultModel?.nonEmpty {
                 return "\(provider)/\(defaultModel)"
             }
@@ -4685,6 +4864,7 @@ final class AppModel: ObservableObject {
     func updateRuntimeRouting(
         for conversation: ConversationSummary,
         provider: String? = nil,
+        authChoice: String? = nil,
         model: String,
         thinking: String
     ) async -> Bool {
@@ -4699,7 +4879,12 @@ final class AppModel: ObservableObject {
         routing.thinking = thinking.nonEmpty
         if let selectedProvider {
             routing.defaultAuthProvider = selectedProvider
-            if let auth = authenticationSnapshot(for: selectedProvider) {
+            if let authChoice {
+                guard authenticationSnapshots(for: selectedProvider).contains(where: {
+                    $0.authChoice == authChoice
+                }) else { return false }
+                routing.defaultAuthChoice = authChoice
+            } else if let auth = authenticationSnapshot(for: selectedProvider) {
                 routing.defaultAuthChoice = auth.authChoice
             } else if canonicalProviderID(previousRouting.defaultAuthProvider)
                 != canonicalProviderID(selectedProvider) {
@@ -7356,7 +7541,7 @@ final class AppModel: ObservableObject {
         var previewRouting = CloudModelRouting.empty
         previewRouting.defaultModel = "codex/gpt-5.6-sol"
         previewRouting.defaultAuthProvider = "codex"
-        previewRouting.defaultAuthChoice = "oauth"
+        previewRouting.defaultAuthChoice = "ios-codex:preview-work"
         previewRouting.thinking = "medium"
         let previewAgentAvatar: (String) -> CanonicalAvatarDescriptor = { agentId in
             CanonicalAvatarDescriptor(
@@ -7440,14 +7625,40 @@ final class AppModel: ObservableObject {
                 avatar: previewAgentAvatar("cloud_agent_support")
             )
         ]
-        providerAuthSnapshot = CloudProviderAuthSnapshot(
-            snapshotId: "provider_auth_e96dde",
+        let personalCodexAccount = CloudProviderAuthSnapshot(
+            snapshotId: "provider_auth_preview_personal",
             provider: "openai-codex",
-            authChoice: "oauth",
-            createdAt: ISO8601DateFormatter().string(from: Date()),
+            authChoice: "ios-codex:preview-personal",
+            label: "Personal",
+            createdAt: timestamp.string(from: now.addingTimeInterval(-3_600)),
             revokedAt: nil
         )
-        providerAuthSnapshots["openai"] = providerAuthSnapshot
+        let workCodexAccount = CloudProviderAuthSnapshot(
+            snapshotId: "provider_auth_preview_work",
+            provider: "openai-codex",
+            authChoice: "ios-codex:preview-work",
+            label: "Work",
+            createdAt: timestamp.string(from: now),
+            revokedAt: nil
+        )
+        // `--preview-account-unavailable` models a session whose routed Work
+        // account was removed: the route stays attached to the missing account.
+        // `--preview-provider-unavailable` removes every OpenAI account and keeps one Anthropic account.
+        let arguments = ProcessInfo.processInfo.arguments
+        applyProviderAuthProfiles(
+            arguments.contains("--preview-provider-unavailable") ? [CloudProviderAuthSnapshot(
+                snapshotId: "provider_auth_preview_team", provider: "anthropic", authChoice: "cloud-login:preview-team",
+                label: "Team", createdAt: timestamp.string(from: now), revokedAt: nil
+            )]
+            : arguments.contains("--preview-account-unavailable") ? [personalCodexAccount]
+            : [personalCodexAccount, workCodexAccount]
+        )
+        if ProcessInfo.processInfo.arguments.contains("--preview-agent-model"),
+           let researchSession = conversations.first(where: { $0.id == "agent:research" }) {
+            // Start each model-sheet preview from the fixture route instead of a
+            // route saved by an earlier preview launch.
+            saveSessionRuntimeRoute(previewRouting, sessionId: researchSession.sessionId)
+        }
         devices = [
             CloudDeviceAuthorization(
                 deviceId: "device_preview_iphone",
