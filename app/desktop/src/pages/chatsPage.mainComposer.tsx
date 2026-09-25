@@ -3,6 +3,7 @@ import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
+import { KordiCloudRuntimeCaption } from '@/pages/chatsPage.kordiCloudCaption';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
@@ -20,6 +21,7 @@ import {
   ComposerSlashMenu,
 } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
+import { isRouteAccountUnavailable } from '@/kordi-app/components/composerModelSelection';
 import { cn } from '@/lib/utils';
 import { ComposerDropSurface } from './chatsPage.composerDropSurface';
 import { CollaborationRoutingControls } from '@/pages/chatsPage.collaborationRoutingControls';
@@ -52,7 +54,7 @@ export function MainComposer({
   localRouting,
   collaborationRouting,
   display,
-  onSend,
+  onSend: sendMessage,
   cloudAccountId = null,
 }: MainComposerProps) {
   const {
@@ -133,6 +135,16 @@ export function MainComposer({
   const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
   const useCompactRouteMenu = canConfigureModelRoute
     && shouldUseCompactModelRouteMenu(conversation);
+  // An agent route bound to a removed account cannot run until the owner picks another account.
+  const routeSelection = collaborationRouting.enabled && collaborationRouting.model
+    ? collaborationRouting.model.selection
+    : composerSelection;
+  const routeAccountUnavailable = canConfigureModelRoute
+    && (localRouting.paneKind === 'agent' || collaborationRouting.enabled)
+    && isRouteAccountUnavailable(routeSelection, composerProviderOptions);
+  const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
+    routeAccountUnavailable ? undefined : sendMessage(draftOverride, attachmentOverride)
+  );
   const voice = useVoiceComposer({
     conversation,
     cloudAccountId,
@@ -341,14 +353,11 @@ export function MainComposer({
             className="flex shrink-0 items-center gap-2 overflow-visible pr-1"
             data-composer-left-actions="true"
           >
+            {!editingMessage && useCompactRouteMenu ? <KordiCloudRuntimeCaption /> : null}
             {!editingMessage && useCompactRouteMenu ? (
               <CompactComposerModelMenu
                 scope="chat"
-                selection={
-                  collaborationRouting.enabled && collaborationRouting.model
-                    ? collaborationRouting.model.selection
-                    : composerSelection
-                }
+                selection={routeSelection}
                 providerOptions={composerProviderOptions}
                 modelOptions={chatModelOptions && chatModelOptions.length > 0
                   ? chatModelOptions
@@ -397,6 +406,8 @@ export function MainComposer({
               && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
+                <>
+                <KordiCloudRuntimeCaption />
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}
@@ -424,6 +435,7 @@ export function MainComposer({
                     : undefined}
                   compact={display.showCompanionPane}
                 />
+                </>
               ) : !editingMessage && !voiceSurfaceActive && canConfigureModelRoute
                 && collaborationRouting.enabled
                 && !useCompactRouteMenu
@@ -463,7 +475,7 @@ export function MainComposer({
               </Button>
             ) : <VoiceComposerControls
               voice={voice}
-              hasSendableDraft={hasSendableDraft}
+              hasSendableDraft={hasSendableDraft && !routeAccountUnavailable}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
             />}

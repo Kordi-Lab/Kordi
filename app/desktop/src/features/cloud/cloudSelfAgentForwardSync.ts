@@ -6,6 +6,8 @@ import type {
   CanonicalSessionState,
 } from '@/kordi-app/types';
 import type { ChatSyncConversation } from './authClient';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudSelfAgentOperationClientMessageId,cloudSelfAgentProcessingLedgerKey } from './cloudSelfAgentIdentity';
 import { cloudAgentTargetsBySessionId,cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 import { type CloudSelfAgentSyncLedger,cleanText } from "./cloudSelfAgentSyncLedger";
@@ -29,7 +31,17 @@ export type CloudSelfAgentSyncOperation = {
   cancelledWhileQueued?: boolean;
   cancelledAtMs?: number;
   targetAgentId?: string; targetAgentName?: string;
+  /** A request that runs on Kordi Cloud: the cloud message carries this route to the runner. */
+  agentRuntimeRoute?: DesktopChatMessageRoute;
 };
+
+/** The Kordi Cloud route a delivered user message carries, if any. */
+function kordiCloudRouteFromContent(content: Record<string, unknown>): DesktopChatMessageRoute | null {
+  const route = objectContent(content.agentRuntimeRoute);
+  const text = (key: string) => (typeof route[key] === 'string' ? cleanText(route[key]) : '');
+  const candidate = { model: text('model'), authProvider: text('authProvider'), authChoice: text('authChoice'), thinking: text('thinking') || null };
+  return routeRunsOnKordiCloud(candidate) ? candidate : null;
+}
 
 export function queuedCancellationLedgerKey(localMessageId: string) {
   return `queued-cancelled:${localMessageId}`;
@@ -295,6 +307,7 @@ export function planCloudSelfAgentSync(
         const content = objectContent(message.content);
         const queuedState = contentText(content, 'queueState') || contentText(content, 'deliveryState') || message.status;
         const cancelledWhileQueued = content.queuedMessage === true && queuedState === 'cancelled';
+        const kordiCloudRoute = kordiCloudRouteFromContent(content);
         if (
           options.recoverSessionIds?.has(message.sessionId)
           || !ledger[message.id]
@@ -315,6 +328,7 @@ export function planCloudSelfAgentSync(
               cancelledWhileQueued: true,
               cancelledAtMs: typeof content.queueUpdatedAtMs === 'number' ? content.queueUpdatedAtMs : message.updatedAtMs,
             } : {}),
+            ...(kordiCloudRoute ? { agentRuntimeRoute: kordiCloudRoute } : {}),
             ...target,
           };
           if (queuedState === 'queued' || cancelledWhileQueued || !options.remoteClientMessageIds?.has(

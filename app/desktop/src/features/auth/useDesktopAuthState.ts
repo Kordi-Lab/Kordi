@@ -39,6 +39,7 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
     reason: DesktopAuthUpdateReason,
     providerId: string,
     generation: number,
+    profileId?: string,
   ) => {
     const session = await loadSession().catch(() => null);
     if (!session || generation !== accountGenerationRef.current) return;
@@ -47,6 +48,7 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
       accountId: session.accountId,
       deviceId: session.deviceId,
       providerId,
+      profileId,
       reason,
       revision: providerAuthSyncRevisionRef.current,
     });
@@ -93,6 +95,7 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
     fallbackError: string,
     reason: DesktopAuthUpdateReason,
     providerId: string,
+    profileId?: string,
   ) => {
     const generation = accountGenerationRef.current;
     authSyncGuard.beginMutation();
@@ -102,9 +105,9 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
       if (generation !== accountGenerationRef.current) return;
       setDesktopAuthState(nextState);
       setDesktopAuthError(null);
-      await recordProviderAuthSyncIntent(reason, providerId, generation);
+      await recordProviderAuthSyncIntent(reason, providerId, generation, profileId);
       if (generation !== accountGenerationRef.current) return;
-      await broadcastDesktopAuthUpdated(reason, providerId);
+      await broadcastDesktopAuthUpdated(reason, providerId, profileId);
     } catch (error) {
       setDesktopAuthError(error instanceof Error ? error.message : fallbackError);
     } finally {
@@ -136,6 +139,7 @@ export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuth
       'Unable to remove saved auth',
       'profile-removed',
       providerId,
+      profileId,
     );
   }, [runDesktopAuthMutation]);
 

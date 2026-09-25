@@ -375,7 +375,7 @@ export function CompactComposerModelMenu({
               return (
                 <button
                   key={option.value}
-                  type="button"
+                  type="button" disabled={Boolean(option.disabled)} title={option.disabledReason}
                   onClick={() => chooseProvider(option)}
                   className={cn(
                     'app-composer-popover-item app-compact-model-menu-option app-transient-action-row flex w-full items-center justify-between px-3 py-2 text-left',
@@ -455,7 +455,7 @@ export function CompactComposerModelMenu({
       <div className="mt-2 flex items-center justify-end gap-1">
         <span className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={cancel} className="app-button-quiet app-transient-action-row rounded-[10px] px-3 py-1.5">cancel</button>
-          <button type="button" onClick={save} disabled={!hasStagedProvider} className="app-button-primary app-transient-action-row rounded-[10px] px-3 py-1.5 font-semibold transition">save</button>
+          <button type="button" onClick={save} disabled={!hasStagedProvider || Boolean(stagedProviderOption?.unavailable)} className="app-button-primary app-transient-action-row rounded-[10px] px-3 py-1.5 font-semibold transition">save</button>
         </span>
       </div>
     </div>
@@ -471,8 +471,8 @@ export function CompactComposerModelMenu({
           setIsOpen((current) => !current);
         }}
         className="app-button-quiet relative grid h-9 w-9 shrink-0 place-items-center rounded-[10px] p-0"
-        title="model route"
-        aria-label="model route"
+        title={selectedProviderOption?.unavailable ? `model route · ${selectedProviderOption.label}` : 'model route'}
+        aria-label={selectedProviderOption?.unavailable ? `model route · ${selectedProviderOption.label}` : 'model route'}
         aria-expanded={isOpen}
         data-compact-model-trigger="bare"
       >
@@ -664,7 +664,7 @@ export function ComposerModelControls({
             return (
               <button
                 key={option.value}
-                type="button"
+                type="button" disabled={Boolean(option.disabled)} title={option.disabledReason}
                 onClick={() => onSelectProviderChoice(scope, option)}
                 className={cn(
                   'app-composer-popover-item flex w-full items-center justify-between px-3 py-2.5 text-left text-[13px]',

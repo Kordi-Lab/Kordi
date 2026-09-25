@@ -9,7 +9,8 @@ import {
   parseCloudAgentCancel,
   parseCloudAgentResponse,
 } from './cloudAgentMessages';
-import { cloudDirectMessageAction } from './cloudDirectMessages';
+import { cloudDirectMessageAction, cloudDirectMessageAgentRuntimeRoute } from './cloudDirectMessages';
+import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
@@ -98,6 +99,8 @@ export function pendingCloudSelfAgentExecutionRequests({
   return selfMessages.filter((message) => {
     if (!cloudMessageIsSelfAgentRequest(message, account)) return false;
     if (message.clientMessageId && ignoredClientMessageIds.has(message.clientMessageId)) return false;
+    // A hosted-only account's request runs on Kordi Cloud, never on this Mac.
+    if (routeRunsOnKordiCloud(cloudDirectMessageAgentRuntimeRoute(message.body))) return false;
     if (!cloudMessageActionAllowsAgentTrigger(
       cloudDirectMessageAction(message.body),
     )) return false;

@@ -6,7 +6,6 @@ import type { AuthDisplayProvider } from './model';
 import {
   AuthActionButton,
   DetailRow,
-  SectionDivider,
   authButtonNeutralClass,
   nonDragStyle,
 } from './AuthDetailPrimitives';
@@ -180,9 +179,7 @@ export function LocalProviderSetup({
       <DetailRow
         title={localServer.title}
         detail={localServer.detail}
-        multiline
       />
-      <SectionDivider />
       <DetailRow
         title={localServer.installTitle}
         detail={
@@ -222,9 +219,7 @@ export function LocalProviderSetup({
             </AuthActionButton>
           </>
         }
-        multiline
       />
-      <SectionDivider />
       <DetailRow
         title="Server port"
         detail={
@@ -254,9 +249,7 @@ export function LocalProviderSetup({
             </AuthActionButton>
           </div>
         }
-        multiline
       />
-      <SectionDivider />
       <DetailRow
         title="Optional API key"
         detail={localServer.optionalKey}
@@ -271,7 +264,6 @@ export function LocalProviderSetup({
             </AuthActionButton>
           ) : null
         }
-        multiline
       />
     </>
   );

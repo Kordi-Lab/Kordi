@@ -1,6 +1,7 @@
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { CanonicalSessionState, DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import {
   appendCanonicalMessage,
@@ -38,11 +39,28 @@ export type LocalAgentTurnContext = {
   ) => void;
 };
 
+export { routeRunsOnKordiCloud };
+
+/** Frees the session for the next send; a Kordi Cloud turn has no local turn to wait for. */
+export function releaseLocalChatSend(inFlightRef: MutableRefObject<{ sessionId: string | null } | null>, sessionId: string) {
+  if (inFlightRef.current?.sessionId === sessionId) inFlightRef.current = null;
+}
+
+/**
+ * Starts the agent turn for a stored user message. A route on a hosted-only
+ * account runs on Kordi Cloud instead: the message is delivered with its route,
+ * the cloud request carries it to the runner, and nothing runs on this Mac,
+ * so the result is null.
+ */
 export async function startLocalAgentTurn(
   context: LocalAgentTurnContext,
   prepared: PreparedCanonicalUserMessage | null,
   attachments: readonly AttachmentItem[],
-) {
+): Promise<DesktopChatTurnSnapshot | null> {
+  if (routeRunsOnKordiCloud(context.route)) {
+    await markLocalAgentMessageDelivered(context, prepared);
+    return null;
+  }
   const turn = await startDesktopChatMessage(
     context.targetConversationId,
     voiceMessageAgentText(context.text, attachments),
@@ -58,11 +76,19 @@ export async function startLocalAgentTurn(
     : turn;
 }
 
+/** The delivered message; a Kordi Cloud turn keeps its route so the cloud request can carry it. */
+function deliveredCanonicalMessage(context: LocalAgentTurnContext, prepared: PreparedCanonicalUserMessage | null) {
+  const sent = sentPreparedCanonicalUserMessage(prepared);
+  if (!sent || !context.route || !routeRunsOnKordiCloud(context.route)) return sent;
+  const content = sent.request.content && typeof sent.request.content === 'object' ? sent.request.content : {};
+  return { ...sent, request: { ...sent.request, content: { ...content, agentRuntimeRoute: context.route } } };
+}
+
 export function markLocalAgentMessageDelivered(
   context: LocalAgentTurnContext,
   prepared: PreparedCanonicalUserMessage | null,
 ): Promise<void> {
-  const sentCanonicalMessage = sentPreparedCanonicalUserMessage(prepared);
+  const sentCanonicalMessage = deliveredCanonicalMessage(context, prepared);
   if (!sentCanonicalMessage) return Promise.resolve();
   context.setCanonicalSessionState((current) => markOptimisticCanonicalMessageSent(
     current,
@@ -122,7 +148,7 @@ export function dispatchLocalAgentVoiceTurn(
   transcription: Promise<VoiceTranscriptionOutcome>,
   session: { clearInFlight: () => void; flushQueue: () => void },
 ) {
-  const delivered = sentPreparedCanonicalUserMessage(prepared);
+  const delivered = deliveredCanonicalMessage(context, prepared);
   const deliveryWrite = markLocalAgentMessageDelivered(context, prepared);
   void (async () => {
     let turnStarted = false;
@@ -145,10 +171,13 @@ export function dispatchLocalAgentVoiceTurn(
           });
         }
       }
-      context.watchTurn(
-        await startLocalAgentTurn(context, dispatchedCanonicalMessage, agentVoice.attachments),
-        localAgentNoProviderCompletion(context, dispatchedCanonicalMessage),
-      );
+      const turn = await startLocalAgentTurn(context, dispatchedCanonicalMessage, agentVoice.attachments);
+      if (!turn) {
+        // A Kordi Cloud turn: the session is free as soon as the request is delivered.
+        session.clearInFlight();
+        return;
+      }
+      context.watchTurn(turn, localAgentNoProviderCompletion(context, dispatchedCanonicalMessage));
       // From here the turn watcher releases the session and flushes its queue when the turn ends.
       turnStarted = true;
     } catch (error) {

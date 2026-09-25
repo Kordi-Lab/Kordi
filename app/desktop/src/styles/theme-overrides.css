@@ -340,8 +340,8 @@
 }
 
 .kordi-app.theme-light .app-auth-provider-detail-shell .app-auth-detail-section {
-  background: var(--app-main-raised-bg);
-  border-color: rgba(37, 99, 235, 0.12);
+  background: transparent;
+  border-color: transparent;
 }
 
 .kordi-app.theme-light .app-auth-settings-page .app-auth-provider-count {
