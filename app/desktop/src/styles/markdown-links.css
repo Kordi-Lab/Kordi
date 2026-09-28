@@ -1,0 +1,6 @@
+/* Preserve emphasis when a Markdown link is nested inside bold or italic text. */
+strong .app-markdown-link,
+em .app-markdown-link {
+  font-weight: inherit;
+  font-style: inherit;
+}
