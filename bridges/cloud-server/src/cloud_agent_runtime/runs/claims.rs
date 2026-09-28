@@ -225,7 +225,10 @@ async fn claim_run_with_executor(
     })
 }
 
-async fn runtime_route_for_claim(
+/// The route a claimed run executes with: the owner's own request route, or
+/// for any other requester the route stored on the targeted agent. A
+/// requester's route never selects the owner's saved account.
+pub(crate) async fn runtime_route_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> Result<AgentRuntimeRoute, sqlx_core::Error> {

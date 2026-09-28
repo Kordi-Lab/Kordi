@@ -43,7 +43,6 @@ UpsertCanonicalIdentityRequest,
 } from '@/kordi-app/types';
 import { type DesktopChatContextMessage, type DesktopVisibleTaskRecord } from "./desktopChatContextTypes";
 
-
 export function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';
@@ -155,6 +154,7 @@ export async function writeDesktopWorkspaceTextFile(path: string, contents: stri
 export type DesktopCloudProviderAuthSnapshotPayload = {
   provider: string;
   authChoice: string;
+  label?: string | null;
   payload: Record<string, unknown>;
 };
 

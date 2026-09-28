@@ -342,6 +342,8 @@ private struct RootView: View {
             AccountSheet()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-authentication") {
             AccountAuthenticationPreview()
+        } else if let loginProvider = PreviewLoginSteps.requestedProvider {
+            AccountAuthenticationDetailPreview(providerID: loginProvider)
         } else if ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail") {
             AccountAuthenticationDetailPreview(providerID: "openai")
         } else if (ProcessInfo.processInfo.arguments.contains("--preview-link-showcase")
@@ -534,6 +536,13 @@ struct MainTabView: View {
             guard notificationCoordinator.pendingCalendarEventID != nil else { return }
             selection = .digest
             path = []
+        }
+        .task(id: model.startedAgentChatRevision) {
+            // Start chat from a provider's Accounts screen.
+            guard let chat = model.startedAgentChat else { return }
+            selection = MainTab.destination(for: chat.kind)
+            path = [.conversation(chat)]
+            model.startedAgentChat = nil
         }
         .task(id: model.pendingThreadRoute) {
             guard let route = model.pendingThreadRoute else { return }

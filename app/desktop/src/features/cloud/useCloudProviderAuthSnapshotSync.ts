@@ -13,6 +13,9 @@ import type {
   CloudAccount,
   CloudAuthClient,
 } from './authClient';
+import { createCloudProviderAuthApi } from './providerAuthClient';
+import { createProviderAuthPublishGate, type ProviderAuthPublishGate } from './providerAuthPublishGate';
+import { publishableAccountLabel } from './routeAccountChoice';
 import {
   canonicalCloudProviderId,
   cloudProviderAuthReconciliationTargets,
@@ -80,6 +83,7 @@ type ReconcileCloudProviderAuthSnapshotsOptions = {
   isCurrent: () => boolean;
   loadStoredSession?: typeof loadSession;
   buildSnapshotPayload?: typeof buildDesktopCloudProviderAuthSnapshotPayload;
+  publishGate?: ProviderAuthPublishGate;
 };
 
 export async function reconcileCloudProviderAuthSnapshots({
@@ -91,6 +95,7 @@ export async function reconcileCloudProviderAuthSnapshots({
   isCurrent,
   loadStoredSession = loadSession,
   buildSnapshotPayload = buildDesktopCloudProviderAuthSnapshotPayload,
+  publishGate = createProviderAuthPublishGate(),
 }: ReconcileCloudProviderAuthSnapshotsOptions): Promise<CloudProviderAuthSnapshotSyncOutcome> {
   const session = await loadStoredSession();
   if (
@@ -113,40 +118,60 @@ export async function reconcileCloudProviderAuthSnapshots({
     ?? matchingTargets[0];
   const removalRequested = intent.reason === 'profile-removed'
     || intent.reason === 'provider-logout';
-  const revokeAllForProvider = async (provider: string) => {
-    for (let index = 0; index < 16; index += 1) {
-      if (!isCurrent()) return false;
-      const snapshot = await client.currentProviderAuthSnapshot(
-        session.token,
-        { provider },
-      );
-      if (!snapshot) return true;
-      if (!isCurrent()) return false;
-      await client.revokeProviderAuthSnapshot(
-        session.token,
-        snapshot.snapshotId,
-      );
+  if (removalRequested) {
+    const snapshots = await createCloudProviderAuthApi(client).listProviderAuthSnapshots(session.token);
+    const removable = snapshots.filter((snapshot) => {
+      if (!isCurrent() || canonicalCloudProviderId(snapshot.provider) !== provider) return false;
+      if (intent.reason === 'profile-removed') {
+        return Boolean(intent.profileId && snapshot.authChoice === `profile:${intent.profileId}`);
+      }
+      return snapshot.authChoice.startsWith('profile:')
+        || snapshot.authChoice.startsWith('local-active-');
+    });
+    for (const snapshot of removable) {
+      if (!isCurrent()) return 'stale';
+      await client.revokeProviderAuthSnapshot(session.token, snapshot.snapshotId);
     }
-    return true;
-  };
+  }
 
   if (!target) return removalRequested ? 'complete' : 'not-ready';
   if (!target.configured) {
-    if (!removalRequested) return 'not-ready';
-    for (const providerId of target.queryProviderIds) {
-      if (!await revokeAllForProvider(providerId)) return 'stale';
-    }
-    return isCurrent() ? 'complete' : 'stale';
+    return removalRequested && isCurrent() ? 'complete' : 'not-ready';
   }
 
-  const input = await buildSnapshotPayload({
-    provider: target.provider,
-    authChoice: target.authChoice,
-    model: target.model,
-  });
-  if (!input) return 'not-ready';
-  if (!isCurrent()) return 'stale';
-  await client.publishProviderAuthSnapshot(session.token, input);
+  const choices = new Set([target.authChoice]);
+  for (const localProvider of desktopAuthState?.providers ?? []) {
+    if (canonicalCloudProviderId(localProvider.id) !== provider) continue;
+    for (const option of localProvider.options) {
+      if (option.value.startsWith('profile:')) choices.add(option.value);
+    }
+  }
+  // Only the account the owner just added or reconnected is published as is;
+  // every other account is published only when its fingerprint changed.
+  const explicitChoice = intent.reason === 'oauth-completed' || intent.reason === 'api-key-saved'
+    ? (intent.profileId ? `profile:${intent.profileId}` : target.authChoice)
+    : null;
+  let published = false;
+  for (const authChoice of choices) {
+    const built = await buildSnapshotPayload({
+      provider: target.provider,
+      authChoice,
+      model: target.model,
+    });
+    if (!built) {
+      if (authChoice === target.authChoice) return 'not-ready';
+      continue;
+    }
+    const input = { ...built, label: publishableAccountLabel(built.label ?? null) };
+    const decision = await publishGate.shouldPublish(session.accountId, input, authChoice === explicitChoice);
+    if (!isCurrent()) return 'stale';
+    if (decision.publish) {
+      await client.publishProviderAuthSnapshot(session.token, input);
+      publishGate.record(session.accountId, input, decision.fingerprint);
+    }
+    published = true;
+  }
+  if (!published) return 'not-ready';
   return isCurrent() ? 'complete' : 'stale';
 }
 
@@ -197,6 +222,7 @@ export function useCloudProviderAuthSnapshotSync({
       intent.revision,
       intent.reason,
       provider ?? '',
+      intent.profileId ?? '',
     ].join('|');
     activeSyncKeyRef.current = syncKey;
 

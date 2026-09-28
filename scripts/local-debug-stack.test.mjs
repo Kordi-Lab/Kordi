@@ -4,13 +4,8 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { fileURLToPath } from 'node:url';
 
-const repoRoot = fileURLToPath(new URL('..', import.meta.url));
-
-function read(path) {
-  return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-}
+import { read, repoRoot } from './local-debug-stack-helpers.mjs';
 
 test('self-hosted debug stack is loopback-only and production-independent', () => {
   const compose = read('deploy/dev/compose.yaml');
@@ -23,6 +18,7 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
     'minio-init',
     'cloud-server',
     'cloud-agent-runner',
+    'omp-route-worker',
   ]) {
     assert.match(compose, new RegExp(`^  ${service}:`, 'm'));
   }

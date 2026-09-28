@@ -125,6 +125,7 @@ pub fn router(state: Arc<ServerState>) -> Router {
 }
 
 pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRateLimiter) -> Router {
+    let rate_limiter = Arc::new(rate_limiter);
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -148,15 +149,18 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         .merge(playback_router)
         .merge(crate::avatars::routes(state.clone()))
         .merge(crate::blob_emoji::routes())
-        .merge(crate::auth::routes::routes_with_config(
+        .merge(crate::auth::routes::routes_with_shared_rate_limiter(
             state.clone(),
             crate::auth::password::PasswordHasherConfig::production(),
-            rate_limiter,
+            rate_limiter.clone(),
         ))
         .merge(crate::chat_sync::routes::routes(state.clone()))
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
-        .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
+        .merge(
+            crate::cloud_agent_runtime::routes::routes(state.clone())
+                .layer(axum::Extension(rate_limiter)),
+        )
         .merge(crate::scheduled_tasks::routes::routes(state.clone()))
         .merge(crate::digest::routes(state.clone()))
         .merge(crate::plan_cards::routes(state.clone()))

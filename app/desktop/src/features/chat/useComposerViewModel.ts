@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import {
   buildAuthDisplayProviders,
@@ -7,6 +7,18 @@ import {
   type AuthDisplayProvider,
 } from '@/kordi-app/auth/model';
 import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import { useHostedAccounts } from '@/features/cloud/hostedAccounts';
+import { setLocalAccountChoices, setLocalProviderIds } from '@/features/cloud/hostedAccountRegistry';
+import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
+import { useActiveChatRoute } from './kordiCloudChatRoute';
+import {
+  CUSTOM_ROUTE_PROVIDER,
+  hostedAuthOptions,
+  hostedModelOptions,
+  hostedProviderOptions,
+  hostedRouteAccounts,
+  isCustomRouteModel,
+} from './hostedComposerOptions';
 import type {
   ComposerScope,
   DesktopAuthState,
@@ -137,13 +149,34 @@ export function useComposerViewModel({
   composerDrafts,
 }: UseComposerViewModelArgs) {
   const authDisplayProviders = useMemo(() => buildAuthDisplayProviders(desktopAuthState), [desktopAuthState]);
+  // Hosted accounts run on Kordi Cloud; accounts on this Mac run here.
+  const hostedState = useHostedAccounts(isNativeShell);
+  // Null until this Mac's accounts load (and again while they reload), so no copy of them runs on Kordi Cloud.
+  const localChoiceKey = desktopAuthState
+    ? JSON.stringify(desktopAuthState.providers.flatMap((provider) => provider.options.map((option) => option.value)))
+    : null;
+  const localProviderKey = JSON.stringify((desktopAuthState?.providers ?? []).filter((provider) => provider.configured).map((provider) => provider.id));
+  useEffect(() => {
+    setLocalAccountChoices(localChoiceKey === null ? null : JSON.parse(localChoiceKey) as string[]);
+    setLocalProviderIds(JSON.parse(localProviderKey) as string[]);
+  }, [localChoiceKey, localProviderKey]);
+  const hostedAccounts = useMemo(
+    () => hostedRouteAccounts(hostedState.accounts, hostedState.catalog, localChoiceKey === null ? null : new Set(JSON.parse(localChoiceKey) as string[])),
+    [hostedState, localChoiceKey],
+  );
+  // The session's hosted account, or for a custom model the account that serves it.
+  const activeChatRoute = useActiveChatRoute();
+  const activeHostedChoice = routeRunsOnKordiCloud(activeChatRoute)
+    ? activeChatRoute?.authChoice ?? null
+    : hostedAccounts.find((account) => isCustomRouteModel(composerSelections.chat.model)
+      && `${account.providerId}/${account.model}` === composerSelections.chat.model.trim())?.authChoice ?? null;
 
   const chatModelOptions = useMemo<ComposerModelOption[]>(() => {
     if (!isNativeShell) {
       return [];
     }
 
-    const options = (desktopChatState?.modelOptions ?? []).map((option) => ({
+    const options: ComposerModelOption[] = (desktopChatState?.modelOptions ?? []).map((option) => ({
       value: option.value,
       label: option.label,
       detail: option.detail,
@@ -185,8 +218,12 @@ export function useComposerViewModel({
       });
     }
 
+    for (const option of hostedModelOptions(hostedAccounts)) {
+      if (!options.some((existing) => existing.value === option.value)) options.push(option);
+    }
+
     return options;
-  }, [authDisplayProviders, composerSelections.chat.model, composerSelections.project.model, desktopChatState?.modelOptions, isNativeShell]);
+  }, [authDisplayProviders, composerSelections.chat.model, composerSelections.project.model, desktopChatState?.modelOptions, hostedAccounts, isNativeShell]);
 
   const composerProviderOptions = useMemo<ComposerProviderOption[]>(() => {
     const displayProviders = authDisplayProviders;
@@ -205,6 +242,7 @@ export function useComposerViewModel({
     return displayProviders
       .filter((provider) => provider.configured)
       .flatMap<ComposerProviderOption>((provider) => {
+        if (provider.id === CUSTOM_ROUTE_PROVIDER) return [];
         let oauthIndex = 0;
         let apiIndex = 0;
         const providerOptions: ComposerProviderOption[] = provider.methods.flatMap((method) =>
@@ -246,8 +284,9 @@ export function useComposerViewModel({
         return providerLabels.has(modelProviderId)
           || chatModelOptions.some((model) => model.provider === modelProviderId)
           || (displayProvider?.configured && modelProviderId === 'lm-studio');
-      });
-  }, [authDisplayProviders, chatModelOptions]);
+      })
+      .concat(hostedProviderOptions(hostedAccounts, activeHostedChoice));
+  }, [activeHostedChoice, authDisplayProviders, chatModelOptions, hostedAccounts]);
 
   const preferredModelValueForProvider = useCallback((providerId: string) => (
     preferredModelValueForProviderFromOptions(
@@ -266,6 +305,8 @@ export function useComposerViewModel({
   const resolveComposerProviderId = useCallback((_: ComposerScope, modelLabel: string) => {
     const option = chatModelOptions.find((candidate) => candidate.value === modelLabel);
     if (option?.provider) return option.provider;
+    // A Custom API route names its own endpoint's model; it never resolves to another provider.
+    if (isCustomRouteModel(modelLabel)) return CUSTOM_ROUTE_PROVIDER;
 
     const availableProviders = new Set(chatModelOptions.map((candidate) => candidate.provider).filter(Boolean));
     const explicitProvider = modelLabel.split('/')[0]?.trim();
@@ -298,7 +339,7 @@ export function useComposerViewModel({
         const rightIsCurrent = right.id === providerId;
         return Number(rightIsCurrent) - Number(leftIsCurrent);
       });
-      const options: ComposerAuthOption[] = orderedProviders.flatMap((provider) =>
+      const options: ComposerAuthOption[] = orderedProviders.filter((provider) => provider.id !== CUSTOM_ROUTE_PROVIDER).flatMap((provider) =>
         provider.methods.flatMap((method) =>
           method.options.map((option) => ({
             providerId: option.providerId,
@@ -311,11 +352,12 @@ export function useComposerViewModel({
           })),
         ),
       );
-      const active = (displayProvider?.methods ?? [])
-        .flatMap((method) => method.options)
-        .find((option) => option.active) ?? null;
-      const activeProviderLabel = displayProvider?.label;
-      optionsByScope[scope] = options;
+      const hostedOptions = hostedAuthOptions(hostedAccounts, scope === 'chat' ? activeHostedChoice : null);
+      const hostedActive = hostedOptions.find((option) => option.active) ?? null;
+      const active = hostedActive
+        ?? (displayProvider?.methods ?? []).flatMap((method) => method.options).find((option) => option.active) ?? null;
+      const activeProviderLabel = hostedActive ? hostedActive.providerLabel : displayProvider?.label;
+      optionsByScope[scope] = hostedActive ? [...hostedOptions, ...options] : [...options, ...hostedOptions];
       labelByScope[scope] = active
         ? [activeProviderLabel, active.label].filter(Boolean).join(' · ')
         : (options.length > 0 ? 'Select auth' : 'No auth');
@@ -325,7 +367,7 @@ export function useComposerViewModel({
       optionsByScope,
       labelByScope,
     };
-  }, [composerSelections, desktopAuthState, resolveComposerProviderId]);
+  }, [activeHostedChoice, composerSelections, desktopAuthState, hostedAccounts, resolveComposerProviderId]);
 
   const chatSlashQuery = useMemo(() => {
     const text = composerDrafts.chat.trim();

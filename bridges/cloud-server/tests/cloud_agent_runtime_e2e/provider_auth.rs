@@ -1,7 +1,27 @@
 use super::*;
 
+#[path = "provider_auth/cross_account.rs"]
+mod cross_account;
+#[path = "provider_auth/login_method.rs"]
+mod login_method;
+#[path = "provider_auth/login_recovery.rs"]
+mod login_recovery;
+#[path = "provider_auth/login_session.rs"]
+mod login_session;
+#[path = "provider_auth/omp_worker.rs"]
+mod omp_worker;
+#[path = "provider_auth/publish_limits.rs"]
+mod publish_limits;
+#[path = "provider_auth/readiness.rs"]
+mod readiness;
+#[path = "provider_auth/real_worker.rs"]
+mod real_worker;
+#[path = "provider_auth/route_safety.rs"]
+mod route_safety;
 #[path = "provider_auth/route_sync.rs"]
 mod route_sync;
+#[path = "provider_auth/route_test.rs"]
+mod route_test;
 #[path = "provider_auth/support.rs"]
 mod support;
 

@@ -1,3 +1,5 @@
+import { ACCOUNT_UNAVAILABLE_LABEL, isAccountAuthChoice } from '@/features/cloud/routeAccountChoice';
+
 export type ComposerProviderOption = {
   value: string;
   providerId: string;
@@ -5,6 +7,11 @@ export type ComposerProviderOption = {
   detail?: string | null;
   selectionLabel?: string;
   active?: boolean;
+  /** The route names an account this device no longer has. */
+  unavailable?: boolean;
+  /** Listed but not selectable, for example a hosted account that needs reconnecting. */
+  disabled?: boolean;
+  disabledReason?: string;
 };
 
 export type ComposerModelOption = {
@@ -89,7 +96,20 @@ export function resolveComposerModelSelection({
         && authChoiceFromProviderOption(option) === (selection.authChoice ?? null)
       )) ?? null
     : null;
+  // A route bound to a removed account stays on it, marked unavailable, until
+  // the owner explicitly chooses another account.
+  const missingAccountOption: ComposerProviderOption | null = selection.authProvider
+    && !selectedAuthProviderOption && isAccountAuthChoice(selection.authChoice)
+    ? {
+        value: `${selection.authProvider}::${selection.authChoice?.trim()}`,
+        providerId: selection.authProvider,
+        label: ACCOUNT_UNAVAILABLE_LABEL,
+        selectionLabel: ACCOUNT_UNAVAILABLE_LABEL,
+        unavailable: true,
+      }
+    : null;
   const selectedProviderOption = selectedAuthProviderOption
+    ?? missingAccountOption
     ?? providerOptions.find(
       (option) => (
         normalizeComposerProviderId(option.providerId) === selectedProviderValue
@@ -105,6 +125,15 @@ export function resolveComposerModelSelection({
     fallbackModelLabel,
     selectedModelOption,
     selectedProviderOption,
-    selectedProviderValue,
+    selectedProviderValue: missingAccountOption ? normalizeComposerProviderId(missingAccountOption.providerId) : selectedProviderValue,
+    missingAccount: Boolean(missingAccountOption),
   };
+}
+
+/** True when a session route names an account that is not among the provider options. */
+export function isRouteAccountUnavailable(
+  selection: ComposerModelSelection,
+  providerOptions: ComposerProviderOption[],
+) {
+  return resolveComposerModelSelection({ selection, providerOptions, modelOptions: [] }).missingAccount;
 }

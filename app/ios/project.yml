@@ -41,6 +41,12 @@ targets:
         type: folder
         createIntermediateGroups: false
         buildPhase: resources
+      # Pinned OMP provider catalog. `optional` lets project generation run
+      # without the shared tree; the app build still requires the file.
+      - path: ../../shared/omp-catalog/omp-provider-catalog.json
+        createIntermediateGroups: false
+        buildPhase: resources
+        optional: true
     resources:
       - path: Kordi/Resources/Assets.xcassets
       - path: Kordi/Supporting/Preview Content

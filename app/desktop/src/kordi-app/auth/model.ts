@@ -1,4 +1,15 @@
 import type { DesktopAuthOption, DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
+import type { OmpLoginSpec } from '@/features/cloud/providerLogin';
+
+/** The hosted OMP sign-in that adds an account for one display method. */
+export type AuthHostedLogin = {
+  providerId: string;
+  mode?: 'device';
+  method?: 'default' | 'api-key';
+  login: OmpLoginSpec;
+  /** Short name for buttons, for example "ChatGPT". */
+  displayName: string;
+};
 
 export type AuthDisplayMethod = {
   mode: 'oauth' | 'api-key';
@@ -8,6 +19,14 @@ export type AuthDisplayMethod = {
   helpUrl: string;
   envVar: string;
   options: Array<DesktopAuthOption & { providerId: string }>;
+  /** OMP catalog models for this method's provider. */
+  modelIds?: string[];
+  defaultModelId?: string | null;
+  /** OMP provider name for this method's provider. */
+  providerName?: string;
+  /** Primary hosted sign-in; `hostedLogins` lists every hosted way to add this method's account. */
+  hostedLogin?: AuthHostedLogin | null;
+  hostedLogins?: AuthHostedLogin[];
 };
 
 export type AuthDisplayProvider = {
@@ -20,6 +39,21 @@ export type AuthDisplayProvider = {
   localBaseUrl?: string;
   preferredModel?: string | null;
   methods: AuthDisplayMethod[];
+  catalogOnly?: boolean;
+  modelCount?: number;
+  modelIds?: string[];
+  defaultModelId?: string | null;
+  ompAuth?: OmpProviderAuth;
+};
+
+export type OmpProviderAuth = {
+  kind: 'api-key' | 'oauth-code' | 'device-code' | 'custom' | 'native';
+  name: string;
+  acceptsApiKey: boolean;
+  instructions: string | null;
+  authUrl: string | null;
+  placeholder: string | null;
+  envVars: string[];
 };
 
 function optionsFor(provider: DesktopAuthProvider | undefined, method: 'oauth' | 'api-key') {
@@ -30,7 +64,7 @@ function optionsFor(provider: DesktopAuthProvider | undefined, method: 'oauth' |
 
 export function normalizeSelectedProviderId(id: string | null) {
   if (!id) return null;
-  return id === 'openai-codex' ? 'openai' : id;
+  return id === 'openai-codex' || id === 'openai-codex-device' ? 'openai' : id;
 }
 
 export function localProviderBaseUrl(providerId: string) {
@@ -42,6 +76,9 @@ export function localProviderBaseUrl(providerId: string) {
 export function isLocalProvider(providerId: string) {
   return localProviderBaseUrl(providerId) !== null;
 }
+
+/** Providers whose interactive sign-in runs through a Kordi adapter rather than OMP. */
+export const kordiSignInProviderIds: ReadonlySet<string> = new Set(['openai-codex', 'anthropic', 'github-copilot']);
 
 function localProviderHasSavedModel(providerId: string, preferredModel?: string | null) {
   return isLocalProvider(providerId) && !!preferredModel?.trim();
@@ -113,7 +150,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
 
   const anthropic = byId.get('anthropic');
   if (anthropic) {
-    const methods: AuthDisplayMethod[] = [
+    const anthropicMethods: AuthDisplayMethod[] = [
       {
         mode: 'oauth',
         title: 'Claude subscription',
@@ -133,10 +170,13 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         options: optionsFor(anthropic, 'api-key'),
       },
     ];
+    const supportedMethods = anthropicMethods.filter((method) => method.options.length > 0
+      || (method.mode === 'oauth' ? anthropic.supportsOAuth : anthropic.supportsApiKey));
+    const methods = supportedMethods.length > 0 ? supportedMethods : anthropicMethods.slice(0, 1);
 
     providers.push({
       id: 'anthropic',
-      label: 'Claude',
+      label: anthropic.label,
       configured: anthropic.options.length > 0,
       statusSummary: methods
         .map((method) => `${method.title}: ${method.options.length > 0 ? `${method.options.length} configured` : 'not configured'}`)
@@ -148,23 +188,23 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     });
   }
 
+  // One OpenAI row spans two OMP providers: ChatGPT sign-in is backed by
+  // openai-codex and API keys by openai. Each method keeps its own provider id.
   const openAiOauth = byId.get('openai-codex');
   const openAiApi = byId.get('openai');
   if (openAiOauth || openAiApi) {
     const methods: AuthDisplayMethod[] = [];
-
     if (openAiOauth) {
       methods.push({
         mode: 'oauth',
         title: 'ChatGPT account',
-        detail: 'Use your ChatGPT subscription when you want ChatGPT or Codex-style access without managing an API key.',
+        detail: 'Sign in with ChatGPT. Save multiple accounts and choose one for each agent session.',
         providerId: 'openai-codex',
         helpUrl: openAiOauth.helpUrl,
         envVar: openAiOauth.envVar,
         options: optionsFor(openAiOauth, 'oauth'),
       });
     }
-
     if (openAiApi) {
       methods.push({
         mode: 'api-key',
@@ -176,7 +216,6 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
         options: optionsFor(openAiApi, 'api-key'),
       });
     }
-
     providers.push({
       id: 'openai',
       label: 'OpenAI',
@@ -191,8 +230,17 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
     });
   }
 
-  const singleProviderIds = ['github-copilot', 'lm-studio', 'ollama', 'google', 'groq', 'openrouter', 'xai'] as const;
-  for (const id of singleProviderIds) {
+  // Kordi sign-in adapters other than Anthropic and OpenAI (GitHub Copilot) and the local model servers.
+  const nativeMethodTitles: Record<string, string> = {
+    'github-copilot': 'GitHub sign-in',
+    'lm-studio': 'LM Studio local server',
+    ollama: 'Ollama local server',
+  };
+  const nativeProviderIds = [...byId.values()]
+    .filter((provider) => provider.id !== 'anthropic' && provider.id !== 'openai' && provider.id !== 'openai-codex')
+    .filter((provider) => kordiSignInProviderIds.has(provider.id) || isLocalProvider(provider.id))
+    .map((provider) => provider.id);
+  for (const id of nativeProviderIds) {
     const provider = byId.get(id);
     if (!provider) continue;
 
@@ -210,20 +258,7 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
       methods: [
         {
           mode,
-          title:
-            id === 'github-copilot'
-              ? 'GitHub sign-in'
-              : id === 'lm-studio'
-                ? 'LM Studio local server'
-                : id === 'ollama'
-                  ? 'Ollama local server'
-                  : id === 'google'
-                    ? 'Google API key'
-                    : id === 'groq'
-                      ? 'Groq API key'
-                      : id === 'openrouter'
-                        ? 'OpenRouter API key'
-                        : 'xAI API key',
+          title: nativeMethodTitles[id] ?? `${provider.label} ${mode === 'oauth' ? 'sign-in' : 'API key'}`,
           detail:
             mode === 'oauth'
               ? 'Sign in with GitHub and keep multiple saved accounts if you need them.'
@@ -238,6 +273,32 @@ export function buildAuthDisplayProviders(authState: DesktopAuthState | null): A
           options: optionsFor(provider, mode),
         },
       ],
+    });
+  }
+
+  const handled = new Set(['anthropic', 'openai', 'openai-codex', ...nativeProviderIds]);
+  for (const provider of byId.values()) {
+    if (handled.has(provider.id)) continue;
+    providers.push({
+      id: provider.id,
+      label: provider.label,
+      configured: provider.configured || provider.options.length > 0,
+      statusSummary: provider.statusSummary,
+      loginHint: provider.loginHint,
+      preferredModel: provider.preferredModel,
+      catalogOnly: true,
+      methods: [{
+        mode: 'api-key',
+        title: provider.id === 'custom' ? 'Custom API' : `${provider.label} API key`,
+        detail: provider.id === 'custom'
+          ? 'Use a public HTTPS endpoint with an OpenAI-compatible Chat Completions API.'
+          : 'Save an API key for this OMP provider in your Kordi account.',
+        providerId: provider.id,
+        helpUrl: provider.helpUrl,
+        envVar: provider.envVar,
+        // OMP-only providers keep every saved option; their methods are split by sign-in kind later.
+        options: provider.options.map((option) => ({ ...option, providerId: provider.id })),
+      }],
     });
   }
 

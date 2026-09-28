@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/components/settingsLayout';
 import {
   setNotificationPreference,
   useNotificationPreferences,
@@ -49,39 +49,6 @@ const preferenceRows: Array<{
     nativeOnly: true,
   },
 ];
-
-function PreferenceToggle({
-  enabled,
-  label,
-  onChange,
-}: {
-  enabled: boolean;
-  label: string;
-  onChange: (enabled: boolean) => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      aria-label={label}
-      onClick={() => onChange(!enabled)}
-      className={cn(
-        'relative h-6 w-10 shrink-0 rounded-full border outline-none transition-colors motion-reduce:transition-none focus-visible:ring-2 focus-visible:ring-[var(--app-quiet-control-focus-ring)] focus-visible:ring-offset-2',
-        enabled
-          ? 'border-[color:var(--app-sidebar-accent)] bg-[color:var(--app-sidebar-accent)]'
-          : 'border-[color:var(--app-control-border)] bg-[color:var(--app-control-bg)] hover:bg-[color:var(--app-control-hover)]',
-      )}
-    >
-      <span
-        className={cn(
-          'absolute left-0.5 top-0.5 h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-transform motion-reduce:transition-none',
-          enabled ? 'translate-x-[18px]' : 'translate-x-0',
-        )}
-      />
-    </button>
-  );
-}
 
 export function NotificationSettingsPanel({ isNativeShell }: { isNativeShell: boolean }) {
   const preferences = useNotificationPreferences();
@@ -155,56 +122,51 @@ export function NotificationSettingsPanel({ isNativeShell }: { isNativeShell: bo
           ? `Try again to check the ${isNativeShell ? 'macOS' : 'browser'} notification setting.`
           : 'Allow banners and sounds so Kordi can alert you when new messages arrive in the background.';
 
+  const permissionAction = permission !== 'granted' && permission !== 'checking' ? (
+    <Button
+      type="button"
+      variant={permission === 'default' ? 'default' : 'quiet'}
+      className="h-8 shrink-0 rounded-lg px-3.5 text-[12px]"
+      onClick={permission === 'denied' && isNativeShell ? openSystemSettings : enableNotifications}
+      disabled={isUpdatingPermission}
+    >
+      {isUpdatingPermission
+        ? 'Requesting…'
+        : permission === 'denied' && isNativeShell
+          ? 'Open System Settings'
+          : permission === 'unavailable'
+            ? 'Check again'
+            : 'Allow notifications'}
+    </Button>
+  ) : null;
+
   return (
-    <div className="max-w-[620px]">
-      <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-y border-[color:var(--app-divider)] px-2 py-3.5">
-        <div className="min-w-0">
-          <div className="text-[13px] font-medium text-white">{permissionTitle}</div>
-          <div aria-live="polite" className="mt-1 text-[12px] leading-5 text-slate-400">{permissionDescription}</div>
-        </div>
-        {permission !== 'granted' && permission !== 'checking' ? (
-          <Button
-            type="button"
-            variant={permission === 'default' ? 'default' : 'quiet'}
-            className="h-9 shrink-0 rounded-full px-4 text-[12px]"
-            onClick={permission === 'denied' && isNativeShell ? openSystemSettings : enableNotifications}
-            disabled={isUpdatingPermission}
-          >
-            {isUpdatingPermission
-              ? 'Requesting…'
-              : permission === 'denied' && isNativeShell
-                ? 'Open System Settings'
-                : permission === 'unavailable'
-                  ? 'Check again'
-                  : 'Allow notifications'}
-          </Button>
-        ) : null}
-      </div>
-      <section className="mt-6" aria-labelledby="notification-preferences-heading">
-        <h2 id="notification-preferences-heading" className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-          Preferences
-        </h2>
-        <div className="mt-2 divide-y divide-[color:var(--app-divider)] border-y border-[color:var(--app-divider)]">
-          {preferenceRows
-            .filter((row) => !row.nativeOnly || isNativeShell)
-            .map((row) => (
-              <div
-                key={row.key}
-                className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-2 py-3.5"
-              >
-                <div className="min-w-0">
-                  <div className="text-[13px] font-medium text-white">{row.label}</div>
-                  <div className="mt-1 text-[12px] leading-5 text-slate-400">{row.description}</div>
-                </div>
-                <PreferenceToggle
+    <div className="app-notification-settings">
+      <SettingsSection title="Notification access">
+        <SettingsRow
+          title={permissionTitle}
+          description={<span aria-live="polite">{permissionDescription}</span>}
+          control={permissionAction}
+        />
+      </SettingsSection>
+      <SettingsSection title="Preferences">
+        {preferenceRows
+          .filter((row) => !row.nativeOnly || isNativeShell)
+          .map((row) => (
+            <SettingsRow
+              key={row.key}
+              title={row.label}
+              description={row.description}
+              control={(
+                <SettingsSwitch
                   enabled={preferences[row.key]}
                   label={row.label}
                   onChange={(enabled) => setNotificationPreference(row.key, enabled)}
                 />
-              </div>
-            ))}
-        </div>
-      </section>
+              )}
+            />
+          ))}
+      </SettingsSection>
     </div>
   );
 }

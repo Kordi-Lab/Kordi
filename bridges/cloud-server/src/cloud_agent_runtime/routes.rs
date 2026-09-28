@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use uuid::Uuid;
 
@@ -13,10 +13,10 @@ use crate::cloud_agent_runtime::artifacts::{
 };
 use crate::cloud_agent_runtime::claim_route::claim_cloud_agent_run;
 use crate::cloud_agent_runtime::provider_auth::{
-    current_snapshot, provider_auth_for_run, publish_snapshot, revoke_snapshot,
+    current_snapshot, list_snapshots, provider_auth_for_run, publish_snapshot, revoke_snapshot,
     CurrentProviderAuthSnapshotQuery, CurrentProviderAuthSnapshotResponse, EnvProviderAuthCipher,
-    ProviderAuthCipher, ProviderAuthForRunResult, PublishProviderAuthSnapshotRequest,
-    RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
+    ProviderAuthCipher, ProviderAuthForRunResult, ProviderAuthSnapshotsResponse,
+    PublishProviderAuthSnapshotRequest, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
 };
 use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
 use crate::cloud_agent_runtime::runs::{
@@ -132,18 +132,6 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
         )
-        .route(
-            "/v1/cloud/agent-provider-auth/snapshots",
-            post(publish_provider_auth_snapshot),
-        )
-        .route(
-            "/v1/cloud/agent-provider-auth/snapshots/current",
-            get(current_provider_auth_snapshot),
-        )
-        .route(
-            "/v1/cloud/agent-provider-auth/snapshots/:snapshot_id",
-            delete(revoke_provider_auth_snapshot),
-        )
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             cloud_session_middleware,
@@ -185,9 +173,17 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agent-runs/:run_id/artifacts",
             post(export_runner_artifact),
         )
-        .with_state(state);
+        .with_state(state.clone());
 
-    user_routes.merge(runner_routes)
+    let public_catalog = Router::new().route(
+        "/v1/cloud/agent-provider-auth/catalog",
+        get(test_route::provider_catalog),
+    );
+
+    user_routes
+        .merge(provider_auth_routes::routes(state))
+        .merge(runner_routes)
+        .merge(public_catalog)
 }
 
 fn runner_authorized(headers: &HeaderMap) -> bool {
@@ -446,9 +442,8 @@ async fn lookup_cloud_agent_run_for_request(
 }
 
 mod auth_snapshots;
-use auth_snapshots::{
-    current_provider_auth_snapshot, publish_provider_auth_snapshot, revoke_provider_auth_snapshot,
-};
+mod provider_auth_routes;
+mod test_route;
 
 #[derive(serde::Deserialize)]
 struct RunnerPlanCardRequest {

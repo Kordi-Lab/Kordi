@@ -332,6 +332,8 @@ pub fn run() {
             auth::desktop_auth_attempt_state,
             auth::desktop_submit_auth_manual_input,
             auth::desktop_cancel_auth_attempt,
+            auth::login_callback_capture::start_login_callback_capture,
+            auth::login_callback_capture::stop_login_callback_capture,
             auth::lm_studio::desktop_lm_studio_catalog_models,
             auth::lm_studio::desktop_lm_studio_environment,
             auth::lm_studio::desktop_lm_studio_installed_models,

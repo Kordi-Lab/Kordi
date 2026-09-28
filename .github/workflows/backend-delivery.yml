@@ -95,7 +95,22 @@ jobs:
           outputs: |
             type=docker,dest=${{ runner.temp }}/backend-bundle/cloud-agent-runner.docker.tar
             type=oci,dest=${{ runner.temp }}/backend-bundle/cloud-agent-runner.oci.tar
-      - name: Bind both images to the tested revision and build run
+      - name: Build omp-route-worker once with both archive formats
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: source
+          file: source/experiments/omp-provider-routing/Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          labels: org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
+          tags: docker.io/library/kordi-omp-route-worker:${{ steps.revision.outputs.sha }}
+          cache-from: type=gha,scope=backend-omp-route-worker,version=2
+          cache-to: type=gha,scope=backend-omp-route-worker,version=2,mode=max,ignore-error=true
+          outputs: |
+            type=docker,dest=${{ runner.temp }}/backend-bundle/omp-route-worker.docker.tar
+            type=oci,dest=${{ runner.temp }}/backend-bundle/omp-route-worker.oci.tar
+      - name: Bind every image to the tested revision and build run
         env:
           TARGET_SHA: ${{ steps.revision.outputs.sha }}
         run: python3 scripts/backend_artifact.py create --directory "$RUNNER_TEMP/backend-bundle" --sha "$TARGET_SHA" --run-id "$GITHUB_RUN_ID"

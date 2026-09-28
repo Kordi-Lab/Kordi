@@ -37,6 +37,8 @@ use std::time::{Duration, Instant};
 use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 
+mod account_actions;
+
 #[derive(Debug, Clone, Copy)]
 pub struct CloudRateLimitConfig {
     pub per_ip_limit: u32,
@@ -94,6 +96,7 @@ struct EmailFailureWindow {
 struct MemoryStore {
     per_ip: Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
     per_email: Mutex<HashMap<String, EmailFailureWindow>>,
+    per_account_action: Mutex<HashMap<String, VecDeque<Instant>>>,
 }
 
 #[derive(Clone)]
@@ -131,6 +134,7 @@ impl CloudRateLimiter {
             backend: Backend::Memory(MemoryStore {
                 per_ip: Mutex::new(HashMap::new()),
                 per_email: Mutex::new(HashMap::new()),
+                per_account_action: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -370,6 +374,7 @@ impl CloudRateLimiter {
         if let Backend::Memory(store) = &self.backend {
             store.per_ip.lock().expect("poisoned").clear();
             store.per_email.lock().expect("poisoned").clear();
+            store.per_account_action.lock().expect("poisoned").clear();
         }
     }
 }

@@ -1,9 +1,11 @@
 use super::{
     AUTH_STORE_VERSION, AuthEntry, AuthProfile, AuthStore, ProviderConfigRecord, load_auth,
-    save_api_key, save_auth, save_oauth_state, stored_auth_entry_for_method,
-    stored_auth_methods_for_store, stored_auth_profiles, validate_auth_store,
+    replace_oauth_profile_for_refresh, save_api_key, save_auth, save_oauth_state,
+    stored_auth_entry_for_method, stored_auth_methods_for_store, stored_auth_profiles,
+    stored_oauth_expiry, validate_auth_store,
 };
 use crate::login::ProviderAuthMethod;
+use crate::oauth::OAuthCredentials;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -49,6 +51,52 @@ fn auth_entry_debug_redacts_secret_fields() {
     assert!(!rendered.contains("access-secret"));
     assert!(!rendered.contains("refresh-secret"));
     assert!(!rendered.contains("runtime-secret"));
+}
+
+#[test]
+fn refreshing_one_codex_profile_keeps_the_other_and_the_active_selection() {
+    let profile = |id: &str, access: &str| AuthProfile {
+        id: id.to_string(),
+        method: ProviderAuthMethod::OAuth,
+        created_at_ms: Some(1),
+        updated_at_ms: Some(1),
+        entry: AuthEntry::OAuth {
+            access: access.to_string(),
+            refresh: format!("refresh-{id}"),
+            expires: 1,
+            extra: json!({"accountId": id}),
+        },
+    };
+    let mut store = AuthStore::default();
+    store.profiles.insert(
+        "openai".to_string(),
+        vec![
+            profile("personal", "personal-access"),
+            profile("work", "work-access"),
+        ],
+    );
+    store
+        .active_auth_profiles
+        .insert("openai".to_string(), "personal".to_string());
+    assert!(replace_oauth_profile_for_refresh(
+        &mut store,
+        "openai-codex",
+        "work",
+        &OAuthCredentials {
+            access: "new-work-access".to_string(),
+            refresh: "new-work-refresh".to_string(),
+            expires: 100,
+            extra: json!({"accountId": "work"}),
+        }
+    ));
+    assert_eq!(store.active_auth_profiles["openai"], "personal");
+    let profiles = &store.profiles["openai"];
+    assert!(
+        matches!(&profiles[0].entry, AuthEntry::OAuth { access, .. } if access == "personal-access")
+    );
+    assert!(
+        matches!(&profiles[1].entry, AuthEntry::OAuth { access, refresh, .. } if access == "new-work-access" && refresh == "new-work-refresh")
+    );
 }
 
 #[test]
@@ -275,4 +323,46 @@ fn legacy_flat_auth_store_migrates_to_profiles() {
     assert_eq!(profiles.len(), 1);
     assert_eq!(profiles[0].account_label.as_deref(), Some("acct_test123"));
     assert_eq!(profiles[0].configured_at_ms, None);
+}
+
+#[test]
+fn only_the_access_token_expiry_of_an_oauth_profile_is_exposed() {
+    let _lock = env_lock().lock().unwrap();
+    let dir = tempfile::tempdir().expect("auth tempdir");
+    let _auth_path = EnvVarGuard::set_path("KORDI_AUTH_PATH", &dir.path().join("auth.json"));
+    let mut store = AuthStore::default();
+    store.profiles.insert(
+        "openai".to_string(),
+        vec![
+            AuthProfile {
+                id: "work".to_string(),
+                method: ProviderAuthMethod::OAuth,
+                created_at_ms: Some(1),
+                updated_at_ms: Some(1),
+                entry: AuthEntry::OAuth {
+                    access: "work-access".to_string(),
+                    refresh: String::new(),
+                    expires: 4_102_444_800_000,
+                    extra: json!({}),
+                },
+            },
+            AuthProfile {
+                id: "key".to_string(),
+                method: ProviderAuthMethod::ApiKey,
+                created_at_ms: Some(1),
+                updated_at_ms: Some(1),
+                entry: AuthEntry::ApiKey {
+                    key: "api-key".to_string(),
+                },
+            },
+        ],
+    );
+    save_auth(&store).expect("save auth store");
+
+    assert_eq!(
+        stored_oauth_expiry("openai-codex", "work"),
+        Some(4_102_444_800_000)
+    );
+    assert_eq!(stored_oauth_expiry("openai-codex", "key"), None);
+    assert_eq!(stored_oauth_expiry("openai-codex", "missing"), None);
 }

@@ -4,6 +4,7 @@ mod desktop;
 pub mod policy;
 pub mod provider_auth;
 mod provider_auth_intent;
+mod provider_login;
 pub mod routes;
 pub mod runs;
 pub mod sandboxes;

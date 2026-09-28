@@ -21,36 +21,16 @@ test('provider gate is a focused single-column launch surface', () => {
   assert.doesNotMatch(authPage, /You can find this setting anytime in Settings → Authentication\./);
 });
 
-test('gate provider picker uses cards without forced uppercase microcopy', () => {
+test('gate provider picker shows a searchable inline index without an enclosing card', () => {
   const providerList = readAuthSource('AuthProviderList.tsx');
 
   assert.match(providerList, /variant\?: 'settings' \| 'gate'/);
-  assert.match(providerList, /grid-cols-\[repeat\(2,minmax\(0,1fr\)\)\]/);
-  assert.match(providerList, /app-auth-provider-gate-card/);
-  assert.doesNotMatch(providerList, /app-auth-provider-gate-card-selected/);
-  assert.doesNotMatch(providerList, /col-span-2/);
-  assert.match(providerList, /ChatGPT subscription or API key/);
-  assert.match(providerList, /API key/);
-  assert.match(providerList, /Copilot subscription/);
-  assert.match(providerList, /Model router API/);
-  assert.doesNotMatch(providerList, /Fast inference/);
-  assert.doesNotMatch(providerList, /Local inference/);
-  assert.doesNotMatch(providerList, /\buppercase\b/);
-  assert.doesNotMatch(providerList, /saved of/);
-  assert.doesNotMatch(providerList, /provider\.loginHint/);
-
-  const shellPages = readDesktopShellCss();
-  const gateHoverRule = shellPages.match(/\.app-auth-provider-gate-card:hover \{[\s\S]*?\n}\n/)?.[0] ?? '';
-  const gateFocusRule = shellPages.match(/\.app-auth-provider-gate-card:focus-visible \{[\s\S]*?\n}\n/)?.[0] ?? '';
-  assert.match(gateHoverRule, /background:/);
-  assert.match(gateHoverRule, /box-shadow:/);
-  assert.doesNotMatch(gateHoverRule, /app-control-active/, 'unselected gate hover must not look like active/selected state');
-  assert.doesNotMatch(gateHoverRule, /0 0 0 1px/, 'unselected gate hover should not draw an active outer selection ring');
-  assert.doesNotMatch(gateHoverRule, /translateY|scale\(|animation:/);
-  assert.match(gateFocusRule, /outline:/);
-  assert.doesNotMatch(gateFocusRule, /background:/);
-  assert.doesNotMatch(gateFocusRule, /app-control-active/);
-  assert.doesNotMatch(shellPages, /app-auth-provider-selected/);
+  assert.match(providerList, /aria-label="Search providers"/);
+  assert.match(providerList, /aria-label="Provider index"/);
+  assert.match(providerList, /aria-label={`Jump to \$\{letter\} providers`}/);
+  assert.match(providerList, /app-auth-provider-index-row/);
+  assert.doesNotMatch(providerList, /rounded-2xl border border-white\/\[0\.08\]/);
+  assert.doesNotMatch(providerList, /app-auth-provider-gate-card/);
 });
 
 test('provider gate uses the flat shared light workspace surface without modal board chrome', () => {
@@ -63,7 +43,7 @@ test('provider gate uses the flat shared light workspace surface without modal b
   );
 
   assert.match(authPage, /app-auth-gate-shell/);
-  assert.match(authPage, /app-auth-gate-shell flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-none border-0 bg-transparent px-8 py-8 shadow-none/);
+  assert.match(authPage, /app-auth-gate-shell flex h-full min-h-0 w-full justify-center overflow-y-auto rounded-none border-0 bg-transparent/);
   assert.doesNotMatch(authPage, /app-modal-panel flex h-full min-h-0 w-full items-center justify-center overflow-hidden rounded-\[30px\] border border-white\/10/);
   assert.match(authGateOverlay, /app-auth-gate-overlay absolute inset-0 z-50 overflow-hidden/);
   assert.doesNotMatch(authGateOverlay, /\bapp-overlay\b|\bp-3\b|\bsm:p-4\b|backdrop-blur/);
@@ -93,7 +73,8 @@ test('every onboarding provider detail stays in the shared light workspace surfa
   assert.doesNotMatch(detailRoute, /bg-\[linear-gradient/);
   assert.doesNotMatch(detailRoute, /app-shadow-float/);
   assert.match(shellPages, /\.app-auth-provider-detail-shell \.app-auth-detail-section/);
-  assert.match(detailLightRule, /background:\s*var\(--app-main-raised-bg\);/);
+  // Sections sit directly on the gate surface: no card fill inside the page.
+  assert.match(detailLightRule, /background:\s*transparent;/);
   assert.doesNotMatch(detailLightRule, /linear-gradient|rgb\(248 251 255\)|rgb\(241 247 255\)/);
 });
 
@@ -151,7 +132,7 @@ test('provider detail view keeps a persistent back control without nesting setti
   assert.doesNotMatch(settingsDetailColumnBlock, /maxWidth/);
   assert.doesNotMatch(settingsDetailContentBlock, /ScrollArea/);
   assert.match(authPage, /showDetailPage[\s\S]*detailHeader[\s\S]*ScrollArea className="min-h-0 flex-1/);
-  assert.match(providerDetail, /className="grid min-h-0 w-full gap-3\.5 pb-6"/);
+  assert.match(providerDetail, /className="grid min-h-0 w-full pb-6 pt-6"/);
   assert.doesNotMatch(providerDetail, /overflow-y-auto/);
 });
 
@@ -174,7 +155,7 @@ test('auth pages avoid all-caps styling and use sentence-case detail chrome', ()
   assert.doesNotMatch(authPage, /\{provider\.label\} auth/);
   assert.doesNotMatch(providerDetail, /What this provider is for/);
   assert.doesNotMatch(providerDetail, /Storage and cleanup/);
-  assert.doesNotMatch(providerDetail, /<DetailSection title="Connect">/);
+  assert.doesNotMatch(providerDetail, /<SettingsSection\b[^>]*\btitle="Connect"/);
 });
 
 test('auth provider list does not highlight a provider before explicit selection', () => {
@@ -182,7 +163,7 @@ test('auth provider list does not highlight a provider before explicit selection
   const authPage = readAuthSource('AuthPage.tsx');
 
   assert.doesNotMatch(authState, /setActiveLoginProviderId\(desktopAuthState\.providers\[0\]\.id\)/);
-  assert.match(authPage, /selectedProviderId=\{selectedProviderId \? provider\?\.id \?\? null : null\}/);
+  assert.doesNotMatch(authPage, /selectedProviderId=\{selectedProviderId \? provider\?\.id \?\? null : null\}/);
 });
 
 test('login from the first-run gate opens the auth page without routing into settings', () => {
@@ -201,9 +182,17 @@ test('inline provider configuration keeps the first-run gate behind it', () => {
 
 test('provider detail does not repeat connect actions in an upper hero', () => {
   const providerDetail = readAuthSource('AuthProviderDetail.tsx');
+  const customApi = readAuthSource('AuthCustomApiSetup.tsx');
 
   assert.doesNotMatch(providerDetail, /Connect access/);
-  assert.doesNotMatch(providerDetail, /Connect \$\{provider\.label\}/);
   assert.doesNotMatch(providerDetail, /Setup needed/);
   assert.doesNotMatch(providerDetail, /primaryConnect\.method/);
+  // The provider page holds one "Add account" row after the saved accounts; the
+  // method picker and the login page are separate layers.
+  assert.match(providerDetail, /<AuthSavedAccounts[\s\S]*title="Add account"[\s\S]*chevron/);
+  assert.match(providerDetail, /<AuthLoginPage/);
+  assert.doesNotMatch(providerDetail.slice(providerDetail.indexOf('<AuthSavedAccounts')), /<input/);
+  // Section titles and buttons name the task, never the provider.
+  assert.match(customApi, /title=\{account \? 'Edit account' : 'Add account'\}/);
+  assert.doesNotMatch(providerDetail, /title=\{`[^`]*provider\.label/);
 });

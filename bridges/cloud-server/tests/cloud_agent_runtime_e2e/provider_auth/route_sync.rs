@@ -47,7 +47,7 @@ async fn concurrent_provider_auth_publishes_leave_exactly_one_active_snapshot() 
 }
 
 #[tokio::test]
-async fn publishing_a_provider_alias_replaces_the_active_family_snapshot() {
+async fn publishing_a_provider_alias_preserves_other_auth_choices() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var(
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
@@ -77,7 +77,7 @@ async fn publishing_a_provider_alias_replaces_the_active_family_snapshot() {
     }
     let active: Vec<(String, String)> = sqlx_core::query_as::query_as(
         "SELECT provider, auth_choice FROM cloud_agent_provider_auth_snapshots \
-         WHERE account_id = $1 AND provider = ANY($2) AND revoked_at IS NULL",
+         WHERE account_id = $1 AND provider = ANY($2) AND revoked_at IS NULL ORDER BY provider",
     )
     .bind(&owner.account_id)
     .bind(vec!["openai", "openai-codex", "codex"])
@@ -86,7 +86,10 @@ async fn publishing_a_provider_alias_replaces_the_active_family_snapshot() {
     .unwrap();
     assert_eq!(
         active,
-        vec![("openai-codex".to_string(), "local-active-oauth".to_string())]
+        vec![
+            ("openai".to_string(), "default".to_string()),
+            ("openai-codex".to_string(), "local-active-oauth".to_string()),
+        ]
     );
     let current = router
         .clone()
@@ -99,6 +102,152 @@ async fn publishing_a_provider_alias_replaces_the_active_family_snapshot() {
     let current = read_json(current).await;
     assert_eq!(current["snapshot"]["provider"], "openai-codex");
     assert_eq!(current["snapshot"]["authChoice"], "local-active-oauth");
+    let listed = router
+        .clone()
+        .oneshot(get_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots?provider=openai",
+            &owner.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        read_json(listed).await["snapshots"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn two_codex_accounts_are_selected_by_auth_choice_for_runner() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "two-codex-owner", "Owner").await;
+    let requester = owner.clone();
+    let mut saved = Vec::new();
+    for (choice, label, token) in [
+        ("ios-codex:personal", "Personal", "personal-token"),
+        ("ios-codex:work", "Work", "work-token"),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(post_json_with_token(
+                "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
+                &owner.token,
+                json!({
+                    "provider": "openai-codex",
+                    "authChoice": choice,
+                    "label": label,
+                    "payload": {
+                        "accessToken": token,
+                        "refreshToken": format!("synthetic-refresh-{choice}"),
+                        "expiresAtMs": "4102444800000",
+                        "apiMode": "openai-codex-oauth"
+                    }
+                }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let snapshot_id = read_json(response).await["snapshotId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        saved.push((choice, snapshot_id, token));
+    }
+    let _ = router
+        .clone()
+        .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
+        .await
+        .unwrap();
+    let mut missing_body = claim_body(&owner, &requester, "msg_two_codex_missing");
+    missing_body["runtimeRoute"] = json!({
+        "defaultModel": "openai/gpt-5.6-sol",
+        "defaultAuthProvider": "openai",
+        "defaultAuthChoice": "ios-codex:missing"
+    });
+    let missing_claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            missing_body,
+        ))
+        .await
+        .unwrap();
+    let missing_run_id = read_json(missing_claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let missing_lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": "runner-two-codex-missing", "canaryRunId": missing_run_id }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        read_json(missing_lease).await["run"]["providerAuthAvailable"],
+        false
+    );
+    for (index, (choice, snapshot_id, token)) in saved.iter().enumerate() {
+        let mut body = claim_body(&owner, &requester, &format!("msg_two_codex_{index}"));
+        body["runtimeRoute"] = json!({
+            "defaultModel": "openai/gpt-5.6-sol",
+            "defaultAuthProvider": "openai",
+            "defaultAuthChoice": choice
+        });
+        let claim = router
+            .clone()
+            .oneshot(post_json_with_token(
+                "/v1/cloud/agent-runs/claim",
+                &requester.token,
+                body,
+            ))
+            .await
+            .unwrap();
+        let run_id = read_json(claim).await["runId"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        cancel_other_queued_runs(&pool, &run_id).await;
+        let runner_id = format!("runner-two-codex-{index}");
+        let lease = router
+            .clone()
+            .oneshot(post_json_with_runner_token(
+                "/v1/cloud/agent-runs/lease",
+                "runner-test-token",
+                json!({ "runnerId": runner_id, "canaryRunId": run_id }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(lease.status(), StatusCode::OK);
+        let result = router
+            .clone()
+            .oneshot(post_json_with_runner_token(
+                &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
+                "runner-test-token",
+                json!({ "runnerId": runner_id }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(result.status(), StatusCode::OK);
+        let material = read_json(result).await;
+        assert_eq!(material["providerAuth"]["snapshotId"], snapshot_id.as_str());
+        assert_eq!(material["providerAuth"]["payload"]["accessToken"], *token);
+        assert!(material["providerAuth"]["payload"]
+            .get("refreshToken")
+            .is_none());
+    }
 }
 
 #[tokio::test]

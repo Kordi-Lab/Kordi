@@ -48,10 +48,10 @@ pub fn github_copilot_status() -> GithubCopilotStatus {
     store::github_copilot_status()
 }
 
-// The desktop crate consumes this through the library target; the CLI binary
-// compiles the same module without calling it directly.
+// The desktop crate consumes these through the library target; the CLI binary
+// compiles the same module without calling them directly.
 #[allow(unused_imports)]
-pub use store::validate_auth_store;
+pub use store::{stored_oauth_expiry, validate_auth_store};
 
 #[allow(dead_code)]
 pub fn remove_auth_profile(provider: &str, profile_id: &str) -> Result<bool> {

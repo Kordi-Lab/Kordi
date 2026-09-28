@@ -60,10 +60,36 @@ pub(super) async fn ready(
     }
 }
 
+/// Account choices whose credential exists only as a hosted snapshot.
+const HOSTED_ONLY_CHOICE_PREFIXES: [&str; 4] = [
+    "cloud-api-key:",
+    "cloud-login:",
+    "ios-codex:",
+    "ios-api-key:",
+];
+
+/// Whether a route names an account only the cloud runner can hold. Local
+/// choices such as `profile:` or `local-active-*` may run on the owner Mac.
+fn names_hosted_only_account(auth_choice: Option<&str>) -> bool {
+    auth_choice.map(str::trim).is_some_and(|choice| {
+        HOSTED_ONLY_CHOICE_PREFIXES
+            .iter()
+            .any(|prefix| choice.starts_with(prefix))
+    })
+}
+
 pub(super) async fn prefer_ready_desktop(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> super::runs::RunResult<bool> {
+    // The owner Mac cannot hold a hosted-only credential, so waiting for it
+    // would only delay the turn; the cloud runner may take it at once. Only
+    // the route the run will execute counts: a contact's own request route
+    // is replaced by the owner's agent route and cannot skip the owner Mac.
+    let route = super::runs::runtime_route_for_claim(pool, input).await?;
+    if names_hosted_only_account(route.default_auth_choice.as_deref()) {
+        return Ok(false);
+    }
     let agent = execution_agent_id(pool, input).await?;
     let Some(received_at) =
         super::runs::request_received_at(pool, &input.session_id, &input.request_message_id)
@@ -407,5 +433,32 @@ pub(super) async fn read_member_context(
             "Conversation retrieval is unavailable.",
             error,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::names_hosted_only_account;
+
+    #[test]
+    fn only_hosted_only_choices_skip_the_owner_mac_window() {
+        for choice in [
+            "cloud-api-key:work",
+            "cloud-login:0b0e8f6e-6d59-4f43-9a4e-8f1e0c5f9a11",
+            "ios-codex:personal",
+            " ios-api-key:anthropic",
+        ] {
+            assert!(names_hosted_only_account(Some(choice)), "{choice}");
+        }
+        for choice in [
+            "profile:work",
+            "local-active-oauth",
+            "default",
+            "cloud-api-key",
+            "",
+        ] {
+            assert!(!names_hosted_only_account(Some(choice)), "{choice}");
+        }
+        assert!(!names_hosted_only_account(None));
     }
 }

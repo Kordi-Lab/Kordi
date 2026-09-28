@@ -186,7 +186,7 @@ and production environment reviewers aligned when administrator membership chang
 ## Deployments
 
 - After successful post-merge CI on `main`, `backend-delivery.yml` verifies exact-SHA
-  readiness, builds the server and runner once, and automatically updates shared
+  readiness, builds the server, runner, and OMP route worker once, and automatically updates shared
   development with the immutable bundle. It compares candidates with the deployed
   revision and prevents an older build from replacing a newer deployment.
 - Contributors can dispatch a tested branch to an allocated development stack

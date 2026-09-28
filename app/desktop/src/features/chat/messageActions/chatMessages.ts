@@ -83,7 +83,7 @@ import {
   dispatchLocalAgentVoiceTurn,
   localAgentNoProviderCompletion,
   markLocalAgentMessageDelivered,
-  startLocalAgentTurn,
+  releaseLocalChatSend, routeRunsOnKordiCloud, startLocalAgentTurn,
 } from './localAgentTurnDispatch';
 import { localChatSendDelayReason,localChatTargetHasRunningTurn,queuedDesktopChatMessageFromDraft } from "./localChatQueue";
 import { mentionsLocalAgent } from './mentions';
@@ -642,8 +642,8 @@ export function useChatMessageActions({
         return;
       }
       const linkedTurn = await startLocalAgentTurn(turnContext, preparedCanonicalMessage, attachments);
-      void markLocalAgentMessageDelivered(turnContext, preparedCanonicalMessage);
-      watchLocalTurnAndFlushQueue(linkedTurn, localAgentNoProviderCompletion(turnContext, preparedCanonicalMessage));
+      if (linkedTurn) void markLocalAgentMessageDelivered(turnContext, preparedCanonicalMessage);
+      if (linkedTurn) watchLocalTurnAndFlushQueue(linkedTurn, localAgentNoProviderCompletion(turnContext, preparedCanonicalMessage)); else releaseLocalChatSend(localChatSendInFlightRef, targetConversationId);
       if (setSendingState) setIsDesktopChatSending(false);
     } catch (error) {
       setPendingUserChatMessage(null);
@@ -1417,7 +1417,7 @@ export function useChatMessageActions({
       activeConversationUsesCollaborationRouting,
       activeConvCanonicalSessionId: activeConvCanonicalSessionId?.trim() || null,
       canonicalSessionState,
-      hasAnyDesktopAuth,
+      hasAnyDesktopAuth: hasAnyDesktopAuth || routeRunsOnKordiCloud(resolveChatRuntimeRoute(activeConvCanonicalSessionId ?? activeConvId)),
     })) {
       localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
       if (followMainTranscript) shouldAutoFollowChatRef.current = true;
@@ -1532,7 +1532,7 @@ export function useChatMessageActions({
         return targetSessionId;
       }
 
-      if (isTransientDraftConversation) {
+      if (isTransientDraftConversation && !routeRunsOnKordiCloud(runtimeRouteForSend)) {
         await updateDesktopChatSessionConfig(
           LOCAL_DRAFT_CHAT_CONVERSATION_ID,
           composerSelections.chat.model,
@@ -1591,7 +1591,7 @@ export function useChatMessageActions({
         activeConversationUsesCollaborationRouting,
         activeConvCanonicalSessionId,
         canonicalSessionState,
-        hasAnyDesktopAuth,
+        hasAnyDesktopAuth: hasAnyDesktopAuth || routeRunsOnKordiCloud(runtimeRouteForSend),
       });
       if (noProviderLocalShortcut && preparedCanonicalMessage) {
         const canonicalSessionId = parentSessionIdForMessage;

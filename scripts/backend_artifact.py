@@ -7,7 +7,10 @@ from pathlib import Path
 import re
 import tarfile
 
-SERVICES = ("cloud-server", "cloud-agent-runner")
+# Every image the bundle carries. Development runs all of them from the bundle.
+SERVICES = ("cloud-server", "cloud-agent-runner", "omp-route-worker")
+# Production (k3s) has no OMP route worker deployment yet, so promotion applies only these.
+PRODUCTION_SERVICES = ("cloud-server", "cloud-agent-runner")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 
 

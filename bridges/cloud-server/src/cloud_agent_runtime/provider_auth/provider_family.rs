@@ -1,4 +1,6 @@
-pub(super) fn equivalent_provider_ids(provider: Option<&str>) -> Option<Vec<String>> {
+/// Every provider ID that names the same saved-account family as `provider`,
+/// lowercased, or `None` for a blank provider.
+pub(crate) fn equivalent_provider_ids(provider: Option<&str>) -> Option<Vec<String>> {
     let provider = provider?.trim().to_ascii_lowercase();
     if provider.is_empty() {
         return None;
@@ -14,13 +16,4 @@ pub(super) fn equivalent_provider_ids(provider: Option<&str>) -> Option<Vec<Stri
         }
         _ => vec![provider],
     })
-}
-
-pub(super) fn canonical_provider_id(provider: &str) -> String {
-    let provider = provider.trim().to_ascii_lowercase();
-    match provider.as_str() {
-        "openai" | "openai-codex" | "codex" => "openai".to_string(),
-        "google" | "google-gemini" => "google".to_string(),
-        _ => provider,
-    }
 }

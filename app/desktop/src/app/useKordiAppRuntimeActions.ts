@@ -267,6 +267,7 @@ export function useKordiAppRuntimeActions({
       sendCloudCollaborationMessage,
       sendCloudGroupControl,
       publishCloudAgentRuntimeRouteChange,
+      resolveChatRuntimeRoute,
       cancelCloudAgentRequest,
       watchDesktopLiveTurn,
       shouldAutoFollowChatRef,

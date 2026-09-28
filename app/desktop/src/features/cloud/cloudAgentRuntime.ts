@@ -97,9 +97,6 @@ export function encodeCloudAgentRuntimeRouteChange(
   if (!compactRoute?.model) {
     throw new Error('A session runtime route change requires a model.');
   }
-  if (compactRoute.authChoice?.startsWith('profile:')) {
-    throw new Error('A synchronized session route cannot contain a local auth profile id.');
-  }
   return encodeCloudDirectMessageEnvelope({
     schemaVersion: 1,
     kind: 'message',
@@ -108,8 +105,7 @@ export function encodeCloudAgentRuntimeRouteChange(
     agentRuntimeRoute: {
       model: compactRoute.model,
       authProvider: compactRoute.authProvider,
-      // This is a non-secret profile selector (for example
-      // `local-active-oauth`), never the credential payload itself.
+      // This is a non-secret profile selector, never the credential payload.
       authChoice: compactRoute.authChoice,
       thinking: compactRoute.thinking,
     },
@@ -204,18 +200,11 @@ export function cloudAgentRuntimeRouteAfterModelChange(
       : normalizedProvider && localProvider === normalizedProvider
         ? cleanText(localExecutionRoute?.authChoice)
         : null);
-  const localAuthChoice = cleanText(localExecutionRoute?.authChoice);
-  const authChoice = synchronizedAuthChoice?.startsWith('profile:')
-    && normalizedProvider
-    && localProvider === normalizedProvider
-    && localAuthChoice
-    ? localAuthChoice
-    : synchronizedAuthChoice;
   return compactCloudAgentRuntimeRoute({
     ...current,
     model: nextModel,
     authProvider: provider,
-    authChoice,
+    authChoice: synchronizedAuthChoice,
     thinking: changeRoute.thinking ?? current?.thinking,
   });
 }

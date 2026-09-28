@@ -78,7 +78,7 @@ test('cloud settings modal uses the flat main-app palette instead of nested tran
   assert.doesNotMatch(shellPages, /\.app-cloud-account-profile\s*\{[^}]*border-(?:top|bottom)/s);
   assert.doesNotMatch(modal, /app-cloud-account-theme[^\n]*border-y/);
   assert.doesNotMatch(providerGlyph, /bg-\[linear-gradient|rounded-\[14px\] border|shadow-\[inset/);
-  assert.match(providerGlyph, /opacity-80 transition-\[color,opacity\]/);
+  assert.match(providerGlyph, /src=\{`\/provider-logos\/\$\{logo\}\.svg`\}/);
   assert.doesNotMatch(themeOverrides, /\.kordi-app\.theme-light \.app-auth-provider-glyph\s*\{[^}]*background:/s);
   assert.doesNotMatch(modalPaletteBlock, /rgba\(147, 128, 109|rgba\(138, 118, 98|rgba\(126,111,64/);
 });
@@ -97,14 +97,12 @@ test('cloud authentication tab suppresses nested auth chrome and stays readable'
   assert.match(authPage, /settingsLayoutMode = 'fixed'/);
   assert.doesNotMatch(providerList, /Pick a cloud account/);
   assert.doesNotMatch(providerList, /Pick a provider\. One working connection is enough\./);
-  assert.match(providerList, /app-auth-provider-rows[^\n]*grid[^\n]*gap-1[^\n]*bg-transparent[^\n]*shadow-none/);
-  assert.match(providerList, /app-auth-provider-row-selected/);
-  assert.match(providerList, /aria-current=\{selected \? 'page' : undefined\}/);
-  assert.doesNotMatch(providerList, /app-auth-provider-row[^\n]*bg-white/);
-  assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*border-y/);
-  assert.doesNotMatch(providerList, /app-auth-provider-rows[^\n]*rounded-\[22px\]/);
-  assert.match(providerList, /app-auth-provider-count text-\[11px\]/);
-  assert.doesNotMatch(providerList, /app-auth-provider-count[^\n]*(?:rounded|border|bg-)/);
+  assert.match(providerList, /aria-label="Search providers"/);
+  assert.match(providerList, /app-auth-provider-index-row/);
+  assert.match(providerList, /aria-label="Provider index"/);
+  assert.doesNotMatch(providerList, /rounded-2xl border border-white\/\[0\.08\]/);
+  assert.match(providerList, /rounded-xl border-0 bg-white\/\[0\.045\]/);
+  assert.doesNotMatch(providerList, /divide-y|border-b border-white/);
   assert.doesNotMatch(shellPages, /app-auth-provider-count\s*\{[^}]*(?:background|border)/s);
 });
 

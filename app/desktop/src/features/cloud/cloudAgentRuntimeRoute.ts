@@ -1,5 +1,7 @@
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { canonicalCloudProviderId } from './providerAuthSnapshot';
+import { registeredAccountChoices } from './hostedAccountRegistry';
+import { isHostedOnlyAccountChoice } from './routeAccountChoice';
 
 const AGENT_MODEL_CHANGE_PREFIX = 'Switched model to ';
 const AGENT_RUNTIME_ROUTE_NOTICE_PREFIX = 'Model: ';
@@ -8,6 +10,25 @@ const AGENT_RUNTIME_ROUTE_NOTICE_SEPARATOR = ' · Thinking effort: ';
 export function cleanRuntimeRouteText(value?: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+/**
+ * A route whose account is hosted-only runs on the Kordi Cloud runner, which
+ * receives the credential for the claimed run only; this Mac never holds it.
+ */
+export function routeRunsOnKordiCloud(route?: DesktopChatMessageRoute | null): boolean {
+  return Boolean(cleanRuntimeRouteText(route?.model))
+    && isHostedOnlyAccountChoice(route?.authChoice, registeredAccountChoices());
+}
+
+/** The route a Kordi Cloud run claim carries, in the server's field names. */
+export function cloudRunRuntimeRoute(route: DesktopChatMessageRoute) {
+  return {
+    defaultModel: cleanRuntimeRouteText(route.model),
+    defaultAuthProvider: cleanRuntimeRouteText(route.authProvider),
+    defaultAuthChoice: cleanRuntimeRouteText(route.authChoice),
+    thinking: cleanRuntimeRouteText(route.thinking),
+  };
 }
 
 export function runtimeRouteProvider(

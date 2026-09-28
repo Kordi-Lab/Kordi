@@ -803,8 +803,109 @@ struct CloudProviderAuthSnapshot: Codable, Hashable {
     let snapshotId: String
     let provider: String
     let authChoice: String
+    var label: String? = nil
+    var modelHint: String? = nil
     let createdAt: String
     let revokedAt: String?
+
+    var id: String { snapshotId }
+}
+
+struct CloudProviderRouteTest: Decodable, Hashable {
+    let runner: String
+    let provider: String
+    let accountLabel: String
+    let model: String
+    let response: String
+}
+
+struct OMPProviderCatalog: Decodable {
+    let providers: [OMPProviderCatalogEntry]
+}
+
+/// OMP's authentication policy for one provider. Every field is optional on the
+/// wire so an older worker catalog that sends only `id` and `models` still decodes.
+struct OMPProviderAuthPolicy: Decodable, Hashable {
+    let kind: String
+    let name: String?
+    let acceptsApiKey: Bool
+    let instructions: String?
+    let authUrl: String?
+    let placeholder: String?
+    let envVars: [String]
+
+    init(
+        kind: String,
+        name: String? = nil,
+        acceptsApiKey: Bool,
+        instructions: String? = nil,
+        authUrl: String? = nil,
+        placeholder: String? = nil,
+        envVars: [String] = []
+    ) {
+        self.kind = kind
+        self.name = name
+        self.acceptsApiKey = acceptsApiKey
+        self.instructions = instructions
+        self.authUrl = authUrl
+        self.placeholder = placeholder
+        self.envVars = envVars
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, name, acceptsApiKey, instructions, authUrl, placeholder, envVars
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try values.decodeIfPresent(String.self, forKey: .kind) ?? "api-key"
+        name = try values.decodeIfPresent(String.self, forKey: .name)
+        acceptsApiKey = try values.decodeIfPresent(Bool.self, forKey: .acceptsApiKey) ?? (kind == "api-key")
+        instructions = try values.decodeIfPresent(String.self, forKey: .instructions)
+        authUrl = try values.decodeIfPresent(String.self, forKey: .authUrl)
+        placeholder = try values.decodeIfPresent(String.self, forKey: .placeholder)
+        envVars = try values.decodeIfPresent([String].self, forKey: .envVars) ?? []
+    }
+}
+
+struct OMPProviderCatalogEntry: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String?
+    let defaultModel: String?
+    let auth: OMPProviderAuthPolicy?
+    /// OMP's login flow; see `loginPolicy` for the env-only fallback.
+    let login: OMPProviderLoginPolicy?
+    let models: [String]
+
+    init(
+        id: String,
+        name: String? = nil,
+        defaultModel: String? = nil,
+        auth: OMPProviderAuthPolicy? = nil,
+        login: OMPProviderLoginPolicy? = nil,
+        models: [String]
+    ) {
+        self.id = id
+        self.name = name
+        self.defaultModel = defaultModel
+        self.auth = auth
+        self.login = login
+        self.models = models
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, defaultModel, auth, login, models
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decodeIfPresent(String.self, forKey: .name)
+        defaultModel = try values.decodeIfPresent(String.self, forKey: .defaultModel)
+        auth = try values.decodeIfPresent(OMPProviderAuthPolicy.self, forKey: .auth)
+        login = try values.decodeIfPresent(OMPProviderLoginPolicy.self, forKey: .login)
+        models = try values.decodeIfPresent([String].self, forKey: .models) ?? []
+    }
 }
 
 struct CloudSessionTaskActivity: Codable, Hashable, Identifiable {

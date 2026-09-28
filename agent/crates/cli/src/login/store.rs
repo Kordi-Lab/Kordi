@@ -44,6 +44,19 @@ pub fn stored_auth_profiles(provider: &str) -> Vec<StoredAuthProfileSummary> {
     stored_auth_profiles_for_store(&store, provider)
 }
 
+/// The access-token expiry of one stored OAuth profile, which the desktop
+/// sends with a hosted account so the server can tell when it must be
+/// reconnected. The refresh token never leaves the auth store.
+// Public for the desktop library target; unused by the standalone CLI binary.
+#[allow(dead_code)]
+pub fn stored_oauth_expiry(provider: &str, profile_id: &str) -> Option<i64> {
+    let store = load_auth();
+    match &stored_auth_profile_by_id(&store, provider, profile_id)?.entry {
+        AuthEntry::OAuth { expires, .. } => Some(*expires),
+        _ => None,
+    }
+}
+
 pub fn active_auth_method(provider: &str) -> Option<ProviderAuthMethod> {
     let store = load_auth();
     active_auth_method_for_store(&store, provider)
@@ -151,6 +164,42 @@ pub(super) fn save_oauth_state(
     store.active_env_auth_methods.remove(&normalized);
     store.active_auth_profiles.insert(normalized, profile_id);
     save_auth(&store)
+}
+
+pub(super) fn save_refreshed_oauth_profile(
+    provider: &str,
+    profile_id: &str,
+    creds: &OAuthCredentials,
+) -> Result<()> {
+    let mut store = load_auth();
+    if !replace_oauth_profile_for_refresh(&mut store, provider, profile_id, creds) {
+        anyhow::bail!("selected OAuth profile is unavailable");
+    }
+    save_auth(&store)
+}
+
+fn replace_oauth_profile_for_refresh(
+    store: &mut models::AuthStore,
+    provider: &str,
+    profile_id: &str,
+    creds: &OAuthCredentials,
+) -> bool {
+    let normalized = normalized_auth_provider(provider);
+    let Some(profile) = store.profiles.get_mut(&normalized).and_then(|profiles| {
+        profiles
+            .iter_mut()
+            .find(|profile| profile.id == profile_id && profile.method == ProviderAuthMethod::OAuth)
+    }) else {
+        return false;
+    };
+    profile.entry = AuthEntry::OAuth {
+        access: creds.access.clone(),
+        refresh: creds.refresh.clone(),
+        expires: creds.expires,
+        extra: creds.extra.clone(),
+    };
+    profile.updated_at_ms = Some(profile_updates::now_ms());
+    true
 }
 
 pub fn configured_providers() -> Vec<String> {

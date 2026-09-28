@@ -34,6 +34,10 @@ export default defineConfig(({ command, mode }) => {
               { name: 'calling-media', test: /(?:^|[\\/])node_modules[\\/](?:livekit-client|@livekit|webrtc-adapter|sdp-transform|jose)(?:[\\/]|$)/ },
               { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
               { name: 'emoji-catalog', test: /[\\/]shared[\\/]noto-emoji[\\/]catalog\.json$/ },
+              // The add-account login page loads when a sign-in method is opened.
+              { name: 'auth-login', minSize: 0, test: /[\\/]src[\\/]kordi-app[\\/]auth[\\/](?:AuthLoginPage\.tsx|useProviderLogin\.ts)$/ },
+              // The OMP provider catalog loads on demand for the provider pages.
+              { name: 'omp-catalog', test: /[\\/]shared[\\/]omp-catalog[\\/]omp-provider-catalog\.json$/ },
               // Startup preloading and the picker share this leaf dependency.
               // Keep its manifest with the loader to avoid an entry-chunk cycle.
               { name: 'emoji-thumbnails', minSize: 0, test: /[\\/]src[\\/](?:features[\\/]emoji[\\/]notoEmojiThumbnails\.ts|assets[\\/]noto-thumbnails[\\/]manifest\.json)$/ },

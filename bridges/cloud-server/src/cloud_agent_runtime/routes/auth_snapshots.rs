@@ -1,4 +1,34 @@
 use super::*;
+use crate::cloud_agent_runtime::provider_auth::PublishSnapshotError;
+use crate::cloud_agent_runtime::provider_login::provider_auth_limit_reached;
+
+pub(super) async fn list_provider_auth_snapshots(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Query(query): Query<CurrentProviderAuthSnapshotQuery>,
+) -> Response {
+    let device_id = query
+        .current_device_only
+        .then_some(session.device_id.as_str());
+    match list_snapshots(
+        state.db_pool(),
+        &session.account_id,
+        query.provider.as_deref(),
+        device_id,
+    )
+    .await
+    {
+        Ok(snapshots) => Json(ProviderAuthSnapshotsResponse { snapshots }).into_response(),
+        Err(err) => {
+            eprintln!("[cloud_agent_runtime] list provider auth snapshots: {err}");
+            error_response(
+                "server_error",
+                "Could not load Cloud provider-auth snapshots.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    }
+}
 
 pub(super) async fn publish_provider_auth_snapshot(
     State(state): State<Arc<ServerState>>,
@@ -12,7 +42,7 @@ pub(super) async fn publish_provider_auth_snapshot(
     let Some(input) = input.normalized() else {
         return error_response(
             "invalid_provider_auth_snapshot",
-            "Provider, authChoice, and payload are required.",
+            "Provider, authChoice, and a payload of at most 64 KB are required.",
             StatusCode::BAD_REQUEST,
         );
     };
@@ -37,6 +67,7 @@ pub(super) async fn publish_provider_auth_snapshot(
     .await
     {
         Ok(snapshot) => (StatusCode::CREATED, Json(snapshot)).into_response(),
+        Err(PublishSnapshotError::LimitReached) => provider_auth_limit_reached(),
         Err(err) => {
             eprintln!("[cloud_agent_runtime] publish provider auth snapshot: {err}");
             error_response(

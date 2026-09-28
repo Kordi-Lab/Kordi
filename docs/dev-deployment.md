@@ -15,7 +15,7 @@ two-account acceptance checks, and preserving established fixtures.
 `CI required` and `Post-merge CI required` for the exact revision, from GitHub Actions in
 this repository, using push evidence on `main`. Failed or newer superseding checks block it.
 
-The workflow builds the cloud server and cloud agent runner together for Linux amd64.
+The workflow builds the cloud server, cloud agent runner, and OMP route worker together for Linux amd64.
 Each image is exported as Docker and OCI archives from the same build. The bundle manifest
 binds the revision, build run ID, image configuration IDs, OCI digests, and archive checksums.
 Build outputs are retained for 30 days. Production promotes this bundle without rebuilding.

@@ -1,181 +1,133 @@
-import { ChevronRight, RefreshCw } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { RefreshCw, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
+import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLayout';
 import { AuthProviderGlyph } from './AuthProviderGlyph';
 import type { AuthDisplayProvider } from './model';
 import { providerListSubtitle } from './model';
+import { providerListDescription, providerShortName } from './providerCopy';
 
 type AuthProviderListProps = {
   providers: AuthDisplayProvider[];
-  selectedProviderId: string | null;
-  configuredCount: number;
+  catalogCaption?: string;
+  notice?: string | null;
   onSelectProvider: (providerId: string) => void;
   onRefresh: () => void;
-  onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
   variant?: 'settings' | 'gate';
 };
 
-const GATE_PROVIDER_SUBTITLES: Record<string, string> = {
-  openai: 'ChatGPT subscription or API key',
-  anthropic: 'API key',
-  'lm-studio': 'Local models',
-  ollama: 'Local models',
-  google: 'API key',
-  'google-gemini': 'API key',
-  groq: 'API key',
-  openrouter: 'Model router API',
-  'github-copilot': 'Copilot subscription',
-  xai: 'API key',
-};
-
-function gateProviderSubtitle(provider: AuthDisplayProvider) {
-  if (provider.configured) return 'Ready to chat';
-  return GATE_PROVIDER_SUBTITLES[provider.id] ?? 'Cloud API';
+/** One line under the provider name: qualifier, how to connect and model count, or what is saved. */
+function providerDescription(provider: AuthDisplayProvider) {
+  if (provider.configured) {
+    if (provider.localBaseUrl) return 'Local model ready';
+    const accounts = provider.methods.reduce((count, method) => count + (method.mode === 'oauth' ? method.options.length : 0), 0);
+    const keys = provider.methods.reduce((count, method) => count + (method.mode === 'api-key' ? method.options.length : 0), 0);
+    const parts = [
+      accounts > 0 ? `${accounts} ${accounts === 1 ? 'account' : 'accounts'}` : null,
+      keys > 0 ? `${keys} API ${keys === 1 ? 'key' : 'keys'}` : null,
+    ].filter(Boolean);
+    return parts.length > 0 ? `${parts.join(' and ')} saved` : providerListSubtitle(provider);
+  }
+  if (provider.id === 'custom') return 'Base URL, model and API key';
+  if (provider.localBaseUrl) return 'Local models on this Mac';
+  return providerListDescription(provider) || 'Add an account or key';
 }
 
 export function AuthProviderList({
   providers,
-  selectedProviderId,
-  configuredCount,
+  catalogCaption,
+  notice,
   onSelectProvider,
   onRefresh,
-  onEnterChat,
   variant = 'settings',
 }: AuthProviderListProps) {
-  if (variant === 'gate') {
-    return (
-      <div className="flex min-h-0 w-full flex-col gap-4" style={{ WebkitAppRegion: 'no-drag' as const }}>
-        {configuredCount > 0 ? (
-          <div className="rounded-[20px] bg-emerald-300/[0.065] px-4 py-3 text-[12px] leading-5 text-emerald-50/90 shadow-[inset_0_0_0_1px_rgba(110,231,183,0.12)]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="font-medium text-white">Provider saved — you can start chatting.</div>
-              </div>
-              {onEnterChat ? (
-                <Button
-                  type="button"
-                  className="h-8.5 shrink-0 rounded-full px-3.5 text-[12px]"
-                  onClick={() => { void onEnterChat(); }}
-                  style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
-                >
-                  Enter chat
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
+  const [query, setQuery] = useState('');
+  const { connected, groups } = useMemo(() => {
+    const filtered = providers
+      .filter((provider) => [provider.label, provider.id, ...provider.methods.flatMap((method) => [method.title, method.providerId])]
+        .join(' ').toLowerCase().includes(query.trim().toLowerCase()))
+      .sort((left, right) => left.label.localeCompare(right.label));
+    const grouped = new Map<string, AuthDisplayProvider[]>();
+    for (const provider of filtered.filter((item) => !item.configured)) {
+      const letter = /^[A-Z]$/.test(provider.label[0]?.toUpperCase() ?? '')
+        ? provider.label[0].toUpperCase() : '#';
+      grouped.set(letter, [...(grouped.get(letter) ?? []), provider]);
+    }
+    return { connected: filtered.filter((item) => item.configured), groups: [...grouped.entries()] };
+  }, [providers, query]);
 
-        <div className="grid min-h-0 grid-cols-[repeat(2,minmax(0,1fr))] gap-3">
-          {providers.map((provider) => {
-            const selected = provider.id === selectedProviderId;
-
-            return (
-              <button
-                key={provider.id}
-                type="button"
-                onClick={() => onSelectProvider(provider.id)}
-                className={cn(
-                  'app-auth-provider-gate-card group flex min-h-[88px] w-full cursor-pointer items-center gap-3 rounded-[22px] bg-white/[0.032] px-4 py-4 text-left shadow-[inset_0_0_0_1px_rgba(255,255,255,0.045)]',
-                )}
-                style={{ WebkitAppRegion: 'no-drag' as const }}
-              >
-                <AuthProviderGlyph providerId={provider.id} label={provider.label} size="sm" />
-
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[14px] font-medium tracking-[-0.015em] text-white/95">{provider.label}</div>
-                  <div className="mt-1 truncate text-[12px] text-slate-400">{gateProviderSubtitle(provider)}</div>
-                </div>
-
-                {provider.configured ? (
-                  <div className="rounded-full bg-emerald-300/[0.09] px-2.5 py-1 text-[11px] text-emerald-50/80">Ready</div>
-                ) : (
-                  <ChevronRight className={cn('h-4 w-4 shrink-0 text-slate-500 transition group-hover:text-slate-300', selected && 'text-slate-300')} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
+  const providerRow = (provider: AuthDisplayProvider) => (
+    <SettingsRow
+      key={provider.id}
+      className="app-auth-provider-index-row app-auth-provider-row"
+      icon={<AuthProviderGlyph providerId={provider.id} label={provider.label} size="sm" />}
+      title={<span className="block truncate">{providerShortName(provider.label)}</span>}
+      description={<span className="block truncate">{providerDescription(provider)}</span>}
+      chevron
+      onClick={() => onSelectProvider(provider.id)}
+    />
+  );
 
   return (
-    <div
-      className="app-auth-provider-list flex h-full min-h-0 w-full min-w-0 max-w-none flex-1 flex-col self-stretch overflow-hidden"
-      style={{ width: '100%', maxWidth: '100%', WebkitAppRegion: 'no-drag' as const }}
-    >
-      <div className="mb-4 flex shrink-0 items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="text-[14px] font-medium tracking-[-0.015em] text-white">Choose a provider</div>
-            <div className="app-auth-provider-count text-[11px] text-slate-300">
-              {configuredCount} saved · {providers.length} total
-            </div>
-          </div>
+    <div className={variant === 'gate' ? 'flex w-full flex-col gap-4' : 'flex h-full min-h-0 w-full flex-col gap-4'}>
+      <div className="grid gap-1.5">
+        <div className="flex items-center gap-2">
+          <label className="relative min-w-0 flex-1">
+            <Search aria-hidden="true" className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              aria-label="Search providers"
+              placeholder={`Search ${providers.length} providers`}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              className="h-10 w-full rounded-xl border-0 bg-white/[0.045] pl-10 pr-3 text-[13px] text-white outline-none placeholder:text-slate-500 focus-visible:ring-2 focus-visible:ring-white/35"
+            />
+          </label>
+          {variant === 'settings' ? (
+            <Button type="button" variant="quiet" className="h-10 rounded-xl px-3 text-[12px]" onClick={onRefresh} aria-label="Refresh providers">
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
         </div>
-        <Button
-          type="button"
-          variant="quiet"
-          className="h-9 shrink-0 rounded-full px-3 text-[12px]"
-          onClick={onRefresh}
-          style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
-        >
-          <RefreshCw className="mr-2 h-3.5 w-3.5" />
-          Refresh
-        </Button>
+        {catalogCaption ? <p className="m-0 px-1 text-[11px] text-slate-500">{catalogCaption}</p> : null}
+        {notice ? <p role="note" data-auth-page-notice="" className="m-0 px-1 text-[12px] leading-5 text-slate-400">{notice}</p> : null}
       </div>
 
-      {configuredCount > 0 ? (
-        <div className="mb-3 rounded-[20px] border border-emerald-300/16 bg-emerald-300/[0.06] px-3.5 py-3 text-[12px] leading-5 text-emerald-50/90">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="font-medium text-white">Provider saved — you can start chatting.</div>
-            </div>
-            {onEnterChat ? (
-              <Button
-                type="button"
-                className="h-8.5 shrink-0 rounded-full px-3.5 text-[12px]"
-                onClick={() => { void onEnterChat(); }}
-                style={{ WebkitAppRegion: 'no-drag' as const, cursor: 'pointer' }}
-              >
-                enter chat
-              </Button>
+      <div className={variant === 'gate' ? 'flex h-[min(60vh,530px)] min-h-0 gap-3' : 'flex min-h-0 flex-1 gap-3'}>
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
+          <div className="px-2 pb-3">
+            {connected.length > 0 ? (
+              <SettingsSection title="Connected" ariaLabel="Connected providers" id={`provider-index-${variant}-connected`}>
+                {connected.map(providerRow)}
+              </SettingsSection>
+            ) : null}
+            {groups.map(([letter, items]) => (
+              <SettingsSection key={letter} size="compact" title={letter} ariaLabel={`${letter} providers`} id={`provider-index-${variant}-${letter}`}>
+                {items.map(providerRow)}
+              </SettingsSection>
+            ))}
+            {connected.length === 0 && groups.length === 0 ? (
+              <p className="px-4 py-6 text-center text-[12px] text-slate-400">
+                {query.trim() ? <>No providers match “{query.trim()}”.</> : 'No providers to show yet.'}
+              </p>
             ) : null}
           </div>
-        </div>
-      ) : null}
+        </ScrollArea>
 
-      <ScrollArea className="min-h-0 flex-1 pr-1">
-        <div className="app-auth-provider-rows grid w-full gap-1 bg-transparent shadow-none">
-          {providers.map((provider) => {
-            const selected = provider.id === selectedProviderId;
-
-            return (
-              <button
-                key={provider.id}
-                type="button"
-                onClick={() => onSelectProvider(provider.id)}
-                className={cn(
-                  'app-auth-provider-row group relative flex min-h-[64px] w-full cursor-pointer items-center gap-3.5 rounded-[14px] px-[14px] py-3 text-left',
-                  selected && 'app-auth-provider-row-selected',
-                )}
-                aria-current={selected ? 'page' : undefined}
-                style={{ WebkitAppRegion: 'no-drag' as const }}
-              >
-                <AuthProviderGlyph providerId={provider.id} label={provider.label} size="sm" />
-
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13px] font-medium text-white/95">{provider.label}</div>
-                  <div className="mt-0.5 truncate text-[11px] text-slate-400">{providerListSubtitle(provider)}</div>
-                </div>
-
-                <ChevronRight className="app-auth-provider-chevron h-4 w-4 shrink-0 text-slate-500 transition-colors" />
-              </button>
-            );
-          })}
-        </div>
-      </ScrollArea>
+        <nav aria-label="Provider index" className="hidden w-6 shrink-0 flex-col items-center justify-center gap-0.5 sm:flex">
+          {groups.map(([letter]) => (
+            <button
+              key={letter}
+              type="button"
+              className="h-5 w-5 rounded text-[10px] font-medium text-slate-500 hover:bg-white/10 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40"
+              onClick={() => document.getElementById(`provider-index-${variant}-${letter}`)?.scrollIntoView({ block: 'start' })}
+              aria-label={`Jump to ${letter} providers`}
+            >
+              {letter}
+            </button>
+          ))}
+        </nav>
+      </div>
     </div>
   );
 }

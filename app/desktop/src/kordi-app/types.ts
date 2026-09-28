@@ -97,7 +97,6 @@ export type ConversationCollaborationTarget = {
   agentId?: string | null;
 };
 
-
 export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'group';
 
 export type ParticipantSpaceAvatar = {
@@ -282,6 +281,7 @@ export type DesktopAuthOption = {
   detail?: string | null;
   active: boolean;
   accountLabel?: string | null;
+  modelHint?: string | null;
   authority?: string | null;
   configuredAtMs?: number | null;
   updatedAtMs?: number | null;

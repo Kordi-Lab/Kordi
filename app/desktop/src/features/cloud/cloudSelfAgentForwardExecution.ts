@@ -164,14 +164,21 @@ async function publishCloudSelfAgentOperationBatch({
       && !(operation.queued && !ledger[cloudSelfAgentProcessingLedgerKey(operation.localMessageId)])) continue;
     if (operation.role === 'user') {
       const messageKind = messageKindForOperation(operation);
-      const body = operation.targetAgentId && operation.targetAgentName
+      const target = operation.targetAgentId && operation.targetAgentName
+        ? {
+            targetCloudAgentId: operation.targetAgentId,
+            targetCloudAgentName: operation.targetAgentName,
+            targetCloudAgentOwnerAccountId: accountId,
+          }
+        : null;
+      // A Kordi Cloud request names its route, so the runner uses that hosted account.
+      const body = target || operation.agentRuntimeRoute
         ? encodeCloudDirectMessageEnvelope({
             schemaVersion: 1,
             kind: 'message',
             text: operation.text,
-            targetCloudAgentId: operation.targetAgentId,
-            targetCloudAgentName: operation.targetAgentName,
-            targetCloudAgentOwnerAccountId: accountId,
+            ...(target ?? {}),
+            ...(operation.agentRuntimeRoute ? { agentRuntimeRoute: operation.agentRuntimeRoute } : {}),
           })
         : operation.text;
       const uploadKey = `attachments:${operation.localMessageId}`;
@@ -224,8 +231,11 @@ async function publishCloudSelfAgentOperationBatch({
       const processingLedgerKey = cloudSelfAgentProcessingLedgerKey(
         operation.localMessageId,
       );
+      // The runner reports its own progress for a Kordi Cloud request; a
+      // processing notice from this Mac would claim the request instead.
       if (
         (operation.queued || shouldPublishProcessing(operation))
+        && !operation.agentRuntimeRoute
         && !ledger[processingLedgerKey]
       ) {
         if (!shouldContinue()) return;

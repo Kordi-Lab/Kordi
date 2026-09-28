@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from backend_artifact import SERVICES, digest_file
+from backend_artifact import PRODUCTION_SERVICES, digest_file
 from backend_backup import verify_backup
 from backend_deploy_common import lock
 from backend_deploy_production import capture_previous, deploy
@@ -31,7 +31,7 @@ class ProductionTests(unittest.TestCase):
                         "restoreVerification": {"success": True, "backupSha256": digest_file(data),
                                                 "completedAt": (self.now - timedelta(minutes=1)).isoformat()}}
         self.save_receipt()
-        self.previous = {service: f"docker.io/library/kordi-{service}@sha256:{'b' * 64}" for service in SERVICES}
+        self.previous = {service: f"docker.io/library/kordi-{service}@sha256:{'b' * 64}" for service in PRODUCTION_SERVICES}
 
     def save_receipt(self):
         (self.backups / "snapshot.json").write_text(json.dumps(self.receipt))
@@ -117,9 +117,25 @@ class ProductionTests(unittest.TestCase):
                 return json.dumps({"spec": {"template": {"spec": {"containers": [
                     {"name": name, "image": f"kordi-{service}:old"}]}}}})
             return ""
-        store = {f"docker.io/library/kordi-{s}:old": "sha256:" + "b" * 64 for s in SERVICES}
+        store = {f"docker.io/library/kordi-{s}:old": "sha256:" + "b" * 64 for s in PRODUCTION_SERVICES}
         with patch("backend_deploy_production.run", side_effect=command), patch("backend_deploy_production.image_store", return_value=store):
             self.assertEqual(capture_previous(), self.previous)
+
+    def test_promotion_applies_only_production_services(self):
+        calls = []
+
+        def command(arguments):
+            calls.append(arguments)
+            return ""
+
+        with patch("backend_deploy_production.capture_previous", return_value=self.previous), \
+             patch("backend_deploy_production.run", side_effect=command), \
+             patch("backend_deploy_production.image_store", side_effect=self.store), \
+             patch("backend_deploy_production.verify_running"):
+            deploy(self.args())
+        self.assertEqual(self.result()["outcome"], "success")
+        self.assertEqual(sorted(self.result()["images"]), sorted(PRODUCTION_SERVICES))
+        self.assertFalse(any("omp-route-worker" in " ".join(call) for call in calls))
 
     def test_independent_deployments_contend_for_the_same_host_lock(self):
         with lock("host-wide", self.directory / "locks", timeout=0):

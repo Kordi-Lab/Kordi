@@ -116,6 +116,8 @@ services:
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY: ${KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY:?Set KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY in deploy/dev/.env}
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID: local-debug:v1
       KORDI_CLOUD_RUNNER_TOKEN: ${KORDI_CLOUD_RUNNER_TOKEN:?Set KORDI_CLOUD_RUNNER_TOKEN in deploy/dev/.env}
+      KORDI_OMP_ROUTE_WORKER_URL: http://omp-route-worker:17331
+      KORDI_OMP_ROUTE_WORKER_TOKEN: ${KORDI_OMP_ROUTE_WORKER_TOKEN:?Set KORDI_OMP_ROUTE_WORKER_TOKEN in deploy/dev/.env}
       KORDI_OAUTH_GITHUB_CLIENT_ID: ${KORDI_OAUTH_GITHUB_CLIENT_ID:-}
       KORDI_OAUTH_GITHUB_CLIENT_SECRET: ${KORDI_OAUTH_GITHUB_CLIENT_SECRET:-}
       KORDI_OAUTH_GOOGLE_CLIENT_ID: ${KORDI_OAUTH_GOOGLE_CLIENT_ID:-}
@@ -168,6 +170,20 @@ services:
         condition: service_started
     volumes:
       - runner-sandbox:/var/lib/kordi-runner-sandbox
+    restart: unless-stopped
+
+  omp-route-worker:
+    build:
+      context: ../..
+      dockerfile: experiments/omp-provider-routing/Dockerfile
+    environment:
+      KORDI_OMP_ROUTE_WORKER_TOKEN: ${KORDI_OMP_ROUTE_WORKER_TOKEN:?Set KORDI_OMP_ROUTE_WORKER_TOKEN in deploy/dev/.env}
+      KORDI_OMP_ROUTE_WORKER_HOST: 0.0.0.0
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:17331/health').then((response) => process.exit(response.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
 volumes:

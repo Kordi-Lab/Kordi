@@ -16,8 +16,10 @@ import {
   promptTextForCloudAgentMention,
   cloudDirectAgentContextMessageIds,
 } from './cloudAgentMessages';
+import { cloudRunRuntimeRoute, routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import {
   cloudDirectMessageAction,
+  cloudDirectMessageAgentRuntimeRoute,
   cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
@@ -371,9 +373,13 @@ export function cloudFallbackRunClaimsForMessages({
         const processingAtMs = processingDirectRequestAtMsByPeerId
           .get(peerId)
           ?.get(message.messageId) ?? observedAtMs;
+        // A request on a hosted-only account never runs on the Mac: claim it
+        // for Kordi Cloud at once, with its route.
+        const requestRoute = cloudDirectMessageAgentRuntimeRoute(message.body);
+        const kordiCloudRoute = routeRunsOnKordiCloud(requestRoute) ? requestRoute : null;
         if (
-          !Number.isFinite(processingAtMs)
-          || processingAtMs > selfAgentFallbackBeforeMs
+          !kordiCloudRoute
+          && (!Number.isFinite(processingAtMs) || processingAtMs > selfAgentFallbackBeforeMs)
         ) continue;
         const sessionId = cleanText(message.sessionId);
         if (!sessionId) continue;
@@ -390,6 +396,7 @@ export function cloudFallbackRunClaimsForMessages({
           idempotencyKey:
             `cloud-self-agent:${sessionId}:${message.messageId}`
             + `:${account.accountId}`,
+          ...(kordiCloudRoute ? { runtimeRoute: cloudRunRuntimeRoute(kordiCloudRoute) } : {}),
         });
       }
       continue;

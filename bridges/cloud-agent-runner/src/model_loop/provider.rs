@@ -10,6 +10,14 @@ use tokio_util::sync::CancellationToken;
 use crate::client::{AgentRuntimeRoute, ProviderAuthMaterial};
 
 use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelToolCall};
+use endpoint::{
+    base_url_for, ensure_plain_api_key, ensure_supported_api, is_owner_local_provider_endpoint,
+    normalize_provider,
+};
+use model_choice::snapshot_model;
+
+mod endpoint;
+mod model_choice;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAiApiMode {
@@ -55,31 +63,20 @@ impl OpenAiProviderConfig {
             _ => OpenAiApiMode::ChatCompletions,
         };
         let provider = normalize_provider(&material.provider).to_string();
-        let base_url = payload
-            .get("baseUrl")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| default_base_url_for_mode(&provider, api_mode))
-            .trim_end_matches('/')
-            .to_string();
+        ensure_plain_api_key(&provider, &api_key)?;
+        ensure_supported_api(&provider, api_mode, payload)?;
+        let base_url = base_url_for(&provider, api_mode, payload)?;
         if is_owner_local_provider_endpoint(&base_url) {
             return Err(ModelLoopError::Provider(
                 "Cloud fallback cannot use owner-local provider endpoints such as localhost or private networks."
                     .to_string(),
             ));
         }
-        // A stored model from another provider (an OpenAI model saved with an
-        // Anthropic sign-in, say) would only ever fail; use the provider's
-        // default instead.
-        let model = payload
-            .get("model")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .filter(|value| model_fits_provider(value, &provider))
-            .unwrap_or_else(|| default_model_for_provider(&provider));
-        let model = normalize_model_for_mode(model, api_mode).to_string();
+        // Empty only for a custom account without a model; a route model may
+        // still supply one in `apply_runtime_route`.
+        let model = snapshot_model(payload, &provider)
+            .map(|model| normalize_model_for_mode(model, api_mode).to_string())
+            .unwrap_or_default();
         let account_id = payload
             .get("accountId")
             .and_then(Value::as_str)
@@ -104,7 +101,15 @@ impl OpenAiProviderConfig {
         })
     }
 
-    pub fn apply_runtime_route(&mut self, route: &AgentRuntimeRoute, provider: &str) {
+    /// Applies the run route. For every provider, the route's `defaultModel`
+    /// (for example `custom/deepseek-chat`) takes precedence over the model
+    /// stored in the snapshot whenever both are present. A custom account
+    /// with a model from neither fails instead of using a default model.
+    pub fn apply_runtime_route(
+        &mut self,
+        route: &AgentRuntimeRoute,
+        provider: &str,
+    ) -> Result<(), ModelLoopError> {
         if let Some(model) = route
             .default_model
             .as_deref()
@@ -121,6 +126,10 @@ impl OpenAiProviderConfig {
         {
             self.thinking = thinking.to_string();
         }
+        if self.model.is_empty() {
+            return Err(ModelLoopError::Provider(CUSTOM_MODEL_MISSING.to_string()));
+        }
+        Ok(())
     }
 
     fn request_options(&self) -> RequestOptions {
@@ -170,100 +179,8 @@ fn normalize_routed_model<'a>(model: &'a str, provider: &str, api_mode: OpenAiAp
     }
 }
 
-fn default_base_url_for_mode(provider: &str, api_mode: OpenAiApiMode) -> &'static str {
-    if api_mode == OpenAiApiMode::CodexOAuth {
-        return "https://chatgpt.com/backend-api";
-    }
-    match provider {
-        "anthropic" => "https://api.anthropic.com",
-        "google" | "google-gemini" => "https://generativelanguage.googleapis.com",
-        "openai" => "https://api.openai.com/v1",
-        "openrouter" => "https://openrouter.ai/api/v1",
-        "groq" => "https://api.groq.com/openai/v1",
-        "xai" => "https://api.x.ai/v1",
-        _ => "https://api.openai.com/v1",
-    }
-}
-
-fn normalize_provider(provider: &str) -> &str {
-    match provider.trim().to_ascii_lowercase().as_str() {
-        "google-gemini" => "google",
-        "openai-codex" | "codex" => "openai",
-        _ => provider.trim(),
-    }
-}
-
-/// Whether a model name can belong to this provider. Only clear mismatches
-/// between the major model families are rejected.
-fn model_fits_provider(model: &str, provider: &str) -> bool {
-    let name = model
-        .rsplit_once('/')
-        .map(|(_, name)| name)
-        .unwrap_or(model)
-        .to_ascii_lowercase();
-    let family = if name.starts_with("claude") {
-        "anthropic"
-    } else if name.starts_with("gemini") {
-        "google"
-    } else if name.starts_with("gpt-")
-        || name.starts_with("o1")
-        || name.starts_with("o3")
-        || name.starts_with("o4")
-        || name.starts_with("codex")
-    {
-        "openai"
-    } else {
-        return true;
-    };
-    match provider {
-        "anthropic" => family == "anthropic",
-        "google" | "google-gemini" => family == "google",
-        "openai" | "openai-codex" => family == "openai",
-        _ => true,
-    }
-}
-
-fn default_model_for_provider(provider: &str) -> &'static str {
-    match provider {
-        "anthropic" => "claude-sonnet-5",
-        "google" => "gemini-3.1-pro",
-        "groq" => "llama-3.3-70b-versatile",
-        "openrouter" => "openai/gpt-5",
-        "xai" => "grok-4",
-        _ => "gpt-4.1-mini",
-    }
-}
-
-fn is_owner_local_provider_endpoint(base_url: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(base_url) else {
-        return true;
-    };
-    let Some(host) = url.host_str() else {
-        return true;
-    };
-    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
-    if host == "localhost" || host.ends_with(".local") || host.ends_with(".localhost") {
-        return true;
-    }
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return match ip {
-            std::net::IpAddr::V4(ip) => {
-                ip.is_loopback()
-                    || ip.is_private()
-                    || ip.is_link_local()
-                    || ip.is_unspecified()
-                    || ip.is_broadcast()
-            }
-            std::net::IpAddr::V6(ip) => {
-                ip.is_loopback()
-                    || ip.is_unspecified()
-                    || ip.is_unique_local()
-                    || ip.is_unicast_link_local()
-            }
-        };
-    }
-    false
-}
+const CUSTOM_MODEL_MISSING: &str =
+    "This custom account has no model ID. Add one in Authentication.";
 
 #[derive(Default)]
 pub struct OpenAiCompatibleProvider {
@@ -429,19 +346,6 @@ fn model_response_from_stream_events(
 }
 
 #[cfg(test)]
-mod tests;
-
+mod endpoint_tests;
 #[cfg(test)]
-mod model_fit_tests {
-    use super::model_fits_provider;
-
-    #[test]
-    fn another_providers_model_is_rejected() {
-        assert!(!model_fits_provider("gpt-5.6-sol", "anthropic"));
-        assert!(!model_fits_provider("openai/gpt-5.6-sol", "anthropic"));
-        assert!(!model_fits_provider("claude-sonnet-5", "openai"));
-        assert!(model_fits_provider("claude-sonnet-5", "anthropic"));
-        assert!(model_fits_provider("gpt-5.6-sol", "openai-codex"));
-        assert!(model_fits_provider("llama-3.3-70b-versatile", "groq"));
-    }
-}
+mod tests;

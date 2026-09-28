@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import re
 
-from backend_artifact import SERVICES, verify_bundle
+from backend_artifact import PRODUCTION_SERVICES, verify_bundle
 from backend_backup import verify_backup
 from backend_backup_create import create_backup
 from backend_deploy_common import health, lock, run, write_failure, write_record, write_state
@@ -27,7 +27,7 @@ def image_store():
 def capture_previous():
     stored = image_store()
     previous = {}
-    for service in SERVICES:
+    for service in PRODUCTION_SERVICES:
         deployment = json.loads(run(KUBECTL + ["get", "deployment", "kordi-" + service, "-o", "json"]))
         containers = deployment["spec"]["template"]["spec"]["containers"]
         container = next(item for item in containers if item["name"] == CONTAINERS[service])
@@ -44,12 +44,12 @@ def capture_previous():
 
 
 def apply_images(images):
-    for service in SERVICES:
+    for service in PRODUCTION_SERVICES:
         run(KUBECTL + ["set", "image", "deployment/kordi-" + service, CONTAINERS[service] + "=" + images[service]])
 
 
 def verify_running(images):
-    for service in SERVICES:
+    for service in PRODUCTION_SERVICES:
         run(KUBECTL + ["rollout", "status", "deployment/kordi-" + service, "--timeout=180s"])
         deployment = json.loads(run(KUBECTL + ["get", "deployment", "kordi-" + service, "-o", "json"]))
         containers = deployment["spec"]["template"]["spec"]["containers"]
@@ -71,7 +71,7 @@ def deploy(args):
         previous = None
         try:
             bundle = verify_bundle(args.bundle, args.sha, args.run_id)
-            record["images"] = bundle["images"]
+            record["images"] = {service: bundle["images"][service] for service in PRODUCTION_SERVICES}
             record["stage"] = "backup verification"
             backup_id = create_backup(args.backup_root, args.run_id) if args.backup_id == "auto" else args.backup_id
             record.update(verify_backup(args.backup_root, backup_id))
@@ -80,7 +80,7 @@ def deploy(args):
             record["previousImages"] = previous
             record["stage"] = "import approved images"
             images = {}
-            for service in SERVICES:
+            for service in PRODUCTION_SERVICES:
                 run(CTR + ["images", "import", str(args.bundle / f"{service}.oci.tar")])
                 image = bundle["images"][service]
                 if image_store().get(image["tag"]) != image["digest"]:

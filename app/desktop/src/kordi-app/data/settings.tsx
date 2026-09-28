@@ -60,6 +60,7 @@ export const settingsSections: SettingsSection[] = [
       {
         label: 'App appearance',
         value: 'System',
+        hint: 'Match your device, or always use light or dark.',
         control: { type: 'theme' },
       },
       {

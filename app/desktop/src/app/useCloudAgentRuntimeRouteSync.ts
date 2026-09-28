@@ -1,12 +1,18 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   type Dispatch,
   type SetStateAction,
 } from 'react';
 
 import { resolveDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import {
+  completeKordiCloudChatRequest,
+  setActiveChatRoute,
+  useKordiCloudChatRequest,
+} from '@/features/chat/kordiCloudChatRoute';
 import {
   applySynchronizedCloudAgentRuntimeRoutes,
   CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND,
@@ -285,6 +291,34 @@ export function useCloudAgentRuntimeRouteSync({
     setRoutesBySessionId,
     updateCloudCollaborationSessionTitle,
   ]);
+
+  // The composer marks the active chat's hosted account and shows when it runs on Kordi Cloud.
+  const activeChatRoute = resolveChatRuntimeRoute(activeConversationId);
+  const activeChatRouteKey = JSON.stringify(activeChatRoute);
+  useEffect(() => { setActiveChatRoute(JSON.parse(activeChatRouteKey) as DesktopChatMessageRoute | null); }, [activeChatRouteKey]);
+
+  // A chat opened from a provider page with a hosted-only account starts with
+  // that account's route. The request stays until the route is applied, so a
+  // session still loading never falls back to another account.
+  const kordiCloudRequest = useKordiCloudChatRequest();
+  const attemptedKordiCloudRequestRef = useRef<{ request: object; key: string } | null>(null);
+  useEffect(() => {
+    const sessionId = kordiCloudRequest?.sessionId ?? activeConversationId;
+    const model = kordiCloudRequest?.route.model?.trim();
+    if (!kordiCloudRequest || !sessionId || !model) return;
+    // One attempt per session; a failed publish waits for the chat or account to change.
+    const attemptKey = `${accountId ?? ''}\u0000${sessionId}`;
+    const attempted = attemptedKordiCloudRequestRef.current;
+    if (attempted?.request === kordiCloudRequest && attempted.key === attemptKey) return;
+    attemptedKordiCloudRequestRef.current = { request: kordiCloudRequest, key: attemptKey };
+    void publishCloudAgentRuntimeRouteChange({
+      sessionId,
+      model,
+      authProvider: kordiCloudRequest.route.authProvider,
+      authChoice: kordiCloudRequest.route.authChoice,
+      thinking: kordiCloudRequest.route.thinking,
+    }).then(() => completeKordiCloudChatRequest(kordiCloudRequest), () => undefined);
+  }, [accountId, activeConversationId, kordiCloudRequest, publishCloudAgentRuntimeRouteChange]);
 
   return {
     inheritCloudAgentRuntimeRoute,

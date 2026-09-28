@@ -4,12 +4,12 @@ import { openLocalAgentChatFromArgs, usesDefaultLocalAgentSession } from '@/app/
 import { collaborationAgentForChatStart } from '@/features/chat/chatCreateFlows';
 import { isCollaborationSelfContactId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { CLOUD_HOST_SENTINEL } from '@/features/cloud/useCloudContacts';
-import { renameDesktopAgent, setDesktopSkillLibraryEnabled } from '@/lib/desktop';
+import { renameDesktopAgent, setDesktopSkillLibraryEnabled, type DesktopChatMessageRoute } from '@/lib/desktop';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
 export function assembleMainContentSlot(args: MainContentShellArgs) {
-  const openLocalAgentChat = (preferredModelValue?: string) => openLocalAgentChatFromArgs(args, preferredModelValue);
+  const openLocalAgentChat = (preferredModelValue?: string, route?: DesktopChatMessageRoute) => openLocalAgentChatFromArgs(args, preferredModelValue, route);
 
   return (
     <MainContentSwitch

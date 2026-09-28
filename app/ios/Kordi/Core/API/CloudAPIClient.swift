@@ -6,6 +6,8 @@ struct CloudAPIError: LocalizedError, Equatable {
     let code: String
     let message: String
     let statusCode: Int
+    /// Optional server detail, such as why an OMP login failed.
+    var reason: String? = nil
 
     var errorDescription: String? { message }
 }
@@ -1092,10 +1094,21 @@ actor CloudAPIClient {
         return response.snapshot
     }
 
+    func listProviderAuthSnapshots(token: String) async throws -> [CloudProviderAuthSnapshot] {
+        let response: ProviderAuthSnapshotsResponse = try await send(
+            path: "/v1/cloud/agent-provider-auth/snapshots",
+            method: "GET",
+            token: token,
+            fallback: "Could not load provider accounts."
+        )
+        return response.snapshots
+    }
+
     func publishProviderAuthSnapshot(
         token: String,
         provider: String,
         authChoice: String,
+        label: String? = nil,
         payload: [String: String]
     ) async throws -> CloudProviderAuthSnapshot {
         try await send(
@@ -1106,6 +1119,7 @@ actor CloudAPIClient {
             body: PublishProviderAuthSnapshotRequest(
                 provider: provider,
                 authChoice: authChoice,
+                label: label,
                 payload: payload
             ),
             fallback: "Could not save provider authentication."
@@ -1119,6 +1133,114 @@ actor CloudAPIClient {
             token: token,
             query: [URLQueryItem(name: "intent", value: "explicit")],
             fallback: "Could not remove provider authentication."
+        )
+    }
+
+    func testProviderRoute(
+        token: String,
+        provider: String,
+        authChoice: String,
+        model: String,
+        thinking: String
+    ) async throws -> CloudProviderRouteTest {
+        try await send(
+            path: "/v1/cloud/agent-provider-auth/test-route",
+            method: "POST",
+            token: token,
+            body: TestProviderRouteRequest(
+                provider: provider,
+                authChoice: authChoice,
+                model: model,
+                thinking: thinking
+            ),
+            fallback: "Could not test this provider route."
+        )
+    }
+
+    // MARK: Provider login sessions
+    //
+    // OMP runs each provider's own login steps on the server. The phone renders
+    // the current step and sends user input; provider tokens never reach it.
+
+    func startProviderLogin(
+        token: String,
+        provider: String,
+        label: String,
+        mode: String?,
+        method: String? = nil
+    ) async throws -> ProviderLoginSession {
+        try await send(
+            path: "/v1/cloud/agent-provider-auth/login/start",
+            method: "POST",
+            token: token,
+            body: StartProviderLoginRequest(provider: provider, label: label, mode: mode, method: method),
+            fallback: "Could not start sign-in."
+        )
+    }
+
+    /// Long-polls one login session. The server answers when the step changes
+    /// or after `waitSeconds`, so the request timeout is longer than the wait.
+    func providerLoginSession(
+        token: String,
+        sessionId: String,
+        after version: Int? = nil,
+        waitSeconds: Int = 25
+    ) async throws -> ProviderLoginSession {
+        let fallback = "Could not check sign-in progress."
+        var request = try makeRequest(
+            path: "/v1/cloud/agent-provider-auth/login/\(Self.pathComponent(sessionId))",
+            method: "GET",
+            token: token,
+            query: [URLQueryItem(name: "wait", value: String(waitSeconds))]
+                + (version.map { [URLQueryItem(name: "after", value: String($0))] } ?? []),
+            body: nil
+        )
+        request.timeoutInterval = TimeInterval(waitSeconds + 15)
+        do {
+            let (data, response) = try await transportData(for: request, fallback: fallback)
+            try validate(response: response, data: data, fallback: fallback)
+            do {
+                return try decoder.decode(ProviderLoginSession.self, from: data)
+            } catch {
+                throw CloudAPIError(code: "invalid_response", message: "Kordi Cloud returned an unexpected response.", statusCode: 0)
+            }
+        } catch let error as CloudAPIError {
+            throw error
+        } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) { throw CancellationError() }
+            throw CloudAPIError(code: "network_error", message: fallback, statusCode: 0)
+        }
+    }
+
+    func submitProviderLoginInput(token: String, sessionId: String, value: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v1/cloud/agent-provider-auth/login/\(Self.pathComponent(sessionId))/input",
+            method: "POST",
+            token: token,
+            body: ProviderLoginInputRequest(value: value),
+            fallback: "Could not send this value to OMP."
+        )
+    }
+
+    func cancelProviderLogin(token: String, sessionId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v1/cloud/agent-provider-auth/login/\(Self.pathComponent(sessionId))/cancel",
+            method: "POST",
+            token: token,
+            fallback: "Could not cancel sign-in."
+        )
+    }
+
+    private static func pathComponent(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-_."))) ?? value
+    }
+
+    func ompProviderCatalog(token: String) async throws -> OMPProviderCatalog {
+        try await send(
+            path: "/v1/cloud/agent-provider-auth/catalog",
+            method: "GET",
+            token: token,
+            fallback: "Could not load OMP providers."
         )
     }
 
@@ -2890,7 +3012,8 @@ actor CloudAPIClient {
             throw CloudAPIError(
                 code: server?.errorCode ?? "server_error",
                 message: server?.message.nonEmpty ?? fallback,
-                statusCode: http.statusCode
+                statusCode: http.statusCode,
+                reason: server?.reason
             )
         }
     }
@@ -3017,10 +3140,28 @@ private struct CloudAgentDefinitionRequest: Encodable {
 }
 private struct UpdateAgentRoutingRequest: Encodable { let modelRouting: CloudModelRouting }
 private struct ProviderAuthSnapshotResponse: Decodable { let snapshot: CloudProviderAuthSnapshot? }
+private struct ProviderAuthSnapshotsResponse: Decodable { let snapshots: [CloudProviderAuthSnapshot] }
 private struct PublishProviderAuthSnapshotRequest: Encodable {
     let provider: String
     let authChoice: String
+    let label: String?
     let payload: [String: String]
+}
+private struct StartProviderLoginRequest: Encodable {
+    let provider: String
+    let label: String
+    let mode: String?
+    /// "default" or "api-key"; omitted for the provider's default flow.
+    let method: String?
+}
+private struct ProviderLoginInputRequest: Encodable {
+    let value: String
+}
+private struct TestProviderRouteRequest: Encodable {
+    let provider: String
+    let authChoice: String
+    let model: String
+    let thinking: String
 }
 private struct AgentRunLookupResponse: Decodable { let run: CloudAgentRun? }
 private struct SessionForksResponse: Decodable { let forks: [CloudSessionForkSummary] }
@@ -3029,9 +3170,10 @@ private struct UpdateSessionPinRequest: Encodable { let messageId: String?; let 
 private struct ServerError: Decodable {
     let errorCode: String?
     let message: String?
+    let reason: String?
 
-    private enum CodingKeys: String, CodingKey { case errorCode, code, message, error }
-    private struct Nested: Decodable { let code: String?; let message: String? }
+    private enum CodingKeys: String, CodingKey { case errorCode, code, message, error, reason }
+    private struct Nested: Decodable { let code: String?; let message: String?; let reason: String? }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -3041,6 +3183,7 @@ private struct ServerError: Decodable {
         let topLevelMessage = try container.decodeIfPresent(String.self, forKey: .message)
         errorCode = nested?.code ?? topLevelErrorCode ?? topLevelCode
         message = nested?.message ?? topLevelMessage
+        reason = try nested?.reason ?? container.decodeIfPresent(String.self, forKey: .reason)
     }
 }
 

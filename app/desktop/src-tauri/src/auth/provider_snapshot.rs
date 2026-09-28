@@ -26,26 +26,59 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
             .ok_or_else(|| format!("Could not resolve local auth for {provider}"))?,
     };
     let model = cloud_provider_auth_snapshot_model_for(&auth.credential_provider, model.as_deref());
+    let selected_choice = auth_choice
+        .as_deref()
+        .filter(|choice| choice.starts_with("profile:"))
+        .map(str::to_string);
     let (provider, auth_choice, payload) = match auth.method {
         kordi_cli::login::ProviderAuthMethod::ApiKey => (
             auth.credential_provider.clone(),
-            "local-active-api-key".to_string(),
+            selected_choice
+                .clone()
+                .unwrap_or_else(|| "local-active-api-key".to_string()),
             json!({ "apiKey": auth.credential, "model": model }),
         ),
         kordi_cli::login::ProviderAuthMethod::OAuth => match auth.credential_provider.as_str() {
-            "openai-codex" => (
-                "openai-codex".to_string(),
-                "local-active-oauth".to_string(),
-                json!({
-                    "apiMode": "openai-codex-oauth",
-                    "accessToken": auth.credential,
-                    "accountId": auth.account_id,
-                    "model": model,
-                }),
-            ),
+            "openai-codex" => {
+                let profile_id = selected_choice
+                    .as_deref()
+                    .and_then(|choice| choice.strip_prefix("profile:"))
+                    .map(str::to_string)
+                    .or_else(|| {
+                        if auth.source != kordi_cli::login::AuthSource::KordiAuth {
+                            return None;
+                        }
+                        kordi_cli::login::stored_auth_profiles(provider)
+                            .into_iter()
+                            .find(|profile| {
+                                profile.active
+                                    && profile.method == kordi_cli::login::ProviderAuthMethod::OAuth
+                            })
+                            .map(|profile| profile.profile_id)
+                    });
+                // Only the access token's expiry leaves this Mac; the refresh
+                // token stays local so it is never rotated in two places.
+                let expires_at_ms = profile_id
+                    .as_deref()
+                    .and_then(|id| kordi_cli::login::stored_oauth_expiry(provider, id));
+                (
+                    "openai-codex".to_string(),
+                    selected_choice
+                        .clone()
+                        .unwrap_or_else(|| "local-active-oauth".to_string()),
+                    openai_codex_oauth_payload(
+                        &auth.credential,
+                        expires_at_ms,
+                        auth.account_id.as_deref(),
+                        &model,
+                    ),
+                )
+            }
             "anthropic-oauth" => (
                 "anthropic".to_string(),
-                "local-active-oauth".to_string(),
+                selected_choice
+                    .clone()
+                    .unwrap_or_else(|| "local-active-oauth".to_string()),
                 json!({
                     "apiMode": "anthropic-oauth",
                     "accessToken": auth.credential,
@@ -62,8 +95,26 @@ pub(crate) fn desktop_cloud_provider_auth_snapshot_payload(
     Ok(json!({
         "provider": provider,
         "authChoice": auth_choice,
+        "label": auth.account_label,
         "payload": payload,
     }))
+}
+
+/// Hosted payload for a desktop ChatGPT sign-in: the access token and its
+/// expiry only. When it expires the hosted account asks to be reconnected.
+fn openai_codex_oauth_payload(
+    access_token: &str,
+    expires_at_ms: Option<i64>,
+    account_id: Option<&str>,
+    model: &str,
+) -> serde_json::Value {
+    json!({
+        "apiMode": "openai-codex-oauth",
+        "accessToken": access_token,
+        "expiresAtMs": expires_at_ms,
+        "accountId": account_id,
+        "model": model,
+    })
 }
 
 /// The model stored with a cloud sign-in: the requested one when it belongs
@@ -123,7 +174,24 @@ pub(crate) fn cloud_provider_auth_snapshot_model(model: Option<&str>) -> String 
 
 #[cfg(test)]
 mod tests {
-    use super::cloud_provider_auth_snapshot_model_for;
+    use super::{cloud_provider_auth_snapshot_model_for, openai_codex_oauth_payload};
+
+    #[test]
+    fn desktop_codex_upload_carries_no_refresh_token() {
+        let payload = openai_codex_oauth_payload(
+            "synthetic-access",
+            Some(1_900_000_000_000),
+            Some("acct"),
+            "gpt-5.6-sol",
+        );
+        let fields = payload.as_object().expect("payload is an object");
+        assert!(!fields.contains_key("refreshToken"));
+        assert!(!fields
+            .keys()
+            .any(|key| key.to_ascii_lowercase().contains("refresh")));
+        assert_eq!(payload["accessToken"], "synthetic-access");
+        assert_eq!(payload["expiresAtMs"], 1_900_000_000_000_i64);
+    }
 
     #[test]
     fn cloud_auth_snapshot_model_matches_the_signed_in_provider() {

@@ -32,9 +32,17 @@ const TEXT_RULES = [
     pattern: /[A-Za-z0-9._%+-]+@(?:gmail|outlook|hotmail|icloud|qq|163)\.com/i,
   },
   {
+    // macOS home directories are always the capitalised "/Users/<name>", so this rule is
+    // case-sensitive and ignores ordinary URL paths such as "/settings/users/...".
     id: 'local-home-path',
     description: 'developer home-directory path',
-    pattern: /(?:\/Users\/(?!example(?:[\/\s<"'`]|$)|alice(?:[\/\s<"'`]|$)|owner(?:[\/\s<"'`]|$)|you(?:[\/\s<"'`]|$)|\.\.\.(?:[\/\s<"'`]|$)|\*(?:[\/\s<"'`]|$)|\$\{RUNNER_ACCOUNT\}(?:[\/\s<"'`]|$))[^/\s<"'`]+|[A-Z]:\\Users\\(?!example(?:[\\\s<"'`]|$)|runner(?:[\\\s<"'`]|$)|user(?:[\\\s<"'`]|$))[^\\\s<"'`]+)/i,
+    pattern: /\/Users\/(?!example(?:[\/\s<"'`]|$)|alice(?:[\/\s<"'`]|$)|owner(?:[\/\s<"'`]|$)|you(?:[\/\s<"'`]|$)|\.\.\.(?:[\/\s<"'`]|$)|\*(?:[\/\s<"'`]|$)|\$\{RUNNER_ACCOUNT\}(?:[\/\s<"'`]|$))[^/\s<"'`]+/,
+  },
+  {
+    // Windows paths are case-insensitive, so a lowercase "c:\users\<name>" is still a home directory.
+    id: 'local-windows-home-path',
+    description: 'developer home-directory path',
+    pattern: /[A-Z]:\\Users\\(?!example(?:[\\\s<"'`]|$)|runner(?:[\\\s<"'`]|$)|user(?:[\\\s<"'`]|$))[^\\\s<"'`]+/i,
   },
   {
     id: 'production-instance',

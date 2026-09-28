@@ -10,17 +10,18 @@
   box-shadow: none;
 }
 
+/* Auth sections are plain settings sections: a heading and divided rows,
+ * with no card fill or frame on either the settings page or the start gate. */
 .app-auth-settings-page .app-auth-detail-section {
-  border-top: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
-  border-bottom: 1px solid color-mix(in oklab, var(--app-divider) 62%, transparent);
+  border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
 }
 
 .app-auth-provider-detail-shell .app-auth-detail-section {
-  border-color: color-mix(in oklab, var(--app-divider) 58%, transparent);
-  background: color-mix(in oklab, var(--app-card-bg) 58%, transparent);
+  border: 0;
+  background: transparent;
   box-shadow: none;
 }
 
@@ -108,16 +109,6 @@
   color: var(--app-quiet-control-hover-text);
 }
 
-.app-auth-provider-gate-card:hover {
-  background: color-mix(in oklab, var(--app-control-bg) 14%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, white 10%, transparent);
-}
-
-.app-auth-provider-gate-card:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--app-divider) 72%, transparent);
-  outline-offset: 3px;
-}
-
 @media (forced-colors: active) {
   .app-auth-settings-page .app-auth-provider-row {
     border-color: ButtonText;
@@ -130,7 +121,7 @@
 
 .app-settings-nav-item {
   position: relative;
-  min-height: 40px;
+  min-height: 34px;
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -150,48 +141,49 @@
   outline-offset: -2px;
 }
 
-.app-settings-nav-item-active {
+/* The active item is a soft filled pill, matching native settings windows. */
+.app-settings-nav-item-active,
+.app-settings-nav-item-active:hover {
+  background: var(--app-quiet-control-selected-bg);
   color: var(--utility-foreground);
 }
 
-.app-settings-nav-item::before {
-  position: absolute;
-  top: 50%;
-  left: 3px;
-  width: 2px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--app-quiet-control-hover-text);
-  content: '';
-  opacity: 0;
-  transform: translateY(-50%);
-}
-
-.app-settings-nav-item-active::before {
-  opacity: 0.72;
-}
-
 @media (forced-colors: active) {
-  .app-settings-nav-item-active::before {
-    background: Highlight;
+  .app-settings-nav-item-active {
+    outline: 1px solid Highlight;
   }
 }
 
 .app-settings-profile-section,
 .app-settings-option-list,
-.app-settings-option-row {
+.app-settings-option-row,
+.app-settings-section {
   border: 0;
   background: transparent;
   box-shadow: none;
 }
 
-.app-settings-option-list {
-  display: grid;
-  gap: 2px;
+.app-settings-row-button {
+  border: 0;
+  background: transparent;
+  outline: none;
+  transition: none;
 }
 
-.app-settings-option-row {
-  min-height: 64px;
+@media (hover: hover) and (pointer: fine) {
+  .app-settings-row-button:hover {
+    background: var(--app-quiet-control-hover-bg);
+  }
+}
+
+.app-settings-row-button:focus-visible {
+  outline: 2px solid var(--app-quiet-control-focus-ring);
+  outline-offset: -2px;
+}
+
+.app-settings-select option {
+  background: var(--app-main-bg);
+  color: var(--utility-foreground);
 }
 
 .app-settings-page .app-settings-control {

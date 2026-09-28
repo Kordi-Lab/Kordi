@@ -7,7 +7,8 @@ printf 'synthetic backend exporter fixture\n' > "$fixture/fixture.txt"
 printf 'FROM scratch\nCOPY fixture.txt /fixture.txt\n' > "$fixture/Dockerfile"
 sha="${GITHUB_SHA:?Run this fixture in CI}"
 run_id="${GITHUB_RUN_ID:?Run this fixture in CI}"
-for service in cloud-server cloud-agent-runner; do
+services="$(python3 -c 'import sys; sys.path.insert(0, "scripts"); from backend_artifact import SERVICES; print(" ".join(SERVICES))')"
+for service in $services; do
   docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
     --label "org.opencontainers.image.revision=$sha" \
     --tag "docker.io/library/kordi-$service:$sha" \

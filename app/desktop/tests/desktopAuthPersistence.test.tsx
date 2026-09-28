@@ -167,8 +167,9 @@ test('deleting the final OpenAI profile leaves a usable empty provider detail', 
     onRefreshAuth: () => {},
   }));
 
-  assert.match(markup, />Sign in</);
-  assert.match(markup, />Add key</);
+  // Adding access is one "Add account" row that opens the method picker.
+  assert.match(markup, />Add account</);
+  assert.match(markup, /ChatGPT account, OpenAI API key/);
   assert.doesNotMatch(markup, /Saved access/);
   assert.doesNotMatch(markup, /Remove all saved access/);
   assert.doesNotMatch(markup, /max-w-none/);

@@ -5,13 +5,11 @@ import {reconcileCloudProviderAuthSnapshots} from '../src/features/cloud/useClou
 
 function fixture(configured: boolean, reason: 'oauth-completed' | 'provider-logout') {
   const calls: string[] = [];
-  let revoked = false;
   const snapshot = {snapshotId:'from-device-b',provider:'openai',authChoice:'local-active-oauth',createdAt:'2026-09-01T00:00:00Z',revokedAt:null};
   const client = new CloudAuthClient({baseUrl:'http://fixture',fetchImpl:async (_url, init) => {
     const method = init?.method ?? 'GET';
     calls.push(method);
-    if (method === 'DELETE') revoked = true;
-    return new Response(JSON.stringify(method === 'GET' ? {snapshot:revoked ? null : snapshot} : snapshot),{status:200});
+    return new Response(JSON.stringify(method === 'GET' ? {snapshots:[]} : snapshot),{status:200});
   }});
   const options: Parameters<typeof reconcileCloudProviderAuthSnapshots>[0] = {
     accountId:'acct_owner',client,route:null,isCurrent:()=>true,
@@ -32,10 +30,10 @@ test('unauthenticated device never publishes or revokes on a non-removal intent'
   assert.deepEqual(calls,[]);
 });
 
-test('explicit local provider logout revokes Cloud even when another device supplied it', async () => {
+test('local provider logout keeps credentials supplied by another device', async () => {
   const {options,calls}=fixture(false,'provider-logout');
   assert.equal(await reconcileCloudProviderAuthSnapshots(options),'complete');
-  assert.equal(calls.filter(method=>method==='DELETE').length,1);
+  assert.equal(calls.filter(method=>method==='DELETE').length,0);
   assert.equal(calls.includes('POST'),false);
 });
 

@@ -10,6 +10,7 @@ import {
   applyCloudAgentModelChangeMessages,
   applySynchronizedCloudAgentRuntimeRoutes,
   cloudAgentRuntimeRouteAfterModelChange,
+  cloudAgentRuntimeRouteChangeFromBody,
   cloudAgentRuntimeSessionId,
   encodeCloudAgentRuntimeRouteChange,
   latestCloudAgentModelChangeBeforeRequest,
@@ -138,7 +139,7 @@ test('configured ChatGPT auth replaces a stale Anthropic choice for an OpenAI mo
   }), {
     model: 'openai/gpt-6-astra',
     authProvider: 'openai-codex',
-    authChoice: 'local-active-oauth',
+    authChoice: 'profile:chatgpt',
     thinking: 'high',
   });
 });
@@ -216,7 +217,7 @@ test('route changes preserve an explicit provider alias from the selected model 
   }), {
     model: 'openai/gpt-6-astra',
     authProvider: 'openai-codex',
-    authChoice: 'local-active-oauth',
+    authChoice: 'profile:chatgpt',
   });
 });
 
@@ -239,27 +240,28 @@ test('route changes preserve an explicit provider for an unqualified model', () 
   }), {
     model: 'anthropic/claude-opus-4-1',
     authProvider: 'anthropic',
-    authChoice: 'local-active-oauth',
+    authChoice: 'profile:claude',
   });
 });
 
-test("legacy profile ids rebind to the executing Mac's portable auth choice", () => {
+test('synchronized profile choice stays bound to its selected account', () => {
   assert.deepEqual(cloudAgentRuntimeRouteAfterModelChange(
     { model: 'openai/gpt-5.6-luna', authProvider: 'openai', authChoice: 'profile:old-device', thinking: 'high' },
     { model: 'openai/gpt-5.6-sol', authProvider: 'openai-codex', authChoice: 'profile:old-device', thinking: 'max' },
     { model: 'openai/gpt-5.6-sol', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: 'max' },
   ), {
     model: 'openai/gpt-5.6-sol', authProvider: 'openai',
-    authChoice: 'local-active-oauth', thinking: 'max',
+    authChoice: 'profile:old-device', thinking: 'max',
   });
 });
 
-test('synchronized session routes reject device-local profile ids', () => {
-  assert.throws(() => encodeCloudAgentRuntimeRouteChange({
+test('synchronized session routes preserve profile selectors', () => {
+  const encoded = encodeCloudAgentRuntimeRouteChange({
     model: 'openai/gpt-5.6-sol',
     authProvider: 'openai',
     authChoice: 'profile:local-device',
-  }), /cannot contain a local auth profile id/);
+  });
+  assert.equal(cloudAgentRuntimeRouteChangeFromBody(encoded)?.authChoice, 'profile:local-device');
 });
 
 test('ordered Cloud route changes win over a lagging canonical mirror atomically', () => {

@@ -144,6 +144,8 @@ export type ComposerMessageRuntimeContext = {
   publishCloudAgentRuntimeRouteChange?: (
     input: CloudAgentRuntimeRouteChangeInput,
   ) => Promise<void>;
+  /** The route a session sends with: its stored route, else the default route. */
+  resolveChatRuntimeRoute?: (sessionId?: string | null) => DesktopChatMessageRoute | null;
   cancelCloudAgentRequest?: (conversationId: string, requestId: string) => Promise<void>;
   watchDesktopLiveTurn: (turn: DesktopChatTurnSnapshot | string) => Promise<void>;
   shouldAutoFollowChatRef: MutableRefObject<boolean>;
@@ -192,5 +194,6 @@ export type UseComposerInputActionsArgs = {
     | 'setDesktopChatError'
     | 'shouldAutoFollowChatRef'
     | 'publishCloudAgentRuntimeRouteChange'
+    | 'resolveChatRuntimeRoute'
   >;
 };

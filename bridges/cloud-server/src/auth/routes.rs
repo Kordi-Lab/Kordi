@@ -116,7 +116,15 @@ pub fn routes_with_config(
     hasher_config: PasswordHasherConfig,
     rate_limiter: CloudRateLimiter,
 ) -> Router {
-    let rate_limiter = Arc::new(rate_limiter);
+    routes_with_shared_rate_limiter(state, hasher_config, Arc::new(rate_limiter))
+}
+
+/// Like [`routes_with_config`], sharing one limiter with other route groups.
+pub fn routes_with_shared_rate_limiter(
+    state: Arc<ServerState>,
+    hasher_config: PasswordHasherConfig,
+    rate_limiter: Arc<CloudRateLimiter>,
+) -> Router {
     let hasher_config = Arc::new(hasher_config);
 
     let public = Router::new()
