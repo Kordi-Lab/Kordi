@@ -3533,10 +3533,20 @@ enum ConversationTimestampFormatter {
         for date: Date,
         now: Date = Date(),
         calendar: Calendar = .current,
-        locale: Locale = .current
+        locale: Locale = .current,
+        detailed: Bool = false
     ) -> String {
         let timeFormatter = formatter(template: "jm", calendar: calendar, locale: locale)
         let time = timeFormatter.string(from: date)
+
+        if detailed {
+            let year = calendar.component(.year, from: date)
+            let month = calendar.component(.month, from: date)
+            let day = calendar.component(.day, from: date)
+            let yearPrefix = year == calendar.component(.year, from: now) ? "" : "\(year)/"
+            let weekday = formatter(template: "EEEE", calendar: calendar, locale: locale).string(from: date)
+            return "\(yearPrefix)\(month)/\(day) \(weekday) \(time)"
+        }
 
         let dayDistance = calendar.dateComponents(
             [.day],
@@ -3546,7 +3556,7 @@ enum ConversationTimestampFormatter {
         let dayLabel: String
         switch dayDistance {
         case 0:
-            dayLabel = "Today"
+            return time
         case 1:
             dayLabel = "Yesterday"
         case 2...6:
@@ -3591,16 +3601,35 @@ private struct SystemNoticeRow: View {
 
 private struct ConversationTimestampDivider: View {
     let date: Date
+    @Environment(\.calendar) private var calendar
+    @Environment(\.timeZone) private var timeZone
+    @Environment(\.locale) private var locale
+    @State private var detailed = false
+
+    private var label: String {
+        var viewerCalendar = calendar
+        viewerCalendar.timeZone = timeZone
+        return ConversationTimestampFormatter.label(
+            for: date, calendar: viewerCalendar, locale: locale, detailed: detailed
+        )
+    }
 
     var body: some View {
-        Text(ConversationTimestampFormatter.label(for: date))
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-            .frame(maxWidth: .infinity)
-            .padding(.top, 10)
-            .padding(.bottom, 5)
-            .accessibilityAddTraits(.isHeader)
+        Button {
+            detailed.toggle()
+        } label: {
+            Text(label)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityHint(detailed ? "Show compact time" : "Show detailed date and time")
+        .accessibilityValue(detailed ? "Detailed" : "Compact")
     }
 }
 

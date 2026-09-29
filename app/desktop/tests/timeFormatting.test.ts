@@ -4,10 +4,58 @@ import { test } from 'node:test';
 import type { CanonicalSessionMessage } from '../src/kordi-app/types';
 import { sessionChatActivityAtMs } from '../src/features/canonical/readModel/conversationMapping';
 import {
+  formatDesktopClockTime,
   formatDesktopContactRequestTimeLabel,
   formatDesktopLastActiveLabel,
   formatDesktopTranscriptTimeLabel,
+  formatDesktopTranscriptDetailedTimeLabel,
+  refreshDesktopTimeZone,
 } from '../src/lib/time';
+
+test('expanded transcript labels include date and weekday in the viewer timezone', () => {
+  const now = Date.parse('2026-09-29T18:05:00Z');
+  const options = { now, timeZone: 'America/Los_Angeles', locales: 'en-US' };
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(now, options), '9/29 Tuesday 11:05');
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(Date.parse('2026-09-28T09:23:00Z'), options), '9/28 Monday 02:23');
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(Date.parse('2025-09-28T09:23:00Z'), options), '2025/9/28 Sunday 02:23');
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(Date.parse('2026-09-29T01:05:00Z'), options), '9/28 Monday 18:05');
+});
+
+test('cached local clock formatters follow a device timezone change', () => {
+  const originalTimeZone = process.env.TZ;
+  const instant = Date.parse('2026-08-08T01:03:00.000Z');
+  try {
+    process.env.TZ = 'UTC';
+    refreshDesktopTimeZone();
+    assert.equal(formatDesktopClockTime(instant), '01:03');
+    process.env.TZ = 'America/Los_Angeles';
+    refreshDesktopTimeZone();
+    assert.equal(formatDesktopClockTime(instant), '18:03');
+    assert.equal(formatDesktopTranscriptTimeLabel(instant, { now: instant, locales: 'en-US' }), '18:03');
+    assert.equal(formatDesktopClockTime(instant, { timeZone: 'UTC' }), '01:03');
+  } finally {
+    if (originalTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimeZone;
+    refreshDesktopTimeZone();
+  }
+});
+
+test('clock formatter checks the device timezone after the system clock moves backward', () => {
+  const originalTimeZone = process.env.TZ;
+  const originalNow = Date.now;
+  try {
+    process.env.TZ = 'UTC';
+    refreshDesktopTimeZone();
+    process.env.TZ = 'America/Los_Angeles';
+    Date.now = () => originalNow() - 60_000;
+    assert.equal(formatDesktopClockTime(Date.parse('2026-08-08T01:03:00.000Z')), '18:03');
+  } finally {
+    Date.now = originalNow;
+    if (originalTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimeZone;
+    refreshDesktopTimeZone();
+  }
+});
 
 test('formatDesktopTranscriptTimeLabel uses compact messaging labels in the viewer timezone', () => {
   const now = new Date('2026-08-08T14:00:00.000Z');

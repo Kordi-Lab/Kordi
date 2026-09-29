@@ -135,6 +135,21 @@ test('cached separators handle prepend, deletion, edits, midnight, locale, and t
   }
 });
 
+test('same transcript instants are relabeled after travel without reordering messages', async () => {
+  const { createTranscriptTimeSeparatorCache } = await import('../src/features/chat/transcriptTimestamps');
+  const cache = createTranscriptTimeSeparatorCache();
+  const first = Date.parse('2026-08-08T01:03:00.000Z');
+  const second = Date.parse('2026-08-08T01:49:00.000Z');
+  const messages = [message(first), message(second)];
+  const originalInstants = messages.map(item => item.timestampMs);
+  const options = { now: second, locales: 'en-US' };
+
+  assert.deepEqual(cache(messages, { ...options, timeZone: 'UTC' }), ['01:03', '01:49']);
+  assert.deepEqual(cache(messages, { ...options, timeZone: 'America/Los_Angeles' }), ['18:03', '18:49']);
+  assert.deepEqual(messages.map(item => item.timestampMs), originalInstants);
+  assert.strictEqual(messages[0].timestampMs! < messages[1].timestampMs!, true);
+});
+
 
 test('prepending history changes only the old boundary label, not later labels', () => {
   const start = Date.UTC(2026, 0, 1);
