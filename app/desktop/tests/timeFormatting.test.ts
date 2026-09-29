@@ -8,8 +8,18 @@ import {
   formatDesktopContactRequestTimeLabel,
   formatDesktopLastActiveLabel,
   formatDesktopTranscriptTimeLabel,
+  formatDesktopTranscriptDetailedTimeLabel,
   refreshDesktopTimeZone,
 } from '../src/lib/time';
+
+test('expanded transcript labels include date and weekday in the viewer timezone', () => {
+  const now = Date.parse('2026-09-29T18:05:00Z');
+  const options = { now, timeZone: 'America/Los_Angeles', locales: 'en-US' };
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(now, options), '9/29 Tuesday 11:05');
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(Date.parse('2026-09-28T09:23:00Z'), options), '9/28 Monday 02:23');
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(Date.parse('2025-09-28T09:23:00Z'), options), '2025/9/28 Sunday 02:23');
+  assert.equal(formatDesktopTranscriptDetailedTimeLabel(Date.parse('2026-09-29T01:05:00Z'), options), '9/28 Monday 18:05');
+});
 
 test('cached local clock formatters follow a device timezone change', () => {
   const originalTimeZone = process.env.TZ;

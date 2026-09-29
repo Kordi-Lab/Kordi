@@ -7,6 +7,7 @@ import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys
 import { collectConversationImageAttachments, shouldPreviewAttachmentInline } from '@/features/chat/attachmentMediaGallery';
 import { createTranscriptTimeSeparatorCache } from '@/features/chat/transcriptTimestamps';
 import { useTranscriptTimeZone } from '@/features/chat/useTranscriptTimeZone';
+import { TranscriptTimeSeparator } from '@/features/chat/TranscriptTimeSeparator';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { estimateTranscriptMessageHeight, transcriptContentColumns } from '@/features/chat/transcriptHeightEstimate';
@@ -56,12 +57,6 @@ export function isGroupedWithAdjacentHumanMessage(
   if (offset === 1 && timeSeparators[index + 1]) return false;
   const currentKey = humanTranscriptGroupKey(messages[index]);
   return Boolean(currentKey && currentKey === humanTranscriptGroupKey(messages[index + offset]));
-}
-
-function transcriptTimestampDateTime(timestampMs?: number | null) {
-  if (typeof timestampMs !== 'number' || !Number.isFinite(timestampMs)) return undefined;
-  const date = new Date(timestampMs);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
 export function useChatTranscriptViewport({
@@ -268,13 +263,8 @@ export function useChatTranscriptViewport({
           : message;
         return (
         <div data-incoming-sequence={!msg.isOwnMessage && msg.role!=='user'?msg.conversationSequence:undefined}>
-          {timeSeparators[idx] ? (
-            <div
-              className="app-transcript-time-separator flex justify-center px-2 py-2 text-center text-[11px] font-normal leading-4 tabular-nums text-[color:var(--utility-muted-text)]"
-              data-transcript-time-separator="true"
-            >
-              <time dateTime={transcriptTimestampDateTime(msg.timestampMs)}>{timeSeparators[idx]}</time>
-            </div>
+          {timeSeparators[idx] && validTimestamp ? (
+            <TranscriptTimeSeparator timestampMs={timestampMs} label={timeSeparators[idx]} timeZone={timeZone} />
           ) : null}
           {presentation.firstUnreadMessageId && transcriptWindowMessageMatchesId(msg,presentation.firstUnreadMessageId,idx)?<div className="my-3 flex items-center gap-3 text-[11px] font-medium text-[color:var(--app-sidebar-accent)]"><span className="h-px flex-1 bg-current opacity-25"/>New replies<span className="h-px flex-1 bg-current opacity-25"/></div>:null}
           {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (

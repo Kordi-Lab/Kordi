@@ -216,3 +216,22 @@ export function formatDesktopContactRequestTimeLabel(
     ? formatDesktopTranscriptTimeLabel(timestampMs, options)
     : value;
 }
+
+/** Expanded transcript label: numeric date, weekday, and local clock time. */
+export function formatDesktopTranscriptDetailedTimeLabel(
+  value: Date | number,
+  options: DesktopTranscriptTimeOptions = {},
+) {
+  const timeZone = options.timeZone ?? currentDesktopTimeZone();
+  const date = toDate(value);
+  const [year, month, day] = formatDesktopDate(date, { timeZone }).split('-');
+  const [currentYear] = formatDesktopDate(options.now ?? Date.now(), { timeZone }).split('-');
+  const weekday = cachedFormatter(
+    desktopTranscriptTimeFormatters,
+    formatterKey(['weekday', localesKey(options.locales), timeZone]),
+    options.locales,
+    { weekday: 'long', timeZone },
+  ).format(date);
+  const calendarDate = `${year === currentYear ? '' : `${year}/`}${Number(month)}/${Number(day)}`;
+  return `${calendarDate} ${weekday} ${formatDesktopClockTime(date, { timeZone })}`;
+}

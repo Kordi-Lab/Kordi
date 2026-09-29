@@ -1105,6 +1105,21 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testTimelineTimestampCanExpandToDateWeekdayAndTime() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let locale = Locale(identifier: "en_GB")
+        let now = calendar.date(from: DateComponents(year: 2026, month: 9, day: 29, hour: 11, minute: 5))!
+        let yesterday = calendar.date(from: DateComponents(year: 2026, month: 9, day: 28, hour: 2, minute: 23))!
+        XCTAssertEqual(ConversationTimestampFormatter.label(for: now, now: now, calendar: calendar, locale: locale), "11:05")
+        XCTAssertEqual(ConversationTimestampFormatter.label(for: now, now: now, calendar: calendar, locale: locale, detailed: true), "9/29 Tuesday 11:05")
+        XCTAssertEqual(ConversationTimestampFormatter.label(for: yesterday, now: now, calendar: calendar, locale: locale), "Yesterday 02:23")
+        XCTAssertEqual(ConversationTimestampFormatter.label(for: yesterday, now: now, calendar: calendar, locale: locale, detailed: true), "9/28 Monday 02:23")
+        let previousYear = calendar.date(from: DateComponents(year: 2025, month: 9, day: 28, hour: 2, minute: 23))!
+        XCTAssertEqual(ConversationTimestampFormatter.label(for: previousYear, now: now, calendar: calendar, locale: locale, detailed: true), "2025/9/28 Sunday 02:23")
+    }
+
     func testChatListKeepsCustomThreeDotPullToRefreshAndNativeRows() throws {
         XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 24, isRefreshing: false))
         XCTAssertTrue(ChatPullToRefreshBehavior.shouldStart(
