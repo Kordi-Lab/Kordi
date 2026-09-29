@@ -6,12 +6,14 @@ import { shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { collectConversationImageAttachments, shouldPreviewAttachmentInline } from '@/features/chat/attachmentMediaGallery';
 import { createTranscriptTimeSeparatorCache } from '@/features/chat/transcriptTimestamps';
+import { useTranscriptTimeZone } from '@/features/chat/useTranscriptTimeZone';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { estimateTranscriptMessageHeight, transcriptContentColumns } from '@/features/chat/transcriptHeightEstimate';
 import { MessageBubble } from '@/kordi-app/components';
 import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 import type { Message } from '@/kordi-app/types';
+import { formatDesktopClockTime } from '@/lib/time';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
 import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
@@ -180,10 +182,11 @@ export function useChatTranscriptViewport({
     return () => observer.disconnect();
   }, [scrollRef]);
   const transcriptColumns = transcriptContentColumns(transcriptViewportWidth);
+  const { timeZone, now } = useTranscriptTimeZone();
   const timeSeparatorCache = useMemo(() => createTranscriptTimeSeparatorCache(), []);
   const timeSeparators = useMemo(
-    () => timeSeparatorCache(transcriptMessages),
-    [timeSeparatorCache, transcriptMessages],
+    () => timeSeparatorCache(transcriptMessages, { timeZone, now }),
+    [timeSeparatorCache, transcriptMessages, timeZone, now],
   );
   const imageGallery = useMemo(
     () => collectConversationImageAttachments(transcriptMessages),
@@ -255,7 +258,14 @@ export function useChatTranscriptViewport({
       getItemKey={(entry) => 'pinActivity' in entry ? entry.pinActivity.id : transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={(entry) => {
         if ('pinActivity' in entry) return <PinActivityNotice activity={entry.pinActivity} />;
-        const { message: msg, originalIndex: idx } = entry;
+        const { message, originalIndex: idx } = entry;
+        const timestampMs = message.timestampMs;
+        const validTimestamp = typeof timestampMs === 'number' && Number.isFinite(timestampMs)
+          && !Number.isNaN(new Date(timestampMs).getTime());
+        const localTime = validTimestamp ? formatDesktopClockTime(timestampMs, { timeZone }) : null;
+        const msg = localTime !== null && localTime !== message.time
+          ? { ...message, time: localTime }
+          : message;
         return (
         <div data-incoming-sequence={!msg.isOwnMessage && msg.role!=='user'?msg.conversationSequence:undefined}>
           {timeSeparators[idx] ? (
@@ -412,6 +422,7 @@ export function useChatTranscriptViewport({
     sessionKey,
     syncedQueuedIds,
     transcriptMessages,
+    timeZone,
     timeSeparators,
     transcriptTailKey,
     unreadCount,
