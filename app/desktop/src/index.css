@@ -30,6 +30,9 @@
 @import './styles/shell-live-answer.css';
 @import './styles/shell-diff.css';
 @import './styles/shell-sidebar.css';
+@import './styles/shell-native-sidebar.css';
+@import './styles/shell-titlebar.css';
+@import './styles/shell-companion.css';
 @import './styles/shell-pages.css';
 @import './styles/shell-factory-foundation.css';
 @import './styles/shell-factory-rail.css';

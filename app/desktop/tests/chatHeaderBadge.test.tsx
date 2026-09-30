@@ -115,15 +115,15 @@ test('chat headers reserve a compact second row for quiet metadata', () => {
   assert.match(source, /Shared with chat members/);
 });
 
-test('Ask Agent remains a flat utility action while chat details move into destination subtitles', () => {
+test('main chat uses compact companion controls while project details retain their utility style', () => {
   const chatSource = readFileSync(new URL('../src/pages/chatsPage.mainHeader.tsx', import.meta.url), 'utf8');
   const projectSource = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
-  const askAgentButton = chatSource.slice(chatSource.indexOf('aria-label="Ask Agent"') - 360, chatSource.indexOf('aria-label="Ask Agent"') + 180);
+  const toolbarSource = readFileSync(new URL('../src/pages/chatsPage.companionToolbar.tsx', import.meta.url), 'utf8');
   const projectDetailsButton = projectSource.slice(projectSource.indexOf('aria-label={isDetailPanelCollapsed') - 260, projectSource.indexOf('aria-label={isDetailPanelCollapsed') + 180);
 
-  assert.doesNotMatch(`${askAgentButton}\n${projectDetailsButton}`, /border-pink|bg-white\/\[0\.06\]|text-pink|text-slate-100/);
-  assert.match(askAgentButton, /variant="quiet"/);
-  assert.match(askAgentButton, /className="app-utility-button[^"]*font-medium"/);
+  assert.doesNotMatch(`${toolbarSource}\n${projectDetailsButton}`, /border-pink|bg-white\/\[0\.06\]|text-pink|text-slate-100/);
+  assert.match(chatSource, /<CompanionToolbar/);
+  assert.doesNotMatch(chatSource, /aria-label="Ask Agent"/);
   assert.match(projectDetailsButton, /className="app-utility-button[^"]*font-medium/);
   assert.doesNotMatch(chatSource, /Open session details|Hide session details|>\s*Hide details\s*</);
 });

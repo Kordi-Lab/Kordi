@@ -1,3 +1,4 @@
+import type { CompanionToolbarProps } from './chatsPage.companionToolbar';
 import { PinnedMessageShelf } from './PinnedMessageShelf';
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { ChatPaneLayout } from '@/pages/ChatPaneLayout';
@@ -86,8 +87,7 @@ type ChatMainWorkspaceProps = {
     activeSide: 'left' | 'right';
   };
   companion: {
-    canOpen: boolean;
-    suggestedName?: string;
+    toolbar: CompanionToolbarProps;
     open: (initialPrompt?: string) => Promise<boolean>;
     openSession: (sessionId: string, isSubsession?: boolean) => void;
   };
@@ -174,7 +174,7 @@ export function ChatMainWorkspace({
 
   return (
     <>
-      <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
+      <div className="app-chat-main-workspace flex h-full min-h-0 min-w-0 overflow-hidden">
       <ChatPaneLayout
         hasHeader={!isEmptySelection}
         activeSide={presentation.activeSide}
@@ -203,14 +203,7 @@ export function ChatMainWorkspace({
               void models.header.rename.commit();
             },
           }}
-          companion={{
-            canOpen: companion.canOpen,
-            isOpen: presentation.showCompanionPane,
-            suggestedName: companion.suggestedName,
-            onOpen: () => {
-              void companion.open();
-            },
-          }}
+          companion={companion.toolbar}
           supportReport={supportReportSessionId
             && submitSupportReport
             ? {

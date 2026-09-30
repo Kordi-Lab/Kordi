@@ -1,0 +1,38 @@
+/* Neutral, translucent selections sit on the native sidebar material without
+ * covering its color. Keep secondary text readable over changing desktops. */
+html.kordi-native-shell .kordi-app .app-workspace-sidebar {
+  --app-sidebar-selected-bg: rgb(255 255 255 / 0.075);
+  --app-nav-rail-active-bg: rgb(255 255 255 / 0.10);
+  --app-nav-rail-active-hover-bg: rgb(255 255 255 / 0.14);
+  --app-nav-rail-active-pressed-bg: rgb(255 255 255 / 0.08);
+  --app-sidebar-preview-text: rgb(184 193 207);
+  --app-sidebar-time-text: rgb(157 169 187);
+}
+
+html.kordi-native-shell .kordi-app.theme-light .app-workspace-sidebar {
+  --app-sidebar-selected-bg: rgb(15 23 42 / 0.08);
+  --app-nav-rail-active-bg: rgb(15 23 42 / 0.08);
+  --app-nav-rail-active-hover-bg: rgb(15 23 42 / 0.12);
+  --app-nav-rail-active-pressed-bg: rgb(15 23 42 / 0.06);
+  --app-sidebar-preview-text: rgb(75 85 99);
+  --app-sidebar-time-text: rgb(91 101 115);
+}
+
+html.kordi-native-shell .kordi-app .app-workspace-sidebar :is(
+  .app-session-row,
+  .app-participant-space-row-shell,
+  .app-participant-space-session-row
+) {
+  border-radius: 10px;
+}
+
+html.kordi-native-shell .kordi-app .app-workspace-sidebar .app-participant-space-session-row {
+  border-left-color: transparent;
+}
+
+/* The rail stays still while the full-size session surface retracts beneath it. */
+.app-session-panel-clip { container-type: inline-size; }
+.app-session-panel-clip > .app-session-panel {
+  height: 100%;
+  transform: translateX(min(0px, calc(100cqw - 100%)));
+}

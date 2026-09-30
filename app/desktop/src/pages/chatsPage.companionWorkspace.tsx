@@ -256,7 +256,7 @@ export function ChatCompanionWorkspace({
             onOpenSessionList: session.menu.openSessionList,
             onSwitchConversation: session.actions.switchConversation,
             onCreateSession: shell.onCreateSession,
-            onClose: session.actions.close,
+            onClose: () => layoutModel.setFolded(true),
             onSelectDestination: (destination) => {
               destinations.setActiveSourcePreview(null);
               destinations.setValue(destination);
@@ -432,15 +432,23 @@ export function ChatCompanionSplitDivider({
 }: {
   layoutModel: ReturnType<typeof useChatCompanionLayout>;
 }) {
-  if (!layoutModel.isVisible) return null;
+  if (!layoutModel.isPresent) return null;
   return (
     <div
       className="app-chat-split-divider group relative z-10 flex h-full w-2.5 cursor-col-resize touch-none items-center justify-center bg-transparent transition hover:bg-white/[0.035]"
       data-split-layout-divider="true"
+      tabIndex={layoutModel.isVisible ? 0 : -1}
+      inert={!layoutModel.isVisible}
+      aria-hidden={!layoutModel.isVisible}
+      aria-valuenow={layoutModel.splitPercent}
+      aria-valuemin={32}
+      aria-valuemax={68}
+      onKeyDown={layoutModel.onDividerKeyDown}
       onPointerDown={layoutModel.onDividerPointerDown}
       onPointerMove={layoutModel.onDividerPointerMove}
       onPointerUp={layoutModel.onDividerPointerUp}
       onPointerCancel={layoutModel.onDividerPointerUp}
+      onLostPointerCapture={layoutModel.onDividerPointerUp}
       title="Drag to resize chats"
       aria-label="Resize side-by-side chats"
       role="separator"

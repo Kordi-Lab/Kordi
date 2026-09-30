@@ -7,6 +7,7 @@ pub(crate) async fn desktop_set_window_backdrop(
     background: [u8; 3],
     navigation_width: f64,
     session_background: [u8; 4],
+    titlebar_height: Option<f64>,
 ) -> Result<(), String> {
     if window.label() != super::window_lifecycle::MAIN_WINDOW_LABEL {
         return Err("Workspace backdrop is only available for the main window.".into());
@@ -15,6 +16,7 @@ pub(crate) async fn desktop_set_window_backdrop(
         || sidebar_width < 0.0
         || !navigation_width.is_finite()
         || navigation_width < 0.0
+        || titlebar_height.is_some_and(|height| !height.is_finite() || height < 0.0)
     {
         return Err("Invalid sidebar width.".into());
     }
@@ -42,6 +44,9 @@ pub(crate) async fn desktop_set_window_backdrop(
                             .as_ref()
                             .ok_or("Native content container unavailable")?;
                         let bounds: NSRect = msg_send![parent, bounds];
+                        let titlebar_height =
+                            titlebar_height.unwrap_or(0.0).min(bounds.size.height);
+                        let is_flipped: bool = msg_send![parent, isFlipped];
                         let views: *const AnyObject = msg_send![parent, subviews];
                         let count: usize = msg_send![views, count];
                         for index in 0..count {
@@ -51,12 +56,11 @@ pub(crate) async fn desktop_set_window_backdrop(
                             if !is_material {
                                 continue;
                             }
-                            let mut sidebar = bounds;
-                            sidebar.size.width = sidebar_width.min(bounds.size.width);
-                            let _: () = msg_send![child, setFrame: sidebar];
-                            // Only height follows the window. Sidebar width is
-                            // governed by the same layout state as the web pane.
-                            let _: () = msg_send![child, setAutoresizingMask: 16_usize];
+                            // One continuous material under the titlebar and
+                            // navigation. The opaque workspace backing below
+                            // prevents bare glass during native live resize.
+                            let _: () = msg_send![child, setFrame: bounds];
+                            let _: () = msg_send![child, setAutoresizingMask: 18_usize];
                         }
                         let color: *const AnyObject = msg_send![class!(NSColor),
                         colorWithSRGBRed: f64::from(background[0]) / 255.0,
@@ -79,12 +83,34 @@ pub(crate) async fn desktop_set_window_backdrop(
                         sessions.origin.x += navigation.size.width;
                         sessions.size.width =
                             (sidebar_width.min(bounds.size.width) - navigation.size.width).max(0.0);
+                        sessions.size.height -= titlebar_height;
+                        if is_flipped {
+                            sessions.origin.y += titlebar_height;
+                        }
                         set_tint(
                             parent,
                             webview,
                             "kordi-session-backing",
                             sessions,
                             session_background,
+                            16,
+                            false,
+                        )?;
+                        let inset = 6.0_f64.min((bounds.size.height - titlebar_height).max(0.0));
+                        let mut workspace = bounds;
+                        workspace.origin.x += sidebar_width.min(bounds.size.width);
+                        workspace.origin.y += if is_flipped { titlebar_height } else { inset };
+                        workspace.size.width = (bounds.size.width - sidebar_width - inset).max(0.0);
+                        workspace.size.height =
+                            (bounds.size.height - titlebar_height - inset).max(0.0);
+                        set_tint(
+                            parent,
+                            webview,
+                            "kordi-workspace-backing",
+                            workspace,
+                            [background[0], background[1], background[2], 255],
+                            18,
+                            true,
                         )?;
                     }
                     Ok::<(), String>(())
@@ -104,6 +130,7 @@ pub(crate) async fn desktop_set_window_backdrop(
             background,
             navigation_width,
             session_background,
+            titlebar_height,
         );
         Err("Native pane backing is only available on macOS.".into())
     }
@@ -116,6 +143,8 @@ unsafe fn set_tint(
     name: &str,
     frame: objc2_foundation::NSRect,
     rgba: [u8; 4],
+    autoresizing_mask: usize,
+    round_right_corners: bool,
 ) -> Result<(), String> {
     use objc2::{class, msg_send, rc::Retained, runtime::AnyObject};
     use objc2_foundation::NSString;
@@ -144,7 +173,7 @@ unsafe fn set_tint(
         view
     };
     let _: () = msg_send![&*tint, setFrame: frame];
-    let _: () = msg_send![&*tint, setAutoresizingMask: 16_usize];
+    let _: () = msg_send![&*tint, setAutoresizingMask: autoresizing_mask];
     let _: () = msg_send![&*tint, setHidden: frame.size.width <= 0.0];
     let color: *const AnyObject = msg_send![class!(NSColor),
         colorWithSRGBRed: f64::from(rgba[0]) / 255.0,
@@ -154,5 +183,11 @@ unsafe fn set_tint(
     let cg_color: *const std::ffi::c_void = msg_send![color, CGColor];
     let layer: *const AnyObject = msg_send![&*tint, layer];
     let _: () = msg_send![layer, setBackgroundColor: cg_color];
+    if round_right_corners {
+        let _: () = msg_send![layer, setCornerRadius: 12.0_f64];
+        // The two MaxX corners remain the right corners in either coordinate system.
+        let _: () = msg_send![layer, setMaskedCorners: 10_usize];
+        let _: () = msg_send![layer, setMasksToBounds: true];
+    }
     Ok(())
 }

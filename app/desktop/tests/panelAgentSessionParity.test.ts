@@ -55,7 +55,7 @@ function sidePanelBlock(source: string): string {
   const composition = blockBetween(
     source,
     'const companionPane = companionConversation',
-    'const splitDivider = <ChatCompanionSplitDivider',
+    'const selectCompanionView =',
   );
   return [
     composition,

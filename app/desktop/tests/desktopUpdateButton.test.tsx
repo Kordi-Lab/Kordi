@@ -125,7 +125,7 @@ test('WorkspaceSidebar places the updater in the global rail above the profile',
   assert.match(markup, /app-nav-rail-bottom/);
   assert.doesNotMatch(chatsHeaderMarkup, /app-update-wave-button/);
   assert.match(source, /<SidebarUpdater[\s\S]*<SidebarProfileControl/);
-  assert.match(source, /app-update-wave-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-\[14px\] p-0/);
+  assert.match(source, /app-update-wave-button app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-\[10px\] p-0/);
   assert.match(source, /app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
   assert.match(source, /src="\/blob-wave\.gif"/);
   assert.match(source, /srcSet="\/blob-wave-static\.png"/);

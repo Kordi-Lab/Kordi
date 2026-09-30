@@ -44,7 +44,7 @@ test('native shell exposes vibrancy through the complete left navigation stack',
 
   assert.match(indexHtml, /__TAURI_INTERNALS__[\s\S]*document\.documentElement\.classList\.add\('kordi-native-shell'\)/);
   assert.match(shellCss, /html\.kordi-native-shell \.kordi-app \.app-left-glass\s*\{[^}]*background:\s*var\(--app-nav-rail-glass-bg\)/s);
-  assert.match(shellCss, /html\.kordi-native-shell \.kordi-app \.app-session-panel\s*\{[^}]*background:\s*var\(--app-native-session-bg\)/s);
+  assert.match(shellCss, /html\.kordi-native-shell \.kordi-app \.app-session-panel\s*\{[^}]*background:[^;]*var\(--app-native-session-bg\)/s);
   assert.match(shellCss, /html\.kordi-native-shell \.kordi-app \.app-main-panel\s*\{[^}]*background:\s*var\(--app-native-main-bg\)/s);
   assert.match(shellCss, /html\.kordi-native-shell \.kordi-app \.app-shell,[\s\S]*html\.kordi-native-shell \.kordi-app \.app-main-panel\s*\{[^}]*backdrop-filter:\s*none/s);
   assert.match(shellCss, /@media \(prefers-reduced-transparency: reduce\)[\s\S]*\.app-left-glass\s*\{[^}]*background:\s*var\(--app-nav-rail-glass-fallback\)[\s\S]*\.app-session-panel\s*\{[^}]*background:\s*var\(--app-native-session-fallback\)/s);
@@ -52,9 +52,9 @@ test('native shell exposes vibrancy through the complete left navigation stack',
   assert.equal((tokensCss.match(/--app-native-session-bg:/g) ?? []).length, 2);
   assert.equal((tokensCss.match(/--app-native-session-fallback:/g) ?? []).length, 2);
   assert.equal((tokensCss.match(/--app-native-main-bg:/g) ?? []).length, 2);
-  assert.match(tokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*var\(--app-session-bg\);/);
+  assert.match(tokensCss, /\.kordi-app\.theme-light\s*{[\s\S]*--app-native-session-bg:\s*rgb\(250 250 251 \/ 0\.34\);/);
   assert.match(profileControl, /className="app-nav-rail-profile rounded-full"/);
-  assert.match(profileControl, /className="app-nav-rail-avatar h-9 w-9"/);
+  assert.match(profileControl, /className="app-nav-rail-avatar h-7 w-7"/);
   assert.doesNotMatch(profileControl, /shadow-\[inset_-1px_0_0_rgba/);
 });
 
@@ -70,7 +70,7 @@ test('navigation rail uses black glass in dark mode and translucent white glass 
 
   assert.match(
     darkTokens,
-    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, oklch\(18% 0\.008 252 \/ 0\.18\) 0%, oklch\(12% 0\.006 252 \/ 0\.10\) 100%\);/,
+    /--app-nav-rail-glass-bg:\s*linear-gradient\(180deg, rgb\(24 24 24 \/ 0\.76\) 0%, rgb\(24 24 24 \/ 0\.76\) 100%\);/,
   );
   assert.match(
     lightTokens,

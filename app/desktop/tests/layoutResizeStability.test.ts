@@ -6,6 +6,7 @@ import {
   createLayoutResizeScheduler,
   NATIVE_LAYOUT_RESIZE_SETTLE_MS,
 } from '../src/app/layoutResizeScheduler';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { shallowObjectEqual } from '../src/app/useShallowStableObject';
 
 test('native resize activity coalesces geometry work and settles after the latest event', () => {
@@ -87,7 +88,7 @@ test('resize styling suppresses transitions without toggling native shell blur',
   const frameSource = readFileSync(new URL('../src/app/AppShellFrame.tsx', import.meta.url), 'utf8');
   const layoutSource = readFileSync(new URL('../src/app/useAppLayoutState.ts', import.meta.url), 'utf8');
   const appCss = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
-  const shellCss = readFileSync(new URL('../src/styles/shell.css', import.meta.url), 'utf8');
+  const shellCss = readDesktopShellCss();
 
   assert.match(frameSource, /data-layout-resizing=\{isLayoutResizing \? 'true' : undefined\}/);
   assert.match(frameSource, /app-native-viewport/);

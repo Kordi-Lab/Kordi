@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
     }};
   });
   await page.goto('/tests/visual/subsessionConversation.html');
-  await page.getByRole('button', { name:'Ask Agent', exact:true }).click();
+  await page.getByRole('button', { name:'Chat', exact:true }).click();
 });
 
 test('New chat creates a distinct private session and survives delayed catalog hydration', async ({ page }) => {
@@ -86,15 +86,15 @@ test('a delayed main draft update cannot move typing out of the private composer
   await expect(main).toHaveText('MAIN_DRAFT');
 });
 
-test('closing during creation does not reopen the pane when the result arrives', async ({page}) => {
+for (const closeControl of ['Close side chat', 'Chat']) test(`closing through ${closeControl} during creation does not reopen the pane when the result arrives`, async ({page}) => {
   const panel=page.locator('[data-chat-side-agent-panel="true"]');
   await page.evaluate(()=>{(window as unknown as {holdNativeCreate:boolean}).holdNativeCreate=true;});
   await panel.getByRole('button',{name:'Side chat options',exact:true}).click();
   await panel.getByRole('button',{name:'New chat',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {nativeCreateCalls:unknown[]}).nativeCreateCalls.length)).toBe(1);
-  await panel.getByRole('button',{name:'Close side chat',exact:true}).click();
+  await page.getByRole('button',{name:closeControl,exact:true}).click();
   await page.evaluate(()=>(window as unknown as {finishNativeCreate:()=>void}).finishNativeCreate());
-  await expect(panel).toHaveCount(0);
+  await expect(panel).toBeHidden();
   expect(await page.evaluate(()=>(window as unknown as {unexpectedParentSends:number}).unexpectedParentSends)).toBe(0);
 });
 
