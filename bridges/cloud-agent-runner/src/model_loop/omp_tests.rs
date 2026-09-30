@@ -90,7 +90,7 @@ fn sensitive_tool_output_disables_replay_even_if_compaction_hides_it() {
     let produced = vec![
         json!({"role":"toolResult","tool_name":"read_session","content":[{"type":"text","text":"private source"}]}),
     ];
-    let compacted_context = vec![json!({"role":"compactionSummary","summary":"source summarized"})];
+    let compacted_context = [json!({"role":"compactionSummary","summary":"source summarized"})];
     assert!(!output_is_replayable(&produced));
     assert!(compacted_context
         .iter()
@@ -189,11 +189,13 @@ async fn real_bun_cloud_adapter_returns_durable_context() {
             &NoCloudCalls,
             &run(),
             &sandbox,
-            "snapshot-test".into(),
-            auth,
-            worker,
-            "Say hello".into(),
-            vec![],
+            OmpTurnConfig {
+                snapshot_id: "snapshot-test".into(),
+                auth,
+                worker,
+                prompt: "Say hello".into(),
+                messages: vec![],
+            },
         ),
     )
     .await

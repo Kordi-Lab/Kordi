@@ -19,6 +19,10 @@ use super::{TurnConfig, TurnEvent};
 /// OMP calls use the same Kordi extension lifecycle and host policy as the
 /// Rust loop. OMP persists its structured result transcript after the run, so
 /// this callback emits the live result without appending a duplicate entry.
+#[allow(
+    dead_code,
+    reason = "the CLI binary shares this module with the desktop runtime library"
+)]
 pub(crate) async fn execute_omp_tool_call(
     config: &TurnConfig,
     event_tx: &mpsc::UnboundedSender<TurnEvent>,

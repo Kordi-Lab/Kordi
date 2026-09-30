@@ -2,7 +2,7 @@ use super::*;
 
 // Must match cloudOperationUuid in the desktop Cloud client. This only derives
 // an operation identity from a local message ID; it is not a security hash.
-pub(super) fn cloud_request_client_message_id(session_id: &str, local_message_id: &str) -> String {
+pub(crate) fn cloud_request_client_message_id(session_id: &str, local_message_id: &str) -> String {
     let input = format!("self-agent:{session_id}:{local_message_id}:request");
     let mut seed = 0x811c9dc5_u32;
     for unit in input.encode_utf16() {
@@ -34,8 +34,8 @@ pub(super) fn cloud_request_client_message_id(session_id: &str, local_message_id
 
 pub(super) fn exported_agent_intent_matches(
     conn: &Connection,
-    local: &super::super::CanonicalSessionMessage,
-    cloud: &super::super::CanonicalSessionMessage,
+    local: &crate::canonical_sessions::CanonicalSessionMessage,
+    cloud: &crate::canonical_sessions::CanonicalSessionMessage,
 ) -> Result<bool, String> {
     if local.content_text.trim() != cloud.content_text.trim() {
         return Ok(false);

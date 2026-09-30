@@ -47,25 +47,38 @@ pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
         client,
         run,
         sandbox,
-        auth_material.snapshot_id,
-        auth,
-        OmpRuntime::new(WorkerCommand::sidecar(worker_path)),
-        context.prompt,
-        messages,
+        OmpTurnConfig {
+            snapshot_id: auth_material.snapshot_id,
+            auth,
+            worker: OmpRuntime::new(WorkerCommand::sidecar(worker_path)),
+            prompt: context.prompt,
+            messages,
+        },
     )
     .await
+}
+
+struct OmpTurnConfig {
+    snapshot_id: String,
+    auth: OpenAiProviderConfig,
+    worker: OmpRuntime,
+    prompt: String,
+    messages: Vec<Value>,
 }
 
 async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
     client: &C,
     run: &CloudAgentRun,
     sandbox: &SandboxBackendHandle,
-    snapshot_id: String,
-    auth: OpenAiProviderConfig,
-    worker: OmpRuntime,
-    prompt: String,
-    messages: Vec<Value>,
+    config: OmpTurnConfig,
 ) -> Result<(String, OmpState), ModelLoopError> {
+    let OmpTurnConfig {
+        snapshot_id,
+        auth,
+        worker,
+        prompt,
+        messages,
+    } = config;
     let tools = tools_for_run(run)?;
     let system_prompt = system_prompt_for_run(run)?;
     let mut headers = std::collections::BTreeMap::new();
@@ -326,21 +339,19 @@ impl<C: CloudAgentRunClient + Sync> HostTool for CloudOmpTools<'_, C> {
                     | "write"
                     | "edit"
             )
-        {
-            if self
+            && self
                 .client
                 .subsession_progress(&self.run.run_id, &model_call.id, &model_call.name)
                 .await
                 .is_err()
-            {
-                return ToolResult {
-                    ok: false,
-                    content: vec![
-                        json!({"type":"text","text":"Subsession progress could not be recorded."}),
-                    ],
-                    details: None,
-                };
-            }
+        {
+            return ToolResult {
+                ok: false,
+                content: vec![
+                    json!({"type":"text","text":"Subsession progress could not be recorded."}),
+                ],
+                details: None,
+            };
         }
         let output = execute_model_tool(
             self.client,

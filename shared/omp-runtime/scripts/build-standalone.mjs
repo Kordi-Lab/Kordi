@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { resolveNativeAddon } from './native-addon.mjs';
 
 const runtimeDir = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const outputDir = resolve(process.argv[2] ?? join(runtimeDir, 'dist'));
@@ -18,7 +19,7 @@ if (!targetTriple.startsWith(expectedPrefix) || !targetTriple.includes(targetOs)
 
 const nativePackage = `@oh-my-pi/pi-natives-${platform}-${arch}`;
 const nativeName = `pi_natives.${platform}-${arch}.node`;
-const nativePath = join(runtimeDir, 'node_modules', nativePackage, nativeName);
+const nativePath = resolveNativeAddon(join(runtimeDir, 'node_modules', nativePackage), platform, arch);
 const nativeManifest = join(runtimeDir, 'node_modules', nativePackage, 'package.json');
 const codingAgentManifest = join(runtimeDir, 'node_modules', '@oh-my-pi', 'pi-coding-agent', 'package.json');
 const pinnedVersion = readFileSync(join(runtimeDir, 'package.json'), 'utf8');

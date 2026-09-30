@@ -15,8 +15,8 @@ mod cloud_reconcile;
 mod message_enrichment;
 mod session_metadata;
 
-use message_enrichment::*;
-use session_metadata::*;
+pub(crate) use message_enrichment::*;
+pub(crate) use session_metadata::*;
 mod message_role;
 mod user_identity;
 

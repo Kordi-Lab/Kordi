@@ -7,8 +7,20 @@ pub(crate) struct SessionRuntimeSetup {
     pub model: kordi_provider::registry::Model,
     pub auth: Option<crate::login::ResolvedProviderAuth>,
     /// Credential material supplied for one desktop turn; never written to the session store.
+    #[allow(
+        dead_code,
+        reason = "the CLI binary shares this setup with the desktop runtime library"
+    )]
     pub ephemeral_auth: Option<crate::login::ResolvedProviderAuth>,
+    #[allow(
+        dead_code,
+        reason = "the CLI binary shares this setup with the desktop runtime library"
+    )]
     pub ephemeral_base_url: Option<String>,
+    #[allow(
+        dead_code,
+        reason = "the CLI binary shares this setup with the desktop runtime library"
+    )]
     pub ephemeral_original_model_api: Option<kordi_provider::registry::ApiType>,
     #[allow(dead_code)]
     pub auth_choice_override: Option<SessionAuthChoiceOverride>,

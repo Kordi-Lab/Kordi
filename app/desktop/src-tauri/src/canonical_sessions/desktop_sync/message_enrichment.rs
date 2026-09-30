@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn canonical_desktop_message_source_event_id(
+pub(crate) fn canonical_desktop_message_source_event_id(
     session_id: &str,
     index: usize,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
@@ -20,7 +20,7 @@ pub(super) fn canonical_desktop_message_source_event_id(
     )
 }
 
-pub(super) fn should_skip_shared_local_agent_runtime_prompt(
+pub(crate) fn should_skip_shared_local_agent_runtime_prompt(
     session_id: &str,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
 ) -> bool {
@@ -33,7 +33,7 @@ pub(super) fn should_skip_shared_local_agent_runtime_prompt(
     message.text.trim_start().starts_with("@Kordi")
 }
 
-pub(super) fn content_with_desktop_runtime(
+pub(crate) fn content_with_desktop_runtime(
     content_json: Option<&str>,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
     reply_to_message_id: Option<&str>,
@@ -90,7 +90,7 @@ pub(super) fn content_with_desktop_runtime(
     Ok(content)
 }
 
-pub(super) fn update_message_with_desktop_runtime(
+pub(crate) fn update_message_with_desktop_runtime(
     conn: &Connection,
     message_id: &str,
     content_text: &str,
@@ -124,7 +124,7 @@ pub(super) fn update_message_with_desktop_runtime(
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn enrich_similar_bridge_agent_message_with_desktop_runtime(
+pub(crate) fn enrich_similar_bridge_agent_message_with_desktop_runtime(
     conn: &Connection,
     session_id: &str,
     content_text: &str,
@@ -179,7 +179,7 @@ pub(super) fn enrich_similar_bridge_agent_message_with_desktop_runtime(
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub(super) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime(
+pub(crate) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime(
     conn: &Connection,
     session_id: &str,
     content_text: &str,
@@ -219,7 +219,7 @@ pub(super) fn reconcile_processing_bridge_agent_placeholder_with_desktop_runtime
     Ok(true)
 }
 
-pub(super) fn matching_fork_snapshot_message_id(
+pub(crate) fn matching_fork_snapshot_message_id(
     conn: &Connection,
     session_id: &str,
     sender_identity_id: &str,

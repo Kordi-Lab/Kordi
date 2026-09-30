@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) fn is_placeholder_or_default_agent_session_title(title: &str) -> bool {
+pub(crate) fn is_placeholder_or_default_agent_session_title(title: &str) -> bool {
     let normalized = title.trim().to_lowercase();
     let placeholders = "new chat\nnew session\nuntitled session\nsession\nkordi\nmy kordi\nmy agent\nmy kordi session\nmy agent session";
     normalized.is_empty()
@@ -9,14 +9,14 @@ pub(super) fn is_placeholder_or_default_agent_session_title(title: &str) -> bool
             .any(|candidate| candidate == normalized)
 }
 
-pub(super) fn should_sync_desktop_chat_summary(
+pub(crate) fn should_sync_desktop_chat_summary(
     summary: &kordi_cli::desktop_runtime::DesktopChatSessionSummary,
 ) -> bool {
     !(summary.message_count == 0
         && (summary.draft || is_placeholder_or_default_agent_session_title(&summary.title)))
 }
 
-pub(super) fn should_sync_desktop_chat_detail(
+pub(crate) fn should_sync_desktop_chat_detail(
     detail: &kordi_cli::desktop_runtime::DesktopChatSessionDetail,
 ) -> bool {
     !(detail.message_count == 0
@@ -24,7 +24,7 @@ pub(super) fn should_sync_desktop_chat_detail(
         && (detail.draft || is_placeholder_or_default_agent_session_title(&detail.title)))
 }
 
-pub(super) fn should_update_desktop_session_shell(
+pub(crate) fn should_update_desktop_session_shell(
     conn: &Connection,
     session_id: &str,
 ) -> Result<bool, String> {
@@ -58,7 +58,7 @@ pub(super) fn should_update_desktop_session_shell(
     Ok(true)
 }
 
-pub(super) fn desktop_session_agent_identity(
+pub(crate) fn desktop_session_agent_identity(
     conn: &Connection,
     session_id: &str,
     fallback: &str,
@@ -70,7 +70,7 @@ pub(super) fn desktop_session_agent_identity(
     Ok(identity.unwrap_or_else(|| fallback.to_string()))
 }
 
-pub(super) fn explicit_desktop_project_membership(
+pub(crate) fn explicit_desktop_project_membership(
     state: &crate::chat::DesktopChatState,
     session_id: &str,
 ) -> Option<(String, String, String)> {
@@ -89,7 +89,7 @@ pub(super) fn explicit_desktop_project_membership(
     })
 }
 
-pub(super) fn resolve_desktop_entry_to_canonical_message_id(
+pub(crate) fn resolve_desktop_entry_to_canonical_message_id(
     conn: &Connection,
     session_id: &str,
     entry_id: &str,
@@ -165,7 +165,7 @@ pub(crate) fn canonical_session_message_id_for_entry(
     resolve_desktop_entry_to_canonical_message_id(&conn, session_id, entry_id)
 }
 
-pub(super) fn canonical_fork_message_id(
+pub(crate) fn canonical_fork_message_id(
     conn: &Connection,
     forked_from_session_id: Option<&str>,
     forked_from_message_id: Option<&str>,
@@ -190,7 +190,7 @@ pub(super) fn canonical_fork_message_id(
     Ok(resolved.or_else(|| Some(message_id.to_string())))
 }
 
-pub(super) fn fork_metadata_value(
+pub(crate) fn fork_metadata_value(
     conn: &Connection,
     forked_from_session_id: Option<&str>,
     forked_from_message_id: Option<&str>,
@@ -235,7 +235,7 @@ pub(super) fn fork_metadata_value(
     Ok(Some(value))
 }
 
-pub(super) fn metadata_with_fork(
+pub(crate) fn metadata_with_fork(
     conn: &Connection,
     session_id: Option<&str>,
     base: serde_json::Value,
@@ -303,7 +303,7 @@ pub(super) fn metadata_with_fork(
     Ok(combined)
 }
 
-pub(super) fn metadata_with_runtime_title(
+pub(crate) fn metadata_with_runtime_title(
     mut base: serde_json::Value,
     runtime_conn: Option<&rusqlite::Connection>,
     session_id: &str,

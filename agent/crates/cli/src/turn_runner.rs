@@ -95,6 +95,10 @@ pub enum TurnEvent {
 }
 
 mod hooks;
+#[allow(
+    unused_imports,
+    reason = "the CLI binary shares this module with the desktop runtime library"
+)]
 pub(crate) use hooks::send_extension_event_safe;
 mod omp_tools;
 mod panic;
@@ -104,6 +108,10 @@ mod tool_argument_progress;
 mod tool_policy;
 mod tool_support;
 mod tools;
+#[allow(
+    unused_imports,
+    reason = "the CLI binary shares this module with the desktop runtime library"
+)]
 pub(crate) use omp_tools::execute_omp_tool_call;
 
 #[allow(unused_imports)]
