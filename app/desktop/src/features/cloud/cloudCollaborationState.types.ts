@@ -105,6 +105,7 @@ export type UseCloudCollaborationStateResult = {
   updateCloudSessionPin: (input: {
     sessionId: string;
     messageId: string | null;
+    action?: 'pin' | 'unpin';
     scope: 'private' | 'shared';
   }) => Promise<CloudSessionPin>;
   hideCloudSession: (sessionId: string) => Promise<void>;

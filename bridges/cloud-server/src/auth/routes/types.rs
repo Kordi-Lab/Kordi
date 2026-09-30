@@ -390,6 +390,7 @@ pub struct MessagesQuery {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateCloudSessionPinRequest {
+    pub action: Option<String>,
     #[serde(rename = "messageId")]
     pub message_id: Option<String>,
     pub scope: String,

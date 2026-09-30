@@ -252,7 +252,7 @@ export class ChatSyncSyncClient {
           eventType: 'session.pin.updated',
           peerAccountId: null,
           messageId,
-          payload: { sessionId: pin.sessionId, messageId, scope, updatedAt },
+          payload: { sessionId: pin.sessionId, messageId, messageIds: (scope === 'shared' ? pin.sharedMessageIds : pin.privateMessageIds) ?? (messageId ? [messageId] : []), scope, updatedAt },
           occurredAt: updatedAt,
         } satisfies CloudSyncEvent;
       })

@@ -83,6 +83,8 @@ test('bootstrap pin snapshots replace stale private and shared state', async () 
     sessionId,
     sharedMessageId: message.id,
     privateMessageId: null,
+    sharedMessageIds: [message.id],
+    privateMessageIds: [],
     effectiveMessageId: message.id,
     updatedAt: '2026-08-10T07:19:00Z',
     lastAction: null,

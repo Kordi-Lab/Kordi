@@ -1,3 +1,4 @@
+import { MAX_PINNED_MESSAGES, sessionPinMessageIds } from '@/features/cloud/cloudSessionPinTypes';
 import { cloudOperationUuid } from '@/features/cloud/chatSyncMapping';
 import { mergePinHistory, type CloudPinHistoryEvent } from '@/features/cloud/cloudPinHistory';
 import { remainingPendingPinActions, resolvePendingPinActions, type PendingPinAction } from '@/pages/pendingPinActions';
@@ -50,6 +51,7 @@ type UseChatPinsInput = {
   onUpdateCloudPin?: (input: {
     sessionId: string;
     messageId: string | null;
+    action?: 'pin' | 'unpin';
     scope: 'private' | 'shared';
   }) => Promise<CloudSessionPin>;
   onNavigateToMessage: (messageId: string) => void;
@@ -66,11 +68,12 @@ export function useChatPins({
   onNavigateToMessage,
 }: UseChatPinsInput) {
   const [pendingCloudActions, setPendingCloudActions] = useState<Record<string, PendingPinAction[]>>({});
-  const [localPinIds, setLocalPinIds] = useState<Record<string, string | null>>({});
+  const [localPinIds, setLocalPinIds] = useState<Record<string, string[]>>({});
   const [localPinActivity, setLocalPinActivity] = useState<Record<string, PinActivity[]>>({});
   const [optimisticCloudPins, setOptimisticCloudPins] = useState<Record<string, CloudSessionPin>>({});
   const [dialog, setDialog] = useState<PinDialog | null>(null);
   const [pinForEveryone, setPinForEveryone] = useState(false);
+  const [error, setError] = useState<{ contextKey: string; message: string } | null>(null);
   const usesCloudPins = Boolean(
     sessionId
       && onUpdateCloudPin
@@ -89,15 +92,14 @@ export function useChatPins({
   const optimisticCloudPin = optimisticCloudPins[pinScopeKey] ?? null;
   const activeCloudPin = usesCloudPins ? optimisticCloudPin ?? cloudPin ?? null : null;
   const pinnedMessages = useMemo<PinnedMessageItem[]>(() => {
-    const pins: Array<{ messageId: string | null | undefined; scope: PinnedMessageScope }> = usesCloudPins
-      ? [
-          { messageId: activeCloudPin?.privateMessageId, scope: 'private' },
-          { messageId: activeCloudPin?.sharedMessageId, scope: 'shared' },
-        ]
-      : [{ messageId: localPinIds[pinScopeKey], scope: 'private' }];
+    const pins: Array<{ messageId: string; scope: PinnedMessageScope }> = usesCloudPins
+      ? (['shared', 'private'] as const).flatMap(scope => sessionPinMessageIds(activeCloudPin, scope).map(messageId => ({ messageId, scope })))
+      : (localPinIds[pinScopeKey] ?? []).map(messageId => ({ messageId, scope: 'private' }));
+    const seen = new Set<string>();
     return pins.flatMap(({ messageId, scope }) => {
       const normalizedId = messageId?.trim();
-      if (!normalizedId) return [];
+      if (!normalizedId || seen.has(normalizedId)) return [];
+      seen.add(normalizedId);
       const message = messages.find((candidate) => (
         usesCloudPins
           ? pinnedMessageCandidateIds(candidate, conversation.id).includes(normalizedId)
@@ -134,10 +136,12 @@ export function useChatPins({
   }
 
   const requestPin = useCallback((message: Message) => {
+    setError(null);
     setPinForEveryone(false);
     setDialog({ mode: 'pin', message, contextKey: pinScopeKey });
   }, [pinScopeKey]);
   const requestUnpin = useCallback((message: Message, scope?: PinnedMessageScope) => {
+    setError(null);
     setDialog({ mode: 'unpin', message, scope, contextKey: pinScopeKey });
   }, [pinScopeKey]);
   const openPinnedMessage = useCallback((message: Message) => {
@@ -152,21 +156,29 @@ export function useChatPins({
       ? stableCloudPinMessageId(dialog.message, conversation.id)
       : chatMessageActionId(dialog.message);
     const candidateIds = pinnedMessageCandidateIds(dialog.message, conversation.id);
-    setDialog(null);
     if (!messageId) return;
+    setError(null);
 
     if (usesCloudPins && onUpdateCloudPin && sessionId) {
-      const sharedMessageId = activeCloudPin?.sharedMessageId?.trim() ?? '';
-      const privateMessageId = activeCloudPin?.privateMessageId?.trim() ?? '';
+      const sharedIds = sessionPinMessageIds(activeCloudPin, 'shared');
+      const privateIds = sessionPinMessageIds(activeCloudPin, 'private');
       const scope = dialog.mode === 'pin'
         ? (pinForEveryone ? 'shared' : 'private')
         : dialog.scope
-          ?? (privateMessageId && candidateIds.includes(privateMessageId)
-            ? 'private'
-            : sharedMessageId && candidateIds.includes(sharedMessageId)
-              ? 'shared'
-              : 'private');
-      const nextMessageId = dialog.mode === 'pin' ? messageId : null;
+          ?? (sharedIds.some(id => candidateIds.includes(id)) ? 'shared' : 'private');
+      const previousIds = scope === 'shared' ? sharedIds : privateIds;
+      const targetId = dialog.mode === 'unpin' ? previousIds.find(id => candidateIds.includes(id)) ?? messageId : messageId;
+      const nextIds = dialog.mode === 'pin'
+        ? [...new Set([...previousIds, targetId])]
+        : previousIds.filter(id => id !== targetId);
+      const otherIds = scope === 'shared' ? privateIds : sharedIds;
+      if (new Set([...nextIds, ...otherIds]).size > MAX_PINNED_MESSAGES) {
+        setError({ contextKey: pinScopeKey, message: 'At most five messages can be pinned. Unpin a message before adding another.' });
+        return;
+      }
+      setDialog(null);
+      if (JSON.stringify(previousIds) === JSON.stringify(nextIds)) return;
+      const nextMessageId = nextIds[nextIds.length - 1] ?? null;
       const base: CloudSessionPin = activeCloudPin ?? {
         sessionId,
         sharedMessageId: null,
@@ -177,7 +189,7 @@ export function useChatPins({
       const lastAction: NonNullable<CloudSessionPin['lastAction']> = {
         kind: dialog.mode === 'pin' ? 'pinned' : 'unpinned',
         scope,
-        messageId: nextMessageId,
+        messageId: targetId,
         updatedByAccountId: null,
         actorLabel: 'You',
         updatedAt: new Date().toISOString(),
@@ -186,6 +198,7 @@ export function useChatPins({
         ? {
             ...base,
             sharedMessageId: nextMessageId,
+            sharedMessageIds: nextIds,
             effectiveMessageId: base.privateMessageId || nextMessageId,
             updatedAt: lastAction.updatedAt,
             lastAction,
@@ -193,22 +206,22 @@ export function useChatPins({
         : {
             ...base,
             privateMessageId: nextMessageId,
+            privateMessageIds: nextIds,
             effectiveMessageId: nextMessageId || base.sharedMessageId,
             updatedAt: lastAction.updatedAt,
             lastAction,
           };
-      const previousMessageId = scope === 'shared' ? base.sharedMessageId : base.privateMessageId;
-      if ((previousMessageId ?? null) === nextMessageId) return;
       const event: CloudPinHistoryEvent = {
         id: `local-pin:${cloudOperationUuid()}`, sessionId, kind: lastAction.kind, scope,
-        messageId: nextMessageId, updatedByAccountId: currentAccountId ?? '', updatedAt: lastAction.updatedAt!,
+        messageId: targetId, updatedByAccountId: currentAccountId ?? '', updatedAt: lastAction.updatedAt!,
       };
       const knownIds = mergePinHistory(cloudPin?.history, base.history).map(item => item.id);
       setPendingCloudActions(current => ({ ...current, [pinScopeKey]: [...(current[pinScopeKey] ?? []), { event, knownIds }] }));
       setOptimisticCloudPins((current) => ({ ...current, [pinScopeKey]: optimistic }));
       void onUpdateCloudPin({
         sessionId,
-        messageId: nextMessageId,
+        messageId: targetId,
+        action: dialog.mode,
         scope,
       }).then((pin) => {
         // A complete server history also confirms no-op writes. Do not leave
@@ -224,7 +237,9 @@ export function useChatPins({
           delete next[pinScopeKey];
           return next;
         });
-      }).catch(() => {
+      }).catch((cause: unknown) => {
+        setError({ contextKey: pinScopeKey, message: cause instanceof Error ? cause.message : 'Could not update pinned messages.' });
+        setDialog(current => current ?? dialog);
         setPendingCloudActions(current => ({ ...current, [pinScopeKey]: (current[pinScopeKey] ?? []).filter(action => action.event.id !== event.id) }));
         setOptimisticCloudPins((current) => {
           if (current[pinScopeKey] !== optimistic) return current;
@@ -236,10 +251,15 @@ export function useChatPins({
       return;
     }
 
-    setLocalPinIds((current) => ({
-      ...current,
-      [pinScopeKey]: dialog.mode === 'pin' ? messageId : null,
-    }));
+    const previousIds = localPinIds[pinScopeKey] ?? [];
+    const nextIds = dialog.mode === 'pin' ? [...new Set([...previousIds, messageId])] : previousIds.filter(id => id !== messageId);
+    if (nextIds.length > MAX_PINNED_MESSAGES) {
+      setError({ contextKey: pinScopeKey, message: 'At most five messages can be pinned. Unpin a message before adding another.' });
+      return;
+    }
+    setDialog(null);
+    if (JSON.stringify(previousIds) === JSON.stringify(nextIds)) return;
+    setLocalPinIds(current => ({ ...current, [pinScopeKey]: nextIds }));
     const timestampMs = Date.now();
     const activityId = `pin-activity:${conversation.id}:${cloudOperationUuid()}`;
     setLocalPinActivity((current) => ({
@@ -253,7 +273,7 @@ export function useChatPins({
       }],
     }));
   }, [
-    activeCloudPin, cloudPin?.history, currentAccountId,
+    activeCloudPin, cloudPin?.history, currentAccountId, localPinIds,
     conversation.id,
     dialog,
     onUpdateCloudPin,
@@ -271,7 +291,8 @@ export function useChatPins({
     requestUnpin,
     openPinnedMessage,
     dialog: {
-      value: dialog,
+      value: dialog?.contextKey === pinScopeKey ? dialog : null,
+      error: error?.contextKey === pinScopeKey ? error.message : null,
       pinForEveryone,
       setPinForEveryone,
       cancel: () => setDialog(null),

@@ -52,7 +52,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   desktopChatState: DesktopChatState | null;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
   cloudSessionPinsById: Record<string, CloudSessionPin>;
-  onUpdateCloudSessionPin: (input: { sessionId: string; messageId: string | null; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
+  onUpdateCloudSessionPin: (input: { sessionId: string; messageId: string | null; action?: 'pin' | 'unpin'; scope: 'private' | 'shared' }) => Promise<CloudSessionPin>;
   windowWidth: number;
   activeNav: NavId;
   cloudSession: UseCloudSessionResult;

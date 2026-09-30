@@ -444,6 +444,7 @@ export function ChatMainWorkspace({
           mode={models.pins.dialog.value.mode}
           message={models.pins.dialog.value.message}
           pinForEveryone={models.pins.dialog.pinForEveryone}
+          error={models.pins.dialog.error}
           onTogglePinForEveryone={models.pins.dialog.setPinForEveryone}
           onCancel={models.pins.dialog.cancel}
           onConfirm={models.pins.dialog.confirm}

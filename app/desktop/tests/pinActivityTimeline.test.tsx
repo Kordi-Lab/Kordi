@@ -127,7 +127,7 @@ test('a completed local mutation cannot mask pin state arriving from another dev
   type PinState = import('../src/features/cloud/authClient').CloudSessionPin;
   const sessionId = 'session:group:history-fixture';
   const pin = { id: 'first', sequence: 1, sessionId, kind: 'pinned' as const, scope: 'private' as const, messageId: earlier.id!, updatedByAccountId: 'owner', updatedAt: '2026-01-01T10:00:00Z' };
-  const unpin = { ...pin, id: 'second', sequence: 2, kind: 'unpinned' as const, messageId: null, updatedAt: '2026-01-01T10:01:00Z' };
+  const unpin = { ...pin, id: 'second', sequence: 2, kind: 'unpinned' as const, messageId: earlier.id!, updatedAt: '2026-01-01T10:01:00Z' };
   const remote = { ...pin, id: 'third', sequence: 3, updatedAt: '2026-01-01T10:02:00Z' };
   let state: ReturnType<typeof useChatPins>;
   let setRemote: () => void = () => {};
@@ -138,8 +138,9 @@ test('a completed local mutation cannot mask pin state arriving from another dev
       conversation: { id: sessionId, collaborationSources: [], canonicalParticipants: [] } as unknown as import('../src/kordi-app/types').Conversation,
       sessionId, messages: [earlier], isGroupSession: true, currentAccountId: 'owner', cloudPin,
       onNavigateToMessage() {},
-      onUpdateCloudPin: async ({ messageId }) => {
-        const event = messageId ? pin : unpin;
+      onUpdateCloudPin: async ({ messageId, action }) => {
+        const event = action === 'unpin' ? unpin : pin;
+        messageId = action === 'unpin' ? null : messageId;
         const updated: PinState = { ...cloudPin, privateMessageId: messageId, effectiveMessageId: messageId, updatedAt: event.updatedAt, history: messageId ? [pin] : [pin, unpin] };
         setPin(updated);
         return updated;

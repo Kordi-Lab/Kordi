@@ -1,3 +1,4 @@
+import { sessionPinMessageIds } from './cloudSessionPinTypes';
 import { mergePinHistory, type CloudPinHistoryEvent } from './cloudPinHistory';
 import type { CloudArtifactActivity, CloudMessage, CloudSessionForkSummary, CloudSessionPin, CloudSessionTitle, CloudSyncEvent as AuthCloudSyncEvent, CloudSyncResponse, CloudTaskActivity } from './authClient';
 import { applyCloudAgentSyncEvents, type CloudAgentDefinition } from './cloudAgents';
@@ -236,18 +237,21 @@ function normalizeCloudSessionPin(value: unknown, existing?: CloudSessionPin | n
   const sessionId = cleanText(record.sessionId);
   if (!sessionId) return null;
   const scope = cleanText(record.scope).toLowerCase();
-  const hasMessageId = Object.prototype.hasOwnProperty.call(record, 'messageId');
-  const messageId = hasMessageId ? cleanText(record.messageId) || null : undefined;
-  const sharedMessageId = scope === 'shared'
-    ? messageId ?? null
-    : cleanText(record.sharedMessageId) || existing?.sharedMessageId || null;
-  const privateMessageId = scope === 'private'
-    ? messageId ?? null
-    : cleanText(record.privateMessageId) || existing?.privateMessageId || null;
+  const idsFor = (pinScope: 'shared' | 'private') => {
+    const array = record[scope === pinScope ? 'messageIds' : `${pinScope}MessageIds`];
+    if (Array.isArray(array)) return [...new Set(array.map(cleanText).filter(Boolean))];
+    if (scope === pinScope || Object.prototype.hasOwnProperty.call(record, `${pinScope}MessageId`)) {
+      const id = cleanText(record[scope === pinScope ? 'messageId' : `${pinScope}MessageId`]);
+      return id ? [id] : [];
+    }
+    return sessionPinMessageIds(existing, pinScope);
+  };
+  const sharedMessageIds = idsFor('shared');
+  const privateMessageIds = idsFor('private');
+  const sharedMessageId = sharedMessageIds[sharedMessageIds.length - 1] ?? null;
+  const privateMessageId = privateMessageIds[privateMessageIds.length - 1] ?? null;
   return {
-    sessionId,
-    sharedMessageId,
-    privateMessageId,
+    sessionId, sharedMessageIds, privateMessageIds, sharedMessageId, privateMessageId,
     effectiveMessageId: privateMessageId || sharedMessageId || null,
     updatedAt: cleanText(record.updatedAt) || null,
   };
@@ -265,12 +269,13 @@ export function applyCloudSyncEventsToSessionPins(
     if (!sessionId) continue;
     const pin = normalizeCloudSessionPin({ ...payload, sessionId }, next[sessionId]);
     if (!pin) continue;
-    const messageId = cleanText(payload?.messageId) || null;
+    const messageId = cleanText(payload?.targetMessageId ?? payload?.messageId) || null;
+    const kind = payload?.kind === 'unpinned' || (!payload?.kind && !messageId) ? 'unpinned' : 'pinned';
     const previous = next[sessionId];
     const historyEvent = payload?.pinHistoryEvent as CloudPinHistoryEvent | undefined
       ?? (!event.eventId.startsWith('bootstrap:session-pin:') ? {
         id: `legacy-pin:${event.eventId}`, sessionId,
-        kind: messageId ? 'pinned' : 'unpinned',
+        kind,
         scope: cleanText(payload?.scope) === 'shared' ? 'shared' : 'private',
         messageId, updatedByAccountId: cleanText(payload?.updatedByAccountId),
         updatedAt: cleanText(payload?.updatedAt) || event.occurredAt,
@@ -292,7 +297,7 @@ export function applyCloudSyncEventsToSessionPins(
         lastAction: event.eventId.startsWith('bootstrap:session-pin:')
           ? null
           : {
-              kind: messageId ? 'pinned' : 'unpinned',
+              kind,
               scope: cleanText(payload?.scope) === 'shared' ? 'shared' : 'private',
               messageId,
               updatedByAccountId: cleanText(payload?.updatedByAccountId) || null,

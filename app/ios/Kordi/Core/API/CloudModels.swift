@@ -348,38 +348,6 @@ struct CloudSessionPinAction: Codable, Hashable {
     let updatedAt: String?
 }
 
-struct CloudSessionPin: Codable, Hashable {
-    let sessionId: String
-    let sharedMessageId: String?
-    let privateMessageId: String?
-    let effectiveMessageId: String?
-    let updatedAt: String?
-    var lastAction: CloudSessionPinAction? = nil
-    var history: [CloudPinHistoryEvent]? = nil
-
-    func mergingHistory(from current: Self?) -> Self {
-        var result = self
-        // Legacy responses timestamp the remaining pin rather than the unpin action.
-        if history != nil, let current, let old = current.updatedAt.flatMap(CloudPinHistoryEvent.parseTimestamp),
-           updatedAt.flatMap(CloudPinHistoryEvent.parseTimestamp).map({ $0 < old }) ?? true {
-            result = current
-        }
-        result.history = CloudPinHistoryEvent.merging([current?.history ?? [], history ?? []])
-        return result
-    }
-
-    func recording(_ action: CloudSessionPinAction?) -> Self {
-        Self(
-            sessionId: sessionId,
-            sharedMessageId: sharedMessageId,
-            privateMessageId: privateMessageId,
-            effectiveMessageId: effectiveMessageId,
-            updatedAt: updatedAt,
-            lastAction: action,
-            history: history
-        )
-    }
-}
 
 struct CloudAuthResponse: Codable, Hashable {
     let account: CloudAccount
@@ -1525,6 +1493,9 @@ struct CloudChatCursor: Codable, Hashable {
 }
 
 struct CloudChatEventPayload: Codable, Hashable {
+    var messageIds: [String]? = nil
+    var kind: String? = nil
+    var targetMessageId: String? = nil
     var pinHistoryEvent: CloudPinHistoryEvent? = nil
     let conversation: CloudChatConversation?
     let message: CloudChatMessage?
@@ -1539,7 +1510,7 @@ struct CloudChatEventPayload: Codable, Hashable {
     let deviceId: String?
 
     enum CodingKeys: String, CodingKey {
-        case conversation, message, preferences, cursor, call, pinHistoryEvent
+        case conversation, message, preferences, cursor, call, pinHistoryEvent, messageIds, kind, targetMessageId
         case sessionId, messageId, scope, updatedAt, updatedByAccountId
         case deviceId = "deviceId"
     }
@@ -1808,6 +1779,8 @@ struct CloudSyncEvent: Codable, Hashable {
 }
 
 struct CloudSyncEventPayload: Codable, Hashable {
+    var kind: String? = nil
+    var targetMessageId: String? = nil
     var pinHistoryEvent: CloudPinHistoryEvent? = nil
     let message: CloudMessageDTO?
     let messageIds: [String]?
