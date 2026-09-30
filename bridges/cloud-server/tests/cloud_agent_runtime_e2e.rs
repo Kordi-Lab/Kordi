@@ -31,6 +31,12 @@ struct TestAccount {
 
 async fn try_pool() -> Option<sqlx_postgres::PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
+    // These tests lease the runs they create by id; the shared test database
+    // also holds other tests' queued runs.
+    std::env::set_var(
+        kordi_cloud_server::cloud_agent_runtime::runs::CANARY_LEASES_ENV,
+        "1",
+    );
     let _guard = INIT_POOL_LOCK.lock().await;
     Some(
         init_pool(&url)
@@ -442,6 +448,8 @@ mod group_target_admission;
 mod hosted_only_admission;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
 mod provider_auth;
+#[path = "cloud_agent_runtime_e2e/run_tokens.rs"]
+mod run_tokens;
 #[path = "cloud_agent_runtime_e2e/runner.rs"]
 mod runner;
 #[path = "cloud_agent_runtime_e2e/sandboxes.rs"]

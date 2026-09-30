@@ -1,5 +1,27 @@
 use super::*;
 
+/// Conversations this test's accounts created or belong to. Other tests share
+/// the database and create conversations concurrently, so a global count
+/// would change under this test.
+async fn participant_conversations(
+    pool: &sqlx_postgres::PgPool,
+    owner: &TestAccount,
+    peer: &TestAccount,
+) -> i64 {
+    let (count,): (i64,) = sqlx_core::query_as::query_as(
+        "SELECT count(*) FROM cloud_chat_conversations c \
+         WHERE c.created_by_account_id IN ($1, $2) \
+            OR EXISTS (SELECT 1 FROM cloud_chat_conversation_members m \
+                       WHERE m.conversation_id = c.conversation_id AND m.account_id IN ($1, $2))",
+    )
+    .bind(&owner.account_id)
+    .bind(&peer.account_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    count
+}
+
 #[tokio::test]
 async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_parent() {
     let Some(pool) = try_pool().await else { return };
@@ -94,11 +116,7 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         let parent_token = lease_run_token(&leased);
         let uri = format!("/v1/cloud/agent-runs/{parent}/task-operator");
         let input = json!({"runnerId":"parent-executor","toolCallId":"spawn-call","arguments":{"action":"spawn","taskName":"research","taskTitle":"Research task","message":"Compare sources independently","forkTurns":"none"}});
-        let before: (i64,) =
-            sqlx_core::query_as::query_as("SELECT count(*) FROM cloud_chat_conversations")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let before = participant_conversations(&pool, &owner, &peer).await;
         let created = router
             .clone()
             .oneshot(run_post(&uri, &parent_token, input.clone()))
@@ -236,11 +254,7 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
             false,
         )
         .await;
-        let after: (i64,) =
-            sqlx_core::query_as::query_as("SELECT count(*) FROM cloud_chat_conversations")
-                .fetch_one(&pool)
-                .await
-                .unwrap();
+        let after = participant_conversations(&pool, &owner, &peer).await;
         assert_eq!(
             before, after,
             "a subsession must not create a conversation channel"

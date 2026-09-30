@@ -40,8 +40,9 @@ pub(crate) use errors::{
 };
 pub use errors::{RunError, RunResult};
 pub use leases::{
-    lease_canary_run, lease_next_run, mark_run_running, RunnerLeaseResponse, RunnerRunEnvelope,
-    RunnerRunRequest, RunnerRunResponse,
+    canary_lease_permitted, canary_leases_for_any_run_enabled, lease_canary_run, lease_next_run,
+    mark_run_running, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
+    CANARY_LEASES_ENV, CANARY_RUN_PREFIX,
 };
 #[cfg(test)]
 use prompt_history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
@@ -63,6 +64,28 @@ mod tests {
             canary_run_id: Some(" ".to_string()),
         };
         assert_eq!(empty.canary_run_id(), None);
+    }
+
+    #[test]
+    fn lease_requests_select_only_canary_runs_unless_enabled() {
+        assert!(super::canary_lease_permitted(
+            "car_canary_live_fail_1",
+            false
+        ));
+        assert!(!super::canary_lease_permitted(
+            "car_0123456789abcdef0123456789abcdef",
+            false
+        ));
+        assert!(!super::canary_lease_permitted("digest_run", false));
+        assert!(!super::canary_lease_permitted("car_canaryx", false));
+        assert!(super::canary_lease_permitted(
+            "car_0123456789abcdef0123456789abcdef",
+            true
+        ));
+        // Runs the server creates use a hexadecimal suffix, which can never
+        // spell the canary prefix.
+        let created = format!("car_{}", uuid::Uuid::new_v4().simple());
+        assert!(!super::canary_lease_permitted(&created, false));
     }
 
     #[test]

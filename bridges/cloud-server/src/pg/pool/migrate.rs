@@ -29,12 +29,22 @@ pub(crate) async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
             .execute(&mut *tx)
             .await
             .map_err(PgPoolError::Migrate)?;
-        let already: Option<(i64,)> =
-            query_as("SELECT version FROM cloud_schema_versions WHERE version=$1")
+        let already: Option<(String,)> =
+            query_as("SELECT description FROM cloud_schema_versions WHERE version=$1")
                 .bind(migration.version)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(PgPoolError::Migrate)?;
+        if let Some((recorded,)) = &already {
+            if recorded != migration.description {
+                // The version was recorded for a different migration, so this
+                // one is skipped. Surface it instead of failing startup.
+                eprintln!(
+                    "[migrations] version {} is recorded as {recorded:?}, not {:?}; that migration was not applied",
+                    migration.version, migration.description
+                );
+            }
+        }
         if already.is_none() {
             sqlx_core::raw_sql::raw_sql(pending_migration_sql(migration))
                 .execute(&mut *tx)
@@ -86,6 +96,41 @@ mod tests {
                 checksum
             );
         }
+    }
+
+    #[test]
+    fn embedded_versions_are_unique_and_increasing() {
+        for pair in EMBEDDED_MIGRATIONS.windows(2) {
+            assert!(
+                pair[0].version < pair[1].version,
+                "migration version {} must be greater than {}",
+                pair[1].version,
+                pair[0].version
+            );
+        }
+        let mut descriptions = std::collections::HashSet::new();
+        for migration in EMBEDDED_MIGRATIONS {
+            assert!(
+                descriptions.insert(migration.description),
+                "migration description {:?} is used twice",
+                migration.description
+            );
+        }
+    }
+
+    #[test]
+    fn embedded_versions_match_their_file_names() {
+        let names = include_str!("embedded.rs")
+            .lines()
+            .filter_map(|line| line.split("migrations/").nth(1))
+            .filter_map(|rest| rest.split('_').next())
+            .map(|number| number.parse::<i64>().unwrap())
+            .collect::<Vec<_>>();
+        let versions = EMBEDDED_MIGRATIONS
+            .iter()
+            .map(|migration| migration.version)
+            .collect::<Vec<_>>();
+        assert_eq!(names, versions);
     }
 
     #[test]

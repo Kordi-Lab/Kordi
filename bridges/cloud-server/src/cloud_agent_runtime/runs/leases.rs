@@ -164,6 +164,29 @@ async fn lease_run(
     Ok(Some(response))
 }
 
+/// Run ids of operator-seeded canary runs start with this prefix. Runs the
+/// server creates never do, so a lease request that selects a run by id can
+/// only reach canary runs unless the operator enables selection of any run.
+pub const CANARY_RUN_PREFIX: &str = "car_canary_";
+
+/// Development and test switch that lets a lease request select any run by
+/// id. Hosted deployments leave it unset.
+pub const CANARY_LEASES_ENV: &str = "KORDI_CLOUD_RUNNER_CANARY_LEASES";
+
+/// Whether a lease request may select `canary_run_id`.
+pub fn canary_lease_permitted(canary_run_id: &str, any_run_selectable: bool) -> bool {
+    any_run_selectable || canary_run_id.starts_with(CANARY_RUN_PREFIX)
+}
+
+pub fn canary_leases_for_any_run_enabled() -> bool {
+    std::env::var(CANARY_LEASES_ENV).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
+}
+
 pub async fn lease_canary_run(
     pool: &PgPool,
     runner_id: &str,

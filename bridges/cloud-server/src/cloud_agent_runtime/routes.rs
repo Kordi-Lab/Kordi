@@ -19,14 +19,11 @@ use crate::cloud_agent_runtime::provider_auth::{
     PublishProviderAuthSnapshotRequest, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
 };
 use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
-use crate::cloud_agent_runtime::runs::run_tokens::{
-    run_token_matches, secrets_match, RUN_TOKEN_HEADER,
-};
 use crate::cloud_agent_runtime::runs::{
-    complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
-    lookup_run_for_request, mark_run_running, run_error_response, run_token_unauthorized,
-    runner_unauthorized, CompleteRunRequest, FailRunRequest, RunnerLeaseResponse,
-    RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
+    canary_lease_permitted, canary_leases_for_any_run_enabled, complete_run, error_response,
+    fail_run, lease_canary_run, lease_next_run, lookup_run_for_request, mark_run_running,
+    run_error_response, runner_unauthorized, CompleteRunRequest, FailRunRequest,
+    RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
 };
 use crate::server::ServerState;
 
@@ -189,53 +186,6 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .merge(public_catalog)
 }
 
-fn runner_authorized(headers: &HeaderMap) -> bool {
-    let Ok(expected) = std::env::var("KORDI_CLOUD_RUNNER_TOKEN") else {
-        return false;
-    };
-    if expected.trim().is_empty() {
-        return false;
-    }
-    let Some(raw) = headers.get(axum::http::header::AUTHORIZATION) else {
-        return false;
-    };
-    let Ok(value) = raw.to_str() else {
-        return false;
-    };
-    let Some(presented) = value.strip_prefix("Bearer ") else {
-        return false;
-    };
-    secrets_match(presented, &expected)
-}
-
-pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
-    runner_authorized(headers)
-}
-
-/// Authorizes a run-specific runner request: the shared runner token and the
-/// run-scoped token issued with this run's current lease are both required.
-pub(crate) async fn runner_run_authorized(
-    state: &ServerState,
-    headers: &HeaderMap,
-    run_id: &str,
-) -> Result<(), Response> {
-    if !runner_authorized(headers) {
-        return Err(runner_unauthorized());
-    }
-    let presented = headers
-        .get(RUN_TOKEN_HEADER)
-        .and_then(|value| value.to_str().ok());
-    match run_token_matches(state.db_pool(), run_id, presented).await {
-        Ok(true) => Ok(()),
-        Ok(false) => Err(run_token_unauthorized()),
-        Err(error) => Err(run_error_response(
-            "verify run token",
-            "Could not verify the run credential.",
-            error,
-        )),
-    }
-}
-
 async fn lease_runner_run(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -252,6 +202,15 @@ async fn lease_runner_run(
         );
     };
     let lease_result = match input.canary_run_id() {
+        Some(canary_run_id)
+            if !canary_lease_permitted(&canary_run_id, canary_leases_for_any_run_enabled()) =>
+        {
+            return error_response(
+                "canary_lease_not_allowed",
+                "Only operator canary runs can be leased by run id.",
+                StatusCode::FORBIDDEN,
+            );
+        }
         Some(canary_run_id) => lease_canary_run(state.db_pool(), &runner_id, &canary_run_id).await,
         None => lease_next_run(state.db_pool(), &runner_id).await,
     };
@@ -472,8 +431,15 @@ async fn lookup_cloud_agent_run_for_request(
 }
 
 mod auth_snapshots;
+#[cfg(test)]
+mod canary_lease_tests;
 mod provider_auth_routes;
+mod runner_auth;
 mod test_route;
+
+use runner_auth::runner_authorized;
+pub use runner_auth::runner_authorized_for_scheduled_tasks;
+pub(crate) use runner_auth::runner_run_authorized;
 
 #[derive(serde::Deserialize)]
 struct RunnerPlanCardRequest {
