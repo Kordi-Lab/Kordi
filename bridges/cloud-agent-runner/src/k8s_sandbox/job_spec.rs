@@ -1,12 +1,29 @@
 use base64::Engine;
 use serde_json::{json, Value};
 
+/// Label that the agent sandbox NetworkPolicy selects. Every sandbox pod
+/// carries it so the policy applies without knowing individual sandbox ids.
+pub const SANDBOX_COMPONENT_LABEL: &str = "app.kubernetes.io/component";
+pub const SANDBOX_COMPONENT_VALUE: &str = "agent-sandbox";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct K8sSandboxConfig {
     pub namespace: String,
     pub image: String,
     pub ttl_seconds_after_finished: i64,
     pub storage_request: String,
+    pub cpu_request: String,
+    pub cpu_limit: String,
+    pub memory_request: String,
+    pub memory_limit: String,
+}
+
+fn env_or(name: &str, default: &str) -> String {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default.to_string())
 }
 
 impl Default for K8sSandboxConfig {
@@ -28,6 +45,10 @@ impl Default for K8sSandboxConfig {
                 .ok()
                 .filter(|value| !value.trim().is_empty())
                 .unwrap_or_else(|| "512Mi".to_string()),
+            cpu_request: env_or("KORDI_CLOUD_SANDBOX_CPU_REQUEST", "100m"),
+            cpu_limit: env_or("KORDI_CLOUD_SANDBOX_CPU_LIMIT", "1"),
+            memory_request: env_or("KORDI_CLOUD_SANDBOX_MEMORY_REQUEST", "128Mi"),
+            memory_limit: env_or("KORDI_CLOUD_SANDBOX_MEMORY_LIMIT", "1Gi"),
         }
     }
 }
@@ -107,6 +128,16 @@ pub fn build_sandbox_job_spec(
                             "readOnlyRootFilesystem": false,
                             "capabilities": { "drop": ["ALL"] }
                         },
+                        "resources": {
+                            "requests": {
+                                "cpu": config.cpu_request,
+                                "memory": config.memory_request,
+                            },
+                            "limits": {
+                                "cpu": config.cpu_limit,
+                                "memory": config.memory_limit,
+                            }
+                        },
                         "volumeMounts": [{ "name": "workspace", "mountPath": "/workspace" }]
                     }],
                     "volumes": [{
@@ -143,6 +174,7 @@ pub fn sandbox_pvc_name(sandbox_id: &str) -> String {
 fn sandbox_labels(sandbox_id: &str) -> Value {
     json!({
         "app.kubernetes.io/name": "kordi-cloud-sandbox-executor",
+        SANDBOX_COMPONENT_LABEL: SANDBOX_COMPONENT_VALUE,
         "kordi.ai/sandbox-id": sandbox_id,
     })
 }

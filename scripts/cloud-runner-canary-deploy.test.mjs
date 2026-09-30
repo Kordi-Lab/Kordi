@@ -99,3 +99,51 @@ test('real-provider canary script uses local auth and restores safe state', () =
   assert.match(script, /response_message_id/);
   assert.match(script, /No runner pods remain/);
 });
+
+const sandboxPolicyPath = 'bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml';
+const sandboxJobSpecPath = 'bridges/cloud-agent-runner/src/k8s_sandbox/job_spec.rs';
+
+test('hosted runner never enables the development-only local sandbox', () => {
+  const manifest = read(manifestPath);
+  assert.doesNotMatch(manifest, /KORDI_CLOUD_SANDBOX_ALLOW_LOCAL/);
+  assert.doesNotMatch(manifest, /name:\s*KORDI_CLOUD_SANDBOX_BACKEND\s+value:\s*"?local/s);
+});
+
+test('agent sandbox pods accept no ingress and reach only DNS and public addresses', () => {
+  const policy = read(sandboxPolicyPath);
+  assert.match(policy, /^kind:\s*NetworkPolicy$/m);
+  assert.match(policy, /^\s+namespace:\s*kordi-cloud$/m);
+  assert.match(
+    policy,
+    /podSelector:\n\s+matchLabels:\n\s+app\.kubernetes\.io\/component:\s*agent-sandbox\n/,
+  );
+  assert.match(policy, /policyTypes:\n\s+- Ingress\n\s+- Egress\n/);
+  assert.match(policy, /^\s+ingress:\s*\[\]$/m);
+  assert.match(policy, /kubernetes\.io\/metadata\.name:\s*kube-system[\s\S]+k8s-app:\s*kube-dns/);
+  assert.match(policy, /protocol:\s*UDP\n\s+port:\s*53/);
+  assert.match(policy, /protocol:\s*TCP\n\s+port:\s*53/);
+  assert.match(policy, /cidr:\s*0\.0\.0\.0\/0\n\s+except:/);
+  for (const cidr of [
+    '10.0.0.0/8',
+    '172.16.0.0/12',
+    '192.168.0.0/16',
+    '100.64.0.0/10',
+    '169.254.0.0/16',
+    '127.0.0.0/8',
+  ]) {
+    assert.match(policy, new RegExp(`^\\s+- ${cidr.replaceAll('.', '\\.')}$`, 'm'), cidr);
+  }
+
+  const jobSpec = read(sandboxJobSpecPath);
+  assert.match(jobSpec, /SANDBOX_COMPONENT_LABEL: &str = "app\.kubernetes\.io\/component"/);
+  assert.match(jobSpec, /SANDBOX_COMPONENT_VALUE: &str = "agent-sandbox"/);
+});
+
+test('runner deploy script applies the sandbox NetworkPolicy before the runner', () => {
+  const script = read(deployScriptPath);
+  assert.match(script, /manifests\/agent-sandbox-network-policy\.yaml/);
+  const policyApply = script.indexOf('kubectl apply -f agent-sandbox-network-policy.yaml');
+  const runnerApply = script.indexOf('cloud-agent-runner-deployment.yaml | kubectl apply -f -');
+  assert.ok(policyApply > 0, 'policy apply step is missing');
+  assert.ok(runnerApply > policyApply, 'policy must be applied before the runner');
+});

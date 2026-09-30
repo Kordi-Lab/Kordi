@@ -9,6 +9,7 @@ mod runner;
 
 pub use job_spec::{
     build_sandbox_job_spec, build_sandbox_pvc_spec, K8sSandboxConfig, K8sSandboxOperation,
+    SANDBOX_COMPONENT_LABEL, SANDBOX_COMPONENT_VALUE,
 };
 pub use runner::{K8sCommandOutput, K8sCommandRunner, KubectlCommandRunner};
 
