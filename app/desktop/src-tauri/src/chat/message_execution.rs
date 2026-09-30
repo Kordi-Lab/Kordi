@@ -143,6 +143,29 @@ pub(super) async fn start_message(
         if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }
+        let hosted_auth = if super::hosted_provider_auth::route_uses_hosted_auth(route.as_ref()) {
+            let Some(hosted_route) = route.as_ref() else {
+                fail_turn(
+                    &snapshot_for_task,
+                    "Hosted provider route is unavailable".into(),
+                );
+                return;
+            };
+            match super::hosted_provider_auth::resolve_for_turn(
+                hosted_route,
+                context_messages.as_deref().unwrap_or(&[]),
+            )
+            .await
+            {
+                Ok(auth) => Some(auth),
+                Err(error) => {
+                    fail_turn(&snapshot_for_task, error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let (provider, model) = {
             let mut session = session_handle.lock().await;
             if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
@@ -204,6 +227,29 @@ pub(super) async fn start_message(
                 {
                     fail_turn(&snapshot_for_task, error);
                     return;
+                }
+            }
+
+            if let Some(hosted_auth) = hosted_auth {
+                if let Err(error) = session.set_ephemeral_provider_auth_with_options(
+                    &hosted_auth.provider,
+                    hosted_auth.auth,
+                    hosted_auth.base_url,
+                    hosted_auth.api.as_deref(),
+                ) {
+                    fail_turn(&snapshot_for_task, error.to_string());
+                    return;
+                }
+                if let Some(thinking) = route
+                    .as_ref()
+                    .and_then(|route| route.thinking.as_deref())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty() && *value != "default")
+                {
+                    if let Err(error) = session.set_thinking(thinking) {
+                        fail_turn(&snapshot_for_task, error.to_string());
+                        return;
+                    }
                 }
             }
 

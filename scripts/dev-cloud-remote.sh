@@ -228,8 +228,24 @@ fi
 if [[ "$connection_mode" == "connect" ]]; then
   echo "[kordi-remote-dev] Shared development connection ready at $api_base. Keep this terminal open."
   echo "[kordi-remote-dev] Launch each preview with pnpm dev:cloud:shared --profile <task-name> --port <frontend-port>."
-  wait "$tunnel_pid"
-  exit $?
+  reconnect_delay=2
+  while true; do
+    connected_at=$SECONDS
+    wait "$tunnel_pid" || true
+    tunnel_pid=""
+    if (( SECONDS - connected_at >= 60 )); then reconnect_delay=2; fi
+    echo "[kordi-remote-dev] The shared IAP tunnel exited; reconnecting in ${reconnect_delay}s."
+    sleep "$reconnect_delay"
+    if curl --fail --silent --show-error --connect-timeout 1 --max-time 2 "$api_base/health" >/dev/null 2>&1; then
+      echo "[kordi-remote-dev] Another connection is serving the local API port; leaving it untouched." >&2
+      exit 1
+    fi
+    open_tunnel
+    if (( reconnect_delay < 30 )); then
+      reconnect_delay=$((reconnect_delay * 2))
+      if (( reconnect_delay > 30 )); then reconnect_delay=30; fi
+    fi
+  done
 fi
 
 # A desktop preview receives only the loopback API origin. Server credentials

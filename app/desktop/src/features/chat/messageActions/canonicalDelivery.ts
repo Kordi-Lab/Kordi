@@ -12,6 +12,7 @@ export function markOptimisticCanonicalMessageSent(
   current: CanonicalSessionState | null,
   sessionId: string,
   messageId: string | null | undefined,
+  contentPatch: Record<string, unknown> = {},
 ): CanonicalSessionState | null {
   if (!current || !messageId) return current;
   const updatedAtMs = Date.now();
@@ -30,7 +31,9 @@ export function markOptimisticCanonicalMessageSent(
         updatedAtMs: Math.max(message.updatedAtMs, updatedAtMs),
         content: {
           ...contentRecord(message.content),
+          ...contentPatch,
           deliveryState: 'sent',
+          ...(contentRecord(message.content).queuedMessage === true ? { queueState: 'sent' } : {}),
         },
       };
     }),

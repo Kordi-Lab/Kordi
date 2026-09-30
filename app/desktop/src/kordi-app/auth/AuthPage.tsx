@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -19,12 +19,13 @@ import { openDesktopExternalUrl, type DesktopChatMessageRoute } from '@/lib/desk
 import { AuthActionButton, authButtonPrimaryClass } from './AuthDetailPrimitives';
 import { AuthProviderDetail } from './AuthProviderDetail';
 import { AuthProviderGlyph } from './AuthProviderGlyph';
+import { createAuthSnapshotState } from './authSnapshotState';
 import { buildAddMethods, resolveAddMethod, type AuthAddRoute } from './authAddMethods';
 import { providerShortName } from './providerCopy';
 import { AuthProviderList } from './AuthProviderList';
 import { isLocalProvider, normalizeSelectedProviderId, type AuthDisplayProvider } from './model';
 import { continueChatProvider, hasActiveAccount, startChatBlockedReason, startChatTarget, withActiveAccount } from './authRouteAccounts';
-import { buildOmpDisplayProviders, type OmpCatalogEntry } from './ompCatalog';
+import { buildOmpDisplayProviders, withKnownLoginMethods, type DisplayAuthSnapshot, type OmpCatalogEntry } from './ompCatalog';
 import { LOCAL_ACCOUNTS_UNAVAILABLE_NOTICE, useAuthOmpCatalog } from './useAuthOmpCatalog';
 
 type AuthRoute =
@@ -68,8 +69,8 @@ function snapshotNeedsReconnect(snapshot: CloudProviderAuthSnapshot) {
   return !snapshot.revokedAt && (snapshot.status === 'needs-reconnect' || snapshot.status === 'needs_reconnect');
 }
 
-function snapshotFromLogin(snapshot: ProviderLoginSnapshot): CloudProviderAuthSnapshot {
-  return { ...snapshot, modelHint: null, createdAt: new Date().toISOString(), revokedAt: null };
+function snapshotFromLogin(snapshot: ProviderLoginSnapshot, loginMethod: 'sign-in' | 'api-key'): DisplayAuthSnapshot {
+  return { ...snapshot, loginMethod, modelHint: null, createdAt: new Date().toISOString(), revokedAt: null };
 }
 
 export type AuthPageProps = {
@@ -91,7 +92,7 @@ export type AuthPageProps = {
   onRemoveAuthProfile: (providerId: string, profileId: string) => void;
   onLogoutProvider: (providerId: string) => void;
   onDismissGate?: () => void;
-  /** A hosted-only account's chat also carries its route, so it runs on Kordi Cloud. */
+  /** A saved hosted account carries its exact route into shared execution admission. */
   onEnterChat?: (preferredModelValue?: string, route?: DesktopChatMessageRoute) => void | Promise<void>;
   onTestRoute?: (input: CloudProviderRouteTestInput) => Promise<CloudProviderRouteTestResult>;
   onSaveCloudKey?: (input: CloudProviderAuthSnapshotInput) => Promise<void>;
@@ -135,7 +136,12 @@ export function AuthPage({
 }: AuthPageProps) {
   const showHero = variant === 'gate';
   const showNativeNote = !isNativeShell && variant === 'settings';
-  const [cloudSnapshots, setCloudSnapshots] = useState<CloudProviderAuthSnapshot[]>([]);
+  const [cloudSnapshots, setCloudSnapshots] = useState<DisplayAuthSnapshot[]>([]);
+  const knownLoginMethods = useRef(new Map<string, 'sign-in' | 'api-key'>());
+  const [snapshotState] = useState(() => createAuthSnapshotState((snapshots) => {
+    setCloudSnapshots(snapshots);
+    publishHostedProviderSnapshots(snapshots);
+  }));
   // Set once when the catalog or a sign-in start finds no OMP on the backend (404 or not
   // configured); a transient OMP failure elsewhere never sets it. Never retried in a loop.
   const [ompUnavailable, setOmpUnavailable] = useState(false);
@@ -144,19 +150,13 @@ export function AuthPage({
   const { catalog: ompCatalog, notice: catalogNotice } = useAuthOmpCatalog(cloudSources.loadCatalog, noteOmpUnavailable);
   const [cloudActionError, setCloudActionError] = useState<string | null>(null);
   // The composer offers hosted Custom API models, so every load is shared with it.
-  const applySnapshots = (snapshots: CloudProviderAuthSnapshot[]) => {
-    setCloudSnapshots(snapshots);
-    publishHostedProviderSnapshots(snapshots);
-  };
   const refreshCloudSnapshots = async () => {
-    applySnapshots(await cloudSources.loadSnapshots());
+    await snapshotState.refresh(async () => withKnownLoginMethods(await cloudSources.loadSnapshots(), knownLoginMethods.current));
   };
   useEffect(() => {
-    void cloudSources.loadSnapshots().then((snapshots) => {
-      setCloudSnapshots(snapshots);
-      publishHostedProviderSnapshots(snapshots);
-    }).catch(() => {});
-  }, [cloudSources]);
+    void snapshotState.refresh(async () => withKnownLoginMethods(await cloudSources.loadSnapshots(), knownLoginMethods.current))
+      .catch(() => undefined);
+  }, [cloudSources, snapshotState]);
   const { authState: displayAuthState, providers: visibleProviders } = useMemo(
     () => buildOmpDisplayProviders(authState, cloudSnapshots, ompCatalog?.providers ?? []),
     [authState, cloudSnapshots, ompCatalog],
@@ -289,10 +289,10 @@ export function AuthPage({
         needsReconnect={cloudSnapshots.filter(snapshotNeedsReconnect).map((snapshot) => snapshot.authChoice)}
         onAccountAdded={noteAccountAdded}
         onStartChat={canStartChat && !chatBlocked && provider ? () => startChat(provider) : undefined}
-        onLoginCompleted={(snapshot) => {
+        onLoginCompleted={(snapshot, loginMethod) => {
+          knownLoginMethods.current.set(snapshot.snapshotId, loginMethod);
           noteAccountAdded(snapshot.authChoice);
-          setCloudSnapshots((current) => (current.some((item) => item.snapshotId === snapshot.snapshotId)
-            ? current : [...current, snapshotFromLogin(snapshot)]));
+          snapshotState.complete(snapshotFromLogin(snapshot, loginMethod));
           void refreshCloudSnapshots().catch(() => undefined);
         }}
         onLogoutProvider={onLogoutProvider}

@@ -344,6 +344,8 @@ pub struct TaskOperatorRuntime {
 pub struct ToolContext {
     pub cwd: PathBuf,
     pub artifacts_dir: PathBuf,
+    /// Exact provider tool-call ID when available, for extension correlation.
+    pub invocation_id: Option<String>,
     pub model: Option<Model>,
     pub execution_policy: ExecutionPolicy,
     pub on_output: Option<OnOutputFn>,

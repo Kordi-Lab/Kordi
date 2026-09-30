@@ -472,19 +472,21 @@ async fn persist_tool_result(
     Ok(())
 }
 
-fn tool_context_with_output_forwarding(
+pub(super) fn tool_context_with_output_forwarding(
     env: &ToolExecutionEnv<'_>,
     tool_call_id: String,
 ) -> ToolContext {
     let event_tx = env.event_tx.clone();
+    let output_call_id = tool_call_id.clone();
     ToolContext {
         cwd: env.tool_ctx.cwd.clone(),
         artifacts_dir: env.tool_ctx.artifacts_dir.clone(),
         model: None,
+        invocation_id: Some(tool_call_id),
         execution_policy: env.tool_ctx.execution_policy,
         on_output: Some(Box::new(move |chunk| {
             let _ = event_tx.send(TurnEvent::ToolOutputDelta {
-                id: tool_call_id.clone(),
+                id: output_call_id.clone(),
                 chunk: chunk.to_string(),
             });
         })),
@@ -499,7 +501,7 @@ fn tool_context_with_output_forwarding(
     }
 }
 
-fn scheduler_partial_result(
+pub(super) fn scheduler_partial_result(
     scheduling: &ToolScheduling,
     state: &str,
     message: &str,
@@ -546,7 +548,10 @@ fn scheduler_partial_result(
     serde_json::json!({ "details": details })
 }
 
-fn tool_metadata_for_call(tool_name: &str, env: &ToolExecutionEnv<'_>) -> Option<ToolMetadata> {
+pub(super) fn tool_metadata_for_call(
+    tool_name: &str,
+    env: &ToolExecutionEnv<'_>,
+) -> Option<ToolMetadata> {
     let normalized_name = normalize_requested_tool_name(tool_name);
     env.tools
         .iter()
@@ -554,7 +559,7 @@ fn tool_metadata_for_call(tool_name: &str, env: &ToolExecutionEnv<'_>) -> Option
         .map(|tool| tool.metadata())
 }
 
-async fn send_tool_execution_update(
+pub(super) async fn send_tool_execution_update(
     env: &ToolExecutionEnv<'_>,
     tool_call_id: &str,
     tool_name: &str,

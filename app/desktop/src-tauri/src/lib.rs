@@ -6,6 +6,7 @@ mod cloud_account_paths;
 mod cloud_api_endpoint;
 use canonical_sessions::desktop_canonical_reconcile_message_mirror;
 use cloud_api_endpoint::cloud_api_base_url_from_env;
+mod cloud_host_activity;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
@@ -73,6 +74,9 @@ fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
     }
     match cloud_session::cloud_session_load() {
         Ok(Some(session)) => {
+            if let Err(err) = cloud_host_activity::start() {
+                eprintln!("[kordi] Unable to keep Cloud agent host active: {err}");
+            }
             if let Err(err) =
                 cloud_account_paths::cloud_account_storage_activate(session.account_id)
             {
@@ -459,6 +463,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");
     app.run(|app_handle, event| match event {
+        tauri::RunEvent::Exit => {
+            cloud_host_activity::exit();
+        }
         tauri::RunEvent::ExitRequested { code, .. } if should_publish_offline_on_exit(code) => {
             publish_stored_offline_on_exit();
         }

@@ -348,6 +348,7 @@ mod tests {
             artifacts_dir: dir.to_path_buf(),
             model: None,
             execution_policy: crate::ExecutionPolicy::Yolo,
+            invocation_id: None,
             on_output: None,
             web_search: None,
             reach_out: None,
@@ -407,6 +408,7 @@ mod tests {
                     "command": "printf 'out\\n'; printf 'err\\n' 1>&2"
                 }),
                 &ToolContext {
+                    invocation_id: None,
                     on_output: Some(Box::new(move |chunk| {
                         streamed_clone
                             .lock()
@@ -443,6 +445,7 @@ mod tests {
                     "command": "printf 'Authorization: Bearer '; sleep 0.05; printf 'sk-top-secret\\nOPENAI_API_KEY=sk-inline'"
                 }),
                 &ToolContext {
+                    invocation_id: None,
                     on_output: Some(Box::new(move |chunk| {
                         streamed_clone
                             .lock()

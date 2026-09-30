@@ -479,4 +479,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth snapshot readiness",
         sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
     },
+    EmbeddedMigration {
+        version: 106,
+        description: "private OMP runtime replay state",
+        sql: include_str!("../../../migrations/0106_omp_runtime_state.sql"),
+    },
 ];

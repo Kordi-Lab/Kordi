@@ -62,8 +62,9 @@ export function AuthSavedAccounts({ provider, recentlyAdded = [], needsReconnect
               title={option.label}
               description={(
                 <>
-                  {custom ? customApiAccountSummary(option.modelHint) : savedAccountMethodLabel(provider, method)}
-                  {option.source === 'Cloud' ? ' · Hosted in your Kordi account' : ' · On this Mac'}
+                  {custom ? customApiAccountSummary(option.modelHint)
+                    : option.method === 'Account' ? 'Saved account' : savedAccountMethodLabel(provider, method)}
+                  {option.source !== 'Cloud' ? ' · On this Mac' : null}
                   {updated ? ` · Last active ${updated}` : ''}
                   {reconnectNeeded ? <span className="block text-amber-200">Account needs reconnecting</span> : null}
                   {modelMissing ? <span className="block text-amber-200">{CUSTOM_MODEL_REQUIRED}</span> : null}
@@ -84,7 +85,7 @@ export function AuthSavedAccounts({ provider, recentlyAdded = [], needsReconnect
                   ) : option.active ? (
                     <span className={authActiveBadgeClass}>Active</span>
                   ) : option.source === 'Cloud' ? (
-                    <span className="app-auth-badge-hosted inline-flex h-7 items-center rounded-full border border-white/10 px-2.5 text-[11px] font-medium text-slate-300">Hosted</span>
+                    <span className="app-auth-badge-hosted inline-flex h-7 items-center rounded-full border border-white/10 px-2.5 text-[11px] font-medium text-slate-300">In your account</span>
                   ) : (
                     <AuthActionButton type="button" className={authButtonNeutralClass} onClick={() => onSelectAuthChoice(option.providerId, option.value)}>
                       {option.profileId ? 'Use this profile' : 'Use environment'}

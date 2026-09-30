@@ -14,6 +14,7 @@ import type {
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { appendCanonicalMessageFast } from '@/lib/desktop';
+import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 
 import type { AttachmentItem } from '../composerController.types';
 import { composerMessageAction } from '../messageActionMetadata';
@@ -385,6 +386,7 @@ export function prepareCanonicalQueuedMessage(
         ...optimisticContentRecord(prepared.request.content),
         timestampMs, deliveryState: status, queuedMessage: true, queueState: status,
         queueUpdatedAtMs: Date.now(),
+        ...(routeRunsOnKordiCloud(message.runtimeRoute) ? { agentRuntimeRoute: message.runtimeRoute } : {}),
         ...(message.messageAction ? {
           messageAction: message.messageAction,
           replyToMessageId: message.messageAction.source.sourceMessageId,

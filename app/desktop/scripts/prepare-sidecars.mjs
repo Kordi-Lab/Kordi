@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { writeOmpTauriOverlay } from './omp-sidecar-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -113,5 +114,16 @@ copyBinary(
   ),
   `kordi-${targetTriple}`
 );
+
+if (process.platform !== 'win32') {
+  console.log('[kordi] Building OMP runtime sidecar...');
+  run(
+    'node',
+    ['scripts/build-standalone.mjs', binariesDir, targetTriple],
+    resolve(appRoot, '../../shared/omp-runtime')
+  );
+}
+
+writeOmpTauriOverlay(join(appRoot, 'src-tauri'), targetTriple);
 
 console.log('[kordi] Runtime sidecar is ready for Tauri.');

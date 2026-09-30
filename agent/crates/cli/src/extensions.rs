@@ -116,6 +116,10 @@ impl fmt::Debug for ExtensionCommandRegistry {
 }
 
 impl ExtensionCommandRegistry {
+    pub(crate) fn has_hook_host(&self) -> bool {
+        self.host.is_some()
+    }
+
     #[cfg(test)]
     pub(crate) async fn from_test_plugin(cwd: &Path, path: &Path) -> Result<Self> {
         let (_, commands, _) =

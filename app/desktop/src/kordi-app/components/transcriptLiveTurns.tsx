@@ -696,12 +696,12 @@ function LiveChatTurnCardView({
   const hasVisibleContent = hasAssistant || hasThinking || visibleTurn.tools.length > 0 || Boolean(visibleTurn.error);
   const isCompressionStatus = visibleTurn.status === 'compacting' || visibleTurn.status === 'compacted' || visibleTurn.status === 'compaction_failed';
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus
-    && (agentTurnHasStarted(visibleTurn) || Boolean(visibleTurn.pendingCollaborationAgentRequest));
+    && (visibleTurn.status === 'queued' || agentTurnHasStarted(visibleTurn) || Boolean(visibleTurn.pendingCollaborationAgentRequest) || Boolean(visibleTurn.hostedRunStatus));
   const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
-  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
+  const activeStopAvailable = turnIsRunning && !visibleTurn.hostedRunStatus && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
-    || Boolean(shouldShowLiveStatusHeader && (pendingCollaborationAgentRequest || activeStopAvailable || visibleTurn.sourceMessage));
+    || Boolean(shouldShowLiveStatusHeader && (visibleTurn.status === 'queued' || pendingCollaborationAgentRequest || activeStopAvailable || visibleTurn.sourceMessage || visibleTurn.hostedRunStatus));
   const liveStatusText = visibleTurn.status === 'cancelling'
     ? 'Stopping…'
     : visibleTurn.status === 'retrying'
@@ -747,6 +747,8 @@ function LiveChatTurnCardView({
                   <LoaderCircle className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
                   <span className="text-slate-300">{liveStatusText}</span>
                 </>
+              ) : visibleTurn.status === 'queued' || visibleTurn.hostedRunStatus === 'queued' || visibleTurn.hostedRunStatus === 'leased' ? (
+                <span role="status">{visibleTurn.hostedRunStatus === 'leased' ? 'Starting…' : 'Queued…'}</span>
               ) : shouldShowAgentWaitingAnimation(visibleTurn) ? (
                 <AgentWaitingWave label="Waiting for agent response" />
               ) : null}

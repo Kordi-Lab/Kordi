@@ -120,6 +120,10 @@ pub(crate) struct SessionRuntimeSetup {
     pub provider: Arc<dyn Provider>,
     pub model: kordi_provider::registry::Model,
     pub auth: Option<crate::login::ResolvedProviderAuth>,
+    /// Credential material supplied for one desktop turn; never written to the session store.
+    pub ephemeral_auth: Option<crate::login::ResolvedProviderAuth>,
+    pub ephemeral_base_url: Option<String>,
+    pub ephemeral_original_model_api: Option<kordi_provider::registry::ApiType>,
     #[allow(dead_code)]
     pub auth_choice_override: Option<SessionAuthChoiceOverride>,
     pub api_key: String,
@@ -661,6 +665,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         artifacts_dir: artifacts_dir.clone(),
         model: Some(model.clone()),
         execution_policy,
+        invocation_id: None,
         on_output: None,
         web_search: Some(kordi_tools::WebSearchRuntime {
             provider: provider.clone(),
@@ -716,6 +721,9 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         model,
         auth,
         auth_choice_override: None,
+        ephemeral_auth: None,
+        ephemeral_base_url: None,
+        ephemeral_original_model_api: None,
         api_key,
         base_url,
         headers,

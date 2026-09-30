@@ -95,15 +95,19 @@ pub enum TurnEvent {
 }
 
 mod hooks;
+pub(crate) use hooks::send_extension_event_safe;
+mod omp_tools;
 mod panic;
 mod persistence;
 mod runner;
 mod tool_argument_progress;
 mod tool_policy;
 mod tools;
+pub(crate) use omp_tools::execute_omp_tool_call;
 
 #[allow(unused_imports)]
 pub(crate) use persistence::{
+    append_assistant_cancelled_message, append_assistant_error_message, append_custom_message,
     append_interrupted_unanswered_request_if_needed, append_user_message_with_id,
     append_user_message_with_images, get_leaf_raw, open_sibling_conn, wrap_conn,
 };

@@ -1,12 +1,8 @@
 import { useSyncExternalStore } from 'react';
-import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
-// Two small pieces of shared state for chats that run on Kordi Cloud:
-// - a chat opened from a provider page with a hosted-only account asks for
-//   its route, which the route owner applies to the session it opens;
-// - the active chat's route: the composer marks its hosted account and shows
-//   "Runs on Kordi Cloud" while that route runs there.
+// Shared account-route state for chats opened from a provider page and for the
+// active chat. The route identifies the account and model, not where it runs.
 
 export type KordiCloudChatRequest = { route: DesktopChatMessageRoute; sessionId: string | null };
 
@@ -53,8 +49,4 @@ export function setActiveChatRoute(route: DesktopChatMessageRoute | null) {
 
 export function useActiveChatRoute(): DesktopChatMessageRoute | null {
   return useSyncExternalStore(subscribe, () => activeChatRoute, () => null);
-}
-
-export function useActiveChatRunsOnKordiCloud(): boolean {
-  return routeRunsOnKordiCloud(useActiveChatRoute());
 }

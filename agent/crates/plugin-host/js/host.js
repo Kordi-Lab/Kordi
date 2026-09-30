@@ -258,11 +258,18 @@ rl.on('line', async (line) => {
                 send({ jsonrpc: "2.0", id: msg.id, result });
             }
         } else if (msg.method === 'execute_tool') {
-            const { name, toolCallId, params: toolParams } = msg.params;
+            const { name, toolCallId, params: toolParams, context } = msg.params;
             const tool = tools[name];
             if (tool && tool.execute) {
                 try {
-                    const result = await tool.execute(toolCallId, toolParams);
+                    const ctx = buildContext(context);
+                    ctx.reportProgress = (chunk) => {
+                        send({ jsonrpc: '2.0', method: 'tool_progress', params: {
+                            toolCallId,
+                            chunk: String(chunk),
+                        } });
+                    };
+                    const result = await tool.execute(toolCallId, toolParams, ctx);
                     send({ jsonrpc: "2.0", id: msg.id, result: result || {} });
                 } catch (e) {
                     send({ jsonrpc: "2.0", id: msg.id, error: { code: -1, message: e.message } });

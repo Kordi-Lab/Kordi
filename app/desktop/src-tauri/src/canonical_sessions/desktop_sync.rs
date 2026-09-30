@@ -341,12 +341,16 @@ pub(crate) fn sync_desktop_chat_message(
 
     if is_user {
         if let Some(entry_id) = message.entry_id.as_deref() {
-            let existing: Option<String> = conn.query_row(
-                "SELECT id FROM session_messages WHERE session_id = ?1 AND sender_role = 'user'
-                 AND (id = ?2 OR (source_transport = 'cloud-self-agent' AND source_event_id = ?2)) LIMIT 1",
-                params![session_id, entry_id], |row| row.get(0),
+            let existing: Option<(String, Option<String>)> = conn.query_row(
+                "SELECT id, source_transport FROM session_messages WHERE session_id = ?1 AND sender_role = 'user'
+                 AND (id = ?2 OR (source_transport = 'cloud-self-agent' AND source_event_id = ?2))
+                 ORDER BY (source_transport = 'cloud-self-agent' AND source_event_id = ?2) DESC LIMIT 1",
+                params![session_id, entry_id], |row| Ok((row.get(0)?, row.get(1)?)),
             ).optional().map_err(|error| error.to_string())?;
-            if let Some(id) = existing {
+            if let Some((id, source_transport)) = existing {
+                if source_transport.as_deref() == Some("cloud-self-agent") {
+                    user_identity::reconcile_native_user_mirrors(conn, session_id, &id, entry_id)?;
+                }
                 user_identity::enrich_runtime_entry_id(conn, &id, entry_id)?;
                 return Ok(Some(id));
             }

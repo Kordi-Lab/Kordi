@@ -8,4 +8,4 @@ export CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$repo_root/scripts/macos-proc-m
 cd "$repo_root/app/desktop"
 pnpm release:secret-guard
 pnpm tauri:prepare-sidecars
-exec pnpm exec tauri build "$@"
+exec pnpm exec tauri build --config src-tauri/.tauri-dev/omp-sidecars.json "$@"

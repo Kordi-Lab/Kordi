@@ -20,10 +20,9 @@ use crate::cloud_agent_runtime::provider_auth::{
 };
 use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
 use crate::cloud_agent_runtime::runs::{
-    complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
-    lookup_run_for_request, mark_run_running, run_error_response, runner_unauthorized,
-    CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
-    RunnerRunResponse,
+    error_response, fail_run, lease_canary_run, lease_next_run, lookup_run_for_request,
+    mark_run_running, run_error_response, runner_unauthorized, CompleteRunRequest, FailRunRequest,
+    RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
 };
 use crate::server::ServerState;
 
@@ -129,6 +128,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::desktop::read_context),
         )
         .route(
+            "/v1/cloud/agent-runs/:run_id/desktop/provider-auth",
+            post(super::desktop::provider_auth),
+        )
+        .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
         )
@@ -139,6 +142,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state.clone());
 
     let runner_routes = Router::new()
+        .route(
+            "/v1/cloud/agent-runs/:run_id/omp-context",
+            post(super::runs::omp_state::context_route),
+        )
         .route(
             "/v1/cloud/agent-runs/:run_id/subsession-progress",
             post(super::runs::subsession_lifecycle::progress_route),
@@ -162,7 +169,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .route(
             "/v1/cloud/agent-runs/:run_id/complete",
-            post(complete_runner_run),
+            post(complete_runner_run).layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
         .route("/v1/cloud/agent-runs/:run_id/fail", post(fail_runner_run))
         .route(
@@ -278,7 +285,15 @@ async fn complete_runner_run(
             StatusCode::BAD_REQUEST,
         );
     };
-    match complete_run(state.db_pool(), &run_id, &runner_id, &input.response_text).await {
+    match super::runs::complete_run_with_state(
+        state.db_pool(),
+        &run_id,
+        &runner_id,
+        &input.response_text,
+        input.omp_state.as_ref(),
+    )
+    .await
+    {
         Ok(run) => {
             notify_run_response(&state, run.response_message_id.as_deref()).await;
             Json(RunnerRunEnvelope { run }).into_response()

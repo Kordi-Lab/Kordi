@@ -7,6 +7,7 @@ import type { SidebarShellArgs } from '@/app/kordiShellSlots.types';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
+import { hostedAccountsState } from '@/features/cloud/hostedAccounts';
 import {
   checkDesktopForUpdates,
   installDesktopUpdate,
@@ -42,7 +43,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
       chatActions={{
         onStartChatWithPerson: args.handleStartChatWithPerson,
         onStartChatWithAgent: async (agent) => {
-          if (!authStateSatisfiesStartupGate(args.desktopAuthState)) {
+          if (!authStateSatisfiesStartupGate(args.desktopAuthState, hostedAccountsState().accounts)) {
             (args.openCloudAccountAuthentication ?? args.openAuthSettings)();
             return;
           }

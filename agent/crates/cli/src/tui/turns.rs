@@ -181,6 +181,7 @@ impl TuiController {
                 artifacts_dir: self.session_setup.tool_ctx.artifacts_dir.clone(),
                 model: None,
                 execution_policy: self.session_setup.tool_ctx.execution_policy,
+                invocation_id: None,
                 on_output: None,
                 web_search: self.session_setup.tool_ctx.web_search.clone(),
                 reach_out: self.session_setup.tool_ctx.reach_out.clone(),

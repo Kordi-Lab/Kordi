@@ -210,6 +210,107 @@ fn desktop_sync_enriches_cloud_self_agent_response_without_appending_a_duplicate
     );
 }
 
+#[test]
+fn desktop_sync_reconciles_native_request_mirrored_before_cloud_request() {
+    let conn = test_conn();
+    let request = |id: &str, source_transport: &str, source_event_id: &str, content| {
+        append_message_in_db(
+            &conn,
+            AppendCanonicalMessageRequest {
+                id: Some(id.to_string()),
+                session_id: "session:self-agent".to_string(),
+                sender_identity_id: "human:local".to_string(),
+                sender_role: "user".to_string(),
+                message_kind: "text".to_string(),
+                content_text: "check disk usage".to_string(),
+                content: Some(content),
+                parent_message_id: None,
+                delegated_exchange_id: None,
+                status: Some("sent".to_string()),
+                created_at_ms: Some(1_000),
+                source_transport: Some(source_transport.to_string()),
+                source_event_id: Some(source_event_id.to_string()),
+            },
+        )
+        .expect("seed request");
+    };
+    request(
+        "msg:native-request",
+        "desktop-chat",
+        "desktop-event",
+        serde_json::json!({ "desktopEntryId": "wire:request" }),
+    );
+    append_message_in_db(
+        &conn,
+        AppendCanonicalMessageRequest {
+            id: Some("msg:echo-reply".to_string()),
+            session_id: "session:self-agent".to_string(),
+            sender_identity_id: "agent:local".to_string(),
+            sender_role: "owned-agent".to_string(),
+            message_kind: "agent-turn".to_string(),
+            content_text: "Disk usage is healthy.".to_string(),
+            content: Some(serde_json::json!({ "replyToMessageId": "msg:native-request" })),
+            parent_message_id: Some("msg:native-request".to_string()),
+            delegated_exchange_id: None,
+            status: Some("complete".to_string()),
+            created_at_ms: Some(1_001),
+            source_transport: Some("cloud-self-agent".to_string()),
+            source_event_id: Some("wire:echo-reply".to_string()),
+        },
+    )
+    .expect("seed echoed response");
+    request(
+        "msg:cloud-request",
+        "cloud-self-agent",
+        "wire:request",
+        serde_json::json!({}),
+    );
+
+    let native_request = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "user".to_string(),
+        sender: Some("You".to_string()),
+        text: "check disk usage".to_string(),
+        detail: None,
+        time_label: "Now".to_string(),
+        timestamp_ms: 1_000,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+        cancelled: false,
+        entry_id: Some("wire:request".to_string()),
+    };
+    let resolved = sync_desktop_chat_message(
+        &conn,
+        "session:self-agent",
+        "human:local",
+        "agent:local",
+        0,
+        &native_request,
+        None,
+    )
+    .expect("sync native request");
+    assert_eq!(resolved.as_deref(), Some("msg:cloud-request"));
+    let native_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM session_messages WHERE id='msg:native-request'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(native_count, 0);
+    let (parent, reply): (String, String) = conn
+        .query_row(
+            "SELECT parent_message_id, json_extract(content_json, '$.replyToMessageId')
+             FROM session_messages WHERE id='msg:echo-reply'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(parent, "msg:cloud-request");
+    assert_eq!(reply, "msg:cloud-request");
+}
+
 #[path = "local_export_reply.rs"]
 mod local_export_reply;
 
