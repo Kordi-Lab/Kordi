@@ -359,6 +359,7 @@ async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() 
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
     let lease_body = read_json(lease).await;
+    let run_token = lease_run_token(&lease_body);
     let prompt = lease_body["run"]["prompt"].as_str().unwrap();
     let system_prompt = lease_body["run"]["systemPrompt"].as_str().unwrap();
     assert!(!prompt.contains("Group @mention permissions"));
@@ -370,7 +371,7 @@ async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() 
         .unwrap()
         .contains("the currently responding Agent"));
     let context_uri = format!("/v1/cloud/agent-runs/{run_id}/context");
-    let directory = router.clone().oneshot(post_json_with_runner_token(&context_uri, "runner-test-token",
+    let directory = router.clone().oneshot(post_json_with_run_token(&context_uri, "runner-test-token", &run_token,
         json!({"runnerId": "runner-handoff", "tool": "read_session", "arguments": {"sessionId": session_id, "mode": "participants"}}))).await.unwrap();
     assert_eq!(directory.status(), StatusCode::OK);
     assert!(read_json(directory).await["directory"]
@@ -381,7 +382,7 @@ async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() 
         ("other-runner", session_id.as_str()),
         ("runner-handoff", "session:private"),
     ] {
-        let denied = router.clone().oneshot(post_json_with_runner_token(&context_uri, "runner-test-token",
+        let denied = router.clone().oneshot(post_json_with_run_token(&context_uri, "runner-test-token", &run_token,
             json!({"runnerId": runner, "tool": "read_session", "arguments": {"sessionId": scope}}))).await.unwrap();
         assert_eq!(denied.status(), StatusCode::NOT_FOUND);
     }
@@ -392,9 +393,10 @@ async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() 
 
     let complete = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
             "runner-test-token",
+            &run_token,
             json!({
                 "runnerId": "runner-handoff",
                 "responseText": "@KordiSource this must stay visible without another handoff"

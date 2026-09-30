@@ -109,6 +109,7 @@ async fn chat_calendar_enforces_owner_disclosure_membership_and_live_runner_scop
     let run = insert_leased_scheduled_run(&pool, &owner, &owner, &session, "calendar-runner").await;
     query("UPDATE cloud_agent_fallback_runs SET request_message_id=$2,execution_backend='cloud' WHERE run_id=$1")
         .bind(&run).bind(&owner_request).execute(&pool).await.unwrap();
+    let run_token = issue_test_run_token(&pool, &run).await;
     let uri = format!("/v1/cloud/agent-runs/{run}/context");
     for (runner, arguments, allowed) in [
         ("calendar-runner", json!({"shareInConversation":true}), true),
@@ -123,9 +124,10 @@ async fn chat_calendar_enforces_owner_disclosure_membership_and_live_runner_scop
     ] {
         let response = router
             .clone()
-            .oneshot(post_json_with_runner_token(
+            .oneshot(post_json_with_run_token(
                 &uri,
                 "runner-test-token",
+                &run_token,
                 json!({"runnerId":runner,"tool":"read_calendar","arguments":arguments}),
             ))
             .await
@@ -141,7 +143,7 @@ async fn chat_calendar_enforces_owner_disclosure_membership_and_live_runner_scop
         .execute(&pool)
         .await
         .unwrap();
-    let denied = router.clone().oneshot(post_json_with_runner_token(&uri, "runner-test-token", json!({"runnerId":"calendar-runner","tool":"read_calendar","arguments":{"shareInConversation":true}}))).await.unwrap();
+    let denied = router.clone().oneshot(post_json_with_run_token(&uri, "runner-test-token", &run_token, json!({"runnerId":"calendar-runner","tool":"read_calendar","arguments":{"shareInConversation":true}}))).await.unwrap();
     assert_eq!(denied.status(), StatusCode::NOT_FOUND);
     // An agent-authored message cannot grant disclosure, even under the owner's account.
     query("UPDATE cloud_chat_messages SET message_kind='assistant' WHERE message_id::text=$1")

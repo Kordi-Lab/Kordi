@@ -3,6 +3,7 @@ from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,8 +11,25 @@ from unittest.mock import patch
 from backend_artifact import PRODUCTION_SERVICES, digest_file
 from backend_backup import verify_backup
 from backend_deploy_common import lock
-from backend_deploy_production import capture_previous, deploy
-from test_backend_deploy import SHA, bundle
+from backend_deploy_production import (KUBECTL, SANDBOX_EXCLUDED_RANGES, SANDBOX_POLICY, capture_previous, deploy,
+                                       sandbox_policy_problem, verify_sandbox_network_policy)
+from test_backend_deploy import ROOT, SHA, bundle
+
+
+def sandbox_policy():
+    """The stored form of the repository's agent sandbox NetworkPolicy."""
+    return {"spec": {
+        "podSelector": {"matchLabels": {"app.kubernetes.io/component": "agent-sandbox"}},
+        "policyTypes": ["Ingress", "Egress"],
+        "egress": [
+            {"to": [{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
+                     "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}}}],
+             "ports": [{"port": 53, "protocol": "UDP"}, {"port": 53, "protocol": "TCP"}]},
+            {"to": [{"ipBlock": {"cidr": "0.0.0.0/0", "except": [
+                "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16",
+                "172.16.0.0/12", "192.168.0.0/16", "224.0.0.0/4", "240.0.0.0/4"]}}]},
+        ],
+    }}
 
 
 class ProductionTests(unittest.TestCase):
@@ -32,6 +50,9 @@ class ProductionTests(unittest.TestCase):
                                                 "completedAt": (self.now - timedelta(minutes=1)).isoformat()}}
         self.save_receipt()
         self.previous = {service: f"docker.io/library/kordi-{service}@sha256:{'b' * 64}" for service in PRODUCTION_SERVICES}
+        policy_check = patch("backend_deploy_production.verify_sandbox_network_policy")
+        self.verify_policy = policy_check.start()
+        self.addCleanup(policy_check.stop)
 
     def save_receipt(self):
         (self.backups / "snapshot.json").write_text(json.dumps(self.receipt))
@@ -136,6 +157,71 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(self.result()["outcome"], "success")
         self.assertEqual(sorted(self.result()["images"]), sorted(PRODUCTION_SERVICES))
         self.assertFalse(any("omp-route-worker" in " ".join(call) for call in calls))
+        self.verify_policy.assert_called_once_with()
+
+    def test_missing_sandbox_policy_stops_promotion_before_any_image_changes(self):
+        self.verify_policy.side_effect = verify_sandbox_network_policy
+        calls = []
+
+        def command(arguments):
+            calls.append(arguments)
+            if "networkpolicy" in arguments:
+                raise subprocess.CalledProcessError(1, arguments, output="NotFound")
+            return ""
+
+        with patch("backend_deploy_production.run", side_effect=command), \
+             patch("backend_deploy_production.capture_previous") as previous, \
+             patch("backend_deploy_production.apply_images") as apply:
+            with self.assertRaises(ValueError):
+                deploy(self.args())
+        previous.assert_not_called()
+        apply.assert_not_called()
+        self.assertEqual(calls, [[*KUBECTL, "get", "networkpolicy", SANDBOX_POLICY, "-o", "json"]])
+        self.assertEqual((self.result()["outcome"], self.result()["stage"]),
+                         ("failure", "sandbox network policy verification"))
+
+    def test_a_policy_that_does_not_isolate_sandbox_pods_stops_promotion(self):
+        self.verify_policy.side_effect = verify_sandbox_network_policy
+        weakened = sandbox_policy()
+        weakened["spec"]["egress"][1]["to"][0]["ipBlock"]["except"].remove("169.254.0.0/16")
+        with patch("backend_deploy_production.run", return_value=json.dumps(weakened)), \
+             patch("backend_deploy_production.apply_images") as apply:
+            with self.assertRaises(ValueError):
+                deploy(self.args())
+        apply.assert_not_called()
+        self.assertEqual(self.result()["stage"], "sandbox network policy verification")
+
+    def test_the_repository_sandbox_policy_passes_and_weakened_ones_fail(self):
+        self.assertIsNone(sandbox_policy_problem(sandbox_policy()))
+        with patch("backend_deploy_production.run", return_value=json.dumps(sandbox_policy())):
+            verify_sandbox_network_policy()
+
+        def weakened(change):
+            policy = sandbox_policy()
+            change(policy["spec"])
+            return sandbox_policy_problem(policy)
+
+        for change in [
+            lambda spec: spec["podSelector"]["matchLabels"].update({"app.kubernetes.io/component": "other"}),
+            lambda spec: spec["podSelector"].update({"matchLabels": {}}),
+            lambda spec: spec.update({"policyTypes": ["Ingress"]}),
+            lambda spec: spec.update({"ingress": [{}]}),
+            lambda spec: spec["egress"].append({}),
+            lambda spec: spec["egress"].append({"to": [{"podSelector": {}}]}),
+            lambda spec: spec["egress"][0]["ports"].append({"port": 5432, "protocol": "TCP"}),
+            lambda spec: spec["egress"][1]["to"][0]["ipBlock"].update({"except": []}),
+            lambda spec: spec["egress"].append({"to": [{"ipBlock": {"cidr": "10.42.0.0/16"}}]}),
+        ]:
+            self.assertIsNotNone(weakened(change))
+        self.assertIsNone(weakened(lambda spec: spec["egress"].append(
+            {"to": [{"ipBlock": {"cidr": "10.0.0.0/8", "except": ["10.0.0.0/8"]}}]})))
+
+    def test_the_policy_manifest_matches_what_promotion_requires(self):
+        manifest = (ROOT / "bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml").read_text()
+        self.assertIn(f"name: {SANDBOX_POLICY}\n", manifest)
+        self.assertIn("app.kubernetes.io/component: agent-sandbox\n", manifest)
+        for internal in SANDBOX_EXCLUDED_RANGES:
+            self.assertIn(f"- {internal}\n", manifest)
 
     def test_independent_deployments_contend_for_the_same_host_lock(self):
         with lock("host-wide", self.directory / "locks", timeout=0):

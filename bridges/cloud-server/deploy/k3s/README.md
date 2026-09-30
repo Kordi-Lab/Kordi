@@ -128,6 +128,87 @@ Health check:
 curl https://kordi.ai/health
 ```
 
+## Agent runner and sandbox boundary
+
+`manifests/agent-sandbox-network-policy.yaml` selects every sandbox pod by
+`app.kubernetes.io/component: agent-sandbox`, admits no inbound traffic,
+allows DNS only to the cluster DNS pods, and allows other outbound traffic
+only to public addresses. Private, carrier-grade NAT, link-local (including
+the metadata endpoint), and loopback ranges are excluded; the default k3s pod
+and service CIDRs fall inside `10.0.0.0/8`. k3s enforces NetworkPolicy with
+its embedded kube-router controller unless it was started with
+`--disable-network-policy`, which `install-k3s.sh` does not pass.
+
+`deploy-cloud-agent-runner.sh` applies the policy before the runner
+Deployment. The protected production promotion
+(`scripts/backend_deploy_production.py`) changes only images, so it does not
+apply the policy; it stops before any image change when the policy is missing
+or does not isolate sandbox pods. Apply it once per cluster, and after every
+change to the manifest, on the product machine:
+
+```bash
+sudo k3s kubectl apply -f bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml
+```
+
+Then run `bridges/cloud-agent-runner/scripts/k8s-sandbox-smoke.sh` there and
+require `[smoke] ok`. A control pod without the sandbox label must reach the
+Cloud server service, the Cloud server and Postgres pod addresses, and the
+node's kubelet port; a sandbox pod must still resolve DNS and reach a public
+address (`KORDI_SANDBOX_SMOKE_PUBLIC_URL`, default `https://example.com/`) but
+reach none of those internal destinations or the metadata endpoint. Use a
+public address outside this deployment for that positive check.
+
+Each sandbox container has CPU and memory requests and limits. Defaults are
+`100m`/`1` CPU and `128Mi`/`1Gi` memory; override them with
+`KORDI_CLOUD_SANDBOX_CPU_REQUEST`, `KORDI_CLOUD_SANDBOX_CPU_LIMIT`,
+`KORDI_CLOUD_SANDBOX_MEMORY_REQUEST`, and `KORDI_CLOUD_SANDBOX_MEMORY_LIMIT` on
+the runner Deployment.
+
+The shared `runner-token` secret identifies the runner and lets it lease runs.
+Each lease also returns a run-scoped token; the server stores only its hash
+with the lease, replaces it on the next lease, and stops accepting it when the
+lease expires. Every run-specific runner request (running, provider auth,
+context reads, plan cards, artifacts, subsession tools, completion, and
+failure) must send it in `X-Kordi-Run-Token` together with the shared token.
+A lease issued before run-scoped tokens existed has no stored hash; while it
+is current, the shared token alone is accepted for it, so runs in flight
+during the upgrade finish. Deploy the Cloud server and the runner from the
+same revision: a run that an old runner leases from a new server cannot
+report progress and is retried after its lease expires.
+
+A lease request may select a run by id (`canaryRunId`) only for operator
+canary runs, whose ids start with `car_canary_` and which the canary scripts
+seed directly; runs the server creates never have that prefix. Development
+and test servers can set `KORDI_CLOUD_RUNNER_CANARY_LEASES=1` to allow any
+run; the hosted server must not. The runner routes are served on the same
+origin as the public API; the runner reaches them through the in-cluster
+service, so the public edge can refuse `/v1/cloud/agent-runs/lease` and the
+run-specific runner paths.
+
+Model provider requests from the runner, including a custom provider's
+`baseUrl`, go through the same public-address policy as the web tools:
+single-label host names, `.local` names, and private, carrier-grade NAT,
+link-local, and loopback addresses are refused, and every DNS answer and
+redirect is checked at connection time. A self-hosted deployment whose model
+server is on a private network can set
+`KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS=1` on the runner; the hosted
+product must not. With it, private and loopback addresses are reachable, but
+link-local addresses, other cloud metadata addresses, and metadata host names
+are still refused, including in DNS answers and redirects.
+
+The hosted runner must use `KORDI_CLOUD_SANDBOX_BACKEND=k8s`. The `local`
+backend runs commands on the runner's own host and is refused unless the
+development-only `KORDI_CLOUD_SANDBOX_ALLOW_LOCAL=1` is set, as it is in
+`deploy/dev/compose.yaml`. Its commands get a minimal environment. When the
+runner is root, as in the runner image, they run as the unprivileged
+`kordi-sandbox` user (uid and gid 10001, or `KORDI_CLOUD_SANDBOX_LOCAL_UID` and
+`KORDI_CLOUD_SANDBOX_LOCAL_GID`), the runner marks itself not dumpable, and the
+runner's file operations in a sandbox never follow links, so commands cannot
+read the runner's environment. A runner that is not root cannot switch users;
+its commands can then read its environment, and it logs a warning at startup.
+All local sandboxes share one user, so the local backend does not isolate
+sandboxes from each other.
+
 ## Built-in Kordi Support contact
 
 When `KORDI_SUPPORT_ENABLED=true`, the server prepends one locked, system-owned

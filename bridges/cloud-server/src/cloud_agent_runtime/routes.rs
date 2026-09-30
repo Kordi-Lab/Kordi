@@ -20,10 +20,10 @@ use crate::cloud_agent_runtime::provider_auth::{
 };
 use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
 use crate::cloud_agent_runtime::runs::{
-    complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
-    lookup_run_for_request, mark_run_running, run_error_response, runner_unauthorized,
-    CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
-    RunnerRunResponse,
+    canary_lease_permitted, canary_leases_for_any_run_enabled, complete_run, error_response,
+    fail_run, lease_canary_run, lease_next_run, lookup_run_for_request, mark_run_running,
+    run_error_response, runner_unauthorized, CompleteRunRequest, FailRunRequest,
+    RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
 };
 use crate::server::ServerState;
 
@@ -186,26 +186,6 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .merge(public_catalog)
 }
 
-fn runner_authorized(headers: &HeaderMap) -> bool {
-    let Ok(expected) = std::env::var("KORDI_CLOUD_RUNNER_TOKEN") else {
-        return false;
-    };
-    if expected.trim().is_empty() {
-        return false;
-    }
-    let Some(raw) = headers.get(axum::http::header::AUTHORIZATION) else {
-        return false;
-    };
-    let Ok(value) = raw.to_str() else {
-        return false;
-    };
-    value == format!("Bearer {expected}")
-}
-
-pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
-    runner_authorized(headers)
-}
-
 async fn lease_runner_run(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -222,6 +202,15 @@ async fn lease_runner_run(
         );
     };
     let lease_result = match input.canary_run_id() {
+        Some(canary_run_id)
+            if !canary_lease_permitted(&canary_run_id, canary_leases_for_any_run_enabled()) =>
+        {
+            return error_response(
+                "canary_lease_not_allowed",
+                "Only operator canary runs can be leased by run id.",
+                StatusCode::FORBIDDEN,
+            );
+        }
         Some(canary_run_id) => lease_canary_run(state.db_pool(), &runner_id, &canary_run_id).await,
         None => lease_next_run(state.db_pool(), &runner_id).await,
     };
@@ -246,8 +235,8 @@ async fn mark_runner_run_running(
     Path(run_id): Path<String>,
     Json(input): Json<RunnerRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -268,8 +257,8 @@ async fn complete_runner_run(
     Path(run_id): Path<String>,
     Json(input): Json<CompleteRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -293,8 +282,8 @@ async fn fail_runner_run(
     Path(run_id): Path<String>,
     Json(input): Json<FailRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -329,8 +318,8 @@ async fn fetch_runner_provider_auth(
     Path(run_id): Path<String>,
     Json(input): Json<RunnerRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -391,8 +380,8 @@ async fn export_runner_artifact(
     Path(run_id): Path<String>,
     Json(input): Json<ExportArtifactRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -442,8 +431,15 @@ async fn lookup_cloud_agent_run_for_request(
 }
 
 mod auth_snapshots;
+#[cfg(test)]
+mod canary_lease_tests;
 mod provider_auth_routes;
+mod runner_auth;
 mod test_route;
+
+use runner_auth::runner_authorized;
+pub use runner_auth::runner_authorized_for_scheduled_tasks;
+pub(crate) use runner_auth::runner_run_authorized;
 
 #[derive(serde::Deserialize)]
 struct RunnerPlanCardRequest {
@@ -458,8 +454,8 @@ async fn runner_plan_card(
     Path(run_id): Path<String>,
     Json(input): Json<RunnerPlanCardRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     crate::plan_cards::runner_action(&state, &run_id, &input.runner_id, input.request).await
 }
@@ -470,8 +466,8 @@ async fn read_runner_context(
     Path(run_id): Path<String>,
     Json(input): Json<super::runs::context_read::ContextReadRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     match super::runs::context_read::read_context(&state, &run_id, input).await {
         Ok(value) => Json(value).into_response(),

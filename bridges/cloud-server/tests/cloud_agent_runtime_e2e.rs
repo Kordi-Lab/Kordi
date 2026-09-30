@@ -31,6 +31,12 @@ struct TestAccount {
 
 async fn try_pool() -> Option<sqlx_postgres::PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
+    // These tests lease the runs they create by id; the shared test database
+    // also holds other tests' queued runs.
+    std::env::set_var(
+        kordi_cloud_server::cloud_agent_runtime::runs::CANARY_LEASES_ENV,
+        "1",
+    );
     let _guard = INIT_POOL_LOCK.lock().await;
     Some(
         init_pool(&url)
@@ -111,6 +117,46 @@ fn post_json_with_runner_token(uri: &str, token: &str, body: Value) -> Request<B
         .header("content-type", "application/json")
         .body(Body::from(body.to_string()))
         .unwrap()
+}
+
+/// A run-specific runner request: the shared runner token plus the run-scoped
+/// token issued with the run's lease.
+fn post_json_with_run_token(
+    uri: &str,
+    runner_token: &str,
+    run_token: &str,
+    body: Value,
+) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header("authorization", format!("Bearer {runner_token}"))
+        .header("x-kordi-run-token", run_token)
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
+fn lease_run_token(lease: &Value) -> String {
+    lease["run"]["runToken"]
+        .as_str()
+        .expect("a lease response issues a run token")
+        .to_string()
+}
+
+/// Issues a run token for a run a test placed in a leased state directly.
+async fn issue_test_run_token(pool: &sqlx_postgres::PgPool, run_id: &str) -> String {
+    let token = format!("test-run-token-{}", uuid::Uuid::new_v4().simple());
+    let updated = sqlx_core::query::query(
+        "UPDATE cloud_agent_fallback_runs SET runner_run_token_hash = $2 WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .bind(kordi_cloud_server::cloud_agent_runtime::runs::run_tokens::hash_run_token(&token))
+    .execute(pool)
+    .await
+    .unwrap();
+    assert_eq!(updated.rows_affected(), 1);
+    token
 }
 
 fn export_body(runner_id: &str, name: &str, sandbox_path: &str, bytes: &[u8]) -> Value {
@@ -340,7 +386,7 @@ async fn lease_claimed_run_for_export(
     requester: &TestAccount,
     request_message_id: &str,
     runner_id: &str,
-) -> String {
+) -> (String, String) {
     let claim = router
         .clone()
         .oneshot(post_json_with_token(
@@ -366,8 +412,10 @@ async fn lease_claimed_run_for_export(
         .await
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
-    assert_eq!(read_json(lease).await["run"]["runId"], run_id);
-    run_id
+    let leased = read_json(lease).await;
+    assert_eq!(leased["run"]["runId"], run_id);
+    let run_token = lease_run_token(&leased);
+    (run_id, run_token)
 }
 
 #[path = "cloud_agent_runtime_e2e/chat.rs"]
@@ -401,6 +449,8 @@ mod group_target_admission;
 mod hosted_only_admission;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
 mod provider_auth;
+#[path = "cloud_agent_runtime_e2e/run_tokens.rs"]
+mod run_tokens;
 #[path = "cloud_agent_runtime_e2e/runner.rs"]
 mod runner;
 #[path = "cloud_agent_runtime_e2e/sandboxes.rs"]

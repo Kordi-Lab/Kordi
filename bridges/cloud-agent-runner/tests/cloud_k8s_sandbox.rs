@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use kordi_cloud_agent_runner::k8s_sandbox::{
     build_sandbox_job_spec, build_sandbox_pvc_spec, K8sCommandOutput, K8sCommandRunner,
-    K8sSandboxBackend, K8sSandboxConfig, K8sSandboxOperation,
+    K8sSandboxBackend, K8sSandboxConfig, K8sSandboxOperation, SANDBOX_COMPONENT_LABEL,
+    SANDBOX_COMPONENT_VALUE,
 };
 use kordi_cloud_agent_runner::sandbox_client::SandboxBackend;
 use std::sync::{Arc, Mutex};
@@ -35,6 +36,74 @@ fn k8s_job_spec_is_restricted_and_mounts_only_sandbox_pvc() {
     );
     assert!(spec.to_string().contains("persistentVolumeClaim"));
     assert!(!spec.to_string().contains("hostPath"));
+}
+
+#[test]
+fn k8s_job_pods_carry_the_network_policy_label() {
+    let spec = build_sandbox_job_spec(
+        &K8sSandboxConfig::default(),
+        "cas_test_123",
+        K8sSandboxOperation::Bash {
+            command: "printf hello".to_string(),
+        },
+    );
+
+    assert_eq!(SANDBOX_COMPONENT_LABEL, "app.kubernetes.io/component");
+    assert_eq!(SANDBOX_COMPONENT_VALUE, "agent-sandbox");
+    assert_eq!(
+        spec["spec"]["template"]["metadata"]["labels"][SANDBOX_COMPONENT_LABEL],
+        SANDBOX_COMPONENT_VALUE
+    );
+    assert_eq!(
+        spec["metadata"]["labels"][SANDBOX_COMPONENT_LABEL],
+        SANDBOX_COMPONENT_VALUE
+    );
+    assert_eq!(
+        spec["spec"]["template"]["metadata"]["labels"]["kordi.ai/sandbox-id"],
+        "cas_test_123"
+    );
+
+    let policy =
+        include_str!("../../cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml");
+    assert!(policy.contains(&format!(
+        "podSelector:\n    matchLabels:\n      {SANDBOX_COMPONENT_LABEL}: {SANDBOX_COMPONENT_VALUE}\n"
+    )));
+}
+
+#[test]
+fn k8s_job_container_has_bounded_cpu_and_memory() {
+    let spec = build_sandbox_job_spec(
+        &K8sSandboxConfig::default(),
+        "cas_test_123",
+        K8sSandboxOperation::Bash {
+            command: "printf hello".to_string(),
+        },
+    );
+    let resources = &spec["spec"]["template"]["spec"]["containers"][0]["resources"];
+    assert_eq!(resources["requests"]["cpu"], "100m");
+    assert_eq!(resources["requests"]["memory"], "128Mi");
+    assert_eq!(resources["limits"]["cpu"], "1");
+    assert_eq!(resources["limits"]["memory"], "1Gi");
+
+    let tuned = K8sSandboxConfig {
+        cpu_request: "250m".to_string(),
+        cpu_limit: "2".to_string(),
+        memory_request: "256Mi".to_string(),
+        memory_limit: "2Gi".to_string(),
+        ..K8sSandboxConfig::default()
+    };
+    let spec = build_sandbox_job_spec(
+        &tuned,
+        "cas_test_123",
+        K8sSandboxOperation::List {
+            path: ".".to_string(),
+        },
+    );
+    let resources = &spec["spec"]["template"]["spec"]["containers"][0]["resources"];
+    assert_eq!(resources["requests"]["cpu"], "250m");
+    assert_eq!(resources["requests"]["memory"], "256Mi");
+    assert_eq!(resources["limits"]["cpu"], "2");
+    assert_eq!(resources["limits"]["memory"], "2Gi");
 }
 
 #[test]

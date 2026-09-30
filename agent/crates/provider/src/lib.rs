@@ -21,6 +21,15 @@ pub use error::{
     unexpected_response_with_sensitive_values,
 };
 pub use model_context::with_active_model_context;
+
+/// Applies the connect and read timeouts that the built-in provider HTTP
+/// clients use. Callers that pass their own client to a provider's
+/// `with_client` apply it to that client's builder.
+pub fn with_provider_timeouts(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    builder
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .read_timeout(std::time::Duration::from_secs(300))
+}
 pub use streaming::{CollectedResponse, CollectedToolCall};
 pub use traits::Provider;
 pub use types::{

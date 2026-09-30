@@ -1,4 +1,8 @@
 //! Every embedded Postgres migration, in version order.
+//!
+//! Versions are strictly increasing and never reused. Gaps are allowed, so a
+//! migration developed in parallel can take a later version without
+//! renumbering one that may already be recorded somewhere.
 
 pub(super) struct EmbeddedMigration {
     pub(super) version: i64,
@@ -479,7 +483,7 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth snapshot readiness",
         sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
     },
-    // Version 106 is reserved for a separately reviewed change. The runner
+    // Version 106 is left for changes in flight on other branches. The runner
     // refuses a recorded version whose description differs from this list.
     EmbeddedMigration {
         version: 107,
@@ -490,5 +494,10 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         version: 108,
         description: "session-bound realtime tickets",
         sql: include_str!("../../../migrations/0108_realtime_ticket_sessions.sql"),
+    },
+    EmbeddedMigration {
+        version: 109,
+        description: "runner run token hash",
+        sql: include_str!("../../../migrations/0109_runner_run_token_hash.sql"),
     },
 ];

@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -54,14 +55,159 @@ pub trait SandboxBackend: Send + Sync {
     async fn run_bash(&self, command: &str) -> Result<BashOutput, SandboxClientError>;
 }
 
+mod local_fs;
+
+/// Development-only backend that runs commands on the runner host. It is not
+/// an isolation boundary; `runtime::sandbox_backend_mode` refuses it unless
+/// the development opt-in is set.
+///
+/// Commands never inherit the runner's environment. When the runner runs as
+/// root, as it does in the development container, commands also run as a
+/// separate unprivileged user, so they cannot read the runner's environment
+/// or memory through `/proc`, and the runner's own file operations in the
+/// sandbox never follow links. When the runner is not root, commands run as
+/// the runner's user and can read its environment that way.
 #[derive(Debug, Clone)]
 pub struct LocalSandboxBackend {
     root: PathBuf,
+    identity: Option<SandboxIdentity>,
+}
+
+/// The user and group that local sandbox commands run as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SandboxIdentity {
+    pub uid: u32,
+    pub gid: u32,
+}
+
+pub const LOCAL_SANDBOX_UID_ENV: &str = "KORDI_CLOUD_SANDBOX_LOCAL_UID";
+pub const LOCAL_SANDBOX_GID_ENV: &str = "KORDI_CLOUD_SANDBOX_LOCAL_GID";
+
+/// The `kordi-sandbox` user and group of the runner image.
+pub const DEFAULT_LOCAL_SANDBOX_ID: u32 = 10001;
+
+/// The identity for local sandbox commands. A runner that is not root cannot
+/// switch users, so its commands keep its identity (`None`). A root runner
+/// always switches, to the configured ids or the image's `kordi-sandbox`
+/// user; an unparsable or root id is an error.
+pub fn local_sandbox_identity(
+    runner_is_root: bool,
+    uid: Option<&str>,
+    gid: Option<&str>,
+) -> Result<Option<SandboxIdentity>, &'static str> {
+    if !runner_is_root {
+        return Ok(None);
+    }
+    let parse = |value: Option<&str>| match value.map(str::trim).filter(|value| !value.is_empty()) {
+        None => Ok(DEFAULT_LOCAL_SANDBOX_ID),
+        Some(value) => value
+            .parse::<u32>()
+            .ok()
+            .filter(|id| *id != 0)
+            .ok_or("invalid_local_sandbox_identity"),
+    };
+    Ok(Some(SandboxIdentity {
+        uid: parse(uid)?,
+        gid: parse(gid)?,
+    }))
+}
+
+pub fn runner_is_root() -> bool {
+    // SAFETY: `geteuid` has no preconditions and cannot fail.
+    unsafe { libc::geteuid() == 0 }
+}
+
+pub fn local_sandbox_identity_from_env() -> Result<Option<SandboxIdentity>, &'static str> {
+    local_sandbox_identity(
+        runner_is_root(),
+        std::env::var(LOCAL_SANDBOX_UID_ENV).ok().as_deref(),
+        std::env::var(LOCAL_SANDBOX_GID_ENV).ok().as_deref(),
+    )
+}
+
+/// Keeps other sandboxes' names out of a local sandbox's view when commands
+/// run as a separate user: the shared sandbox root can be traversed, but not
+/// listed.
+pub fn restrict_local_sandbox_root(local_root: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(local_root)?;
+    std::fs::set_permissions(local_root, std::fs::Permissions::from_mode(0o711))
+}
+
+fn blocked_or_io(error: std::io::Error) -> SandboxClientError {
+    if error.raw_os_error() == Some(libc::ELOOP) {
+        SandboxClientError::BlockedPath(RunnerToolBlockReason::PathEscapesSandbox)
+    } else {
+        SandboxClientError::Io(error)
+    }
+}
+
+const LOCAL_DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+const LOCAL_DEFAULT_LANG: &str = "C.UTF-8";
+
+/// The complete environment of a local sandbox command. The runner's own
+/// variables, including its service credentials, are never inherited; only a
+/// search path and locale pass through, and home and temporary directories
+/// point inside the sandbox.
+fn local_command_env(root: &Path) -> Vec<(&'static str, OsString)> {
+    let inherited = |name: &str, fallback: &str| {
+        std::env::var_os(name)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| OsString::from(fallback))
+    };
+    vec![
+        ("PATH", inherited("PATH", LOCAL_DEFAULT_PATH)),
+        ("HOME", root.as_os_str().to_os_string()),
+        ("LANG", inherited("LANG", LOCAL_DEFAULT_LANG)),
+        ("TMPDIR", root.join(".tmp").into_os_string()),
+    ]
 }
 
 impl LocalSandboxBackend {
+    /// A backend whose commands run as [`local_sandbox_identity_from_env`]
+    /// says. A root runner with invalid identity settings still switches, to
+    /// the default identity; the runner refuses such settings at startup.
     pub fn new(root: PathBuf) -> Self {
-        Self { root }
+        let identity = local_sandbox_identity_from_env().unwrap_or(Some(SandboxIdentity {
+            uid: DEFAULT_LOCAL_SANDBOX_ID,
+            gid: DEFAULT_LOCAL_SANDBOX_ID,
+        }));
+        Self { root, identity }
+    }
+
+    pub fn identity(&self) -> Option<SandboxIdentity> {
+        self.identity
+    }
+
+    /// Runs a file operation on the sandbox tree off the async runtime.
+    async fn with_tree<T, F>(
+        &self,
+        relative_path: &str,
+        operation: F,
+    ) -> Result<T, SandboxClientError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&Path, &Path, Option<SandboxIdentity>) -> std::io::Result<T> + Send + 'static,
+    {
+        let relative = self
+            .resolve_path(relative_path)?
+            .strip_prefix(&self.root)
+            .map(Path::to_path_buf)
+            .map_err(|_| {
+                SandboxClientError::BlockedPath(RunnerToolBlockReason::PathEscapesSandbox)
+            })?;
+        let root = self.root.clone();
+        let identity = self.identity;
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&root)?;
+            if let Some(identity) = identity {
+                local_fs::adopt(&root, identity)?;
+            }
+            operation(&root, &relative, identity)
+        })
+        .await
+        .map_err(|error| SandboxClientError::Process(error.to_string()))?
+        .map_err(blocked_or_io)
     }
 
     pub fn root(&self) -> &Path {
@@ -124,13 +270,20 @@ impl SandboxBackend for LocalSandboxBackend {
     }
 
     async fn read_text(&self, relative_path: &str) -> Result<String, SandboxClientError> {
-        let path = self.resolve_path(relative_path)?;
-        Ok(tokio::fs::read_to_string(path).await?)
+        let bytes = self.read_bytes(relative_path).await?;
+        String::from_utf8(bytes).map_err(|_| {
+            SandboxClientError::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "stream did not contain valid UTF-8",
+            ))
+        })
     }
 
     async fn read_bytes(&self, relative_path: &str) -> Result<Vec<u8>, SandboxClientError> {
-        let path = self.resolve_path(relative_path)?;
-        Ok(tokio::fs::read(path).await?)
+        self.with_tree(relative_path, |root, relative, _| {
+            local_fs::read(root, relative, None)
+        })
+        .await
     }
 
     async fn read_bytes_bounded(
@@ -138,24 +291,20 @@ impl SandboxBackend for LocalSandboxBackend {
         relative_path: &str,
         max_bytes: usize,
     ) -> Result<Vec<u8>, SandboxClientError> {
-        use tokio::io::AsyncReadExt;
-        let path = tokio::fs::canonicalize(self.resolve_path(relative_path)?).await?;
-        let root = tokio::fs::canonicalize(&self.root).await?;
-        if !path.starts_with(root) {
-            return Err(SandboxClientError::BlockedPath(
-                RunnerToolBlockReason::PathEscapesSandbox,
-            ));
-        }
-        if !tokio::fs::metadata(&path).await?.is_file() {
-            return Err(SandboxClientError::Process(
-                "Image input must be a regular file.".into(),
-            ));
-        }
-        let file = tokio::fs::File::open(path).await?;
-        let mut bytes = Vec::new();
-        file.take(max_bytes as u64 + 1)
-            .read_to_end(&mut bytes)
-            .await?;
+        let limit = max_bytes as u64 + 1;
+        let bytes = self
+            .with_tree(relative_path, move |root, relative, _| {
+                local_fs::read(root, relative, Some(limit))
+            })
+            .await
+            .map_err(|error| match error {
+                SandboxClientError::Io(error)
+                    if error.kind() == std::io::ErrorKind::InvalidInput =>
+                {
+                    SandboxClientError::Process("Image input must be a regular file.".into())
+                }
+                other => other,
+            })?;
         if bytes.len() > max_bytes {
             return Err(SandboxClientError::Process(
                 "Image exceeds the read limit; resize it and retry.".into(),
@@ -169,23 +318,18 @@ impl SandboxBackend for LocalSandboxBackend {
         relative_path: &str,
         content: &str,
     ) -> Result<(), SandboxClientError> {
-        let path = self.resolve_path(relative_path)?;
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(path, content).await?;
-        Ok(())
+        let content = content.as_bytes().to_vec();
+        self.with_tree(relative_path, move |root, relative, identity| {
+            local_fs::write(root, relative, &content, identity)
+        })
+        .await
     }
 
     async fn list(&self, relative_path: &str) -> Result<Vec<String>, SandboxClientError> {
-        let path = self.resolve_path(relative_path)?;
-        let mut entries = tokio::fs::read_dir(path).await?;
-        let mut names = Vec::new();
-        while let Some(entry) = entries.next_entry().await? {
-            names.push(entry.file_name().to_string_lossy().to_string());
-        }
-        names.sort();
-        Ok(names)
+        self.with_tree(relative_path, |root, relative, _| {
+            local_fs::list(root, relative)
+        })
+        .await
     }
 
     async fn run_bash(&self, command: &str) -> Result<BashOutput, SandboxClientError> {
@@ -205,14 +349,30 @@ impl SandboxBackend for LocalSandboxBackend {
                 RunnerToolBlockReason::PathEscapesSandbox,
             ));
         }
-        tokio::fs::create_dir_all(&self.root).await?;
-        let output = Command::new("/bin/sh")
+        // The sandbox and its temporary directory belong to the command's
+        // user. A `.tmp` link planted by an earlier command is left alone.
+        self.with_tree("", |root, _, identity| {
+            if let Err(error) = local_fs::ensure_dir(root, Path::new(".tmp"), identity) {
+                if error.raw_os_error() != Some(libc::ELOOP) {
+                    return Err(error);
+                }
+            }
+            Ok(())
+        })
+        .await?;
+        let mut process = Command::new("/bin/sh");
+        process
             .kill_on_drop(true)
             .arg("-c")
             .arg(command)
             .current_dir(&self.root)
-            .output()
-            .await?;
+            .env_clear()
+            .envs(local_command_env(&self.root));
+        if let Some(identity) = self.identity {
+            // Supplementary groups are dropped along with the user.
+            process.uid(identity.uid).gid(identity.gid);
+        }
+        let output = process.output().await?;
         Ok(BashOutput {
             exit_code: output.status.code().unwrap_or(-1),
             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -222,41 +382,4 @@ impl SandboxBackend for LocalSandboxBackend {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[tokio::test]
-    async fn local_backend_read_bytes_matches_written_content() {
-        let root = std::env::temp_dir().join(format!(
-            "kordi-sandbox-bytes-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
-        let backend = LocalSandboxBackend::new(root.clone());
-        backend.write_text("artifact.txt", "hello").await.unwrap();
-
-        let bytes = backend.read_bytes("artifact.txt").await.unwrap();
-
-        assert_eq!(bytes, b"hello");
-        let _ = std::fs::remove_dir_all(root);
-    }
-
-    #[tokio::test]
-    async fn resolve_path_blocks_escape_attempts() {
-        let root = std::env::temp_dir().join(format!(
-            "kordi-sandbox-client-test-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
-        fs::create_dir_all(&root).unwrap();
-        let backend = LocalSandboxBackend::new(root.clone());
-
-        assert!(backend
-            .resolve_path("safe/file.txt")
-            .unwrap()
-            .starts_with(&root));
-        assert!(backend.resolve_path("../outside.txt").is_err());
-        assert!(backend.resolve_path("/tmp/outside.txt").is_err());
-
-        let _ = fs::remove_dir_all(root);
-    }
-}
+mod tests;

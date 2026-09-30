@@ -2,8 +2,9 @@
 #
 # deploy-cloud-agent-runner.sh — RUN LOCALLY, build runs on the VM.
 #
-# Builds/imports the Cloud Agent Runner image and applies the runner Deployment
-# with one active sandbox-capable worker so queued fallback runs are processed.
+# Builds/imports the Cloud Agent Runner image, applies the agent sandbox
+# NetworkPolicy, and applies the runner Deployment with one active
+# sandbox-capable worker so queued fallback runs are processed.
 
 set -euo pipefail
 
@@ -21,9 +22,10 @@ echo "[runner-deploy] target: ${SSH_TARGET} (project ${SSH_PROJECT}, zone ${SSH_
 echo "[runner-deploy] image tag: ${IMAGE_TAG}"
 echo "[runner-deploy] image ref: ${IMAGE}"
 
-echo "[runner-deploy] syncing runner Dockerfile + manifest to VM"
+echo "[runner-deploy] syncing runner Dockerfile + manifests to VM"
 tar -C "${REPO_ROOT}" -czf - \
     bridges/cloud-agent-runner/Dockerfile.runtime \
+    bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml \
     bridges/cloud-server/deploy/k3s/manifests/cloud-agent-runner-deployment.yaml \
   | "${GCLOUD_SSH[@]}" \
       --command "cd ${REMOTE_DEPLOY} && tar -xzf -"
@@ -58,6 +60,12 @@ sudo buildah push ${IMAGE} oci-archive:\$TAR:${IMAGE}
 sudo k3s ctr images import \$TAR
 sudo rm -f \$TAR
 sudo k3s ctr images ls | grep kordi-cloud-agent-runner | head -3"
+
+echo "[runner-deploy] applying agent sandbox NetworkPolicy"
+"${GCLOUD_SSH[@]}" --command "set -e
+cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests
+kubectl apply -f agent-sandbox-network-policy.yaml
+kubectl -n kordi-cloud get networkpolicy kordi-cloud-agent-sandbox -o name"
 
 echo "[runner-deploy] applying runner manifest with image=${IMAGE}"
 "${GCLOUD_SSH[@]}" --command "cd ${REMOTE_DEPLOY}/bridges/cloud-server/deploy/k3s/manifests && \
