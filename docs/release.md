@@ -581,7 +581,7 @@ Beta and stable releases are Developer ID-signed, so the Keychain access list ke
 
 ### Content-Security-Policy and artifact previews
 
-Packaged builds apply the Content-Security-Policy from `app/desktop/src-tauri/tauri.conf.json`; `tauri dev` loads the Vite server directly and does not. HTML and SVG artifact previews are served from the `kordi-artifact-preview:` scheme with their own policy, so they keep running inline and HTTPS scripts, styles, web fonts, and HTTPS form posts, while plain-HTTP (including loopback) and app resources stay blocked inside a preview. Before promoting a build, open an HTML artifact that uses an inline script and a CDN library in the packaged app and confirm that it renders and that the Web Inspector console shows no Content-Security-Policy violations for the main window.
+Packaged builds apply the Content-Security-Policy from `app/desktop/src-tauri/tauri.conf.json`; `tauri dev` loads the Vite server directly and does not. HTML and SVG artifact previews are served from the `kordi-artifact-preview:` scheme with their own policy, so they keep running inline and HTTPS scripts, styles, web fonts, and script-handled forms, while plain-HTTP (including loopback) and app resources stay blocked inside a preview. The main window frames only the app and that scheme, so a link or form post that would replace a preview with an external page does not load inside the inspector. Before promoting a build, open an HTML artifact that uses an inline script and a CDN library in the packaged app and confirm that it renders and that the Web Inspector console shows no Content-Security-Policy violations for the main window.
 
 ### Signed acceptance, promotion, and release (beta.7 and later)
 
