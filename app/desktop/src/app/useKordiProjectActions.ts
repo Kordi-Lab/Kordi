@@ -68,6 +68,7 @@ export function useKordiProjectActions({
   const moveSessionToProject = useCallback(async (
     sessionId: string,
     requestedProjectRoot: string,
+    workspace?: import('@/features/projects/gitWorkspace').ChatWorkspaceSelection,
   ) => {
     if (!isNativeShell) return;
 
@@ -76,8 +77,8 @@ export function useKordiProjectActions({
       const isDraft = !sessionId || isLocalDraftChatConversationId(sessionId);
       if (isDraft && !requestedProjectRoot) return;
       const nextState = isDraft
-        ? await createDesktopProjectSession(requestedProjectRoot)
-        : await moveDesktopChatSessionToProject(sessionId, requestedProjectRoot);
+        ? await createDesktopProjectSession(requestedProjectRoot, undefined, workspace)
+        : await moveDesktopChatSessionToProject(sessionId, requestedProjectRoot, workspace);
       if (!sessionId || sessionId === activeConversationId) {
         setDesktopState(nextState);
         if (!sessionId) {

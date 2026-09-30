@@ -5,6 +5,7 @@ pub async fn desktop_chat_new_project_session(
     manager: State<'_, DesktopChatManager>,
     project_root: String,
     title: Option<String>,
+    workspace: Option<crate::project::git_workspace::ChatWorkspaceSelection>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
     let resolved_project_root = resolve_project_root_input(&cwd, &project_root)?;
@@ -14,6 +15,13 @@ pub async fn desktop_chat_new_project_session(
     let mut runtime = DesktopRuntimeSession::create_new(resolved_project_root.clone())
         .await
         .map_err(|err| err.to_string())?;
+    let session_id = runtime.session_id().to_string();
+    let execution_root = crate::project::git_workspace::select_workspace(
+        &resolved_project_root,
+        &session_id,
+        workspace,
+    )
+    .await?;
     attach_cloud_scheduled_task_runtime(&mut runtime);
     runtime
         .materialize_session()
@@ -27,11 +35,14 @@ pub async fn desktop_chat_new_project_session(
             .set_auto_name(title)
             .map_err(|err| err.to_string())?;
     }
-    let session_id = runtime.session_id().to_string();
-    kordi_cli::desktop_runtime::move_session_to_project(&session_id, &resolved_project_root)
-        .map_err(|err| err.to_string())?;
+    kordi_cli::desktop_runtime::move_session_to_project_workspace(
+        &session_id,
+        &resolved_project_root,
+        &execution_root,
+    )
+    .map_err(|err| err.to_string())?;
 
-    {
+    if execution_root == resolved_project_root {
         let mut sessions = manager.sessions.lock().await;
         sessions.insert(
             session_id.clone(),
@@ -75,6 +86,7 @@ pub async fn desktop_chat_move_session_to_project(
     manager: State<'_, DesktopChatManager>,
     session_id: String,
     project_root: String,
+    workspace: Option<crate::project::git_workspace::ChatWorkspaceSelection>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
     if agent_builder::is_agent_builder_session_id(session_id.trim()) {
@@ -95,8 +107,18 @@ pub async fn desktop_chat_move_session_to_project(
         let resolved_project_root = resolve_project_root_input(&cwd, &project_root)?;
         kordi_cli::desktop_runtime::register_project(&resolved_project_root, None)
             .map_err(|err| err.to_string())?;
-        kordi_cli::desktop_runtime::move_session_to_project(&target.id, &resolved_project_root)
-            .map_err(|err| err.to_string())?;
+        let execution_root = crate::project::git_workspace::select_workspace(
+            &resolved_project_root,
+            &target.id,
+            workspace,
+        )
+        .await?;
+        kordi_cli::desktop_runtime::move_session_to_project_workspace(
+            &target.id,
+            &resolved_project_root,
+            &execution_root,
+        )
+        .map_err(|err| err.to_string())?;
     }
     manager.sessions.lock().await.remove(&target.id);
     build_chat_state(&manager, &cwd, target.id).await

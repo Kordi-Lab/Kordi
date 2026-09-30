@@ -410,6 +410,7 @@ pub fn run() {
             chat::desktop_chat_archive_session,
             chat::desktop_chat_delete_session_forever,
             chat::project_actions::desktop_chat_move_session_to_project,
+            project::git_workspace::desktop_project_git_workspace,
             chat::project_actions::desktop_project_prepare_remote_session,
             chat::desktop_chat_fork_session_from_message,
             chat::desktop_chat_send_message,

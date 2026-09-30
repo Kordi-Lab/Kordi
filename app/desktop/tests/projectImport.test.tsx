@@ -33,7 +33,7 @@ test('a successfully cloned project is reused when session activation must be re
       assert.equal(project.root, '/fixture/repo'); attempts += 1;
       if (attempts === 1) throw new Error('Session is busy');
     } })));
-    await click('GitHub repository');
+    await click('Clone from GitHub');
     await click('team/repo');
     await click('Add project');
     assert.equal(document.querySelector('[role="alert"]')?.textContent, 'Session is busy');

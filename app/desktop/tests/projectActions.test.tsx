@@ -38,9 +38,10 @@ for (const target of ['draft:local-chat', 'background-session', '']) {
     }
     try {
       await act(async () => root.render(createElement(Probe)));
-      await act(async () => actions.moveSessionToProject(target, '/fixture/project'));
+      await act(async () => actions.moveSessionToProject(target, '/fixture/project', { worktree: true, branch: 'main' }));
       assert.equal(calls[0].command, target === 'background-session' ? 'desktop_chat_move_session_to_project' : 'desktop_chat_new_project_session');
       assert.equal(calls[0].args?.projectRoot, '/fixture/project');
+      assert.deepEqual(calls[0].args?.workspace, { worktree: true, branch: 'main' });
       assert.equal(active, target === 'background-session' ? 'draft:local-chat' : 'new-project-session');
       assert.equal(refreshed[0], active);
       assert.deepEqual(navigation, ['chats']);

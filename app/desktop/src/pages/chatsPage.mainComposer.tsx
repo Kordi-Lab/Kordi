@@ -1,4 +1,4 @@
-import { ChatProjectPicker } from '@/features/projects/ChatProjectPicker';
+import { ChatWorkspaceControls } from '@/features/projects/ChatWorkspaceControls';
 import { canChooseChatProject } from '@/features/projects/chatProjects';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
@@ -183,6 +183,9 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
+      {!editingMessage && !voiceSurfaceActive && !videoSurfaceActive && canChooseChatProject(conversation) ? (
+        <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
+      ) : null}
       <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
         videoReviews.stage(saveDesktopAttachments(files))
       )}>
@@ -356,9 +359,6 @@ export function MainComposer({
             data-composer-left-actions="true"
           >
             {!editingMessage && useCompactRouteMenu ? <KordiCloudRuntimeCaption /> : null}
-            {!editingMessage && !voiceSurfaceActive && canChooseChatProject(conversation) ? (
-              <ChatProjectPicker key={conversation.id} sessionId={conversation.id} disabled={display.activeLiveTurnIsRunning} />
-            ) : null}
             {!editingMessage && useCompactRouteMenu ? (
               <CompactComposerModelMenu
                 scope="chat"

@@ -1,3 +1,4 @@
+import { fetchGitWorkspace } from '@/features/projects/gitWorkspace';
 import { useMemo } from 'react';
 import { ChatProjectsProvider } from '@/features/projects/ChatProjectsProvider';
 import { type ChatProjects } from '@/features/projects/chatProjects';
@@ -13,6 +14,7 @@ import type { KordiShellArgs } from '@/app/kordiShellSlots.types';
 function chatProjects(args: KordiShellArgs['sidebar']): ChatProjects {
   return {
     enabled: args.isNativeShell,
+    gitWorkspace: fetchGitWorkspace,
     projects: args.runtimeProjects,
     assign: args.handleMoveChatSessionToProject,
     create: async (sessionId, name, folder) => {

@@ -1,20 +1,20 @@
 .chat-project-session-list {
-  --chat-project-row-height: 36px;
+  --chat-project-row-height: 26px;
   --chat-project-row-inset: 12px;
-  --chat-project-child-inset: 36px;
+  --chat-project-child-inset: 28px;
 }
 
 .chat-project-section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 56px;
-  padding: 24px var(--chat-project-row-inset) 4px;
+  min-height: 36px;
+  padding: 10px var(--chat-project-row-inset) 2px;
   color: var(--app-sidebar-time-text);
   font-size: 13px;
   line-height: 24px;
 }
-.chat-project-section-heading[data-first-section] { min-height: 36px; padding-top: 4px; }
+.chat-project-section-heading[data-first-section] { min-height: 28px; padding-top: 2px; }
 .chat-project-section-heading h3 { margin: 0; font: inherit; }
 .chat-project-heading-actions { display: flex; align-items: center; gap: 4px; }
 .chat-project-heading-actions button { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; }
@@ -63,4 +63,8 @@ button[aria-expanded="true"] > .chat-project-collapse-indicator { transform: rot
 .chat-recents-heading:focus-visible, .chat-project-heading-actions button:focus-visible {
   outline: 2px solid var(--app-sidebar-title-text);
   outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-project-collapse-indicator { transition: none; }
 }

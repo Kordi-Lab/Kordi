@@ -25,8 +25,11 @@ mod shared_context;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
 mod project_membership;
+use project_membership::runtime_cwd_for_session;
 mod session_catalog;
-pub use project_membership::{move_session_to_project, remove_session_from_project};
+pub use project_membership::{
+    move_session_to_project, move_session_to_project_workspace, remove_session_from_project,
+};
 mod session_detail;
 mod transcript;
 mod turn_execution;
@@ -61,8 +64,8 @@ use model_options::{
 };
 use session_catalog::{
     fallback_session_display_title, load_project_info, open_sessions_db, project_group_id,
-    repair_session_title_from_history, runtime_cwd_for_session, session_activity_label,
-    session_title_from_messages, session_title_from_seed, truncate_chars,
+    repair_session_title_from_history, session_activity_label, session_title_from_messages,
+    session_title_from_seed, truncate_chars,
 };
 use session_detail::{
     build_agent_profile_from_setup, build_detail_from_setup, build_summary_from_setup,

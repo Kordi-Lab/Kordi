@@ -45,6 +45,12 @@ export function WorkspaceChatLists({
     Boolean(projects?.enabled && !model.chatSearch && !model.showArchived),
     { pinnedSessionIds, expandedProjectIds, previewLimit: model.chatSearch ? Infinity : 5 },
   ), [model.agentSidebarRows, projects?.projects, projects?.enabled, collapsed, model.chatSearch, model.showArchived, pinnedSessionIds, expandedProjectIds]);
+  const animatedRows = useMemo(() => grouped.rows.map((row) => {
+    if (row.kind !== 'session') return row;
+    const session = model.agentSessionRowsById.get(row.sessionId);
+    return session?.space.kind === 'self' && !primaryAgentForConversation(session.session.conversation)
+      ? { ...row, estimatedHeight: 50 } : row;
+  }), [grouped.rows, model.agentSessionRowsById]);
   const toggle = (id: string) => setCollapsed((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id); else next.add(id);
@@ -79,11 +85,11 @@ export function WorkspaceChatLists({
 
   return (
     <>
-      {!model.showArchived ? <div className="mb-1 flex shrink-0 justify-center px-1">
+      {!model.showArchived ? <div className="flex shrink-0 justify-start px-1">
         <button
           type="button"
           onClick={onOpenAgentCreate}
-          className="app-participant-space-action app-participant-space-context-create inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[9px] px-2 text-[11px] font-medium transition"
+          className="app-participant-space-action app-participant-space-context-create inline-flex h-6 shrink-0 items-center gap-1.5 rounded-[9px] px-2 text-[11px] font-medium transition"
           title="New My agent session"
           aria-label="New My agent session"
         >
@@ -92,7 +98,9 @@ export function WorkspaceChatLists({
         </button>
       </div> : null}
       <VirtualChatList
-        rows={grouped.rows}
+        groupChannels={Boolean(projects?.enabled)}
+        compactChannels
+        rows={animatedRows}
         activeSessionId={model.activeSidebarRowSessionId}
         scrollClassName="app-workspace-session-scroll chat-project-session-list min-h-0 flex-1"
         dataMode="agent-sessions-flat"
@@ -128,7 +136,7 @@ export function WorkspaceChatLists({
               onClick={() => toggle(descriptor.spaceId)}>
               {collapsed.has(descriptor.spaceId) ? <Folder size={17} aria-hidden="true" /> : <FolderOpen size={17} aria-hidden="true" />}
               <span>{grouped.groups.get(descriptor.spaceId)?.name}</span>
-              <ChevronRight size={13} className="chat-project-collapse-indicator" aria-hidden="true" />
+              <ChevronRight size={13} className="chat-project-collapse-indicator app-participant-space-disclosure-icon" aria-hidden="true" />
             </button>
           )
         ) : (

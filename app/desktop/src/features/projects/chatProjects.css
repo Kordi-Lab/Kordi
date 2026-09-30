@@ -36,3 +36,25 @@
 .chat-project-create input { border: 1px solid var(--app-divider); border-radius: 7px; padding: 7px 8px; width: 100%; background: var(--app-control-bg); }
 .chat-project-create-submit { display: flex; align-items: center; justify-content: center; gap: 6px; border-radius: 8px; padding: 7px; background: var(--app-control-active-bg); }
 .chat-project-create-submit:disabled { opacity: .5; }
+
+.chat-workspace-controls { margin-bottom: 8px; min-width: 0; }
+.chat-workspace-selector-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.chat-workspace-pill, .chat-workspace-selector-row .chat-project-trigger {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  min-height: 26px; border: 1px solid var(--app-divider); border-radius: 7px;
+  padding: 3px 7px; background: var(--app-control-bg); color: var(--utility-muted-text);
+  font-size: 12px; line-height: 18px;
+}
+.chat-workspace-selector-row .chat-project-trigger { max-width: min(220px, 45vw); color: var(--utility-foreground); }
+.chat-workspace-git { padding: 0; min-width: 0; max-width: 100%; }
+.chat-workspace-git > button { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 7px; border-radius: 6px 0 0 6px; }
+.chat-workspace-git > button > span { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-workspace-git label { display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin: 3px 0; padding: 0 7px; border-left: 1px solid var(--app-divider); cursor: pointer; }
+.chat-workspace-git input { width: 12px; height: 12px; accent-color: var(--app-accent); }
+.chat-workspace-git svg { flex-shrink: 0; }
+.chat-workspace-add:hover, .chat-workspace-git > button:hover { background: var(--app-control-active-bg); color: var(--utility-foreground); }
+.chat-workspace-add:focus-visible, .chat-workspace-git > button:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; }
+.chat-workspace-selector-row button:disabled { opacity: .5; cursor: default; }
+.chat-workspace-error { margin: 6px 0 0; color: var(--app-error-text); font-size: 11px; }
+.chat-workspace-menu { width: min(280px, calc(100vw - 16px)); max-height: min(340px, calc(100dvh - 16px)); }
+.chat-workspace-menu-heading { padding: 8px 9px 4px; color: var(--utility-muted-text); font-size: 11px; }

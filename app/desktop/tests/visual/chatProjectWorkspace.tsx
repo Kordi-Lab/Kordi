@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Moon, PanelLeft, Plus, Sun } from 'lucide-react';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
 import { buildParticipantSpaces, filterParticipantSpaces } from '../../src/features/chat/participantSpaces';
 import { ChatProjectsContext, type ChatProject, projectForChat } from '../../src/features/projects/chatProjects';
+import type { ChatWorkspaceSelection, GitWorkspace } from '../../src/features/projects/gitWorkspace';
 import type { Conversation } from '../../src/kordi-app/types';
 import { ChatsPage } from '../../src/pages/ChatsPage';
 import type { ChatsPageProps } from '../../src/pages/chatsPage.types';
@@ -17,13 +17,13 @@ type PreviewChatsPageProps = ChatsPageProps['layout'] & ChatsPageProps['session'
 const initialTitles = ['Fix transcript scroll jitter', 'Redesign message forwarding', 'Compare Kordi and Codex', 'Fix agent session drafts', 'Review the homepage', 'Update typography', 'Explore an idea', 'Improve project discovery', 'Review sidebar keyboard navigation', 'Polish long conversation titles and narrow sidebar layouts'];
 function makeConversation(id: string, name: string, index = 0): Conversation {
   return { id, canonicalSessionId: id, name, type: 'owned-agent', subtitle: '', unread: 0,
-    desktopRuntimeBacked: true, desktopRuntimeTranscriptLoaded: true, collaborationSources: ['Local'], trust: 'Owned', directness: 'Agent chat',
+    desktopRuntimeBacked: true, desktopRuntimeTranscriptLoaded: true, localSessionCwd: `/preview/${[4, 5].includes(index) ? 'website' : 'kordi'}`, collaborationSources: ['Local'], trust: 'Owned', directness: 'Agent chat',
     participants: ['Me', 'Kordi'], canonicalParticipants: [
       { id: 'human:preview', name: 'Me', kind: 'human', role: 'self', source: 'local' },
       { id: 'agent:preview', name: 'Kordi', kind: 'agent', role: 'owned-agent', source: 'local' },
     ], updatedAtLabel: `${12 - index}:20`, messages: id === 'chat-2' ? [
       { id: 'request', role: 'user', sender: 'Me', isOwnMessage: true, text: 'Keep project selection in the chat. I want to organize agent sessions by project and open projects from GitHub or a local folder.', time: '12:20' },
-      { id: 'reply', role: 'owned-agent', sender: 'Kordi', text: 'Here is the proposed flow:\n\n- Choose a project below the message box.\n- Keep related sessions together under its folder in Agent Chat.\n- Right-click a session to move it to another project.\n- Add a local folder or choose a GitHub repository from New project.\n\nYou can try the selection and organization in this preview.', time: '12:21' },
+      { id: 'reply', role: 'owned-agent', sender: 'Kordi', text: 'Here is the proposed flow:\n\n- Choose a project above the message box.\n- Keep related sessions together under its folder in Agent Chat.\n- Right-click a session to move it to another project.\n- Use an isolated worktree or select an existing checkout.\n- Add a local folder or choose a GitHub repository from New project.\n\nYou can try the selection and organization in this preview.', time: '12:21' },
     ] : [{ id: `${id}-intro`, role: 'user', sender: 'Me', isOwnMessage: true, text: name, time: '12:20' }],
   };
 }
@@ -33,8 +33,9 @@ const initialProjects: ChatProject[] = [
 ];
 
 function ProjectWorkspacePreview() {
-  const [appearance, setAppearance] = useState(new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light');
+  const appearance = new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light';
   const [projects, setProjects] = useState(initialProjects);
+  const [worktrees, setWorktrees] = useState<Record<string, { path: string; branch: string | null }[]>>({});
   const [conversations, setConversations] = useState(() => initialTitles.map((title, index) => makeConversation(`chat-${index}`, title, index)));
   const [activeId, setActiveId] = useState('chat-2');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -55,22 +56,32 @@ function ProjectWorkspacePreview() {
     return () => window.removeEventListener('resize', resize);
   }, []);
   useEffect(() => { document.body.classList.toggle('theme-light', appearance === 'light'); }, [appearance]);
-  const assign = async (sessionId: string, root: string) => {
+  const gitWorkspace = useCallback(async (root: string, cwd = root): Promise<GitWorkspace> => {
+    const trees = [{ path: root, branch: 'main' }, ...(worktrees[root] ?? []), { path: `${root}-review`, branch: 'review/sidebar' }];
+    return { branch: trees.find((tree) => tree.path === cwd)?.branch ?? 'main', branches: ['main', 'design/sidebar'], worktrees: trees, workspaceRoot: cwd, isWorktree: cwd !== root };
+  }, [worktrees]);
+  const assign = async (sessionId: string, root: string, workspace?: ChatWorkspaceSelection) => {
+    const cwd = workspace?.workspaceRoot ?? (workspace?.worktree ? `${root}-chat-${sessionId}` : root);
+    if (workspace?.worktree) setWorktrees((current) => ({ ...current, [root]: [
+      ...(current[root] ?? []).filter((tree) => tree.path !== cwd), { path: cwd, branch: workspace.branch ?? `kordi/chat-${sessionId}` },
+    ] }));
+    setConversations((current) => current.map((conversation) => conversation.id === sessionId ? { ...conversation, localSessionCwd: cwd } : conversation));
     if (!sessionId) { newSession(root); return; }
     setProjects((current) => current.map((project) => ({ ...project, sessions: [
       ...project.sessions.filter((session) => session.id !== sessionId),
       ...(project.root === root ? [{ id: sessionId }] : []),
     ] })));
   };
-  const newSession = (root = selected?.root) => {
+  const newSession = (root = selected?.root, activate = true) => {
     const id = `preview-${crypto.randomUUID()}`;
     setConversations((current) => [{ ...makeConversation(id, 'New session'), messages: [] }, ...current]);
     if (root) void assign(id, root);
-    setActiveId(id);
+    if (activate) setActiveId(id);
     return id;
   };
   const importProject = (project: ImportedProject) => {
     const sessionId = importSessionId ?? activeId;
+    setConversations((current) => current.map((conversation) => conversation.id === sessionId ? { ...conversation, localSessionCwd: project.root } : conversation));
     const exists = projects.find((candidate) => candidate.root === project.root);
     setProjects((current) => [
       ...current.map((candidate) => ({ ...candidate, sessions: [
@@ -106,7 +117,7 @@ function ProjectWorkspacePreview() {
     setActiveArtifactId: () => undefined,
     activeConv: active,
     chatConversations: conversations,
-    companionConversations: [],
+    companionConversations: conversations,
     participantSpaces,
     activeConversationUsesCollaboration: false,
     activeCollaborationModelHost: null,
@@ -141,7 +152,7 @@ function ProjectWorkspacePreview() {
     chatComposerText: drafts[activeId] ?? '',
     updateChatComposerDraft: (value: string) => setDraft(value),
     setChatComposerText: setDraft,
-    setChatComposerTextForSession: (_sessionId: string, value: string) => setDraft(value),
+    setChatComposerTextForSession: (sessionId: string, value: string) => setDrafts((current) => ({ ...current, [sessionId]: value })),
     composerControlsRef: { current: null },
     activeRuntimeContextStatus: null,
     activeRuntimeCacheText: null,
@@ -163,7 +174,7 @@ function ProjectWorkspacePreview() {
     onPrefetchChatSession: async () => undefined,
     onSelectSession: setActiveId,
     onSendChatMessage: send,
-    onCreateAgentSession: () => newSession(),
+    onCreateAgentSession: () => newSession(selected?.root, false),
     hasAnyAuth: true,
     onOpenAuthSettings: () => undefined,
     onOpenAccountAuthentication: () => undefined,
@@ -184,17 +195,10 @@ function ProjectWorkspacePreview() {
     displayedAgents: [{ id: 'agent:preview', name: 'Kordi', role: 'Your agent', status: 'Ready', messaging: 'Available', tasks: 0, collaborationConfig: 'Local', lastActivities: [] }],
   });
   return <div className={`project-workspace-review theme-${appearance}`}>
-    <div className="project-review-toolbar">
-      <span><strong>Project workspace</strong><span className="project-review-toolbar-note">Interactive design preview · Demo data</span></span>
-      <div>
-        <button aria-label="Toggle sessions" onClick={() => setSidebarVisible((current) => !current)}><PanelLeft size={15} /></button>
-        <button onClick={() => newSession()}><Plus size={15} /><span>New session</span></button>
-        <button aria-label="Toggle appearance" onClick={() => setAppearance((current) => current === 'light' ? 'dark' : 'light')}>{appearance === 'light' ? <Moon size={15} /> : <Sun size={15} />}</button>
-      </div>
-    </div>
-    <ChatProjectsContext value={{ enabled: true, projects, assign, openImporter: (sessionId) => setImportSessionId(sessionId || activeId), create: async (_sessionId, name, folder) => importProject({ name, root: folder || `/preview/${name}`, source: 'local' }) }}>
-      <AppShellFrame rootThemeClass={`theme-${appearance}`} isNativeShell={false} isLayoutResizing={false}
-        windowSize={{ width: viewport.width, height: viewport.height - 42 }} leftWorkspaceWidth={338}
+    <ChatProjectsContext value={{ enabled: true, projects, assign, gitWorkspace, openImporter: (sessionId) => setImportSessionId(sessionId || activeId), create: async (_sessionId, name, folder) => importProject({ name, root: folder || `/preview/${name}`, source: 'local' }) }}>
+      <AppShellFrame rootThemeClass={`theme-${appearance}`} isNativeShell isLayoutResizing={false}
+        windowTitle={active.name} onToggleSessionPanel={() => setSidebarVisible((current) => !current)}
+        windowSize={{ width: viewport.width, height: viewport.height }} leftWorkspaceWidth={338}
         isSingleWorkspacePage={false} showSessionRail={sidebarVisible} collapseChatSessions={!sidebarVisible}
         showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={300}
         onSessionResizeMouseDown={() => undefined} onDetailResizeMouseDown={() => undefined}

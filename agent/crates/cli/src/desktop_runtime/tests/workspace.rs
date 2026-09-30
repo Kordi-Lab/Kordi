@@ -124,6 +124,15 @@ fn project_reassignment_and_removal_replace_saved_workspace_without_losing_histo
     };
     assert_eq!(saved()?, project.path().to_str().unwrap());
 
+    let worktree = tempfile::tempdir()?;
+    move_session_to_project_workspace(&id, project.path(), worktree.path())?;
+    let worktree_row = kordi_session::store::get_session(&conn, &id)?.unwrap();
+    assert_eq!(worktree_row.project_root.as_deref(), project.path().to_str());
+    assert_eq!(runtime_cwd_for_session(chat.path().into(), &id)?, worktree.path());
+    assert_eq!(saved()?, worktree.path().to_str().unwrap());
+    assert!(list_project_groups(chat.path())?.iter().any(|group|
+        group.root == project.path().to_str().unwrap() && group.sessions.iter().any(|session| session.id == id)));
+
     remove_session_from_project(&id, chat.path())?;
     let row = kordi_session::store::get_session(&conn, &id)?.unwrap();
     assert_eq!(row.session_scope, "chat");

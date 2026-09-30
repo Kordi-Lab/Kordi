@@ -64,10 +64,10 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
       <h2 id={`${id}-title`}>{source === 'github' ? 'Add from GitHub' : source === 'local' ? 'Add a local project' : 'Add project'}</h2>
       <button type="button" aria-label="Close project import" disabled={busy} onClick={onClose}><X size={16} /></button>
     </header>
-    <p id={`${id}-description`}>{source === 'github' ? 'Choose a repository or paste its GitHub URL.' : source === 'local' ? 'Choose the folder where your agent will work.' : 'Keep your files and agent sessions together.'}</p>
+    <p id={`${id}-description`} className="chat-project-import-description">{source === 'github' ? 'Choose a repository or paste its GitHub URL.' : source === 'local' ? 'Choose the folder where your agent will work.' : 'Choose where your agent will work.'}</p>
     {!source ? <div className="chat-project-sources">
-      <button type="button" onClick={() => setSource('local')}><FolderOpen size={21} /><span><strong>Local folder</strong><small>Use a project already on your computer</small></span><ChevronRight size={16} /></button>
-      <button type="button" onClick={() => { setLoading(true); setLoadError(''); setSource('github'); }}><GitBranch size={21} /><span><strong>GitHub repository</strong><small>Choose a repository and a local workspace</small></span><ChevronRight size={16} /></button>
+      <button type="button" onClick={() => setSource('local')}><FolderOpen size={17} /><span><strong>Open local folder</strong><small>Use files already on this Mac.</small></span><ChevronRight size={16} /></button>
+      <button type="button" onClick={() => { setLoading(true); setLoadError(''); setSource('github'); }}><GitBranch size={17} /><span><strong>Clone from GitHub</strong><small>Download a repository to this Mac.</small></span><ChevronRight size={16} /></button>
     </div> : <>
       {source === 'local' ? <>
         <button type="button" className="chat-project-folder-browse" disabled={locked} onClick={() => void chooseFolder(false)}><FolderOpen size={17} />Choose folder…</button>
@@ -88,6 +88,6 @@ export function ProjectImportDialog({ onClose, onImported, api = desktopProjectI
       <button type="button" className="chat-project-primary" disabled={busy || (!imported && !(source === 'local' ? folder.trim() : repository))} onClick={() => void addProject()}>{busy ? <><LoaderCircle size={14} className="animate-spin" />{source === 'github' && !imported ? 'Cloning repository…' : 'Adding project…'}</> : imported ? 'Retry opening project' : 'Add project'}</button>
     </>}
     {error ? <p role="alert" className="chat-project-import-error">{error}</p> : null}
-    {preview ? <p className="chat-project-disclaimer">Design preview · Imports use demo data. No files are read and no repositories are cloned.</p> : null}
+    {preview ? <p className="chat-project-disclaimer">Demo preview · Project imports are simulated.</p> : null}
   </AppDialog>;
 }

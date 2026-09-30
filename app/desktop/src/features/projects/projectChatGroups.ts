@@ -37,7 +37,7 @@ export function projectChatGroups(
   const groupedRows: ChatSidebarRow[] = [];
   const appendSection = (id: string) => groupedRows.push({
     kind: 'space', key: `agent-section:${id}`, spaceId: `section:${id}`, depth: 0,
-    estimatedHeight: groupedRows.length ? 56 : 36,
+    estimatedHeight: groupedRows.length ? 36 : 28,
   });
   const appendSessions = (items: ChatSidebarRow[], section: string, flat = false) => {
     for (const row of items) groupedRows.push({

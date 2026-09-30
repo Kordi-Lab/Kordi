@@ -1,3 +1,4 @@
+pub(crate) mod git_workspace;
 pub(crate) mod import;
 
 use kordi_core::settings::{ProjectSharedSource, Settings};

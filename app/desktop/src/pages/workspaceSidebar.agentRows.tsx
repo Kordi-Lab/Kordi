@@ -71,7 +71,7 @@ export function AgentSidebarRow({
   const isFork = descriptor.depth > 0;
   const depth = Math.min(descriptor.depth, 4);
   const indentPaddingLeft =
-    depth > 0 ? `${(projectGrouped ? 2.25 : 0.75) + depth * 0.875}rem` : undefined;
+    depth > 0 ? `${(projectGrouped ? 1.75 : 0.75) + depth * 0.875}rem` : undefined;
   const preferenceSessionId = participantSpaceSessionPreferenceId(session);
   const unreadCount = Math.max(
     model.unreadSessionIds.has(preferenceSessionId) ? 1 : 0,

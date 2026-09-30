@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import type { ChatWorkspaceSelection, GitWorkspace } from './gitWorkspace';
 import type { Conversation } from '@/kordi-app/types';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 
@@ -13,7 +14,8 @@ export type ChatProjects = {
   enabled: boolean;
   openImporter?: (sessionId?: string) => void;
   projects: readonly ChatProject[];
-  assign: (sessionId: string, root: string) => Promise<void>;
+  gitWorkspace?: (root: string, workspaceRoot?: string) => Promise<GitWorkspace | null>;
+  assign: (sessionId: string, root: string, workspace?: ChatWorkspaceSelection) => Promise<void>;
   create: (sessionId: string, name: string, folder: string) => Promise<void>;
 };
 
