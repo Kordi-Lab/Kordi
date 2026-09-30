@@ -154,7 +154,10 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
             crate::auth::password::PasswordHasherConfig::production(),
             rate_limiter.clone(),
         ))
-        .merge(crate::chat_sync::routes::routes(state.clone()))
+        .merge(
+            crate::chat_sync::routes::routes(state.clone())
+                .layer(axum::Extension(rate_limiter.clone())),
+        )
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(

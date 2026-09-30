@@ -370,19 +370,7 @@ fn avatar_request_ip(
     headers: &HeaderMap,
     connect_info: Option<&ConnectInfo<SocketAddr>>,
 ) -> Option<std::net::IpAddr> {
-    let peer = connect_info.map(|info| info.0.ip())?;
-    let trusted_proxy = match peer {
-        std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
-        std::net::IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local(),
-    };
-    if !trusted_proxy {
-        return Some(peer);
-    }
-    headers
-        .get("x-real-ip")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.trim().parse().ok())
-        .or(Some(peer))
+    crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()))
 }
 
 async fn canonical_avatar_render_key_exists(

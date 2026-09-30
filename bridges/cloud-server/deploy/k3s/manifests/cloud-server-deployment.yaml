@@ -157,6 +157,11 @@ spec:
               value: "https://kordi.ai"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
               value: "http://127.0.0.1:,http://localhost:,https://kordi.ai,kordi://oauth/callback"
+            - name: KORDI_CLOUD_TRUSTED_PROXIES
+              # Host Caddy reaches pods through the loopback NodePort, which
+              # kube-proxy source-NATs to the node's pod-network gateway on
+              # this single-node cluster. Only that peer may supply X-Real-IP.
+              value: "127.0.0.1/32,::1/128,10.42.0.1/32"
             - name: KORDI_CHAT_SYNC_CURSOR_SECRET
               valueFrom:
                 secretKeyRef:

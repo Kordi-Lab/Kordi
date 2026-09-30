@@ -214,6 +214,56 @@ async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() 
 }
 
 #[tokio::test]
+async fn cloud_agent_runtime_claims_are_budgeted_per_requester() {
+    use kordi_cloud_server::auth::rate_limit::AGENT_RUN_CLAIM_LIMIT;
+
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let setup = test_router(state.clone());
+    let owner = signup(&setup, "budget-owner", "Owner").await;
+    let requester = signup(&setup, "budget-requester", "Requester").await;
+    accept_contacts(&setup, &requester, &owner).await;
+    let offline = setup
+        .clone()
+        .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
+        .await
+        .unwrap();
+    assert_eq!(offline.status(), StatusCode::OK);
+
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
+    for _ in 1..AGENT_RUN_CLAIM_LIMIT.limit {
+        limiter
+            .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, &requester.account_id)
+            .await;
+    }
+    let router = router_with_rate_limiter(state, limiter);
+
+    let last_allowed = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_budget_last"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(last_allowed.status(), StatusCode::OK);
+
+    let limited = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_budget_over"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(limited.headers().contains_key("retry-after"));
+    assert_eq!(read_json(limited).await["errorCode"], "rate_limited");
+}
+
+#[tokio::test]
 async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");

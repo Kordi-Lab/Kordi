@@ -479,4 +479,14 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth snapshot readiness",
         sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
     },
+    EmbeddedMigration {
+        version: 106,
+        description: "account email verification",
+        sql: include_str!("../../../migrations/0106_account_email_verification.sql"),
+    },
+    EmbeddedMigration {
+        version: 107,
+        description: "session-bound realtime tickets",
+        sql: include_str!("../../../migrations/0107_realtime_ticket_sessions.sql"),
+    },
 ];

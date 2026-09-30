@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, AGENT_RUN_CLAIM_LIMIT};
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
     claim_has_shared_cloud_agent_target, claim_run, cloud_agent_response_is_processing_for_request,
@@ -50,6 +51,7 @@ async fn owner_has_fresh_desktop_execution_claim(
 pub(super) async fn claim_cloud_agent_run(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    rate_limiter: Option<Extension<Arc<CloudRateLimiter>>>,
     Json(mut input): Json<ClaimRunRequest>,
 ) -> Response {
     if !input.is_well_formed() {
@@ -66,6 +68,22 @@ pub(super) async fn claim_cloud_agent_run(
             "Cloud agent run requester must match the authenticated session.",
             StatusCode::FORBIDDEN,
         );
+    }
+    if let Some(Extension(rate_limiter)) = rate_limiter {
+        if let RateLimitDecision::Limited { retry_after } = rate_limiter
+            .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, &session.account_id)
+            .await
+        {
+            let mut response = error_response(
+                "rate_limited",
+                "Too many agent requests. Try again shortly.",
+                StatusCode::TOO_MANY_REQUESTS,
+            );
+            if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
+                response.headers_mut().insert("Retry-After", value);
+            }
+            return response;
+        }
     }
 
     match super::runs::request_identity(

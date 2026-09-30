@@ -188,12 +188,43 @@ pub(super) fn encode_oauth_fragment<T: Serialize>(body: &T) -> String {
 }
 
 pub(super) fn redirect_with_oauth_error(redirect_after: &str, message: &str) -> Response {
+    Redirect::to(&oauth_error_redirect_url(redirect_after, message, None)).into_response()
+}
+
+/// Like [`redirect_with_oauth_error`], adding a stable machine-readable code
+/// next to the user-facing message so clients can show localized copy.
+pub(super) fn redirect_with_oauth_error_code(
+    redirect_after: &str,
+    code: &str,
+    message: &str,
+) -> Response {
+    Redirect::to(&oauth_error_redirect_url(
+        redirect_after,
+        message,
+        Some(code),
+    ))
+    .into_response()
+}
+
+fn oauth_error_redirect_url(redirect_after: &str, message: &str, code: Option<&str>) -> String {
     let mut url = redirect_after.to_string();
     let separator = if url.contains('#') { '&' } else { '#' };
     url.push(separator);
     url.push_str("kordi_cloud_oauth_error=");
-    url.push_str(&url::form_urlencoded::byte_serialize(message.as_bytes()).collect::<String>());
-    Redirect::to(&url).into_response()
+    url.push_str(&fragment_component(message));
+    if let Some(code) = code {
+        url.push_str("&kordi_cloud_oauth_error_code=");
+        url.push_str(&fragment_component(code));
+    }
+    url
+}
+
+/// Percent-encodes a fragment value. Spaces become `%20` rather than `+`
+/// because native URL parsers do not decode `+` in fragments.
+fn fragment_component(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes())
+        .collect::<String>()
+        .replace('+', "%20")
 }
 
 pub(super) fn clean_profile_display_name(value: Option<&str>) -> Option<String> {
@@ -341,8 +372,8 @@ mod tests {
 
     use super::{
         github_profile_from_values, is_allowed_oauth_redirect_with_config,
-        oauth_credentials_are_complete, oauth_not_configured_message, public_base_url,
-        OAuthProvider,
+        oauth_credentials_are_complete, oauth_error_redirect_url, oauth_not_configured_message,
+        public_base_url, OAuthProvider,
     };
 
     #[test]
@@ -450,5 +481,23 @@ mod tests {
 
         assert_eq!(profile.email.as_deref(), Some("octo@example.com"));
         assert!(profile.email_verified);
+    }
+
+    #[test]
+    fn oauth_error_redirect_keeps_message_and_adds_optional_code() {
+        assert_eq!(
+            oauth_error_redirect_url("kordi://oauth/callback", "Access denied", None),
+            "kordi://oauth/callback#kordi_cloud_oauth_error=Access%20denied"
+        );
+        assert_eq!(
+            oauth_error_redirect_url(
+                "http://127.0.0.1:4100/oauth/request#state",
+                "Sign in with your email & password.",
+                Some("oauth_email_requires_sign_in"),
+            ),
+            "http://127.0.0.1:4100/oauth/request#state&kordi_cloud_oauth_error=\
+             Sign%20in%20with%20your%20email%20%26%20password.\
+             &kordi_cloud_oauth_error_code=oauth_email_requires_sign_in"
+        );
     }
 }

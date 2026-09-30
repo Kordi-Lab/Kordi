@@ -45,6 +45,7 @@ fn fast_router(state: Arc<ServerState>) -> axum::Router {
         per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
+        per_email_global_failure_limit: 50,
     });
     routes_with_config(state.clone(), PasswordHasherConfig::for_tests(), limiter)
         .merge(kordi_cloud_server::avatars::routes(state))
@@ -196,6 +197,8 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
+#[path = "cloud_auth_e2e/abuse_limits.rs"]
+mod abuse_limits;
 #[path = "cloud_auth_e2e/account_auth.rs"]
 mod account_auth;
 #[path = "cloud_auth_e2e/devices.rs"]

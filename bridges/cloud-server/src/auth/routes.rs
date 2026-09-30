@@ -34,13 +34,13 @@ use crate::auth::oauth::{
     clean_profile_avatar_url, clean_profile_display_name, encode_oauth_fragment,
     exchange_oauth_code, fetch_oauth_profile, is_allowed_oauth_redirect, oauth_config,
     oauth_provider_is_configured, pkce_challenge, random_url_token, redirect_with_oauth_error,
-    OAuthProfile, OAuthProvider,
+    redirect_with_oauth_error_code, OAuthProfile, OAuthProvider,
 };
 use crate::auth::password::{
     hash_password, validate_email, validate_password_strength, verify_password, EmailFormatError,
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, CONTACT_ADD_LIMIT};
 use crate::auth::rows::{
     AccountRecordRow, ContactListRow, ContactRequestRow, DefaultAgentProfileRow,
 };

@@ -1,5 +1,35 @@
 use super::*;
 
+/// Stable code sent through the OAuth callback when the provider email belongs
+/// to an existing account that must be signed in to directly.
+pub(super) const OAUTH_EMAIL_REQUIRES_SIGN_IN: &str = "oauth_email_requires_sign_in";
+
+#[derive(Debug)]
+pub(super) enum OAuthLoginError {
+    /// Another account already owns this email and the provider identity cannot
+    /// be linked to it automatically: either that account's email ownership is
+    /// unverified or the provider did not verify the email.
+    ExistingEmailAccount {
+        account_id: String,
+        password_sign_in: bool,
+    },
+    Database(sqlx_core::Error),
+}
+
+impl From<sqlx_core::Error> for OAuthLoginError {
+    fn from(error: sqlx_core::Error) -> Self {
+        Self::Database(error)
+    }
+}
+
+pub(super) fn existing_email_account_message(password_sign_in: bool) -> &'static str {
+    if password_sign_in {
+        "A Kordi account already uses this email. Sign in with your email and password."
+    } else {
+        "A Kordi account already uses this email. Sign in with the method you used to create it."
+    }
+}
+
 type OAuthStateRow = (
     String,
     String,
@@ -296,7 +326,28 @@ pub(super) async fn oauth_callback(
             url.push_str(&encode_oauth_fragment(&body));
             Redirect::to(&url).into_response()
         }
-        Err(_) => redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login."),
+        Err(OAuthLoginError::ExistingEmailAccount {
+            account_id,
+            password_sign_in,
+        }) => {
+            let _ = write_audit(
+                pool,
+                Some(&account_id),
+                None,
+                "auth.oauth.link_refused",
+                serde_json::json!({"provider": provider.id()}),
+            )
+            .await;
+            redirect_with_oauth_error_code(
+                &redirect_after,
+                OAUTH_EMAIL_REQUIRES_SIGN_IN,
+                existing_email_account_message(password_sign_in),
+            )
+        }
+        Err(OAuthLoginError::Database(error)) => {
+            eprintln!("[oauth] finish {} login: {error}", provider.id());
+            redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login.")
+        }
     }
 }
 
@@ -305,7 +356,7 @@ pub(super) async fn complete_oauth_login(
     provider: OAuthProvider,
     profile: OAuthProfile,
     registration: &NormalizedDeviceRegistration,
-) -> Result<(AuthResponse, bool), sqlx_core::Error> {
+) -> Result<(AuthResponse, bool), OAuthLoginError> {
     let now = Utc::now().to_rfc3339();
     let normalized_email = profile
         .email
@@ -318,22 +369,13 @@ pub(super) async fn complete_oauth_login(
     .bind(&profile.provider_subject)
     .fetch_optional(pool)
     .await?;
-    let linked_email_account: Option<(String,)> =
-        if existing_identity.is_none() && profile.email_verified {
-            if let Some(email) = normalized_email.as_deref() {
-                query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
-                    .bind(email)
-                    .fetch_optional(pool)
-                    .await?
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+    let linked_email_account = match (&existing_identity, normalized_email.as_deref()) {
+        (None, Some(email)) => linkable_email_account(pool, email, profile.email_verified).await?,
+        _ => None,
+    };
     let account_id = existing_identity
-        .or(linked_email_account)
         .map(|row| row.0)
+        .or(linked_email_account)
         .unwrap_or_else(|| format!("acct_{}", uuid::Uuid::new_v4().simple()));
     let display_name = clean_profile_display_name(profile.display_name.as_deref())
         .or_else(|| profile.username.clone());
@@ -400,6 +442,12 @@ pub(super) async fn complete_oauth_login(
     .execute(&mut *tx)
     .await?;
 
+    if profile.email_verified {
+        if let Some(email) = normalized_email.as_deref() {
+            mark_primary_email_verified(&mut tx, &account_id, email, &now).await?;
+        }
+    }
+
     let authorization_state = if is_new_account {
         "confirmed"
     } else {
@@ -446,3 +494,53 @@ pub(super) async fn complete_oauth_login(
         is_new_authorization,
     ))
 }
+
+/// Returns the account an OAuth identity may join by email, or refuses when
+/// another account owns the email but its ownership has not been verified.
+/// Only a provider-verified email may join an account whose own primary email
+/// is verified; every other match must sign in to that account directly.
+async fn linkable_email_account(
+    pool: &PgPool,
+    email: &str,
+    provider_email_verified: bool,
+) -> Result<Option<String>, OAuthLoginError> {
+    let row: Option<(String, Option<String>, bool)> = query_as(
+        "SELECT account_id, primary_email_verified_at, password_hash IS NOT NULL \
+         FROM cloud_accounts WHERE LOWER(primary_email) = $1",
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await?;
+    match row {
+        None => Ok(None),
+        Some((account_id, Some(_), _)) if provider_email_verified => Ok(Some(account_id)),
+        Some((account_id, _, password_sign_in)) => Err(OAuthLoginError::ExistingEmailAccount {
+            account_id,
+            password_sign_in,
+        }),
+    }
+}
+
+/// Records that the account's primary email was verified by an OAuth provider.
+/// Only the matching primary email is marked; other accounts are untouched.
+async fn mark_primary_email_verified(
+    transaction: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    account_id: &str,
+    verified_email: &str,
+    now: &str,
+) -> Result<(), sqlx_core::Error> {
+    query(
+        "UPDATE cloud_accounts SET primary_email_verified_at = $3 \
+         WHERE account_id = $1 AND primary_email_verified_at IS NULL \
+           AND primary_email IS NOT NULL AND LOWER(primary_email) = $2",
+    )
+    .bind(account_id)
+    .bind(verified_email)
+    .bind(now)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

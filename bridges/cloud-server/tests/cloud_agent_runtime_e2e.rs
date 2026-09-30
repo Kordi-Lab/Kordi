@@ -45,6 +45,7 @@ fn test_router(state: Arc<ServerState>) -> axum::Router {
         per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
+        per_email_global_failure_limit: 50,
     });
     router_with_rate_limiter(state, limiter)
 }

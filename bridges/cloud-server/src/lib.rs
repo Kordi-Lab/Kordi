@@ -11,6 +11,7 @@ pub mod avatars;
 pub mod blob_emoji;
 pub mod calls;
 pub mod chat_sync;
+pub mod client_ip;
 pub mod cloud_agent_runtime;
 pub mod cloud_agents;
 pub mod digest;
