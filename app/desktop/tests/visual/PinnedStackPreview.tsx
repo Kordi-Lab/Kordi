@@ -163,6 +163,6 @@ export function PinnedStackPreview() {
         if (pin) unpin(pin); else addPin(messageMenu.message);
       }}><Pin size={16} aria-hidden="true" />{messageMenu && pinIds.has(messageMenu.message.id) ? 'Unpin message' : 'Pin message'}</button>
     </div>
-    <footer className="proposal-notes"><span><MessageCircle size={15} />Click the strip to cycle · Pin + list opens all pins · {platform === 'ios' ? 'Hold a message for pin actions' : 'Right-click a message for pin actions'}</span><p>{platform === 'ios' ? 'iOS browser mockup · Native implementation will use SwiftUI, SF Symbols, selection haptics and a system sheet.' : 'Interactive local proposal · Sample data · Five-pin limit is demonstrated here; syncing requires a separate API update.'}</p></footer>
+    <footer className="proposal-notes"><span><MessageCircle size={15} />Click the strip to cycle · Pin + list opens all pins · {platform === 'ios' ? 'Hold a message for pin actions' : 'Right-click a message for pin actions'}</span><p>{platform === 'ios' ? 'iOS layout mockup · The app uses native SwiftUI controls.' : 'Interactive preview · Sample messages'}</p></footer>
   </main>;
 }
