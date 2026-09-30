@@ -1,4 +1,4 @@
-import { Activity, lazy, Suspense, type ReactNode } from 'react';
+import { Activity, lazy, Suspense, type ReactNode, type Ref } from 'react';
 import { cn } from '@/lib/utils';
 import { ChatCompanionSplitDivider } from './chatsPage.companionWorkspace';
 import type { CompanionView } from './chatsPage.companionToolbar';
@@ -7,6 +7,7 @@ import type { useChatCompanionLayout } from './useChatCompanionLayout';
 const CompanionOverview = lazy(() => import('./chatsPage.companionOverview'));
 
 type Props = {
+  containerRef: Ref<HTMLDivElement>;
   layout: ReturnType<typeof useChatCompanionLayout>;
   view: CompanionView;
   accountId?: string;
@@ -15,9 +16,9 @@ type Props = {
 };
 
 /** Own the split geometry and keep companion content alive through its exit. */
-export function ChatCompanionLayout({ layout, view, accountId, companionPane, children }: Props) {
+export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, children }: Props) {
   return <div
-    ref={layout.containerRef}
+    ref={containerRef}
     className={cn(
       'app-chat-split-workspace relative grid min-h-0 flex-1 overflow-hidden',
       layout.isDragging && 'ring-1 ring-sky-300/25',

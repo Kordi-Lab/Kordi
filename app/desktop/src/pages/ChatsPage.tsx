@@ -205,6 +205,7 @@ export function ChatsPage({
     companionConversation,
   });
   const {
+    containerRef: splitContainerRef,
     side: companionSide,
     isVisible: showCompanionPane,
   } = companionLayout;
@@ -422,7 +423,7 @@ export function ChatsPage({
     <AgentSubsessionNavigationContext.Provider value={(id) => openRelatedAgentSession(id, true)}>
     <ChatSenderProfileContext.Provider value={senderProfiles.openParticipant}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-        <ChatCompanionLayout layout={companionLayout} view={companionView}
+        <ChatCompanionLayout containerRef={splitContainerRef} layout={companionLayout} view={companionView}
           accountId={cloudAccount?.accountId} companionPane={companionPane}>
           <ChatMainWorkspace
             layout={layout}
