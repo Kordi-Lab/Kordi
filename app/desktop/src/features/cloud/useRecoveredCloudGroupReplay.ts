@@ -8,6 +8,7 @@ import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
 import { cloudSessionIdFromConversationId } from '@/features/collaboration/conversationIds';
 import { loadSession } from './session';
+import { cloudGroupCatalogRow } from './cloudGroupCatalog';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { cloudMessageFromChatSync } from './chatSyncMapping';
 import { parseCloudGroupControl, type CloudGroupControlEnvelope } from './cloudGroupMessages';
@@ -145,8 +146,14 @@ export function useRecoveredCloudGroupReplay({
           Number(right.envelope.groupId === right.envelope.groupSpaceId)
           - Number(left.envelope.groupId === left.envelope.groupSpaceId)
         ));
+        const representedIds = new Set(headRows.map(row => row.conversation.id));
+        const catalogRows = groupConversations.flatMap(conversation => {
+          if (representedIds.has(conversation.id)) return [];
+          const row = cloudGroupCatalogRow(conversation, accountId);
+          return row ? [row] : [];
+        });
         if (active) setRemoteCatalogAccountId(accountId);
-        for (const row of headRows) {
+        for (const row of [...catalogRows, ...headRows]) {
           if (!active) return;
           await replayCallbacksRef.current.applyControl(row.wire, row.envelope, {
             deferPublish: true,
