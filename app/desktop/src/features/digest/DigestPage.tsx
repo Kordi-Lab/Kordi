@@ -8,6 +8,7 @@ import { requestCalendarSync, useCalendarSyncStatus } from './calendarSyncRunner
 import { readCalendarSyncBaseline, readCalendarSyncPreferences, writeCalendarSyncPreferences, type CalendarSyncPreferences } from './calendarSyncPreferences';
 import { openDesktopExternalUrl } from '@/lib/desktop';
 import { DigestCalendar, DigestAgenda } from './DigestCalendar';
+import { CalendarSyncLine } from './CalendarSyncLine';
 import { calendarErrorMessage, importCalendarEvents, type CalendarImportReport } from './calendarImport';
 import { DigestPeople } from './DigestPeople';
 import { DigestReadStatus, type DigestUnavailableState } from './DigestReadStatus';
@@ -28,16 +29,30 @@ function Sheet({title,onClose,children}:{title:string;onClose:()=>void;children:
   // Unmounting an open <dialog> (instead of calling close()) still runs the browser's focus-restoration
   // step, which scrolls the trigger element back into view. Blur first so there is nothing to restore to.
   useLayoutEffect(()=>{const dialog=ref.current;return()=>{const view=dialog?.ownerDocument.defaultView,active=dialog?.ownerDocument.activeElement;if(view&&active instanceof view.HTMLElement&&dialog?.contains(active))active.blur();};},[]);
-  return <dialog className="digest-sheet" ref={ref} onCancel={onClose}><header><h2>{title}</h2><button onClick={onClose}>Close</button></header>{error&&<p role="alert" className="digest-warning">{error}</p>}{children}</dialog>;
+  return <dialog className="digest-sheet" ref={ref} aria-label={title} onCancel={onClose}><header><h2>{title}</h2><button onClick={onClose}>Close</button></header>{error&&<p role="alert" className="digest-warning">{error}</p>}{children}</dialog>;
 }
 /** A small modal stacked above a sheet. Escape or "Keep" closes only this dialog. */
 function ConfirmDialog({title,confirmLabel,busy,onKeep,onConfirm,children}:{title:string;confirmLabel:string;busy:boolean;onKeep:()=>void;onConfirm:()=>void;children:ReactNode}){
   const ref=useRef<HTMLDialogElement>(null);
   useEffect(()=>{const dialog=ref.current;dialog?.showModal();return()=>{if(dialog?.open)dialog.close();};},[]);
-  return <dialog className="digest-sheet digest-confirm" ref={ref} role="alertdialog" aria-label={title} onCancel={event=>{event.preventDefault();if(!busy)onKeep();}}><h2>{title}</h2>{children}<footer><button type="button" disabled={busy} onClick={onKeep}>Keep event</button><button type="button" className="digest-cancel-action" disabled={busy} autoFocus onClick={onConfirm}>{confirmLabel}</button></footer></dialog>;
+  return <dialog className="digest-sheet digest-confirm" ref={ref} role="alertdialog" aria-label={title} onCancel={event=>{event.preventDefault();event.stopPropagation();if(!busy)onKeep();}}><h2>{title}</h2>{children}<footer><button type="button" disabled={busy} onClick={onKeep}>Keep event</button><button type="button" className="digest-cancel-action" disabled={busy} autoFocus onClick={onConfirm}>{confirmLabel}</button></footer></dialog>;
 }
-export default function DigestPage({accountId,onOpenProviderSettings}:{accountId:string;onOpenProviderSettings?:()=>void}){
-  const {digest,events,error,digestError,calendarError,reload,calendarLoaded,setFeedback,removeEvents,pendingMutationKeys,mutationError,canRetryMutation,retryMutation}=useDigest(accountId);
+export type DigestPanelActions = {
+  onEvent: (event: CalendarEvent) => void;
+  onSource: (ids: string[]) => void;
+  onFeedback: (id: string, dismissed: boolean) => void;
+  feedbackPending: (id: string) => boolean;
+  onCandidate: (item: DigestItem) => void;
+  onRefresh: () => void;
+  busy: boolean;
+  calendarTools: ReactNode;
+};
+export default function DigestPage({accountId,onOpenProviderSettings,renderContent}:{
+  accountId:string;onOpenProviderSettings?:()=>void;
+  renderContent?: (model: { state: ReturnType<typeof useDigest>; actions: DigestPanelActions }) => ReactNode;
+}){
+  const state=useDigest(accountId);
+  const {digest,events,error,digestError,calendarError,reload,calendarLoaded,setFeedback,removeEvents,pendingMutationKeys,mutationError,canRetryMutation,retryMutation}=state;
   const [view,setView]=useState<'brief'|'tasks'|'calendar'>('brief');
   const mainRef=useRef<HTMLDivElement>(null);
   const scrollPositions=useRef({brief:0,tasks:0,calendar:0});
@@ -115,14 +130,22 @@ export default function DigestPage({accountId,onOpenProviderSettings}:{accountId
   }
   function calendarCandidate(item:DigestItem){try{const event=proposalEvent(item,events,sources,digest?.timezone);setReview({item,original:events.find(e=>e.id===item.existingEventId),series:proposalSeries(item,events)});setEditEvent(event);}catch(error){setActionError(calendarErrorMessage(error,'Could not review this event.'));}}
   function changeMonth(next:string){setMonth(next);if(!selectedDay.startsWith(next))setSelectedDay(`${next}-01`);}
-  return <ActionErrorContext.Provider value={{error:actionError,setError:setActionError}}><section className="digest-page" aria-label="Digest"><header className="digest-header"><div><h1>Digest</h1><div className="digest-header-actions"><button aria-label="Enable calendar reminders" onClick={()=>void act(async()=>setReminderState(await syncReminders(accountId,events,true)))}><Bell size={18}/></button><button aria-label="Refresh digest" disabled={busy||digest?.status==='updating'} onClick={()=>void act(()=>digestClient.refresh(accountId))}><RefreshCw size={18}/></button></div></div><div className="digest-status" role="status" aria-live="polite"><span className="digest-status-line">{pendingMutationKeys.length>0&&!unavailable?<>Saving changes…</>:freshness}</span></div><nav aria-label="Digest views">{(['brief','tasks','calendar'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='brief'?'Brief':v==='tasks'?'Next steps':'Calendar'}</button>)}</nav></header>
-    <div className="digest-notices" role="status">{mutationError&&<p className="digest-warning">{mutationError} {canRetryMutation&&<button onClick={()=>void retryMutation().catch(()=>{})}>Try again</button>}</p>}{(visibleActionError||error)&&<p className="digest-warning">{visibleActionError||error}</p>}{reminderState==='denied'&&<p className="digest-warning">Device notifications are off. Enable them in system settings to receive reminders.</p>}</div><div className="digest-body">
+  return <ActionErrorContext.Provider value={{error:actionError,setError:setActionError}}><section className={renderContent ? "digest-page digest-companion-page" : "digest-page"} aria-label="Digest">{!renderContent&&<header className="digest-header"><div><h1>Digest</h1><div className="digest-header-actions"><button aria-label="Enable calendar reminders" onClick={()=>void act(async()=>setReminderState(await syncReminders(accountId,events,true)))}><Bell size={18}/></button><button aria-label="Refresh digest" disabled={busy||digest?.status==='updating'} onClick={()=>void act(()=>digestClient.refresh(accountId))}><RefreshCw size={18}/></button></div></div><div className="digest-status" role="status" aria-live="polite"><span className="digest-status-line">{pendingMutationKeys.length>0&&!unavailable?<>Saving changes…</>:freshness}</span></div><nav aria-label="Digest views">{(['brief','tasks','calendar'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='brief'?'Brief':v==='tasks'?'Next steps':'Calendar'}</button>)}</nav></header>}
+    <div className="digest-notices" role="status">{renderContent&&pendingMutationKeys.length>0&&<p className="digest-meta">Saving changes…</p>}{mutationError&&<p className="digest-warning">{mutationError} {canRetryMutation&&<button onClick={()=>void retryMutation().catch(()=>{})}>Try again</button>}</p>}{(visibleActionError||error)&&<p className="digest-warning">{visibleActionError||error}</p>}{reminderState==='denied'&&<p className="digest-warning">Device notifications are off. Enable them in system settings to receive reminders.</p>}</div>{renderContent ? renderContent({state,actions:{
+      onEvent:openEvent,onSource:setSourceId,onFeedback:changeFeedback,feedbackPending,
+      onCandidate:calendarCandidate,onRefresh:retryGeneration,busy,
+      calendarTools:<section className="digest-calendar-connections">
+        <CalendarSyncLine sync={sync} onOpenPrivacy={()=>void openDesktopExternalUrl(CALENDAR_PRIVACY_SETTINGS_URL).catch(error=>setActionError(calendarErrorMessage(error,'Could not open System Settings.')))} onRetry={()=>requestCalendarSync(accountId)}/>
+        {sync.phase!=='unavailable'&&<button onClick={()=>setCalendarSettingsOpen(true)}>Calendar settings</button>}
+        <button onClick={()=>setImportOpen(true)}>Import ICS</button>
+      </section>,
+    }}) : <div className="digest-body">
       <DigestSplit><div className="digest-main" ref={mainRef} role="region" aria-label="Digest content" tabIndex={0} onScroll={event=>{scrollPositions.current[view]=event.currentTarget.scrollTop;}}>
       <section hidden={view!=='brief'} aria-label="Brief">{digestStatus ?? (visibleClaims.length?visibleClaims.map(item=><article className="digest-row" key={item.id}><h3>{item.title}</h3><p>{item.text}</p>{people(item)}{evidence(item)}<button disabled={busy||feedbackPending(item.id)} aria-label={`Dismiss ${item.title}`} onClick={()=>changeFeedback(item.id,true)}>Dismiss</button></article>):<p className="digest-empty">{sources.length?'No brief entries to show.':'No conversations to summarize yet.'}</p>)}{dismissedClaims.length>0&&<button disabled={busy||dismissedClaims.some(item=>feedbackPending(item.id))} onClick={()=>dismissedClaims.forEach(item=>changeFeedback(item.id,false))}>Restore dismissed entries</button>}</section>
       <section hidden={view!=='tasks'} aria-label="Next steps"><h2>AI suggestions</h2>{digestStatus}{!digestStatus&&visibleSuggestions.map(item=><article className="digest-row" key={item.id}><h3>{item.title}</h3><p>{item.text}</p>{people(item)}{evidence(item)}<button disabled={busy||feedbackPending(item.id)} aria-label={`Dismiss ${item.title}`} onClick={()=>changeFeedback(item.id,true)}>Dismiss</button></article>)}{!digestStatus&&visibleSuggestions.length===0&&<p className="digest-empty">No suggestions to show.</p>}{dismissedSuggestions.length>0&&<button disabled={busy||dismissedSuggestions.some(item=>feedbackPending(item.id))} onClick={()=>dismissedSuggestions.forEach(item=>changeFeedback(item.id,false))}>Restore dismissed suggestions</button>}</section>
       <section hidden={view!=='calendar'} aria-label="Calendar">{calendarStatus ?? <DigestCalendar month={month} selectedDay={selectedDay} events={events} candidates={output?.calendarCandidates??[]} onMonth={changeMonth} onDay={setSelectedDay} onEvent={openEvent} onCandidate={calendarCandidate}/>}</section>
       </div><DigestAgenda digestStatus={unavailable?<></>:null} calendarStatus={calendarStatus} day={selectedDay} events={events} candidates={output?.calendarCandidates??[]} sources={sources} people={people} evidence={evidence} onEvent={openEvent} onCandidate={calendarCandidate} sync={sync} onCalendarSettings={()=>setCalendarSettingsOpen(true)} onOpenPrivacy={()=>void openDesktopExternalUrl(CALENDAR_PRIVACY_SETTINGS_URL).catch(error=>setActionError(calendarErrorMessage(error,'Could not open System Settings.')))} onRetrySync={()=>requestCalendarSync(accountId)} onImport={()=>setImportOpen(true)}/></DigestSplit>
-    </div>
+    </div>}
     {sourceId&&<Sheet title={source?.sessionTitle||'Source unavailable'} onClose={()=>setSourceId(null)}>{source?<>{selectedSources.map(source=><article key={source.id}><p className="digest-meta">@{source.senderName} · {timeLabel(source.createdAt)}</p><blockquote><MarkdownContent text={source.text} tone="inherit" className="whitespace-normal" copySurface="message" preserveLineBreaks /></blockquote></article>)}</>:<p>This message is no longer included or accessible. Refresh the digest.</p>}</Sheet>}
     {editEvent&&(!review||editEvent.revision>0||output?.calendarCandidates.some(item=>item.id===review.item.id))&&editEvent.sourceIds.every(id=>sources.some(s=>s.id===id))&&<EventEditor key={editEvent.id+(review?.item.id??'')} removesFromDevice={removesFromDevice(editEvent)} event={editEvent} review={review} sources={sources} accountId={accountId} onClose={()=>setEditEvent(null)} onSave={event=>act(async()=>{if(event.recurrence&&!event.revision)await digestClient.saveSeries(accountId,event);else await digestClient.saveEvent(accountId,event);setEditEvent(null);})} onRemove={editEvent.revision?async()=>{const seriesId=review?.series?review.item.existingSeriesId:undefined;const targets=seriesId&&review?.series?review.series:[editEvent];setEditEvent(null);setReview(null);try{await removeEvents(targets,seriesId??undefined);}catch{/* The account-owned store reports failure and restores the event. */}}:undefined}/>}
     {importOpen&&<ImportSheet events={events} onClose={()=>setImportOpen(false)} onImport={saveImported}/>}

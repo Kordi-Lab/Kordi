@@ -40,22 +40,6 @@
   min-height: 0;
 }
 
-.app-native-viewport > .app-shell {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr);
-  position: relative;
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  min-height: 0;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.app-native-viewport .app-shell-layout-grid {
-  transition-property: none;
-}
-
 .app-chat-pane-layout {
   display: grid;
   align-self: stretch;
@@ -186,13 +170,20 @@ html.kordi-native-shell .kordi-app .app-main-panel {
 
 html.kordi-native-shell .kordi-app .app-left-glass {
   background: var(--app-nav-rail-glass-bg);
+  padding-top: 8px;
+  box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
 html.kordi-native-shell .kordi-app .app-session-panel {
-  background: var(--app-native-session-bg);
-  box-shadow: none;
+  margin-block: 0 6px;
+  padding-top: 0;
+  border-radius: 14px 0 0 14px;
+  background:
+    linear-gradient(var(--app-native-session-surface), var(--app-native-session-surface)),
+    var(--app-native-session-bg);
+  box-shadow: inset 1px 0 0 var(--app-nav-rail-glass-border);
 }
 
 html.kordi-native-shell .kordi-app .app-main-panel {
@@ -200,18 +191,19 @@ html.kordi-native-shell .kordi-app .app-main-panel {
   box-shadow: none;
 }
 
-/* These tints are native panes once initialized. Painting them again inside
- * WebKit would double the tint and expose bare material on live resize. */
+/* AppKit paints the continuous outer tint, including the titlebar and bottom
+ * inset. WebKit adds only the darker rounded list surface above that backing. */
 html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-session-panel {
-  background: transparent;
+  background: var(--app-native-session-surface);
 }
 
-@media (prefers-reduced-transparency: reduce) {
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   html.kordi-native-shell .kordi-app .app-left-glass {
     background: var(--app-nav-rail-glass-fallback);
   }
 
-  html.kordi-native-shell .kordi-app .app-session-panel {
+  html.kordi-native-shell .kordi-app .app-session-panel,
+  html.kordi-native-shell .kordi-app[data-native-backdrop="ready"] .app-session-panel {
     background: var(--app-native-session-fallback);
   }
 }

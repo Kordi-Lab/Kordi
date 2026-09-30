@@ -312,7 +312,7 @@ export function SidebarProfileControl({
           isSelf
           name={profileDisplayName}
           imageUrl={profileImageUrl}
-          className="app-nav-rail-avatar h-9 w-9"
+          className="app-nav-rail-avatar h-7 w-7"
         />
         {hasDeviceReview ? (
           <span

@@ -1,16 +1,16 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import type { MouseEventHandler, ReactNode } from 'react';
+import { useMemo, useState, type MouseEventHandler, type ReactNode } from 'react';
+import { NativeChatTitlebarContext } from '@/app/nativeChatTitlebarContext';
 
 import {
-  APP_WINDOW_RESIZE_EDGE,
   nativeWindowResizeDirection,
   shouldStartNativeWindowDrag,
 } from '@/app/windowDrag';
-import { LEFT_RAIL_WIDTH } from '@/kordi-app/layout';
+import { NativeTitlebar, type NativeTitlebarActions } from '@/app/NativeTitlebar';
 import { useNativeBackdrop } from '@/app/useNativeBackdrop';
 import { cn } from '@/lib/utils';
 
-type AppShellFrameProps = {
+type AppShellFrameProps = NativeTitlebarActions & {
   rootThemeClass: string;
   isNativeShell: boolean;
   isLayoutResizing: boolean;
@@ -65,9 +65,17 @@ export function AppShellFrame({
   messageDeleteDialog,
   windowResizeHandles,
   callOverlay,
+  windowTitle,
+  onToggleSessionPanel,
+  onToggleDetailPanel,
 }: AppShellFrameProps) {
   const rootRef = useNativeBackdrop(isNativeShell, rootThemeClass, leftWorkspaceWidth);
   const instanceLabel = previewInstanceLabel();
+  const [titleHost, setTitleHost] = useState<HTMLDivElement | null>(null);
+  const [actionsHost, setActionsHost] = useState<HTMLDivElement | null>(null);
+  const chatTitlebar = useMemo(() => isNativeShell
+    ? { title: titleHost, actions: actionsHost }
+    : null, [isNativeShell, titleHost, actionsHost]);
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     const shellBounds = event.currentTarget.getBoundingClientRect();
     const resizeDirection = nativeWindowResizeDirection({
@@ -125,40 +133,22 @@ export function AppShellFrame({
             : { width: `${windowSize.width}px`, height: `${windowSize.height}px` }
         }
       >
-        {instanceLabel ? (
+        {instanceLabel && !isNativeShell ? (
           <div className="app-preview-instance-label" aria-label={`Preview instance: ${instanceLabel}`}>
             Preview · {instanceLabel}
           </div>
         ) : null}
         {isNativeShell ? (
-          <>
-            <div
-              className="pointer-events-auto absolute z-40"
-              style={{
-                left: `${APP_WINDOW_RESIZE_EDGE}px`,
-                top: `${APP_WINDOW_RESIZE_EDGE}px`,
-                width: `${LEFT_RAIL_WIDTH - APP_WINDOW_RESIZE_EDGE}px`,
-                height: `${44 - APP_WINDOW_RESIZE_EDGE}px`,
-                WebkitAppRegion: 'drag' as const,
-              }}
-              data-tauri-drag-region="true"
-              aria-hidden="true"
-            />
-            {leftWorkspaceWidth > LEFT_RAIL_WIDTH ? (
-              <div
-                className="pointer-events-auto absolute z-40"
-                style={{
-                  left: `${LEFT_RAIL_WIDTH}px`,
-                  top: `${APP_WINDOW_RESIZE_EDGE}px`,
-                  width: `${leftWorkspaceWidth - LEFT_RAIL_WIDTH}px`,
-                  height: `${44 - APP_WINDOW_RESIZE_EDGE}px`,
-                  WebkitAppRegion: 'drag' as const,
-                }}
-                data-tauri-drag-region="true"
-                aria-hidden="true"
-              />
-            ) : null}
-          </>
+          <NativeTitlebar
+            titleHostRef={setTitleHost}
+            actionsHostRef={setActionsHost}
+            windowTitle={windowTitle}
+            leftWorkspaceWidth={leftWorkspaceWidth}
+            collapseChatSessions={collapseChatSessions}
+            isDetailPanelCollapsed={isDetailPanelCollapsed}
+            onToggleSessionPanel={onToggleSessionPanel}
+            onToggleDetailPanel={showRightDetailRail ? onToggleDetailPanel : undefined}
+          />
         ) : null}
         <div
           className={cn(
@@ -199,7 +189,9 @@ export function AppShellFrame({
               }}
             >
               <main className="flex min-h-0 min-w-0 overflow-hidden">
-                {mainContent}
+                <NativeChatTitlebarContext value={chatTitlebar}>
+                  {mainContent}
+                </NativeChatTitlebarContext>
               </main>
 
               {showRightDetailRail && !isDetailPanelCollapsed ? rightDetailRail : null}

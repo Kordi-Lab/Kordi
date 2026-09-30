@@ -260,12 +260,15 @@ export function WorkspaceSidebar({
             }}
           />
 
-          {showSessionRail && !collapseChatSessions ? (
+          {showSessionRail ? (
+            <div className="app-session-panel-clip min-w-0 flex-1 overflow-hidden">
             <div
               className={cn(
                 'app-session-panel min-h-0 min-w-0 shrink-0 overflow-hidden',
                 isNativeShell ? 'pt-9' : '',
               )}
+              aria-hidden={collapseChatSessions}
+              inert={collapseChatSessions}
               style={{ width: `${sessionRailWidth}px` }}
             >
               <div className="h-full overflow-hidden">
@@ -334,6 +337,7 @@ export function WorkspaceSidebar({
                 ) : null}
                 {activeNav === 'settings' ? <SidebarSettingsPanel /> : null}
               </div>
+            </div>
             </div>
           ) : null}
         </div>
