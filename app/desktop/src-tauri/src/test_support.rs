@@ -56,3 +56,44 @@ impl Drop for ScopedKordiStorageRoot {
         let _ = std::fs::remove_dir_all(&self.root);
     }
 }
+
+/// Points `APP_DATA_DIR` at a fresh temporary directory for the lifetime of the
+/// guard, so attachment storage and its access registry are isolated.
+#[cfg(test)]
+pub(crate) struct ScopedAppDataDir {
+    root: PathBuf,
+    previous: Option<OsString>,
+    _guard: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl ScopedAppDataDir {
+    pub(crate) fn new(label: &str) -> Self {
+        let guard = lock_process_environment();
+        let root = std::env::temp_dir().join(format!(
+            "{label}-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&root).expect("create scoped app data dir");
+        let previous = std::env::var_os("APP_DATA_DIR");
+        std::env::set_var("APP_DATA_DIR", &root);
+        Self {
+            root,
+            previous,
+            _guard: guard,
+        }
+    }
+}
+
+#[cfg(test)]
+impl Drop for ScopedAppDataDir {
+    fn drop(&mut self) {
+        if let Some(previous) = &self.previous {
+            std::env::set_var("APP_DATA_DIR", previous);
+        } else {
+            std::env::remove_var("APP_DATA_DIR");
+        }
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}

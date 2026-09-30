@@ -4,11 +4,21 @@ use std::path::PathBuf;
 #[cfg(target_os = "macos")]
 use std::process::Command;
 
-use super::{ensure_attachment_file_path, safe_attachment_name};
+use super::{access, quarantine, safe_attachment_name};
 
 #[cfg(target_os = "macos")]
 fn applescript_string(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Copies an allowed attachment to `target`, marks copies of conversation
+/// content as downloaded, and lets Kordi open the copy afterwards.
+pub(crate) fn copy_attachment_out(source: &Path, target: &Path) -> Result<(), String> {
+    std::fs::copy(source, target).map_err(|err| err.to_string())?;
+    if access::is_in_attachment_storage(source) || quarantine::is_quarantined(source) {
+        quarantine::mark_quarantined(target)?;
+    }
+    access::register_created_file(target)
 }
 
 #[tauri::command]
@@ -16,7 +26,7 @@ pub async fn desktop_save_attachment_as(
     path: String,
     name: Option<String>,
 ) -> Result<Option<String>, String> {
-    let source = ensure_attachment_file_path(Path::new(&path))?;
+    let source = access::authorize_attachment_file(Path::new(&path))?;
     let fallback_name = source
         .file_name()
         .and_then(|value| value.to_str())
@@ -54,14 +64,14 @@ pub async fn desktop_save_attachment_as(
         if let Some(parent) = target_path.parent() {
             std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
         }
-        std::fs::copy(&source, &target_path).map_err(|err| err.to_string())?;
+        copy_attachment_out(&source, &target_path)?;
         Ok(Some(target))
     }
 
     #[cfg(not(target_os = "macos"))]
     {
         let target = super::unique_download_path(&save_name)?;
-        std::fs::copy(&source, &target).map_err(|err| err.to_string())?;
+        copy_attachment_out(&source, &target)?;
         Ok(Some(target.display().to_string()))
     }
 }

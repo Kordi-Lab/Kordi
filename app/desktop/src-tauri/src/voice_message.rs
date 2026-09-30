@@ -94,9 +94,16 @@ pub async fn desktop_voice_trim(
 ) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        tokio::task::spawn_blocking(move || macos::trim(&path, start_ms, end_ms))
-            .await
-            .map_err(|error| format!("Voice-message trimming stopped unexpectedly: {error}"))?
+        let source = crate::chat::attachments::access::authorize_attachment_file(
+            std::path::Path::new(&path),
+        )?;
+        let output = tokio::task::spawn_blocking(move || {
+            macos::trim(&source.to_string_lossy(), start_ms, end_ms)
+        })
+        .await
+        .map_err(|error| format!("Voice-message trimming stopped unexpectedly: {error}"))??;
+        crate::chat::attachments::access::register_created_file(std::path::Path::new(&output))?;
+        Ok(output)
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -130,7 +137,13 @@ pub fn desktop_voice_record_sample() -> Result<NativeVoiceRecordingSample, Strin
 pub fn desktop_voice_record_stop() -> Result<NativeVoiceRecordingStop, String> {
     #[cfg(target_os = "macos")]
     {
-        macos::record_stop()
+        let stopped = macos::record_stop()?;
+        // The recording lives outside attachment storage; registering it lets
+        // the composer read and upload it.
+        crate::chat::attachments::access::register_created_file(std::path::Path::new(
+            &stopped.path,
+        ))?;
+        Ok(stopped)
     }
     #[cfg(not(target_os = "macos"))]
     Err("Native voice recording is currently available only on macOS.".to_string())

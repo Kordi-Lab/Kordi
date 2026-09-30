@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react';
 
-import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
+import { safeManualDownloadUrl, type DesktopUpdaterState } from '@/features/updates/desktopUpdater';
 import { cn } from '@/lib/utils';
 
 function formatUpdateBytes(bytes: number) {
@@ -70,6 +70,7 @@ export function SidebarUpdatePopover({
   onOpenUrl,
 }: SidebarUpdatePopoverProps) {
   if (!anchor || typeof document === 'undefined') return null;
+  const manualDownloadUrl = safeManualDownloadUrl(state.manualDownloadUrl);
 
   return createPortal(
     <div
@@ -235,12 +236,12 @@ export function SidebarUpdatePopover({
             'flex items-center justify-end gap-2',
             state.status === 'available' ? 'mt-2' : 'mt-3',
           )}>
-            {state.status === 'failed' && state.manualDownloadUrl ? (
+            {state.status === 'failed' && manualDownloadUrl ? (
               <button
                 type="button"
                     className="app-button-quiet app-update-popover-action app-update-popover-action-secondary mr-auto rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium"
                 onClick={() => {
-                  void onOpenUrl?.(state.manualDownloadUrl!);
+                  void onOpenUrl?.(manualDownloadUrl);
                 }}
               >
                 Download manually

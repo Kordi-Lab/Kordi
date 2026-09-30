@@ -11,6 +11,7 @@ mod cloud_presence;
 mod cloud_session;
 mod digest_calendar;
 mod digest_calendar_sync;
+mod external_url;
 mod link_preview;
 mod media_preview_window;
 mod menu_bar;
@@ -189,18 +190,15 @@ fn run_external_command(command: &mut Command) -> Result<(), String> {
 }
 #[tauri::command]
 fn desktop_open_external_url(url: String) -> Result<String, String> {
-    let trimmed = url.trim();
-    if trimmed.is_empty() {
-        return Err("URL is required".to_string());
-    }
+    let url = external_url::validate_external_url(&url)?;
     if cfg!(target_os = "macos") {
-        run_external_command(Command::new("open").arg(trimmed))?;
+        run_external_command(Command::new("/usr/bin/open").arg("--").arg(&url))?;
     } else if cfg!(target_os = "windows") {
-        run_external_command(Command::new("explorer").arg(trimmed))?;
+        run_external_command(Command::new("explorer").arg(&url))?;
     } else {
-        run_external_command(Command::new("xdg-open").arg(trimmed))?;
+        run_external_command(Command::new("xdg-open").arg(&url))?;
     }
-    Ok(trimmed.to_string())
+    Ok(url)
 }
 
 #[tauri::command]
@@ -209,8 +207,16 @@ fn desktop_reveal_in_finder(path: String) -> Result<String, String> {
     if trimmed.is_empty() {
         return Err("Path is required".to_string());
     }
+    if trimmed.starts_with('-') {
+        return Err("Path is invalid".to_string());
+    }
     if cfg!(target_os = "macos") {
-        run_external_command(Command::new("open").arg("-R").arg(trimmed))?;
+        run_external_command(
+            Command::new("/usr/bin/open")
+                .arg("-R")
+                .arg("--")
+                .arg(trimmed),
+        )?;
     } else if cfg!(target_os = "windows") {
         run_external_command(Command::new("explorer").arg(format!("/select,{trimmed}")))?;
     } else {
@@ -376,6 +382,7 @@ pub fn run() {
             chat::attachments::live_photos::desktop_chat_prepare_live_photos,
             chat::attachments::desktop_chat_read_attachment,
             chat::attachments::desktop_chat_download_attachment,
+            chat::attachments::open_local::desktop_open_local_attachment,
             chat::attachments::save_as::desktop_save_attachment_as,
             chat::attachments::cloud_upload::desktop_cloud_attachment_upload,
             chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,

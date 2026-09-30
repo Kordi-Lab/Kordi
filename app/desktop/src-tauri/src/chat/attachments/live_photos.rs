@@ -9,7 +9,9 @@ pub async fn desktop_chat_prepare_live_photos(
         }
         let directory = super::attachment_storage_dir()?;
         for path in &paths {
-            super::ensure_attachment_file_path(std::path::Path::new(path))?;
+            let source = super::ensure_attachment_file_path(std::path::Path::new(path))?;
+            // Preparing Live Photos is an attach action for the selected pairs.
+            super::access::register_requested_attachment(&source)?;
         }
         tokio::task::spawn_blocking(move || {
             use std::ffi::{c_char, CStr, CString};

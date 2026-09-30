@@ -212,6 +212,8 @@ test('WorkspaceSidebar update affordance uses a friendly wave and confirmation p
   assert.doesNotMatch(source, /download, verify, install, and relaunch Kordi automatically\./);
   assert.match(source, /Retry/);
   assert.match(source, /Download manually/);
+  assert.match(source, /safeManualDownloadUrl\(state\.manualDownloadUrl\)/);
+  assert.doesNotMatch(source, /onOpenUrl\?\.\(state\.manualDownloadUrl/);
   assert.match(source, /receivedBytes/);
   assert.match(source, /totalBytes/);
   assert.match(source, /role="progressbar"/);

@@ -6,9 +6,12 @@ use tauri::Manager;
 
 use super::DesktopStoredChatAttachment;
 
+pub(crate) mod access;
 mod cloud_cache;
 pub(crate) mod cloud_upload;
 pub(crate) mod live_photos;
+pub(crate) mod open_local;
+pub(crate) mod quarantine;
 pub(crate) mod save_as;
 pub(crate) mod stream;
 
@@ -200,6 +203,9 @@ pub(crate) fn store_chat_attachment_bytes(
 ) -> Result<DesktopStoredChatAttachment, String> {
     let path = unique_attachment_path(name)?;
     std::fs::write(&path, data).map_err(|err| err.to_string())?;
+    // These bytes often come from a conversation (received files, forwarded
+    // media), so treat them like a download.
+    quarantine::mark_quarantined_or_log(&path);
     stored_chat_attachment_from_path(&path)
 }
 
@@ -265,6 +271,8 @@ pub async fn desktop_chat_store_attachment_path(
     {
         return Err("Attachments must be 2 GiB or smaller.".to_string());
     }
+    // Attaching is what lets later commands read, upload, or open the file.
+    access::register_requested_attachment(Path::new(&path))?;
     attachment.name = safe_attachment_name(display_name);
     Ok(attachment)
 }
@@ -293,12 +301,14 @@ return selectedPaths
                 }
                 return Err(format!("Unable to choose attachments: {}", error.trim()));
             }
-            Ok(String::from_utf8_lossy(&output.stdout)
+            let paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
                 .lines()
                 .map(str::trim)
                 .filter(|path| !path.is_empty())
                 .map(str::to_string)
-                .collect())
+                .collect();
+            access::register_native_selection(&paths)?;
+            Ok(paths)
         })
         .await
         .map_err(|error| format!("Attachment picker stopped unexpectedly: {error}"))?
@@ -312,7 +322,7 @@ return selectedPaths
 
 #[tauri::command]
 pub async fn desktop_chat_read_attachment(path: String) -> Result<Vec<u8>, String> {
-    let source = ensure_attachment_file_path(Path::new(&path))?;
+    let source = access::authorize_attachment_file(Path::new(&path))?;
     std::fs::read(&source)
         .map_err(|err| format!("Unable to read attachment {}: {err}", source.display()))
 }
@@ -322,7 +332,7 @@ pub async fn desktop_chat_download_attachment(
     path: String,
     name: Option<String>,
 ) -> Result<String, String> {
-    let source = ensure_attachment_file_path(Path::new(&path))?;
+    let source = access::authorize_attachment_file(Path::new(&path))?;
     let fallback_name = source
         .file_name()
         .and_then(|value| value.to_str())
@@ -332,7 +342,7 @@ pub async fn desktop_chat_download_attachment(
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(fallback_name);
     let target = unique_download_path(download_name)?;
-    std::fs::copy(&source, &target).map_err(|err| err.to_string())?;
+    save_as::copy_attachment_out(&source, &target)?;
     Ok(target.display().to_string())
 }
 
@@ -379,8 +389,10 @@ mod tests {
 
     #[tokio::test]
     async fn read_attachment_reads_file_bytes_and_rejects_directories() {
-        let dir =
-            std::env::temp_dir().join(format!("kordi-attachment-read-{}", uuid::Uuid::new_v4()));
+        let _app_data = crate::test_support::ScopedAppDataDir::new("attachment-read");
+        let dir = attachment_storage_dir()
+            .unwrap()
+            .join(format!("read-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create temp attachment dir");
         let file = dir.join("report.txt");
         std::fs::write(&file, b"hello").expect("write temp attachment");
@@ -394,12 +406,11 @@ mod tests {
             .await
             .expect_err("directories are rejected");
         assert!(dir_error.contains("Attachment is not a file"));
-
-        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]
     async fn selected_files_are_referenced_without_copying_and_reject_over_2_gib() {
+        let _app_data = crate::test_support::ScopedAppDataDir::new("attachment-reference");
         let dir = std::env::temp_dir().join(format!(
             "kordi-attachment-reference-{}",
             uuid::Uuid::new_v4()
