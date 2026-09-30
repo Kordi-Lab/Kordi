@@ -230,6 +230,7 @@ pub fn run() {
             if is_cloud_edition {
                 cloud_api_base_url_from_env().map_err(std::io::Error::other)?;
             }
+            cloud_session::configure_keychain_scope(&app.config().identifier);
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
             if let Err(err) = chat::allow_attachment_asset_scope(app) {

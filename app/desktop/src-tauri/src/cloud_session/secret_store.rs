@@ -18,6 +18,7 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 use super::scoped_service;
@@ -38,9 +39,39 @@ trait SecretKeychain {
 
 struct OsKeychain;
 
+/// Named development and preview identifiers (`io.kordi.cloud.<profile>`)
+/// get their own keychain items, so a release build of an isolated profile
+/// never reads the product app's session. The product identifier keeps the
+/// original service names.
+static KEYCHAIN_PROFILE_SCOPE: OnceLock<String> = OnceLock::new();
+
+const ISOLATED_CLOUD_IDENTIFIER_PREFIX: &str = "io.kordi.cloud.";
+
+pub(crate) fn configure_keychain_scope(app_identifier: &str) {
+    if let Some(scope) = keychain_profile_scope(app_identifier) {
+        let _ = KEYCHAIN_PROFILE_SCOPE.set(scope);
+    }
+}
+
+fn keychain_profile_scope(app_identifier: &str) -> Option<String> {
+    app_identifier
+        .strip_prefix(ISOLATED_CLOUD_IDENTIFIER_PREFIX)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(|name| format!("profile.{name}"))
+}
+
+fn keychain_service_name(service: &str, profile_scope: Option<&str>) -> String {
+    let scoped = scoped_service(service);
+    match profile_scope {
+        Some(scope) => format!("{scoped}.{scope}"),
+        None => scoped,
+    }
+}
+
 fn entry_for(service: &str, account_id: &str) -> Result<Entry, String> {
-    Entry::new(&scoped_service(service), account_id)
-        .map_err(|err| format!("keychain_unavailable: {err}"))
+    let service = keychain_service_name(service, KEYCHAIN_PROFILE_SCOPE.get().map(String::as_str));
+    Entry::new(&service, account_id).map_err(|err| format!("keychain_unavailable: {err}"))
 }
 
 impl SecretKeychain for OsKeychain {
@@ -313,6 +344,28 @@ mod tests {
             } => legacy_file,
             other => panic!("expected a keychain location with a legacy file: {other:?}"),
         }
+    }
+
+    #[test]
+    fn isolated_profiles_use_their_own_keychain_items() {
+        assert_eq!(keychain_profile_scope("io.kordi.cloud"), None);
+        assert_eq!(keychain_profile_scope("io.kordi.desktop"), None);
+        assert_eq!(keychain_profile_scope("io.kordi.cloud."), None);
+        assert_eq!(
+            keychain_profile_scope("io.kordi.cloud.feature-b").as_deref(),
+            Some("profile.feature-b")
+        );
+        with_isolated_app_data_dir(|_| {
+            // The helper sets APP_INSTANCE_ID=user2.
+            assert_eq!(
+                keychain_service_name(KEYCHAIN_SERVICE, None),
+                "com.kordi.cloud-session.user2"
+            );
+            assert_eq!(
+                keychain_service_name(KEYCHAIN_SERVICE, Some("profile.feature-b")),
+                "com.kordi.cloud-session.user2.profile.feature-b"
+            );
+        });
     }
 
     #[test]

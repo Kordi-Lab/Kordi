@@ -8,6 +8,7 @@ use std::{fs, process::Command};
 
 mod secret_store;
 
+pub(crate) use secret_store::configure_keychain_scope;
 use secret_store::{secret_delete, secret_load, secret_store};
 
 const KEYCHAIN_SERVICE: &str = "com.kordi.cloud-session";
