@@ -257,6 +257,20 @@ The complete Caddy config preserves both public responsibilities:
 - Cloud API, WebSocket, health, security contact (`/.well-known/security.txt`),
   and updater routes on `kordi.ai`.
 
+`kordi.ai` and `www.kordi.ai` serve the same security contact, and the file
+lists both as `Canonical` URIs. After a Caddy or server change, confirm that
+both hosts return it:
+
+```bash
+curl --fail --silent --show-error https://kordi.ai/.well-known/security.txt
+curl --fail --silent --show-error https://www.kordi.ai/.well-known/security.txt
+```
+
+The `Expires` date lives in `bridges/cloud-server/src/security_txt.rs`. Renew
+it at least 30 days before it lapses, with a date less than one year ahead.
+`cargo test -p kordi-cloud-server security_txt -- --ignored` fails once the
+renewal window has started.
+
 ### CDN staging and cutover
 
 Use a global Certificate Manager certificate that was provisioned with DNS

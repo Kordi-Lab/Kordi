@@ -1,9 +1,14 @@
 //! RFC 9116 security contact published at `/.well-known/security.txt`.
 //!
-//! The document is static. Renew `Expires` before it lapses; RFC 9116
-//! recommends a value less than one year ahead. The tests below fail once
-//! fewer than 30 days remain so a renewed file can be deployed before the
-//! published one expires.
+//! The document is static and is served unchanged on every public product
+//! host, so each host that serves it is listed as a `Canonical` URI.
+//!
+//! Renew `Expires` at least 30 days before it lapses, with a date less than
+//! one year ahead as RFC 9116 recommends. The default tests check only the
+//! format and the one-year bound, so they never start failing as time passes.
+//! Check the renewal window with
+//! `cargo test -p kordi-cloud-server security_txt -- --ignored`, or probe the
+//! deployed file.
 
 use axum::http::{header, HeaderValue};
 use axum::response::{IntoResponse, Response};
@@ -16,6 +21,7 @@ Expires: 2027-08-31T00:00:00Z
 Policy: https://github.com/Kordi-Lab/Kordi/blob/main/SECURITY.md
 Preferred-Languages: en
 Canonical: https://kordi.ai/.well-known/security.txt
+Canonical: https://www.kordi.ai/.well-known/security.txt
 ";
 
 const CACHE_CONTROL: &str = "public, max-age=86400";
@@ -56,7 +62,11 @@ mod tests {
     use crate::events::EventBus;
     use crate::server::{router, ServerState};
 
-    const MIN_EXPIRY_NOTICE_DAYS: i64 = 30;
+    /// Public hosts that serve the product site, as listed in
+    /// `deploy/Caddyfile.snippet`. Each one must appear as a `Canonical` URI.
+    const PUBLIC_HOSTS: [&str; 2] = ["kordi.ai", "www.kordi.ai"];
+    const RENEWAL_NOTICE_DAYS: i64 = 30;
+    const MAX_EXPIRY_DAYS: i64 = 366;
 
     fn production_router() -> axum::Router {
         let pool = PgPoolOptions::new()
@@ -156,10 +166,11 @@ mod tests {
         assert!(contacts.contains(&"https://github.com/Kordi-Lab/Kordi/security/advisories/new"));
 
         assert_eq!(values("Expires").len(), 1, "Expires must appear once");
-        assert_eq!(
-            values("Canonical"),
-            vec![format!("https://kordi.ai{PATH}").as_str()]
-        );
+        let expected_canonical: Vec<String> = PUBLIC_HOSTS
+            .iter()
+            .map(|host| format!("https://{host}{PATH}"))
+            .collect();
+        assert_eq!(values("Canonical"), expected_canonical);
         assert_eq!(
             values("Policy"),
             vec!["https://github.com/Kordi-Lab/Kordi/blob/main/SECURITY.md"]
@@ -178,21 +189,40 @@ mod tests {
         }
     }
 
-    #[test]
-    fn security_contact_expiry_is_current_and_under_one_year() {
-        let expires = DateTime::parse_from_rfc3339(values("Expires")[0])
+    fn expires() -> DateTime<Utc> {
+        let expires = values("Expires");
+        assert_eq!(expires.len(), 1, "Expires must appear once");
+        assert!(
+            expires[0].ends_with('Z'),
+            "Expires must be written in UTC: {}",
+            expires[0]
+        );
+        DateTime::parse_from_rfc3339(expires[0])
             .expect("Expires must be an RFC 3339 timestamp")
-            .with_timezone(&Utc);
-        let now = Utc::now();
+            .with_timezone(&Utc)
+    }
+
+    #[test]
+    fn security_contact_expiry_is_rfc3339_and_under_one_year() {
+        let expires = expires();
+
+        // Only an upper bound: this can fail when Expires is set too far
+        // ahead, but it cannot start failing as the date approaches.
+        assert!(
+            expires - Utc::now() <= Duration::days(MAX_EXPIRY_DAYS),
+            "security.txt Expires ({expires}) must be less than one year ahead"
+        );
+    }
+
+    #[test]
+    #[ignore = "date-dependent renewal reminder; run with --ignored before a release or on a schedule"]
+    fn security_contact_expiry_leaves_renewal_notice() {
+        let expires = expires();
 
         assert!(
-            expires - now >= Duration::days(MIN_EXPIRY_NOTICE_DAYS),
-            "security.txt Expires ({expires}) is within {MIN_EXPIRY_NOTICE_DAYS} days; \
+            expires - Utc::now() >= Duration::days(RENEWAL_NOTICE_DAYS),
+            "security.txt Expires ({expires}) is within {RENEWAL_NOTICE_DAYS} days; \
              publish a renewed date less than one year ahead"
-        );
-        assert!(
-            expires - now <= Duration::days(366),
-            "security.txt Expires ({expires}) must be less than one year ahead"
         );
     }
 }

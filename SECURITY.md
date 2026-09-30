@@ -28,13 +28,19 @@ advisory form:
 
 **<https://github.com/Kordi-Lab/Kordi/security/advisories/new>**
 
-You can also reach the form from the repository's **Security** tab. The report
+You can also reach the form from the repository's **Security** tab, or from
+**Report a security issue privately** when you create a new issue. The report
 stays private between you and the maintainers until we publish an advisory.
 
 Please do not open public issues, discussions, or pull requests for security
-problems, and do not share details in community channels. If you cannot use
-GitHub private reporting, open a public issue that asks for a private contact
-and leave out any details of the problem.
+problems, and do not share details in community channels.
+
+If the private form is unavailable to you, open a **Bug report** issue titled
+`Private security contact requested` and do not describe the problem. Write
+`Private security report, details withheld` in every required text field,
+choose `Unknown / needs triage` for **Area**, and choose any option for the
+other required choices. A maintainer will reply with a private way to share
+the details.
 
 A machine-readable contact is also published at
 <https://kordi.ai/.well-known/security.txt> ([RFC 9116](https://www.rfc-editor.org/rfc/rfc9116)).
