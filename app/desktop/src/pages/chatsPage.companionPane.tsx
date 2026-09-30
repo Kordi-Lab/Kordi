@@ -47,8 +47,8 @@ export function CompanionPane({
         <div
           id="chat-companion-messages-panel"
           className="app-chat-theme-surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-          role="tabpanel"
-          aria-labelledby="chat-companion-messages-tab"
+          role="region"
+          aria-label="Agent chat"
           aria-busy={messagesLoading || undefined}
           data-chat-destination-page="messages"
           data-chat-destination-scope="companion"

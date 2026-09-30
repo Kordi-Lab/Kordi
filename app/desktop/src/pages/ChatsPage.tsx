@@ -1,3 +1,4 @@
+import type { CompanionView } from './chatsPage.companionToolbar';
 import {useUnreadThreadNavigation} from './useUnreadThreadNavigation';
 import {ThreadShortcut} from '@/features/chat/ThreadShortcut';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -13,10 +14,8 @@ import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionCon
 import { isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
-import { cn } from '@/lib/utils';
 import type { ChatsPageProps } from '@/pages/chatsPage.types';
 import {
-  ChatCompanionSplitDivider,
   ChatCompanionWorkspace,
 } from '@/pages/chatsPage.companionWorkspace';
 import { ChatMainWorkspace } from '@/pages/chatsPage.mainWorkspace';
@@ -36,6 +35,8 @@ import {
   conversationPaneKind,
   shouldSynchronizeConversationModelRoute,
 } from '@/pages/chatsPage.model';
+
+import { ChatCompanionLayout } from './chatsPage.companionLayout';
 
 export {
   chatHeaderSubtitle,
@@ -172,7 +173,6 @@ export function ChatsPage({
     canRunOwnAgent,
   });
   const companionConversation = companionSession.conversation;
-  const suggestedSideAgentConversation = companionSession.suggested;
   const companionOpenComposerSelector = companionSession.selector.value;
   const setCompanionOpenComposerSelector = companionSession.selector.set;
   const senderProfiles = useChatSenderProfiles({
@@ -195,20 +195,20 @@ export function ChatsPage({
     },
     companionConversationId: companionConversation?.id ?? null,
   });
+  const [panelState, setPanelState] = useState<{ conversationId: string; view: CompanionView }>({ conversationId: activeConv.id, view: 'chat' });
+  const companionView = panelState.conversationId === activeConv.id ? panelState.view : 'chat';
+  const setCompanionView = (view: CompanionView) => setPanelState({ conversationId: activeConv.id, view });
   const companionLayout = useChatCompanionLayout({
     pageConversationId: activeConv.id,
+    hasOverview: companionView !== 'chat',
+    onHide: companionSession.actions.cancelCreation,
     activePaneKind,
     companionConversation,
   });
   const {
+    containerRef: splitContainerRef,
     side: companionSide,
     isVisible: showCompanionPane,
-    isDragging: isDraggingCompanion,
-    dropPreviewSide: companionDropPreviewSide,
-    containerRef: splitContainerRef,
-    gridColumns: chatSplitGridColumns,
-    onDragOver: handleCompanionDragOver,
-    onDrop: handleCompanionDrop,
   } = companionLayout;
   const canOpenSideAgentPanel = companionSession.canOpen;
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
@@ -353,6 +353,7 @@ export function ChatsPage({
     onNavigateToMessage: transcriptNavigation.main.navigate,
   });
   const createSideAgentSession = async (initialPrompt = '') => {
+    setCompanionView('chat');
     if (!canRunOwnAgent()) return false;
     const opened = await companionSession.actions.create(initialPrompt);
     if (!opened) return false;
@@ -361,6 +362,8 @@ export function ChatsPage({
     return opened;
   };
   const openSideAgentPanel = async (initialPrompt = '') => {
+    setCompanionView('chat');
+    destinations.companion.setValue('messages');
     if (!canRunOwnAgent()) return false;
     const opened = await companionSession.actions.open(initialPrompt);
     if (!opened) return false;
@@ -369,6 +372,7 @@ export function ChatsPage({
     return opened;
   };
   const openRelatedAgentSession = (sessionId: string, isSubsession = false) => {
+    setCompanionView('chat');
     if (isSubsession) companionSession.actions.openSubsession(sessionId);
     else companionSession.actions.switchConversation(sessionId);
     destinations.companion.setValue('messages');
@@ -406,34 +410,22 @@ export function ChatsPage({
       runtime={runtime}
     />
   ) : null;
-  const splitDivider = <ChatCompanionSplitDivider layoutModel={companionLayout} />;
+  const selectCompanionView = (view: CompanionView) => {
+    if (view === 'chat' && (!companionConversation || companionConversation.agentSubsessionId)) {
+      void openSideAgentPanel();
+      return;
+    }
+    setCompanionView(view);
+    if (view === 'chat') destinations.companion.showMessages();
+    companionLayout.placeCompanion('right');
+    companionLayout.setFolded(false);
+  };
   return (
     <AgentSubsessionNavigationContext.Provider value={(id) => openRelatedAgentSession(id, true)}>
     <ChatSenderProfileContext.Provider value={senderProfiles.openParticipant}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-        <div
-          ref={splitContainerRef}
-          className={cn(
-            'app-chat-split-workspace relative min-h-0 flex-1 overflow-hidden',
-            chatSplitGridColumns && 'grid',
-            isDraggingCompanion && 'ring-1 ring-sky-300/25',
-            companionDropPreviewSide === 'left' && 'bg-gradient-to-r from-sky-400/10 via-transparent to-transparent',
-            companionDropPreviewSide === 'right' && 'bg-gradient-to-l from-sky-400/10 via-transparent to-transparent',
-          )}
-          style={chatSplitGridColumns ? { gridTemplateColumns: chatSplitGridColumns } : undefined}
-          data-chat-companion-side={showCompanionPane ? companionSide : 'folded'}
-          data-chat-split-workspace="true"
-          data-chat-companion-drop-preview={companionDropPreviewSide ?? undefined}
-          onDragOver={handleCompanionDragOver}
-          onDrop={handleCompanionDrop}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-              companionLayout.clearDropPreview();
-            }
-          }}
-        >
-          {showCompanionPane && companionSide === 'left' ? companionPane : null}
-          {showCompanionPane && companionSide === 'left' ? splitDivider : null}
+        <ChatCompanionLayout containerRef={splitContainerRef} layout={companionLayout} view={companionView}
+          accountId={cloudAccount?.accountId} companionPane={companionPane}>
           <ChatMainWorkspace
             layout={layout}
             session={session}
@@ -466,8 +458,14 @@ export function ChatsPage({
               activeSide: companionSide === 'left' ? 'right' : 'left',
             }}
             companion={{
-              canOpen: canOpenSideAgentPanel,
-              suggestedName: suggestedSideAgentConversation?.name,
+              toolbar: {
+                view: companionView,
+                isOpen: showCompanionPane,
+                canOpenChat: canOpenSideAgentPanel,
+                hasChat: Boolean(companionConversation),
+                onSelect: selectCompanionView,
+                onHide: () => companionLayout.setFolded(true),
+              },
               open: openSideAgentPanel,
               openSession: openRelatedAgentSession,
             }}
@@ -558,9 +556,7 @@ export function ChatsPage({
               />
             ) : null}
           />
-          {showCompanionPane && companionSide === 'right' ? splitDivider : null}
-          {showCompanionPane && companionSide === 'right' ? companionPane : null}
-        </div>
+        </ChatCompanionLayout>
       </div>
     </ChatSenderProfileContext.Provider>
     </AgentSubsessionNavigationContext.Provider>

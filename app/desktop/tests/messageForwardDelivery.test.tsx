@@ -129,6 +129,10 @@ test('native group batch updates individual rows, reports progress, and retries 
     await act(async () => release());
     assert.ok(button('Try again'));
     await act(async () => button('Try again').click());
+    // Retry resumes asynchronous native delivery; wait for its completion state.
+    for (let attempt = 0; !document.querySelector('.forward-success') && attempt < 50; attempt++) {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    }
     assert.ok(document.querySelector('.forward-success'));
     assert.equal(commands.length, 4, 'Only one row write per forwarded message');
     assert.equal(state.messages[0], originalRow, 'Unrelated chat rows retain their identity');

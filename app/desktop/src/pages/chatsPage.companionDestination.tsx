@@ -58,8 +58,8 @@ export function CompanionDestinationPage({
     <div
       id={`chat-companion-${destination}-panel`}
       className="min-h-0 min-w-0 flex-1 overflow-hidden"
-      role="tabpanel"
-      aria-labelledby={`chat-companion-${destination}-tab`}
+      role="region"
+      aria-label={`Agent ${destination}`}
       data-chat-destination-page={destination}
       data-chat-destination-scope="companion"
     >

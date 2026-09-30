@@ -174,7 +174,7 @@ export function SidebarUpdater({
         type="button"
         onClick={handleUpdateButtonClick}
         data-update-status={updateState.status}
-        className="app-update-wave-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-[14px] p-0"
+        className="app-update-wave-button app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0"
         title={isUpdateConfirmOpen ? undefined : buttonPresentation.title}
         aria-label={buttonPresentation.title}
         aria-haspopup="dialog"
@@ -188,7 +188,7 @@ export function SidebarUpdater({
           <img
             src="/blob-wave.gif"
             alt=""
-            className="h-8 w-8 object-contain"
+            className="h-6 w-6 object-contain"
             draggable={false}
           />
         </picture>

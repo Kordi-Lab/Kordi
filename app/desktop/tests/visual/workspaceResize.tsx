@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
+import { LEFT_RAIL_WIDTH } from '../../src/kordi-app/layout';
 import { ChatPaneLayout } from '../../src/pages/ChatPaneLayout';
 import { mockIPC } from '@tauri-apps/api/mocks';
 import '../../src/index.css';
@@ -32,7 +33,7 @@ createRoot(document.getElementById('root')!).render(
     showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={0}
     onSessionResizeMouseDown={noop} onDetailResizeMouseDown={noop}
     sidebar={<aside className="app-side-shell flex min-h-0 overflow-hidden">
-      <nav style={{ width: 72, flexShrink: 0 }} aria-label="Navigation">Chats</nav>
+      <nav style={{ width: LEFT_RAIL_WIDTH, flexShrink: 0 }} aria-label="Navigation">Chats</nav>
       <div className="app-session-panel min-w-0 flex-1 overflow-y-auto">Test conversation</div>
     </aside>}
     mainContent={<ChatPaneLayout hasHeader>

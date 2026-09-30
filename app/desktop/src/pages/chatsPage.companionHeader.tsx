@@ -10,7 +10,6 @@ import {
 import type { Conversation } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import type { ChatDestination } from '@/pages/chatsPage.destinationModel';
-import { SessionDestinationTabs } from '@/pages/chatsPage.destinations';
 import {
   companionLabel,
   type ChatCompanionSessionOption,
@@ -51,7 +50,6 @@ export function CompanionHeader({
   conversation,
   sessionOptions,
   side,
-  destination,
   menu,
   actions,
 }: CompanionHeaderProps) {
@@ -261,11 +259,7 @@ export function CompanionHeader({
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <SessionDestinationTabs
-        scope="companion"
-        activeDestination={destination}
-        onSelect={actions.onSelectDestination}
-      />
+
     </div>
   );
 }
