@@ -9,7 +9,6 @@ import { routeRunsOnKordiCloud } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { CloudProviderAuthSnapshot } from '@/features/cloud/cloudAgentRuntimeTypes';
 import { hostedAccountsFromSnapshots } from '@/features/cloud/hostedAccounts';
 import { ACCOUNT_UNAVAILABLE_LABEL } from '@/features/cloud/routeAccountChoice';
-import { KordiCloudRuntimeCaptionView } from '@/pages/chatsPage.kordiCloudCaption';
 import type { DesktopAuthProvider } from '@/kordi-app/types';
 
 type Route = { model: string; thinking: string; authProvider: string | null; authChoice: string | null };
@@ -17,7 +16,7 @@ type Route = { model: string; thinking: string; authProvider: string | null; aut
 /**
  * Preview-only agent session using the real composer route menu and send
  * gate: a route that names a removed account shows "Account unavailable", and
- * the hosted accounts of the Kordi account are listed to run on Kordi Cloud.
+ * the saved accounts of the Kordi account are listed as route choices.
  */
 export function PreviewSessionRoute({ providers, initialAuthChoice, loadSnapshots }: {
   providers: DesktopAuthProvider[];
@@ -55,19 +54,15 @@ export function PreviewSessionRoute({ providers, initialAuthChoice, loadSnapshot
     ...hostedModelOptions(hostedAccounts),
   ];
   const unavailable = isRouteAccountUnavailable(route, providerOptions);
-  const onCloud = routeRunsOnKordiCloud(route);
-
   return (
     <SettingsSection title="Agent session" className="mb-6">
       <SettingsRow
         title="Route"
         description={unavailable
           ? <span role="status" className="text-amber-200">{ACCOUNT_UNAVAILABLE_LABEL}. Choose another account to continue.</span>
-          : `The session runs with the account chosen here${onCloud ? `: ${route.model} on ${route.authChoice}` : ''}.`}
+          : 'The session uses the account chosen here.'}
         control={(
-          <>
-            <KordiCloudRuntimeCaptionView show={onCloud} />
-            <CompactComposerModelMenu
+          <CompactComposerModelMenu
               scope="chat"
               selection={{ mode: 'agent', ...route }}
               providerOptions={providerOptions}
@@ -75,14 +70,13 @@ export function PreviewSessionRoute({ providers, initialAuthChoice, loadSnapshot
               onSave={({ providerOption, model, thinking }) => {
                 const authChoice = providerOption?.value.split('::').slice(1).join('::') ?? null;
                 const account = hostedAccounts.find((item) => item.authChoice === authChoice);
-                // A hosted account applies its Kordi Cloud route, as Start chat does.
+                // A saved account applies its route, as Start chat does.
                 const cloudRoute = account ? hostedRouteForChoice(account, { model, thinking, catalog: hosted.catalog }) : null;
                 setRoute(cloudRoute
                   ? { model: cloudRoute.model ?? model, thinking, authProvider: cloudRoute.authProvider ?? null, authChoice: cloudRoute.authChoice ?? null }
                   : { model, thinking, authProvider: providerOption?.providerId ?? null, authChoice });
               }}
-            />
-          </>
+          />
         )}
       />
       <SettingsRow

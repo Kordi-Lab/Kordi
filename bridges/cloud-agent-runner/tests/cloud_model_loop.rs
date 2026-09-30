@@ -252,6 +252,10 @@ async fn model_loop_completes_text_response() {
     assert!(first_messages[0]["content"]
         .as_str()
         .unwrap()
+        .contains("Kordi Cloud fallback"));
+    assert!(!first_messages[0]["content"]
+        .as_str()
+        .unwrap()
         .contains("owner device is offline"));
     assert!(first_messages[0]["content"]
         .as_str()

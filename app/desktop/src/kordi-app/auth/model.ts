@@ -58,7 +58,9 @@ export type OmpProviderAuth = {
 
 function optionsFor(provider: DesktopAuthProvider | undefined, method: 'oauth' | 'api-key') {
   return (provider?.options ?? [])
-    .filter((option) => option.method === (method === 'oauth' ? 'OAuth' : 'API key'))
+    .filter((option) => method === 'oauth'
+      ? option.method === 'OAuth' || option.method === 'Account'
+      : option.method === 'API key')
     .map((option) => ({ ...option, providerId: provider?.id ?? '' }));
 }
 
@@ -88,7 +90,11 @@ function displayProviderConfigured(provider: DesktopAuthProvider) {
   return provider.configured || localProviderHasSavedModel(provider.id, provider.preferredModel);
 }
 
-export function authStateSatisfiesStartupGate(authState: DesktopAuthState | null) {
+export function authStateSatisfiesStartupGate(
+  authState: DesktopAuthState | null,
+  hostedAccounts: ReadonlyArray<{ needsReconnect: boolean }> = [],
+) {
+  if (hostedAccounts.some((account) => !account.needsReconnect)) return true;
   if (authState?.hasAnyAuth) return true;
   return buildAuthDisplayProviders(authState).some((provider) => provider.configured);
 }

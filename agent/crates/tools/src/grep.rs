@@ -341,6 +341,7 @@ mod tests {
             artifacts_dir: cwd.join("artifacts"),
             model: None,
             execution_policy: crate::ExecutionPolicy::Safety,
+            invocation_id: None,
             on_output: None,
             web_search: None,
             reach_out: None,

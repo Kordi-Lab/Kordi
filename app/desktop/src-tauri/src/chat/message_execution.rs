@@ -143,6 +143,29 @@ pub(super) async fn start_message(
         if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }
+        let hosted_auth = if super::hosted_provider_auth::route_uses_hosted_auth(route.as_ref()) {
+            let Some(hosted_route) = route.as_ref() else {
+                fail_turn(
+                    &snapshot_for_task,
+                    "Hosted provider route is unavailable".into(),
+                );
+                return;
+            };
+            match super::hosted_provider_auth::resolve_for_turn(
+                hosted_route,
+                context_messages.as_deref().unwrap_or(&[]),
+            )
+            .await
+            {
+                Ok(auth) => Some(auth),
+                Err(error) => {
+                    fail_turn(&snapshot_for_task, error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let (provider, model) = {
             let mut session = session_handle.lock().await;
             if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
@@ -204,6 +227,29 @@ pub(super) async fn start_message(
                 {
                     fail_turn(&snapshot_for_task, error);
                     return;
+                }
+            }
+
+            if let Some(hosted_auth) = hosted_auth {
+                if let Err(error) = session.set_ephemeral_provider_auth_with_options(
+                    &hosted_auth.provider,
+                    hosted_auth.auth,
+                    hosted_auth.base_url,
+                    hosted_auth.api.as_deref(),
+                ) {
+                    fail_turn(&snapshot_for_task, error.to_string());
+                    return;
+                }
+                if let Some(thinking) = route
+                    .as_ref()
+                    .and_then(|route| route.thinking.as_deref())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty() && *value != "default")
+                {
+                    if let Err(error) = session.set_thinking(thinking) {
+                        fail_turn(&snapshot_for_task, error.to_string());
+                        return;
+                    }
                 }
             }
 
@@ -389,79 +435,4 @@ async fn sync_completed_session(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        latest_turn_assistant_entry_id, reserve_shared_request, shared_request_runtime_session_id,
-        DesktopChatManager,
-    };
-    use kordi_cli::desktop_runtime::DesktopChatMessage;
-
-    fn message(role: &str, entry_id: Option<&str>) -> DesktopChatMessage {
-        DesktopChatMessage {
-            role: role.to_string(),
-            sender: None,
-            text: String::new(),
-            detail: None,
-            time_label: String::new(),
-            timestamp_ms: 0,
-            failed: false,
-            cancelled: false,
-            attachments: Vec::new(),
-            thinking_text: None,
-            tools: Vec::new(),
-            entry_id: entry_id.map(str::to_string),
-        }
-    }
-
-    #[tokio::test]
-    async fn shared_request_is_admitted_once_per_runtime() {
-        let manager = DesktopChatManager::default();
-
-        assert!(reserve_shared_request(&manager, "runtime-a", "request-1").await);
-        assert!(!reserve_shared_request(&manager, "runtime-a", "request-1").await);
-        assert!(reserve_shared_request(&manager, "runtime-b", "request-1").await);
-    }
-
-    #[tokio::test]
-    async fn shared_requests_use_distinct_internal_runtimes_without_double_scoping() {
-        let manager = DesktopChatManager::default();
-        let base = "cloud-agent:owner:conversation";
-        let first = shared_request_runtime_session_id(base, "request-a").unwrap();
-        let second = shared_request_runtime_session_id(base, "request-b").unwrap();
-        assert_eq!(first, format!("{base}:request:request-a"));
-        assert_ne!(first, second);
-        assert!(crate::chat::canonical_sync::is_cloud_agent_runtime_session_id(&first));
-        let scoped = shared_request_runtime_session_id(&first, " request-a ").unwrap();
-        assert_eq!(scoped, first);
-        assert!(reserve_shared_request(&manager, &first, "request-a").await);
-        assert!(!reserve_shared_request(&manager, &scoped, "request-a").await);
-        assert!(reserve_shared_request(&manager, &second, "request-b").await);
-        assert!(shared_request_runtime_session_id(base, " ").is_err());
-        assert!(shared_request_runtime_session_id(" ", "request-a").is_err());
-        assert!(shared_request_runtime_session_id("private-agent-chat", "request-a").is_err());
-    }
-
-    #[test]
-    fn current_turn_assistant_entry_id_stops_at_latest_user_boundary() {
-        let messages = vec![
-            message("assistant", Some("entry:old")),
-            message("user", Some("entry:user")),
-        ];
-
-        assert_eq!(latest_turn_assistant_entry_id(&messages), None);
-    }
-
-    #[test]
-    fn current_turn_assistant_entry_id_returns_the_new_reply() {
-        let messages = vec![
-            message("assistant", Some("entry:old")),
-            message("user", Some("entry:user")),
-            message("assistant", Some("entry:new")),
-        ];
-
-        assert_eq!(
-            latest_turn_assistant_entry_id(&messages).as_deref(),
-            Some("entry:new")
-        );
-    }
-}
+mod tests;

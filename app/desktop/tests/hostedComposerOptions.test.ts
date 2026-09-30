@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/localAgentSessionTarget';
 import { resolveDefaultCloudAgentRuntimeRoute } from '../src/app/useKordiDefaultCloudAgentRuntimeRoute';
 import {
   hostedAuthOptions,
@@ -9,7 +10,7 @@ import {
   hostedRouteAccounts,
   hostedRouteForChoice,
   hostedRouteForModel,
-  KORDI_CLOUD_ACCOUNT_DETAIL,
+  SAVED_ACCOUNT_METHOD_LABEL,
   RECONNECT_ACCOUNT_REASON,
 } from '../src/features/chat/hostedComposerOptions';
 import { composerRouteDecision } from '../src/features/chat/useHostedComposerRouting';
@@ -20,6 +21,7 @@ import { isHostedOnlyAccountChoice } from '../src/features/cloud/routeAccountCho
 import { routeRunsOnKordiCloud } from '../src/features/cloud/cloudAgentRuntimeRoute';
 import { loadPinnedOmpCatalog } from '../src/kordi-app/auth/ompCatalog';
 import { resolveComposerModelSelection } from '../src/kordi-app/components/composerModelSelection';
+import { chatHasConnectedProvider, collaborationAuthDisplayName } from '../src/pages/chatsPage.model';
 import type { CloudProviderAuthSnapshot } from '../src/features/cloud/cloudAgentRuntimeTypes';
 import type { DesktopAuthState } from '../src/kordi-app/types';
 
@@ -69,14 +71,29 @@ test('the composer lists every hosted account the provider page lists, and no lo
   ]);
   const providers = hostedProviderOptions(accounts, 'cloud-login:team');
   assert.deepEqual(providers.map((option) => [option.label, option.detail, Boolean(option.active), Boolean(option.disabled)]), [
-    ['bai', `Custom API · ${KORDI_CLOUD_ACCOUNT_DETAIL}`, false, false],
-    ['Lab', `Custom API · ${KORDI_CLOUD_ACCOUNT_DETAIL}`, false, false],
-    ['Research', `${account('Research').providerLabel} · ${KORDI_CLOUD_ACCOUNT_DETAIL}`, false, false],
-    ['Team', `${account('Team').providerLabel} · ${KORDI_CLOUD_ACCOUNT_DETAIL}`, true, false],
+    ['bai', 'Custom API', false, false],
+    ['Lab', 'Custom API', false, false],
+    ['Research', account('Research').providerLabel, false, false],
+    ['Team', account('Team').providerLabel, true, false],
     ['Old laptop', `${account('Old laptop').providerLabel} · ${RECONNECT_ACCOUNT_REASON}`, false, true],
   ]);
+  assert.equal(providers[3].selectionLabel, `${account('Team').providerLabel} • Team`);
   assert.equal(providers[4].disabledReason, RECONNECT_ACCOUNT_REASON);
-  assert.deepEqual(hostedAuthOptions(accounts, null).map((option) => option.label), ['bai', 'Lab', 'Research', 'Team'], 'a reconnect-only account cannot be chosen');
+  const authOptions = hostedAuthOptions(accounts, null);
+  assert.deepEqual(authOptions.map((option) => option.label), ['bai', 'Lab', 'Research', 'Team'], 'a reconnect-only account cannot be chosen');
+  assert.equal(authOptions[3].methodLabel, SAVED_ACCOUNT_METHOD_LABEL);
+  assert.equal(authOptions[3].detail, account('Team').providerLabel);
+});
+
+test('a cloud-only connected account satisfies the chat gate and keeps its saved name', () => {
+  const providerOptions = hostedProviderOptions(accounts, 'cloud-login:team');
+  assert.equal(chatHasConnectedProvider(false, providerOptions), true);
+  assert.equal(chatHasConnectedProvider(false, hostedProviderOptions([account('Old laptop')], null)), false, 'reconnect-only accounts cannot run');
+  assert.equal(chatHasConnectedProvider(false, []), false);
+  assert.equal(chatHasConnectedProvider(false), false, 'shells without populated options still render');
+  assert.equal(chatHasConnectedProvider(true, []), true);
+  assert.equal(collaborationAuthDisplayName('openai', 'cloud-login:team', providerOptions), `${account('Team').label} · ${providerOptions[3].detail}`);
+  assert.equal(collaborationAuthDisplayName('openai', 'cloud-login:deleted', providerOptions), 'Account unavailable');
 });
 
 test('a hosted account offers its stored model plus its catalog models; Custom API offers only its own model', () => {
@@ -155,6 +172,38 @@ test('a custom route runs on its hosted account and never falls back to another 
   assert.equal(route('openai/gpt-5.5')?.authProvider, 'openai');
   assert.equal(routeRunsOnKordiCloud(route('custom/qwen-plus')), true, 'the hosted account runs on Kordi Cloud');
   assert.equal(routeRunsOnKordiCloud(route('openai/gpt-5.5')), false, 'the local account keeps the local runtime');
+});
+
+test('a new chat with a legacy OpenAI model resolves the saved ChatGPT account and a compatible model', () => {
+  const team = account('Team');
+  const authOptions = hostedAuthOptions([team], team.authChoice);
+  const chatModelOptions = hostedModelOptions([team]);
+  const resolve = (selectedModel: string, options = authOptions, desktopAuthState: DesktopAuthState | null = null) => resolveDefaultCloudAgentRuntimeRoute({
+    activeLoginProviderId: null,
+    authOptions: options,
+    chatModelOptions,
+    desktopAuthState,
+    isNativeShell: true,
+    preferredModelValueForProvider: () => 'openai/gpt-5.6-sol',
+    // Composer model metadata groups OpenAI and ChatGPT under OpenAI.
+    resolveComposerProviderId: () => 'openai',
+    selectedModel,
+    selectedThinking: 'medium',
+  });
+  for (const selectedModel of ['openai/gpt-5.6-sol', 'openai/gpt-5.5', 'openai-codex/gpt-5.5']) {
+    const route = resolve(selectedModel);
+    assert.deepEqual(route, { model: `openai-codex/${selectedModel.split('/')[1]}`, authProvider: 'openai-codex', authChoice: team.authChoice, thinking: 'medium' });
+    assert.equal(routeRunsOnKordiCloud(route), true);
+    assert.equal(shouldUseNoProviderSelfAgentShortcut({
+      activeConversationUsesCollaborationRouting: false,
+      activeConvCanonicalSessionId: null,
+      canonicalSessionState: null,
+      hasAnyDesktopAuth: routeRunsOnKordiCloud(route),
+    }), false, 'a new hosted chat must reach dispatch instead of emitting No provider configured');
+  }
+  assert.equal(resolve('openai/unavailable-model')?.model, 'openai-codex/gpt-5.5', 'a stale model uses this hosted provider’s available default');
+  assert.equal(resolve('openai/gpt-5.5', []), null, 'no route without a saved account');
+  assert.equal(resolve('openai-codex/gpt-5.5', [openAiAuth, ...authOptions], openAiState)?.authChoice, team.authChoice, 'an active hosted choice wins over local auth');
 });
 
 test('hosted-only accounts: every hosted prefix, and hosted copies with no local counterpart', () => {

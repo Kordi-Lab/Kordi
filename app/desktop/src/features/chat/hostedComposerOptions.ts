@@ -8,13 +8,12 @@ import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } 
 import { normalizeComposerProviderId } from '@/kordi-app/components/composerModelSelection';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
-// The composer lists every hosted account the provider page lists. Each runs
-// on Kordi Cloud with its stored model and, outside Custom API, the models the
-// pinned OMP catalog lists for its provider. A Custom API endpoint serves only
-// the model its account stores.
+// The composer lists every saved account the provider page lists, with its
+// stored model and, outside Custom API, the models in the pinned OMP catalog.
+// A Custom API endpoint serves only the model its account stores.
 
 export const CUSTOM_ROUTE_PROVIDER = 'custom';
-export const KORDI_CLOUD_ACCOUNT_DETAIL = 'Runs on Kordi Cloud';
+export const SAVED_ACCOUNT_METHOD_LABEL = 'Saved account';
 export const RECONNECT_ACCOUNT_REASON = 'Account needs reconnecting';
 const catalogThinkingLevels = ['off', 'low', 'medium', 'high'];
 
@@ -76,7 +75,7 @@ export function hostedModelOptions(accounts: HostedRouteAccount[]): ComposerMode
       const value = `${account.providerId}/${model}`;
       if (options.some((option) => option.value === value)) continue;
       options.push({
-        value, label: model, detail: `${account.providerLabel} • ${KORDI_CLOUD_ACCOUNT_DETAIL}`,
+        value, label: model, detail: account.providerLabel,
         provider: normalizeComposerProviderId(account.providerId), providerLabel: account.providerLabel,
         thinkingLevels: account.providerId === CUSTOM_ROUTE_PROVIDER ? ['off'] : catalogThinkingLevels,
       });
@@ -91,9 +90,10 @@ export function hostedProviderOptions(accounts: HostedRouteAccount[], activeChoi
     value: `${account.providerId}::${account.authChoice}`,
     providerId: account.providerId,
     label: account.label,
-    detail: `${account.providerLabel} · ${account.needsReconnect ? RECONNECT_ACCOUNT_REASON : KORDI_CLOUD_ACCOUNT_DETAIL}`,
+    detail: account.needsReconnect ? `${account.providerLabel} · ${RECONNECT_ACCOUNT_REASON}` : account.providerLabel,
     selectionLabel: `${account.providerLabel} • ${account.label}`,
     active: account.authChoice === activeChoice,
+    hosted: true,
     ...(account.needsReconnect ? { disabled: true, disabledReason: RECONNECT_ACCOUNT_REASON } : {}),
   }));
 }
@@ -102,10 +102,10 @@ export function hostedAuthOptions(accounts: HostedRouteAccount[], activeChoice: 
   return accounts.filter((account) => !account.needsReconnect).map((account) => ({
     providerId: account.providerId,
     providerLabel: account.providerLabel,
-    methodLabel: KORDI_CLOUD_ACCOUNT_DETAIL,
+    methodLabel: SAVED_ACCOUNT_METHOD_LABEL,
     value: account.authChoice,
     label: account.label,
-    detail: `${account.providerLabel} · ${KORDI_CLOUD_ACCOUNT_DETAIL}`,
+    detail: account.providerLabel,
     active: account.authChoice === activeChoice,
   }));
 }

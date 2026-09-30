@@ -24,6 +24,7 @@ import {
 
 import { cloudSelfAgentRuntimeSessionId } from '../src/features/cloud/cloudAgentRuntime';
 import { cloudAgentExecutionSnapshotFromTurn } from '../src/features/cloud/cloudAgentExecutionTrace';
+import { publishedSelfAgentRequestAlreadyExecutedLocally } from '../src/features/cloud/cloudSelfAgentForwardPolicy';
 
 test('cross-device self-agent execution uses the canonical desktop session id', () => {
   const sessionId = '00000000-0000-4000-8000-000000000001';
@@ -256,4 +257,43 @@ test('desktop execution uses server admission and the fenced publication endpoin
     await first.publisher.sendMessage('token', 'owner', 'response', { clientMessageId: 'response-id' });
     assert.deepEqual(actions, ['claim', 'claim', 'run-a/progress']);
   } finally { first?.dispose(); }
+});
+
+
+test('a hosted-account message sent on this Mac still enters desktop lease execution', () => {
+  const sessionId = 'session:self-agent:hosted-local';
+  const route = { model: 'openai-codex/gpt-5.5', authProvider: 'openai-codex', authChoice: 'cloud-login:work' };
+  const canonicalState = {
+    sessions: [{ id: sessionId, kind: 'self-agent', status: 'active', primaryIdentityId: 'agent:me' }],
+    identities: [], participants: [], profile: { humanIdentityId: 'human:me' },
+    messages: [{ id: 'local-hosted', sessionId, senderRole: 'user', messageKind: 'text',
+      contentText: 'Hi', content: { agentRuntimeRoute: route }, sourceTransport: 'desktop-chat-ui', status: 'sent' }],
+  } as unknown as CanonicalSessionState;
+  const ignored = localSelfAgentRequestClientMessageIds(canonicalState);
+  assert.equal(ignored.size, 0, 'delivery on this Mac is not evidence of local execution');
+  const request = { ...message('wire-hosted', 'Hi'), sessionId,
+    clientMessageId: `self-agent:${sessionId}:local-hosted:request` };
+  const pending = pendingCloudSelfAgentExecutionRequests({
+    account, messageIndex: buildCloudMessageIndex(account.accountId, { [account.accountId]: [request] }),
+    ignoredClientMessageIds: ignored, nowMs: Date.parse(request.createdAt) + 1_000,
+  });
+  assert.equal(pending.length, 1);
+});
+
+test('forwarded hosted requests are not marked processed before desktop lease execution', () => {
+  const route = { model: 'openai-codex/gpt-5.5', authProvider: 'openai-codex', authChoice: 'cloud-login:work' };
+  const request = message('wire-hosted', 'Who are you?');
+  const index = buildCloudMessageIndex(account.accountId, { [account.accountId]: [request] });
+  const localExecuted = publishedSelfAgentRequestAlreadyExecutedLocally({});
+  const hostedDelivered = publishedSelfAgentRequestAlreadyExecutedLocally({ agentRuntimeRoute: route });
+  const hostedHistory = publishedSelfAgentRequestAlreadyExecutedLocally({ agentRuntimeRoute: route, historyOnly: true });
+  assert.equal(localExecuted, true);
+  assert.equal(hostedDelivered, false);
+  assert.equal(hostedHistory, true);
+  const processed = new Set<string>();
+  if (hostedDelivered) processed.add(request.messageId);
+  assert.equal(pendingCloudSelfAgentExecutionRequests({ account, messageIndex: index,
+    nowMs: Date.parse(request.createdAt) + 1_000 }).some((candidate) => (
+    !processed.has(candidate.messageId)
+  )), true);
 });

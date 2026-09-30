@@ -16,6 +16,7 @@ import { buildChatCreatePeopleContactLookup } from '@/features/chat/chatCreateFl
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
+import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
 import type { ComposerQuoteState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
@@ -28,6 +29,7 @@ export function useKordiAppMutationActions({
   workspace: KordiWorkspaceState;
   runtime: KordiAppRuntimeActions;
 }) {
+  const hosted = useHostedAccountsSnapshot();
   const {
     environment: {
       isNativeShell,
@@ -175,7 +177,7 @@ export function useKordiAppMutationActions({
     cloudAccountId: cloudSession.account?.accountId,
     conversations: chatConversations,
     isNativeShell,
-    hasAgentProvider: authStateSatisfiesStartupGate(desktopAuthState),
+    hasAgentProvider: authStateSatisfiesStartupGate(desktopAuthState, hosted.accounts),
     createOwnedAgentSession: runtime.sessions.handleCreateChatSession,
     openAgentAuthentication: openCloudAccountAuthentication,
     startCollaborationPersonSession:

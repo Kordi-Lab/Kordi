@@ -135,7 +135,15 @@ async fn stray_requests_are_refused_and_the_redirect_still_arrives() {
     )
     .await;
     assert!(response.starts_with("HTTP/1.1 200 OK"));
-    assert!(response.contains("Signed in. You can return to Kordi."));
+    assert!(response.contains("<h1>Signed in.</h1>"));
+    assert!(response.contains("You can return to Kordi."));
+    assert!(response.contains("<div class=\"brand\" aria-label=\"Kordi\">"));
+    assert!(response.contains("<footer>&copy; Kordi 2026</footer>"));
+    assert!(
+        !response.contains("test-code"),
+        "the browser page must not echo the code"
+    );
+    assert!(!response.contains("{{heading}}"));
     assert_eq!(
         capture.await.unwrap(),
         Ok(format!(
@@ -144,6 +152,36 @@ async fn stray_requests_are_refused_and_the_redirect_still_arrives() {
     );
     // Neither the answered browser nor the idle connection keeps the port.
     assert!(bind_with_retry(port, REBIND_ATTEMPTS).await.is_ok());
+}
+
+#[tokio::test]
+async fn a_provider_error_gets_a_distinct_handoff_page() {
+    let (listener, port) = listening();
+    let (_cancel_tx, cancel_rx) = oneshot::channel();
+    let capture = tokio::spawn(capture_callback(
+        listener,
+        route(port),
+        cancel_rx,
+        Duration::from_secs(5),
+    ));
+    let response = send(
+        port,
+        &get(
+            "/auth/callback?error=access_denied&state=test-state",
+            &format!("localhost:{port}"),
+        ),
+    )
+    .await;
+    assert!(response.starts_with("HTTP/1.1 200 OK"));
+    assert!(response.contains("<h1>Sign-in wasn’t completed.</h1>"));
+    assert!(response.contains("Return to Kordi to review the result or try again."));
+    assert!(!response.contains("access_denied"));
+    assert_eq!(
+        capture.await.unwrap(),
+        Ok(format!(
+            "http://localhost:{port}/auth/callback?error=access_denied&state=test-state"
+        ))
+    );
 }
 
 #[tokio::test]

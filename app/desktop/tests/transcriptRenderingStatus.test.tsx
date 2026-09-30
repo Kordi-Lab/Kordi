@@ -40,16 +40,16 @@ test('expanded thinking content uses a compact secondary type scale relative to 
 
 test('code blocks remove the header bar and reveal copy controls on hover', () => {
   const markdownSource = readFileSync(new URL('../src/kordi-app/components/markdown.tsx', import.meta.url), 'utf8');
-  const liveTurnsSource = readFileSync(new URL('../src/kordi-app/components/transcriptLiveTurns.tsx', import.meta.url), 'utf8');
+  const toolOutputSource = readFileSync(new URL('../src/kordi-app/components/transcriptToolOutput.tsx', import.meta.url), 'utf8');
   const themeTokensSource = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
   const codeBlockStart = markdownSource.indexOf('function MarkdownCodeBlock');
   const codeBlockEnd = markdownSource.indexOf('function MarkdownListView', codeBlockStart);
-  const transcriptBlockStart = liveTurnsSource.indexOf('function ToolTranscriptBlock');
-  const transcriptBlockEnd = liveTurnsSource.indexOf('function toolDisplayConfig', transcriptBlockStart);
+  const transcriptBlockStart = toolOutputSource.indexOf('export function ToolTranscriptBlock');
+  const transcriptBlockEnd = toolOutputSource.length;
   assert.ok(codeBlockStart >= 0 && codeBlockEnd > codeBlockStart, 'expected MarkdownCodeBlock source block');
   assert.ok(transcriptBlockStart >= 0 && transcriptBlockEnd > transcriptBlockStart, 'expected ToolTranscriptBlock source block');
   const codeBlock = markdownSource.slice(codeBlockStart, codeBlockEnd);
-  const transcriptBlock = liveTurnsSource.slice(transcriptBlockStart, transcriptBlockEnd);
+  const transcriptBlock = toolOutputSource.slice(transcriptBlockStart, transcriptBlockEnd);
 
   assert.match(markdownSource, /import \{ Check, Copy \} from 'lucide-react';/);
   assert.doesNotMatch(codeBlock, /app-markdown-code-header/);

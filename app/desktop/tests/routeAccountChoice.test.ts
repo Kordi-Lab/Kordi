@@ -67,6 +67,22 @@ test('the composer shows a removed account as unavailable and never another acco
   assert.equal(isRouteAccountUnavailable({ ...selection, authChoice: 'local-active-oauth' }, providerOptions), false);
 });
 
+test('a legacy OpenAI route resolves its exact saved ChatGPT account without changing account choice', () => {
+  const saved = { value: 'openai-codex::cloud-login:saved', providerId: 'openai-codex', label: 'ChatGPT', selectionLabel: 'ChatGPT • Saved', active: false };
+  const other = { value: 'openai-codex::cloud-login:other', providerId: 'openai-codex', label: 'Other account', active: true };
+  const selection = { model: 'openai/gpt-5.6-sol', authProvider: 'openai', authChoice: 'cloud-login:saved' };
+  const resolved = resolveComposerModelSelection({ selection, providerOptions: [other, saved], modelOptions: [] });
+  assert.equal(resolved.selectedProviderOption, saved);
+  assert.equal(resolved.missingAccount, false);
+  assert.equal(isRouteAccountUnavailable(selection, [other, saved]), false);
+  assert.equal(isRouteAccountUnavailable({ ...selection, authChoice: 'cloud-login:removed' }, [other, saved]), true);
+
+  const exact = { value: 'openai::cloud-login:saved', providerId: 'openai', label: 'OpenAI API key', active: false };
+  assert.equal(resolveComposerModelSelection({ selection, providerOptions: [saved, exact], modelOptions: [] }).selectedProviderOption, exact);
+  const duplicate = { ...saved, label: 'Duplicate alias' };
+  assert.equal(resolveComposerModelSelection({ selection, providerOptions: [saved, duplicate], modelOptions: [] }).missingAccount, true);
+});
+
 test('account labels are trimmed to 80 characters before publishing', () => {
   assert.equal(publishableAccountLabel('  Work  '), 'Work');
   assert.equal(publishableAccountLabel('x'.repeat(120))?.length, 80);

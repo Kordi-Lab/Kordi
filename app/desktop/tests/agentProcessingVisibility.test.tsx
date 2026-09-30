@@ -51,3 +51,17 @@ test('acknowledged remote requests show waiting feedback beside stop without ass
   }
   assert.equal(shouldShowAgentWaitingAnimation({ ...pending, completed: true }), false);
 });
+
+
+test('hosted run status shows queued feedback and the running wave without a native stop button', () => {
+  for (const hostedRunStatus of ['queued', 'leased', 'running'] as const) {
+    const hosted = { ...turn, hostedRunStatus, status: hostedRunStatus === 'running' ? 'processing' : 'queued' };
+    assert.equal(canDisplayAgentTurn(hosted, [request('sending')]), false);
+    assert.equal(canDisplayAgentTurn(hosted, [request('sent')]), true);
+    assert.equal(agentTurnHasStarted(hosted), hostedRunStatus === 'running');
+    const html = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: hosted, onStopActiveTurn: () => {} }));
+    assert.doesNotMatch(html, /Stop agent request/);
+    if (hostedRunStatus === 'running') assert.match(html, /app-agent-waiting-wave/);
+    else assert.match(html, hostedRunStatus === 'queued' ? /Queued…/ : /Starting…/);
+  }
+});

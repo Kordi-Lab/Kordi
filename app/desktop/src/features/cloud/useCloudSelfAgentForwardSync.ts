@@ -40,6 +40,7 @@ import {
   cloudSelfAgentProgressPolicy,
   cloudSelfAgentShouldPublishProgress,
   localSelfAgentRequestCanPublishExecution,
+  publishedSelfAgentRequestAlreadyExecutedLocally,
 } from './cloudSelfAgentForwardPolicy';
 import {
   CLOUD_SELF_AGENT_HEARTBEAT_MS,
@@ -178,6 +179,14 @@ export function useCloudSelfAgentForwardSync({
     syncCloudCollaborationDiff,
   ]);
 
+  // Establish the live-message boundary before initial history hydration can
+  // finish, so a first send during loading is not seeded as old history.
+  useEffect(() => {
+    if (account && loadCloudSelfAgentForwardCutoff(account.accountId) === null) {
+      saveCloudSelfAgentForwardCutoff(account.accountId);
+    }
+  }, [account]);
+
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;
 
@@ -189,6 +198,8 @@ export function useCloudSelfAgentForwardSync({
           < CLOUD_SELF_AGENT_RECONCILE_RETRY_MS
       ) return;
       try {
+        const forwardCutoffMs = loadCloudSelfAgentForwardCutoff(account.accountId)
+          ?? saveCloudSelfAgentForwardCutoff(account.accountId);
         const latestState =
           canonicalStateRef.current ?? canonicalState ?? null;
         if (!latestState) return;
@@ -309,13 +320,12 @@ export function useCloudSelfAgentForwardSync({
           ...remoteRecoveryMessages,
         ];
         let ledger = identityLedger;
-        let forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
-          account.accountId,
-        );
         if (!loadCloudSelfAgentForwardBaseline(account.accountId)) {
           const seeded = seedCloudSelfAgentForwardSyncLedger(
             recoveryState,
             ledger,
+            Date.now(),
+            forwardCutoffMs,
           );
           if (seeded.changed) {
             saveCloudSelfAgentSyncLedger(
@@ -325,16 +335,7 @@ export function useCloudSelfAgentForwardSync({
             ledger = seeded.ledger;
           }
           saveCloudSelfAgentForwardBaseline(account.accountId);
-          forwardCutoffMs = saveCloudSelfAgentForwardCutoff(
-            account.accountId,
-          );
         }
-        // Older app versions stored only a boolean baseline. Establish a
-        // timestamp boundary before planning so history that appears later via
-        // SQLite pagination is never mistaken for a newly-created live turn.
-        forwardCutoffMs ??= saveCloudSelfAgentForwardCutoff(
-          account.accountId,
-        );
         const allRecoveryOperations = planCloudSelfAgentSync(
           recoveryState,
           ledger,
@@ -405,7 +406,8 @@ export function useCloudSelfAgentForwardSync({
               historySessionIds,
             ),
             onRequestPublished: (message, operation) => {
-              if (!recoverySessionIds.has(operation.sessionId)) {
+              if (!recoverySessionIds.has(operation.sessionId)
+                && publishedSelfAgentRequestAlreadyExecutedLocally(operation)) {
                 processedRequestIdsRef.current.add(message.messageId);
               }
             },

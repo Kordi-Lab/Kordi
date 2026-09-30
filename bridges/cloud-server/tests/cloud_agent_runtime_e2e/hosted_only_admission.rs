@@ -1,6 +1,5 @@
-//! Runs bound to a hosted-only account skip the owner Mac admission window,
-//! because only the cloud runner can hold that credential. Only the route the
-//! run executes counts, so a contact's own request route cannot skip it.
+//! A ready owner Mac keeps requests for both local and hosted accounts.
+//! Cloud may claim after the Mac's capability or presence expires.
 
 use super::*;
 
@@ -35,8 +34,8 @@ async fn owner_with_ready_mac(
     owner
 }
 
-/// Explicit clock state keeps the owner Mac ready and the requests inside its
-/// admission window, even over a slow database connection.
+/// Explicit clock state keeps the owner Mac ready while the requests are older
+/// than the former age cutoff, even over a slow database connection.
 async fn hold_admission_window(
     pool: &sqlx_postgres::PgPool,
     owner: &TestAccount,
@@ -59,7 +58,7 @@ async fn hold_admission_window(
     .await
     .unwrap();
     sqlx_core::query::query(
-        "UPDATE cloud_chat_messages SET created_at=now()+interval '10 minutes' \
+        "UPDATE cloud_chat_messages SET created_at=now()-interval '1 minute' \
          WHERE message_id::text = ANY($1)",
     )
     .bind(requests)
@@ -77,7 +76,7 @@ fn hosted_route(auth_choice: &str) -> Value {
 }
 
 #[tokio::test]
-async fn hosted_only_account_runs_skip_the_owner_mac_admission_window() {
+async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
@@ -122,8 +121,19 @@ async fn hosted_only_account_runs_skip_the_owner_mac_admission_window() {
     assert_eq!(read_json(local).await["errorCode"], "owner_online");
 
     let hosted = claim(&hosted_request, "cloud-api-key:work").await.unwrap();
-    assert_eq!(hosted.status(), StatusCode::OK);
-    let run_id = read_json(hosted).await["runId"]
+    assert_eq!(hosted.status(), StatusCode::CONFLICT);
+    assert_eq!(read_json(hosted).await["errorCode"], "owner_online");
+
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_desktop_capabilities SET updated_at=now()-interval '1 minute' WHERE agent_id=$1",
+    )
+    .bind(format!("cloud-agent:{}", owner.account_id))
+    .execute(&pool)
+    .await
+    .unwrap();
+    let fallback = claim(&hosted_request, "cloud-api-key:work").await.unwrap();
+    assert_eq!(fallback.status(), StatusCode::OK);
+    let run_id = read_json(fallback).await["runId"]
         .as_str()
         .unwrap()
         .to_string();

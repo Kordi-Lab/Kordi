@@ -20,12 +20,14 @@ use crate::cloud_agent_runtime::provider_auth::{
 };
 use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
 use crate::cloud_agent_runtime::runs::{
-    complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
-    lookup_run_for_request, mark_run_running, run_error_response, runner_unauthorized,
-    CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
-    RunnerRunResponse,
+    error_response, fail_run, lease_canary_run, lease_next_run, lookup_run_for_request,
+    mark_run_running, run_error_response, runner_unauthorized, CompleteRunRequest, FailRunRequest,
+    RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
 };
 use crate::server::ServerState;
+
+mod service_auth;
+use service_auth::{include_service_provider_auth, service_provider_auths};
 
 pub(super) async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
     let Some(notifications) = state.notifications() else {
@@ -42,51 +44,6 @@ pub(super) async fn notify_run_response(state: &ServerState, response_message_id
     notifications
         .send_message_attention(state.db_pool(), &message)
         .await;
-}
-
-fn include_service_provider_auth(state: &ServerState, run: &mut RunnerRunResponse) {
-    if run.provider_auth_available {
-        return;
-    }
-    run.provider_auth_available = service_provider_auths(state).iter().any(|service_auth| {
-        run.owner_account_id == service_auth.owner_account_id
-            && service_auth.covers_run(&run.run_id)
-            && run.runtime_route.default_auth_provider.as_deref() == Some(service_auth.provider)
-            && run.runtime_route.default_auth_choice.as_deref() == Some(service_auth.auth_choice)
-    });
-}
-
-fn service_provider_auths(state: &ServerState) -> Vec<ServiceProviderAuth<'_>> {
-    let mut auths = Vec::new();
-    if let Some(support) = state.support() {
-        let config = support.config();
-        let provider_auth = config.provider_auth();
-        auths.push(ServiceProviderAuth {
-            owner_account_id: &config.owner_account_id,
-            snapshot_id: provider_auth.snapshot_id(),
-            provider: provider_auth.provider(),
-            auth_choice: provider_auth.auth_choice(),
-            api_key: provider_auth.api_key(),
-            base_url: provider_auth.base_url(),
-            model: provider_auth.model(),
-            run_id_prefix: None,
-        });
-    }
-    if let Some(pip) = state.pip() {
-        let config = pip.config();
-        let provider_auth = config.provider_auth();
-        auths.push(ServiceProviderAuth {
-            owner_account_id: &config.account_id,
-            snapshot_id: provider_auth.snapshot_id(),
-            provider: provider_auth.provider(),
-            auth_choice: provider_auth.auth_choice(),
-            api_key: provider_auth.api_key(),
-            base_url: provider_auth.base_url(),
-            model: provider_auth.model(),
-            run_id_prefix: Some(crate::pip::RUN_PREFIX),
-        });
-    }
-    auths
 }
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -129,6 +86,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::desktop::read_context),
         )
         .route(
+            "/v1/cloud/agent-runs/:run_id/desktop/provider-auth",
+            post(super::desktop::provider_auth),
+        )
+        .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
         )
@@ -139,6 +100,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state.clone());
 
     let runner_routes = Router::new()
+        .route(
+            "/v1/cloud/agent-runs/:run_id/omp-context",
+            post(super::runs::omp_state::context_route),
+        )
         .route(
             "/v1/cloud/agent-runs/:run_id/subsession-progress",
             post(super::runs::subsession_lifecycle::progress_route),
@@ -162,7 +127,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .route(
             "/v1/cloud/agent-runs/:run_id/complete",
-            post(complete_runner_run),
+            post(complete_runner_run).layer(axum::extract::DefaultBodyLimit::max(10 * 1024 * 1024)),
         )
         .route("/v1/cloud/agent-runs/:run_id/fail", post(fail_runner_run))
         .route(
@@ -278,7 +243,15 @@ async fn complete_runner_run(
             StatusCode::BAD_REQUEST,
         );
     };
-    match complete_run(state.db_pool(), &run_id, &runner_id, &input.response_text).await {
+    match super::runs::complete_run_with_state(
+        state.db_pool(),
+        &run_id,
+        &runner_id,
+        &input.response_text,
+        input.omp_state.as_ref(),
+    )
+    .await
+    {
         Ok(run) => {
             notify_run_response(&state, run.response_message_id.as_deref()).await;
             Json(RunnerRunEnvelope { run }).into_response()

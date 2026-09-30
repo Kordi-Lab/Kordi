@@ -33,7 +33,7 @@ const REBIND_DELAY: Duration = Duration::from_millis(50);
 /// OMP's loopback redirect path when the catalog does not name one.
 const DEFAULT_CALLBACK_PATH: &str = "/auth/callback";
 const MAX_CALLBACK_PATH_BYTES: usize = 256;
-const SIGNED_IN_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Kordi</title></head><body style=\"font-family:-apple-system,system-ui,sans-serif;margin:64px;text-align:center\"><p>Signed in. You can return to Kordi.</p></body></html>";
+const CALLBACK_PAGE_TEMPLATE: &str = include_str!("login_callback_capture/callback_page.html");
 const NOT_ALLOWED_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Kordi</title></head><body><p>Kordi only accepts the sign-in redirect here.</p></body></html>";
 const NOT_FOUND_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Kordi</title></head><body><p>Kordi is waiting for the sign-in redirect at another address.</p></body></html>";
 
@@ -190,7 +190,7 @@ async fn bind_with_retry(port: u16, attempts: u32) -> Result<TcpListener, Captur
 }
 
 /// Serves connections until one carries the provider's redirect, answers it
-/// with the signed-in page, and returns its full address. Browsers may open
+/// with a handoff page, and returns its full address. Browsers may open
 /// idle connections first, so each connection is read on its own task.
 pub(crate) async fn capture_callback(
     listener: TcpListener,
@@ -235,7 +235,12 @@ async fn serve_connection(
         Ok(target) => {
             let target = target.to_string();
             // Answer before reporting: the capture drops every connection once it returns.
-            respond(&mut stream, "200 OK", SIGNED_IN_PAGE).await;
+            let page = callback_page(target.split_once('?').is_some_and(|(_, query)| {
+                query
+                    .split('&')
+                    .any(|pair| pair.split_once('=').unwrap_or((pair, "")).0 == "error")
+            }));
+            respond(&mut stream, "200 OK", &page).await;
             let _ = found.send(target).await;
         }
         Err(Rejection::NotFound) => respond(&mut stream, "404 Not Found", NOT_FOUND_PAGE).await,
@@ -243,6 +248,22 @@ async fn serve_connection(
             respond(&mut stream, "405 Method Not Allowed", NOT_ALLOWED_PAGE).await
         }
     }
+}
+
+/// The callback only confirms that the browser returned. Kordi still needs to
+/// exchange the redirect and save the account after this response is sent.
+fn callback_page(provider_error: bool) -> String {
+    let (heading, description) = if provider_error {
+        (
+            "Sign-in wasn’t completed.",
+            "Return to Kordi to review the result or try again.",
+        )
+    } else {
+        ("Signed in.", "You can return to Kordi.")
+    };
+    CALLBACK_PAGE_TEMPLATE
+        .replace("{{heading}}", heading)
+        .replace("{{description}}", description)
 }
 
 async fn read_request_head(stream: &mut TcpStream) -> Option<String> {

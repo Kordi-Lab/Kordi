@@ -47,6 +47,12 @@ function authState(overrides: Partial<DesktopAuthState> = {}): DesktopAuthState 
   };
 }
 
+test('a connected hosted account satisfies onboarding without local credentials or discovered models', () => {
+  assert.equal(authStateSatisfiesStartupGate(authState(), [{ needsReconnect: false }]), true);
+  assert.equal(authStateSatisfiesStartupGate(authState(), [{ needsReconnect: true }]), false);
+  assert.equal(authStateSatisfiesStartupGate(authState(), []), false);
+});
+
 test('buildAuthDisplayProviders treats a saved LM Studio preferred model as configured', () => {
   const providers = buildAuthDisplayProviders(authState({
     providers: [authProvider({

@@ -55,6 +55,68 @@ async fn message_route_switches_an_anthropic_runtime_to_openai_oauth() -> Result
 
 #[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
 #[tokio::test]
+async fn hosted_credential_is_ephemeral_and_keeps_local_runtime_provider() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let home = tempfile::tempdir()?;
+    let cwd = tempfile::tempdir()?;
+    let _home = EnvVarGuard::set_path("HOME", home.path());
+    let _openai = EnvVarGuard::unset("OPENAI_API_KEY");
+    Settings {
+        default_provider: Some("openai".into()),
+        default_model: Some("gpt-5.5".into()),
+        ..Settings::default()
+    }
+    .save_global()?;
+    let session_id = "session:self-agent:hosted-ephemeral";
+    let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().into(), session_id).await?;
+    runtime.set_hosted_model("openai-codex/gpt-5.5")?;
+    let auth = crate::login::ResolvedProviderAuth {
+        source: crate::login::AuthSource::KordiAuth,
+        credential_provider: "openai-codex".into(),
+        method: crate::login::ProviderAuthMethod::OAuth,
+        credential: "synthetic-hosted-token".into(),
+        account_id: Some("synthetic-account".into()),
+        account_label: None,
+        authority: None,
+    };
+    assert!(runtime
+        .set_ephemeral_provider_auth("anthropic", auth.clone())
+        .is_err());
+    runtime.set_ephemeral_provider_auth("openai-codex", auth)?;
+    assert_eq!(runtime.setup.api_key, "synthetic-hosted-token");
+    assert_eq!(runtime.setup.auth.as_ref().map(|auth| auth.method), Some(crate::login::ProviderAuthMethod::OAuth));
+    assert_eq!(runtime.setup.model.provider, "openai");
+    runtime.clear_ephemeral_provider_auth();
+    assert_ne!(runtime.setup.api_key, "synthetic-hosted-token");
+    let api_before = runtime.setup.model.api.clone();
+    runtime.set_ephemeral_provider_auth_with_options(
+        "openai",
+        crate::login::ResolvedProviderAuth {
+            source: crate::login::AuthSource::KordiAuth,
+            credential_provider: "openai".into(),
+            method: crate::login::ProviderAuthMethod::ApiKey,
+            credential: "synthetic-hosted-api-key".into(),
+            account_id: None,
+            account_label: None,
+            authority: None,
+        },
+        Some("https://synthetic.example/v1".into()),
+        Some("openai-responses"),
+    )?;
+    assert_eq!(runtime.setup.base_url, "https://synthetic.example/v1");
+    assert!(matches!(runtime.setup.model.api, kordi_provider::registry::ApiType::OpenaiResponses));
+    runtime.clear_ephemeral_provider_auth();
+    assert_ne!(runtime.setup.api_key, "synthetic-hosted-api-key");
+    assert_eq!(std::mem::discriminant(&runtime.setup.model.api), std::mem::discriminant(&api_before));
+    runtime.materialize_session()?;
+    drop(runtime);
+    let resumed = DesktopRuntimeSession::resume(cwd.path().into(), session_id).await?;
+    assert_ne!(resumed.setup.api_key, "synthetic-hosted-token");
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
 async fn explicit_config_on_new_canonical_runtime_survives_restart() -> Result<()> {
     let _lock = env_lock().lock().unwrap();
     let home = tempfile::tempdir().expect("home tempdir");

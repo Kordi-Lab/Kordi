@@ -17,9 +17,11 @@ use crate::session_bootstrap::{
 use crate::tool_registry::ToolSelectionPreference;
 mod attachments;
 mod background_sessions;
+mod hosted_auth;
 mod identity;
 mod model_options;
 mod models;
+mod omp_turn;
 mod prompt_context;
 mod shared_context;
 #[cfg(test)]
@@ -53,9 +55,11 @@ pub use models::{
     DesktopSessionArtifact, DesktopVisibleTaskRecord,
 };
 
+use hosted_auth::refresh_provider_runtime_fields;
+#[cfg(test)]
+use model_options::resolve_auth_choice_override_for_model;
 use model_options::{
-    effective_thinking_for_model_with_auth, normalize_setup_thinking,
-    resolve_auth_choice_override_for_model, resolve_model_candidate,
+    effective_thinking_for_model_with_auth, normalize_setup_thinking, resolve_model_candidate,
 };
 use session_catalog::{
     fallback_session_display_title, load_project_info, open_sessions_db, project_group_id,
@@ -424,6 +428,7 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_auth_choice(&mut self, provider: &str, choice: &str) -> Result<()> {
+        self.clear_ephemeral_provider_auth();
         let provider = provider.trim();
         let choice = choice.trim();
         if provider.is_empty() || choice.is_empty() {
@@ -715,33 +720,6 @@ fn retarget_runtime_setup_session(setup: &mut SessionRuntimeSetup, session_id: &
         sibling_conn,
     ));
     Ok(())
-}
-
-fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
-    let settings = Settings::load_merged(&setup.tool_ctx.cwd);
-    let auth_override = setup
-        .auth_choice_override
-        .as_ref()
-        .and_then(|choice| resolve_auth_choice_override_for_model(&setup.model.provider, choice));
-    let runtime = crate::runtime_model::build_runtime_config_with_settings(
-        &setup.model,
-        &settings,
-        auth_override,
-    );
-
-    setup.provider = runtime.provider.clone();
-    setup.auth = runtime.auth;
-    setup.api_key = runtime.api_key.clone();
-    setup.base_url = runtime.base_url.clone();
-    setup.headers = runtime.headers.clone();
-    setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-        provider: setup.provider.clone(),
-        model: setup.model.clone(),
-        api_key: setup.api_key.clone(),
-        base_url: setup.base_url.clone(),
-        headers: runtime.headers,
-        enabled: true,
-    });
 }
 
 fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {

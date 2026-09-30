@@ -360,6 +360,8 @@ export type CollaborationAgentRequestControl = {
 
 export type DesktopChatTurnSnapshot = {
   localExecutionStarted?: boolean;
+  /** Server-confirmed state of a hosted request; never a local execution handle. */
+  hostedRunStatus?: 'queued' | 'leased' | 'running';
   messageAction?: MessageActionMetadata | null;
   id: string;
   sessionId: string;
