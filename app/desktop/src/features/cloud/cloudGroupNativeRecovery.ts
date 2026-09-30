@@ -7,6 +7,8 @@ import { parseCloudGroupControl, type CloudGroupControlEnvelope } from './cloudG
 import { canonicalMessageSourceKey, cloudGroupCanonicalMessageSource } from './cloudMessageIndex';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 
+import { cloudGroupCatalogRow } from './cloudGroupCatalog';
+
 const PAGE_SIZE = 100;
 const CHUNK_SIZE = 10;
 
@@ -29,6 +31,7 @@ export async function recoverNativeCloudGroupHistory({
   onSessionSettled: (sessionId: string) => void;
   shouldContinue: () => boolean;
 }): Promise<boolean> {
+  const restoredCatalogIds = new Set<string>();
   const applySnapshots = async (
     conversation: ChatSyncConversation,
     snapshots: ChatSyncMessage[],
@@ -41,6 +44,15 @@ export async function recoverNativeCloudGroupHistory({
       const envelope = parseCloudGroupControl(wire.body);
       return envelope ? [{ wire, envelope }] : [];
     });
+    if (rows.length > 0) restoredCatalogIds.add(conversation.id);
+    if (rows.length === 0 && !restoredCatalogIds.has(conversation.id)) {
+      const row = cloudGroupCatalogRow(conversation, accountId);
+      if (row && shouldContinue()) {
+        await applyControl(row.wire, row.envelope, { deferPublish: true, historyReplay: true });
+        restoredCatalogIds.add(conversation.id);
+        return true;
+      }
+    }
     const sources = rows.flatMap((row) => {
       const source = cloudGroupCanonicalMessageSource(row.wire, row.envelope);
       return source ? [source] : [];
