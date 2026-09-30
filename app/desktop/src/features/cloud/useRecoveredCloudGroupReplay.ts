@@ -8,7 +8,9 @@ import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
 import { cloudSessionIdFromConversationId } from '@/features/collaboration/conversationIds';
 import { loadSession } from './session';
+import { subscribeCloudGroupCatalog } from './cloudGroupCatalogSync';
 import { cloudGroupCatalogRow } from './cloudGroupCatalog';
+import type { ChatSyncConversation } from './chatSyncTypes';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { cloudMessageFromChatSync } from './chatSyncMapping';
 import { parseCloudGroupControl, type CloudGroupControlEnvelope } from './cloudGroupMessages';
@@ -103,7 +105,7 @@ export function useRecoveredCloudGroupReplay({
   });
   const bootstrapRef = useRef<{
     accountId: string;
-    value: Pick<Awaited<ReturnType<CloudAuthClient['bootstrapChatSync']>>, 'conversations'>;
+    conversations: Map<string, ChatSyncConversation>;
   } | null>(null);
   const [remoteCatalogAccountId, setRemoteCatalogAccountId] = useState<string | null>(null);
   const [activePageKey, setActivePageKey] = useState<string | null>(null);
@@ -118,6 +120,33 @@ export function useRecoveredCloudGroupReplay({
 
   useEffect(() => {
     if (!nativeShell || !accountId || !setCanonicalState || !humanIdentityId?.trim()) return;
+    return subscribeCloudGroupCatalog({
+      accountId,
+      hasSession: sessionId => Boolean(canonicalStateRef.current?.sessions.some(
+        session => session.id === sessionId,
+      )),
+      rememberConversations: conversations => {
+        const byId = bootstrapRef.current?.accountId === accountId
+          ? bootstrapRef.current.conversations : new Map<string, ChatSyncConversation>();
+        for (const conversation of conversations) byId.set(conversation.id, conversation);
+        bootstrapRef.current = { accountId, conversations: byId };
+      },
+      applyRow: async row => {
+        await replayCallbacksRef.current.applyControl(row.wire, row.envelope, {
+          deferPublish: true,
+          historyReplay: true,
+          catalogGroupTitle: row.conversation.group_title,
+        });
+        replayCallbacksRef.current.flushCanonicalState();
+      },
+      reportError: error => replayCallbacksRef.current.reportWarning(
+        '[cloud-group] live catalog recovery failed', error,
+      ),
+    });
+  }, [accountId, canonicalStateRef, humanIdentityId, nativeShell, setCanonicalState]);
+
+  useEffect(() => {
+    if (!nativeShell || !accountId || !setCanonicalState || !humanIdentityId?.trim()) return;
     let active = true;
     bootstrapRef.current = null;
     void (async () => {
@@ -126,8 +155,16 @@ export function useRecoveredCloudGroupReplay({
         if (!cloudSession?.token || !active) return;
         const bootstrap = await client.bootstrapChatSync(cloudSession.token);
         if (!active) return;
-        bootstrapRef.current = { accountId, value: { conversations: bootstrap.conversations } };
-        const groupConversations = bootstrap.conversations.filter(
+        const byId = new Map(bootstrap.conversations.map(conversation => [conversation.id, conversation]));
+        // Live sync may have advanced while the bootstrap request was in flight.
+        if (bootstrapRef.current?.accountId === accountId) {
+          for (const conversation of bootstrapRef.current.conversations.values()) {
+            const previous = byId.get(conversation.id);
+            if (!previous || conversation.version >= previous.version) byId.set(conversation.id, conversation);
+          }
+        }
+        bootstrapRef.current = { accountId, conversations: byId };
+        const groupConversations = [...byId.values()].filter(
           (conversation) => conversation.kind === 'group',
         );
         const conversationById = new Map(
@@ -190,9 +227,9 @@ export function useRecoveredCloudGroupReplay({
     void (async () => {
       try {
         const bootstrap = bootstrapRef.current?.accountId === accountId
-          ? bootstrapRef.current.value
+          ? bootstrapRef.current
           : null;
-        const conversation = bootstrap?.conversations.find((candidate) => (
+        const conversation = [...(bootstrap?.conversations.values() ?? [])].find((candidate) => (
           (candidate.legacy_session_id ?? candidate.id) === activeSessionId
         ));
         const cloudSession = await loadSession();
