@@ -40,7 +40,9 @@ pub(super) fn filter_blank_draft_projects(
         .map(|mut project| {
             project
                 .sessions
-                .retain(|session| !is_blank_draft_summary(session));
+                // Project sessions are explicitly created by the owner. Keep them
+                // discoverable before their first message, including after restart.
+                .retain(|session| !session.draft);
             project
         })
         .collect()
@@ -116,4 +118,23 @@ pub(super) async fn build_transient_draft_chat_state(
         model_options,
         slash_commands: runtime.slash_commands(),
     })
+}
+
+#[cfg(test)]
+mod project_draft_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_project_sessions_remain_visible_before_the_first_message() {
+        let project = serde_json::from_value(serde_json::json!({
+            "id": "project:/fixture/app", "name": "App", "root": "/fixture/app", "summary": "",
+            "sharedSources": [], "sessions": [
+                {"id": "persisted", "title": "New session", "subtitle": "", "updatedAtLabel": "Now", "updatedAtMs": 1, "messageCount": 0, "draft": false},
+                {"id": "transient", "title": "New session", "subtitle": "", "updatedAtLabel": "Now", "updatedAtMs": 1, "messageCount": 0, "draft": true}
+            ]
+        })).unwrap();
+        let projects = filter_blank_draft_projects(vec![project]);
+        assert_eq!(projects[0].sessions.len(), 1);
+        assert_eq!(projects[0].sessions[0].id, "persisted");
+    }
 }

@@ -92,3 +92,50 @@ fn directory_selection_is_unambiguous_and_does_not_consume_people_or_files() -> 
     );
     Ok(())
 }
+
+#[test]
+fn project_reassignment_and_removal_replace_saved_workspace_without_losing_history() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let storage = tempfile::tempdir()?;
+    let _storage = EnvVarGuard::set_path("KORDI_STORAGE_ROOT", storage.path());
+    let chat = tempfile::tempdir()?;
+    let project = tempfile::tempdir()?;
+    let previous = tempfile::tempdir()?;
+    let conn = open_sessions_db()?;
+    let id = kordi_session::store::create_session(&conn, chat.path().to_str().unwrap())?;
+    workspace::persist_selected_workspace(&conn, &id, previous.path())?;
+    let previous_leaf = kordi_session::store::get_session(&conn, &id)?
+        .unwrap()
+        .leaf_id;
+
+    move_session_to_project(&id, project.path())?;
+    let row = kordi_session::store::get_session(&conn, &id)?.unwrap();
+    assert_eq!(row.session_scope, "project");
+    assert_eq!(row.project_root.as_deref(), project.path().to_str());
+    assert_eq!(
+        runtime_cwd_for_session(chat.path().into(), &id)?,
+        project.path()
+    );
+    let saved = || -> Result<String> {
+        Ok(conn.query_row(
+            "SELECT json_extract(payload,'$.data.path') FROM entries WHERE session_id=?1 AND json_extract(payload,'$.custom_type')='desktop_execution_workspace' ORDER BY seq DESC LIMIT 1",
+            [&id], |row| row.get(0),
+        )?)
+    };
+    assert_eq!(saved()?, project.path().to_str().unwrap());
+
+    remove_session_from_project(&id, chat.path())?;
+    let row = kordi_session::store::get_session(&conn, &id)?.unwrap();
+    assert_eq!(row.session_scope, "chat");
+    assert_eq!(row.project_root, None);
+    assert_eq!(
+        runtime_cwd_for_session(project.path().into(), &id)?,
+        chat.path()
+    );
+    assert_eq!(saved()?, chat.path().to_str().unwrap());
+    assert!(
+        kordi_session::store::get_entry(&conn, &id, previous_leaf.as_deref().unwrap())?.is_some()
+    );
+    assert!(remove_session_from_project("missing-session", chat.path()).is_err());
+    Ok(())
+}

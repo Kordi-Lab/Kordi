@@ -152,6 +152,15 @@ async fn claim_run_with_executor(
     input: &ClaimRunRequest,
     desktop_executor: Option<&str>,
 ) -> RunResult<CloudAgentRunResponse> {
+    if let Some(device) =
+        crate::projects::session_device(pool, &input.owner_account_id, &input.session_id).await?
+    {
+        if !desktop_executor
+            .is_some_and(|executor| executor.starts_with(&format!("desktop:{device}:")))
+        {
+            return Err(super::RunError::ContextUnavailable("Open Kordi on the project Mac to run this task. Project files are available only on that device."));
+        }
+    }
     let agent_id = super::execution_agent_id(pool, input).await?;
     let existing: Option<(String, String, Option<String>, String, String, String)> = query_as(
         "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \

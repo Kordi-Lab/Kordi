@@ -1,0 +1,36 @@
+.chat-project-import { width: min(440px, calc(100vw - 32px)); padding: 24px; border-radius: 20px; color: var(--app-transient-text); }
+.chat-project-import-heading { display: flex; align-items: center; gap: 10px; }
+.chat-project-import-heading h2 { flex: 1; font-size: 17px; font-weight: 550; }
+.chat-project-import-heading button { padding: 5px; border-radius: 6px; }
+.chat-project-import-heading button:hover { background: var(--app-transient-hover-bg); }
+.chat-project-import > p { font-size: 12px; color: var(--app-transient-muted-text); margin-top: 10px; }
+.chat-project-sources { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+.chat-project-sources > button { display: flex; align-items: center; gap: 14px; padding: 16px 12px; border: 1px solid var(--app-transient-border); border-radius: 12px; text-align: left; }
+.chat-project-sources > button:hover { background: var(--app-transient-hover-bg); }
+.chat-project-sources span, .chat-project-source-list span { flex: 1; min-width: 0; }
+.chat-project-sources strong, .chat-project-source-list strong { display: block; font-size: 13px; font-weight: 500; }
+.chat-project-sources small, .chat-project-source-list small { display: block; margin-top: 4px; font-size: 11px; color: var(--app-transient-muted-text); }
+.chat-project-folder-browse { display: flex; gap: 8px; justify-content: center; align-items: center; border: 1px solid var(--app-transient-border); border-radius: 8px; padding: 10px; width: 100%; margin-top: 24px; font-size: 13px; }
+.chat-project-folder-browse:hover { background: var(--app-transient-hover-bg); }
+.chat-project-subheading { font-size: 11px; color: var(--app-transient-muted-text); margin: 20px 0 8px; }
+.chat-project-source-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.chat-project-source-list > button { display: flex; align-items: center; gap: 10px; padding: 10px; text-align: left; border-radius: 8px; font-size: 13px; }
+.chat-project-source-list > button:hover, .chat-project-source-list > button[aria-pressed="true"] { background: var(--app-transient-hover-bg); }
+.chat-project-repo-search { display: flex; align-items: center; gap: 8px; margin-top: 24px; padding: 10px; border: 1px solid var(--app-transient-border); border-radius: 8px; color: var(--app-transient-muted-text); }
+.chat-project-repo-search input { outline: none; background: transparent; min-width: 0; width: 100%; font-size: 12px; color: var(--app-transient-text); }
+.chat-project-destination { display: flex; align-items: center; gap: 10px; margin-top: 20px; padding: 12px; border-radius: 8px; background: var(--app-transient-raised-bg); font-size: 11px; color: var(--app-transient-muted-text); }
+.chat-project-destination strong { display: block; margin-top: 4px; color: var(--app-transient-text); font-weight: 400; }
+.chat-project-primary { display: block; width: 100%; background: var(--app-transient-text); color: var(--app-transient-surface-bg); border-radius: 8px; margin-top: 24px; padding: 10px; font-size: 12px; font-weight: 500; }
+.chat-project-primary:disabled { opacity: .3; cursor: default; }
+.chat-project-import .chat-project-disclaimer { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--app-transient-divider); font-size: 10px; line-height: 1.5; }
+.chat-project-import .chat-project-import-error { color: var(--app-transient-danger-text); }
+.chat-project-empty { padding: 16px 8px; color: var(--app-transient-muted-text); font-size: 12px; }
+
+.chat-project-path-label { display: flex; flex-direction: column; gap: 8px; font-size: 11px; color: var(--app-transient-muted-text); margin-top: 20px; }
+.chat-project-path-label input { width: 100%; border: 1px solid var(--app-transient-border); border-radius: 8px; padding: 10px; background: transparent; color: var(--app-transient-text); font-size: 12px; }
+.chat-project-subheading { display: flex; align-items: center; justify-content: space-between; }
+.chat-project-primary { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.chat-project-destination span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.chat-project-destination button { padding: 4px; }
+.chat-project-import .chat-project-load-error { font-size: 11px; line-height: 1.5; }
+.chat-project-import button:disabled { opacity: .45; cursor: default; }

@@ -1,4 +1,10 @@
-import { Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useChatProjects } from '@/features/projects/chatProjects';
+import { projectChatGroups } from '@/features/projects/projectChatGroups';
+import { ChevronRight, Folder, FolderOpen, Plus } from 'lucide-react';
+import { ProjectSidebarHeading } from '@/features/projects/ProjectSidebarHeading';
+import { participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
+import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 
 import { AgentSidebarRow } from '@/pages/workspaceSidebar.agentRows';
 import type { ContactSidebarRowActions } from '@/pages/workspaceSidebar.contactRows';
@@ -25,6 +31,25 @@ export function WorkspaceChatLists({
   contactActions: ContactSidebarRowActions;
   onOpenAgentCreate: () => void;
 }) {
+  const projects = useChatProjects();
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlySet<string>>(new Set());
+  const pinnedSessionIds = useMemo(() => new Set(
+    [...model.agentSessionRowsById.values()]
+      .filter(({ session, space }) => model.pinnedSessionIds.has(participantSpaceSessionPreferenceId(session))
+        || (space.kind === 'self' && !primaryAgentForConversation(session.conversation)))
+      .map(({ session }) => session.id),
+  ), [model.agentSessionRowsById, model.pinnedSessionIds]);
+  const grouped = useMemo(() => projectChatGroups(
+    model.agentSidebarRows, model.showArchived ? [] : projects?.projects ?? [], collapsed,
+    Boolean(projects?.enabled && !model.chatSearch && !model.showArchived),
+    { pinnedSessionIds, expandedProjectIds, previewLimit: model.chatSearch ? Infinity : 5 },
+  ), [model.agentSidebarRows, projects?.projects, projects?.enabled, collapsed, model.chatSearch, model.showArchived, pinnedSessionIds, expandedProjectIds]);
+  const toggle = (id: string) => setCollapsed((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   if (model.chatChannel === 'contact') {
     return (
       <VirtualChatList
@@ -67,13 +92,49 @@ export function WorkspaceChatLists({
         </button>
       </div> : null}
       <VirtualChatList
-        rows={model.agentSidebarRows}
+        rows={grouped.rows}
         activeSessionId={model.activeSidebarRowSessionId}
-        scrollClassName="app-workspace-session-scroll min-h-0 flex-1"
+        scrollClassName="app-workspace-session-scroll chat-project-session-list min-h-0 flex-1"
         dataMode="agent-sessions-flat"
-        renderRow={(descriptor) => (
+        renderRow={(descriptor) => descriptor.kind === 'space' ? (
+          descriptor.spaceId.startsWith('section:') ? (
+            <ProjectSidebarHeading
+              section={descriptor.spaceId.slice(8) as 'pinned' | 'projects' | 'recents'}
+              first={grouped.rows[0]?.key === descriptor.key}
+              expanded={!collapsed.has(descriptor.spaceId)}
+              onToggle={() => toggle(descriptor.spaceId)}
+              onCreateProject={projects?.enabled ? projects.openImporter : undefined}
+              onSetProjectsExpanded={(expanded) => setCollapsed((current) => {
+                const next = new Set(current);
+                for (const id of grouped.groups.keys()) {
+                  if (expanded) next.delete(id); else next.add(id);
+                }
+                return next;
+              })}
+            />
+          ) : descriptor.key.startsWith('project-more:') ? (
+            <button type="button" className="chat-project-show-more"
+              aria-label={`${expandedProjectIds.has(descriptor.spaceId) ? 'Show less' : 'Show more'} in ${grouped.groups.get(descriptor.spaceId)?.name}`}
+              aria-expanded={expandedProjectIds.has(descriptor.spaceId)}
+              onClick={() => setExpandedProjectIds((current) => {
+                const next = new Set(current);
+                if (next.has(descriptor.spaceId)) next.delete(descriptor.spaceId); else next.add(descriptor.spaceId);
+                return next;
+              })}>
+              {expandedProjectIds.has(descriptor.spaceId) ? 'Show less' : 'Show more'}
+            </button>
+          ) : (
+            <button type="button" className="chat-project-group" aria-expanded={!collapsed.has(descriptor.spaceId)}
+              onClick={() => toggle(descriptor.spaceId)}>
+              {collapsed.has(descriptor.spaceId) ? <Folder size={17} aria-hidden="true" /> : <FolderOpen size={17} aria-hidden="true" />}
+              <span>{grouped.groups.get(descriptor.spaceId)?.name}</span>
+              <ChevronRight size={13} className="chat-project-collapse-indicator" aria-hidden="true" />
+            </button>
+          )
+        ) : (
           <AgentSidebarRow
             descriptor={descriptor}
+            projectGrouped={descriptor.key.startsWith('project:')}
             model={model}
             activeConvId={activeConvId}
             onSelectChatSession={contactActions.onSelectChatSession}

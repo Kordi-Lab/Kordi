@@ -862,11 +862,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
     }
 
     for project in &state.projects {
-        for summary in project
-            .sessions
-            .iter()
-            .filter(|summary| should_sync_desktop_chat_summary(summary))
-        {
+        for summary in project.sessions.iter().filter(|summary| !summary.draft) {
             let metadata = metadata_with_fork(
                 &conn,
                 Some(&summary.id),
@@ -904,7 +900,11 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
     }
 
     let active = &state.active_session;
-    if should_sync_desktop_chat_detail(active) {
+    // Retain existing explicit sessions when their project membership changes
+    // before the first message (including moving back to an unassigned chat).
+    if should_sync_desktop_chat_detail(active)
+        || (!active.draft && select_session(&conn, &active.id)?.is_some())
+    {
         let explicit_project = explicit_desktop_project_membership(state, &active.id);
         let (project_id, project_name, project_root) = explicit_project
             .as_ref()

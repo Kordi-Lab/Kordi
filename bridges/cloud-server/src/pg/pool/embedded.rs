@@ -479,4 +479,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth snapshot readiness",
         sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
     },
+    EmbeddedMigration {
+        version: 106,
+        description: "account-scoped desktop projects",
+        sql: include_str!("../../../migrations/0106_chat_projects.sql"),
+    },
 ];

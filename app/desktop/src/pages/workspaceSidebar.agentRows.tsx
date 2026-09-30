@@ -1,3 +1,4 @@
+import { canChooseChatProject } from '@/features/projects/chatProjects';
 import { BellOff, Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
@@ -9,7 +10,6 @@ import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
   participantSpaceSessionPreviewText,
   participantSpaceSessionPreferenceId,
-  participantSpaceSessionRowTitle,
   sessionContextMenuTargetForConversation,
 } from '@/pages/workspaceSidebar.chatHelpers';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
@@ -18,12 +18,14 @@ import type { SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
 
 export function AgentSidebarRow({
   descriptor,
+  projectGrouped = false,
   model,
   activeConvId,
   onSelectChatSession,
   onOpenSessionContextMenu,
 }: {
   descriptor: ChatSidebarRow;
+  projectGrouped?: boolean;
   model: WorkspaceChatSidebarModel;
   activeConvId: string;
   onSelectChatSession: (sessionId: string) => void;
@@ -40,7 +42,6 @@ export function AgentSidebarRow({
     session.updatedAtLabel ?? conversation.updatedAtLabel ?? '--:--';
   const sessionPreview =
     participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
-  const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
   const agentIdentity = primaryAgentForConversation(conversation);
   const isSavedMessages = space.kind === 'self' && !agentIdentity;
   const latestMessage = conversation.messages[conversation.messages.length - 1];
@@ -57,7 +58,7 @@ export function AgentSidebarRow({
     && savedMessagePreviewAttachment
     ? attachmentPreviewUrl(savedMessagePreviewAttachment)
     : null;
-  const rowTitle = isSavedMessages ? space.title : sessionRowTitle;
+  const rowTitle = isSavedMessages ? space.title : session.title.trim() || 'Untitled session';
   const subtitleLine = isSavedMessages
     ? sessionPreview
     : agentIdentity?.name
@@ -70,7 +71,7 @@ export function AgentSidebarRow({
   const isFork = descriptor.depth > 0;
   const depth = Math.min(descriptor.depth, 4);
   const indentPaddingLeft =
-    depth > 0 ? `${0.625 + depth * 0.875}rem` : undefined;
+    depth > 0 ? `${(projectGrouped ? 2.25 : 0.75) + depth * 0.875}rem` : undefined;
   const preferenceSessionId = participantSpaceSessionPreferenceId(session);
   const unreadCount = Math.max(
     model.unreadSessionIds.has(preferenceSessionId) ? 1 : 0,
@@ -95,6 +96,8 @@ export function AgentSidebarRow({
         type="button"
         data-testid="agent-session-row"
         data-agent-session-row={session.id}
+        data-session-sidebar-section={descriptor.key.startsWith('project:') ? 'project' : descriptor.key.startsWith('pinned:') ? 'pinned' : 'recent'}
+        data-session-project-grouped={projectGrouped || undefined}
         data-session-preview={sessionPreview}
         data-session-preview-line={sessionPreview}
         data-session-updated-at={rowTimeLabel}
@@ -120,7 +123,7 @@ export function AgentSidebarRow({
           if (!target) return;
           event.preventDefault();
           event.stopPropagation();
-          onOpenSessionContextMenu(target);
+          onOpenSessionContextMenu({ ...target, canChooseProject: canChooseChatProject(conversation) });
         }}
         className={cn(
           'app-session-row app-agent-session-row w-full px-2.5 py-1 text-left text-white',

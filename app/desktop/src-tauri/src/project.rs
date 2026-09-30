@@ -1,3 +1,5 @@
+pub(crate) mod import;
+
 use kordi_core::settings::{ProjectSharedSource, Settings};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -213,7 +215,7 @@ pub fn desktop_project_create_from_folder(
     folder_path: String,
     name: Option<String>,
 ) -> Result<DesktopProjectSettings, String> {
-    let root = resolve_explicit_project_folder(&folder_path, false, true)?;
+    let root = resolve_explicit_project_folder(&folder_path, false, false)?;
     let trimmed_name = name
         .as_deref()
         .map(str::trim)
