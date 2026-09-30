@@ -136,9 +136,9 @@ export function useChatCompanionLayout({
     // Keep all three tracks, including the zero-width closed track, so the
     // browser can interpolate space continuously and reverse mid-transition.
     gridColumns: side === 'right'
-      ? `minmax(0, 1fr) ${isVisible ? 10 : 0}px minmax(0, ${isVisible ? (1 - splitLeftFraction) / splitLeftFraction : 0}fr)`
-      : `minmax(0, ${isVisible ? splitLeftFraction / (1 - splitLeftFraction) : 0}fr) ${isVisible ? 10 : 0}px minmax(0, 1fr)`,
-    panelWidth: `max(280px, calc((100cqw - 10px) * ${side === 'right' ? 1 - splitLeftFraction : splitLeftFraction}))`,
+      ? `minmax(280px, 1fr) ${isVisible ? 10 : 0}px minmax(${isVisible ? 280 : 0}px, ${isVisible ? (1 - splitLeftFraction) / splitLeftFraction : 0}fr)`
+      : `minmax(${isVisible ? 280 : 0}px, ${isVisible ? splitLeftFraction / (1 - splitLeftFraction) : 0}fr) ${isVisible ? 10 : 0}px minmax(280px, 1fr)`,
+    panelWidth: `clamp(280px, calc((100cqw - 10px) * ${side === 'right' ? 1 - splitLeftFraction : splitLeftFraction}), calc(100cqw - 290px))`,
     setFolded: (value: boolean) => setFoldedState({
       pageConversationId,
       value,
