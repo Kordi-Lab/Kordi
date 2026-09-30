@@ -155,26 +155,50 @@ fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
     }
 }
 
+/// Labels a group speaker from the stored sender account. Envelope fields only
+/// mark an agent message when the envelope names that same stored sender.
+fn group_speaker_label(
+    requester_account_id: &str,
+    owner_account_id: &str,
+    from_account_id: &str,
+    agent_message: bool,
+) -> &'static str {
+    if agent_message && from_account_id == owner_account_id {
+        "Owner agent"
+    } else if from_account_id == requester_account_id {
+        "Requester"
+    } else if from_account_id == owner_account_id {
+        "Owner"
+    } else {
+        "Participant"
+    }
+}
+
 fn fallback_prompt_history_line(
     requester_account_id: &str,
     owner_account_id: &str,
     message: &CloudFallbackHistoryMessage,
 ) -> Option<String> {
+    let from_account_id = message.from_account_id.as_str();
     let (label, text, suffix) = if let Some(text) = cloud_agent_response_text(&message.body) {
-        ("Owner agent", text, String::new())
+        let label = if from_account_id == owner_account_id {
+            "Owner agent"
+        } else if from_account_id == requester_account_id {
+            "Requester"
+        } else {
+            return None;
+        };
+        (label, text, String::new())
     } else if let Some(envelope) = parse_cloud_group_envelope(&message.body) {
         let group_message = envelope.message?;
-        let label = if group_message.sender_account_id == requester_account_id {
-            "Requester"
-        } else if group_message.sender_account_id == owner_account_id {
-            if group_message.sender_kind.as_deref() == Some("agent") {
-                "Owner agent"
-            } else {
-                "Owner"
-            }
-        } else {
-            "Participant"
-        };
+        let agent_message = group_message.sender_kind.as_deref() == Some("agent")
+            && group_message.sender_account_id == from_account_id;
+        let label = group_speaker_label(
+            requester_account_id,
+            owner_account_id,
+            from_account_id,
+            agent_message,
+        );
         (
             label,
             strip_leading_agent_mention(&group_message.text),

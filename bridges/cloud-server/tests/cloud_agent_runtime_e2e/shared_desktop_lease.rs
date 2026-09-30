@@ -48,8 +48,13 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         .await;
         let logical = uuid::Uuid::new_v4().to_string();
         let request = json!({"schemaVersion":1,"kind":"message","id":logical,"senderAccountId":requester.account_id,"senderKind":"human","text":"Reply once","createdAtMs":chrono::Utc::now().timestamp_millis(),"targetCloudAgentId":agent,"targetCloudAgentOwnerAccountId":owner.account_id});
-        let group_body = |message: Value| json!({"kind":"group-message","groupId":session,"groupSpaceId":session,"createdByAccountId":owner.account_id,"actor":{"accountId":owner.account_id,"displayName":"Owner","role":"admin"},"participants":[{"accountId":owner.account_id,"displayName":"Owner","role":"admin"},{"accountId":peer.account_id,"displayName":"Requester","role":"person"}],"message":message});
-        let envelope = if group { group_body(request) } else { request };
+        // Clients always send themselves as the envelope actor.
+        let group_body = |actor: &TestAccount, message: Value| json!({"kind":"group-message","groupId":session,"groupSpaceId":session,"createdByAccountId":owner.account_id,"actor":{"accountId":actor.account_id,"displayName":"Actor","role":"person"},"participants":[{"accountId":owner.account_id,"displayName":"Owner","role":"admin"},{"accountId":peer.account_id,"displayName":"Requester","role":"person"}],"message":message});
+        let envelope = if group {
+            group_body(requester, request)
+        } else {
+            request
+        };
         let encode = |prefix: &str, value: Value| {
             format!(
                 "{prefix}:{}",
@@ -161,6 +166,7 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         assert_eq!(read_json(admitted).await["admitted"], true);
         let response = if group {
             group_body(
+                &owner,
                 json!({"id":"native-response","senderAccountId":owner.account_id,"senderAgentId":agent,"senderKind":"agent","text":"ACK","createdAtMs":chrono::Utc::now().timestamp_millis(),"requestId":canonical,"deliveryState":"complete"}),
             )
         } else {

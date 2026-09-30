@@ -13,6 +13,12 @@ use super::super::StoreError;
 use super::{load_message, normalize_title, MessageSnapshot};
 
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+const INVALID_GROUP_ENVELOPE: &str = "group message envelope is invalid";
+const SENDER_MISMATCH: &str = "group message sender must be the signed-in account";
+const UNOWNED_SENDER_AGENT: &str = "group message agent must belong to the signed-in account";
+/// Agent-only presentation fields. The server derives them for agent senders
+/// and removes them from human messages.
+const AGENT_SENDER_FIELDS: [&str; 3] = ["senderAgentId", "senderOwnerAccountId", "senderOwnerName"];
 
 type ParticipantProfile = (DateTime<Utc>, Option<String>, String);
 
@@ -112,6 +118,177 @@ fn default_agent_id(account_id: &str) -> String {
     format!("cloud-agent:{}", account_id.trim())
 }
 
+/// Identifiers that clients use for the sender's own default agent. Older
+/// desktop and iOS builds still send the legacy local-execution aliases.
+fn is_default_agent_alias(agent_id: &str, account_id: &str) -> bool {
+    let account_id = account_id.trim();
+    agent_id == default_agent_id(account_id)
+        || agent_id == "cloud-local-agent"
+        || agent_id == format!("cloud-self:{account_id}")
+}
+
+fn has_group_prefix(text: &str) -> bool {
+    text.trim_start().starts_with(CLOUD_GROUP_PREFIX)
+}
+
+/// Returns whether message content carries a group envelope, and rejects any
+/// placement other than the exact start of the first text block. Clients join
+/// the text of every block before decoding, so an envelope that starts in a
+/// later block, after whitespace, or split across blocks must never reach
+/// storage without server normalization.
+fn carries_group_envelope(content: &Value) -> Result<bool, StoreError> {
+    let Some(blocks) = content.get("blocks").and_then(Value::as_array) else {
+        return Ok(false);
+    };
+    let texts = blocks
+        .iter()
+        .map(|block| {
+            block
+                .get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    if !texts.iter().any(|text| has_group_prefix(text)) && !has_group_prefix(&texts.concat()) {
+        return Ok(false);
+    }
+    let canonical = blocks.first().is_some_and(|block| {
+        block.get("type").and_then(Value::as_str) == Some("text")
+            && block
+                .get("text")
+                .and_then(Value::as_str)
+                .is_some_and(|text| text.starts_with(CLOUD_GROUP_PREFIX))
+    }) && texts.iter().skip(1).all(|text| text.is_empty());
+    if canonical {
+        Ok(true)
+    } else {
+        Err(StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))
+    }
+}
+
+fn decode_group_envelope_strict(text: &str) -> Result<Value, StoreError> {
+    let encoded = text
+        .strip_prefix(CLOUD_GROUP_PREFIX)
+        .ok_or(StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(encoded)
+        .map_err(|_| StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))?;
+    let envelope: Value = serde_json::from_slice(&decoded)
+        .map_err(|_| StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))?;
+    if envelope.is_object() {
+        Ok(envelope)
+    } else {
+        Err(StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))
+    }
+}
+
+/// The sender's server-side display names: the account display name and the
+/// default agent display name.
+async fn sender_names(
+    transaction: &mut Transaction<'_, Postgres>,
+    profiles: &HashMap<String, ParticipantProfile>,
+    sender_account_id: &str,
+) -> Result<(Option<String>, Option<String>), StoreError> {
+    if let Some((_, owner_name, agent_name)) = profiles.get(sender_account_id) {
+        return Ok((owner_name.clone(), Some(agent_name.clone())));
+    }
+    let row: Option<(Option<String>, Option<String>)> = query_as(
+        "SELECT account.display_name, agent.display_name \
+         FROM cloud_accounts account \
+         LEFT JOIN cloud_default_agent_profiles agent \
+           ON agent.owner_account_id = account.account_id \
+         WHERE account.account_id = $1",
+    )
+    .bind(sender_account_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    Ok(row.unwrap_or_default())
+}
+
+fn set_or_remove(message: &mut Map<String, Value>, key: &str, value: Option<String>) {
+    match value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => {
+            message.insert(key.to_string(), Value::String(value));
+        }
+        None => {
+            message.remove(key);
+        }
+    }
+}
+
+/// Binds the envelope's sender fields to the authenticated account. The
+/// claimed sender must be that account, an agent sender must be one of its
+/// agents, and every display field is derived from server records.
+async fn bind_group_message_sender(
+    transaction: &mut Transaction<'_, Postgres>,
+    message: &mut Map<String, Value>,
+    sender_account_id: &str,
+    profiles: &HashMap<String, ParticipantProfile>,
+) -> Result<(), StoreError> {
+    let claimed_sender_matches = match message.get("senderAccountId") {
+        None | Some(Value::Null) => true,
+        Some(Value::String(claimed)) => {
+            let claimed = claimed.trim();
+            claimed.is_empty() || claimed == sender_account_id
+        }
+        Some(_) => false,
+    };
+    if !claimed_sender_matches {
+        return Err(StoreError::InvalidInput(SENDER_MISMATCH));
+    }
+    message.insert(
+        "senderAccountId".to_string(),
+        Value::String(sender_account_id.to_string()),
+    );
+    let (owner_name, default_agent_name) =
+        sender_names(transaction, profiles, sender_account_id).await?;
+    if message.get("senderKind").and_then(Value::as_str) != Some("agent") {
+        if message.contains_key("senderKind") {
+            message.insert("senderKind".to_string(), Value::String("human".to_string()));
+        }
+        for key in AGENT_SENDER_FIELDS {
+            message.remove(key);
+        }
+        set_or_remove(message, "senderDisplayName", owner_name);
+        return Ok(());
+    }
+    let sender_agent_id = message
+        .get("senderAgentId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| default_agent_id(sender_account_id));
+    let agent_name = if is_default_agent_alias(&sender_agent_id, sender_account_id) {
+        default_agent_name
+    } else {
+        let owned: Option<(String,)> = query_as(
+            "SELECT name FROM cloud_agent_definitions \
+             WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'",
+        )
+        .bind(&sender_agent_id)
+        .bind(sender_account_id)
+        .fetch_optional(&mut **transaction)
+        .await?;
+        Some(
+            owned
+                .ok_or(StoreError::InvalidInput(UNOWNED_SENDER_AGENT))?
+                .0,
+        )
+    };
+    message.insert("senderAgentId".to_string(), Value::String(sender_agent_id));
+    message.insert(
+        "senderOwnerAccountId".to_string(),
+        Value::String(sender_account_id.to_string()),
+    );
+    set_or_remove(message, "senderOwnerName", owner_name);
+    set_or_remove(message, "senderDisplayName", agent_name);
+    Ok(())
+}
+
 fn normalized_group_space_id(value: &str) -> &str {
     let mut normalized = value.trim();
     while let Some(value) = normalized.strip_prefix("group:") {
@@ -178,14 +355,20 @@ fn enrich_participant(
     );
 }
 
+/// Normalizes a group envelope before it is stored. The server is
+/// authoritative for sender identity: the envelope's sender and actor must be
+/// the authenticated account, and names are derived from server records.
 pub(super) async fn normalize_group_envelope(
     transaction: &mut Transaction<'_, Postgres>,
+    sender_account_id: &str,
     conversation_id: uuid::Uuid,
     content: &mut Value,
 ) -> Result<Option<GroupEnvelopeProjection>, StoreError> {
-    let Some((mut envelope, text)) = decode_group_envelope(content) else {
+    if !carries_group_envelope(content)? {
         return Ok(None);
-    };
+    }
+    let text = group_text_mut(content).ok_or(StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))?;
+    let mut envelope = decode_group_envelope_strict(text.as_str().unwrap_or_default())?;
     let rows: Vec<(String, DateTime<Utc>, Option<String>, String)> = query_as(
         "SELECT member.account_id, member.joined_at, account.display_name, agent.display_name \
          FROM cloud_chat_conversation_members member \
@@ -203,10 +386,21 @@ pub(super) async fn normalize_group_envelope(
             (account_id, (joined_at, owner_name, agent_name))
         })
         .collect::<HashMap<_, _>>();
-    let object = envelope.as_object_mut().ok_or(StoreError::InvalidInput(
-        "group message envelope is invalid",
-    ))?;
+    let object = envelope
+        .as_object_mut()
+        .ok_or(StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))?;
     if let Some(actor) = object.get_mut("actor").and_then(Value::as_object_mut) {
+        let actor_matches = match actor.get("accountId") {
+            None | Some(Value::Null) => true,
+            Some(Value::String(account_id)) => {
+                let account_id = account_id.trim();
+                account_id.is_empty() || account_id == sender_account_id
+            }
+            Some(_) => false,
+        };
+        if !actor_matches {
+            return Err(StoreError::InvalidInput(SENDER_MISMATCH));
+        }
         enrich_participant(actor, &profiles);
     }
     if let Some(participants) = object.get_mut("participants").and_then(Value::as_array_mut) {
@@ -238,53 +432,12 @@ pub(super) async fn normalize_group_envelope(
                 })
         });
     }
-    if let Some(message) = object.get_mut("message").and_then(Value::as_object_mut) {
-        let sender_is_agent = message.get("senderKind").and_then(Value::as_str) == Some("agent");
-        let sender_account_id = message
-            .get("senderAccountId")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
-        if sender_is_agent && !sender_account_id.is_empty() {
-            let default_id = default_agent_id(&sender_account_id);
-            let sender_agent_id = message
-                .get("senderAgentId")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .unwrap_or(&default_id)
-                .to_string();
-            let sender_name = if sender_agent_id == default_id {
-                profiles
-                    .get(&sender_account_id)
-                    .map(|profile| profile.2.clone())
-            } else {
-                query_as::<_, (String,)>(
-                    "SELECT display_name FROM cloud_agent_definitions \
-                     WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'",
-                )
-                .bind(&sender_agent_id)
-                .bind(&sender_account_id)
-                .fetch_optional(&mut **transaction)
-                .await?
-                .map(|row| row.0)
-            };
-            message.insert("senderAgentId".to_string(), Value::String(sender_agent_id));
-            message.insert(
-                "senderOwnerAccountId".to_string(),
-                Value::String(sender_account_id.to_string()),
-            );
-            if let Some(owner_name) = profiles
-                .get(&sender_account_id)
-                .and_then(|profile| profile.1.clone())
-            {
-                message.insert("senderOwnerName".to_string(), Value::String(owner_name));
-            }
-            if let Some(sender_name) = sender_name {
-                message.insert("senderDisplayName".to_string(), Value::String(sender_name));
-            }
+    match object.get_mut("message") {
+        None | Some(Value::Null) => {}
+        Some(Value::Object(message)) => {
+            bind_group_message_sender(transaction, message, sender_account_id, &profiles).await?;
         }
+        Some(_) => return Err(StoreError::InvalidInput(INVALID_GROUP_ENVELOPE)),
     }
     let kind = object
         .get("kind")
@@ -358,9 +511,31 @@ pub(crate) fn normalize_stored_group_agent_identity(
     let Some(message) = envelope.get_mut("message").and_then(Value::as_object_mut) else {
         return;
     };
-    if message.get("senderKind").and_then(Value::as_str) != Some("agent")
-        || message.get("senderAccountId").and_then(Value::as_str) != Some(sender_account_id)
-    {
+    if message.get("senderAccountId").and_then(Value::as_str) != Some(sender_account_id) {
+        // Messages stored before envelope senders were bound to the signed-in
+        // account can name another sender. Present them as the stored
+        // sender's own human message.
+        message.insert(
+            "senderAccountId".to_string(),
+            Value::String(sender_account_id.to_string()),
+        );
+        if message.contains_key("senderKind") {
+            message.insert("senderKind".to_string(), Value::String("human".to_string()));
+        }
+        for key in AGENT_SENDER_FIELDS {
+            message.remove(key);
+        }
+        set_or_remove(
+            message,
+            "senderDisplayName",
+            owner_name.map(ToString::to_string),
+        );
+        if let Ok(encoded) = encode_group_envelope(&envelope) {
+            *text = Value::String(encoded);
+        }
+        return;
+    }
+    if message.get("senderKind").and_then(Value::as_str) != Some("agent") {
         return;
     }
     let canonical_id = default_agent_id(sender_account_id);
@@ -471,5 +646,114 @@ mod tests {
         );
         let (envelope, _) = decode_group_envelope(&mut custom).expect("group envelope");
         assert_eq!(envelope["message"]["senderDisplayName"], "Research Agent");
+    }
+
+    #[test]
+    fn stored_envelopes_naming_another_sender_present_as_the_stored_sender() {
+        let mut stored = content("Owner's Agent", Some("cloud_agent_research"));
+        normalize_stored_group_agent_identity(
+            &mut stored,
+            "acct_member",
+            "Member Kordi",
+            Some("Member"),
+        );
+        let (envelope, _) = decode_group_envelope(&mut stored).expect("group envelope");
+        let message = &envelope["message"];
+        assert_eq!(message["senderAccountId"], "acct_member");
+        assert_eq!(message["senderKind"], "human");
+        assert_eq!(message["senderDisplayName"], "Member");
+        for key in AGENT_SENDER_FIELDS {
+            assert!(message.get(key).is_none(), "{key} must be removed");
+        }
+        assert_eq!(message["text"], "done");
+    }
+
+    fn encoded_envelope() -> String {
+        format!(
+            "{CLOUD_GROUP_PREFIX}{}",
+            URL_SAFE_NO_PAD.encode(br#"{"kind":"group-message","message":{"text":"x"}}"#)
+        )
+    }
+
+    #[test]
+    fn group_envelopes_are_accepted_only_at_the_start_of_the_first_text_block() {
+        let envelope = encoded_envelope();
+        assert!(!carries_group_envelope(
+            &json!({ "blocks": [{ "type": "text", "text": "hello" }] })
+        )
+        .unwrap());
+        assert!(!carries_group_envelope(&json!({ "blocks": [] })).unwrap());
+        assert!(carries_group_envelope(
+            &json!({ "blocks": [{ "type": "text", "text": envelope }] })
+        )
+        .unwrap());
+        assert!(carries_group_envelope(&json!({ "blocks": [
+            { "type": "text", "text": envelope },
+            { "type": "voice", "mediaId": "audio" }
+        ] }))
+        .unwrap());
+        let (head, tail) = envelope.split_at(8);
+        for rejected in [
+            json!({ "blocks": [{ "type": "text", "text": format!(" {envelope}") }] }),
+            json!({ "blocks": [{ "type": "text", "text": "" }, { "type": "text", "text": envelope }] }),
+            json!({ "blocks": [{ "type": "image", "text": envelope }] }),
+            json!({ "blocks": [{ "type": "text", "text": head }, { "type": "text", "text": tail }] }),
+            json!({ "blocks": [{ "type": "text", "text": envelope }, { "type": "text", "text": "tail" }] }),
+        ] {
+            assert!(
+                matches!(
+                    carries_group_envelope(&rejected),
+                    Err(StoreError::InvalidInput(_))
+                ),
+                "{rejected}"
+            );
+        }
+    }
+
+    #[test]
+    fn group_envelopes_must_decode_strictly_to_an_object() {
+        assert!(decode_group_envelope_strict(&encoded_envelope()).is_ok());
+        let padded = format!(
+            "{CLOUD_GROUP_PREFIX}{}",
+            // Sixteen bytes always encode with trailing padding.
+            base64::engine::general_purpose::STANDARD.encode(br#"{"kind":"group"}"#)
+        );
+        for rejected in [
+            padded,
+            format!("{}\n", encoded_envelope()),
+            format!("{CLOUD_GROUP_PREFIX}{}", URL_SAFE_NO_PAD.encode(b"[]")),
+            format!("{CLOUD_GROUP_PREFIX}not json"),
+        ] {
+            assert!(
+                matches!(
+                    decode_group_envelope_strict(&rejected),
+                    Err(StoreError::InvalidInput(_))
+                ),
+                "{rejected}"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_default_agent_aliases_belong_to_the_sender() {
+        for alias in [
+            "cloud-agent:acct_owner",
+            "cloud-local-agent",
+            "cloud-self:acct_owner",
+        ] {
+            assert!(is_default_agent_alias(alias, "acct_owner"), "{alias}");
+        }
+        assert!(!is_default_agent_alias(
+            "cloud-agent:acct_other",
+            "acct_owner"
+        ));
+        assert!(!is_default_agent_alias(
+            "cloud-self:acct_other",
+            "acct_owner"
+        ));
+        assert!(!is_default_agent_alias(
+            "cloud_agent_research",
+            "acct_owner"
+        ));
     }
 }

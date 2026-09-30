@@ -19,6 +19,8 @@ use uuid::Uuid;
 mod default_self_agent;
 #[path = "chat_sync_e2e/fork_lineage.rs"]
 mod fork_lineage;
+#[path = "chat_sync_e2e/group_sender_identity.rs"]
+mod group_sender_identity;
 #[path = "chat_sync_e2e/membership.rs"]
 mod membership;
 #[path = "chat_sync_e2e/message_mutations.rs"]

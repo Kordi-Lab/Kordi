@@ -62,8 +62,13 @@ pub(crate) async fn send_message_in_transaction(
         }
         attachment_ids.push(attachment_id.to_string());
     }
-    let group_projection =
-        normalize_group_envelope(transaction, conversation_id, &mut request.content).await?;
+    let group_projection = normalize_group_envelope(
+        transaction,
+        account_id,
+        conversation_id,
+        &mut request.content,
+    )
+    .await?;
     let subtyped_attachments = subtyped_attachment_metadata(&request.content, &attachment_ids)?;
     let live_resources = live_photo_resources(&request.content, &attachment_ids)?;
     let request_fingerprint = fingerprint(&MessageIntent {

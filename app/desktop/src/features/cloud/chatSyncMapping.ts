@@ -188,6 +188,43 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+type CloudGroupEnvelope = NonNullable<ReturnType<typeof parseCloudGroupControl>>;
+
+// The chat server stores the authenticated sender beside every message.
+// Envelopes stored before the server bound envelope senders can name another
+// account; present those as the stored sender's own human message.
+export function cloudGroupEnvelopeWithStoredSender(
+  envelope: CloudGroupEnvelope,
+  senderAccountId: string,
+  members: ChatSyncConversation['members'] = [],
+): CloudGroupEnvelope {
+  const sender = senderAccountId.trim();
+  if (!sender) return envelope;
+  const actorMatches = envelope.actor.accountId === sender;
+  const messageMatches = !envelope.message || envelope.message.senderAccountId === sender;
+  if (actorMatches && messageMatches) return envelope;
+  const storedSender = members.find((member) => member.account_id === sender);
+  const senderDisplayName = storedSender?.display_name?.trim()
+    || envelope.participants.find((participant) => participant.accountId === sender)?.displayName
+    || sender;
+  return {
+    ...envelope,
+    actor: actorMatches ? envelope.actor : {
+      accountId: sender,
+      displayName: senderDisplayName,
+      avatarUrl: storedSender?.avatar_url?.trim() || null,
+      role: storedSender?.role ?? 'person',
+    },
+    message: envelope.message && !messageMatches ? {
+      ...envelope.message,
+      senderAccountId: sender,
+      senderKind: 'human',
+      senderAgentId: null,
+      senderDisplayName: null,
+    } : envelope.message,
+  };
+}
+
 function groupMessageBody(
   message: ChatSyncMessage,
   conversation: ChatSyncConversation,
@@ -195,9 +232,15 @@ function groupMessageBody(
 ): string | null {
   if (conversation.kind !== 'group') return null;
   if (text.trim().startsWith('kordi-cloud-group:')) {
-    const envelope = parseCloudGroupControl(text);
+    const parsed = parseCloudGroupControl(text);
+    const envelope = parsed
+      ? cloudGroupEnvelopeWithStoredSender(parsed, message.sender_account_id, conversation.members)
+      : null;
     const createdAtMs = Date.parse(message.created_at);
     const groupId = conversation.legacy_session_id?.trim() || conversation.id.trim();
+    if (envelope && envelope !== parsed && envelope.kind !== 'group-message') {
+      return encodeCloudGroupControl(envelope);
+    }
     return envelope?.kind === 'group-message'
       && envelope.message
       && isCloudGroupSessionId(groupId)

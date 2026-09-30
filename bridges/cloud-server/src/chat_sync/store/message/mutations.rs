@@ -3,6 +3,11 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
 const CLOUD_DIRECT_PREFIX: &str = "kordi-cloud-message:";
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+const RESERVED_ENVELOPE_PREFIXES: [&str; 3] = [
+    CLOUD_GROUP_PREFIX,
+    CLOUD_DIRECT_PREFIX,
+    "kordi-cloud-agent-response:",
+];
 const MAX_EDITED_MESSAGE_BYTES: usize = 256 * 1024;
 
 fn replace_encoded_text(
@@ -64,14 +69,23 @@ fn replace_message_text(
         .get("text")
         .and_then(Value::as_str)
         .ok_or(StoreError::InvalidInput("message has no editable text"))?;
-    let replacement = replace_encoded_text(current, CLOUD_GROUP_PREFIX, sender_account_id, text)?
-        .or(replace_encoded_text(
-            current,
-            CLOUD_DIRECT_PREFIX,
-            sender_account_id,
-            text,
-        )?)
-        .unwrap_or_else(|| text.to_string());
+    let replacement =
+        match replace_encoded_text(current, CLOUD_GROUP_PREFIX, sender_account_id, text)?.or(
+            replace_encoded_text(current, CLOUD_DIRECT_PREFIX, sender_account_id, text)?,
+        ) {
+            Some(replacement) => replacement,
+            // Plain text must not become a routing envelope through an edit;
+            // envelopes are normalized only when a message is created.
+            None if RESERVED_ENVELOPE_PREFIXES
+                .iter()
+                .any(|prefix| text.trim_start().starts_with(prefix)) =>
+            {
+                return Err(StoreError::InvalidInput(
+                    "message text uses a reserved prefix",
+                ));
+            }
+            None => text.to_string(),
+        };
     block.insert("text".to_string(), Value::String(replacement));
     Ok(())
 }
@@ -299,5 +313,24 @@ mod tests {
             replace_message_text(&mut group, "acct_other", "no"),
             Err(StoreError::Forbidden)
         ));
+    }
+
+    #[test]
+    fn plain_text_edits_cannot_introduce_routing_envelopes() {
+        for prefix in RESERVED_ENVELOPE_PREFIXES {
+            let mut plain = json!({ "blocks": [{ "type": "text", "text": "before" }] });
+            let replacement = format!(" {prefix}{}", URL_SAFE_NO_PAD.encode(b"{}"));
+            assert!(matches!(
+                replace_message_text(&mut plain, "acct_me", &replacement),
+                Err(StoreError::InvalidInput(_))
+            ));
+            assert_eq!(plain["blocks"][0]["text"], "before");
+        }
+        let mut plain = json!({ "blocks": [{ "type": "text", "text": "before" }] });
+        replace_message_text(&mut plain, "acct_me", "mentions kordi-cloud-group: inline").unwrap();
+        assert_eq!(
+            plain["blocks"][0]["text"],
+            "mentions kordi-cloud-group: inline"
+        );
     }
 }
