@@ -5,11 +5,26 @@ use reqwest::{
     Client, ClientBuilder, Url,
     dns::{Addrs, Name, Resolve, Resolving},
 };
-use std::{net::IpAddr, sync::Arc, time::Duration};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+    time::Duration,
+};
 
 const WEB_DENIAL: &str = "Shared web requests require a public HTTP(S) endpoint; local and private-network access is not authorized";
 const ENDPOINT_DENIAL: &str = "The endpoint must be a public HTTP(S) address; local and private-network endpoints are not authorized";
+const PRIVATE_NETWORK_ENDPOINT_DENIAL: &str = "The endpoint must be an HTTP(S) address; link-local and cloud metadata endpoints are not authorized";
 const ENDPOINT_MAX_REDIRECTS: usize = 10;
+
+/// Host names of cloud instance metadata services. Their addresses are also
+/// refused, so these names only fail earlier with a clearer error.
+const METADATA_HOSTS: &[&str] = &[
+    "metadata",
+    "metadata.google.internal",
+    "metadata.goog",
+    "instance-data",
+    "instance-data.ec2.internal",
+];
 
 fn public_ip(ip: IpAddr) -> bool {
     match ip {
@@ -33,6 +48,33 @@ fn public_ip(ip: IpAddr) -> bool {
                 && !(segments[0] == 0x2001 && (segments[1] < 0x200 || segments[1] == 0xdb8))
                 && segments[0] != 0x2002
                 && segments[0] != 0x3fff
+        }
+    }
+}
+
+/// Addresses a self-hosted deployment may use for its own model servers:
+/// loopback, private, carrier-grade NAT, unique local, and public addresses.
+/// Link-local ranges (which hold cloud metadata services), other known
+/// metadata addresses, and multicast or reserved ranges are refused, also
+/// when embedded in an IPv4-mapped or NAT64 IPv6 address.
+fn private_network_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            !ip.is_link_local() && ip != Ipv4Addr::new(100, 100, 100, 200) && ip.octets()[0] < 224
+        }
+        IpAddr::V6(ip) => {
+            let segments = ip.segments();
+            if let Some(mapped) = ip.to_ipv4_mapped() {
+                return private_network_ip(IpAddr::V4(mapped));
+            }
+            if segments[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+                let [a, b] = segments[6].to_be_bytes();
+                let [c, d] = segments[7].to_be_bytes();
+                return private_network_ip(IpAddr::V4(Ipv4Addr::new(a, b, c, d)));
+            }
+            segments[0] & 0xffc0 != 0xfe80
+                && segments[0] & 0xff00 != 0xff00
+                && ip != Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254)
         }
     }
 }
@@ -86,18 +128,50 @@ pub fn validate_public_endpoint(url: &Url) -> KordiResult<()> {
     validate_public_host(url, ENDPOINT_DENIAL)
 }
 
-struct PublicResolver {
-    message: &'static str,
+/// Validates an endpoint that a self-hosted deployment's operator allowed to
+/// be on a private network, such as a model server beside the runner. It
+/// accepts HTTP(S) on any port and any host, including single-label and
+/// loopback names and private addresses, but refuses embedded credentials,
+/// link-local and cloud metadata addresses, and metadata host names.
+/// Connections made with [`private_network_endpoint_client_builder`] also
+/// check every DNS answer and redirect.
+pub fn validate_private_network_endpoint(url: &Url) -> KordiResult<()> {
+    let message = PRIVATE_NETWORK_ENDPOINT_DENIAL;
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(denied_with(message));
+    }
+    let host = url.host_str().ok_or_else(|| denied_with(message))?;
+    if let Ok(ip) = host.trim_matches(['[', ']']).parse::<IpAddr>() {
+        return if private_network_ip(ip) {
+            Ok(())
+        } else {
+            Err(denied_with(message))
+        };
+    }
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    if METADATA_HOSTS.contains(&host.as_str()) {
+        return Err(denied_with(message));
+    }
+    Ok(())
 }
 
-impl Resolve for PublicResolver {
+struct PolicyResolver {
+    message: &'static str,
+    allowed: fn(IpAddr) -> bool,
+}
+
+impl Resolve for PolicyResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let message = self.message;
+        let allowed = self.allowed;
         Box::pin(async move {
             let addresses = tokio::net::lookup_host((name.as_str(), 0))
                 .await?
                 .collect::<Vec<_>>();
-            if addresses.is_empty() || addresses.iter().any(|address| !public_ip(address.ip())) {
+            if addresses.is_empty() || addresses.iter().any(|address| !allowed(address.ip())) {
                 return Err(
                     Box::new(denied_with(message)) as Box<dyn std::error::Error + Send + Sync>
                 );
@@ -112,9 +186,18 @@ fn public_client_builder(
     message: &'static str,
     max_redirects: usize,
 ) -> ClientBuilder {
+    policy_client_builder(validate, message, max_redirects, public_ip)
+}
+
+fn policy_client_builder(
+    validate: fn(&Url) -> KordiResult<()>,
+    message: &'static str,
+    max_redirects: usize,
+    allowed: fn(IpAddr) -> bool,
+) -> ClientBuilder {
     Client::builder()
         .no_proxy()
-        .dns_resolver(Arc::new(PublicResolver { message }))
+        .dns_resolver(Arc::new(PolicyResolver { message, allowed }))
         .redirect(reqwest::redirect::Policy::custom(move |attempt| {
             if let Err(error) = validate(attempt.url()) {
                 attempt.error(error)
@@ -146,6 +229,22 @@ pub fn public_endpoint_client_builder() -> ClientBuilder {
         validate_public_endpoint,
         ENDPOINT_DENIAL,
         ENDPOINT_MAX_REDIRECTS,
+    )
+}
+
+/// A client builder for endpoints an operator allowed on a private network.
+/// Like [`public_endpoint_client_builder`] it ignores proxy settings, checks
+/// every DNS answer when it connects, and validates every redirect, but with
+/// the [`validate_private_network_endpoint`] policy: private and loopback
+/// addresses are reachable, link-local and cloud metadata addresses are not.
+/// Callers validate the initial URL with
+/// [`validate_private_network_endpoint`].
+pub fn private_network_endpoint_client_builder() -> ClientBuilder {
+    policy_client_builder(
+        validate_private_network_endpoint,
+        PRIVATE_NETWORK_ENDPOINT_DENIAL,
+        ENDPOINT_MAX_REDIRECTS,
+        private_network_ip,
     )
 }
 
@@ -214,14 +313,74 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_private_dns_answers_at_connection_time() {
-        let error = PublicResolver {
+        let error = PolicyResolver {
             message: WEB_DENIAL,
+            allowed: public_ip,
         }
         .resolve("localhost".parse().unwrap())
         .await
         .err()
         .unwrap();
         assert!(error.to_string().contains("not authorized"));
+    }
+
+    #[test]
+    fn private_network_endpoints_refuse_link_local_and_metadata_only() {
+        for raw in [
+            "http://169.254.169.254/computeMetadata/v1",
+            "http://169.254.10.20:8000/v1",
+            "http://[fe80::1]/v1",
+            "http://[::ffff:169.254.169.254]/latest",
+            "http://[64:ff9b::a9fe:a9fe]/latest",
+            "http://[fd00:ec2::254]/latest",
+            "http://100.100.100.200/latest",
+            "http://metadata/computeMetadata/v1",
+            "http://metadata.google.internal/computeMetadata/v1",
+            "http://METADATA.google.internal./computeMetadata/v1",
+            "http://instance-data/latest",
+            "http://224.0.0.1/v1",
+            "https://user:pass@vllm:8000/v1",
+            "ftp://vllm/v1",
+            "file:///tmp/model",
+        ] {
+            assert!(
+                validate_private_network_endpoint(&Url::parse(raw).unwrap()).is_err(),
+                "{raw}"
+            );
+        }
+        for raw in [
+            "http://localhost:11434/v1",
+            "http://127.0.0.1:8000/v1",
+            "http://10.0.0.5:8000/v1",
+            "http://172.20.0.3:8000/v1",
+            "http://192.168.1.20/v1",
+            "http://100.64.0.1/v1",
+            "http://[::1]:8080/v1",
+            "http://[fd12::1]/v1",
+            "http://vllm:8000/v1",
+            "https://gateway.local/v1",
+            "https://api.openai.com/v1",
+        ] {
+            assert!(
+                validate_private_network_endpoint(&Url::parse(raw).unwrap()).is_ok(),
+                "{raw}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn private_network_resolver_refuses_link_local_answers() {
+        let resolver = PolicyResolver {
+            message: PRIVATE_NETWORK_ENDPOINT_DENIAL,
+            allowed: private_network_ip,
+        };
+        let error = resolver
+            .resolve("169.254.169.254".parse().unwrap())
+            .await
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("not authorized"));
+        assert!(resolver.resolve("localhost".parse().unwrap()).await.is_ok());
     }
 
     #[tokio::test]

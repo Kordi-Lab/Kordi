@@ -126,7 +126,9 @@ pub(super) fn ensure_plain_api_key(provider: &str, api_key: &str) -> Result<(), 
 
 /// Operator switch for self-hosted deployments whose model endpoints are on a
 /// private network. When it is off, which is the default, provider requests
-/// only reach public internet addresses.
+/// only reach public internet addresses. When it is on, private and loopback
+/// addresses are reachable, but link-local and cloud metadata addresses still
+/// are not.
 pub const PRIVATE_PROVIDER_ENDPOINTS_ENV: &str = "KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS";
 
 pub(crate) fn private_provider_endpoints_allowed() -> bool {
@@ -143,14 +145,16 @@ pub(super) const OWNER_LOCAL_ENDPOINT_ERROR: &str =
 /// Rejects an endpoint the runner must not send an account's credentials to.
 /// Without the operator opt-in it must pass the same public-address policy as
 /// the web tools: HTTP(S), no embedded credentials, and a public literal
-/// address or a multi-label host name. Host names are checked again against
-/// every DNS answer when the provider client connects.
+/// address or a multi-label host name. With the opt-in it may also be on a
+/// private network, but never link-local or a cloud metadata service. Host
+/// names are checked again against every DNS answer when the provider client
+/// connects.
 pub(super) fn ensure_provider_endpoint_allowed(
     base_url: &str,
     allow_private: bool,
 ) -> Result<(), ModelLoopError> {
     let allowed = match reqwest::Url::parse(base_url) {
-        Ok(url) if allow_private => matches!(url.scheme(), "http" | "https"),
+        Ok(url) if allow_private => kordi_tools::validate_private_network_endpoint(&url).is_ok(),
         Ok(url) => kordi_tools::validate_public_endpoint(&url).is_ok(),
         Err(_) => false,
     };

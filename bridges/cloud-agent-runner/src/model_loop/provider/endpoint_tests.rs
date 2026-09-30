@@ -272,6 +272,7 @@ fn the_operator_opt_in_allows_private_http_endpoints_only() {
     for base_url in [
         "http://localhost:11434/v1",
         "http://10.0.0.5:8000/v1",
+        "http://100.64.0.1:8000/v1",
         "http://vllm:8000/v1",
         "https://gateway.local/v1",
     ] {
@@ -280,9 +281,33 @@ fn the_operator_opt_in_allows_private_http_endpoints_only() {
             "{base_url}"
         );
     }
-    for base_url in ["ftp://vllm/v1", "file:///tmp/model", "not a url"] {
+    for base_url in [
+        "ftp://vllm/v1",
+        "file:///tmp/model",
+        "not a url",
+        "https://user:secret@vllm/v1",
+    ] {
         assert!(
             ensure_provider_endpoint_allowed(base_url, true).is_err(),
+            "{base_url}"
+        );
+    }
+}
+
+#[test]
+fn the_operator_opt_in_still_refuses_link_local_and_metadata_endpoints() {
+    for base_url in [
+        "http://169.254.169.254/computeMetadata/v1",
+        "http://169.254.169.254/latest/meta-data",
+        "http://[fe80::1]:8000/v1",
+        "http://[::ffff:169.254.169.254]/v1",
+        "http://metadata.google.internal/computeMetadata/v1",
+        "http://metadata/computeMetadata/v1",
+    ] {
+        let error = ensure_provider_endpoint_allowed(base_url, true).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("provider error: {}", endpoint::OWNER_LOCAL_ENDPOINT_ERROR),
             "{base_url}"
         );
     }
@@ -365,7 +390,7 @@ async fn provider_requests_refuse_names_that_resolve_to_private_addresses() {
 }
 
 #[tokio::test]
-async fn the_operator_opt_in_uses_an_unrestricted_provider_transport() {
+async fn the_operator_opt_in_reaches_private_addresses() {
     let (port, connections) = counting_listener().await;
     let _ = OpenAiCompatibleProvider::new(true)
         .next_response(
@@ -375,4 +400,46 @@ async fn the_operator_opt_in_uses_an_unrestricted_provider_transport() {
         )
         .await;
     assert!(connections.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+}
+
+/// A private listener that redirects every request to the metadata service.
+async fn redirect_to_metadata_listener() -> u16 {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buffer = [0u8; 4096];
+                let _ = stream.read(&mut buffer).await;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 307 Temporary Redirect\r\nLocation: http://169.254.169.254/latest/meta-data\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    )
+                    .await;
+                let _ = stream.shutdown().await;
+            });
+        }
+    });
+    port
+}
+
+#[tokio::test]
+async fn the_private_network_transport_refuses_redirects_to_metadata() {
+    let port = redirect_to_metadata_listener().await;
+    let error = private_network_provider_client()
+        .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+        .body("{}")
+        .send()
+        .await
+        .unwrap_err();
+    let chain = std::iter::successors(
+        Some(&error as &(dyn std::error::Error + 'static)),
+        |error| error.source(),
+    )
+    .map(ToString::to_string)
+    .collect::<Vec<_>>()
+    .join(": ");
+    assert!(error.is_redirect(), "{chain}");
+    assert!(chain.contains("not authorized"), "{chain}");
 }

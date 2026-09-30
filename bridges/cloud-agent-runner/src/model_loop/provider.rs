@@ -191,20 +191,18 @@ impl Default for OpenAiCompatibleProvider {
 }
 
 impl OpenAiCompatibleProvider {
-    /// Provider clients for hosted runs. Unless the operator allows private
-    /// endpoints, every provider request uses a transport that connects only
-    /// to public addresses: it ignores proxy settings, refuses DNS answers
-    /// that include a local, private, carrier-grade NAT, or link-local
-    /// address, and validates each redirect.
+    /// Provider clients for hosted runs. Every provider request uses a
+    /// transport that ignores proxy settings, checks every DNS answer when it
+    /// connects, and validates each redirect. By default it reaches only
+    /// public addresses. With the operator's private-endpoint opt-in it also
+    /// reaches private and loopback addresses, but never link-local or cloud
+    /// metadata addresses.
     pub fn new(allow_private_endpoints: bool) -> Self {
-        if allow_private_endpoints {
-            return Self {
-                openai: kordi_provider::openai::OpenAiProvider::new(),
-                anthropic: AnthropicProvider::new(),
-                google: GoogleProvider::new(),
-            };
-        }
-        let client = public_provider_client();
+        let client = if allow_private_endpoints {
+            private_network_provider_client()
+        } else {
+            public_provider_client()
+        };
         Self {
             openai: kordi_provider::openai::OpenAiProvider::with_client(client.clone()),
             anthropic: AnthropicProvider::with_client(client.clone()),
@@ -219,6 +217,15 @@ pub fn public_provider_client() -> reqwest::Client {
     kordi_provider::with_provider_timeouts(kordi_tools::public_endpoint_client_builder())
         .build()
         .expect("the public provider HTTP client must be constructible")
+}
+
+/// The HTTP client for provider requests when the operator allows private
+/// endpoints. It still refuses link-local and cloud metadata addresses and
+/// never falls back to an unrestricted client.
+pub fn private_network_provider_client() -> reqwest::Client {
+    kordi_provider::with_provider_timeouts(kordi_tools::private_network_endpoint_client_builder())
+        .build()
+        .expect("the private-network provider HTTP client must be constructible")
 }
 
 #[async_trait]
