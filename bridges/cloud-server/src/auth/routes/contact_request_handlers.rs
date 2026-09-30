@@ -13,6 +13,7 @@ use super::*;
 pub(super) async fn send_contact_request(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Json(req): Json<SendContactRequestBody>,
 ) -> Response {
     let peer = req.peer_account_id.trim().to_string();
@@ -29,6 +30,12 @@ pub(super) async fn send_contact_request(
             "You cannot send a contact request to yourself.",
             StatusCode::BAD_REQUEST,
         );
+    }
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(CONTACT_ADD_LIMIT, &session.account_id)
+        .await
+    {
+        return limited_response(retry_after);
     }
     let message = req
         .message

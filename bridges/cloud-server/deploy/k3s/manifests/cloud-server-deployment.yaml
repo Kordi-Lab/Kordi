@@ -157,6 +157,11 @@ spec:
               value: "https://kordi.ai"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
               value: "http://127.0.0.1:,http://localhost:,https://kordi.ai,kordi://oauth/callback"
+            - name: KORDI_CLOUD_TRUSTED_PROXIES
+              # List only proxies that overwrite X-Real-IP with the client
+              # address. Follow the K3s README before adding the pod-network
+              # gateway.
+              value: "127.0.0.1/32,::1/128"
             - name: KORDI_CHAT_SYNC_CURSOR_SECRET
               valueFrom:
                 secretKeyRef:

@@ -188,12 +188,43 @@ pub(super) fn encode_oauth_fragment<T: Serialize>(body: &T) -> String {
 }
 
 pub(super) fn redirect_with_oauth_error(redirect_after: &str, message: &str) -> Response {
+    Redirect::to(&oauth_error_redirect_url(redirect_after, message, None)).into_response()
+}
+
+/// Like [`redirect_with_oauth_error`], adding a stable machine-readable code
+/// next to the user-facing message so clients can show localized copy.
+pub(super) fn redirect_with_oauth_error_code(
+    redirect_after: &str,
+    code: &str,
+    message: &str,
+) -> Response {
+    Redirect::to(&oauth_error_redirect_url(
+        redirect_after,
+        message,
+        Some(code),
+    ))
+    .into_response()
+}
+
+fn oauth_error_redirect_url(redirect_after: &str, message: &str, code: Option<&str>) -> String {
     let mut url = redirect_after.to_string();
     let separator = if url.contains('#') { '&' } else { '#' };
     url.push(separator);
     url.push_str("kordi_cloud_oauth_error=");
-    url.push_str(&url::form_urlencoded::byte_serialize(message.as_bytes()).collect::<String>());
-    Redirect::to(&url).into_response()
+    url.push_str(&fragment_component(message));
+    if let Some(code) = code {
+        url.push_str("&kordi_cloud_oauth_error_code=");
+        url.push_str(&fragment_component(code));
+    }
+    url
+}
+
+/// Percent-encodes a fragment value. Spaces become `%20` rather than `+`
+/// because native URL parsers do not decode `+` in fragments.
+fn fragment_component(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes())
+        .collect::<String>()
+        .replace('+', "%20")
 }
 
 pub(super) fn clean_profile_display_name(value: Option<&str>) -> Option<String> {
@@ -336,119 +367,4 @@ fn github_profile_from_values(user: &Value, emails: &Value) -> OAuthProfile {
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::{
-        github_profile_from_values, is_allowed_oauth_redirect_with_config,
-        oauth_credentials_are_complete, oauth_not_configured_message, public_base_url,
-        OAuthProvider,
-    };
-
-    #[test]
-    fn oauth_credentials_require_both_non_empty_values() {
-        assert!(oauth_credentials_are_complete("client-id", "client-secret"));
-        assert!(!oauth_credentials_are_complete("", "client-secret"));
-        assert!(!oauth_credentials_are_complete("client-id", ""));
-        assert!(!oauth_credentials_are_complete("   ", "client-secret"));
-    }
-
-    #[test]
-    fn unavailable_oauth_message_is_safe_and_actionable() {
-        let message = oauth_not_configured_message(OAuthProvider::Google);
-        assert_eq!(
-            message,
-            "Google sign-in is not available on this server. Use email and password."
-        );
-        assert!(!message.contains("KORDI_OAUTH_"));
-    }
-
-    #[test]
-    fn public_base_url_defaults_to_product_cloud_host() {
-        std::env::remove_var("KORDI_CLOUD_PUBLIC_BASE_URL");
-
-        assert_eq!(public_base_url(), "https://kordi.ai");
-    }
-
-    #[test]
-    fn redirect_allowlist_rejects_prefix_host_spoofing() {
-        assert!(!is_allowed_oauth_redirect_with_config(
-            "https://kordi.ai.evil.example/callback",
-            None,
-            "https://kordi.ai",
-        ));
-        assert!(is_allowed_oauth_redirect_with_config(
-            "https://kordi.ai/callback",
-            None,
-            "https://kordi.ai",
-        ));
-    }
-
-    #[test]
-    fn redirect_allowlist_accepts_loopback_but_not_arbitrary_tauri_scheme() {
-        assert!(is_allowed_oauth_redirect_with_config(
-            "http://127.0.0.1:49152/oauth/request",
-            None,
-            "https://kordi.ai",
-        ));
-        assert!(!is_allowed_oauth_redirect_with_config(
-            "tauri://localhost/oauth/request",
-            None,
-            "https://kordi.ai",
-        ));
-    }
-
-    #[test]
-    fn redirect_allowlist_accepts_only_the_configured_native_callback() {
-        let allowlist = Some("kordi://oauth/callback");
-        assert!(is_allowed_oauth_redirect_with_config(
-            "kordi://oauth/callback",
-            allowlist,
-            "https://kordi.ai",
-        ));
-        assert!(!is_allowed_oauth_redirect_with_config(
-            "kordi://oauth/other",
-            allowlist,
-            "https://kordi.ai",
-        ));
-        assert!(!is_allowed_oauth_redirect_with_config(
-            "evil-kordi://oauth/callback",
-            allowlist,
-            "https://kordi.ai",
-        ));
-    }
-
-    #[test]
-    fn github_profile_uses_only_verified_primary_email_for_account_linking() {
-        let user = json!({
-            "id": 123,
-            "login": "octo",
-            "name": "Octo Cat",
-            "email": "unverified@example.com",
-            "avatar_url": "https://avatars.example/octo.png"
-        });
-        let emails = json!([
-            { "email": "unverified@example.com", "primary": true, "verified": false },
-            { "email": "verified-secondary@example.com", "primary": false, "verified": true }
-        ]);
-
-        let profile = github_profile_from_values(&user, &emails);
-
-        assert_eq!(profile.provider_subject, "123");
-        assert_eq!(profile.email, None);
-        assert!(!profile.email_verified);
-    }
-
-    #[test]
-    fn github_profile_keeps_verified_primary_email_for_account_linking() {
-        let user = json!({ "id": 123, "login": "octo" });
-        let emails = json!([
-            { "email": "octo@example.com", "primary": true, "verified": true }
-        ]);
-
-        let profile = github_profile_from_values(&user, &emails);
-
-        assert_eq!(profile.email.as_deref(), Some("octo@example.com"));
-        assert!(profile.email_verified);
-    }
-}
+mod tests;

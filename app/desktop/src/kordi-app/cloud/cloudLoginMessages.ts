@@ -28,6 +28,9 @@ export function cloudLoginErrorMessage(
       return 'Could not prepare that generated avatar. Try another look.';
     case 'invalid_avatar':
       return 'Could not process that avatar. Try another image.';
+    case 'oauth_email_requires_sign_in':
+      return error.message
+        || 'A Kordi account already uses this email. Sign in with the method you used to create it.';
     case 'oauth_not_configured':
       return showDebugAuthDiagnostics
         ? 'That social sign-in method is not available here. Use email and password.'
