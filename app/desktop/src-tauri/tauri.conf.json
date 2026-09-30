@@ -39,7 +39,54 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": [
+          "'self'",
+          "asset:",
+          "http://asset.localhost",
+          "data:",
+          "blob:",
+          "https:",
+          "http://127.0.0.1:17081",
+          "http://127.0.0.1:18181"
+        ],
+        "media-src": [
+          "'self'",
+          "asset:",
+          "http://asset.localhost",
+          "blob:",
+          "data:",
+          "https://kordi.ai",
+          "http://127.0.0.1:17081",
+          "http://127.0.0.1:18181"
+        ],
+        "font-src": ["'self'", "data:"],
+        "connect-src": [
+          "'self'",
+          "ipc:",
+          "http://ipc.localhost",
+          "asset:",
+          "http://asset.localhost",
+          "data:",
+          "blob:",
+          "https://kordi.ai",
+          "wss://kordi.ai",
+          "wss:",
+          "http://127.0.0.1:17081",
+          "ws://127.0.0.1:17081",
+          "http://127.0.0.1:18181",
+          "ws://127.0.0.1:18181"
+        ],
+        "worker-src": ["'self'", "blob:"],
+        "frame-src": ["'self'", "about:"],
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'self'",
+        "frame-ancestors": "'none'"
+      },
       "assetProtocol": {
         "enable": true,
         "scope": []
