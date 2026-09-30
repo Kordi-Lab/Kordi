@@ -140,6 +140,44 @@ test('agent sandbox pods accept no ingress and reach only DNS and public address
   assert.match(jobSpec, /SANDBOX_COMPONENT_VALUE: &str = "agent-sandbox"/);
 });
 
+test('operator canary runs use the only run ids a lease request may select', () => {
+  for (const path of [liveCanaryScriptPath, realProviderCanaryScriptPath]) {
+    assert.match(read(path), /^run_id="car_canary_[a-z_]+\$\{suffix\}"$/m, path);
+  }
+  const leases = read('bridges/cloud-server/src/cloud_agent_runtime/runs/leases.rs');
+  assert.match(leases, /CANARY_RUN_PREFIX: &str = "car_canary_"/);
+  const serverManifest = read('bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml');
+  assert.doesNotMatch(serverManifest, /KORDI_CLOUD_RUNNER_CANARY_LEASES/);
+});
+
+test('local sandbox commands have an unprivileged user in the runner image', () => {
+  const dockerfile = read(dockerfilePath);
+  assert.match(dockerfile, /useradd --system --uid 10001 --gid 10001/);
+  assert.doesNotMatch(dockerfile, /^USER /m);
+  const sandbox = read('bridges/cloud-agent-runner/src/sandbox_client.rs');
+  assert.match(sandbox, /DEFAULT_LOCAL_SANDBOX_ID: u32 = 10001/);
+});
+
+test('sandbox smoke check proves the egress policy with controls', () => {
+  const smoke = read('bridges/cloud-agent-runner/scripts/k8s-sandbox-smoke.sh');
+  assert.match(smoke, /run_job "\$control_job" "\$egress_probes" agent-sandbox-smoke-control/);
+  assert.match(
+    smoke,
+    /expect_lines control[^\n]*\\\n[^\n]*dns=resolved service=reachable server-pod=reachable postgres-pod=reachable/,
+  );
+  for (const line of [
+    'dns=resolved',
+    'public=reachable',
+    'service=blocked',
+    'server-pod=blocked',
+    'postgres-pod=blocked',
+    'node-kubelet=blocked',
+    'metadata=blocked',
+  ]) {
+    assert.match(smoke, new RegExp(`expect_lines sandbox[\\s\\S]*${line}`), line);
+  }
+});
+
 test('runner deploy script applies the sandbox NetworkPolicy before the runner', () => {
   const script = read(deployScriptPath);
   assert.match(script, /manifests\/agent-sandbox-network-policy\.yaml/);

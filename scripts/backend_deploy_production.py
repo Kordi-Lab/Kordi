@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Promote verified images on the production machine under its shared host lock."""
 import argparse
+import ipaddress
 import json
 from pathlib import Path
 import re
@@ -13,6 +14,16 @@ from backend_deploy_common import health, lock, run, write_failure, write_record
 KUBECTL = ["sudo", "k3s", "kubectl", "--namespace", "kordi-cloud"]
 CONTAINERS = {"cloud-server": "server", "cloud-agent-runner": "runner"}
 CTR = ["sudo", "k3s", "ctr", "--namespace", "k8s.io"]
+# Agent sandbox pods run model-directed commands. The runner labels them with
+# this selector; the policy in
+# bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml
+# admits no inbound traffic and keeps their outbound traffic off internal
+# networks. A runner is never promoted without it.
+SANDBOX_POLICY = "kordi-cloud-agent-sandbox"
+SANDBOX_SELECTOR = {"app.kubernetes.io/component": "agent-sandbox"}
+SANDBOX_EXCLUDED_RANGES = tuple(ipaddress.ip_network(cidr) for cidr in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "127.0.0.0/8"))
+DNS_PORTS = [("TCP", 53), ("UDP", 53)]
 
 
 def reference(service, digest):
@@ -41,6 +52,46 @@ def capture_previous():
         if previous[service] not in stored:
             run(CTR + ["images", "tag", canonical, previous[service]])
     return previous
+
+
+def sandbox_policy_problem(policy):
+    """Describe why a sandbox NetworkPolicy does not isolate sandbox pods, or return None."""
+    spec = policy.get("spec") or {}
+    if (spec.get("podSelector") or {}).get("matchLabels") != SANDBOX_SELECTOR \
+            or (spec.get("podSelector") or {}).get("matchExpressions"):
+        return "it does not select exactly the agent sandbox pods"
+    if sorted(spec.get("policyTypes") or []) != ["Egress", "Ingress"]:
+        return "it does not restrict both ingress and egress"
+    if spec.get("ingress"):
+        return "it admits inbound traffic"
+    for rule in spec.get("egress") or []:
+        peers = rule.get("to") or []
+        if not peers:
+            return "an egress rule allows every destination"
+        for peer in peers:
+            block = peer.get("ipBlock")
+            if block is None:
+                ports = sorted((port.get("protocol", "TCP"), port.get("port")) for port in rule.get("ports") or [])
+                if ports != DNS_PORTS:
+                    return "an egress rule reaches cluster workloads on ports other than DNS"
+                continue
+            network = ipaddress.ip_network(block.get("cidr", ""), strict=False)
+            excluded = [ipaddress.ip_network(cidr, strict=False) for cidr in block.get("except") or []]
+            for internal in SANDBOX_EXCLUDED_RANGES:
+                if network.version == internal.version and network.overlaps(internal) \
+                        and not any(internal.subnet_of(item) for item in excluded if item.version == internal.version):
+                    return f"an egress rule reaches {internal}"
+    return None
+
+
+def verify_sandbox_network_policy():
+    try:
+        policy = json.loads(run(KUBECTL + ["get", "networkpolicy", SANDBOX_POLICY, "-o", "json"]))
+    except Exception as error:
+        raise ValueError("The agent sandbox NetworkPolicy must exist before the runner is promoted") from error
+    problem = sandbox_policy_problem(policy)
+    if problem:
+        raise ValueError(f"The agent sandbox NetworkPolicy does not isolate sandbox pods: {problem}")
 
 
 def apply_images(images):
@@ -75,6 +126,8 @@ def deploy(args):
             record["stage"] = "backup verification"
             backup_id = create_backup(args.backup_root, args.run_id) if args.backup_id == "auto" else args.backup_id
             record.update(verify_backup(args.backup_root, backup_id))
+            record["stage"] = "sandbox network policy verification"
+            verify_sandbox_network_policy()
             record["stage"] = "capture previous images"
             previous = capture_previous()
             record["previousImages"] = previous

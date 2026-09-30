@@ -116,6 +116,9 @@ services:
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY: ${KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY:?Set KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY in deploy/dev/.env}
       KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID: local-debug:v1
       KORDI_CLOUD_RUNNER_TOKEN: ${KORDI_CLOUD_RUNNER_TOKEN:?Set KORDI_CLOUD_RUNNER_TOKEN in deploy/dev/.env}
+      # Development and test only: lets a runner lease request select any run
+      # by id. Unset, only operator canary runs can be selected.
+      KORDI_CLOUD_RUNNER_CANARY_LEASES: ${KORDI_CLOUD_RUNNER_CANARY_LEASES:-}
       KORDI_OMP_ROUTE_WORKER_URL: http://omp-route-worker:17331
       KORDI_OMP_ROUTE_WORKER_TOKEN: ${KORDI_OMP_ROUTE_WORKER_TOKEN:?Set KORDI_OMP_ROUTE_WORKER_TOKEN in deploy/dev/.env}
       KORDI_OAUTH_GITHUB_CLIENT_ID: ${KORDI_OAUTH_GITHUB_CLIENT_ID:-}
@@ -165,8 +168,10 @@ services:
       KORDI_PIP_FALLBACK_MODEL: ${KORDI_PIP_FALLBACK_MODEL:-}
       KORDI_CLOUD_SANDBOX_BACKEND: local
       # Development-only: the local backend runs commands inside this runner
-      # container and is refused unless this opt-in is set. Hosted runners use
-      # the Kubernetes backend.
+      # container and is refused unless this opt-in is set. The runner is root
+      # here, so commands run as the image's unprivileged kordi-sandbox user
+      # and cannot read the runner's environment. Hosted runners use the
+      # Kubernetes backend.
       KORDI_CLOUD_SANDBOX_ALLOW_LOCAL: "1"
       KORDI_CLOUD_SANDBOX_ROOT: /var/lib/kordi-runner-sandbox
       # Provider requests reach only public addresses unless a developer
