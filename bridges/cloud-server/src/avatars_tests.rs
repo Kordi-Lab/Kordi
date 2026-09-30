@@ -210,7 +210,7 @@ fn regenerate_requires_an_explicit_seed() {
 }
 
 #[test]
-fn avatar_rate_limit_uses_forwarded_ips_only_from_trusted_proxies() {
+fn avatar_rate_limit_uses_forwarded_ips_only_from_private_proxies() {
     let mut headers = HeaderMap::new();
     headers.insert("x-real-ip", "203.0.113.8".parse().unwrap());
     let proxy = ConnectInfo("127.0.0.1:4000".parse().unwrap());
@@ -224,12 +224,4 @@ fn avatar_rate_limit_uses_forwarded_ips_only_from_trusted_proxies() {
         avatar_request_ip(&headers, Some(&public_peer)),
         Some("198.51.100.2".parse().unwrap())
     );
-    if std::env::var_os(crate::client_ip::TRUSTED_PROXIES_ENV).is_none() {
-        let private_peer = ConnectInfo("10.1.2.3:4000".parse().unwrap());
-        assert_eq!(
-            avatar_request_ip(&headers, Some(&private_peer)),
-            Some("10.1.2.3".parse().unwrap()),
-            "private peers are trusted only when configured"
-        );
-    }
 }

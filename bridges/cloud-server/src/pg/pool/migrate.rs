@@ -12,6 +12,30 @@ fn pending_migration_sql(migration: &EmbeddedMigration) -> &str {
     }
 }
 
+/// Versions from here on must be recorded with the description embedded in
+/// this build. Earlier versions predate the check and are matched by number
+/// only, because their recorded descriptions were never compared.
+const FIRST_DESCRIPTION_CHECKED_VERSION: i64 = 106;
+
+/// Refuses a database that recorded `migration.version` for a different
+/// migration, for example when two changes were assigned the same number.
+/// Skipping it would leave this build's schema change unapplied.
+fn check_recorded_migration(
+    migration: &EmbeddedMigration,
+    recorded_description: &str,
+) -> Result<(), PgPoolError> {
+    if migration.version < FIRST_DESCRIPTION_CHECKED_VERSION
+        || recorded_description == migration.description
+    {
+        return Ok(());
+    }
+    Err(PgPoolError::Migrate(sqlx_core::Error::Protocol(format!(
+        "schema version {} is recorded as {:?}, but this build expects {:?}; \
+         resolve the migration numbering before starting this build",
+        migration.version, recorded_description, migration.description
+    ))))
+}
+
 pub(crate) async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
     // Serialize the version check with its DDL across API replicas. Separate
     // transactions still preserve the existing per-migration recovery boundary.
@@ -29,13 +53,15 @@ pub(crate) async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
             .execute(&mut *tx)
             .await
             .map_err(PgPoolError::Migrate)?;
-        let already: Option<(i64,)> =
-            query_as("SELECT version FROM cloud_schema_versions WHERE version=$1")
+        let already: Option<(String,)> =
+            query_as("SELECT description FROM cloud_schema_versions WHERE version=$1")
                 .bind(migration.version)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(PgPoolError::Migrate)?;
-        if already.is_none() {
+        if let Some((recorded_description,)) = &already {
+            check_recorded_migration(migration, recorded_description)?;
+        } else {
             sqlx_core::raw_sql::raw_sql(pending_migration_sql(migration))
                 .execute(&mut *tx)
                 .await
@@ -86,6 +112,53 @@ mod tests {
                 checksum
             );
         }
+    }
+
+    #[test]
+    fn embedded_migration_versions_strictly_increase() {
+        for pair in EMBEDDED_MIGRATIONS.windows(2) {
+            assert!(
+                pair[0].version < pair[1].version,
+                "migration {} must come before {}",
+                pair[0].version,
+                pair[1].version
+            );
+        }
+        let descriptions = EMBEDDED_MIGRATIONS
+            .iter()
+            .filter(|m| m.version >= FIRST_DESCRIPTION_CHECKED_VERSION)
+            .map(|m| m.description)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(
+            descriptions.len(),
+            EMBEDDED_MIGRATIONS
+                .iter()
+                .filter(|m| m.version >= FIRST_DESCRIPTION_CHECKED_VERSION)
+                .count(),
+            "checked migrations need distinct descriptions"
+        );
+    }
+
+    #[test]
+    fn recorded_versions_must_match_this_build_from_the_checked_version() {
+        let checked = EMBEDDED_MIGRATIONS
+            .iter()
+            .find(|m| m.version >= FIRST_DESCRIPTION_CHECKED_VERSION)
+            .expect("at least one checked migration");
+        assert!(check_recorded_migration(checked, checked.description).is_ok());
+        let error = check_recorded_migration(checked, "a different change")
+            .expect_err("a reused version must stop startup");
+        assert!(error.to_string().contains(&checked.version.to_string()));
+
+        let legacy = EMBEDDED_MIGRATIONS
+            .iter()
+            .rev()
+            .find(|m| m.version < FIRST_DESCRIPTION_CHECKED_VERSION)
+            .unwrap();
+        assert!(
+            check_recorded_migration(legacy, "any recorded text").is_ok(),
+            "released versions are matched by number only"
+        );
     }
 
     #[test]

@@ -9,8 +9,9 @@ use uuid::Uuid;
 
 use super::ticket::consume_ticket;
 use super::{
-    connection_is_active, event_is_within_delivery_window, issue_ticket, ChatSyncWakeHub,
-    ConsumedRealtimeTicket, TicketError, MAX_UNACKNOWLEDGED_EVENTS,
+    connection_is_active, event_is_within_delivery_window, issue_ticket, legacy_ticket_deadline,
+    ChatSyncWakeHub, ConsumedRealtimeTicket, TicketError, LEGACY_TICKET_SOCKET_LIFETIME,
+    MAX_UNACKNOWLEDGED_EVENTS,
 };
 
 #[test]
@@ -175,4 +176,27 @@ async fn legacy_tickets_without_a_session_fall_back_to_device_checks() {
         .await
         .unwrap();
     assert!(!connection_is_active(&pool, &ticket).await);
+}
+
+#[test]
+fn only_legacy_ticket_sockets_have_a_bounded_lifetime() {
+    let opened_at = tokio::time::Instant::now();
+    let mut ticket = ConsumedRealtimeTicket {
+        account_id: "acct_legacy".to_string(),
+        device_id: "dev_legacy".to_string(),
+        allowed_origin: None,
+        session_token_id: None,
+    };
+    assert_eq!(
+        legacy_ticket_deadline(&ticket, opened_at),
+        Some(opened_at + LEGACY_TICKET_SOCKET_LIFETIME)
+    );
+    assert!(LEGACY_TICKET_SOCKET_LIFETIME <= Duration::from_secs(5 * 60));
+
+    ticket.session_token_id = Some("tok_current".to_string());
+    assert_eq!(
+        legacy_ticket_deadline(&ticket, opened_at),
+        None,
+        "session-bound sockets close on sign-out instead"
+    );
 }

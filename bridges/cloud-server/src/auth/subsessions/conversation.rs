@@ -1,5 +1,10 @@
 //! Shared human messages and explicit, identity-bound Agent mentions.
 use super::*;
+use crate::auth::rate_limit::{
+    CloudRateLimiter, RateLimitDecision, AGENT_RUN_CLAIM_LIMIT, MESSAGE_SEND_LIMIT,
+};
+use axum::http::header::RETRY_AFTER;
+use axum::response::{IntoResponse, Response};
 
 type ConversationMessageRow = (
     Uuid,
@@ -94,17 +99,62 @@ fn valid_mentions(mentions: &[Value]) -> bool {
         })
 }
 
+/// A 429 response in this module's error shape, with `Retry-After`.
+fn rate_limited(retry_after: std::time::Duration) -> Response {
+    let mut response = error(StatusCode::TOO_MANY_REQUESTS, "rate_limited").into_response();
+    if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
+        response.headers_mut().insert(RETRY_AFTER, value);
+    }
+    response
+}
+
+/// Posts a participant message. Every message counts against the sender's
+/// message budget, and a message that runs the agent also counts against the
+/// sender's agent run budget, like a claim through the agent run API.
 pub(super) async fn send(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Path(id): Path<Uuid>,
     Json(input): Json<SendRequest>,
-) -> Result<Json<Snapshot>, ApiError> {
+) -> Response {
     if input.text.trim().is_empty() || input.text.len() > 32_000 || !valid_mentions(&input.mentions)
     {
-        return Err(error(StatusCode::BAD_REQUEST, "invalid_subsession_message"));
+        return error(StatusCode::BAD_REQUEST, "invalid_subsession_message").into_response();
+    }
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(MESSAGE_SEND_LIMIT, &session.account_id)
+        .await
+    {
+        return rate_limited(retry_after);
     }
     let pool = state.db_pool();
+    let (visible, invokes) = match admitted_invocation(pool, id, &session, &input).await {
+        Ok(value) => value,
+        Err(error) => return error.into_response(),
+    };
+    if invokes {
+        if let RateLimitDecision::Limited { retry_after } = rate_limiter
+            .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, &session.account_id)
+            .await
+        {
+            return rate_limited(retry_after);
+        }
+    }
+    match store_message(pool, id, &session, input, visible, invokes).await {
+        Ok(snapshot) => snapshot.into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+/// Reads the subsession the sender can see and whether this message runs the
+/// agent, refusing an invocation of an agent the sender may not use.
+async fn admitted_invocation(
+    pool: &PgPool,
+    id: Uuid,
+    session: &CloudSession,
+    input: &SendRequest,
+) -> Result<(Snapshot, bool), ApiError> {
     let visible = snapshot(pool, id, &session.account_id, false).await?;
     let invokes = invokes_agent(&input.text, &input.mentions, &visible.agent_id);
     if invokes {
@@ -114,6 +164,17 @@ pub(super) async fn send(
             return Err(error(StatusCode::FORBIDDEN, "subsession_agent_unavailable"));
         }
     }
+    Ok((visible, invokes))
+}
+
+async fn store_message(
+    pool: &PgPool,
+    id: Uuid,
+    session: &CloudSession,
+    input: SendRequest,
+    visible: Snapshot,
+    invokes: bool,
+) -> Result<Json<Snapshot>, ApiError> {
     let mut tx = pool.begin().await.map_err(db_error)?;
     // ponytail: serialize subsession admission; use per-session locks if throughput requires it.
     query("SELECT pg_advisory_xact_lock(81208411)")

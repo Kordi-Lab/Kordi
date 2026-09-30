@@ -366,11 +366,27 @@ async fn render_and_cache_avatar(style: &str, seed: &str, cache_key: String) -> 
     avatar_png_response(bytes)
 }
 
+/// Keys the render throttle only. Unlike the sign-in limits, which trust
+/// forwarded addresses only from `KORDI_CLOUD_TRUSTED_PROXIES`, this follows
+/// any private proxy's `X-Real-IP` so the product edge's forwarded address
+/// spreads render load instead of sharing one in-cluster bucket.
 fn avatar_request_ip(
     headers: &HeaderMap,
     connect_info: Option<&ConnectInfo<SocketAddr>>,
 ) -> Option<std::net::IpAddr> {
-    crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()))
+    let peer = connect_info.map(|info| info.0.ip())?;
+    let trusted_proxy = match peer {
+        std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
+        std::net::IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local(),
+    };
+    if !trusted_proxy {
+        return Some(peer);
+    }
+    headers
+        .get("x-real-ip")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse().ok())
+        .or(Some(peer))
 }
 
 async fn canonical_avatar_render_key_exists(

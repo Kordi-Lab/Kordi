@@ -22,20 +22,27 @@
 //! * **Per-email lockout**: failures are counted per email *and* client
 //!   address (`crl:email:client:<ip>:<email>:fail`) with TTL =
 //!   `per_email_lockout`; once that reaches `per_email_failure_limit` a
-//!   lockout key (`crl:email:client:<ip>:<email>:lock`) blocks that client
-//!   only. A second, higher ceiling counts failures for the email across all
-//!   clients (`crl:email:all:<email>:fail` / `crl:email:all:<email>:lock`)
-//!   so distributed guessing is still bounded. Failures from one client
-//!   therefore cannot lock the owner out from their own address.
-//!   `clear_email_failures` after a successful login deletes that client's
-//!   keys; the email-wide counter expires on its own.
+//!   lockout key (`crl:email:client:<ip>:<email>:lock`) blocks that client.
+//!   A second counter covers the email across all clients
+//!   (`crl:email:all:<email>:fail` / `crl:email:all:<email>:lock`); once it
+//!   reaches `per_email_global_failure_limit`, every client that has not
+//!   signed in to that email recently is blocked, which bounds guessing
+//!   spread over many addresses. A successful sign-in or signup marks the
+//!   client as familiar for that email (`crl:email:client:<ip>:<email>:known`,
+//!   TTL [`FAMILIAR_CLIENT_TTL`]) and clears its failures. Familiar clients
+//!   keep their own per-client budget during an email-wide lock, so guesses
+//!   from elsewhere cannot lock the owner out of an address they already use.
+//!   The email-wide counter expires on its own.
+//! * **Client keys**: IPv4 addresses (including IPv4-mapped IPv6) count on
+//!   their own; other IPv6 addresses count by their /64 prefix, because one
+//!   host usually controls a whole /64.
 //!
 //! The memory backend mirrors these semantics in-process (with the
 //! original sliding-window IP behaviour, since there's no cost to
 //! tracking individual timestamps locally).
 
 use std::collections::{HashMap, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -55,9 +62,18 @@ pub struct CloudRateLimitConfig {
     /// Failed logins allowed for one email from one client address.
     pub per_email_failure_limit: u32,
     pub per_email_lockout: Duration,
-    /// Failed logins allowed for one email across every client address.
+    /// Failed logins for one email across every client address after which
+    /// only familiar clients may still try.
     pub per_email_global_failure_limit: u32,
 }
+
+/// How long a client that signed in to an email stays familiar for it. Matches
+/// the default session lifetime.
+pub const FAMILIAR_CLIENT_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// The in-process backend drops expired familiar clients once it holds this
+/// many, so a long-running single replica does not grow without bound.
+const MEMORY_FAMILIAR_CLIENT_PRUNE_THRESHOLD: usize = 10_000;
 
 impl CloudRateLimitConfig {
     pub const fn production() -> Self {
@@ -66,7 +82,7 @@ impl CloudRateLimitConfig {
             per_ip_window: Duration::from_secs(60),
             per_email_failure_limit: 5,
             per_email_lockout: Duration::from_secs(15 * 60),
-            per_email_global_failure_limit: 50,
+            per_email_global_failure_limit: 10,
         }
     }
 }
@@ -98,9 +114,24 @@ impl std::fmt::Display for RateLimiterError {
 
 impl std::error::Error for RateLimiterError {}
 
+/// The address a client is counted under for rate limits and lockouts.
+/// IPv4 and IPv4-mapped IPv6 addresses count on their own; other IPv6
+/// addresses count by their /64 prefix. Unknown clients share `0.0.0.0`, so
+/// hiding the address does not escape the limit.
+pub fn rate_limit_client_key(client: Option<IpAddr>) -> IpAddr {
+    match client.map(|address| address.to_canonical()) {
+        Some(IpAddr::V6(address)) => {
+            let mut octets = address.octets();
+            octets[8..].fill(0);
+            IpAddr::V6(Ipv6Addr::from(octets))
+        }
+        Some(address) => address,
+        None => IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+    }
+}
+
 /// Counter scopes for one login email: the email from a single client
-/// address, and the email across all clients. Unknown client addresses share
-/// one scope, like [`CloudRateLimiter::observe_ip`].
+/// address, and the email across all clients.
 struct EmailLockoutKeys {
     client: String,
     global: String,
@@ -108,7 +139,7 @@ struct EmailLockoutKeys {
 
 impl EmailLockoutKeys {
     fn new(email: &str, client: Option<IpAddr>) -> Self {
-        let client = client.unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+        let client = rate_limit_client_key(client);
         Self {
             client: format!("client:{client}:{email}"),
             global: format!("all:{email}"),
@@ -127,6 +158,8 @@ struct EmailFailureWindow {
 struct MemoryStore {
     per_ip: Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
     per_email: Mutex<HashMap<String, EmailFailureWindow>>,
+    /// Client scopes that signed in successfully, with their expiry.
+    familiar_clients: Mutex<HashMap<String, Instant>>,
     per_account_action: Mutex<HashMap<String, VecDeque<Instant>>>,
 }
 
@@ -165,6 +198,7 @@ impl CloudRateLimiter {
             backend: Backend::Memory(MemoryStore {
                 per_ip: Mutex::new(HashMap::new()),
                 per_email: Mutex::new(HashMap::new()),
+                familiar_clients: Mutex::new(HashMap::new()),
                 per_account_action: Mutex::new(HashMap::new()),
             }),
         }
@@ -194,7 +228,7 @@ impl CloudRateLimiter {
     /// the limiter still applies — keyed by `0.0.0.0` so unauthenticated
     /// scrapers can't bypass simply by hiding their address.
     pub async fn observe_ip(&self, peer: Option<IpAddr>) -> RateLimitDecision {
-        let key = peer.unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+        let key = rate_limit_client_key(peer);
         match &self.backend {
             Backend::Memory(store) => self.observe_ip_memory(store, key),
             Backend::Redis(store) => self.observe_ip_redis(store, key).await,
@@ -202,8 +236,9 @@ impl CloudRateLimiter {
     }
 
     /// Read whether `email` is currently locked for `client`, either by that
-    /// client's own failures or by the email-wide ceiling. Does not record an
-    /// attempt — call `record_email_failure` after an actual failure.
+    /// client's own failures or, unless the client is familiar, by the
+    /// email-wide ceiling. Does not record an attempt — call
+    /// `record_email_failure` after an actual failure.
     pub async fn check_email_lockout(
         &self,
         email: &str,
@@ -219,7 +254,7 @@ impl CloudRateLimiter {
     /// Record a failed login. Once the failures for this email from `client`
     /// reach `per_email_failure_limit`, that client is locked out of the email
     /// for `per_email_lockout`; once failures from all clients reach
-    /// `per_email_global_failure_limit`, every client is.
+    /// `per_email_global_failure_limit`, every client that is not familiar is.
     pub async fn record_email_failure(&self, email: &str, client: Option<IpAddr>) {
         let keys = EmailLockoutKeys::new(email, client);
         match &self.backend {
@@ -228,12 +263,13 @@ impl CloudRateLimiter {
         }
     }
 
-    /// Clear this client's failure history after a successful login.
-    pub async fn clear_email_failures(&self, email: &str, client: Option<IpAddr>) {
+    /// Record a successful sign-in or signup: clear this client's failure
+    /// history and remember it as familiar for `email`.
+    pub async fn record_login_success(&self, email: &str, client: Option<IpAddr>) {
         let keys = EmailLockoutKeys::new(email, client);
         match &self.backend {
-            Backend::Memory(store) => self.clear_email_failures_memory(store, &keys),
-            Backend::Redis(store) => self.clear_email_failures_redis(store, &keys).await,
+            Backend::Memory(store) => self.record_login_success_memory(store, &keys),
+            Backend::Redis(store) => self.record_login_success_redis(store, &keys).await,
         }
     }
 
@@ -269,17 +305,32 @@ impl CloudRateLimiter {
         store: &MemoryStore,
         keys: &EmailLockoutKeys,
     ) -> RateLimitDecision {
-        let buckets = store.per_email.lock().expect("rate limiter poisoned");
         let now = Instant::now();
-        let retry_after = [&keys.client, &keys.global]
-            .into_iter()
-            .filter_map(|key| buckets.get(key.as_str())?.locked_until)
-            .filter(|until| now < *until)
-            .map(|until| until.duration_since(now))
-            .max();
-        match retry_after {
-            Some(retry_after) => RateLimitDecision::Limited { retry_after },
-            None => RateLimitDecision::Allowed,
+        let locked_for = |key: &str| {
+            let buckets = store.per_email.lock().expect("rate limiter poisoned");
+            buckets
+                .get(key)?
+                .locked_until
+                .filter(|until| now < *until)
+                .map(|until| until.duration_since(now))
+        };
+        if let Some(retry_after) = locked_for(&keys.client) {
+            return RateLimitDecision::Limited { retry_after };
+        }
+        let Some(retry_after) = locked_for(&keys.global) else {
+            return RateLimitDecision::Allowed;
+        };
+        let mut familiar = store
+            .familiar_clients
+            .lock()
+            .expect("rate limiter poisoned");
+        match familiar.get(&keys.client) {
+            Some(until) if now < *until => RateLimitDecision::Allowed,
+            Some(_) => {
+                familiar.remove(&keys.client);
+                RateLimitDecision::Limited { retry_after }
+            }
+            None => RateLimitDecision::Limited { retry_after },
         }
     }
 
@@ -315,9 +366,21 @@ impl CloudRateLimiter {
         }
     }
 
-    fn clear_email_failures_memory(&self, store: &MemoryStore, keys: &EmailLockoutKeys) {
-        let mut buckets = store.per_email.lock().expect("rate limiter poisoned");
-        buckets.remove(&keys.client);
+    fn record_login_success_memory(&self, store: &MemoryStore, keys: &EmailLockoutKeys) {
+        store
+            .per_email
+            .lock()
+            .expect("rate limiter poisoned")
+            .remove(&keys.client);
+        let now = Instant::now();
+        let mut familiar = store
+            .familiar_clients
+            .lock()
+            .expect("rate limiter poisoned");
+        if familiar.len() >= MEMORY_FAMILIAR_CLIENT_PRUNE_THRESHOLD {
+            familiar.retain(|_, until| now < *until);
+        }
+        familiar.insert(keys.client.clone(), now + FAMILIAR_CLIENT_TTL);
     }
 
     // ---- Redis backend ----
@@ -364,8 +427,8 @@ impl CloudRateLimiter {
         keys: &EmailLockoutKeys,
     ) -> RateLimitDecision {
         let mut conn = store.conn.clone();
-        let mut retry_after = None;
-        for scope in [&keys.client, &keys.global] {
+        let mut locked_for = [None, None];
+        for (slot, scope) in locked_for.iter_mut().zip([&keys.client, &keys.global]) {
             let lock_key = format!("{}:email:{scope}:lock", store.key_prefix);
             let pttl_ms: i64 = match conn.pttl(&lock_key).await {
                 Ok(value) => value,
@@ -375,12 +438,23 @@ impl CloudRateLimiter {
                 }
             };
             if pttl_ms > 0 {
-                retry_after = retry_after.max(Some(Duration::from_millis(pttl_ms as u64)));
+                *slot = Some(Duration::from_millis(pttl_ms as u64));
             }
         }
-        match retry_after {
-            Some(retry_after) => RateLimitDecision::Limited { retry_after },
-            None => RateLimitDecision::Allowed,
+        if let [Some(retry_after), _] = locked_for {
+            return RateLimitDecision::Limited { retry_after };
+        }
+        let [None, Some(retry_after)] = locked_for else {
+            return RateLimitDecision::Allowed;
+        };
+        let known_key = format!("{}:email:{}:known", store.key_prefix, keys.client);
+        match conn.exists::<_, bool>(&known_key).await {
+            Ok(true) => RateLimitDecision::Allowed,
+            Ok(false) => RateLimitDecision::Limited { retry_after },
+            Err(err) => {
+                eprintln!("[rate_limit] redis EXISTS {known_key}: {err}");
+                RateLimitDecision::Allowed
+            }
         }
     }
 
@@ -416,12 +490,19 @@ impl CloudRateLimiter {
         }
     }
 
-    async fn clear_email_failures_redis(&self, store: &RedisStore, keys: &EmailLockoutKeys) {
+    async fn record_login_success_redis(&self, store: &RedisStore, keys: &EmailLockoutKeys) {
         let mut conn = store.conn.clone();
         let fail_key = format!("{}:email:{}:fail", store.key_prefix, keys.client);
         let lock_key = format!("{}:email:{}:lock", store.key_prefix, keys.client);
         if let Err(err) = conn.del::<_, ()>(&[fail_key, lock_key]).await {
             eprintln!("[rate_limit] redis DEL email keys: {err}");
+        }
+        let known_key = format!("{}:email:{}:known", store.key_prefix, keys.client);
+        if let Err(err) = conn
+            .set_ex::<_, _, ()>(&known_key, "1", FAMILIAR_CLIENT_TTL.as_secs())
+            .await
+        {
+            eprintln!("[rate_limit] redis SETEX {known_key}: {err}");
         }
     }
 
@@ -430,6 +511,7 @@ impl CloudRateLimiter {
         if let Backend::Memory(store) = &self.backend {
             store.per_ip.lock().expect("poisoned").clear();
             store.per_email.lock().expect("poisoned").clear();
+            store.familiar_clients.lock().expect("poisoned").clear();
             store.per_account_action.lock().expect("poisoned").clear();
         }
     }
@@ -493,7 +575,7 @@ mod tests {
         ));
 
         limiter
-            .clear_email_failures("alice@example.com", client(1))
+            .record_login_success("alice@example.com", client(1))
             .await;
         assert_eq!(
             limiter
@@ -550,7 +632,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn email_wide_ceiling_bounds_distributed_failures() {
+    async fn email_wide_ceiling_blocks_unfamiliar_clients() {
         let limiter = CloudRateLimiter::memory(fast_config());
         // Seven failures spread over clients 1..=7 stay below the per-client
         // limit but reach the email-wide ceiling.
@@ -571,18 +653,6 @@ mod tests {
                 .await,
             RateLimitDecision::Limited { .. }
         ));
-        limiter
-            .clear_email_failures("target@example.com", client(99))
-            .await;
-        assert!(
-            matches!(
-                limiter
-                    .check_email_lockout("target@example.com", client(99))
-                    .await,
-                RateLimitDecision::Limited { .. }
-            ),
-            "a success does not reset the email-wide ceiling"
-        );
         tokio::time::sleep(Duration::from_millis(220)).await;
         assert_eq!(
             limiter
@@ -590,6 +660,135 @@ mod tests {
                 .await,
             RateLimitDecision::Allowed
         );
+    }
+
+    #[tokio::test]
+    async fn familiar_clients_keep_their_own_budget_during_an_email_wide_lock() {
+        let limiter = CloudRateLimiter::memory(fast_config());
+        let owner = client(50);
+        limiter
+            .record_login_success("owner@example.com", owner)
+            .await;
+        for last in 1..=7 {
+            limiter
+                .record_email_failure("owner@example.com", client(last))
+                .await;
+        }
+        assert!(
+            matches!(
+                limiter
+                    .check_email_lockout("owner@example.com", client(98))
+                    .await,
+                RateLimitDecision::Limited { .. }
+            ),
+            "new addresses are locked once the email-wide ceiling is reached"
+        );
+        assert_eq!(
+            limiter
+                .check_email_lockout("owner@example.com", owner)
+                .await,
+            RateLimitDecision::Allowed,
+            "the owner's familiar address still signs in"
+        );
+        for last in 1..=7 {
+            limiter
+                .record_email_failure("other@example.com", client(last))
+                .await;
+        }
+        assert!(
+            matches!(
+                limiter
+                    .check_email_lockout("other@example.com", owner)
+                    .await,
+                RateLimitDecision::Limited { .. }
+            ),
+            "familiarity is per email"
+        );
+
+        for _ in 0..3 {
+            limiter
+                .record_email_failure("owner@example.com", owner)
+                .await;
+        }
+        assert!(
+            matches!(
+                limiter
+                    .check_email_lockout("owner@example.com", owner)
+                    .await,
+                RateLimitDecision::Limited { .. }
+            ),
+            "a familiar address is still limited by its own failures"
+        );
+    }
+
+    #[test]
+    fn ipv6_clients_are_counted_by_their_64_prefix() {
+        let first: IpAddr = "2001:db8:1:2:aaaa::1".parse().unwrap();
+        let second: IpAddr = "2001:db8:1:2:ffff:ffff:ffff:ffff".parse().unwrap();
+        let other: IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        assert_eq!(
+            rate_limit_client_key(Some(first)),
+            rate_limit_client_key(Some(second))
+        );
+        assert_ne!(
+            rate_limit_client_key(Some(first)),
+            rate_limit_client_key(Some(other))
+        );
+        assert_eq!(
+            rate_limit_client_key(Some("::ffff:203.0.113.7".parse().unwrap())),
+            "203.0.113.7".parse::<IpAddr>().unwrap(),
+            "IPv4-mapped addresses count as their IPv4 address"
+        );
+        assert_eq!(
+            rate_limit_client_key(Some("203.0.113.7".parse().unwrap())),
+            "203.0.113.7".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(
+            rate_limit_client_key(None),
+            IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+        );
+    }
+
+    #[tokio::test]
+    async fn addresses_in_one_ipv6_64_share_ip_and_lockout_buckets() {
+        let limiter = CloudRateLimiter::memory(fast_config());
+        let address = |suffix: &str| Some(format!("2001:db8:5:6::{suffix}").parse().unwrap());
+        for suffix in ["1", "2", "3"] {
+            assert_eq!(
+                limiter.observe_ip(address(suffix)).await,
+                RateLimitDecision::Allowed
+            );
+        }
+        assert!(matches!(
+            limiter.observe_ip(address("4")).await,
+            RateLimitDecision::Limited { .. }
+        ));
+        assert_eq!(
+            limiter
+                .observe_ip(Some("2001:db8:5:7::1".parse().unwrap()))
+                .await,
+            RateLimitDecision::Allowed
+        );
+
+        for suffix in ["a", "b", "c"] {
+            limiter
+                .record_email_failure("v6@example.com", address(suffix))
+                .await;
+        }
+        assert!(matches!(
+            limiter
+                .check_email_lockout("v6@example.com", address("d"))
+                .await,
+            RateLimitDecision::Limited { .. }
+        ));
+    }
+
+    #[test]
+    fn production_limits_bound_distributed_guessing() {
+        let config = CloudRateLimitConfig::production();
+        assert_eq!(config.per_email_failure_limit, 5);
+        assert!(config.per_email_global_failure_limit <= 10);
+        assert!(config.per_email_global_failure_limit > config.per_email_failure_limit);
     }
 
     #[tokio::test]

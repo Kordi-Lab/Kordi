@@ -239,6 +239,9 @@ pub(super) async fn signup(
     }
 
     apply_deferred_signup_avatar(&state, &account_id, &avatar, &now, deferred_avatar_bytes).await;
+    rate_limiter
+        .record_login_success(&normalized_email, peer_ip)
+        .await;
 
     // Fire-and-forget event publish. We don't want NATS hiccups to slow
     // down or fail signup; the bus is a no-op when NATS isn't wired.
@@ -377,7 +380,7 @@ pub(super) async fn login(
         );
     }
     rate_limiter
-        .clear_email_failures(&normalized_email, peer_ip)
+        .record_login_success(&normalized_email, peer_ip)
         .await;
 
     let registration = match req.device.clone() {

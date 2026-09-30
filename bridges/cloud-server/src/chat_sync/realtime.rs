@@ -47,6 +47,10 @@ const MAX_UNACKNOWLEDGED_EVENTS: i64 = 1_000;
 /// How often an open socket re-checks that its session and device are live,
 /// so sign-out and device revocation both close it within this interval.
 const SESSION_REVALIDATION_INTERVAL: Duration = Duration::from_secs(2);
+/// A ticket without a session, issued by an older replica during a rolling
+/// update, can only be checked against its device. Its socket is closed after
+/// this long so the client reconnects with a session-bound ticket.
+const LEGACY_TICKET_SOCKET_LIFETIME: Duration = Duration::from_secs(5 * 60);
 
 fn event_is_within_delivery_window(stream_seq: i64, acknowledged_stream_seq: i64) -> bool {
     stream_seq.saturating_sub(acknowledged_stream_seq) <= MAX_UNACKNOWLEDGED_EVENTS
@@ -274,6 +278,18 @@ async fn persist_device_ack(
     Ok(result.rows_affected() == 1)
 }
 
+/// When a socket opened at `opened_at` with `ticket` must close regardless of
+/// revalidation: only sockets opened with a legacy ticket have a deadline.
+fn legacy_ticket_deadline(
+    ticket: &ConsumedRealtimeTicket,
+    opened_at: tokio::time::Instant,
+) -> Option<tokio::time::Instant> {
+    ticket
+        .session_token_id
+        .is_none()
+        .then(|| opened_at + LEGACY_TICKET_SOCKET_LIFETIME)
+}
+
 /// Whether the socket opened with `ticket` may keep streaming: the issuing
 /// session is still signed in and its device authorization is active.
 async fn connection_is_active(pool: &PgPool, ticket: &ConsumedRealtimeTicket) -> bool {
@@ -302,6 +318,7 @@ async fn run_socket(
         let _ = socket.send(Message::Close(None)).await;
         return;
     }
+    let legacy_deadline = legacy_ticket_deadline(&ticket, tokio::time::Instant::now());
     let connect_stream_seq = match receive_connect(&mut socket, &ticket, &codec).await {
         Ok(sequence) => sequence,
         Err(()) => {
@@ -454,7 +471,9 @@ async fn run_socket(
                 }
             }
             _ = session_revalidation.tick() => {
-                if !connection_is_active(state.db_pool(), &ticket).await {
+                let legacy_expired = legacy_deadline
+                    .is_some_and(|deadline| tokio::time::Instant::now() >= deadline);
+                if legacy_expired || !connection_is_active(state.db_pool(), &ticket).await {
                     let _ = sender.send(Message::Close(None)).await;
                     return;
                 }

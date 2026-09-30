@@ -101,6 +101,49 @@ async fn failed_logins_lock_only_the_failing_client() {
 }
 
 #[tokio::test]
+async fn email_wide_failures_lock_new_addresses_but_not_familiar_ones() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("lockout-familiar");
+    let router = fast_router(Arc::new(ServerState::new(pool, EventBus::noop())));
+    signup_with_email(&router, &email).await;
+    let proxy = "127.0.0.1:40000";
+    let login = |password: &str, client: &str| {
+        router
+            .clone()
+            .oneshot(login_from(&email, password, proxy, Some(client)))
+    };
+
+    let familiar = login("correct horse", "203.0.113.20").await.unwrap();
+    assert_eq!(familiar.status(), StatusCode::OK);
+
+    // The test limiter's email-wide ceiling is 50: five failures from each of
+    // ten addresses, each below its own per-address limit until the last try.
+    for client in 1..=10 {
+        for _ in 0..5 {
+            let response = login("wrong horse", &format!("198.51.100.{client}"))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        }
+    }
+
+    let new_address = login("correct horse", "198.51.100.200").await.unwrap();
+    assert_eq!(
+        new_address.status(),
+        StatusCode::TOO_MANY_REQUESTS,
+        "addresses that never signed in are locked once the ceiling is reached"
+    );
+    assert!(new_address.headers().contains_key("retry-after"));
+
+    let owner = login("correct horse", "203.0.113.20").await.unwrap();
+    assert_eq!(
+        owner.status(),
+        StatusCode::OK,
+        "an address that already signed in keeps working"
+    );
+}
+
+#[tokio::test]
 async fn forwarded_addresses_from_untrusted_peers_are_ignored() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("lockout-direct");

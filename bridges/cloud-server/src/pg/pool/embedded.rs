@@ -479,14 +479,16 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth snapshot readiness",
         sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
     },
-    EmbeddedMigration {
-        version: 106,
-        description: "account email verification",
-        sql: include_str!("../../../migrations/0106_account_email_verification.sql"),
-    },
+    // Version 106 is reserved for a separately reviewed change. The runner
+    // refuses a recorded version whose description differs from this list.
     EmbeddedMigration {
         version: 107,
+        description: "account email verification",
+        sql: include_str!("../../../migrations/0107_account_email_verification.sql"),
+    },
+    EmbeddedMigration {
+        version: 108,
         description: "session-bound realtime tickets",
-        sql: include_str!("../../../migrations/0107_realtime_ticket_sessions.sql"),
+        sql: include_str!("../../../migrations/0108_realtime_ticket_sessions.sql"),
     },
 ];

@@ -38,8 +38,9 @@ async fn add_identity(
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_105_marks_only_provider_verified_primary_emails() {
-    let pool = fixture(105).await;
+async fn upgrade_from_106_marks_only_provider_verified_primary_emails() {
+    // 106 is the last version before account email verification (107).
+    let pool = fixture(106).await;
     add_account(&pool, "linked-verified", Some("Linked@Example.test"), true).await;
     add_identity(
         &pool,

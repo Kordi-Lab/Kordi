@@ -88,18 +88,34 @@ KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 KORDI_OAUTH_GITHUB_CLIENT_ID=...
 KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
-KORDI_CLOUD_TRUSTED_PROXIES=127.0.0.1/32,::1/128,10.42.0.1/32
+KORDI_CLOUD_TRUSTED_PROXIES=127.0.0.1/32,::1/128
 ```
 
 For test/self-hosted Cloud servers, use that server's public HTTPS origin for `KORDI_CLOUD_PUBLIC_BASE_URL` and provider callback URLs.
 
 `KORDI_CLOUD_TRUSTED_PROXIES` lists the peer addresses or CIDR ranges whose
-`X-Real-IP` (then `X-Forwarded-For`) header names the client for rate limits
-and audit records. It defaults to loopback only; headers from any other peer
-are ignored. On the single-node product cluster, host Caddy reaches pods
-through the loopback NodePort, which kube-proxy source-NATs to the node's
-pod-network gateway (`10.42.0.1` with the default K3s pod CIDR). Never add pod
-or service ranges that other workloads can originate from.
+`X-Real-IP` (then `X-Forwarded-For`) header names the client for sign-in rate
+limits, login lockouts, and audit records. It defaults to loopback only, and
+headers from any other peer are ignored.
+
+List only proxies that overwrite `X-Real-IP` with the client address. Never
+add pod or service ranges that other workloads can originate from. Pods see
+host Caddy as the node's pod-network gateway (`10.42.0.1` with the default K3s
+pod CIDR). Before adding that gateway, set up Caddy to forward client
+addresses and validate it on the product host:
+
+1. In a global option block of the Caddy file, trust the load balancer
+   proxies on the `:8080` origin and parse `X-Forwarded-For` strictly:
+   `servers :8080 { trusted_proxies static 130.211.0.0/22 35.191.0.0/16
+   <load balancer address>; trusted_proxies_strict }`. Supply the load
+   balancer address from operator configuration; do not commit it.
+2. Use `header_up X-Real-IP {client_ip}` in both proxied routes.
+3. Confirm that new `auth.login.*` audit rows record distinct client
+   addresses rather than proxy or load balancer addresses.
+4. Add `10.42.0.1/32` to `KORDI_CLOUD_TRUSTED_PROXIES`.
+
+Avatar rendering uses its own throttle, which follows a private proxy's
+`X-Real-IP`.
 
 Production provider callback URLs:
 

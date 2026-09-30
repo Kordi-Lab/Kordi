@@ -209,6 +209,8 @@ mod expressive_media;
 mod group_invitations;
 #[path = "cloud_auth_e2e/public_identity.rs"]
 mod public_identity;
+#[path = "cloud_auth_e2e/realtime_sign_out.rs"]
+mod realtime_sign_out;
 #[path = "cloud_auth_e2e/session_and_presence.rs"]
 mod session_and_presence;
 #[path = "cloud_auth_e2e/session_list_actions.rs"]
