@@ -78,4 +78,13 @@ test('transcript attachments open through the local attachment command, never th
     assert.match(source, /openDesktopLocalAttachment/, file);
     assert.match(source, /withDesktopAttachmentPathFallback/, file);
   }
+  const mediaLibraryAction = readFileSync(
+    new URL('../src/kordi-app/components/addAttachmentToMediaLibraryAction.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(
+    mediaLibraryAction,
+    /isDesktopAttachmentAccessDenied\(readError\)[\s\S]*downloadAttachmentContent/,
+    'saving older sent media falls back to the Cloud copy',
+  );
 });
