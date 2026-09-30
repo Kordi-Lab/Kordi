@@ -201,6 +201,7 @@ export function ChatsPage({
   const companionLayout = useChatCompanionLayout({
     pageConversationId: activeConv.id,
     hasOverview: companionView !== 'chat',
+    onHide: companionSession.actions.cancelCreation,
     activePaneKind,
     companionConversation,
   });
@@ -410,7 +411,7 @@ export function ChatsPage({
     />
   ) : null;
   const selectCompanionView = (view: CompanionView) => {
-    if (view === 'chat' && !companionConversation) {
+    if (view === 'chat' && (!companionConversation || companionConversation.agentSubsessionId)) {
       void openSideAgentPanel();
       return;
     }

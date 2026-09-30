@@ -394,6 +394,7 @@ export function useChatCompanionSession({
       ),
     },
     actions: {
+      cancelCreation,
       create,
       open,
       openSubsession: (subsessionId: string) => {

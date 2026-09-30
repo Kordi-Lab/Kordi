@@ -1,4 +1,21 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type CDPSession } from '@playwright/test';
+
+// CI macOS hosts may enable Reduce Transparency globally. Set both media
+// features explicitly so each case exercises its intended material state.
+const accessibilitySessions = new WeakMap<Page, CDPSession>();
+async function accessibilityMedia(page: Page, contrast = 'no-preference', transparency = 'no-preference') {
+  let session = accessibilitySessions.get(page);
+  if (!session) {
+    session = await page.context().newCDPSession(page);
+    accessibilitySessions.set(page, session);
+  }
+  await session.send('Emulation.setEmulatedMedia', { features: [
+    { name: 'prefers-contrast', value: contrast },
+    { name: 'prefers-reduced-transparency', value: transparency },
+    { name: 'prefers-reduced-motion', value: 'reduce' },
+  ] });
+}
+test.beforeEach(async ({ page }) => { await accessibilityMedia(page); });
 
 for (const theme of ['light', 'dark']) {
   test(`native backing follows sidebar width and the ${theme} workspace palette`, async ({ page }) => {
@@ -21,10 +38,10 @@ for (const theme of ['light', 'dark']) {
     }
 
     // Preference changes must update both AppKit and the ready web surface.
-    await page.emulateMedia({ contrast: 'more' });
+    await accessibilityMedia(page, 'more');
     await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests: { sessionBackground: number[] }[] }).backdropRequests.at(-1)?.sessionBackground[3])).toBe(255);
     await expect(page.locator('.app-session-panel')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-    await page.emulateMedia({ contrast: 'no-preference' });
+    await accessibilityMedia(page);
     await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests: { sessionBackground: number[] }[] }).backdropRequests.at(-1)?.sessionBackground[3])).toBeLessThan(255);
     await expect(page.locator('.app-session-panel')).toHaveCSS('background-color', theme === 'dark' ? 'rgba(15, 15, 15, 0.42)' : 'rgba(255, 255, 255, 0.22)');
   });

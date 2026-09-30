@@ -21,6 +21,7 @@ type UseChatCompanionLayoutInput = {
   activePaneKind: 'human' | 'agent' | null;
   companionConversation: Conversation | null;
   hasOverview?: boolean;
+  onHide?: () => void;
 };
 
 export function useChatCompanionLayout({
@@ -28,6 +29,7 @@ export function useChatCompanionLayout({
   activePaneKind,
   companionConversation,
   hasOverview = false,
+  onHide,
 }: UseChatCompanionLayoutInput) {
   const [humanPaneSide, setHumanPaneSide] = useState<CompanionSide>('left');
   const [foldedState, setFoldedState] = useState({
@@ -139,10 +141,10 @@ export function useChatCompanionLayout({
       ? `minmax(280px, 1fr) ${isVisible ? 10 : 0}px minmax(${isVisible ? 280 : 0}px, ${isVisible ? (1 - splitLeftFraction) / splitLeftFraction : 0}fr)`
       : `minmax(${isVisible ? 280 : 0}px, ${isVisible ? splitLeftFraction / (1 - splitLeftFraction) : 0}fr) ${isVisible ? 10 : 0}px minmax(280px, 1fr)`,
     panelWidth: `clamp(280px, calc((100cqw - 10px) * ${side === 'right' ? 1 - splitLeftFraction : splitLeftFraction}), calc(100cqw - 290px))`,
-    setFolded: (value: boolean) => setFoldedState({
-      pageConversationId,
-      value,
-    }),
+    setFolded: (value: boolean) => {
+      if (value) onHide?.();
+      setFoldedState({ pageConversationId, value });
+    },
     placeCompanion,
     clearDropPreview: () => setDropPreviewSide(null),
     onDragStart,
