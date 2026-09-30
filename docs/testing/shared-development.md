@@ -31,6 +31,14 @@ stack uses different ports, set `KORDI_DEV_LOCAL_API_PORT` and
 already belongs to another developer session, coordinate with its owner and use
 the approved shared connection; do not kill its listener or start a competing tunnel.
 
+The connection retries after an SSH/IAP disconnect, with a delay capped at 30
+seconds. Keep the owning terminal open across sleep and network changes. If Google
+Cloud reports expired authentication or `Reauthentication failed`, run
+`gcloud auth login` in another terminal and complete the browser sign-in. A running
+connection supervisor retries automatically afterward; if the initial connection
+failed before it became ready, run `pnpm dev:cloud:connect` again. Do not share
+authorization codes or tokens. Run the diagnostic below to confirm recovery.
+
 In each preview terminal, set the same allowlist file and local API port, then run
 one of these commands from the checkout being tested:
 
@@ -137,6 +145,7 @@ check the deployment result and host record.
 | Symptom | Check and recovery |
 | --- | --- |
 | Local API port already occupied | Determine whether it is the approved shared connection. Use the shared launcher for that connection; otherwise choose a task-owned port. Never stop an unrelated listener. |
+| Messages stay pending and the local API is unreachable | Check the shared connection terminal. Restore Google Cloud authentication if requested, then confirm the doctor passes. Keep the app profile and queued messages; verify delivery after reconnection. Retry messages marked failed only after checking their reported error. |
 | `invalid_oauth_state` | Check that login start and provider callback reach the same backend. Run the doctor, correct the owning stack's callback setup, then begin a fresh login. |
 | `redirect_uri_mismatch` | Register the exact callback in the development provider application. See [OAuth setup](../development-environments.md#development-oauth-applications). |
 | Generic connection error while health succeeds | Inspect the app's transport error and native HTTP permissions. A local app permission/configuration error can fail before a request reaches the backend. |
