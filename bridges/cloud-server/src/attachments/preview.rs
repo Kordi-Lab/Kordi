@@ -3,6 +3,7 @@ use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
+use crate::attachments::content_type::{apply_attachment_response_headers, inline_media_type};
 use crate::attachments::response::boxed_err;
 
 pub(crate) fn normalize_preview_url(value: Option<&str>) -> Result<String, Box<Response>> {
@@ -37,7 +38,7 @@ pub(crate) fn preview_content_response(value: Option<&str>) -> Result<Response, 
         )
     })?;
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    apply_attachment_response_headers(&mut headers, inline_media_type(content_type));
     if let Ok(length) = HeaderValue::from_str(&bytes.len().to_string()) {
         headers.insert(header::CONTENT_LENGTH, length);
     }
@@ -69,7 +70,8 @@ fn decode_preview_data_url(value: &str) -> Result<(&'static str, Vec<u8>), ()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_preview_data_url, normalize_preview_url};
+    use super::{decode_preview_data_url, normalize_preview_url, preview_content_response};
+    use axum::http::header;
 
     #[test]
     fn preview_data_urls_decode_with_their_image_type() {
@@ -77,6 +79,18 @@ mod tests {
             decode_preview_data_url("data:image/png;base64,iVBORw==").unwrap();
         assert_eq!(content_type, "image/png");
         assert_eq!(bytes, [0x89, 0x50, 0x4e, 0x47]);
+    }
+
+    #[test]
+    fn preview_content_is_served_as_inert_image_bytes() {
+        let response = preview_content_response(Some("data:image/png;base64,iVBORw==")).unwrap();
+        let headers = response.headers();
+        assert_eq!(headers[header::CONTENT_TYPE], "image/png");
+        assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(
+            headers[header::CONTENT_SECURITY_POLICY],
+            "default-src 'none'; sandbox"
+        );
     }
 
     #[test]

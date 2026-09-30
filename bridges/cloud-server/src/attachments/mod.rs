@@ -115,6 +115,35 @@ pub fn presign_download_url(cfg: &S3Config, object_key: &str) -> Result<Url, Pre
     Ok(action.sign(PRESIGNED_URL_TTL))
 }
 
+/// Sign a client-facing GET URL for attachment bytes. Object storage is told
+/// to answer with an allowlisted media type, or with an opaque download for
+/// every other type, so a direct URL never renders stored bytes as a document.
+pub(crate) fn presign_attachment_download_url(
+    cfg: &S3Config,
+    object_key: &str,
+    media_type: Option<&'static str>,
+) -> Result<Url, PresignError> {
+    let bucket = cfg.bucket().map_err(PresignError::Bucket)?;
+    let creds = cfg.creds();
+    let mut action = GetObject::new(&bucket, Some(&creds), object_key);
+    match media_type {
+        Some(media_type) => {
+            action
+                .query_mut()
+                .insert("response-content-type", media_type);
+        }
+        None => {
+            action
+                .query_mut()
+                .insert("response-content-type", content_type::OPAQUE_CONTENT_TYPE);
+            action
+                .query_mut()
+                .insert("response-content-disposition", "attachment");
+        }
+    }
+    Ok(action.sign(PRESIGNED_URL_TTL))
+}
+
 pub fn presign_head_url(cfg: &S3Config, object_key: &str) -> Result<Url, PresignError> {
     let bucket = cfg.bucket().map_err(PresignError::Bucket)?;
     let creds = cfg.creds();
@@ -186,4 +215,41 @@ pub fn presign_abort_multipart_url(
 pub fn url_expires_at(now: SystemTime) -> chrono::DateTime<chrono::Utc> {
     let target = now + PRESIGNED_URL_TTL;
     chrono::DateTime::<chrono::Utc>::from(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    fn config() -> S3Config {
+        S3Config {
+            endpoint: Url::parse("http://127.0.0.1:9").unwrap(),
+            region: "us-east-1".to_string(),
+            bucket: "kordi-test".to_string(),
+            access_key: "test-access".to_string(),
+            secret_key: "test-secret".to_string(),
+        }
+    }
+
+    fn query(url: &Url) -> HashMap<String, String> {
+        url.query_pairs().into_owned().collect()
+    }
+
+    #[test]
+    fn direct_attachment_urls_pin_safe_response_headers() {
+        let opaque =
+            presign_attachment_download_url(&config(), "attachments/a/att_1", None).unwrap();
+        let opaque = query(&opaque);
+        assert_eq!(opaque["response-content-type"], "application/octet-stream");
+        assert_eq!(opaque["response-content-disposition"], "attachment");
+
+        let image =
+            presign_attachment_download_url(&config(), "attachments/a/att_2", Some("image/png"))
+                .unwrap();
+        let image = query(&image);
+        assert_eq!(image["response-content-type"], "image/png");
+        assert!(!image.contains_key("response-content-disposition"));
+    }
 }
