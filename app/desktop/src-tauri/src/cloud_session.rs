@@ -1,19 +1,18 @@
-//! Secret storage for hosted account credentials.
+//! Hosted account session, device identity, and device metadata commands.
 //!
-//! Packaged apps use the OS keychain. Multi-instance dev runs set `APP_DATA_DIR`,
-//! so they use isolated files under that throwaway data directory instead; this
-//! avoids macOS keychain password prompts every time the unsigned dev binary is
-//! rebuilt while still keeping Cloud sessions out of browser localStorage.
+//! Where the secrets live (OS keychain in release builds, owner-only files in
+//! isolated debug profiles) is decided in `secret_store`.
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use keyring::Entry;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, process::Command};
+
+mod secret_store;
+
+use secret_store::{secret_delete, secret_load, secret_store};
 
 const KEYCHAIN_SERVICE: &str = "com.kordi.cloud-session";
 const DEVICE_IDENTITY_KEYCHAIN_SERVICE: &str = "com.kordi.cloud-device-identity";
 const KEYCHAIN_USERNAME: &str = "default";
-const DEV_FILE_SECRETS_DIR_NAME: &str = "cloud-secrets";
 
 /// Suffix the keychain service name with the running instance id when
 /// `APP_INSTANCE_ID` is set (the multi-instance launcher sets it to
@@ -125,68 +124,6 @@ fn time_zone_country_code(time_zone: &str) -> Option<String> {
     })
 }
 
-fn entry_for(service: &str, account_id: &str) -> Result<Entry, String> {
-    Entry::new(&scoped_service(service), account_id)
-        .map_err(|err| format!("keychain_unavailable: {err}"))
-}
-
-fn dev_file_secret_path(service: &str, account_id: &str) -> Option<PathBuf> {
-    let data_dir = std::env::var_os("APP_DATA_DIR")?;
-    let scoped = scoped_service(service);
-    let encoded_name = URL_SAFE_NO_PAD.encode(format!("{scoped}:{account_id}"));
-    Some(
-        PathBuf::from(data_dir)
-            .join("kordi")
-            .join(DEV_FILE_SECRETS_DIR_NAME)
-            .join(format!("{encoded_name}.secret")),
-    )
-}
-
-fn secret_store(service: &str, account_id: &str, value: &str) -> Result<(), String> {
-    if let Some(path) = dev_file_secret_path(service, account_id) {
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|err| format!("file_secret_write_failed: {err}"))?;
-        }
-        return fs::write(path, value).map_err(|err| format!("file_secret_write_failed: {err}"));
-    }
-
-    entry_for(service, account_id)?
-        .set_password(value)
-        .map_err(|err| format!("keychain_write_failed: {err}"))
-}
-
-fn secret_load(service: &str, account_id: &str) -> Result<Option<String>, String> {
-    if let Some(path) = dev_file_secret_path(service, account_id) {
-        return match fs::read_to_string(path) {
-            Ok(value) => Ok(Some(value)),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(format!("file_secret_read_failed: {err}")),
-        };
-    }
-
-    match entry_for(service, account_id)?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(err) => Err(format!("keychain_read_failed: {err}")),
-    }
-}
-
-fn secret_delete(service: &str, account_id: &str) -> Result<(), String> {
-    if let Some(path) = dev_file_secret_path(service, account_id) {
-        return match fs::remove_file(path) {
-            Ok(()) => Ok(()),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(err) => Err(format!("file_secret_delete_failed: {err}")),
-        };
-    }
-
-    match entry_for(service, account_id)?.delete_credential() {
-        Ok(()) => Ok(()),
-        Err(keyring::Error::NoEntry) => Ok(()),
-        Err(err) => Err(format!("keychain_delete_failed: {err}")),
-    }
-}
-
 #[tauri::command]
 pub fn cloud_session_store(
     token: String,
@@ -287,8 +224,9 @@ pub fn cloud_device_system_metadata() -> CloudDeviceSystemMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
-    fn with_isolated_app_data_dir<T>(test: impl FnOnce(PathBuf) -> T) -> T {
+    pub(super) fn with_isolated_app_data_dir<T>(test: impl FnOnce(PathBuf) -> T) -> T {
         let _guard = crate::test_support::lock_process_environment();
         let previous_app_data_dir = std::env::var_os("APP_DATA_DIR");
         let previous_instance_id = std::env::var_os("APP_INSTANCE_ID");
@@ -326,7 +264,10 @@ mod tests {
             assert_eq!(loaded.token, "token-123");
             assert_eq!(loaded.account_id, "acct_123");
             assert_eq!(loaded.device_id.as_deref(), Some("dev_123"));
-            assert!(dir.join("kordi").join(DEV_FILE_SECRETS_DIR_NAME).exists());
+            assert!(dir
+                .join("kordi")
+                .join(secret_store::DEV_FILE_SECRETS_DIR_NAME)
+                .exists());
 
             cloud_session_clear().unwrap();
             assert!(cloud_session_load().unwrap().is_none());
