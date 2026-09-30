@@ -93,6 +93,9 @@ pub async fn update_voice_transcript(
         &content,
         request.transcript
     ));
+    // A transcript replaces the body of a plain voice message, so it must not
+    // turn that body into a routing envelope.
+    super::envelope_placement::ensure_rewrite_keeps_envelope_placement(&current.content, &content)?;
     query("UPDATE cloud_chat_messages SET content=$2,version=version+1,edited_at=now() WHERE message_id=$1")
         .bind(message_id).bind(&content).execute(&mut *transaction).await?;
     let message = load_message(&mut transaction, message_id).await?;
