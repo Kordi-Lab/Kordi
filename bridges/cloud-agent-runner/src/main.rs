@@ -2,10 +2,13 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use kordi_cloud_agent_runner::client::HttpCloudAgentRunClient;
-use kordi_cloud_agent_runner::config::canary_idle_enabled;
+use kordi_cloud_agent_runner::config::{canary_idle_enabled, keep_process_memory_private};
 use kordi_cloud_agent_runner::runtime::{
-    process_one_run, sandbox_backend_mode_from_env, RunnerStepOutcome, LOCAL_SANDBOX_OPT_IN_ENV,
-    SANDBOX_BACKEND_ENV,
+    process_one_run, sandbox_backend_mode_from_env, RunnerStepOutcome, SandboxBackendMode,
+    LOCAL_SANDBOX_OPT_IN_ENV, SANDBOX_BACKEND_ENV,
+};
+use kordi_cloud_agent_runner::sandbox_client::{
+    local_sandbox_identity_from_env, LOCAL_SANDBOX_GID_ENV, LOCAL_SANDBOX_UID_ENV,
 };
 
 #[tokio::main]
@@ -26,12 +29,34 @@ async fn main() -> Result<()> {
         .filter(|value| *value >= 100)
         .unwrap_or(2_000);
 
-    if let Err(reason) = sandbox_backend_mode_from_env() {
-        anyhow::bail!(
+    if let Err(error) = keep_process_memory_private() {
+        tracing::warn!(%error, "could not mark the cloud agent runner process as not dumpable");
+    }
+
+    let mode = match sandbox_backend_mode_from_env() {
+        Ok(mode) => mode,
+        Err(reason) => anyhow::bail!(
             "cloud agent runner sandbox backend is not usable ({reason}); set \
              {SANDBOX_BACKEND_ENV}=k8s, or set {LOCAL_SANDBOX_OPT_IN_ENV}=1 for local \
              development only"
-        );
+        ),
+    };
+    if mode == SandboxBackendMode::Local {
+        match local_sandbox_identity_from_env() {
+            Ok(Some(identity)) => tracing::info!(
+                uid = identity.uid,
+                gid = identity.gid,
+                "local sandbox commands run as a separate user"
+            ),
+            Ok(None) => tracing::warn!(
+                "local sandbox commands run as the runner's user and can read the runner's \
+                 environment; use the local backend only on a trusted development machine"
+            ),
+            Err(reason) => anyhow::bail!(
+                "local sandbox identity is not usable ({reason}); set {LOCAL_SANDBOX_UID_ENV} \
+                 and {LOCAL_SANDBOX_GID_ENV} to non-root numeric ids"
+            ),
+        }
     }
 
     if canary_idle_enabled(

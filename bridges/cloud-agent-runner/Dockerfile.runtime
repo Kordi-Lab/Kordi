@@ -24,6 +24,13 @@ RUN apt-get update \
     && chmod +x /usr/local/bin/kubectl \
     && rm -rf /var/lib/apt/lists/*
 
+# Commands of the development-only local sandbox backend run as this
+# unprivileged user when the runner is root, so they cannot read the runner's
+# environment. The runner itself stays root to switch to it.
+RUN groupadd --system --gid 10001 kordi-sandbox \
+    && useradd --system --uid 10001 --gid 10001 --no-create-home \
+       --home-dir /nonexistent --shell /usr/sbin/nologin kordi-sandbox
+
 COPY --from=builder /workspace/target/release/kordi-cloud-agent-runner /usr/local/bin/kordi-cloud-agent-runner
 
 ENTRYPOINT ["/usr/local/bin/kordi-cloud-agent-runner"]

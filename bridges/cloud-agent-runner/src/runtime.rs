@@ -128,9 +128,12 @@ fn sandbox_backend_for_mode(
             {
                 return Err("invalid_sandbox_id");
             }
-            Ok(std::sync::Arc::new(LocalSandboxBackend::new(
-                local_root.join(id),
-            )))
+            let backend = LocalSandboxBackend::new(local_root.join(id));
+            if backend.identity().is_some() {
+                crate::sandbox_client::restrict_local_sandbox_root(&local_root)
+                    .map_err(|_| "local_sandbox_root_unavailable")?;
+            }
+            Ok(std::sync::Arc::new(backend))
         }
         SandboxBackendMode::K8s => {
             let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;
