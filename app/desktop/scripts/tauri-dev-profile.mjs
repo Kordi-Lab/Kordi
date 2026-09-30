@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 import {
   buildBeforeDevCommand,
   desktopDevCapabilities,
+  desktopDevCsp,
   resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from './tauri-dev-env.mjs';
@@ -155,7 +156,13 @@ const beforeDevCommand = buildBeforeDevCommand({
 });
 
 const baseConfig = JSON.parse(readFileSync(tauriConfigPath, 'utf8'));
-const defaultCapability = JSON.parse(readFileSync(join(appRoot, 'src-tauri', 'capabilities', 'default.json'), 'utf8'));
+const capabilitiesDir = join(appRoot, 'src-tauri', 'capabilities');
+// Inline capabilities replace the capabilities directory, so carry every
+// packaged capability file (shared and main-window only) into the profile.
+const packagedCapabilities = readdirSync(capabilitiesDir)
+  .filter((name) => name.endsWith('.json'))
+  .sort()
+  .map((name) => JSON.parse(readFileSync(join(capabilitiesDir, name), 'utf8')));
 const nextConfig = {
   ...baseConfig,
   productName: title,
@@ -174,7 +181,8 @@ const nextConfig = {
     ...baseConfig.app,
     security: {
       ...baseConfig.app.security,
-      capabilities: desktopDevCapabilities(defaultCapability, resolveCloudDevApiBase(process.env)),
+      csp: desktopDevCsp(baseConfig.app.security.csp, resolveCloudDevApiBase(process.env)),
+      capabilities: desktopDevCapabilities(packagedCapabilities, resolveCloudDevApiBase(process.env)),
     },
     windows: (baseConfig.app?.windows ?? []).map((window, index) => (
       index === 0

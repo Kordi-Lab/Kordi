@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
-use super::{attachment_storage_dir, ensure_attachment_file_path, safe_attachment_name};
+use super::access::authorize_attachment_file;
+use super::quarantine::mark_quarantined_or_log;
+use super::{attachment_storage_dir, safe_attachment_name};
 
 const MAX_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
@@ -86,6 +88,7 @@ pub(super) fn write(attachment_id: &str, name: &str, data: &[u8]) -> Result<Stri
     let path = path(attachment_id, name)?;
     let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
     std::fs::write(&temporary, data).map_err(|error| error.to_string())?;
+    mark_quarantined_or_log(&temporary);
     std::fs::rename(&temporary, &path).map_err(|error| error.to_string())?;
     prune(
         path.parent()
@@ -99,10 +102,11 @@ pub(super) fn copy(attachment_id: &str, name: &str, source: &Path) -> Result<Str
     if let Some(path) = cached(attachment_id, name)? {
         return Ok(path.display().to_string());
     }
-    let source = ensure_attachment_file_path(source)?;
+    let source = authorize_attachment_file(source)?;
     let path = path(attachment_id, name)?;
     let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
     std::fs::copy(source, &temporary).map_err(|error| error.to_string())?;
+    mark_quarantined_or_log(&temporary);
     std::fs::rename(&temporary, &path).map_err(|error| error.to_string())?;
     prune(
         path.parent()
@@ -166,6 +170,7 @@ pub(super) async fn download(
                 .map_err(|error| error.to_string())?;
         }
         file.flush().await.map_err(|error| error.to_string())?;
+        mark_quarantined_or_log(&temporary);
         if let Err(error) = tokio::fs::rename(&temporary, &path).await {
             if path.is_file() {
                 let _ = tokio::fs::remove_file(&temporary).await;

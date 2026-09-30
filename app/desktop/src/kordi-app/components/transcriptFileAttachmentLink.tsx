@@ -23,9 +23,12 @@ import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
 import { attachmentFormatLabel } from '@/features/chat/composerAttachments';
 import {
   downloadDesktopAttachment,
-  openDesktopExternalUrl,
   storeDesktopChatAttachment,
 } from '@/lib/desktop';
+import {
+  openDesktopLocalAttachment,
+  withDesktopAttachmentPathFallback,
+} from '@/lib/desktopLocalAttachments';
 import type { MessageAttachment } from '../types';
 import { formatAttachmentSize } from './transcriptAttachmentTypes';
 
@@ -173,6 +176,10 @@ export function TranscriptFileAttachmentLink({
 
   async function ensureLocalPath() {
     if (attachment.localPath) return attachment.localPath;
+    return cloudCopyPath();
+  }
+
+  async function cloudCopyPath() {
     if (!attachment.attachmentId) return null;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
@@ -194,7 +201,11 @@ export function TranscriptFileAttachmentLink({
     try {
       const localPath = await ensureLocalPath();
       if (!localPath) return;
-      const targetPath = await downloadDesktopAttachment(localPath, attachment.name);
+      const targetPath = await withDesktopAttachmentPathFallback(
+        localPath,
+        attachment.localPath ? cloudCopyPath : null,
+        (path) => downloadDesktopAttachment(path, attachment.name),
+      );
       setDownloadedPath(targetPath);
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
@@ -208,7 +219,11 @@ export function TranscriptFileAttachmentLink({
     if (!target) return;
     setError(null);
     try {
-      await openDesktopExternalUrl(target);
+      await withDesktopAttachmentPathFallback(
+        target,
+        downloadedPath ? null : cloudCopyPath,
+        openDesktopLocalAttachment,
+      );
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
     }
@@ -269,7 +284,11 @@ export function TranscriptFileAttachmentLink({
     try {
       const target = await ensureLocalPath();
       if (!target) throw new Error('Attachment is not available locally.');
-      const savedPath = await saveDesktopAttachmentAs(target, attachment.name);
+      const savedPath = await withDesktopAttachmentPathFallback(
+        target,
+        attachment.localPath ? cloudCopyPath : null,
+        (path) => saveDesktopAttachmentAs(path, attachment.name),
+      );
       if (savedPath) {
         setDownloadedPath(savedPath);
         closeMenu();

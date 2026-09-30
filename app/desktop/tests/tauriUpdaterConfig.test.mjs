@@ -64,10 +64,15 @@ test('acceptance flavors are ad-hoc, updater-signed, and isolated from beta', ()
 });
 
 test('desktop capability grants updater permission without generic process-plugin access', () => {
-  const capability = readJson('src-tauri/capabilities/default.json');
+  const shared = readJson('src-tauri/capabilities/default.json');
+  const main = readJson('src-tauri/capabilities/main-window.json');
 
-  assert.ok(capability.permissions.includes('updater:default'));
-  assert.ok(!capability.permissions.some((permission) => permission.startsWith('process:')));
+  assert.deepEqual(main.windows, ['main']);
+  assert.ok(main.permissions.includes('updater:default'));
+  assert.ok(!shared.permissions.includes('updater:default'), 'secondary windows must not reach the updater');
+  for (const capability of [shared, main]) {
+    assert.ok(!capability.permissions.some((permission) => typeof permission === 'string' && permission.startsWith('process:')));
+  }
 });
 
 test('desktop manifests use Tauri updater without the generic process relaunch plugin', () => {

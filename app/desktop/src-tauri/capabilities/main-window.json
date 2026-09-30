@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-window",
+  "description": "Capabilities only the main Kordi window needs: opening the auth, call, and media windows, receiving deep links, and installing verified updates.",
+  "windows": ["main"],
+  "permissions": [
+    "core:window:allow-create",
+    "core:webview:allow-create-webview-window",
+    "deep-link:default",
+    "updater:default"
+  ]
+}

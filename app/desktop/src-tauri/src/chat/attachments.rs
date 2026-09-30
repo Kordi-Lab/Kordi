@@ -6,9 +6,13 @@ use tauri::Manager;
 
 use super::DesktopStoredChatAttachment;
 
+pub(crate) mod access;
 mod cloud_cache;
 pub(crate) mod cloud_upload;
 pub(crate) mod live_photos;
+pub(crate) mod open_local;
+pub(crate) mod pasteboard;
+pub(crate) mod quarantine;
 pub(crate) mod save_as;
 pub(crate) mod stream;
 
@@ -200,6 +204,9 @@ pub(crate) fn store_chat_attachment_bytes(
 ) -> Result<DesktopStoredChatAttachment, String> {
     let path = unique_attachment_path(name)?;
     std::fs::write(&path, data).map_err(|err| err.to_string())?;
+    // These bytes often come from a conversation (received files, forwarded
+    // media), so treat them like a download.
+    quarantine::mark_quarantined_or_log(&path);
     stored_chat_attachment_from_path(&path)
 }
 
@@ -244,11 +251,36 @@ pub async fn desktop_chat_download_cloud_attachment(
     download_cloud_attachment(&token, &attachment_id, &name).await
 }
 
-#[tauri::command]
-pub async fn desktop_chat_store_attachment_path(
+/// Resolves a path the desktop UI asked to attach. It must already be usable
+/// under the attachment access policy, or be one of the file URLs on the
+/// system pasteboard (a paste); `pasteboard_file_paths` is only read when
+/// needed.
+pub(crate) async fn authorize_requested_path<F, Fut>(
+    path: &Path,
+    pasteboard_file_paths: F,
+) -> Result<PathBuf, String>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<PathBuf>, String>>,
+{
+    match access::authorize_attachment_path(path) {
+        Err(error) if error == access::ATTACHMENT_ACCESS_DENIED => {
+            let pasted = pasteboard_file_paths().await?;
+            access::authorize_pasted_attachment(path, &pasted)
+        }
+        result => result,
+    }
+}
+
+pub(crate) async fn store_attachment_path<F, Fut>(
     path: String,
     name: Option<String>,
-) -> Result<DesktopStoredChatAttachment, String> {
+    pasteboard_file_paths: F,
+) -> Result<DesktopStoredChatAttachment, String>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<PathBuf>, String>>,
+{
     let fallback_name = Path::new(&path)
         .file_name()
         .and_then(|value| value.to_str())
@@ -265,8 +297,32 @@ pub async fn desktop_chat_store_attachment_path(
     {
         return Err("Attachments must be 2 GiB or smaller.".to_string());
     }
+    // Picked files are registered by the native picker and `@` references by
+    // `desktop_chat_attach_reference_path`; a pasted path is accepted only
+    // when native code finds it on the system pasteboard.
+    authorize_requested_path(Path::new(&path), pasteboard_file_paths).await?;
     attachment.name = safe_attachment_name(display_name);
     Ok(attachment)
+}
+
+#[tauri::command]
+pub async fn desktop_chat_store_attachment_path(
+    app: tauri::AppHandle,
+    path: String,
+    name: Option<String>,
+) -> Result<DesktopStoredChatAttachment, String> {
+    store_attachment_path(path, name, || {
+        pasteboard::general_pasteboard_file_paths(&app)
+    })
+    .await
+}
+
+/// Lets later attachment commands use a file the person picked from the `@`
+/// file reference menu. Credential, keychain, browser profile, and shell
+/// history locations are refused.
+#[tauri::command]
+pub async fn desktop_chat_attach_reference_path(path: String) -> Result<(), String> {
+    access::register_referenced_attachment(Path::new(&path)).map(|_| ())
 }
 
 #[tauri::command]
@@ -293,12 +349,14 @@ return selectedPaths
                 }
                 return Err(format!("Unable to choose attachments: {}", error.trim()));
             }
-            Ok(String::from_utf8_lossy(&output.stdout)
+            let paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
                 .lines()
                 .map(str::trim)
                 .filter(|path| !path.is_empty())
                 .map(str::to_string)
-                .collect())
+                .collect();
+            access::register_native_selection(&paths)?;
+            Ok(paths)
         })
         .await
         .map_err(|error| format!("Attachment picker stopped unexpectedly: {error}"))?
@@ -312,7 +370,7 @@ return selectedPaths
 
 #[tauri::command]
 pub async fn desktop_chat_read_attachment(path: String) -> Result<Vec<u8>, String> {
-    let source = ensure_attachment_file_path(Path::new(&path))?;
+    let source = access::authorize_attachment_file(Path::new(&path))?;
     std::fs::read(&source)
         .map_err(|err| format!("Unable to read attachment {}: {err}", source.display()))
 }
@@ -322,7 +380,7 @@ pub async fn desktop_chat_download_attachment(
     path: String,
     name: Option<String>,
 ) -> Result<String, String> {
-    let source = ensure_attachment_file_path(Path::new(&path))?;
+    let source = access::authorize_attachment_file(Path::new(&path))?;
     let fallback_name = source
         .file_name()
         .and_then(|value| value.to_str())
@@ -332,110 +390,9 @@ pub async fn desktop_chat_download_attachment(
         .filter(|value| !value.trim().is_empty())
         .unwrap_or(fallback_name);
     let target = unique_download_path(download_name)?;
-    std::fs::copy(&source, &target).map_err(|err| err.to_string())?;
+    save_as::copy_attachment_out(&source, &target)?;
     Ok(target.display().to_string())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn safe_attachment_name_strips_path_segments() {
-        assert_eq!(safe_attachment_name("/tmp/report.pdf"), "report.pdf");
-        assert_eq!(safe_attachment_name("   "), "attachment.bin");
-    }
-
-    #[test]
-    fn stored_attachment_metadata_is_derived_from_extension() {
-        let path = Path::new("screen.PNG");
-        assert_eq!(stored_attachment_kind(path), "image");
-        assert_eq!(
-            stored_attachment_mime_type(path).as_deref(),
-            Some("image/png")
-        );
-        assert_eq!(stored_attachment_format_label(path).as_deref(), Some("PNG"));
-        assert_eq!(
-            stored_attachment_mime_type(Path::new("recording.mp4")).as_deref(),
-            Some("video/mp4")
-        );
-    }
-
-    #[test]
-    fn stored_attachment_from_directory_preserves_folder_path() {
-        let dir =
-            std::env::temp_dir().join(format!("kordi-attachment-folder-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).expect("create temp attachment folder");
-
-        let attachment = stored_chat_attachment_from_path(&dir).expect("directory attaches");
-
-        assert_eq!(attachment.path, dir.display().to_string());
-        assert_eq!(attachment.kind, "folder");
-        assert_eq!(attachment.format_label.as_deref(), Some("Folder"));
-        assert_eq!(attachment.size_bytes, None);
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[tokio::test]
-    async fn read_attachment_reads_file_bytes_and_rejects_directories() {
-        let dir =
-            std::env::temp_dir().join(format!("kordi-attachment-read-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).expect("create temp attachment dir");
-        let file = dir.join("report.txt");
-        std::fs::write(&file, b"hello").expect("write temp attachment");
-
-        let bytes = desktop_chat_read_attachment(file.display().to_string())
-            .await
-            .expect("read attachment bytes");
-        assert_eq!(bytes, b"hello");
-
-        let dir_error = desktop_chat_read_attachment(dir.display().to_string())
-            .await
-            .expect_err("directories are rejected");
-        assert!(dir_error.contains("Attachment is not a file"));
-
-        std::fs::remove_dir_all(&dir).ok();
-    }
-
-    #[tokio::test]
-    async fn selected_files_are_referenced_without_copying_and_reject_over_2_gib() {
-        let dir = std::env::temp_dir().join(format!(
-            "kordi-attachment-reference-{}",
-            uuid::Uuid::new_v4()
-        ));
-        std::fs::create_dir_all(&dir).expect("create temp attachment dir");
-        let file = dir.join("archive.zip");
-        std::fs::write(&file, b"small").expect("write temp attachment");
-
-        let stored = desktop_chat_store_attachment_path(
-            file.display().to_string(),
-            Some("release.zip".to_string()),
-        )
-        .await
-        .expect("reference selected attachment");
-        assert_eq!(stored.path, file.display().to_string());
-        assert_eq!(stored.name, "release.zip");
-
-        let near_limit = dir.join("near-limit.bin");
-        std::fs::File::create(&near_limit)
-            .and_then(|file| file.set_len(MAX_CHAT_ATTACHMENT_SIZE_BYTES))
-            .expect("create sparse near-limit attachment");
-        let stored = desktop_chat_store_attachment_path(near_limit.display().to_string(), None)
-            .await
-            .expect("accept attachment at limit");
-        assert_eq!(stored.path, near_limit.display().to_string());
-        assert_eq!(stored.size_bytes, Some(MAX_CHAT_ATTACHMENT_SIZE_BYTES));
-
-        let oversized = dir.join("oversized.bin");
-        std::fs::File::create(&oversized)
-            .and_then(|file| file.set_len(MAX_CHAT_ATTACHMENT_SIZE_BYTES + 1))
-            .expect("create sparse oversized attachment");
-        let error = desktop_chat_store_attachment_path(oversized.display().to_string(), None)
-            .await
-            .expect_err("oversized attachment is rejected");
-        assert_eq!(error, "Attachments must be 2 GiB or smaller.");
-
-        std::fs::remove_dir_all(dir).ok();
-    }
-}
+mod tests;

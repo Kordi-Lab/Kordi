@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   createDesktopUpdaterController,
   manualUpdateUrlForVersion,
+  safeManualDownloadUrl,
   type DesktopUpdaterAdapter,
   type DesktopUpdaterDownloadEvent,
   type DesktopUpdaterUpdate,
@@ -68,6 +69,28 @@ test('manual fallback is product-origin and version-immutable', () => {
     'https://evil.invalid/x',
   ]) {
     assert.equal(manualUpdateUrlForVersion(value), undefined);
+  }
+});
+
+test('manual download links are opened only for HTTPS Kordi release downloads', () => {
+  assert.equal(safeManualDownloadUrl(BETA6_MANUAL_UPDATE_URL), BETA6_MANUAL_UPDATE_URL);
+  assert.equal(safeManualDownloadUrl(manualUpdateUrlForVersion('0.0.1-beta.6')), BETA6_MANUAL_UPDATE_URL);
+  for (const value of [
+    undefined,
+    null,
+    '',
+    '   ',
+    'http://kordi.ai/updates/releases/0.0.1-beta.6/Kordi.dmg',
+    'file:///Applications/Kordi.app',
+    '/Applications/Kordi.app',
+    'javascript:alert(1)',
+    'https://evil.invalid/updates/releases/0.0.1-beta.6/Kordi.dmg',
+    'https://kordi.ai.evil.invalid/updates/releases/x.dmg',
+    'https://user:pass@kordi.ai/updates/releases/x.dmg',
+    'https://kordi.ai/login',
+    '-a Calculator',
+  ]) {
+    assert.equal(safeManualDownloadUrl(value), undefined, String(value));
   }
 });
 

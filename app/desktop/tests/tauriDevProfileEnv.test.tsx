@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import {
   buildBeforeDevCommand,
   desktopDevCapabilities,
+  desktopDevCsp,
   resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from '../scripts/tauri-dev-env.mjs';
@@ -22,6 +23,42 @@ test('named desktop preview permits only its configured API origin', () => {
   const [remoteCapability] = desktopDevCapabilities(defaultCapability, 'https://test.example');
   const remotePermission = remoteCapability.permissions.find((permission: { identifier?: string }) => permission.identifier === 'http:default');
   assert.deepEqual(remotePermission.allow, [{ url: 'https://test.example' }]);
+});
+
+test('named desktop preview keeps the main-window-only capability', () => {
+  const mainWindowCapability = JSON.parse(readFileSync(new URL('../src-tauri/capabilities/main-window.json', import.meta.url), 'utf8'));
+  const capabilities = desktopDevCapabilities([defaultCapability, mainWindowCapability], 'http://127.0.0.1:17642');
+
+  assert.deepEqual(capabilities.map((capability: { identifier: string }) => capability.identifier), ['default', 'main-window']);
+  assert.deepEqual(capabilities[1], mainWindowCapability);
+  const httpPermission = capabilities[0].permissions.find((permission: { identifier?: string }) => permission.identifier === 'http:default');
+  assert.deepEqual(httpPermission.allow, [{ url: 'http://127.0.0.1:17642' }]);
+  assert.throws(() => desktopDevCapabilities([mainWindowCapability], 'http://127.0.0.1:17642'), /HTTP permission/);
+});
+
+test('named desktop preview CSP swaps the product API for its own API origin', () => {
+  const baseConfig = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
+  const baseCsp = baseConfig.app.security.csp;
+  const csp = desktopDevCsp(baseCsp, 'http://127.0.0.1:17642');
+
+  assert.ok(csp['connect-src'].includes('http://127.0.0.1:17642'));
+  assert.ok(csp['connect-src'].includes('ws://127.0.0.1:17642'));
+  assert.ok(csp['img-src'].includes('http://127.0.0.1:17642'));
+  assert.ok(csp['media-src'].includes('http://127.0.0.1:17642'));
+  assert.doesNotMatch(JSON.stringify(csp), /kordi\.ai/, 'isolated profiles must not allow the product API');
+  assert.deepEqual(csp['script-src'], baseCsp['script-src']);
+  assert.ok(!baseCsp['connect-src'].includes('http://127.0.0.1:17642'), 'the packaged policy is not modified');
+  assert.ok(baseCsp['connect-src'].includes('https://kordi.ai'), 'the packaged policy is not modified');
+
+  const remote = desktopDevCsp(baseCsp, 'https://test.example');
+  assert.ok(remote['connect-src'].includes('https://test.example'));
+  assert.ok(remote['connect-src'].includes('wss://test.example'));
+
+  const operator = desktopDevCsp(baseCsp, 'https://kordi.ai');
+  assert.ok(operator['connect-src'].includes('https://kordi.ai'));
+  assert.ok(operator['connect-src'].includes('wss://kordi.ai'));
+  assert.throws(() => desktopDevCsp(baseCsp, 'file:///tmp'), /HTTP\(S\)/);
+  assert.throws(() => desktopDevCsp("default-src 'self'", 'http://127.0.0.1:1'), /directive map/);
 });
 
 test('native startup preserves the title selected by a named Tauri profile', () => {
