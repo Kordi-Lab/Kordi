@@ -103,6 +103,32 @@ Health check:
 curl https://kordi.ai/health
 ```
 
+## Agent runner and sandbox boundary
+
+`deploy-cloud-agent-runner.sh` applies
+`manifests/agent-sandbox-network-policy.yaml` before the runner Deployment.
+The policy selects every sandbox pod by `app.kubernetes.io/component:
+agent-sandbox`, admits no inbound traffic, allows DNS only to the cluster DNS
+pods, and allows other outbound traffic only to public addresses. Private,
+carrier-grade NAT, link-local (including the metadata endpoint), and loopback
+ranges are excluded; the default k3s pod and service CIDRs fall inside
+`10.0.0.0/8`. k3s enforces NetworkPolicy with its embedded kube-router
+controller unless it was started with `--disable-network-policy`, which
+`install-k3s.sh` does not pass. `bridges/cloud-agent-runner/scripts/k8s-sandbox-smoke.sh`
+checks that a sandbox pod cannot reach the Cloud server service or the
+metadata endpoint.
+
+Each sandbox container has CPU and memory requests and limits. Defaults are
+`100m`/`1` CPU and `128Mi`/`1Gi` memory; override them with
+`KORDI_CLOUD_SANDBOX_CPU_REQUEST`, `KORDI_CLOUD_SANDBOX_CPU_LIMIT`,
+`KORDI_CLOUD_SANDBOX_MEMORY_REQUEST`, and `KORDI_CLOUD_SANDBOX_MEMORY_LIMIT` on
+the runner Deployment.
+
+The hosted runner must use `KORDI_CLOUD_SANDBOX_BACKEND=k8s`. The `local`
+backend runs commands on the runner's own host as the runner user and is refused
+unless the development-only `KORDI_CLOUD_SANDBOX_ALLOW_LOCAL=1` is set, as it
+is in `deploy/dev/compose.yaml`.
+
 ## Built-in Kordi Support contact
 
 When `KORDI_SUPPORT_ENABLED=true`, the server prepends one locked, system-owned

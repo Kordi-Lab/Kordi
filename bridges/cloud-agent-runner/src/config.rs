@@ -1,4 +1,10 @@
 pub fn canary_idle_enabled(value: Option<&str>) -> bool {
+    env_flag_enabled(value)
+}
+
+/// Parses an operator on/off switch. Anything other than an explicit truthy
+/// value, including an unset variable, is off.
+pub fn env_flag_enabled(value: Option<&str>) -> bool {
     matches!(
         value.map(str::trim).map(str::to_ascii_lowercase).as_deref(),
         Some("1" | "true" | "yes" | "on")

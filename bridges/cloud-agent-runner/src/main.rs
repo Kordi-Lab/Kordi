@@ -3,7 +3,10 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use kordi_cloud_agent_runner::client::HttpCloudAgentRunClient;
 use kordi_cloud_agent_runner::config::canary_idle_enabled;
-use kordi_cloud_agent_runner::runtime::{process_one_run, RunnerStepOutcome};
+use kordi_cloud_agent_runner::runtime::{
+    process_one_run, sandbox_backend_mode_from_env, RunnerStepOutcome, LOCAL_SANDBOX_OPT_IN_ENV,
+    SANDBOX_BACKEND_ENV,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,6 +25,14 @@ async fn main() -> Result<()> {
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| *value >= 100)
         .unwrap_or(2_000);
+
+    if let Err(reason) = sandbox_backend_mode_from_env() {
+        anyhow::bail!(
+            "cloud agent runner sandbox backend is not usable ({reason}); set \
+             {SANDBOX_BACKEND_ENV}=k8s, or set {LOCAL_SANDBOX_OPT_IN_ENV}=1 for local \
+             development only"
+        );
+    }
 
     if canary_idle_enabled(
         std::env::var("KORDI_CLOUD_RUNNER_CANARY_IDLE")

@@ -1,3 +1,4 @@
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -54,9 +55,34 @@ pub trait SandboxBackend: Send + Sync {
     async fn run_bash(&self, command: &str) -> Result<BashOutput, SandboxClientError>;
 }
 
+/// Development-only backend that runs commands on the runner host as the
+/// runner's own user. It withholds the runner's environment from commands, but
+/// it is not an isolation boundary; `runtime::sandbox_backend_mode` refuses it
+/// unless the development opt-in is set.
 #[derive(Debug, Clone)]
 pub struct LocalSandboxBackend {
     root: PathBuf,
+}
+
+const LOCAL_DEFAULT_PATH: &str = "/usr/local/bin:/usr/bin:/bin";
+const LOCAL_DEFAULT_LANG: &str = "C.UTF-8";
+
+/// The complete environment of a local sandbox command. The runner's own
+/// variables, including its service credentials, are never inherited; only a
+/// search path and locale pass through, and home and temporary directories
+/// point inside the sandbox.
+fn local_command_env(root: &Path) -> Vec<(&'static str, OsString)> {
+    let inherited = |name: &str, fallback: &str| {
+        std::env::var_os(name)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| OsString::from(fallback))
+    };
+    vec![
+        ("PATH", inherited("PATH", LOCAL_DEFAULT_PATH)),
+        ("HOME", root.as_os_str().to_os_string()),
+        ("LANG", inherited("LANG", LOCAL_DEFAULT_LANG)),
+        ("TMPDIR", root.join(".tmp").into_os_string()),
+    ]
 }
 
 impl LocalSandboxBackend {
@@ -206,11 +232,17 @@ impl SandboxBackend for LocalSandboxBackend {
             ));
         }
         tokio::fs::create_dir_all(&self.root).await?;
+        let env = local_command_env(&self.root);
+        if let Some((_, tmp)) = env.iter().find(|(name, _)| *name == "TMPDIR") {
+            tokio::fs::create_dir_all(tmp).await?;
+        }
         let output = Command::new("/bin/sh")
             .kill_on_drop(true)
             .arg("-c")
             .arg(command)
             .current_dir(&self.root)
+            .env_clear()
+            .envs(env)
             .output()
             .await?;
         Ok(BashOutput {
@@ -238,6 +270,62 @@ mod tests {
         let bytes = backend.read_bytes("artifact.txt").await.unwrap();
 
         assert_eq!(bytes, b"hello");
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn local_commands_do_not_see_the_runner_environment() {
+        let suffix = uuid::Uuid::new_v4().simple().to_string();
+        let secret_name = format!("KORDI_TEST_RUNNER_SECRET_{suffix}");
+        let secret_value = format!("runner-secret-{suffix}");
+        std::env::set_var(&secret_name, &secret_value);
+        let root = std::env::temp_dir().join(format!("kordi-sandbox-env-{suffix}"));
+        let backend = LocalSandboxBackend::new(root.clone());
+
+        let output = backend.run_bash("env").await.unwrap();
+
+        assert_eq!(output.exit_code, 0, "{}", output.stderr);
+        assert!(!output.stdout.contains(&secret_value));
+        assert!(!output.stdout.contains(&secret_name));
+        let names: Vec<&str> = output
+            .stdout
+            .lines()
+            .filter_map(|line| line.split_once('=').map(|(name, _)| name))
+            .collect();
+        for name in &names {
+            assert!(
+                matches!(
+                    *name,
+                    "PATH" | "HOME" | "LANG" | "TMPDIR" | "PWD" | "OLDPWD" | "SHLVL" | "_"
+                ),
+                "unexpected variable {name} in sandbox environment"
+            );
+        }
+        let home = format!("HOME={}", root.display());
+        let tmpdir = format!("TMPDIR={}", root.join(".tmp").display());
+        assert!(output.stdout.lines().any(|line| line == home));
+        assert!(output.stdout.lines().any(|line| line == tmpdir));
+        assert!(root.join(".tmp").is_dir());
+
+        std::env::remove_var(&secret_name);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn local_commands_still_find_standard_tools() {
+        let root = std::env::temp_dir().join(format!(
+            "kordi-sandbox-path-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let backend = LocalSandboxBackend::new(root.clone());
+
+        let output = backend
+            .run_bash("printf hello > note.txt && cat note.txt")
+            .await
+            .unwrap();
+
+        assert_eq!(output.exit_code, 0, "{}", output.stderr);
+        assert_eq!(output.stdout, "hello");
         let _ = std::fs::remove_dir_all(root);
     }
 

@@ -39,6 +39,7 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
     /KORDI_CHAT_REALTIME_ALLOWED_ORIGINS: "tauri:\/\/localhost,http:\/\/tauri\.localhost,http:\/\/127\.0\.0\.1"/,
   );
   assert.match(compose, /KORDI_CLOUD_SANDBOX_BACKEND: local/);
+  assert.match(compose, /KORDI_CLOUD_SANDBOX_ALLOW_LOCAL: "1"/);
   assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
 });
 

@@ -164,6 +164,10 @@ services:
       KORDI_PIP_FALLBACK_BASE_URL: ${KORDI_PIP_FALLBACK_BASE_URL:-}
       KORDI_PIP_FALLBACK_MODEL: ${KORDI_PIP_FALLBACK_MODEL:-}
       KORDI_CLOUD_SANDBOX_BACKEND: local
+      # Development-only: the local backend runs commands inside this runner
+      # container and is refused unless this opt-in is set. Hosted runners use
+      # the Kubernetes backend.
+      KORDI_CLOUD_SANDBOX_ALLOW_LOCAL: "1"
       KORDI_CLOUD_SANDBOX_ROOT: /var/lib/kordi-runner-sandbox
     depends_on:
       cloud-server:
