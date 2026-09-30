@@ -21,6 +21,7 @@ pub mod pip;
 pub mod plan_cards;
 pub mod presence;
 pub mod scheduled_tasks;
+pub mod security_txt;
 pub mod server;
 pub mod support;
 pub mod updates;

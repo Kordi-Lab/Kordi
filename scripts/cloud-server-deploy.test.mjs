@@ -224,7 +224,7 @@ test('product origin serves desktop routes without redirects', async () => {
 
   assert.match(
     caddyfile,
-    /@cloud_product_routes path \/v1\/cloud\/\* \/assets\/blob-emoji\/\* \/health \/updates\/\*/,
+    /@cloud_product_routes path \/v1\/cloud\/\* \/assets\/blob-emoji\/\* \/health \/updates\/\* \/\.well-known\/security\.txt\n/,
   );
   assert.ok(
     caddyfile.indexOf('handle @cloud_product_routes') < caddyfile.lastIndexOf('handle {'),

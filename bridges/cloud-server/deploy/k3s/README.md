@@ -254,7 +254,8 @@ sudo systemctl daemon-reload
 The complete Caddy config preserves both public responsibilities:
 
 - website and beta intake on `kordi.ai`;
-- Cloud API, WebSocket, health, and updater routes on `kordi.ai`.
+- Cloud API, WebSocket, health, security contact (`/.well-known/security.txt`),
+  and updater routes on `kordi.ai`.
 
 ### CDN staging and cutover
 
