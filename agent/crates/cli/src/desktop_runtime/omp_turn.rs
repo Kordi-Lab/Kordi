@@ -45,9 +45,9 @@ impl DesktopTurnEngine {
 pub(super) fn selected_desktop_turn_engine() -> DesktopTurnEngine {
     #[cfg(debug_assertions)]
     {
-        return DesktopTurnEngine::from_setting(
+        DesktopTurnEngine::from_setting(
             &std::env::var("KORDI_DESKTOP_TURN_ENGINE").unwrap_or_default(),
-        );
+        )
     }
     #[cfg(not(debug_assertions))]
     {
@@ -127,21 +127,11 @@ async fn run_turn_inner(
         &config.model.provider,
     );
     let scope = route_scope(config)?;
-    let (messages, message_entry_ids, prompt_entry_id, prompt_images, trailing_messages) = {
+    let history = {
         let conn = config.conn.lock().await;
         prepare_history(&conn, &config.session_id, &scope)?
     };
-    let request = build_request(
-        config,
-        prompt_text,
-        messages,
-        message_entry_ids,
-        prompt_entry_id,
-        prompt_images,
-        trailing_messages,
-        system_prompt,
-        capabilities,
-    )?;
+    let request = build_request(config, prompt_text, history, system_prompt, capabilities)?;
     let file_queue = FileQueue::new();
     let tool_host = DesktopHost {
         config,
@@ -150,7 +140,6 @@ async fn run_turn_inner(
     };
     let event_sink = |event: RuntimeEvent| {
         let event_tx = event_tx.clone();
-        let config = config;
         async move {
             let tool_arguments = (event.kind == "tool_start")
                 .then(|| {

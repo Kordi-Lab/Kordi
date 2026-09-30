@@ -182,7 +182,7 @@ pub(crate) async fn read_line_bounded<R: AsyncRead + Unpin>(
     }
 }
 
-pub(crate) struct ChildGuard(pub(crate) Child);
+pub(crate) struct ChildGuard(pub(crate) Child, #[cfg(unix)] Option<u32>);
 
 pub(crate) struct ToolCancelGuard(pub(crate) CancellationToken);
 
@@ -194,19 +194,24 @@ impl Drop for ToolCancelGuard {
 
 impl ChildGuard {
     pub(crate) fn new(child: Child) -> Self {
-        Self(child)
+        #[cfg(unix)]
+        let process_group = child.id();
+        Self(
+            child,
+            #[cfg(unix)]
+            process_group,
+        )
     }
 }
 
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        if self.0.try_wait().ok().flatten().is_some() {
-            return;
-        }
         #[cfg(unix)]
-        if let Some(pid) = self.0.id() {
+        if let Some(pid) = self.1 {
             // The child is in its own process group. Kill any worker descendants
             // along with it when a turn is cancelled, times out, or completes.
+            // Keep the group ID after the leader exits: descendants may still
+            // hold pipes or native resources open.
             unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
         }
         let _ = self.0.start_kill();

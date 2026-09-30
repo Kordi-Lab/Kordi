@@ -365,7 +365,7 @@ export function localAgentConversationNeedsProvider({
 /** A ready hosted account also satisfies the chat connection gate. */
 export function chatHasConnectedProvider(
   hasLocalAuth: boolean,
-  providerOptions: readonly ComposerProviderOption[],
+  providerOptions: readonly ComposerProviderOption[] = [],
 ) {
   return hasLocalAuth || providerOptions.some((option) => option.hosted && !option.disabled);
 }

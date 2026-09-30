@@ -102,6 +102,7 @@ mod persistence;
 mod runner;
 mod tool_argument_progress;
 mod tool_policy;
+mod tool_support;
 mod tools;
 pub(crate) use omp_tools::execute_omp_tool_call;
 

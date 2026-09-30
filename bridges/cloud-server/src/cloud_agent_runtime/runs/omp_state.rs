@@ -13,6 +13,16 @@ use sqlx_postgres::{PgConnection, PgPool};
 use std::sync::Arc;
 
 const MAX_STATE_BYTES: usize = 8 * 1024 * 1024;
+type ContextRow = (
+    String,
+    String,
+    String,
+    Value,
+    Option<Value>,
+    String,
+    bool,
+    String,
+);
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -160,7 +170,7 @@ pub(crate) async fn context_route(
 
 async fn context(pool: &PgPool, run_id: &str, input: ContextInput) -> RunResult<Value> {
     super::context_read::authorize_runner_context(pool, run_id, &input.runner_id).await?;
-    let row: Option<(String, String, String, Value, Option<Value>, String, bool, String)> = query_as(
+    let row: Option<ContextRow> = query_as(
         "SELECT owner_account_id,session_id,execution_agent_id,runtime_route_json,omp_input_json,prompt,subsession_id IS NOT NULL,requester_account_id \
          FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' \
          AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")

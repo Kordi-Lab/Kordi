@@ -116,6 +116,8 @@ copyBinary(
 );
 
 if (process.platform !== 'win32') {
+  const ompRuntimeDir = resolve(appRoot, '../../shared/omp-runtime');
+  run('bun', ['install', '--frozen-lockfile'], ompRuntimeDir);
   console.log('[kordi] Building OMP runtime sidecar...');
   run(
     'node',

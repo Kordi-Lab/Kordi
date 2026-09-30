@@ -94,6 +94,17 @@ function leasedDesktopRequestMirrors(
   return { cloudRequestWireIds, nativeRequestIds };
 }
 
+function forwardEligibilityAtMs(message: CanonicalSessionMessage) {
+  const content = objectContent(message.content);
+  const dispatchedAtMs = content.queuedMessage === true
+    && message.senderRole === 'user'
+    && contentText(content, 'queueState') === 'sent'
+    && kordiCloudRouteFromContent(content)
+    && typeof content.queueUpdatedAtMs === 'number'
+      ? content.queueUpdatedAtMs : null;
+  return Math.max(message.createdAtMs, dispatchedAtMs ?? message.createdAtMs);
+}
+
 function selfAgentMessageDeliveryState(
   message: CanonicalSessionMessage,
 ): CloudSelfAgentSyncOperation['deliveryState'] | null {
@@ -274,7 +285,7 @@ export function seedCloudSelfAgentForwardSyncLedger(
     if (
       !selfAgentSessionIds.has(message.sessionId)
       || !selfAgentMessageDeliveryState(message)
-      || message.createdAtMs > createdBeforeMs
+      || forwardEligibilityAtMs(message) > createdBeforeMs
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
     if (next[message.id]) continue;
@@ -323,7 +334,7 @@ export function planCloudSelfAgentSync(
     if (
       !recoveringMissingChatSession
       && options.createdAfterMs != null
-      && message.createdAtMs <= options.createdAfterMs
+      && forwardEligibilityAtMs(message) <= options.createdAfterMs
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(
       message,
@@ -353,7 +364,7 @@ export function planCloudSelfAgentSync(
         const cancelledWhileQueued = content.queuedMessage === true && queuedState === 'cancelled';
         const kordiCloudRoute = kordiCloudRouteFromContent(content);
         const liveHostedRequest = message.sourceTransport === 'desktop-chat-ui'
-          && options.createdAfterMs != null && message.createdAtMs > options.createdAfterMs
+          && options.createdAfterMs != null && forwardEligibilityAtMs(message) > options.createdAfterMs
           && !ledger[message.id]?.cloudMessageId;
         if (
           options.recoverSessionIds?.has(message.sessionId)

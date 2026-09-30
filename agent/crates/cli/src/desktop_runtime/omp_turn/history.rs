@@ -215,14 +215,11 @@ fn message_identity(message: &AgentMessage) -> (&'static str, i64) {
 pub(super) fn build_request(
     config: &TurnConfig,
     prompt_text: String,
-    messages: Vec<serde_json::Value>,
-    message_entry_ids: Vec<Option<String>>,
-    prompt_entry_id: String,
-    prompt_images: Vec<ImageInput>,
-    trailing_messages: Vec<serde_json::Value>,
+    history: PreparedHistory,
     system_prompt: String,
     capabilities: Capabilities,
 ) -> Result<RunRequest> {
+    let (messages, message_entry_ids, prompt_entry_id, prompt_images, trailing_messages) = history;
     let (kind, credential) = match &config.auth {
         Some(auth) => (
             match auth.method {

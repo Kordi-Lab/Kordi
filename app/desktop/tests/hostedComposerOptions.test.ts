@@ -90,6 +90,7 @@ test('a cloud-only connected account satisfies the chat gate and keeps its saved
   assert.equal(chatHasConnectedProvider(false, providerOptions), true);
   assert.equal(chatHasConnectedProvider(false, hostedProviderOptions([account('Old laptop')], null)), false, 'reconnect-only accounts cannot run');
   assert.equal(chatHasConnectedProvider(false, []), false);
+  assert.equal(chatHasConnectedProvider(false), false, 'shells without populated options still render');
   assert.equal(chatHasConnectedProvider(true, []), true);
   assert.equal(collaborationAuthDisplayName('openai', 'cloud-login:team', providerOptions), `${account('Team').label} · ${providerOptions[3].detail}`);
   assert.equal(collaborationAuthDisplayName('openai', 'cloud-login:deleted', providerOptions), 'Account unavailable');

@@ -300,3 +300,28 @@ printf '%s\n' '{"type":"result","schemaVersion":1,"runId":"run-1","attemptId":"a
         Err(RuntimeError::Protocol)
     ));
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn worker_cleanup_kills_descendants_after_leader_exits() {
+    use std::process::Stdio;
+    use tokio::io::AsyncReadExt;
+
+    let mut command = Command::new("/bin/sh");
+    command
+        .args(["-c", "sleep 30 & exit 0"])
+        .stdout(Stdio::piped())
+        .process_group(0);
+    let mut guard = ChildGuard::new(command.spawn().unwrap());
+    let mut stdout = guard.0.stdout.take().unwrap();
+    guard.0.wait().await.unwrap();
+    drop(guard);
+
+    // The descendant inherited stdout. EOF proves it no longer holds the pipe
+    // after the already-exited leader's guard is dropped.
+    let mut output = Vec::new();
+    tokio::time::timeout(Duration::from_secs(3), stdout.read_to_end(&mut output))
+        .await
+        .expect("worker descendant survived its leader")
+        .unwrap();
+}
