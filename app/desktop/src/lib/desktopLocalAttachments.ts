@@ -11,7 +11,7 @@ export async function openDesktopLocalAttachment(path: string) {
 
 /** Must match `ATTACHMENT_ACCESS_DENIED` in `chat/attachments/access.rs`. */
 export const DESKTOP_ATTACHMENT_ACCESS_DENIED_MESSAGE =
-  'Kordi no longer has access to this file. Attach it again from its original location.';
+  'Kordi can no longer use this file from its original location. Use Show in Finder to open it, or attach it again.';
 
 export function isDesktopAttachmentAccessDenied(error: unknown) {
   return error instanceof Error && error.message.startsWith(DESKTOP_ATTACHMENT_ACCESS_DENIED_MESSAGE);
@@ -36,4 +36,23 @@ export async function withDesktopAttachmentPathFallback<T>(
     if (!cloudCopy || cloudCopy === localPath) throw error;
     return action(cloudCopy);
   }
+}
+
+/**
+ * Attaches a file the person picked from the `@` file reference menu. The
+ * native side first registers the file, then `save` attaches it like any
+ * other path. When registration is refused (for example a credential
+ * folder), `save` reports the native reason through the composer's usual
+ * attachment error.
+ */
+export async function attachDesktopReferencedPath<T>(
+  path: string,
+  save: (paths: string[]) => Promise<T>,
+): Promise<T> {
+  try {
+    await invokeDesktop<void>('desktop_chat_attach_reference_path', { path });
+  } catch {
+    // Attaching below fails with the reason this file cannot be used.
+  }
+  return save([path]);
 }

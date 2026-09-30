@@ -3,10 +3,28 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
+  attachDesktopReferencedPath,
   DESKTOP_ATTACHMENT_ACCESS_DENIED_MESSAGE,
   isDesktopAttachmentAccessDenied,
   withDesktopAttachmentPathFallback,
 } from '../src/lib/desktopLocalAttachments';
+
+async function withNativeInvoke<T>(
+  invoke: (command: string, args: Record<string, unknown>) => Promise<unknown>,
+  run: () => Promise<T>,
+) {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { __TAURI_INTERNALS__: { invoke } },
+  });
+  try {
+    return await run();
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+  }
+}
 
 test('the access-denied message matches the native attachment policy', () => {
   const nativeSource = readFileSync(
@@ -87,4 +105,42 @@ test('transcript attachments open through the local attachment command, never th
     /isDesktopAttachmentAccessDenied\(readError\)[\s\S]*downloadAttachmentContent/,
     'saving older sent media falls back to the Cloud copy',
   );
+});
+
+test('an @ file reference is registered natively before it is attached', async () => {
+  const events: string[] = [];
+  const saved = await withNativeInvoke(async (command, args) => {
+    events.push(`${command}:${String(args.path)}`);
+  }, () => attachDesktopReferencedPath('/Users/example/notes.md', async (paths) => {
+    events.push(`save:${paths.join(',')}`);
+    return paths.length;
+  }));
+
+  assert.equal(saved, 1);
+  assert.deepEqual(events, [
+    'desktop_chat_attach_reference_path:/Users/example/notes.md',
+    'save:/Users/example/notes.md',
+  ]);
+});
+
+test('a refused @ file reference still reaches the attach step, which reports the reason', async () => {
+  const saves: string[][] = [];
+  await withNativeInvoke(async () => {
+    throw 'Kordi does not attach files from credential locations.';
+  }, () => attachDesktopReferencedPath('/Users/example/.ssh/id_ed25519', async (paths) => {
+    saves.push(paths);
+    return [];
+  }));
+  assert.deepEqual(saves, [['/Users/example/.ssh/id_ed25519']]);
+});
+
+test('every @ file reference menu registers the file natively before attaching it', () => {
+  for (const file of [
+    '../src/pages/ProjectsPage.tsx',
+    '../src/pages/chatsPage.mainComposer.tsx',
+    '../src/pages/ChatThreadPanel.tsx',
+  ]) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.match(source, /onAttachPath: \(path\) => \{ void attachDesktopReferencedPath\(path, /, file);
+  }
 });

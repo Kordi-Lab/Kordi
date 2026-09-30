@@ -1,5 +1,6 @@
 use std::path::{Component, Path, PathBuf};
 
+use super::attachments::access::ensure_previewable_location;
 use super::{
     chat_cwd, expand_home_project_path, DesktopArtifactDirectory, DesktopArtifactDirectoryEntry,
     DesktopChatArtifactPreview, DesktopChatArtifactPreviewLine,
@@ -124,6 +125,9 @@ pub async fn desktop_chat_artifact_preview(
     const MAX_PREVIEW_LINES: usize = 400;
 
     let resolved_path = resolve_artifact_preview_path(&path, base_root.as_deref())?;
+    // Previews follow paths from conversation content, so they never show
+    // credential, keychain, browser profile, or shell history locations.
+    ensure_previewable_location(&resolved_path)?;
     let bytes = std::fs::read(&resolved_path).map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
             format!("Artifact file not found: {}", resolved_path.display())
@@ -197,6 +201,7 @@ pub async fn desktop_chat_artifact_directory(
     }
 
     let directory_path = std::fs::canonicalize(&directory_path).unwrap_or(directory_path);
+    ensure_previewable_location(&directory_path)?;
     let base_path = artifact_base_path(base_root.as_deref())?;
     let base_path = std::fs::canonicalize(&base_path).unwrap_or(base_path);
     let has_project_root = project_root_is_set(base_root.as_deref());
@@ -263,6 +268,56 @@ mod tests {
             normalize_path_lexically(Path::new("/tmp/project/./src/../README.md")),
             PathBuf::from("/tmp/project/README.md"),
         );
+    }
+
+    #[tokio::test]
+    async fn previews_and_listings_skip_protected_locations() {
+        let _app_data = crate::test_support::ScopedAppDataDir::new("artifact-protected");
+        let home =
+            std::env::temp_dir().join(format!("kordi-artifact-home-{}", uuid::Uuid::new_v4()));
+        let key = home.join(".ssh").join("id_ed25519");
+        let notes = home.join("project").join("notes.md");
+        for (path, contents) in [(&key, "key"), (&notes, "# Notes")] {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, contents).unwrap();
+        }
+        let previous_home = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+
+        let key_preview = desktop_chat_artifact_preview(key.display().to_string(), None).await;
+        let key_in_project_root = desktop_chat_artifact_preview(
+            ".ssh/id_ed25519".to_string(),
+            Some(home.display().to_string()),
+        )
+        .await;
+        let key_listing =
+            desktop_chat_artifact_directory(Some(home.join(".ssh").display().to_string()), None)
+                .await;
+        let notes_preview = desktop_chat_artifact_preview(notes.display().to_string(), None).await;
+        let home_listing =
+            desktop_chat_artifact_directory(Some(home.display().to_string()), None).await;
+
+        match previous_home {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        std::fs::remove_dir_all(&home).ok();
+
+        use crate::chat::attachments::access::PROTECTED_PREVIEW_MESSAGE;
+        assert_eq!(
+            key_preview.err().as_deref(),
+            Some(PROTECTED_PREVIEW_MESSAGE)
+        );
+        assert_eq!(
+            key_in_project_root.err().as_deref(),
+            Some(PROTECTED_PREVIEW_MESSAGE)
+        );
+        assert_eq!(
+            key_listing.err().as_deref(),
+            Some(PROTECTED_PREVIEW_MESSAGE)
+        );
+        assert_eq!(notes_preview.unwrap().lines[0].text, "# Notes");
+        assert!(home_listing.is_ok(), "ordinary folders stay browsable");
     }
 
     #[test]

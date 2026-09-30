@@ -51,6 +51,7 @@ import type {
   Project,
   ProjectSession,
 } from '@/kordi-app/types';
+import { attachDesktopReferencedPath } from '@/lib/desktopLocalAttachments';
 import { cn } from '@/lib/utils';
 import { useComposerMentionMenu } from '@/pages/useComposerReferenceOptions';
 
@@ -197,7 +198,7 @@ export function ProjectsPage({
     targetsForText: projectMentionTargetsForText,
     onTextChange: setProjectComposerText,
     onPickFile: () => chatAttachmentInputRef.current?.click(),
-    onAttachPath: (path) => { void saveDesktopAttachmentPaths([path]); },
+    onAttachPath: (path) => { void attachDesktopReferencedPath(path, saveDesktopAttachmentPaths); },
     onFocus: (cursor) => {
       projectComposerRef.current?.focus();
       projectComposerRef.current?.setSelectionRange(cursor, cursor);
