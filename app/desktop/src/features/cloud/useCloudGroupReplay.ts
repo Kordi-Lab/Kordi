@@ -146,51 +146,53 @@ export function useCloudGroupReplay({
         if (!nativeShell) return true;
         if (!accountId) return false;
         if (!cache.nativeHistoryRecovered) {
-          const retry = () => {
-            if (durableSourceCacheRef.current !== cache) return;
-            globalThis.setTimeout(() => {
-              if (mountedRef.current && durableSourceCacheRef.current === cache) {
-                retryNativeRecovery();
-              }
-            }, 1_000);
-          };
-          const recovery = recoverNativeCloudGroupHistory({
-              accountId,
-              prioritySessionId,
-              applyControl: (wire, envelope, options) => (
-                applyControlRef.current(wire, envelope, options)
-              ),
-              flushCanonicalState: flushIfCurrent,
-              onSessionSettled: (sessionId) => {
-                if (durableSourceCacheRef.current === cache) {
-                  onSessionSettledRef.current?.(sessionId);
+          if (!cache.nativeHistoryRecovery) {
+            const retry = () => {
+              if (durableSourceCacheRef.current !== cache) return;
+              globalThis.setTimeout(() => {
+                if (mountedRef.current && durableSourceCacheRef.current === cache) {
+                  retryNativeRecovery();
                 }
-              },
-              shouldContinue: () => (
-                mountedRef.current
-                && enabledRef.current
-                && recoveryContextKeyRef.current === cache.contextKey
-                && durableSourceCacheRef.current === cache
-              ),
-            });
-          cache.nativeHistoryRecovery ??= recovery.then((recovered) => {
-            if (recovered && durableSourceCacheRef.current === cache) {
-              cache.nativeHistoryRecovered = true;
-              onNativeHistorySettledRef.current?.();
-            } else {
+              }, 1_000);
+            };
+            const recovery = recoverNativeCloudGroupHistory({
+                accountId,
+                prioritySessionId,
+                applyControl: (wire, envelope, options) => (
+                  applyControlRef.current(wire, envelope, options)
+                ),
+                flushCanonicalState: flushIfCurrent,
+                onSessionSettled: (sessionId) => {
+                  if (durableSourceCacheRef.current === cache) {
+                    onSessionSettledRef.current?.(sessionId);
+                  }
+                },
+                shouldContinue: () => (
+                  mountedRef.current
+                  && enabledRef.current
+                  && recoveryContextKeyRef.current === cache.contextKey
+                  && durableSourceCacheRef.current === cache
+                ),
+              });
+            cache.nativeHistoryRecovery = recovery.then((recovered) => {
+              if (recovered && durableSourceCacheRef.current === cache) {
+                cache.nativeHistoryRecovered = true;
+                onNativeHistorySettledRef.current?.();
+              } else {
+                retry();
+              }
+            }).catch((error) => {
+              reportWarningRef.current(
+                '[cloud-group] native history recovery failed',
+                error,
+              );
               retry();
-            }
-          }).catch((error) => {
-            reportWarningRef.current(
-              '[cloud-group] native history recovery failed',
-              error,
-            );
-            retry();
-          }).finally(() => {
-            if (durableSourceCacheRef.current === cache) {
-              cache.nativeHistoryRecovery = null;
-            }
-          });
+            }).finally(() => {
+              if (durableSourceCacheRef.current === cache) {
+                cache.nativeHistoryRecovery = null;
+              }
+            });
+          }
           await cache.nativeHistoryRecovery;
         }
         return cache.nativeHistoryRecovered;

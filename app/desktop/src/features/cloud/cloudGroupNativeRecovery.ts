@@ -1,5 +1,5 @@
 import { fetchExistingCanonicalMessageSources } from '@/features/canonical/canonicalMessageSources';
-import { loadChatSyncConversations, loadChatSyncMessagesPage, waitForCompleteChatSyncHistory } from '@/lib/desktopChatSync';
+import { loadChatSyncConversations, loadChatSyncMessagesPage, waitForChatSyncBootstrap, waitForCompleteChatSyncHistory } from '@/lib/desktopChatSync';
 import type { CloudMessage } from './authClient';
 import { cloudMessageFromChatSync } from './chatSyncMapping';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
@@ -107,6 +107,10 @@ export async function recoverNativeCloudGroupHistory({
     }
     return histories;
   };
+  // This job is the only recovery in flight for its context, so a snapshot
+  // taken before sync has written anything would end the recovery with
+  // nothing applied and nothing left to trigger another pass.
+  if (!(await waitForChatSyncBootstrap(accountId, shouldContinue))) return false;
   const initialConversations = prioritizeConversations(
     (await loadChatSyncConversations(accountId))
       .filter((conversation) => conversation.kind === 'group'),
@@ -163,55 +167,68 @@ export async function recoverNativeCloudGroupHistory({
       new Set(history.latest.map((message) => message.id)),
     ]),
   );
-  const durableConversations = await waitForCompleteChatSyncHistory(accountId, shouldContinue);
-  if (!durableConversations) return false;
-  const histories = await loadLatest(prioritizeConversations(
-    durableConversations.filter((conversation) => conversation.kind === 'group'),
-  ));
-  if (!histories) return false;
-  for (const history of histories) {
-    const applied = await applySnapshots(
-      history.conversation,
-      history.latest.slice(0, -1).filter((message) => (
-        !initiallyLoadedIdsByConversation.get(history.conversation.id)?.has(message.id)
+  // Sync lands conversations in pages, so groups can appear while this pass
+  // runs. Keep passing over the durable list until a pass finds no group it
+  // has not recovered, so the account is only reported recovered once every
+  // group known to the store has its history.
+  const recoveredConversationIds = new Set<string>();
+  for (;;) {
+    const durableConversations = await waitForCompleteChatSyncHistory(accountId, shouldContinue);
+    if (!durableConversations) return false;
+    const pendingConversations = prioritizeConversations(
+      durableConversations.filter((conversation) => (
+        conversation.kind === 'group' && !recoveredConversationIds.has(conversation.id)
       )),
     );
-    if (!shouldContinue()) return false;
-    if (applied) flushCanonicalState();
-  }
-  for (const history of histories) {
-    if (!shouldContinue()) return false;
-    let afterSequence: number | null = null;
-    let applied = false;
-    while (history.olderThroughSequence > 0) {
-      const page = await loadChatSyncMessagesPage(
-        accountId,
-        history.conversation.id,
-        afterSequence,
-        PAGE_SIZE,
-      );
-      if (!page || !shouldContinue()) return false;
-      applied = await applySnapshots(
+    if (pendingConversations.length === 0) return true;
+    const histories = await loadLatest(pendingConversations);
+    if (!histories) return false;
+    for (const history of histories) {
+      // A group that arrived after the initial snapshot has had nothing
+      // applied yet, including its head, so its whole latest page is due.
+      const applied = await applySnapshots(
         history.conversation,
-        page.messages.filter((snapshot) => (
-          snapshot.conversation_sequence <= history.olderThroughSequence
+        history.latest.filter((message) => (
+          !initiallyLoadedIdsByConversation.get(history.conversation.id)?.has(message.id)
         )),
-      ) || applied;
+      );
       if (!shouldContinue()) return false;
-      if (!page.hasMore) break;
-      const next = page.nextAfterSequence;
-      if (next === null || (afterSequence !== null && next <= afterSequence)) {
-        throw new Error('Native group history did not advance its sequence cursor.');
+      if (applied) flushCanonicalState();
+    }
+    for (const history of histories) {
+      if (!shouldContinue()) return false;
+      let afterSequence: number | null = null;
+      let applied = false;
+      while (history.olderThroughSequence > 0) {
+        const page = await loadChatSyncMessagesPage(
+          accountId,
+          history.conversation.id,
+          afterSequence,
+          PAGE_SIZE,
+        );
+        if (!page || !shouldContinue()) return false;
+        applied = await applySnapshots(
+          history.conversation,
+          page.messages.filter((snapshot) => (
+            snapshot.conversation_sequence <= history.olderThroughSequence
+          )),
+        ) || applied;
+        if (!shouldContinue()) return false;
+        if (!page.hasMore) break;
+        const next = page.nextAfterSequence;
+        if (next === null || (afterSequence !== null && next <= afterSequence)) {
+          throw new Error('Native group history did not advance its sequence cursor.');
+        }
+        if (next >= history.olderThroughSequence) break;
+        afterSequence = next;
       }
-      if (next >= history.olderThroughSequence) break;
-      afterSequence = next;
+      if (history.olderThroughSequence > 0 && history.head.length > 0) {
+        applied = await applySnapshots(history.conversation, history.head, true) || applied;
+      }
+      if (!shouldContinue()) return false;
+      if (applied) flushCanonicalState();
+      onSessionSettled(history.sessionId);
+      recoveredConversationIds.add(history.conversation.id);
     }
-    if (history.olderThroughSequence > 0 && history.head.length > 0) {
-      applied = await applySnapshots(history.conversation, history.head, true) || applied;
-    }
-    if (!shouldContinue()) return false;
-    if (applied) flushCanonicalState();
-    onSessionSettled(history.sessionId);
   }
-  return true;
 }

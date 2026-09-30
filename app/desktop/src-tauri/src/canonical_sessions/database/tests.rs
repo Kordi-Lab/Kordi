@@ -1,3 +1,4 @@
+use super::super::SCHEMA_VERSION;
 use super::*;
 use crate::test_support::ScopedKordiStorageRoot;
 
@@ -137,5 +138,42 @@ fn an_open_connection_cannot_acquire_a_replacement_files_cache_identity() {
     std::fs::rename(replacement, &path).unwrap();
     assert!(
         matches!(connection_cache_key(&original, &path), Err(error) if error.contains("changed"))
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn reused_connections_skip_the_schema_check() {
+    // Sync applies many rows, and each one opens the database. The schema was
+    // migrated and validated when the connection was first opened, so a handle
+    // coming back from the pool must not repeat that check. Stamping a version
+    // this build does not support makes the check observable: a cold open
+    // refuses the database, while a pooled reopen never looks at it.
+    let storage = ScopedKordiStorageRoot::new("canonical-schema-recheck");
+    let path = storage.root().join("test.sqlite3");
+    let cache = cache();
+    drop(open_with_cache(&path, &cache).unwrap());
+
+    Connection::open(&path)
+        .unwrap()
+        .execute(
+            "UPDATE canonical_schema_meta SET value = ?1 WHERE key = 'version'",
+            [(SCHEMA_VERSION + 1).to_string()],
+        )
+        .unwrap();
+
+    let reused = open_with_cache(&path, &cache);
+    assert!(
+        reused.is_ok(),
+        "a pooled connection must not revalidate the schema: {:?}",
+        reused.as_ref().err()
+    );
+    drop(reused);
+
+    let cold = open_with_cache(&path, &self::cache());
+    assert!(
+        matches!(&cold, Err(error) if error.contains("newer version")),
+        "a cold open must still validate the schema, got {:?}",
+        cold.as_ref().err()
     );
 }
