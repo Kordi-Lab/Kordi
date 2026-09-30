@@ -4,6 +4,8 @@
 //! links to, are handed to the system opener. Local files go through
 //! `desktop_open_local_attachment`, which applies the attachment policy.
 
+use std::process::Command;
+
 /// System Settings deep links the app uses (notification and calendar
 /// privacy panes).
 const SYSTEM_SETTINGS_SCHEME: &str = "x-apple.systempreferences";
@@ -35,6 +37,19 @@ pub(crate) fn validate_external_url(value: &str) -> Result<String, String> {
         return Err("Kordi opens only web, email, and System Settings links.".to_string());
     }
     Ok(url.to_string())
+}
+
+#[tauri::command]
+pub(crate) fn desktop_open_external_url(url: String) -> Result<String, String> {
+    let url = validate_external_url(&url)?;
+    if cfg!(target_os = "macos") {
+        crate::run_external_command(Command::new("/usr/bin/open").arg("--").arg(&url))?;
+    } else if cfg!(target_os = "windows") {
+        crate::run_external_command(Command::new("explorer").arg(&url))?;
+    } else {
+        crate::run_external_command(Command::new("xdg-open").arg(&url))?;
+    }
+    Ok(url)
 }
 
 #[cfg(test)]

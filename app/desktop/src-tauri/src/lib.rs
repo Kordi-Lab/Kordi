@@ -189,19 +189,6 @@ fn run_external_command(command: &mut Command) -> Result<(), String> {
     }
 }
 #[tauri::command]
-fn desktop_open_external_url(url: String) -> Result<String, String> {
-    let url = external_url::validate_external_url(&url)?;
-    if cfg!(target_os = "macos") {
-        run_external_command(Command::new("/usr/bin/open").arg("--").arg(&url))?;
-    } else if cfg!(target_os = "windows") {
-        run_external_command(Command::new("explorer").arg(&url))?;
-    } else {
-        run_external_command(Command::new("xdg-open").arg(&url))?;
-    }
-    Ok(url)
-}
-
-#[tauri::command]
 fn desktop_reveal_in_finder(path: String) -> Result<String, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
@@ -263,7 +250,7 @@ pub fn run() {
             desktop_workspace_status,
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
-            desktop_open_external_url,
+            external_url::desktop_open_external_url,
             desktop_reveal_in_finder,
             desktop_relaunch_after_update,
             desktop_open_media_preview_window,
