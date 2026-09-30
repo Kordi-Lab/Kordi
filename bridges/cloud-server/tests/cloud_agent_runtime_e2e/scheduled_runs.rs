@@ -22,12 +22,14 @@ async fn scheduled_direct_contact_completion_routes_back_to_originating_contact_
     .await;
     let run_id =
         insert_leased_scheduled_run(&pool, &owner, &owner, &session_id, "runner-direct").await;
+    let run_token = issue_test_run_token(&pool, &run_id).await;
 
     let complete = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-direct", "responseText": "Time to review the launch checklist." }),
         ))
         .await
@@ -125,12 +127,14 @@ async fn scheduled_group_completion_routes_back_to_originating_group_session() {
     .await;
     let run_id =
         insert_leased_scheduled_run(&pool, &owner, &owner, &session_id, "runner-group").await;
+    let run_token = issue_test_run_token(&pool, &run_id).await;
 
     let complete = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-group", "responseText": "Time to review the launch checklist." }),
         ))
         .await

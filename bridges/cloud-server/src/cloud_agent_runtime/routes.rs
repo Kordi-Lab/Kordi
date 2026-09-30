@@ -19,11 +19,14 @@ use crate::cloud_agent_runtime::provider_auth::{
     PublishProviderAuthSnapshotRequest, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
 };
 use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
+use crate::cloud_agent_runtime::runs::run_tokens::{
+    run_token_matches, secrets_match, RUN_TOKEN_HEADER,
+};
 use crate::cloud_agent_runtime::runs::{
     complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
-    lookup_run_for_request, mark_run_running, run_error_response, runner_unauthorized,
-    CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
-    RunnerRunResponse,
+    lookup_run_for_request, mark_run_running, run_error_response, run_token_unauthorized,
+    runner_unauthorized, CompleteRunRequest, FailRunRequest, RunnerLeaseResponse,
+    RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
 };
 use crate::server::ServerState;
 
@@ -199,11 +202,38 @@ fn runner_authorized(headers: &HeaderMap) -> bool {
     let Ok(value) = raw.to_str() else {
         return false;
     };
-    value == format!("Bearer {expected}")
+    let Some(presented) = value.strip_prefix("Bearer ") else {
+        return false;
+    };
+    secrets_match(presented, &expected)
 }
 
 pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
     runner_authorized(headers)
+}
+
+/// Authorizes a run-specific runner request: the shared runner token and the
+/// run-scoped token issued with this run's current lease are both required.
+pub(crate) async fn runner_run_authorized(
+    state: &ServerState,
+    headers: &HeaderMap,
+    run_id: &str,
+) -> Result<(), Response> {
+    if !runner_authorized(headers) {
+        return Err(runner_unauthorized());
+    }
+    let presented = headers
+        .get(RUN_TOKEN_HEADER)
+        .and_then(|value| value.to_str().ok());
+    match run_token_matches(state.db_pool(), run_id, presented).await {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(run_token_unauthorized()),
+        Err(error) => Err(run_error_response(
+            "verify run token",
+            "Could not verify the run credential.",
+            error,
+        )),
+    }
 }
 
 async fn lease_runner_run(
@@ -246,8 +276,8 @@ async fn mark_runner_run_running(
     Path(run_id): Path<String>,
     Json(input): Json<RunnerRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -268,8 +298,8 @@ async fn complete_runner_run(
     Path(run_id): Path<String>,
     Json(input): Json<CompleteRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -293,8 +323,8 @@ async fn fail_runner_run(
     Path(run_id): Path<String>,
     Json(input): Json<FailRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -329,8 +359,8 @@ async fn fetch_runner_provider_auth(
     Path(run_id): Path<String>,
     Json(input): Json<RunnerRunRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -391,8 +421,8 @@ async fn export_runner_artifact(
     Path(run_id): Path<String>,
     Json(input): Json<ExportArtifactRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     let Some(runner_id) = input.runner_id() else {
         return error_response(
@@ -458,8 +488,8 @@ async fn runner_plan_card(
     Path(run_id): Path<String>,
     Json(input): Json<RunnerPlanCardRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     crate::plan_cards::runner_action(&state, &run_id, &input.runner_id, input.request).await
 }
@@ -470,8 +500,8 @@ async fn read_runner_context(
     Path(run_id): Path<String>,
     Json(input): Json<super::runs::context_read::ContextReadRequest>,
 ) -> Response {
-    if !runner_authorized(&headers) {
-        return runner_unauthorized();
+    if let Err(response) = runner_run_authorized(&state, &headers, &run_id).await {
+        return response;
     }
     match super::runs::context_read::read_context(&state, &run_id, input).await {
         Ok(value) => Json(value).into_response(),

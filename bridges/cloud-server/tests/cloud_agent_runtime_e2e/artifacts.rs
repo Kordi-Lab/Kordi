@@ -20,7 +20,7 @@ async fn runner_explicit_artifact_export_creates_object_backed_chat_attachment()
         StatusCode::OK
     );
 
-    let run_id = lease_claimed_run_for_export(
+    let (run_id, run_token) = lease_claimed_run_for_export(
         &router,
         &pool,
         &owner,
@@ -42,9 +42,10 @@ async fn runner_explicit_artifact_export_creates_object_backed_chat_attachment()
     let bytes = b"# Report\nGenerated inside the Cloud sandbox.\n";
     let export = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/artifacts"),
             "runner-test-token",
+            &run_token,
             export_body("runner-export", "report.md", "report.md", bytes),
         ))
         .await
@@ -114,7 +115,7 @@ async fn runner_artifact_export_rejects_bad_auth_paths_and_sha_mismatch() {
             .status(),
         StatusCode::OK
     );
-    let run_id = lease_claimed_run_for_export(
+    let (run_id, run_token) = lease_claimed_run_for_export(
         &router,
         &pool,
         &owner,
@@ -143,9 +144,10 @@ async fn runner_artifact_export_rejects_bad_auth_paths_and_sha_mismatch() {
     ] {
         let response = router
             .clone()
-            .oneshot(post_json_with_runner_token(
+            .oneshot(post_json_with_run_token(
                 &format!("/v1/cloud/agent-runs/{run_id}/artifacts"),
                 "runner-test-token",
+                &run_token,
                 export_body("runner-invalid", "report.md", bad_path, b"ok"),
             ))
             .await
@@ -162,9 +164,10 @@ async fn runner_artifact_export_rejects_bad_auth_paths_and_sha_mismatch() {
         json!("0000000000000000000000000000000000000000000000000000000000000000");
     let response = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/artifacts"),
             "runner-test-token",
+            &run_token,
             bad_sha,
         ))
         .await
@@ -190,7 +193,7 @@ async fn export_before_completion_uses_stable_response_message_that_completion_u
             .status(),
         StatusCode::OK
     );
-    let run_id = lease_claimed_run_for_export(
+    let (run_id, run_token) = lease_claimed_run_for_export(
         &router,
         &pool,
         &owner,
@@ -202,9 +205,10 @@ async fn export_before_completion_uses_stable_response_message_that_completion_u
 
     let export = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/artifacts"),
             "runner-test-token",
+            &run_token,
             export_body("runner-complete", "report.md", "report.md", b"artifact"),
         ))
         .await
@@ -217,9 +221,10 @@ async fn export_before_completion_uses_stable_response_message_that_completion_u
 
     let complete = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-complete", "responseText": "Here is the exported report." }),
         ))
         .await
@@ -258,7 +263,7 @@ async fn failed_object_upload_does_not_create_visible_placeholder_or_artifact_ro
             .status(),
         StatusCode::OK
     );
-    let run_id = lease_claimed_run_for_export(
+    let (run_id, run_token) = lease_claimed_run_for_export(
         &router,
         &pool,
         &owner,
@@ -270,9 +275,10 @@ async fn failed_object_upload_does_not_create_visible_placeholder_or_artifact_ro
 
     let export = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/artifacts"),
             "runner-test-token",
+            &run_token,
             export_body("runner-upload-fail", "report.md", "report.md", b"report"),
         ))
         .await

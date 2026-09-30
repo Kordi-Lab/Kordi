@@ -177,8 +177,10 @@ async fn sender_group_alias_can_read_only_the_admitted_owners_calendar() {
         .await
         .unwrap();
     assert_eq!(leased.status(), StatusCode::OK);
-    assert_eq!(read_json(leased).await["run"]["runId"], run);
-    let read = router.clone().oneshot(post_json_with_runner_token(&format!("/v1/cloud/agent-runs/{run}/context"), "runner-test-token", json!({"runnerId":"group-calendar-runner","tool":"read_calendar","arguments":{"shareInConversation":true}}))).await.unwrap();
+    let leased = read_json(leased).await;
+    assert_eq!(leased["run"]["runId"], run);
+    let run_token = lease_run_token(&leased);
+    let read = router.clone().oneshot(post_json_with_run_token(&format!("/v1/cloud/agent-runs/{run}/context"), "runner-test-token", &run_token, json!({"runnerId":"group-calendar-runner","tool":"read_calendar","arguments":{"shareInConversation":true}}))).await.unwrap();
     assert_eq!(read.status(), StatusCode::OK);
     assert_eq!(
         read_json(read).await["events"][0]["title"],

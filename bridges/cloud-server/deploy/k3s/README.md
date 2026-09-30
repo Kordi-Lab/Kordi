@@ -124,6 +124,16 @@ Each sandbox container has CPU and memory requests and limits. Defaults are
 `KORDI_CLOUD_SANDBOX_MEMORY_REQUEST`, and `KORDI_CLOUD_SANDBOX_MEMORY_LIMIT` on
 the runner Deployment.
 
+The shared `runner-token` secret identifies the runner and lets it lease runs.
+Each lease also returns a run-scoped token; the server stores only its hash
+with the lease, replaces it on the next lease, and stops accepting it when the
+lease expires. Every run-specific runner request (running, provider auth,
+context reads, plan cards, artifacts, subsession tools, completion, and
+failure) must send it in `X-Kordi-Run-Token` together with the shared token.
+Deploy the Cloud server and the runner from the same revision: a runner that
+does not send run-scoped tokens cannot finish runs on a server that requires
+them.
+
 The hosted runner must use `KORDI_CLOUD_SANDBOX_BACKEND=k8s`. The `local`
 backend runs commands on the runner's own host as the runner user and is refused
 unless the development-only `KORDI_CLOUD_SANDBOX_ALLOW_LOCAL=1` is set, as it

@@ -71,8 +71,10 @@ pub(crate) async fn progress_route(
     Path(run_id): Path<String>,
     Json(input): Json<ProgressInput>,
 ) -> Response {
-    if !super::super::routes::runner_authorized_for_scheduled_tasks(&headers) {
-        return super::runner_unauthorized();
+    if let Err(response) =
+        super::super::routes::runner_run_authorized(&state, &headers, &run_id).await
+    {
+        return response;
     }
     match progress(state.db_pool(), &run_id, input).await {
         Ok(()) => Json(json!({"ok":true})).into_response(),

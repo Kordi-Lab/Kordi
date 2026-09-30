@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use super::run_tokens::{issue_run_token, IssuedRunToken};
 use super::{AgentRuntimeRoute, RunError, RunResult};
 
 #[derive(Debug, Deserialize)]
@@ -79,6 +80,10 @@ pub struct RunnerRunResponse {
     pub error_code: Option<String>,
     #[serde(rename = "errorMessage")]
     pub error_message: Option<String>,
+    /// Run-scoped credential, present only in the response that issues a
+    /// lease. The runner must send it with every run-specific request.
+    #[serde(rename = "runToken", skip_serializing_if = "Option::is_none")]
+    pub run_token: Option<IssuedRunToken>,
 }
 
 pub(super) type RunnerRunRow = (
@@ -110,6 +115,7 @@ async fn lease_run(
 ) -> RunResult<Option<RunnerRunResponse>> {
     let now = Utc::now();
     let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
+    let (run_token, run_token_hash) = issue_run_token();
     let mut tx = pool.begin().await?;
     // ponytail: serialize ownership transitions, not agent work; use per-session
     // locks if admission or terminal publication becomes a measured bottleneck.
@@ -118,7 +124,7 @@ async fn lease_run(
         .await?;
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
-         SET status = 'leased', execution_backend = 'cloud', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
+         SET status = 'leased', execution_backend = 'cloud', claimed_by = $1, lease_expires_at = $2, updated_at = $3, runner_run_token_hash = $5 \
          WHERE run_id = ( \
              SELECT candidate.run_id FROM cloud_agent_fallback_runs candidate \
              WHERE (status = 'queued' \
@@ -146,13 +152,16 @@ async fn lease_run(
     .bind(&lease_expires_at)
     .bind(now.to_rfc3339())
     .bind(canary_run_id)
+    .bind(&run_token_hash)
     .fetch_optional(&mut *tx)
     .await?;
     tx.commit().await?;
     let Some(row) = row else {
         return Ok(None);
     };
-    runner_response_from_row(pool, row).await.map(Some)
+    let mut response = runner_response_from_row(pool, row).await?;
+    response.run_token = Some(run_token);
+    Ok(Some(response))
 }
 
 pub async fn lease_canary_run(
@@ -236,5 +245,6 @@ pub(super) async fn runner_response_from_row(
         response_message_id: row.8,
         error_code: row.9,
         error_message: row.10,
+        run_token: None,
     })
 }

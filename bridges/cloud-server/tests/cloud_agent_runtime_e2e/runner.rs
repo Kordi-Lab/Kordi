@@ -64,24 +64,29 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
     assert_eq!(lease_body["run"]["runId"], run_id);
     assert_eq!(lease_body["run"]["status"], "leased");
     assert_eq!(lease_body["run"]["providerAuthAvailable"], true);
+    let run_token = lease_run_token(&lease_body);
 
     let running = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/running"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-a" }),
         ))
         .await
         .unwrap();
     assert_eq!(running.status(), StatusCode::OK);
-    assert_eq!(read_json(running).await["run"]["status"], "running");
+    let running_body = read_json(running).await;
+    assert_eq!(running_body["run"]["status"], "running");
+    assert!(running_body["run"].get("runToken").is_none());
 
     let complete = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-a", "responseText": "runner skeleton complete" }),
         ))
         .await
@@ -318,12 +323,14 @@ async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() 
     let run_id = leased["run"]["runId"].as_str().unwrap().to_string();
     assert_eq!(run_id, expected_run_id);
     assert_eq!(leased["run"]["providerAuthAvailable"], false);
+    let run_token = lease_run_token(&leased);
 
     let failed = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/fail"),
             "runner-test-token",
+            &run_token,
             json!({
                 "runnerId": "runner-missing-provider",
                 "errorCode": "missing_provider_auth",
@@ -383,4 +390,258 @@ async fn runner_endpoints_reject_user_tokens_and_bad_runner_tokens() {
         .await
         .unwrap();
     assert_eq!(bad_runner_token_response.status(), StatusCode::UNAUTHORIZED);
+}
+
+async fn claim_queued_run(
+    router: &axum::Router,
+    owner: &TestAccount,
+    requester: &TestAccount,
+    request_message_id: &str,
+) -> String {
+    let claim = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(owner, requester, request_message_id),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(claim.status(), StatusCode::OK);
+    read_json(claim).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+async fn canary_lease(router: &axum::Router, runner_id: &str, run_id: &str) -> String {
+    let lease = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({ "runnerId": runner_id, "canaryRunId": run_id }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(lease.status(), StatusCode::OK);
+    let leased = read_json(lease).await;
+    assert_eq!(leased["run"]["runId"], run_id);
+    lease_run_token(&leased)
+}
+
+async fn runner_error_code(response: axum::response::Response) -> (StatusCode, Value) {
+    let status = response.status();
+    (status, read_json(response).await["errorCode"].clone())
+}
+
+#[tokio::test]
+async fn run_specific_runner_endpoints_require_the_leased_runs_token() {
+    let Some(pool) = try_pool().await else { return };
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = test_router(state);
+    let owner = signup(&router, "run-token-owner", "Owner").await;
+    let requester = signup(&router, "run-token-requester", "Requester").await;
+    accept_contacts(&router, &requester, &owner).await;
+    let suffix = uuid::Uuid::new_v4().simple().to_string();
+
+    let run_a = claim_queued_run(
+        &router,
+        &owner,
+        &requester,
+        &format!("msg_run_token_a_{suffix}"),
+    )
+    .await;
+    let run_b = claim_queued_run(
+        &router,
+        &owner,
+        &requester,
+        &format!("msg_run_token_b_{suffix}"),
+    )
+    .await;
+    let token_a = canary_lease(&router, "run-token-runner-a", &run_a).await;
+    let token_b = canary_lease(&router, "run-token-runner-b", &run_b).await;
+    assert_ne!(token_a, token_b);
+
+    let stored: (Option<String>,) = sqlx_core::query_as::query_as(
+        "SELECT runner_run_token_hash FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(&run_a)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let stored = stored.0.expect("lease stores the run token hash");
+    assert_ne!(stored, token_a);
+    assert_eq!(
+        stored,
+        kordi_cloud_server::cloud_agent_runtime::runs::run_tokens::hash_run_token(&token_a)
+    );
+
+    let runner_a = json!({ "runnerId": "run-token-runner-a" });
+    let endpoints = [
+        ("running", runner_a.clone()),
+        ("provider-auth", runner_a.clone()),
+        (
+            "context",
+            json!({ "runnerId": "run-token-runner-a", "tool": "read_session", "arguments": {} }),
+        ),
+        (
+            "complete",
+            json!({ "runnerId": "run-token-runner-a", "responseText": "done" }),
+        ),
+        (
+            "fail",
+            json!({ "runnerId": "run-token-runner-a", "errorCode": "x", "message": "x" }),
+        ),
+        (
+            "artifacts",
+            export_body("run-token-runner-a", "notes.md", "notes.md", b"notes"),
+        ),
+        (
+            "plan-card",
+            json!({ "runnerId": "run-token-runner-a", "request": {} }),
+        ),
+        (
+            "task-operator",
+            json!({ "runnerId": "run-token-runner-a", "toolCallId": "call", "arguments": {} }),
+        ),
+        (
+            "subsession-progress",
+            json!({ "runnerId": "run-token-runner-a", "toolCallId": "call", "toolName": "read" }),
+        ),
+    ];
+    for (endpoint, body) in &endpoints {
+        let uri = format!("/v1/cloud/agent-runs/{run_a}/{endpoint}");
+        let missing = router
+            .clone()
+            .oneshot(post_json_with_runner_token(
+                &uri,
+                "runner-test-token",
+                body.clone(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            runner_error_code(missing).await,
+            (StatusCode::UNAUTHORIZED, json!("invalid_run_token")),
+            "{endpoint} without a run token"
+        );
+        let other_run = router
+            .clone()
+            .oneshot(post_json_with_run_token(
+                &uri,
+                "runner-test-token",
+                &token_b,
+                body.clone(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            runner_error_code(other_run).await,
+            (StatusCode::UNAUTHORIZED, json!("invalid_run_token")),
+            "{endpoint} with another run's token"
+        );
+        let wrong_runner = router
+            .clone()
+            .oneshot(post_json_with_run_token(
+                &uri,
+                "wrong-runner-token",
+                &token_a,
+                body.clone(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            runner_error_code(wrong_runner).await,
+            (StatusCode::UNAUTHORIZED, json!("invalid_runner_token")),
+            "{endpoint} with a wrong runner token"
+        );
+    }
+
+    let running = router
+        .clone()
+        .oneshot(post_json_with_run_token(
+            &format!("/v1/cloud/agent-runs/{run_a}/running"),
+            "runner-test-token",
+            &token_a,
+            runner_a.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(running.status(), StatusCode::OK);
+    let provider_auth = router
+        .clone()
+        .oneshot(post_json_with_run_token(
+            &format!("/v1/cloud/agent-runs/{run_a}/provider-auth"),
+            "runner-test-token",
+            &token_a,
+            runner_a.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        runner_error_code(provider_auth).await,
+        (StatusCode::NOT_FOUND, json!("provider_auth_not_found"))
+    );
+
+    // A new lease replaces the credential; the earlier one stops working.
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_fallback_runs SET lease_expires_at = $2 WHERE run_id = $1",
+    )
+    .bind(&run_a)
+    .bind("2000-01-01T00:00:00+00:00")
+    .execute(&pool)
+    .await
+    .unwrap();
+    let expired = router
+        .clone()
+        .oneshot(post_json_with_run_token(
+            &format!("/v1/cloud/agent-runs/{run_a}/running"),
+            "runner-test-token",
+            &token_a,
+            runner_a.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        runner_error_code(expired).await,
+        (StatusCode::UNAUTHORIZED, json!("invalid_run_token"))
+    );
+    let token_c = canary_lease(&router, "run-token-runner-c", &run_a).await;
+    assert_ne!(token_c, token_a);
+    let replaced = router
+        .clone()
+        .oneshot(post_json_with_run_token(
+            &format!("/v1/cloud/agent-runs/{run_a}/running"),
+            "runner-test-token",
+            &token_a,
+            json!({ "runnerId": "run-token-runner-c" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        runner_error_code(replaced).await,
+        (StatusCode::UNAUTHORIZED, json!("invalid_run_token"))
+    );
+    let current = router
+        .clone()
+        .oneshot(post_json_with_run_token(
+            &format!("/v1/cloud/agent-runs/{run_a}/running"),
+            "runner-test-token",
+            &token_c,
+            json!({ "runnerId": "run-token-runner-c" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(current.status(), StatusCode::OK);
+
+    sqlx_core::query::query(
+        "UPDATE cloud_agent_fallback_runs SET status = 'cancelled' WHERE run_id IN ($1, $2)",
+    )
+    .bind(&run_a)
+    .bind(&run_b)
+    .execute(&pool)
+    .await
+    .unwrap();
 }

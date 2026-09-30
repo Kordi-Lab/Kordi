@@ -231,11 +231,13 @@ async fn two_codex_accounts_are_selected_by_auth_choice_for_runner() {
             .await
             .unwrap();
         assert_eq!(lease.status(), StatusCode::OK);
+        let run_token = lease_run_token(&read_json(lease).await);
         let result = router
             .clone()
-            .oneshot(post_json_with_runner_token(
+            .oneshot(post_json_with_run_token(
                 &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
                 "runner-test-token",
+                &run_token,
                 json!({ "runnerId": runner_id }),
             ))
             .await
@@ -388,11 +390,13 @@ async fn provider_auth_material_accepts_canonical_route_provider_alias() {
         .await
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
+    let run_token = lease_run_token(&read_json(lease).await);
     let provider_auth = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-provider-alias" }),
         ))
         .await

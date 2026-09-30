@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_parent() {
     let Some(pool) = try_pool().await else { return };
-    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "subsession-runner-test");
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
     let owner = signup(&router, "cloud-sub-owner", "Owner").await;
     let peer = signup(&router, "cloud-sub-peer", "Requester").await;
@@ -75,8 +75,10 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
             .as_str()
             .unwrap()
             .to_string();
-        let runner_post = |uri: &str, value: Value| {
-            post_json_with_runner_token(uri, "subsession-runner-test", value)
+        let runner_post =
+            |uri: &str, value: Value| post_json_with_runner_token(uri, "runner-test-token", value);
+        let run_post = |uri: &str, run_token: &str, value: Value| {
+            post_json_with_run_token(uri, "runner-test-token", run_token, value)
         };
         let lease = router
             .clone()
@@ -87,7 +89,9 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
             .await
             .unwrap();
         assert_eq!(lease.status(), StatusCode::OK);
-        assert_eq!(read_json(lease).await["run"]["runId"], parent);
+        let leased = read_json(lease).await;
+        assert_eq!(leased["run"]["runId"], parent);
+        let parent_token = lease_run_token(&leased);
         let uri = format!("/v1/cloud/agent-runs/{parent}/task-operator");
         let input = json!({"runnerId":"parent-executor","toolCallId":"spawn-call","arguments":{"action":"spawn","taskName":"research","taskTitle":"Research task","message":"Compare sources independently","forkTurns":"none"}});
         let before: (i64,) =
@@ -97,7 +101,7 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
                 .unwrap();
         let created = router
             .clone()
-            .oneshot(runner_post(&uri, input.clone()))
+            .oneshot(run_post(&uri, &parent_token, input.clone()))
             .await
             .unwrap();
         assert_eq!(created.status(), StatusCode::OK);
@@ -105,7 +109,7 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         let id = created["sessionId"].as_str().unwrap();
         let replay = router
             .clone()
-            .oneshot(runner_post(&uri, input.clone()))
+            .oneshot(run_post(&uri, &parent_token, input.clone()))
             .await
             .unwrap();
         assert_eq!(read_json(replay).await["sessionId"], id);
@@ -117,12 +121,12 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         wrong["runnerId"] = json!("stale-executor");
         assert!(!router
             .clone()
-            .oneshot(runner_post(&uri, wrong))
+            .oneshot(run_post(&uri, &parent_token, wrong))
             .await
             .unwrap()
             .status()
             .is_success());
-        let completed=router.clone().oneshot(runner_post(&format!("/v1/cloud/agent-runs/{parent}/complete"),json!({"runnerId":"parent-executor","responseText":"Research started in its own session."}))).await.unwrap();
+        let completed=router.clone().oneshot(run_post(&format!("/v1/cloud/agent-runs/{parent}/complete"),&parent_token,json!({"runnerId":"parent-executor","responseText":"Research started in its own session."}))).await.unwrap();
         assert_eq!(completed.status(), StatusCode::OK);
         let parent_response = read_json(completed).await["run"]["responseMessageId"]
             .as_str()
@@ -149,7 +153,7 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         }
         assert!(!router
             .clone()
-            .oneshot(runner_post(&uri, input))
+            .oneshot(run_post(&uri, &parent_token, input))
             .await
             .unwrap()
             .status()
@@ -162,15 +166,21 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
             ))
             .await
             .unwrap();
-        assert_eq!(read_json(lease).await["run"]["subsessionId"], id);
-        let context=router.clone().oneshot(runner_post(&format!("/v1/cloud/agent-runs/{child}/context"),json!({"runnerId":"child-executor","tool":"read_session","arguments":{"sessionId":session_id,"mode":"index"}}))).await.unwrap();
+        let leased = read_json(lease).await;
+        assert_eq!(leased["run"]["subsessionId"], id);
+        let child_token = lease_run_token(&leased);
+        assert_ne!(child_token, parent_token);
+        let parent_credential=router.clone().oneshot(run_post(&format!("/v1/cloud/agent-runs/{child}/context"),&parent_token,json!({"runnerId":"child-executor","tool":"read_session","arguments":{"sessionId":session_id,"mode":"index"}}))).await.unwrap();
+        assert_eq!(parent_credential.status(), StatusCode::UNAUTHORIZED);
+        let context=router.clone().oneshot(run_post(&format!("/v1/cloud/agent-runs/{child}/context"),&child_token,json!({"runnerId":"child-executor","tool":"read_session","arguments":{"sessionId":session_id,"mode":"index"}}))).await.unwrap();
         assert_eq!(context.status(), StatusCode::OK);
-        let progress=router.clone().oneshot(runner_post(&format!("/v1/cloud/agent-runs/{child}/subsession-progress"),json!({"runnerId":"child-executor","toolCallId":"search-one","toolName":"web_search"}))).await.unwrap();
+        let progress=router.clone().oneshot(run_post(&format!("/v1/cloud/agent-runs/{child}/subsession-progress"),&child_token,json!({"runnerId":"child-executor","toolCallId":"search-one","toolName":"web_search"}))).await.unwrap();
         assert_eq!(progress.status(), StatusCode::OK);
         let completed = router
             .clone()
-            .oneshot(runner_post(
+            .oneshot(run_post(
                 &format!("/v1/cloud/agent-runs/{child}/complete"),
+                &child_token,
                 json!({"runnerId":"child-executor","responseText":"CHILD_ONLY_RESULT"}),
             ))
             .await

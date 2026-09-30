@@ -93,12 +93,15 @@ pub(super) async fn run_provider_auth(
         .await
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
-    let available = read_json(lease).await["run"]["providerAuthAvailable"] == true;
+    let leased = read_json(lease).await;
+    let available = leased["run"]["providerAuthAvailable"] == true;
+    let run_token = lease_run_token(&leased);
     let material = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": runner_id }),
         ))
         .await

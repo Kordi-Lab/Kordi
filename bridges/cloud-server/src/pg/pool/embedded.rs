@@ -479,4 +479,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth snapshot readiness",
         sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
     },
+    EmbeddedMigration {
+        version: 106,
+        description: "runner run token hash",
+        sql: include_str!("../../../migrations/0106_runner_run_token_hash.sql"),
+    },
 ];
