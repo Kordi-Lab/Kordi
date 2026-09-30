@@ -411,10 +411,17 @@ fn completion_page_script(request_id: &str) -> String {
       // swap the visible title + subtitle without any flash.
       function setStatus(next) {{ root.setAttribute('data-status', next); }}
 
+      // The fragment carries the sign-in result. Read it once, then drop it
+      // from the address bar and browser history before handing it to Kordi.
+      const fragment = window.location.hash || '';
+      try {{
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }} catch (_error) {{}}
+
       fetch('/complete/{request_id}', {{
         method: 'POST',
         headers: {{ 'content-type': 'text/plain' }},
-        body: window.location.hash || '',
+        body: fragment,
       }})
         .then(function(res) {{ setStatus(res && res.ok ? 'success' : 'error'); }})
         .catch(function() {{ setStatus('error'); }});
