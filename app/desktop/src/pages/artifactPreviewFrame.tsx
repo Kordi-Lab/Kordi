@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import {
-  closeDesktopArtifactPreviewDocument,
-  isNativeDesktopShell,
-  openDesktopArtifactPreviewDocument,
-} from '@/lib/desktop';
+import { isNativeDesktopShell } from '@/lib/desktop';
+import { closeDesktopArtifactPreviewDocument, openDesktopArtifactPreviewDocument } from '@/lib/desktopArtifactPreview';
 import { cn } from '@/lib/utils';
 
 /** Must match `ARTIFACT_PREVIEW_SCHEME` in `src-tauri/src/chat/artifacts/preview_document.rs`. */

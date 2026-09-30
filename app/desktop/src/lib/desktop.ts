@@ -974,15 +974,6 @@ export async function fetchDesktopChatArtifactPreview(path: string, baseRoot?: s
   return invokeDesktop<DesktopArtifactPreview>('desktop_chat_artifact_preview', { path, baseRoot });
 }
 
-/** Registers an HTML or SVG preview document and returns its token. */
-export async function openDesktopArtifactPreviewDocument(source: string) {
-  return invokeDesktop<string>('desktop_artifact_preview_document_open', { source });
-}
-
-export async function closeDesktopArtifactPreviewDocument(token: string) {
-  return invokeDesktop<void>('desktop_artifact_preview_document_close', { token });
-}
-
 export async function fetchDesktopChatArtifactDirectory(path?: string | null, baseRoot?: string | null) {
   return invokeDesktop<DesktopArtifactDirectory>('desktop_chat_artifact_directory', { path, baseRoot });
 }

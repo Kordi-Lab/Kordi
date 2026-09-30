@@ -32,10 +32,7 @@ import {
   type ComposerModelOption,
   type ComposerProviderOption,
 } from '@/kordi-app/components';
-import {
-  ComposerAttachmentAddMenu,
-  ComposerAttachmentList,
-} from '@/kordi-app/components/composerAttachments';
+import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
 import { buildDesktopLiveTurnTranscriptMessage } from '@/features/chat/desktopLiveTurns';
 import type { AttachmentItem as Attachment } from '@/features/chat/composerController.types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
