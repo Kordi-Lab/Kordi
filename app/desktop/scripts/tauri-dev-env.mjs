@@ -59,11 +59,14 @@ function cspSources(value) {
   return typeof value === 'string' && value.trim() ? value.trim().split(/\s+/) : [];
 }
 
+const PRODUCT_CSP_SOURCES = new Set(['https://kordi.ai', 'wss://kordi.ai']);
+
 /**
- * Extends the packaged Content-Security-Policy with a named preview's API
- * origin so a CSP-enforcing build of that profile can reach its development
- * backend. `tauri dev` loads the Vite server directly and does not apply the
- * policy, so this matters for `tauri build --debug` checks of a profile.
+ * Rewrites the packaged Content-Security-Policy for a named preview: the
+ * product API origin is replaced by the preview's API origin, so an isolated
+ * profile never allows the product backend unless it is the approved operator
+ * profile. `tauri dev` loads the Vite server directly and does not apply the
+ * policy, so this matters for CSP-enforcing `tauri build` checks of a profile.
  */
 export function desktopDevCsp(baseCsp, cloudApiBase) {
   if (!baseCsp || typeof baseCsp !== 'object' || Array.isArray(baseCsp)) {
@@ -75,12 +78,13 @@ export function desktopDevCsp(baseCsp, cloudApiBase) {
   }
   const socketOrigin = `${apiUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${apiUrl.host}`;
   const csp = structuredClone(baseCsp);
-  const extend = (directive, values) => {
-    csp[directive] = [...new Set([...cspSources(csp[directive]), ...values])];
+  const rewrite = (directive, values) => {
+    const kept = cspSources(csp[directive]).filter((source) => !PRODUCT_CSP_SOURCES.has(source));
+    csp[directive] = [...new Set([...kept, ...values])];
   };
-  extend('connect-src', [apiUrl.origin, socketOrigin, 'ws://127.0.0.1:*']);
-  extend('img-src', [apiUrl.origin]);
-  extend('media-src', [apiUrl.origin]);
+  rewrite('connect-src', [apiUrl.origin, socketOrigin, 'ws://127.0.0.1:*']);
+  rewrite('img-src', [apiUrl.origin]);
+  rewrite('media-src', [apiUrl.origin]);
   return csp;
 }
 

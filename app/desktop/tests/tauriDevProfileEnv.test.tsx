@@ -36,7 +36,7 @@ test('named desktop preview keeps the main-window-only capability', () => {
   assert.throws(() => desktopDevCapabilities([mainWindowCapability], 'http://127.0.0.1:17642'), /HTTP permission/);
 });
 
-test('named desktop preview CSP adds only its API origin to the packaged policy', () => {
+test('named desktop preview CSP swaps the product API for its own API origin', () => {
   const baseConfig = JSON.parse(readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'));
   const baseCsp = baseConfig.app.security.csp;
   const csp = desktopDevCsp(baseCsp, 'http://127.0.0.1:17642');
@@ -45,12 +45,18 @@ test('named desktop preview CSP adds only its API origin to the packaged policy'
   assert.ok(csp['connect-src'].includes('ws://127.0.0.1:17642'));
   assert.ok(csp['img-src'].includes('http://127.0.0.1:17642'));
   assert.ok(csp['media-src'].includes('http://127.0.0.1:17642'));
+  assert.doesNotMatch(JSON.stringify(csp), /kordi\.ai/, 'isolated profiles must not allow the product API');
   assert.deepEqual(csp['script-src'], baseCsp['script-src']);
   assert.ok(!baseCsp['connect-src'].includes('http://127.0.0.1:17642'), 'the packaged policy is not modified');
+  assert.ok(baseCsp['connect-src'].includes('https://kordi.ai'), 'the packaged policy is not modified');
 
   const remote = desktopDevCsp(baseCsp, 'https://test.example');
   assert.ok(remote['connect-src'].includes('https://test.example'));
   assert.ok(remote['connect-src'].includes('wss://test.example'));
+
+  const operator = desktopDevCsp(baseCsp, 'https://kordi.ai');
+  assert.ok(operator['connect-src'].includes('https://kordi.ai'));
+  assert.ok(operator['connect-src'].includes('wss://kordi.ai'));
   assert.throws(() => desktopDevCsp(baseCsp, 'file:///tmp'), /HTTP\(S\)/);
   assert.throws(() => desktopDevCsp("default-src 'self'", 'http://127.0.0.1:1'), /directive map/);
 });
