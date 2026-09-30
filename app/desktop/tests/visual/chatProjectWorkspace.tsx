@@ -198,7 +198,7 @@ function ProjectWorkspacePreview() {
     <ChatProjectsContext value={{ enabled: true, projects, assign, gitWorkspace, openImporter: (sessionId) => setImportSessionId(sessionId || activeId), create: async (_sessionId, name, folder) => importProject({ name, root: folder || `/preview/${name}`, source: 'local' }) }}>
       <AppShellFrame rootThemeClass={`theme-${appearance}`} isNativeShell isLayoutResizing={false}
         windowTitle={active.name} onToggleSessionPanel={() => setSidebarVisible((current) => !current)}
-        windowSize={{ width: viewport.width, height: viewport.height }} leftWorkspaceWidth={338}
+        windowSize={{ width: viewport.width, height: viewport.height }} leftWorkspaceWidth={sidebarVisible ? 338 : 48}
         isSingleWorkspacePage={false} showSessionRail={sidebarVisible} collapseChatSessions={!sidebarVisible}
         showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={300}
         onSessionResizeMouseDown={() => undefined} onDetailResizeMouseDown={() => undefined}

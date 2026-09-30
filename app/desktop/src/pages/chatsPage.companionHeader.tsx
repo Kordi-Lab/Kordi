@@ -17,6 +17,7 @@ import {
 } from '@/pages/chatsPage.model';
 import { participantSpaceSessionRowTitle } from '@/pages/workspaceSidebar.chatHelpers';
 import { BackgroundSessionHeaderControl } from '@/kordi-app/components/backgroundSessionStopControl';
+import { CompanionTitlebar } from './CompanionTitlebar';
 
 type CompanionHeaderMenu = {
   actionsOpen: boolean;
@@ -95,7 +96,7 @@ export function CompanionHeader({
     });
   }, [menu.actionsOpen, menu.sessionListOpen]);
 
-  return (
+  const header = (
     <div
       className="app-page-header app-chat-pane-header relative z-40 flex shrink-0 cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
       draggable
@@ -262,4 +263,5 @@ export function CompanionHeader({
 
     </div>
   );
+  return <CompanionTitlebar>{header}</CompanionTitlebar>;
 }

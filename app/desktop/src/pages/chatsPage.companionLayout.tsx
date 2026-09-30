@@ -1,5 +1,7 @@
-import { Activity, lazy, Suspense, type ReactNode, type Ref } from 'react';
+import { Activity, lazy, Suspense, useContext, useLayoutEffect, type ReactNode, type Ref } from 'react';
+import { NativeChatTitlebarContext } from '@/app/nativeChatTitlebarContext';
 import { cn } from '@/lib/utils';
+import { CompanionTitlebarContext } from './companionTitlebarContext';
 import { ChatCompanionSplitDivider } from './chatsPage.companionWorkspace';
 import type { CompanionView } from './chatsPage.companionToolbar';
 import type { useChatCompanionLayout } from './useChatCompanionLayout';
@@ -17,6 +19,14 @@ type Props = {
 
 /** Own the split geometry and keep companion content alive through its exit. */
 export function ChatCompanionLayout({ containerRef, layout, view, accountId, companionPane, children }: Props) {
+  const setTitlebarLayout = useContext(NativeChatTitlebarContext)?.setCompanionLayout;
+  const { gridColumns, side, motionDuration } = layout;
+  useLayoutEffect(() => {
+    if (!setTitlebarLayout) return;
+    setTitlebarLayout({ gridColumns, side, motionDuration });
+    return () => setTitlebarLayout(null);
+  }, [setTitlebarLayout, gridColumns, side, motionDuration]);
+
   return <div
     ref={containerRef}
     className={cn(
@@ -40,12 +50,14 @@ export function ChatCompanionLayout({ containerRef, layout, view, accountId, com
     <div className="app-companion-panel-motion" data-open={layout.isVisible} data-side={layout.side}
       aria-hidden={!layout.isVisible} inert={!layout.isVisible}>
       <div className="app-companion-panel-surface" style={{ width: layout.panelWidth }}>
-        <Activity mode={layout.isPresent && view === 'chat' ? 'visible' : 'hidden'}>
-          {companionPane}
-        </Activity>
-        {layout.isPresent && view !== 'chat' ? <Suspense fallback={<aside className="app-companion-overview" role="status">Loading panel…</aside>}>
-          <CompanionOverview accountId={accountId} view={view} onClose={() => layout.setFolded(true)} />
-        </Suspense> : null}
+        <CompanionTitlebarContext value={{ width: layout.panelWidth, side: layout.side, isVisible: layout.isVisible }}>
+          <Activity mode={layout.isPresent && view === 'chat' ? 'visible' : 'hidden'}>
+            {companionPane}
+          </Activity>
+          {layout.isPresent && view !== 'chat' ? <Suspense fallback={<aside className="app-companion-overview" role="status">Loading panel…</aside>}>
+            <CompanionOverview accountId={accountId} view={view} onClose={() => layout.setFolded(true)} />
+          </Suspense> : null}
+        </CompanionTitlebarContext>
       </div>
     </div>
   </div>;

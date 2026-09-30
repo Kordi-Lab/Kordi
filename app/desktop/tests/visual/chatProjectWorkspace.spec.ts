@@ -7,6 +7,7 @@ test('Chat reopens an existing conversation and retains the original New chat an
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${preview}?theme=dark`);
+  await expect(page.getByText(introductoryMessage, { exact: true })).toBeVisible();
   const main = page.getByRole('textbox', { name: 'Ask your agent…', exact: true });
   await main.fill('Keep the main conversation draft');
   const chat = page.getByRole('group', { name: 'Companion panel' }).getByRole('button', { name: 'Chat', exact: true });
@@ -14,6 +15,8 @@ test('Chat reopens an existing conversation and retains the original New chat an
   await expect(page.locator('[data-chat-side-agent-panel]:visible')).toHaveAttribute('data-companion-session-id', 'chat-0');
   await expect(page.getByRole('complementary', { name: 'Choose side chat' })).toHaveCount(0);
   await expect(main).toHaveText('Keep the main conversation draft');
+  await expect(page.getByText(introductoryMessage, { exact: true })).toBeVisible();
+  await expect(page.locator('[data-chat-side-agent-panel]').getByText('Fix transcript scroll jitter', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Side chat options' }).click();
   await expect(page.getByRole('button', { name: 'New chat', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Switch Chat', exact: true })).toBeVisible();
