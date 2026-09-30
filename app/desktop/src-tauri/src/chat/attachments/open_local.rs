@@ -22,7 +22,7 @@ const RUNNABLE_EXTENSIONS: &str = concat!(
     // location files that open other targets
     "fileloc inetloc webloc url desktop lnk ",
     // other platforms' executables
-    "exe msi bat cmd com scr ps1 vbs vbe wsf hta cpl appimage run",
+    "exe msi bat cmd scr ps1 vbs vbe wsf hta cpl appimage run",
 );
 
 fn has_runnable_extension(path: &Path) -> bool {
