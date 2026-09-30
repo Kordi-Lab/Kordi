@@ -255,15 +255,16 @@ async fn cancel_other_queued_runs(pool: &sqlx_postgres::PgPool, run_id: &str) {
     .unwrap();
 }
 
+/// A claim in the direct conversation that contact acceptance creates for the
+/// two accounts; admission requires both to be members of the named session.
 fn claim_body(owner: &TestAccount, requester: &TestAccount, request_message_id: &str) -> Value {
+    let mut members = [requester.account_id.as_str(), owner.account_id.as_str()];
+    members.sort_unstable();
     claim_body_with_session(
         owner,
         requester,
         request_message_id,
-        &format!(
-            "session:direct-person:{}:{}",
-            requester.account_id, owner.account_id
-        ),
+        &format!("session:direct-person:{}:{}", members[0], members[1]),
     )
 }
 
@@ -423,6 +424,8 @@ mod chat;
 use chat::*;
 #[path = "cloud_agent_runtime_e2e/context_media.rs"]
 mod context_media;
+#[path = "cloud_agent_runtime_e2e/conversation_admission.rs"]
+mod conversation_admission;
 #[path = "cloud_agent_runtime_e2e/object_store.rs"]
 mod object_store;
 use object_store::*;

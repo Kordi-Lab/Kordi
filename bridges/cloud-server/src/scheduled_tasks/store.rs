@@ -259,7 +259,7 @@ pub async fn create_scheduled_task_run_now(
     else {
         return Ok(None);
     };
-    let run =
+    let mut run =
         create_run_for_task(pool, owner_account_id, &task_id, &target_runtime, now, now).await?;
     if target_runtime == "cloud" {
         enqueue_cloud_agent_fallback_run_for_scheduled_run(
@@ -268,7 +268,8 @@ pub async fn create_scheduled_task_run_now(
             &created_by_account_id,
             &prompt,
             &tool_payload_json,
-            &run,
+            &mut run,
+            now,
         )
         .await?;
     }
@@ -394,7 +395,8 @@ async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
     created_by_account_id: &str,
     prompt: &str,
     tool_payload_json: &Value,
-    run: &ScheduledTaskRunResponse,
+    run: &mut ScheduledTaskRunResponse,
+    now: DateTime<Utc>,
 ) -> Result<(), sqlx_core::Error> {
     let session_id = tool_payload_json
         .get("sessionId")
@@ -403,20 +405,20 @@ async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("session:scheduled:{}", owner_account_id));
-    claim_run(
-        pool,
-        &ClaimRunRequest {
-            request_message_id: run.run_id.clone(),
-            session_id,
-            owner_account_id: owner_account_id.to_string(),
-            requester_account_id: created_by_account_id.to_string(),
-            prompt: prompt.to_string(),
-            runtime_route: None,
-            idempotency_key: format!("scheduled:{}", run.run_id),
-        },
-    )
-    .await
-    .map_err(RunError::into_persistence_error)?;
+    let claim = ClaimRunRequest {
+        request_message_id: run.run_id.clone(),
+        session_id,
+        owner_account_id: owner_account_id.to_string(),
+        requester_account_id: created_by_account_id.to_string(),
+        prompt: prompt.to_string(),
+        runtime_route: None,
+        idempotency_key: format!("scheduled:{}", run.run_id),
+    };
+    if super::admission::admit_scheduled_run(pool, &claim, run, now).await? {
+        claim_run(pool, &claim)
+            .await
+            .map_err(RunError::into_persistence_error)?;
+    }
     Ok(())
 }
 
@@ -457,7 +459,7 @@ pub async fn claim_due_scheduled_task_runs(
         )
         .map_err(|err| protocol_error(format!("invalid next_run_at: {err}")))?
         .with_timezone(&Utc);
-        let run = create_run_for_task(
+        let mut run = create_run_for_task(
             pool,
             &owner_account_id,
             &task_id,
@@ -473,7 +475,8 @@ pub async fn claim_due_scheduled_task_runs(
                 &created_by_account_id,
                 &prompt,
                 &tool_payload_json,
-                &run,
+                &mut run,
+                now,
             )
             .await?;
         }

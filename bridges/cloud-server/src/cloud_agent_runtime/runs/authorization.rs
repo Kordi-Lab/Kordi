@@ -52,6 +52,45 @@ pub async fn requester_can_target_owner(
     Ok(row.is_some())
 }
 
+/// A run reads the history of the conversation its session id names, so the
+/// requester and the owner must both be active members of that conversation.
+/// A session id without a canonical conversation carries no shared history and
+/// admits only the owner's own run.
+pub async fn claim_conversation_admits_run(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> RunResult<bool> {
+    let session_id = input.session_id.trim();
+    let canonical_id = uuid::Uuid::parse_str(session_id).ok();
+    let (conversations, admitted): (i64, bool) = query_as(
+        "SELECT COUNT(*)::BIGINT,
+                COALESCE(BOOL_AND(
+                    EXISTS(SELECT 1 FROM cloud_chat_conversation_members member
+                           WHERE member.conversation_id = conversation.conversation_id
+                             AND member.account_id = $4
+                             AND member.membership_state = 'active')
+                    AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members member
+                               WHERE member.conversation_id = conversation.conversation_id
+                                 AND member.account_id = $5
+                                 AND member.membership_state = 'active')
+                ), FALSE)
+         FROM cloud_chat_conversations conversation
+         WHERE conversation.legacy_session_id IN ($1, $2)
+            OR conversation.conversation_id = $3",
+    )
+    .bind(&input.session_id)
+    .bind(session_id)
+    .bind(canonical_id)
+    .bind(&input.owner_account_id)
+    .bind(&input.requester_account_id)
+    .fetch_one(pool)
+    .await?;
+    if conversations > 0 {
+        return Ok(admitted);
+    }
+    Ok(input.requester_account_id == input.owner_account_id)
+}
+
 pub async fn validate_group_agent_claim(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<bool> {
     let Some(envelope) =
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)

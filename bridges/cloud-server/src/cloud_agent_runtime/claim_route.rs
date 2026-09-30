@@ -5,9 +5,10 @@ use std::sync::Arc;
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
-    claim_has_shared_cloud_agent_target, claim_run, cloud_agent_response_is_processing_for_request,
-    error_response, requester_can_target_owner, run_error_response, validate_group_agent_claim,
-    validate_shared_cloud_agent_claim, ClaimRunRequest,
+    claim_conversation_admits_run, claim_has_shared_cloud_agent_target, claim_run,
+    cloud_agent_response_is_processing_for_request, error_response, requester_can_target_owner,
+    run_error_response, validate_group_agent_claim, validate_shared_cloud_agent_claim,
+    ClaimRunRequest,
 };
 use crate::server::ServerState;
 use axum::extract::State;
@@ -96,6 +97,25 @@ pub(super) async fn claim_cloud_agent_run(
         Ok(None) => {}
         Err(error) => {
             return run_error_response("request identity", "Could not resolve the request.", error)
+        }
+    }
+    // The run loads the history of the conversation the claim names, so both
+    // parties must belong to it whatever kind of conversation it is.
+    match claim_conversation_admits_run(state.db_pool(), &input).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return error_response(
+                "agent_not_available",
+                "This agent is available only to members of this conversation.",
+                StatusCode::FORBIDDEN,
+            );
+        }
+        Err(error) => {
+            return run_error_response(
+                "check conversation membership",
+                "Could not validate Cloud agent run authorization.",
+                error,
+            );
         }
     }
     let valid_group_target = match validate_group_agent_claim(state.db_pool(), &input).await {

@@ -115,7 +115,7 @@ async fn sandbox_group_sessions_reuse_shared_session_sandbox() {
 }
 
 #[tokio::test]
-async fn sandbox_direct_sessions_are_requester_isolated() {
+async fn sandbox_non_group_sessions_are_requester_isolated() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
@@ -134,10 +134,23 @@ async fn sandbox_direct_sessions_are_requester_isolated() {
         StatusCode::OK
     );
 
+    // Every requester in a non-group session gets an isolated sandbox, even
+    // when several members share that session.
     let session_id = format!(
-        "session:direct-person:sandbox-same-{}",
+        "session:shared-agent:sandbox-same-{}",
         uuid::Uuid::new_v4().simple()
     );
+    create_test_conversation(
+        &pool,
+        &owner.account_id,
+        &session_id,
+        ConversationKind::Ai,
+        vec![
+            requester_a.account_id.clone(),
+            requester_b.account_id.clone(),
+        ],
+    )
+    .await;
     let run_a = router
         .clone()
         .oneshot(post_json_with_token(
