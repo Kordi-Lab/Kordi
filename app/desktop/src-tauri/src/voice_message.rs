@@ -140,9 +140,11 @@ pub fn desktop_voice_record_stop() -> Result<NativeVoiceRecordingStop, String> {
         let stopped = macos::record_stop()?;
         // The recording lives outside attachment storage; registering it lets
         // the composer read and upload it.
-        crate::chat::attachments::access::register_created_file(std::path::Path::new(
-            &stopped.path,
-        ))?;
+        if let Err(error) = crate::chat::attachments::access::register_created_file(
+            std::path::Path::new(&stopped.path),
+        ) {
+            eprintln!("[kordi] Unable to register a voice recording: {error}");
+        }
         Ok(stopped)
     }
     #[cfg(not(target_os = "macos"))]

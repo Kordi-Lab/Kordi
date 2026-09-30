@@ -15,10 +15,15 @@ fn applescript_string(value: &str) -> String {
 /// content as downloaded, and lets Kordi open the copy afterwards.
 pub(crate) fn copy_attachment_out(source: &Path, target: &Path) -> Result<(), String> {
     std::fs::copy(source, target).map_err(|err| err.to_string())?;
+    // The copy already succeeded; volumes without extended attributes (some
+    // network shares) must not turn it into a failed save.
     if access::is_in_attachment_storage(source) || quarantine::is_quarantined(source) {
-        quarantine::mark_quarantined(target)?;
+        quarantine::mark_quarantined_or_log(target);
     }
-    access::register_created_file(target)
+    if let Err(error) = access::register_created_file(target) {
+        eprintln!("[kordi] Unable to remember a saved attachment copy: {error}");
+    }
+    Ok(())
 }
 
 #[tauri::command]

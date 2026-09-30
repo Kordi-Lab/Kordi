@@ -196,12 +196,14 @@ fn register_canonical(paths: Vec<PathBuf>) -> Result<(), String> {
         for path in paths {
             changed |= registry.insert(path);
         }
+        // The in-memory registration already applies to this session; a
+        // failed write only means it will not survive a restart.
         if changed {
-            registry.persist()
-        } else {
-            Ok(())
+            if let Err(error) = registry.persist() {
+                eprintln!("[kordi] {error}");
+            }
         }
-    })?
+    })
 }
 
 /// Registers files the person chose in a native dialog. The dialog is the
