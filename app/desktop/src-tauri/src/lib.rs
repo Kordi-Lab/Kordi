@@ -225,6 +225,11 @@ pub fn run() {
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
         .manage(DesktopChatManager::default())
+        .manage(chat::artifacts::preview_document::ArtifactPreviewDocuments::default())
+        .register_asynchronous_uri_scheme_protocol(
+            chat::artifacts::preview_document::ARTIFACT_PREVIEW_SCHEME,
+            chat::artifacts::preview_document::handle_artifact_preview_request,
+        )
         .setup(|app| {
             let is_cloud_edition = is_cloud_edition_app(app);
             if is_cloud_edition {
@@ -377,6 +382,8 @@ pub fn run() {
             chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,
             chat::artifacts::desktop_chat_artifact_preview,
             chat::artifacts::desktop_chat_artifact_directory,
+            chat::artifacts::preview_document::desktop_artifact_preview_document_open,
+            chat::artifacts::preview_document::desktop_artifact_preview_document_close,
             chat::desktop_chat_state,
             chat::desktop_chat_session_detail,
             chat::agent_identity::desktop_chat_rename_agent,

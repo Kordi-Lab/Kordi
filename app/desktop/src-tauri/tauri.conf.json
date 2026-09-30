@@ -81,7 +81,12 @@
           "ws://127.0.0.1:18181"
         ],
         "worker-src": ["'self'", "blob:"],
-        "frame-src": ["'self'", "about:"],
+        "frame-src": [
+          "'self'",
+          "about:",
+          "kordi-artifact-preview:",
+          "http://kordi-artifact-preview.localhost"
+        ],
         "object-src": "'none'",
         "base-uri": "'self'",
         "form-action": "'self'",

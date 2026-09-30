@@ -579,6 +579,10 @@ Release builds keep the Cloud session token and the installation's device key on
 
 Beta and stable releases are Developer ID-signed, so the Keychain access list keeps matching across updates. Ad-hoc-signed acceptance previews (`signingIdentity` `-`) get a new code identity with every update, so macOS asks again for access to both Keychain items after each preview update. Tell invited testers to choose **Always Allow**. Choosing **Deny** leaves the preview signed out of Cloud and unable to save a new session until access is allowed.
 
+### Content-Security-Policy and artifact previews
+
+Packaged builds apply the Content-Security-Policy from `app/desktop/src-tauri/tauri.conf.json`; `tauri dev` loads the Vite server directly and does not. HTML and SVG artifact previews are served from the `kordi-artifact-preview:` scheme with their own policy, so they keep running inline and HTTPS scripts, styles, web fonts, and HTTPS form posts, while plain-HTTP (including loopback) and app resources stay blocked inside a preview. Before promoting a build, open an HTML artifact that uses an inline script and a CDN library in the packaged app and confirm that it renders and that the Web Inspector console shows no Content-Security-Policy violations for the main window.
+
 ### Signed acceptance, promotion, and release (beta.7 and later)
 
 1. Publish the verified immutable `0.0.1-beta.N` objects to `--channel acceptance` with the default production release profile. The publisher validates the prior channel snapshot, uses ETag compare-and-swap conditions, reads back exact pointer bytes, and re-verifies product-domain endpoints. A failed verification restores only the pointer it wrote and re-verifies the restored public state.

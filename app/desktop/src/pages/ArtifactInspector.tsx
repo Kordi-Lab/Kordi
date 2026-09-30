@@ -6,6 +6,7 @@ import type { DesktopArtifactDirectory, DesktopArtifactDirectoryEntry, DesktopAr
 import { fetchDesktopChatArtifactDirectory, fetchDesktopChatArtifactPreview } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { artifactPreviewDocumentSource, type ArtifactPreviewMode } from './artifactPreviewDocument';
+import { ArtifactPreviewFrame } from './artifactPreviewFrame';
 
 type ArtifactInspectorProps = {
   isNativeShell: boolean;
@@ -156,10 +157,9 @@ export function renderArtifactPreview(preview: DesktopArtifactPreview, mode: Art
   if (previewKind === 'html' || previewKind === 'svg') {
     return (
       <div data-artifact-preview-mode={mode} className={cn('bg-[color:var(--app-transcript-bg)] p-3', mode !== 'panel' && 'min-h-full')}>
-        <iframe
+        <ArtifactPreviewFrame
           title={`${fileNameFromPath(preview.path)} preview`}
-          srcDoc={artifactPreviewDocumentSource(source, mode)}
-          sandbox="allow-forms allow-popups allow-scripts"
+          source={artifactPreviewDocumentSource(source, mode)}
           className={cn('w-full rounded-[16px] border border-white/10 bg-white text-slate-950', mode === 'window' ? 'h-[calc(100vh-10rem)] min-h-[36rem]' : mode === 'rail' ? 'h-full min-h-[28rem]' : 'h-[32rem]')}
         />
       </div>

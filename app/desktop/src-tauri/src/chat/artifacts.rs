@@ -1,5 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
+pub mod preview_document;
+
 use super::attachments::access::ensure_previewable_location;
 use super::{
     chat_cwd, expand_home_project_path, DesktopArtifactDirectory, DesktopArtifactDirectoryEntry,
