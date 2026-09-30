@@ -92,3 +92,26 @@ test('SECURITY.md fallback names an existing issue template and triage option', 
   );
   assert.ok(!/open a public issue that asks/i.test(policy));
 });
+
+function privateReportingStatusUrl(advisoryForm) {
+  const match = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/security\/advisories\/new$/.exec(advisoryForm);
+  assert.ok(match, `unexpected advisory form URL: ${advisoryForm}`);
+  return `https://api.github.com/repos/${match[1]}/${match[2]}/private-vulnerability-reporting`;
+}
+
+test('private vulnerability reporting is documented as a maintainer prerequisite', async () => {
+  const [contact] = values(await securityTxtFields(), 'contact');
+  const statusUrl = privateReportingStatusUrl(contact);
+  const expected = '`"enabled": true`';
+
+  const policy = await read('SECURITY.md');
+  const notes = /^## Maintainer notes\n([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(policy);
+  assert.ok(notes, 'SECURITY.md must keep a Maintainer notes section');
+  assert.match(notes[1], /private vulnerability reporting/i);
+  assert.ok(notes[1].includes(statusUrl), `SECURITY.md maintainer notes must show how to check ${statusUrl}`);
+  assert.ok(notes[1].includes(expected), 'SECURITY.md maintainer notes must name the expected response');
+
+  const deployGuide = await read('bridges/cloud-server/deploy/k3s/README.md');
+  assert.ok(deployGuide.includes(statusUrl), `the k3s deploy guide must check ${statusUrl} after deploys`);
+  assert.ok(deployGuide.includes(expected), 'the k3s deploy guide must name the expected response');
+});

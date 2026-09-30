@@ -266,6 +266,16 @@ curl --fail --silent --show-error https://kordi.ai/.well-known/security.txt
 curl --fail --silent --show-error https://www.kordi.ai/.well-known/security.txt
 ```
 
+The file's `Contact` is the GitHub private advisory form, which works only
+while private vulnerability reporting is enabled in the repository settings.
+A repository administrator enables it; confirm that the response reports
+`"enabled": true`:
+
+```bash
+curl --fail --silent --show-error \
+  https://api.github.com/repos/Kordi-Lab/Kordi/private-vulnerability-reporting
+```
+
 The `Expires` date lives in `bridges/cloud-server/src/security_txt.rs`. Renew
 it at least 30 days before it lapses, with a date less than one year ahead.
 `cargo test -p kordi-cloud-server security_txt -- --ignored` fails once the

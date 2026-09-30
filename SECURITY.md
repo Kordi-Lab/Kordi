@@ -28,9 +28,10 @@ advisory form:
 
 **<https://github.com/Kordi-Lab/Kordi/security/advisories/new>**
 
-You can also reach the form from the repository's **Security** tab, or from
-**Report a security issue privately** when you create a new issue. The report
-stays private between you and the maintainers until we publish an advisory.
+You can also reach the form from **Report a vulnerability** on the
+repository's **Security** tab, or from **Report a security issue privately**
+when you create a new issue. The report stays private between you and the
+maintainers until we publish an advisory.
 
 Please do not open public issues, discussions, or pull requests for security
 problems, and do not share details in community channels.
@@ -147,3 +148,23 @@ If you are unsure whether an activity is covered by this policy, ask through a
 private report before you proceed. This policy does not authorize testing of
 third-party systems, and it cannot grant permission on behalf of third
 parties.
+
+## Maintainer notes
+
+The private advisory form, the `Contact` field in `security.txt`, and the
+issue chooser link all depend on GitHub private vulnerability reporting. It is
+a repository setting that is off by default, and when it is off the form
+returns "not found" to reporters. A repository administrator must keep
+**Private vulnerability reporting** enabled in the repository's security
+settings.
+
+Before merging changes to this policy or its links, and after any change to
+repository settings or ownership, confirm that it is enabled for anonymous
+visitors:
+
+```bash
+curl --fail --silent --show-error \
+  https://api.github.com/repos/Kordi-Lab/Kordi/private-vulnerability-reporting
+```
+
+The response must report `"enabled": true`.
