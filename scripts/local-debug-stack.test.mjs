@@ -40,6 +40,10 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
   );
   assert.match(compose, /KORDI_CLOUD_SANDBOX_BACKEND: local/);
   assert.match(compose, /KORDI_CLOUD_SANDBOX_ALLOW_LOCAL: "1"/);
+  assert.match(
+    compose,
+    /KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS: \$\{KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS:-\}/,
+  );
   assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
 });
 

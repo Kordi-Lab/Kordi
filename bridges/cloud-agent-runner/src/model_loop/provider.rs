@@ -10,9 +10,10 @@ use tokio_util::sync::CancellationToken;
 use crate::client::{AgentRuntimeRoute, ProviderAuthMaterial};
 
 use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelToolCall};
+pub use endpoint::PRIVATE_PROVIDER_ENDPOINTS_ENV;
 use endpoint::{
-    base_url_for, ensure_plain_api_key, ensure_supported_api, is_owner_local_provider_endpoint,
-    normalize_provider,
+    base_url_for, ensure_plain_api_key, ensure_provider_endpoint_allowed, ensure_supported_api,
+    normalize_provider, private_provider_endpoints_allowed,
 };
 use model_choice::snapshot_model;
 
@@ -66,12 +67,7 @@ impl OpenAiProviderConfig {
         ensure_plain_api_key(&provider, &api_key)?;
         ensure_supported_api(&provider, api_mode, payload)?;
         let base_url = base_url_for(&provider, api_mode, payload)?;
-        if is_owner_local_provider_endpoint(&base_url) {
-            return Err(ModelLoopError::Provider(
-                "Cloud fallback cannot use owner-local provider endpoints such as localhost or private networks."
-                    .to_string(),
-            ));
-        }
+        ensure_provider_endpoint_allowed(&base_url, private_provider_endpoints_allowed())?;
         // Empty only for a custom account without a model; a route model may
         // still supply one in `apply_runtime_route`.
         let model = snapshot_model(payload, &provider)
@@ -182,11 +178,47 @@ fn normalize_routed_model<'a>(model: &'a str, provider: &str, api_mode: OpenAiAp
 const CUSTOM_MODEL_MISSING: &str =
     "This custom account has no model ID. Add one in Authentication.";
 
-#[derive(Default)]
 pub struct OpenAiCompatibleProvider {
     openai: kordi_provider::openai::OpenAiProvider,
     anthropic: AnthropicProvider,
     google: GoogleProvider,
+}
+
+impl Default for OpenAiCompatibleProvider {
+    fn default() -> Self {
+        Self::new(private_provider_endpoints_allowed())
+    }
+}
+
+impl OpenAiCompatibleProvider {
+    /// Provider clients for hosted runs. Unless the operator allows private
+    /// endpoints, every provider request uses a transport that connects only
+    /// to public addresses: it ignores proxy settings, refuses DNS answers
+    /// that include a local, private, carrier-grade NAT, or link-local
+    /// address, and validates each redirect.
+    pub fn new(allow_private_endpoints: bool) -> Self {
+        if allow_private_endpoints {
+            return Self {
+                openai: kordi_provider::openai::OpenAiProvider::new(),
+                anthropic: AnthropicProvider::new(),
+                google: GoogleProvider::new(),
+            };
+        }
+        let client = public_provider_client();
+        Self {
+            openai: kordi_provider::openai::OpenAiProvider::with_client(client.clone()),
+            anthropic: AnthropicProvider::with_client(client.clone()),
+            google: GoogleProvider::with_client(client),
+        }
+    }
+}
+
+/// The public-address-only HTTP client for provider requests. It never falls
+/// back to an unrestricted client.
+pub fn public_provider_client() -> reqwest::Client {
+    kordi_provider::with_provider_timeouts(kordi_tools::public_endpoint_client_builder())
+        .build()
+        .expect("the public provider HTTP client must be constructible")
 }
 
 #[async_trait]

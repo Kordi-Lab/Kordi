@@ -169,6 +169,9 @@ services:
       # the Kubernetes backend.
       KORDI_CLOUD_SANDBOX_ALLOW_LOCAL: "1"
       KORDI_CLOUD_SANDBOX_ROOT: /var/lib/kordi-runner-sandbox
+      # Provider requests reach only public addresses unless a developer
+      # opts in for a model server on a private network.
+      KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS: ${KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS:-}
     depends_on:
       cloud-server:
         condition: service_started

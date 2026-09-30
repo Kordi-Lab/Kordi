@@ -225,3 +225,154 @@ fn a_structured_json_credential_fails_closed_instead_of_becoming_a_bearer_token(
     ))
     .is_ok());
 }
+
+#[test]
+fn provider_endpoints_must_be_public_addresses() {
+    for base_url in [
+        "http://localhost:11434/v1",
+        "http://127.0.0.1:8000/v1",
+        "http://10.43.0.12:17081/v1",
+        "http://172.17.0.1:8080/v1",
+        "http://192.168.1.20/v1",
+        "http://100.100.1.1/v1",
+        "http://169.254.169.254/computeMetadata/v1",
+        "http://[::1]:8080/v1",
+        "http://[fd12::1]/v1",
+        "http://postgres:5432/v1",
+        "http://minio:9000/v1",
+        "http://kordi-cloud-server:17081/v1",
+        "http://kordi-cloud-server.kordi-cloud.svc.cluster.local:17081/v1",
+        "https://gateway.local/v1",
+        "https://user:secret@llm.example.com/v1",
+        "ftp://llm.example.com/v1",
+        "not a url",
+    ] {
+        let error = ensure_provider_endpoint_allowed(base_url, false).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("provider error: {}", endpoint::OWNER_LOCAL_ENDPOINT_ERROR),
+            "{base_url}"
+        );
+    }
+    for base_url in [
+        "https://api.openai.com/v1",
+        "https://llm.example.com/v1",
+        "https://llm.example.com:8443/v1",
+        "http://8.8.8.8:8000/v1",
+    ] {
+        assert!(
+            ensure_provider_endpoint_allowed(base_url, false).is_ok(),
+            "{base_url}"
+        );
+    }
+}
+
+#[test]
+fn the_operator_opt_in_allows_private_http_endpoints_only() {
+    for base_url in [
+        "http://localhost:11434/v1",
+        "http://10.0.0.5:8000/v1",
+        "http://vllm:8000/v1",
+        "https://gateway.local/v1",
+    ] {
+        assert!(
+            ensure_provider_endpoint_allowed(base_url, true).is_ok(),
+            "{base_url}"
+        );
+    }
+    for base_url in ["ftp://vllm/v1", "file:///tmp/model", "not a url"] {
+        assert!(
+            ensure_provider_endpoint_allowed(base_url, true).is_err(),
+            "{base_url}"
+        );
+    }
+}
+
+#[test]
+fn a_cluster_service_name_is_not_accepted_as_a_custom_endpoint() {
+    for base_url in ["http://minio:9000/v1", "http://kordi-cloud-server:17081/v1"] {
+        let error = OpenAiProviderConfig::from_material(&material(
+            "custom",
+            json!({ "apiKey": "key", "baseUrl": base_url, "model": "some-model" }),
+        ))
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("owner-local provider endpoints"),
+            "{base_url}"
+        );
+    }
+}
+
+async fn counting_listener() -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let connections = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = connections.clone();
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            tokio::spawn(async move {
+                let mut buffer = [0u8; 4096];
+                let _ = stream.read(&mut buffer).await;
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                    )
+                    .await;
+                let _ = stream.shutdown().await;
+            });
+        }
+    });
+    (port, connections)
+}
+
+fn config_for(base_url: String) -> OpenAiProviderConfig {
+    OpenAiProviderConfig {
+        provider: "custom".to_string(),
+        api_key: "synthetic-provider-key".to_string(),
+        base_url,
+        model: "some-model".to_string(),
+        thinking: "default".to_string(),
+        api_mode: OpenAiApiMode::ChatCompletions,
+        account_id: None,
+    }
+}
+
+fn user_message() -> Vec<Value> {
+    vec![json!({ "role": "user", "content": "hello" })]
+}
+
+#[tokio::test]
+async fn provider_requests_refuse_names_that_resolve_to_private_addresses() {
+    let (port, connections) = counting_listener().await;
+    // A name that passed validation earlier but now resolves to a loopback
+    // address is refused by the transport before any connection is made.
+    let error = OpenAiCompatibleProvider::new(false)
+        .next_response(
+            &config_for(format!("http://localhost:{port}/v1")),
+            &user_message(),
+            &[],
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("could not connect"), "{error}");
+    assert_eq!(
+        connections.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "the private listener must not be contacted"
+    );
+}
+
+#[tokio::test]
+async fn the_operator_opt_in_uses_an_unrestricted_provider_transport() {
+    let (port, connections) = counting_listener().await;
+    let _ = OpenAiCompatibleProvider::new(true)
+        .next_response(
+            &config_for(format!("http://localhost:{port}/v1")),
+            &user_message(),
+            &[],
+        )
+        .await;
+    assert!(connections.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+}

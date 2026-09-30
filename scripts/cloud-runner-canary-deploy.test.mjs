@@ -106,6 +106,7 @@ const sandboxJobSpecPath = 'bridges/cloud-agent-runner/src/k8s_sandbox/job_spec.
 test('hosted runner never enables the development-only local sandbox', () => {
   const manifest = read(manifestPath);
   assert.doesNotMatch(manifest, /KORDI_CLOUD_SANDBOX_ALLOW_LOCAL/);
+  assert.doesNotMatch(manifest, /KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS/);
   assert.doesNotMatch(manifest, /name:\s*KORDI_CLOUD_SANDBOX_BACKEND\s+value:\s*"?local/s);
 });
 

@@ -134,6 +134,15 @@ Deploy the Cloud server and the runner from the same revision: a runner that
 does not send run-scoped tokens cannot finish runs on a server that requires
 them.
 
+Model provider requests from the runner, including a custom provider's
+`baseUrl`, go through the same public-address policy as the web tools:
+single-label host names, `.local` names, and private, carrier-grade NAT,
+link-local, and loopback addresses are refused, and every DNS answer and
+redirect is checked at connection time. A self-hosted deployment whose model
+server is on a private network can set
+`KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS=1` on the runner; the hosted
+product must not.
+
 The hosted runner must use `KORDI_CLOUD_SANDBOX_BACKEND=k8s`. The `local`
 backend runs commands on the runner's own host as the runner user and is refused
 unless the development-only `KORDI_CLOUD_SANDBOX_ALLOW_LOCAL=1` is set, as it
