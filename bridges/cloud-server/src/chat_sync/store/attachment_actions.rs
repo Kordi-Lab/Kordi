@@ -292,6 +292,7 @@ pub async fn delete_attachment(
     let mut removed = HashSet::from([attachment_id.to_owned()]);
     let mut replacement = current.clone();
     remove_references(&mut replacement.content, &mut removed);
+    message::ensure_rewrite_keeps_envelope_placement(&current.content, &replacement.content)?;
     replacement
         .attachment_ids
         .retain(|id| !removed.contains(id));

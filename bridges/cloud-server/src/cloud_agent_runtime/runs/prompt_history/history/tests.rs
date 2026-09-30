@@ -142,6 +142,28 @@ fn history_labels_speakers_from_the_stored_sender_account() {
 }
 
 #[test]
+fn agent_messages_are_attributed_to_the_agent_of_the_stored_sender() {
+    let prompt = fallback_prompt_with_history(
+        "acct_requester",
+        "acct_owner",
+        "current",
+        &[
+            history_message(
+                "acct_requester",
+                group_body("acct_requester", "agent", "requester agent text"),
+            ),
+            history_message(
+                "acct_participant",
+                group_body("acct_participant", "agent", "participant agent text"),
+            ),
+        ],
+    );
+    assert!(prompt.contains("Requester agent: requester agent text"));
+    assert!(prompt.contains("Participant agent: participant agent text"));
+    assert!(!prompt.contains("Requester: requester agent text"));
+}
+
+#[test]
 fn agent_response_bodies_are_owner_agent_only_when_stored_by_the_owner() {
     let response = |text: &str| {
         format!(
@@ -162,8 +184,11 @@ fn agent_response_bodies_are_owner_agent_only_when_stored_by_the_owner() {
             history_message("acct_owner", response("owner agent reply")),
         ],
     );
-    assert!(prompt.contains("Requester: requester formatted text"));
-    assert!(!prompt.contains("participant formatted text"));
+    // Replies from another account's agent stay in context under that
+    // account's agent, never under the owner's agent or the human requester.
+    assert!(prompt.contains("Requester agent: requester formatted text"));
+    assert!(prompt.contains("Participant agent: participant formatted text"));
     assert!(prompt.contains("Owner agent: owner agent reply"));
     assert!(!prompt.contains("Owner agent: requester formatted text"));
+    assert!(!prompt.contains("Requester: requester formatted text"));
 }

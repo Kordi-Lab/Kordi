@@ -164,16 +164,29 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
             .await
             .unwrap();
         assert_eq!(read_json(admitted).await["admitted"], true);
+        let agent_response = json!({"id":"native-response","senderAccountId":owner.account_id,"senderAgentId":agent,"senderKind":"agent","text":"ACK","createdAtMs":chrono::Utc::now().timestamp_millis(),"requestId":canonical,"deliveryState":"complete"});
         let response = if group {
-            group_body(
-                &owner,
-                json!({"id":"native-response","senderAccountId":owner.account_id,"senderAgentId":agent,"senderKind":"agent","text":"ACK","createdAtMs":chrono::Utc::now().timestamp_millis(),"requestId":canonical,"deliveryState":"complete"}),
-            )
+            group_body(&owner, agent_response.clone())
         } else {
             json!({"kind":"agent-response","requestId":canonical,"text":"ACK","deliveryState":"complete"})
         };
         let publication = json!({"claimId":claim_id,"clientMessageId":uuid::Uuid::new_v4(),"body":encode(if group{"kordi-cloud-group"}else{"kordi-cloud-agent-response"},response)});
         let uri = format!("/v1/cloud/agent-runs/desktop/{run}/progress");
+        if group {
+            // Content that chat sync refuses is a permanent rejection, not a
+            // server error that the runtime would retry.
+            let refused = json!({"claimId":claim_id,"clientMessageId":uuid::Uuid::new_v4(),"body":encode("kordi-cloud-group",group_body(&peer, agent_response))});
+            let refused = router
+                .clone()
+                .oneshot(post_json_with_token(&uri, &owner.token, refused))
+                .await
+                .unwrap();
+            assert_eq!(refused.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            assert_eq!(
+                read_json(refused).await["errorCode"],
+                "execution_progress_rejected"
+            );
+        }
         let first = router
             .clone()
             .oneshot(post_json_with_token(

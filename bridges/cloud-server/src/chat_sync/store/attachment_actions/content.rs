@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashSet;
 
 const PREFIXES: [&str; 2] = ["kordi-cloud-message:", "kordi-cloud-group:"];
@@ -77,7 +77,21 @@ pub(super) fn remove_references(content: &mut Value, removed: &mut HashSet<Strin
                 }
             }
         }
-        blocks.retain(|block| !attachment_id(block).is_some_and(|id| targets.contains(id)));
+        // Clients join the text of every block, so a removed block keeps any
+        // text it carried and the joined text never changes.
+        *blocks = std::mem::take(blocks)
+            .into_iter()
+            .filter_map(|block| {
+                if !attachment_id(&block).is_some_and(|id| targets.contains(id)) {
+                    return Some(block);
+                }
+                block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.is_empty())
+                    .map(|text| json!({ "type": "text", "text": text }))
+            })
+            .collect();
     }
     removed.retain(|id| targets.contains(id) || !retained.contains(id));
 }
@@ -205,6 +219,30 @@ mod tests {
         assert!(!removed.contains("shared-video"));
         assert_eq!(content["legacy_attachments"].as_array().unwrap().len(), 1);
         assert_eq!(content["blocks"][0]["text"], "Caption");
+    }
+
+    #[test]
+    fn removing_an_attachment_block_keeps_the_joined_block_text() {
+        let mut content = json!({"schema":1,"blocks":[
+            {"type":"text","text":"kordi-cloud-"},
+            {"type":"image","attachmentId":"photo","text":"x"},
+            {"type":"image","attachmentId":"other"},
+            {"type":"text","text":"group:e30"}
+        ]});
+        let mut removed = HashSet::from(["photo".to_string()]);
+        remove_references(&mut content, &mut removed);
+        let blocks = content["blocks"].as_array().unwrap();
+        let joined = blocks
+            .iter()
+            .filter_map(|block| block["text"].as_str())
+            .collect::<String>();
+        assert_eq!(joined, "kordi-cloud-xgroup:e30");
+        assert!(blocks.iter().all(|block| block["attachmentId"] != "photo"));
+        assert_eq!(blocks.len(), 4);
+
+        let mut removed = HashSet::from(["other".to_string()]);
+        remove_references(&mut content, &mut removed);
+        assert_eq!(content["blocks"].as_array().unwrap().len(), 3);
     }
 
     #[test]

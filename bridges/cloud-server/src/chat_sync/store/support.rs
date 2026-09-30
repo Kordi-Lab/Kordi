@@ -281,6 +281,8 @@ pub(super) async fn load_message(
         .remove(&row.0)
         .unwrap_or_default();
     let mut message = message_from_row(row, attachments, reactions);
+    message::verify_stored_custom_agent_senders(transaction, std::slice::from_mut(&mut message))
+        .await?;
     attachment_actions::hydrate(transaction, None, std::slice::from_mut(&mut message)).await?;
     Ok(message)
 }

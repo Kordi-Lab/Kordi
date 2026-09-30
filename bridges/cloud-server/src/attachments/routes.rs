@@ -193,6 +193,52 @@ async fn release_upload_claim(pool: &sqlx_postgres::PgPool, attachment_id: &str)
     .await;
 }
 
+/// Holds a compatibility upload claim until the upload finalizes. Every other
+/// exit releases it, including a request that is dropped because the client
+/// disconnected or timed out while the bytes were being written.
+struct UploadClaim {
+    pool: sqlx_postgres::PgPool,
+    attachment_id: String,
+    settled: bool,
+}
+
+impl UploadClaim {
+    fn new(pool: &sqlx_postgres::PgPool, attachment_id: &str) -> Self {
+        Self {
+            pool: pool.clone(),
+            attachment_id: attachment_id.to_string(),
+            settled: false,
+        }
+    }
+
+    fn finalized(mut self) {
+        self.settled = true;
+    }
+
+    /// Releases the claim before the error response is sent, so an immediate
+    /// retry can claim the attachment again.
+    async fn release(mut self) {
+        release_upload_claim(&self.pool, &self.attachment_id).await;
+        self.settled = true;
+    }
+}
+
+impl Drop for UploadClaim {
+    fn drop(&mut self) {
+        if self.settled {
+            return;
+        }
+        let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let pool = self.pool.clone();
+        let attachment_id = std::mem::take(&mut self.attachment_id);
+        runtime.spawn(async move {
+            release_upload_claim(&pool, &attachment_id).await;
+        });
+    }
+}
+
 pub(super) fn s3_or_503(state: &ServerState) -> Result<&S3Config, Box<Response>> {
     state.s3().ok_or_else(|| {
         boxed_err(
@@ -340,13 +386,14 @@ pub async fn upload(
             )
         }
     }
+    let claim = UploadClaim::new(pool, &attachment_id);
     let object_key = row.object_key;
 
     let upload_url = match presign_upload_url(s3, &object_key) {
         Ok(value) => value,
         Err(error) => {
             eprintln!("[attachments] presign proxy upload: {error}");
-            release_upload_claim(pool, &attachment_id).await;
+            claim.release().await;
             return err(
                 "server_error",
                 "Could not sign upload URL.",
@@ -368,7 +415,7 @@ pub async fn upload(
         Ok(resp) if resp.status().is_success() => {}
         Ok(resp) => {
             eprintln!("[attachments] proxy upload failed: {}", resp.status());
-            release_upload_claim(pool, &attachment_id).await;
+            claim.release().await;
             return err(
                 "server_error",
                 "Could not upload attachment.",
@@ -377,7 +424,7 @@ pub async fn upload(
         }
         Err(error) => {
             eprintln!("[attachments] proxy upload request failed: {error}");
-            release_upload_claim(pool, &attachment_id).await;
+            claim.release().await;
             return err(
                 "server_error",
                 "Could not upload attachment.",
@@ -402,10 +449,10 @@ pub async fn upload(
     .execute(pool)
     .await
     {
-        Ok(result) if result.rows_affected() == 1 => {}
+        Ok(result) if result.rows_affected() == 1 => claim.finalized(),
         Ok(_) => return immutable_attachment(),
         Err(_) => {
-            release_upload_claim(pool, &attachment_id).await;
+            claim.release().await;
             return err(
                 "server_error",
                 "Could not finalize attachment.",

@@ -10,10 +10,12 @@ use sqlx_postgres::Postgres;
 use uuid::Uuid;
 
 use super::super::StoreError;
+use super::envelope_placement::{
+    canonicalize_envelope_placement, validate_envelope_placement, CLOUD_GROUP_PREFIX,
+    INVALID_GROUP_ENVELOPE,
+};
 use super::{load_message, normalize_title, MessageSnapshot};
 
-const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
-const INVALID_GROUP_ENVELOPE: &str = "group message envelope is invalid";
 const SENDER_MISMATCH: &str = "group message sender must be the signed-in account";
 const UNOWNED_SENDER_AGENT: &str = "group message agent must belong to the signed-in account";
 /// Agent-only presentation fields. The server derives them for agent senders
@@ -127,43 +129,13 @@ fn is_default_agent_alias(agent_id: &str, account_id: &str) -> bool {
         || agent_id == format!("cloud-self:{account_id}")
 }
 
-fn has_group_prefix(text: &str) -> bool {
-    text.trim_start().starts_with(CLOUD_GROUP_PREFIX)
-}
-
 /// Returns whether message content carries a group envelope, and rejects any
-/// placement other than the exact start of the first text block. Clients join
-/// the text of every block before decoding, so an envelope that starts in a
-/// later block, after whitespace, or split across blocks must never reach
-/// storage without server normalization.
+/// envelope outside canonical position. Clients join the text of every block
+/// before decoding, so an envelope that starts in a later block, after
+/// whitespace, or split across blocks must never reach storage without server
+/// normalization.
 fn carries_group_envelope(content: &Value) -> Result<bool, StoreError> {
-    let Some(blocks) = content.get("blocks").and_then(Value::as_array) else {
-        return Ok(false);
-    };
-    let texts = blocks
-        .iter()
-        .map(|block| {
-            block
-                .get("text")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-        })
-        .collect::<Vec<_>>();
-    if !texts.iter().any(|text| has_group_prefix(text)) && !has_group_prefix(&texts.concat()) {
-        return Ok(false);
-    }
-    let canonical = blocks.first().is_some_and(|block| {
-        block.get("type").and_then(Value::as_str) == Some("text")
-            && block
-                .get("text")
-                .and_then(Value::as_str)
-                .is_some_and(|text| text.starts_with(CLOUD_GROUP_PREFIX))
-    }) && texts.iter().skip(1).all(|text| text.is_empty());
-    if canonical {
-        Ok(true)
-    } else {
-        Err(StoreError::InvalidInput(INVALID_GROUP_ENVELOPE))
-    }
+    Ok(validate_envelope_placement(content)? == Some(CLOUD_GROUP_PREFIX))
 }
 
 fn decode_group_envelope_strict(text: &str) -> Result<Value, StoreError> {
@@ -265,9 +237,12 @@ async fn bind_group_message_sender(
     let agent_name = if is_default_agent_alias(&sender_agent_id, sender_account_id) {
         default_agent_name
     } else {
+        // Ownership binds the agent to the sender. An agent archived after a
+        // run was admitted still belongs to its owner, so that run can publish
+        // its final state instead of leaving a processing message behind.
         let owned: Option<(String,)> = query_as(
             "SELECT name FROM cloud_agent_definitions \
-             WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active'",
+             WHERE agent_id = $1 AND owner_account_id = $2",
         )
         .bind(&sender_agent_id)
         .bind(sender_account_id)
@@ -338,9 +313,17 @@ fn enrich_participant(
     let Some((joined_at, owner_name, agent_name)) = profiles.get(&account_id) else {
         return;
     };
-    if let Some(owner_name) = owner_name {
-        participant.insert("displayName".to_string(), Value::String(owner_name.clone()));
-    }
+    // Accounts without a display name show their account id, as clients do
+    // for members, never a name chosen by the sender.
+    let display_name = owner_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&account_id);
+    participant.insert(
+        "displayName".to_string(),
+        Value::String(display_name.to_string()),
+    );
     participant.insert(
         "joinedAt".to_string(),
         Value::String(joined_at.to_rfc3339()),
@@ -491,19 +474,129 @@ pub(super) async fn normalize_group_envelope(
     )
 }
 
-fn is_legacy_default_agent_name(value: &str) -> bool {
-    let normalized = value.trim().to_lowercase();
-    normalized == "kordi"
-        || normalized == "my kordi"
-        || normalized.ends_with("'s kordi")
-        || normalized.ends_with("’s kordi")
+/// Presents a stored envelope as the stored sender's own human message.
+fn present_as_stored_human(
+    message: &mut Map<String, Value>,
+    sender_account_id: &str,
+    owner_name: Option<String>,
+) {
+    message.insert(
+        "senderAccountId".to_string(),
+        Value::String(sender_account_id.to_string()),
+    );
+    if message.contains_key("senderKind") {
+        message.insert("senderKind".to_string(), Value::String("human".to_string()));
+    }
+    for key in AGENT_SENDER_FIELDS {
+        message.remove(key);
+    }
+    set_or_remove(message, "senderDisplayName", owner_name);
 }
 
+/// Applies server records to a stored group envelope when it is read, so
+/// clients render only an identity the server can vouch for, including for
+/// messages stored before envelope senders were bound on write:
+///
+/// - An envelope that names another sender is the stored sender's own human
+///   message.
+/// - Human messages show the sender's account display name.
+/// - Agent messages name the stored sender as their owner. The default agent
+///   shows its current name; custom agents are checked against agent records
+///   by `verify_stored_custom_agent_senders`.
 pub(crate) fn normalize_stored_group_agent_identity(
     content: &mut Value,
     sender_account_id: &str,
     default_agent_name: &str,
     owner_name: Option<&str>,
+) {
+    canonicalize_envelope_placement(content);
+    let Some((mut envelope, text)) = decode_group_envelope(content) else {
+        return;
+    };
+    let Some(message) = envelope.get_mut("message").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let original = message.clone();
+    let owner_name = owner_name
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    if message.get("senderAccountId").and_then(Value::as_str) != Some(sender_account_id) {
+        present_as_stored_human(message, sender_account_id, owner_name);
+    } else if message.get("senderKind").and_then(Value::as_str) == Some("agent") {
+        message.insert(
+            "senderOwnerAccountId".to_string(),
+            Value::String(sender_account_id.to_string()),
+        );
+        set_or_remove(message, "senderOwnerName", owner_name);
+        let sender_agent_id = message
+            .get("senderAgentId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        match sender_agent_id {
+            None => {
+                message.insert(
+                    "senderAgentId".to_string(),
+                    Value::String(default_agent_id(sender_account_id)),
+                );
+                set_or_remove(
+                    message,
+                    "senderDisplayName",
+                    Some(default_agent_name.to_string()),
+                );
+            }
+            Some(agent_id) if is_default_agent_alias(&agent_id, sender_account_id) => {
+                set_or_remove(
+                    message,
+                    "senderDisplayName",
+                    Some(default_agent_name.to_string()),
+                );
+            }
+            Some(_) => {}
+        }
+    } else {
+        for key in AGENT_SENDER_FIELDS {
+            message.remove(key);
+        }
+        set_or_remove(message, "senderDisplayName", owner_name);
+    }
+    if *message != original {
+        if let Ok(encoded) = encode_group_envelope(&envelope) {
+            *text = Value::String(encoded);
+        }
+    }
+}
+
+/// The custom agent that a stored group envelope names for its stored sender.
+fn custom_agent_claim(content: &Value, sender_account_id: &str) -> Option<String> {
+    let text = content
+        .get("blocks")?
+        .as_array()?
+        .iter()
+        .find(|block| block.get("type").and_then(Value::as_str) == Some("text"))?
+        .get("text")?
+        .as_str()?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(text.strip_prefix(CLOUD_GROUP_PREFIX)?)
+        .ok()?;
+    let envelope: Value = serde_json::from_slice(&decoded).ok()?;
+    let message = envelope.get("message")?;
+    if message.get("senderKind").and_then(Value::as_str) != Some("agent")
+        || message.get("senderAccountId").and_then(Value::as_str) != Some(sender_account_id)
+    {
+        return None;
+    }
+    let agent_id = message.get("senderAgentId")?.as_str()?.trim();
+    (!agent_id.is_empty() && !is_default_agent_alias(agent_id, sender_account_id))
+        .then(|| agent_id.to_string())
+}
+
+fn apply_custom_agent_record(
+    content: &mut Value,
+    agent_name: Option<String>,
+    owner_name: Option<String>,
 ) {
     let Some((mut envelope, text)) = decode_group_envelope(content) else {
         return;
@@ -511,66 +604,78 @@ pub(crate) fn normalize_stored_group_agent_identity(
     let Some(message) = envelope.get_mut("message").and_then(Value::as_object_mut) else {
         return;
     };
-    if message.get("senderAccountId").and_then(Value::as_str) != Some(sender_account_id) {
-        // Messages stored before envelope senders were bound to the signed-in
-        // account can name another sender. Present them as the stored
-        // sender's own human message.
-        message.insert(
-            "senderAccountId".to_string(),
-            Value::String(sender_account_id.to_string()),
-        );
-        if message.contains_key("senderKind") {
+    let original = message.clone();
+    match agent_name {
+        Some(agent_name) => set_or_remove(message, "senderDisplayName", Some(agent_name)),
+        None => {
             message.insert("senderKind".to_string(), Value::String("human".to_string()));
+            for key in AGENT_SENDER_FIELDS {
+                message.remove(key);
+            }
+            set_or_remove(message, "senderDisplayName", owner_name);
         }
-        for key in AGENT_SENDER_FIELDS {
-            message.remove(key);
-        }
-        set_or_remove(
-            message,
-            "senderDisplayName",
-            owner_name.map(ToString::to_string),
-        );
+    }
+    if *message != original {
         if let Ok(encoded) = encode_group_envelope(&envelope) {
             *text = Value::String(encoded);
         }
-        return;
     }
-    if message.get("senderKind").and_then(Value::as_str) != Some("agent") {
-        return;
+}
+
+/// Checks the custom agents named by stored group messages against agent
+/// records when the messages are read. An agent that belongs to the stored
+/// sender shows its current name; any other agent claim is presented as the
+/// stored sender's own human message.
+pub(crate) async fn verify_stored_custom_agent_senders(
+    transaction: &mut Transaction<'_, Postgres>,
+    messages: &mut [MessageSnapshot],
+) -> Result<(), StoreError> {
+    let claims = messages
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            custom_agent_claim(&message.content, &message.sender_account_id)
+                .map(|agent_id| (index, agent_id))
+        })
+        .collect::<Vec<_>>();
+    if claims.is_empty() {
+        return Ok(());
     }
-    let canonical_id = default_agent_id(sender_account_id);
-    let sender_agent_id = message
-        .get("senderAgentId")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let legacy_default = sender_agent_id == Some(canonical_id.as_str())
-        || (sender_agent_id.is_none()
-            && message
-                .get("senderDisplayName")
-                .and_then(Value::as_str)
-                .is_some_and(is_legacy_default_agent_name));
-    if !legacy_default {
-        return;
+    let owners = claims
+        .iter()
+        .map(|(index, _)| messages[*index].sender_account_id.clone())
+        .collect::<Vec<_>>();
+    let agent_ids = claims
+        .iter()
+        .map(|(_, agent_id)| agent_id.clone())
+        .collect::<Vec<_>>();
+    let rows: Vec<(String, String, Option<String>, Option<String>)> = query_as(
+        "SELECT claim.owner_account_id, claim.agent_id, agent.name, account.display_name \
+         FROM UNNEST($1::text[], $2::text[]) AS claim(owner_account_id, agent_id) \
+         JOIN cloud_accounts account ON account.account_id = claim.owner_account_id \
+         LEFT JOIN cloud_agent_definitions agent \
+           ON agent.owner_account_id = claim.owner_account_id \
+          AND agent.agent_id = claim.agent_id",
+    )
+    .bind(&owners)
+    .bind(&agent_ids)
+    .fetch_all(&mut **transaction)
+    .await?;
+    let records = rows
+        .into_iter()
+        .map(|(owner, agent_id, agent_name, owner_name)| {
+            ((owner, agent_id), (agent_name, owner_name))
+        })
+        .collect::<HashMap<_, _>>();
+    for (index, agent_id) in claims {
+        let message = &mut messages[index];
+        let (agent_name, owner_name) = records
+            .get(&(message.sender_account_id.clone(), agent_id))
+            .cloned()
+            .unwrap_or_default();
+        apply_custom_agent_record(&mut message.content, agent_name, owner_name);
     }
-    message.insert("senderAgentId".to_string(), Value::String(canonical_id));
-    message.insert(
-        "senderOwnerAccountId".to_string(),
-        Value::String(sender_account_id.to_string()),
-    );
-    if let Some(owner_name) = owner_name.map(str::trim).filter(|value| !value.is_empty()) {
-        message.insert(
-            "senderOwnerName".to_string(),
-            Value::String(owner_name.to_string()),
-        );
-    }
-    message.insert(
-        "senderDisplayName".to_string(),
-        Value::String(default_agent_name.to_string()),
-    );
-    if let Ok(encoded) = encode_group_envelope(&envelope) {
-        *text = Value::String(encoded);
-    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -666,6 +771,130 @@ mod tests {
             assert!(message.get(key).is_none(), "{key} must be removed");
         }
         assert_eq!(message["text"], "done");
+    }
+
+    fn with_message(message: Value) -> Value {
+        let envelope = json!({
+            "kind": "group-message",
+            "groupId": "session:group:test",
+            "createdByAccountId": "acct_owner",
+            "actor": { "accountId": "acct_member", "displayName": "Member" },
+            "participants": [],
+            "message": message
+        });
+        json!({ "blocks": [{
+            "type": "text",
+            "text": encode_group_envelope(&envelope).unwrap()
+        }] })
+    }
+
+    #[test]
+    fn stored_agent_messages_name_the_stored_sender_as_owner() {
+        let mut stored = with_message(json!({
+            "id": "agent", "senderAccountId": "acct_member", "senderKind": "agent",
+            "senderAgentId": "cloud_agent_other", "senderDisplayName": "Owner's Research Agent",
+            "senderOwnerName": "Owner", "senderOwnerAccountId": "acct_owner", "text": "approved"
+        }));
+        normalize_stored_group_agent_identity(
+            &mut stored,
+            "acct_member",
+            "Member Kordi",
+            Some("Member"),
+        );
+        let (envelope, _) = decode_group_envelope(&mut stored).expect("group envelope");
+        let message = &envelope["message"];
+        assert_eq!(message["senderOwnerAccountId"], "acct_member");
+        assert_eq!(message["senderOwnerName"], "Member");
+        assert_eq!(
+            custom_agent_claim(&stored, "acct_member").as_deref(),
+            Some("cloud_agent_other")
+        );
+        assert_eq!(custom_agent_claim(&stored, "acct_owner"), None);
+
+        // An agent that the stored sender does not own becomes its human message.
+        apply_custom_agent_record(&mut stored, None, Some("Member".to_string()));
+        let (envelope, _) = decode_group_envelope(&mut stored).expect("group envelope");
+        let message = &envelope["message"];
+        assert_eq!(message["senderKind"], "human");
+        assert_eq!(message["senderDisplayName"], "Member");
+        for key in AGENT_SENDER_FIELDS {
+            assert!(message.get(key).is_none(), "{key} must be removed");
+        }
+        assert_eq!(custom_agent_claim(&stored, "acct_member"), None);
+
+        let mut owned = with_message(json!({
+            "id": "agent", "senderAccountId": "acct_member", "senderKind": "agent",
+            "senderAgentId": "cloud_agent_mine", "senderDisplayName": "Anything", "text": "ok"
+        }));
+        apply_custom_agent_record(&mut owned, Some("Research".to_string()), None);
+        let (envelope, _) = decode_group_envelope(&mut owned).expect("group envelope");
+        assert_eq!(envelope["message"]["senderDisplayName"], "Research");
+        assert_eq!(envelope["message"]["senderKind"], "agent");
+
+        let mut default_alias = with_message(json!({
+            "id": "agent", "senderAccountId": "acct_member", "senderKind": "agent",
+            "senderAgentId": "cloud-local-agent", "senderDisplayName": "Owner Kordi", "text": "ok"
+        }));
+        normalize_stored_group_agent_identity(
+            &mut default_alias,
+            "acct_member",
+            "Member Kordi",
+            Some("Member"),
+        );
+        let (envelope, _) = decode_group_envelope(&mut default_alias).expect("group envelope");
+        assert_eq!(envelope["message"]["senderDisplayName"], "Member Kordi");
+        assert_eq!(custom_agent_claim(&default_alias, "acct_member"), None);
+    }
+
+    #[test]
+    fn stored_human_messages_show_the_account_display_name() {
+        let mut stored = with_message(json!({
+            "id": "human", "senderAccountId": "acct_member", "senderKind": "human",
+            "senderDisplayName": "Totally The Owner", "senderOwnerAccountId": "acct_owner",
+            "text": "hello"
+        }));
+        normalize_stored_group_agent_identity(
+            &mut stored,
+            "acct_member",
+            "Member Kordi",
+            Some("Member"),
+        );
+        let (envelope, _) = decode_group_envelope(&mut stored).expect("group envelope");
+        assert_eq!(envelope["message"]["senderDisplayName"], "Member");
+        assert!(envelope["message"].get("senderOwnerAccountId").is_none());
+
+        let mut unnamed = with_message(json!({
+            "id": "human", "senderAccountId": "acct_member",
+            "senderDisplayName": "Totally The Owner", "text": "hello"
+        }));
+        normalize_stored_group_agent_identity(&mut unnamed, "acct_member", "Kordi", None);
+        let (envelope, _) = decode_group_envelope(&mut unnamed).expect("group envelope");
+        assert!(envelope["message"].get("senderDisplayName").is_none());
+    }
+
+    #[test]
+    fn stored_envelopes_split_across_blocks_are_repaired_as_clients_read_them() {
+        let named_owner = with_message(json!({
+            "id": "named-owner", "senderAccountId": "acct_owner", "senderKind": "human",
+            "senderDisplayName": "Owner", "text": "hello"
+        }));
+        let text = named_owner["blocks"][0]["text"].as_str().unwrap();
+        let (head, tail) = text.split_at("kordi-cloud-".len());
+        let mut stored = json!({ "blocks": [
+            { "type": "text", "text": head },
+            { "type": "text", "text": tail }
+        ] });
+        normalize_stored_group_agent_identity(&mut stored, "acct_member", "Kordi", Some("Member"));
+        let joined = stored["blocks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|block| block.get("text").and_then(Value::as_str))
+            .collect::<String>();
+        assert_eq!(joined, stored["blocks"][0]["text"].as_str().unwrap());
+        let (envelope, _) = decode_group_envelope(&mut stored).expect("group envelope");
+        assert_eq!(envelope["message"]["senderAccountId"], "acct_member");
+        assert_eq!(envelope["message"]["senderDisplayName"], "Member");
     }
 
     fn encoded_envelope() -> String {

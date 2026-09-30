@@ -1,13 +1,10 @@
+use super::envelope_placement::{
+    ensure_rewrite_keeps_envelope_placement, CLOUD_DIRECT_PREFIX, CLOUD_GROUP_PREFIX,
+    RESERVED_ENVELOPE_PREFIXES,
+};
 use super::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
-const CLOUD_DIRECT_PREFIX: &str = "kordi-cloud-message:";
-const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
-const RESERVED_ENVELOPE_PREFIXES: [&str; 3] = [
-    CLOUD_GROUP_PREFIX,
-    CLOUD_DIRECT_PREFIX,
-    "kordi-cloud-agent-response:",
-];
 const MAX_EDITED_MESSAGE_BYTES: usize = 256 * 1024;
 
 fn replace_encoded_text(
@@ -56,7 +53,8 @@ fn replace_message_text(
     sender_account_id: &str,
     text: &str,
 ) -> Result<(), StoreError> {
-    let blocks = content
+    let mut edited = content.clone();
+    let blocks = edited
         .get_mut("blocks")
         .and_then(Value::as_array_mut)
         .ok_or(StoreError::InvalidInput("message content is invalid"))?;
@@ -87,6 +85,10 @@ fn replace_message_text(
             None => text.to_string(),
         };
     block.insert("text".to_string(), Value::String(replacement));
+    // Clients join the text of every block, so the edited content as a whole
+    // must not form an envelope that the original content did not carry.
+    ensure_rewrite_keeps_envelope_placement(content, &edited)?;
+    *content = edited;
     Ok(())
 }
 
@@ -326,6 +328,16 @@ mod tests {
             ));
             assert_eq!(plain["blocks"][0]["text"], "before");
         }
+        let mut split = json!({ "blocks": [
+            { "type": "text", "text": "hello" },
+            { "type": "text", "text": format!("group:{}", URL_SAFE_NO_PAD.encode(b"{}")) }
+        ] });
+        let original = split.clone();
+        assert!(matches!(
+            replace_message_text(&mut split, "acct_me", "kordi-cloud-"),
+            Err(StoreError::InvalidInput(_))
+        ));
+        assert_eq!(split, original);
         let mut plain = json!({ "blocks": [{ "type": "text", "text": "before" }] });
         replace_message_text(&mut plain, "acct_me", "mentions kordi-cloud-group: inline").unwrap();
         assert_eq!(

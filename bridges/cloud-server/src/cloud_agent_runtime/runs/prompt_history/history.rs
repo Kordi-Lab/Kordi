@@ -155,22 +155,26 @@ fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
     }
 }
 
-/// Labels a group speaker from the stored sender account. Envelope fields only
-/// mark an agent message when the envelope names that same stored sender.
-fn group_speaker_label(
+/// Labels a speaker from the stored sender account. Envelope fields only mark
+/// an agent message when the envelope names that same stored sender, and an
+/// agent message is always attributed to the agent of that sender.
+fn speaker_label(
     requester_account_id: &str,
     owner_account_id: &str,
     from_account_id: &str,
     agent_message: bool,
 ) -> &'static str {
-    if agent_message && from_account_id == owner_account_id {
-        "Owner agent"
-    } else if from_account_id == requester_account_id {
-        "Requester"
-    } else if from_account_id == owner_account_id {
-        "Owner"
-    } else {
-        "Participant"
+    match (
+        agent_message,
+        from_account_id == owner_account_id,
+        from_account_id == requester_account_id,
+    ) {
+        (true, true, _) => "Owner agent",
+        (true, false, true) => "Requester agent",
+        (true, false, false) => "Participant agent",
+        (false, true, _) => "Owner",
+        (false, false, true) => "Requester",
+        (false, false, false) => "Participant",
     }
 }
 
@@ -181,19 +185,18 @@ fn fallback_prompt_history_line(
 ) -> Option<String> {
     let from_account_id = message.from_account_id.as_str();
     let (label, text, suffix) = if let Some(text) = cloud_agent_response_text(&message.body) {
-        let label = if from_account_id == owner_account_id {
-            "Owner agent"
-        } else if from_account_id == requester_account_id {
-            "Requester"
-        } else {
-            return None;
-        };
+        let label = speaker_label(
+            requester_account_id,
+            owner_account_id,
+            from_account_id,
+            true,
+        );
         (label, text, String::new())
     } else if let Some(envelope) = parse_cloud_group_envelope(&message.body) {
         let group_message = envelope.message?;
         let agent_message = group_message.sender_kind.as_deref() == Some("agent")
             && group_message.sender_account_id == from_account_id;
-        let label = group_speaker_label(
+        let label = speaker_label(
             requester_account_id,
             owner_account_id,
             from_account_id,

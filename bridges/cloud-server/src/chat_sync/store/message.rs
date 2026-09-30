@@ -5,16 +5,20 @@ use super::subtyped_attachment_validation::{
 use super::support::*;
 use super::*;
 
+mod envelope_placement;
 mod fanout;
 mod group_identity;
 mod mutations;
 mod server_refresh;
 mod voice;
+pub(super) use envelope_placement::ensure_rewrite_keeps_envelope_placement;
 pub(super) use fanout::fanout_message_sync_event;
-pub(super) use group_identity::normalize_stored_group_agent_identity;
 use group_identity::{
     apply_group_control_title, load_existing_group_message, lock_group_message_fingerprint,
     normalize_group_envelope,
+};
+pub(super) use group_identity::{
+    normalize_stored_group_agent_identity, verify_stored_custom_agent_senders,
 };
 pub use mutations::{delete_message, edit_message};
 pub use server_refresh::refresh_server_message_content;

@@ -409,6 +409,57 @@ async fn finalized_attachment_bytes_cannot_be_replaced() {
     assert_eq!(cancelled.status(), StatusCode::NO_CONTENT);
 }
 
+async fn upload_claim(pool: &sqlx_postgres::PgPool, attachment_id: &str) -> Option<i64> {
+    sqlx_core::query_as::query_as::<_, (Option<i64>,)>(
+        "SELECT size_bytes FROM cloud_attachments WHERE attachment_id = $1",
+    )
+    .bind(attachment_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .0
+}
+
+#[tokio::test]
+async fn dropped_uploads_release_their_claim() {
+    let Some(pool) = try_pool().await else {
+        return;
+    };
+    let store = TestObjectStore::spawn_stalling_puts().await;
+    let router = test_router_with_s3(pool.clone(), &store);
+    let owner = signup(&router, "attachment-dropped-upload", "Owner").await;
+    let attachment_id = initiate_attachment(&router, &owner.token).await["attachmentId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let upload = tokio::spawn({
+        let router = router.clone();
+        let request = put_bytes(
+            &format!("/v1/cloud/attachments/{attachment_id}/upload"),
+            &owner.token,
+            Some("image/png"),
+            PNG_BYTES,
+        );
+        async move { router.oneshot(request).await }
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while upload_claim(&pool, &attachment_id).await != Some(-1) {
+        assert!(std::time::Instant::now() < deadline, "upload never claimed");
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    // The client goes away while the object write is still in progress.
+    upload.abort();
+    let _ = upload.await;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while upload_claim(&pool, &attachment_id).await.is_some() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "claim was not released"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
 #[tokio::test]
 async fn direct_upload_finalize_verifies_the_stored_object() {
     let Some(pool) = try_pool().await else {
