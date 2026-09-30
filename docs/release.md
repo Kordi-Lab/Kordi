@@ -573,6 +573,12 @@ Confirm the DMG still contains the product API origin:
 strings "$DMG" | rg -F 'https://kordi.ai'
 ```
 
+### Keychain access for Cloud secrets
+
+Release builds keep the Cloud session token and the installation's device key only in the macOS Keychain. On the first launch after updating from a release that stored them as files, the app moves the files from `kordi/cloud-secrets` in its application data folder into the Keychain, removes Keychain items those file-based releases had left behind, and then deletes the folder. The acceptance marker check below must confirm that the account stays signed in and that the folder is gone after that launch.
+
+Beta and stable releases are Developer ID-signed, so the Keychain access list keeps matching across updates. Ad-hoc-signed acceptance previews (`signingIdentity` `-`) get a new code identity with every update, so macOS asks again for access to both Keychain items after each preview update. Tell invited testers to choose **Always Allow**. Choosing **Deny** leaves the preview signed out of Cloud and unable to save a new session until access is allowed.
+
 ### Signed acceptance, promotion, and release (beta.7 and later)
 
 1. Publish the verified immutable `0.0.1-beta.N` objects to `--channel acceptance` with the default production release profile. The publisher validates the prior channel snapshot, uses ETag compare-and-swap conditions, reads back exact pointer bytes, and re-verifies product-domain endpoints. A failed verification restores only the pointer it wrote and re-verifies the restored public state.

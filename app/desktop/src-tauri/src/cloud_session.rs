@@ -14,6 +14,11 @@ use secret_store::{secret_delete, secret_load, secret_store};
 const KEYCHAIN_SERVICE: &str = "com.kordi.cloud-session";
 const DEVICE_IDENTITY_KEYCHAIN_SERVICE: &str = "com.kordi.cloud-device-identity";
 const KEYCHAIN_USERNAME: &str = "default";
+/// Secrets that earlier releases kept as plaintext files under `APP_DATA_DIR`.
+const LEGACY_FILE_SECRETS: &[(&str, &str)] = &[
+    (KEYCHAIN_SERVICE, KEYCHAIN_USERNAME),
+    (DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME),
+];
 
 /// Suffix the keychain service name with the running instance id when
 /// `APP_INSTANCE_ID` is set (the multi-instance launcher sets it to

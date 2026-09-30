@@ -1,11 +1,12 @@
 use super::super::tests::with_isolated_app_data_dir;
 use super::super::{DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME};
 use super::*;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Default)]
 struct MemoryKeychain {
     values: std::sync::Mutex<std::collections::HashMap<(String, String), String>>,
-    fail_writes: bool,
+    fail_writes: AtomicBool,
 }
 
 impl MemoryKeychain {
@@ -24,7 +25,7 @@ impl SecretKeychain for MemoryKeychain {
     }
 
     fn set(&self, service: &str, account_id: &str, value: &str) -> Result<(), String> {
-        if self.fail_writes {
+        if self.fail_writes.load(Ordering::SeqCst) {
             return Err("keychain_write_failed: locked".to_string());
         }
         self.values.lock().unwrap().insert(
@@ -46,6 +47,16 @@ impl SecretKeychain for MemoryKeychain {
 fn write_legacy_plaintext_secret(path: &Path, value: &str) {
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, value).unwrap();
+}
+
+/// Runs the once-per-launch migration of the legacy secret folder that
+/// `location` belongs to.
+fn launch(keychain: &MemoryKeychain, location: &SecretLocation) {
+    retire_legacy_secret_dir(
+        keychain,
+        legacy_file_of(location).parent().unwrap(),
+        LEGACY_FILE_SECRETS,
+    );
 }
 
 fn legacy_file_of(location: &SecretLocation) -> &Path {
@@ -129,6 +140,7 @@ fn release_load_moves_a_legacy_plaintext_secret_into_the_keychain() {
         let legacy_file = legacy_file_of(&location);
         write_legacy_plaintext_secret(legacy_file, "file-session-json");
 
+        launch(&keychain, &location);
         let loaded =
             secret_load_at(&keychain, &location, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME).unwrap();
 
@@ -140,6 +152,10 @@ fn release_load_moves_a_legacy_plaintext_secret_into_the_keychain() {
             Some("file-session-json")
         );
         assert!(!legacy_file.exists(), "plaintext secret must be removed");
+        assert!(
+            !legacy_file.parent().unwrap().exists(),
+            "the legacy folder is removed once every secret moved"
+        );
 
         let reloaded =
             secret_load_at(&keychain, &location, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME).unwrap();
@@ -151,13 +167,14 @@ fn release_load_moves_a_legacy_plaintext_secret_into_the_keychain() {
 fn release_load_keeps_the_plaintext_secret_when_the_keychain_is_unavailable() {
     with_isolated_app_data_dir(|_| {
         let keychain = MemoryKeychain {
-            fail_writes: true,
+            fail_writes: AtomicBool::new(true),
             ..MemoryKeychain::default()
         };
         let location = secret_location(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
         let legacy_file = legacy_file_of(&location);
         write_legacy_plaintext_secret(legacy_file, "device-identity-json");
 
+        launch(&keychain, &location);
         let loaded = secret_load_at(
             &keychain,
             &location,
@@ -201,6 +218,190 @@ fn release_store_and_delete_remove_legacy_plaintext_secrets() {
         assert_eq!(
             secret_load_at(&keychain, &location, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME).unwrap(),
             None
+        );
+    });
+}
+
+#[test]
+fn release_launch_drops_keychain_items_older_than_the_plaintext_files() {
+    with_isolated_app_data_dir(|_| {
+        let keychain = MemoryKeychain::default();
+        // Items an even older keychain-based release stored. The file-based
+        // releases never cleared them on sign-out or device reset.
+        keychain
+            .set(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, "stale-session")
+            .unwrap();
+        keychain
+            .set(
+                DEVICE_IDENTITY_KEYCHAIN_SERVICE,
+                KEYCHAIN_USERNAME,
+                "stale-device-key",
+            )
+            .unwrap();
+        let session = secret_location(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        let device = secret_location(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        // The file-based release was signed in, but its device key was reset.
+        write_legacy_plaintext_secret(legacy_file_of(&session), "file-session");
+
+        launch(&keychain, &session);
+
+        assert_eq!(
+            secret_load_at(&keychain, &session, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+                .unwrap()
+                .as_deref(),
+            Some("file-session")
+        );
+        assert_eq!(
+            secret_load_at(
+                &keychain,
+                &device,
+                DEVICE_IDENTITY_KEYCHAIN_SERVICE,
+                KEYCHAIN_USERNAME
+            )
+            .unwrap(),
+            None,
+            "a device key the file-based release did not have must not come back"
+        );
+        assert!(!legacy_file_of(&session).parent().unwrap().exists());
+    });
+}
+
+#[test]
+fn signed_out_file_based_installs_do_not_restore_an_old_keychain_session() {
+    with_isolated_app_data_dir(|_| {
+        let keychain = MemoryKeychain::default();
+        keychain
+            .set(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, "stale-session")
+            .unwrap();
+        let session = secret_location(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        let device = secret_location(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        // Signed out: only the device key file is left.
+        write_legacy_plaintext_secret(legacy_file_of(&device), "device-key");
+
+        launch(&keychain, &session);
+
+        assert_eq!(
+            secret_load_at(&keychain, &session, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME).unwrap(),
+            None
+        );
+        assert_eq!(
+            keychain
+                .value(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+                .as_deref(),
+            Some("device-key")
+        );
+    });
+}
+
+#[test]
+fn values_stored_after_a_partial_migration_are_kept() {
+    with_isolated_app_data_dir(|_| {
+        let keychain = MemoryKeychain {
+            fail_writes: AtomicBool::new(true),
+            ..MemoryKeychain::default()
+        };
+        keychain.values.lock().unwrap().insert(
+            (
+                DEVICE_IDENTITY_KEYCHAIN_SERVICE.to_string(),
+                KEYCHAIN_USERNAME.to_string(),
+            ),
+            "stale-device-key".to_string(),
+        );
+        let session = secret_location(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        let device = secret_location(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        write_legacy_plaintext_secret(legacy_file_of(&session), "file-session");
+
+        // Keychain writes are refused on the first launch: the session stays
+        // in its file (still signed in) and the stale device key is removed.
+        launch(&keychain, &session);
+        assert_eq!(
+            secret_load_at(&keychain, &session, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+                .unwrap()
+                .as_deref(),
+            Some("file-session")
+        );
+        assert_eq!(
+            keychain.value(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME),
+            None
+        );
+
+        // Later in that launch the keychain works again and a new device key
+        // is stored. The next launch must keep it and finish the session move.
+        keychain.fail_writes.store(false, Ordering::SeqCst);
+        secret_store_at(
+            &keychain,
+            &device,
+            DEVICE_IDENTITY_KEYCHAIN_SERVICE,
+            KEYCHAIN_USERNAME,
+            "new-device-key",
+        )
+        .unwrap();
+        launch(&keychain, &session);
+
+        assert_eq!(
+            keychain
+                .value(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+                .as_deref(),
+            Some("new-device-key")
+        );
+        assert_eq!(
+            keychain
+                .value(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+                .as_deref(),
+            Some("file-session")
+        );
+        assert!(!legacy_file_of(&session).parent().unwrap().exists());
+    });
+}
+
+#[test]
+fn unrelated_files_keep_the_legacy_folder_and_its_markers() {
+    with_isolated_app_data_dir(|_| {
+        let keychain = MemoryKeychain::default();
+        let session = secret_location(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        let folder = legacy_file_of(&session).parent().unwrap().to_path_buf();
+        write_legacy_plaintext_secret(&folder.join("another-instance.secret"), "other");
+
+        launch(&keychain, &session);
+        secret_store_at(
+            &keychain,
+            &session,
+            KEYCHAIN_SERVICE,
+            KEYCHAIN_USERNAME,
+            "fresh-session",
+        )
+        .unwrap();
+        // A later launch must not treat the fresh keychain value as stale.
+        launch(&keychain, &session);
+
+        assert!(folder.join("another-instance.secret").exists());
+        assert_eq!(
+            secret_load_at(&keychain, &session, KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+                .unwrap()
+                .as_deref(),
+            Some("fresh-session")
+        );
+    });
+}
+
+#[test]
+fn legacy_folder_is_retired_once_per_process() {
+    with_isolated_app_data_dir(|_| {
+        let keychain = MemoryKeychain {
+            fail_writes: AtomicBool::new(true),
+            ..MemoryKeychain::default()
+        };
+        let session = secret_location(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, false);
+        write_legacy_plaintext_secret(legacy_file_of(&session), "file-session");
+
+        retire_legacy_secret_dir_once(&keychain, &session);
+        keychain.fail_writes.store(false, Ordering::SeqCst);
+        retire_legacy_secret_dir_once(&keychain, &session);
+
+        assert_eq!(keychain.value(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME), None);
+        assert!(
+            legacy_file_of(&session).exists(),
+            "retried on the next launch, not on every load"
         );
     });
 }
