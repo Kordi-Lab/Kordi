@@ -1,8 +1,6 @@
 //! Shared human messages and explicit, identity-bound Agent mentions.
 use super::*;
-use crate::auth::rate_limit::{
-    CloudRateLimiter, RateLimitDecision, AGENT_RUN_CLAIM_LIMIT, MESSAGE_SEND_LIMIT,
-};
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, MESSAGE_SEND_LIMIT};
 use axum::http::header::RETRY_AFTER;
 use axum::response::{IntoResponse, Response};
 
@@ -134,9 +132,8 @@ pub(super) async fn send(
         Err(error) => return error.into_response(),
     };
     if invokes {
-        if let RateLimitDecision::Limited { retry_after } = rate_limiter
-            .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, &session.account_id)
-            .await
+        if let RateLimitDecision::Limited { retry_after } =
+            rate_limiter.observe_agent_run(&session.account_id).await
         {
             return rate_limited(retry_after);
         }

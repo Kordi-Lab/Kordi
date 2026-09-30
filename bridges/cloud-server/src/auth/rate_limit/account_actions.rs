@@ -28,7 +28,11 @@ pub const CONTACT_ADD_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60 * 60),
 };
 
-/// Cloud agent run claims made by a requester.
+/// Agent runs a requester starts. Every user-triggered path that queues an
+/// agent run, now or on a schedule, charges this budget through
+/// [`CloudRateLimiter::observe_agent_run`]: run claims, subsession messages
+/// that run the agent, scheduled tasks started now, and new cloud scheduled
+/// tasks.
 pub const AGENT_RUN_CLAIM_LIMIT: AccountActionLimit = AccountActionLimit {
     action: "agent-run-claim",
     limit: 120,
@@ -36,6 +40,13 @@ pub const AGENT_RUN_CLAIM_LIMIT: AccountActionLimit = AccountActionLimit {
 };
 
 impl CloudRateLimiter {
+    /// Charges one agent run started by `account_id` against
+    /// [`AGENT_RUN_CLAIM_LIMIT`]. Call it before queueing the run.
+    pub async fn observe_agent_run(&self, account_id: &str) -> RateLimitDecision {
+        self.observe_account_limit(AGENT_RUN_CLAIM_LIMIT, account_id)
+            .await
+    }
+
     /// Records one action against `limit` for `account_id`.
     pub async fn observe_account_limit(
         &self,
@@ -183,6 +194,34 @@ mod tests {
         assert_ne!(MESSAGE_SEND_LIMIT.action, CONTACT_ADD_LIMIT.action);
         assert_ne!(CONTACT_ADD_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
         assert_ne!(MESSAGE_SEND_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
+    }
+
+    #[tokio::test]
+    async fn agent_runs_draw_from_the_agent_run_claim_budget() {
+        let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::default());
+        for _ in 1..AGENT_RUN_CLAIM_LIMIT.limit {
+            limiter
+                .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, "acct_runs")
+                .await;
+        }
+        assert_eq!(
+            limiter.observe_agent_run("acct_runs").await,
+            RateLimitDecision::Allowed
+        );
+        assert!(matches!(
+            limiter.observe_agent_run("acct_runs").await,
+            RateLimitDecision::Limited { .. }
+        ));
+        assert!(matches!(
+            limiter
+                .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, "acct_runs")
+                .await,
+            RateLimitDecision::Limited { .. }
+        ));
+        assert_eq!(
+            limiter.observe_agent_run("acct_other_runs").await,
+            RateLimitDecision::Allowed
+        );
     }
 
     #[tokio::test]

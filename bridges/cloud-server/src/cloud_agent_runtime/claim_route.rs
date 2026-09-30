@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, AGENT_RUN_CLAIM_LIMIT};
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
     claim_has_shared_cloud_agent_target, claim_run, cloud_agent_response_is_processing_for_request,
@@ -70,9 +70,8 @@ pub(super) async fn claim_cloud_agent_run(
         );
     }
     if let Some(Extension(rate_limiter)) = rate_limiter {
-        if let RateLimitDecision::Limited { retry_after } = rate_limiter
-            .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, &session.account_id)
-            .await
+        if let RateLimitDecision::Limited { retry_after } =
+            rate_limiter.observe_agent_run(&session.account_id).await
         {
             let mut response = error_response(
                 "rate_limited",
