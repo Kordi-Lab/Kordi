@@ -27,7 +27,7 @@ async fn insert_group_request(
 }
 
 #[tokio::test]
-async fn sandbox_group_sessions_reuse_shared_session_sandbox() {
+async fn sandbox_group_requesters_are_isolated_and_the_owner_keeps_the_shared_sandbox() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
@@ -111,7 +111,42 @@ async fn sandbox_group_sessions_reuse_shared_session_sandbox() {
 
     let sandbox_a = run_sandbox_id(&pool, &run_a_id).await.unwrap();
     let sandbox_b = run_sandbox_id(&pool, &run_b_id).await.unwrap();
-    assert_eq!(sandbox_a, sandbox_b);
+    assert_ne!(sandbox_a, sandbox_b, "group requesters never share files");
+
+    // The owner's own group requests keep the group's shared workspace.
+    insert_group_request(
+        &pool,
+        conversation,
+        &session_id,
+        &owner,
+        &owner,
+        "msg_group_owner",
+    )
+    .await;
+    let run_owner = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &owner.token,
+            claim_body_with_session(&owner, &owner, "msg_group_owner", &session_id),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(run_owner.status(), StatusCode::OK);
+    let run_owner_id = read_json(run_owner).await["runId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sandbox_owner = run_sandbox_id(&pool, &run_owner_id).await.unwrap();
+    assert_ne!(sandbox_owner, sandbox_a);
+    let (scope, requester): (String, Option<String>) = sqlx_core::query_as::query_as(
+        "SELECT scope, requester_account_id FROM cloud_agent_sandboxes WHERE sandbox_id = $1",
+    )
+    .bind(&sandbox_owner)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!((scope.as_str(), requester), ("shared_session", None));
 }
 
 #[tokio::test]

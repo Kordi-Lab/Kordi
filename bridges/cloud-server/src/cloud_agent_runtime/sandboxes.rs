@@ -46,6 +46,22 @@ pub fn sandbox_scope_for_session(session_id: &str) -> SandboxScope {
     }
 }
 
+/// The workspace a run uses. A group owner keeps the group's shared workspace
+/// for their own requests; every other requester in a group gets a workspace
+/// of their own, so one member's files never reach another member's run.
+pub fn sandbox_scope_for_run(
+    session_id: &str,
+    owner_account_id: &str,
+    requester_account_id: &str,
+) -> SandboxScope {
+    if session_id.trim().starts_with("session:group:")
+        && owner_account_id.trim() != requester_account_id.trim()
+    {
+        return SandboxScope::RequesterIsolated;
+    }
+    sandbox_scope_for_session(session_id)
+}
+
 pub fn raw_workspace_key(
     session_id: &str,
     owner_account_id: &str,
@@ -86,7 +102,7 @@ pub async fn ensure_sandbox_for_run(
     owner_account_id: &str,
     requester_account_id: &str,
 ) -> Result<CloudAgentSandbox, sqlx_core::Error> {
-    let scope = sandbox_scope_for_session(session_id);
+    let scope = sandbox_scope_for_run(session_id, owner_account_id, requester_account_id);
     let raw_key = raw_workspace_key(session_id, owner_account_id, requester_account_id, scope);
     let workspace_key = hashed_workspace_key(&raw_key);
     let now = Utc::now();
@@ -177,6 +193,42 @@ mod tests {
         assert_eq!(
             sandbox_scope_for_session("project:/tmp/demo"),
             SandboxScope::SharedSession
+        );
+    }
+
+    #[test]
+    fn group_requesters_other_than_the_owner_get_their_own_workspace() {
+        let group = "session:group:abc";
+        assert_eq!(
+            sandbox_scope_for_run(group, "acct_owner", "acct_owner"),
+            SandboxScope::SharedSession
+        );
+        // The owner keeps the key every earlier group run used.
+        assert_eq!(
+            raw_workspace_key(
+                group,
+                "acct_owner",
+                "acct_owner",
+                SandboxScope::SharedSession
+            ),
+            "sandbox:session:group:abc:shared:acct_owner"
+        );
+        let first = sandbox_scope_for_run(group, "acct_owner", "acct_first");
+        let second = sandbox_scope_for_run(group, "acct_owner", "acct_second");
+        assert_eq!(first, SandboxScope::RequesterIsolated);
+        assert_ne!(
+            raw_workspace_key(group, "acct_owner", "acct_first", first),
+            raw_workspace_key(group, "acct_owner", "acct_second", second)
+        );
+        for project in ["session:project:demo", "project:/tmp/demo"] {
+            assert_eq!(
+                sandbox_scope_for_run(project, "acct_owner", "acct_first"),
+                SandboxScope::SharedSession
+            );
+        }
+        assert_eq!(
+            sandbox_scope_for_run("session:direct-person:a:b", "a", "a"),
+            SandboxScope::RequesterIsolated
         );
     }
 
