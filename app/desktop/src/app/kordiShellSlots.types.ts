@@ -43,10 +43,7 @@ import type {
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
 export type AttachmentItem = ComposerAttachmentItem;
-export type CreateChatGroupRequest = {
-  name?: string | null;
-  contactIds: string[];
-};
+export type { CreateChatGroupRequest } from './chatGroupRequest.types';
 export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./chatListShellArgs.types').ChatListShellArgs & {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
@@ -106,7 +103,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   handleSelectChatSession: (sessionId: string) => Promise<void>;
   handleStartChatWithPerson: (contact: Contact) => Promise<void>;
   handleStartChatWithAgent: (agent: Agent) => Promise<void>;
-  handleCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void>;
+  handleCreateChatGroup: (request: import('./chatGroupRequest.types').CreateChatGroupRequest) => Promise<void>;
   handleCreateChatSessionInParticipantSpace: (space: ParticipantSpaceViewModel) => Promise<void>;
   handleRenameChatGroup: (sessionIds: string[], name: string) => Promise<void>;
   handleRenameChatSession: (sessionId: string, title: string) => Promise<void>;

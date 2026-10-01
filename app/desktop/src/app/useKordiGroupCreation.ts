@@ -4,6 +4,8 @@ import {
   type SetStateAction,
 } from 'react';
 
+import { enablePipForNewGroup } from '@/features/agentTrust/groupPip';
+import type { CreateChatGroupRequest } from '@/app/chatGroupRequest.types';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupControl.types';
 import {
@@ -59,10 +61,7 @@ export function useKordiGroupCreation({
   setCanonicalState,
   setDesktopError,
 }: UseKordiGroupCreationArgs) {
-  return useCallback(async (request: {
-    name?: string | null;
-    contactIds: string[];
-  }) => {
+  return useCallback(async (request: CreateChatGroupRequest) => {
     if (!isNativeShell) return;
     setDesktopError(null);
     const creatorIdentityId =
@@ -166,6 +165,8 @@ export function useKordiGroupCreation({
             contacts,
           ),
         });
+        // The server now has the group; PiP joins only when the creator asked.
+        if (request.pipEnabled) void enablePipForNewGroup(sessionId, setDesktopError);
       } catch (error) {
         setDesktopError(
           `Group created, but Cloud invites failed: ${
