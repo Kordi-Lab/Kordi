@@ -1,3 +1,4 @@
+use super::relationship_gate::{active_in_root, require_contacts_for_group_add, GroupSpace};
 use super::service_members::{is_service_member, service_member_ids, without_service_members};
 use super::support::*;
 use super::*;
@@ -38,8 +39,9 @@ pub async fn add_conversation_members(
         transaction.commit().await?;
         return Ok(existing);
     }
-    let authorization: Option<(String, String)> = query_as(
-        "SELECT conversation.kind, member.role
+    let authorization: Option<(String, String, Option<String>, Option<String>)> = query_as(
+        "SELECT conversation.kind, member.role, conversation.legacy_session_id,
+                conversation.group_space_id
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
            ON member.conversation_id = conversation.conversation_id
@@ -52,18 +54,20 @@ pub async fn add_conversation_members(
     .bind(account_id)
     .fetch_optional(&mut *transaction)
     .await?;
-    let Some((kind, role)) = authorization else {
+    let Some((kind, role, legacy_session_id, group_space_id)) = authorization else {
         return Err(StoreError::Forbidden);
     };
-    if kind != "group" || (role != "owner" && role != "admin") {
+    if kind != "group" {
         return Err(StoreError::Forbidden);
     }
+    let space = GroupSpace::new(legacy_session_id.as_deref(), group_space_id.as_deref());
     let current = active_member_ids(&mut transaction, conversation_id).await?;
-    let missing = desired
+    let mut missing = desired
         .iter()
         .filter(|member| !current.contains(member))
         .cloned()
         .collect::<Vec<_>>();
+    drop_members_who_left(&mut transaction, conversation_id, &space, &mut missing).await?;
     let removed = if request.replace {
         current
             .iter()
@@ -77,6 +81,18 @@ pub async fn add_conversation_members(
     } else {
         Vec::new()
     };
+    // Installed clients send their member list whenever it differs from
+    // their envelope. A list with nothing to change is accepted from any
+    // member, so a stale list that still names a former member never stops
+    // anyone from writing in the group.
+    if missing.is_empty() && removed.is_empty() {
+        let conversation = load_conversation(&mut transaction, conversation_id, account_id).await?;
+        transaction.commit().await?;
+        return Ok(conversation);
+    }
+    if role != "owner" && role != "admin" {
+        return Err(StoreError::Forbidden);
+    }
     let people = without_service_members(current.clone()).len();
     if people + missing.len() - removed.len() > MAX_GROUP_MEMBERS {
         return Err(StoreError::InvalidInput("group member count is invalid"));
@@ -92,17 +108,7 @@ pub async fn add_conversation_members(
                 "one or more conversation members do not exist",
             ));
         }
-        let contacts: (i64,) = query_as(
-            "SELECT COUNT(*) FROM cloud_contacts
-             WHERE account_id = $1 AND peer_account_id = ANY($2)",
-        )
-        .bind(account_id)
-        .bind(&missing)
-        .fetch_one(&mut *transaction)
-        .await?;
-        if contacts.0 != missing.len() as i64 {
-            return Err(StoreError::Forbidden);
-        }
+        require_contacts_for_group_add(&mut transaction, account_id, &space, &missing).await?;
         for member in &missing {
             query(
                 "INSERT INTO cloud_chat_conversation_members
@@ -182,6 +188,38 @@ pub async fn add_conversation_members(
     }
     transaction.commit().await?;
     Ok(conversation)
+}
+
+/// Removes from `missing` everyone who left this conversation and is not an
+/// active member of the space's main conversation. People who leave come back
+/// only through an invite link; until then a member list naming them changes
+/// nothing for them.
+async fn drop_members_who_left(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+    space: &GroupSpace,
+    missing: &mut Vec<String>,
+) -> Result<(), StoreError> {
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let left: Vec<String> = query_as::<_, (String,)>(
+        "SELECT account_id FROM cloud_chat_conversation_members
+         WHERE conversation_id = $1 AND account_id = ANY($2) AND membership_state = 'left'",
+    )
+    .bind(conversation_id)
+    .bind(&*missing)
+    .fetch_all(&mut **transaction)
+    .await?
+    .into_iter()
+    .map(|(account_id,)| account_id)
+    .collect();
+    if left.is_empty() {
+        return Ok(());
+    }
+    let returned = active_in_root(transaction, &space.root, &left).await?;
+    missing.retain(|member| !left.contains(member) || returned.contains(member));
+    Ok(())
 }
 
 /// Atomically activates a member accepted through a verified group invitation.

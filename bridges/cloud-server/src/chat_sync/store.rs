@@ -40,15 +40,17 @@ pub enum StoreError {
     CursorExpired,
     CursorAhead,
     InvariantViolation(&'static str),
+    /// The two accounts are not contacts, so the action is not allowed.
+    RelationshipRequired(&'static str),
 }
 
 impl std::fmt::Display for StoreError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Database(error) => write!(formatter, "database error: {error}"),
-            Self::InvalidInput(message) | Self::InvariantViolation(message) => {
-                formatter.write_str(message)
-            }
+            Self::InvalidInput(message)
+            | Self::InvariantViolation(message)
+            | Self::RelationshipRequired(message) => formatter.write_str(message),
             Self::NotFound => formatter.write_str("conversation or message not found"),
             Self::Forbidden => formatter.write_str("operation is not authorized"),
             Self::IdempotencyKeyReused => {
@@ -222,9 +224,14 @@ mod attachment_actions;
 pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachment_reaction};
 mod conversation;
 mod cursors;
+mod leave;
 mod live_photo_validation;
 mod members;
 mod message;
+mod relationship_gate;
+pub use leave::leave_group;
+pub(crate) use relationship_gate::require_direct_relationship;
+pub use relationship_gate::{DIRECT_REQUIRES_CONTACT, GROUP_ADD_REQUIRES_CONTACT};
 mod subtyped_attachment_validation;
 pub use message::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 mod pin_snapshots;

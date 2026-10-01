@@ -8,6 +8,7 @@ use super::*;
 mod envelope_placement;
 mod fanout;
 mod group_identity;
+mod group_space;
 mod mutations;
 mod server_refresh;
 mod voice;
@@ -128,43 +129,11 @@ pub(crate) async fn send_message_in_transaction(
     }
 
     require_active_member(transaction, conversation_id, account_id).await?;
+    require_direct_relationship(transaction, conversation_id, account_id).await?;
     if let Some(projection) = &group_projection {
         apply_group_control_title(transaction, account_id, conversation_id, projection).await?;
-        let group_title = matches!(
-            projection.kind.as_str(),
-            "group-invite" | "group-update" | "group-title-update"
-        )
-        .then(|| projection.group_title.as_deref())
-        .flatten();
-        query(
-            "UPDATE cloud_chat_conversations conversation \
-             SET group_space_id = $2, \
-                 group_title = COALESCE( \
-                   $3, conversation.group_title, ( \
-                     SELECT sibling.group_title \
-                     FROM cloud_chat_conversations sibling \
-                     WHERE sibling.group_space_id = $2 AND sibling.group_title IS NOT NULL \
-                     ORDER BY sibling.updated_at DESC LIMIT 1 \
-                   ) \
-                 ) \
-             WHERE conversation.conversation_id = $1",
-        )
-        .bind(conversation_id)
-        .bind(&projection.group_space_id)
-        .bind(group_title)
-        .execute(&mut **transaction)
-        .await?;
-        if let Some(group_title) = group_title {
-            query(
-                "UPDATE cloud_chat_conversations \
-                 SET group_title = $2 \
-                 WHERE group_space_id = $1",
-            )
-            .bind(&projection.group_space_id)
-            .bind(group_title)
-            .execute(&mut **transaction)
+        group_space::apply_group_projection(transaction, account_id, conversation_id, projection)
             .await?;
-        }
     }
     if let Some(reply_to_message_id) = request.reply_to_message_id {
         let reply: Option<(i32,)> = query_as(

@@ -117,6 +117,7 @@ pub async fn edit_message(
         return Err(StoreError::NotFound);
     }
     require_active_member(&mut transaction, conversation_id, account_id).await?;
+    require_direct_relationship(&mut transaction, conversation_id, account_id).await?;
     if sender_account_id != account_id {
         return Err(StoreError::Forbidden);
     }

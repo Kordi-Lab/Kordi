@@ -202,23 +202,14 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         .filter(|member| member.as_str() != account_id)
         .cloned()
         .collect::<Vec<_>>();
-    if !peers.is_empty() {
-        let authorized_count: (i64,) = query_as(
-            "SELECT COUNT(*) FROM unnest($2::TEXT[]) AS peer(account_id) \
-             WHERE peer.account_id = $3 OR EXISTS ( \
-               SELECT 1 FROM cloud_contacts contact \
-               WHERE contact.account_id = $1 AND contact.peer_account_id = peer.account_id \
-             )",
-        )
-        .bind(account_id)
-        .bind(&peers)
-        .bind(trusted_peer_account_id)
-        .fetch_one(&mut **transaction)
-        .await?;
-        if authorized_count.0 != peers.len() as i64 {
-            return Err(StoreError::Forbidden);
-        }
-    }
+    super::relationship_gate::require_contacts_for_new_conversation(
+        transaction,
+        account_id,
+        request.kind,
+        &peers,
+        trusted_peer_account_id,
+    )
+    .await?;
 
     let conversation_id = Uuid::now_v7();
     query(

@@ -47,6 +47,10 @@ pub async fn set_reaction(
     let reaction = normalized_reaction(reaction)?;
     let mut transaction = pool.begin().await?;
     require_active_member(&mut transaction, conversation_id, account_id).await?;
+    if active {
+        // Removing a reaction stays possible after a relationship ends.
+        require_direct_relationship(&mut transaction, conversation_id, account_id).await?;
+    }
     let message_id: Option<(Uuid,)> = query_as(
         "SELECT message_id FROM cloud_chat_messages \
          WHERE conversation_id = $1 AND deleted_at IS NULL \

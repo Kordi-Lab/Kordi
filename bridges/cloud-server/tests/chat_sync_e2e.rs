@@ -6,8 +6,8 @@ mod live_photos;
 mod thread_attention;
 use kordi_cloud_server::chat_sync::models::{
     AddConversationMembersRequest, AdvanceConversationCursorRequest, ConversationKind,
-    CreateConversationRequest, SendMessageRequest, UpdateConversationTitleRequest,
-    UpdateMessageRequest, UpdatePersonalTitleRequest,
+    CreateConversationRequest, LeaveConversationRequest, SendMessageRequest,
+    UpdateConversationTitleRequest, UpdateMessageRequest, UpdatePersonalTitleRequest,
 };
 use kordi_cloud_server::chat_sync::store::{self, StoreError};
 use kordi_cloud_server::{chat_sync::retention, pg::init_pool};
@@ -17,8 +17,14 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 #[path = "chat_sync_e2e/default_self_agent.rs"]
 mod default_self_agent;
+#[path = "chat_sync_e2e/direct_consent.rs"]
+mod direct_consent;
 #[path = "chat_sync_e2e/fork_lineage.rs"]
 mod fork_lineage;
+#[path = "chat_sync_e2e/group_consent.rs"]
+mod group_consent;
+#[path = "chat_sync_e2e/group_leave.rs"]
+mod group_leave;
 #[path = "chat_sync_e2e/group_sender_identity.rs"]
 mod group_sender_identity;
 #[path = "chat_sync_e2e/membership.rs"]

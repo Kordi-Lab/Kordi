@@ -313,8 +313,8 @@ pub async fn identity_sync_recipient_ids(
     let rows: Vec<(String,)> = query_as(
         "SELECT DISTINCT account_id FROM (
              SELECT $1::TEXT AS account_id
-             UNION SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1
-             UNION SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1
+             UNION SELECT peer_account_id FROM cloud_contacts
+                    WHERE account_id = $1 AND cloud_accounts_are_contacts($1, peer_account_id)
              UNION SELECT viewer.account_id
                FROM cloud_chat_conversation_members owner
                JOIN cloud_chat_conversation_members viewer
