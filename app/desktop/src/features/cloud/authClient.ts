@@ -125,7 +125,7 @@ export type CloudProfileUpdateInput = {
 };
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';
-export type CloudContactRequestStatus = 'pending' | 'accepted' | 'rejected';
+export type CloudContactRequestStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 
 export type CloudContactRequest = {
   requestId: string;
@@ -586,18 +586,6 @@ export class CloudAuthClient {
 
   async revokeGroupInvitation(token: string, invitationId: string): Promise<void> {
     await revokeCloudGroupInvitation(this, token, invitationId);
-  }
-
-  async addContact(token: string, peerAccountId: string): Promise<void> {
-    await this.send<void>(
-      '/v1/cloud/contacts',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ peerAccountId }),
-      },
-      'Could not add contact.',
-    );
   }
 
   async listContacts(token: string): Promise<CloudContactSummary[]> {
