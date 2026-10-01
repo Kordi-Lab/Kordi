@@ -6,6 +6,7 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } 
 import { prepareMessageDeleteAnimation } from '@/features/chat/messageDeleteAnimation';
 import type { UseCloudCollaborationStateResult } from '@/features/cloud/useCloudCollaborationState';
 import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
+import { useServerContentRemovalVersion } from '@/features/cloud/contentRemovalCapability';
 import type { CanonicalSessionState, ComposerQuoteState, Conversation, Message, MessageEditState } from '@/kordi-app/types';
 import { MessageDeleteDialog } from '@/pages/MessageDeleteDialog';
 
@@ -38,6 +39,7 @@ export function useKordiMessageMutations({
   const messageEditBusyRef = useRef(false);
   const [messageEditError, setMessageEditError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const serverDeletesStoredCopies = useServerContentRemovalVersion() >= 1;
 
   const onEditMessage = useCallback((message: Message) => {
     const conversationId = message.reactionConversationId?.trim();
@@ -109,6 +111,7 @@ export function useKordiMessageMutations({
         message: deleteTarget,
         peerName: activeConversation.name,
         group: (activeConversation.canonicalSessionId ?? activeConversation.id).startsWith('session:group:'),
+        serverDeletesStoredCopies,
         onCancel: () => setDeleteTarget(null),
         onDelete: async (forEveryone: boolean) => {
           const conversationId = deleteTarget.reactionConversationId?.trim();
@@ -164,7 +167,7 @@ export function useKordiMessageMutations({
                     )),
                   };
             });
-            setDesktopChatError(error instanceof Error ? error.message : 'Could not delete message.');
+            setDesktopChatError(error instanceof Error ? error.message : 'Could not delete the message. Try again.');
             return;
           }
           await animation;
