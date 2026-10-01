@@ -344,6 +344,7 @@ struct ChatHomeView: View {
                     description: Text(searchQuery.isEmpty ? "Start a chat with a contact to see it here." : "Try another name, Kordi ID, or message.")
                 )
                 .frame(maxWidth: .infinity, minHeight: 360)
+                .listRowSeparator(.hidden)
             } else {
                 ForEach(contactRows) { row in
                     contactRow(row)
@@ -470,6 +471,7 @@ struct ChatHomeView: View {
                     description: Text(searchQuery.isEmpty ? "Use + to start a session with an available agent." : "Try another agent, session, owner, or message.")
                 )
                 .frame(maxWidth: .infinity, minHeight: 360)
+                .listRowSeparator(.hidden)
             } else {
                 ForEach(agentSessions) { item in
                     agentSessionActionRow(item)

@@ -872,6 +872,21 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(source.contains("Task { _ = await model.restoreGroupSpace(space) }"))
     }
 
+    func testEmptyChatStatesHideNativeListSeparators() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Chats/ChatHomeView.swift"),
+            encoding: .utf8
+        )
+
+        let emptyState = ".frame(maxWidth: .infinity, minHeight: 360)\n                .listRowSeparator(.hidden)"
+        XCTAssertEqual(source.components(separatedBy: emptyState).count - 1, 2)
+        XCTAssertTrue(source.contains("searchQuery.isEmpty ? \"No contact conversations yet\" : \"No chats found\""))
+        XCTAssertTrue(source.contains("searchQuery.isEmpty ? \"No agent sessions yet\" : \"No chats found\""))
+    }
+
     func testArchiveAndRestoreUpdateTheListBeforeWaitingForCloud() throws {
         let source = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
