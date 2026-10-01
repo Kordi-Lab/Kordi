@@ -8,8 +8,45 @@ use crate::calls::CallSnapshot;
 
 use super::PushNotificationService;
 
+/// VoIP tokens of `recipients`' signed-in devices, leaving out every account
+/// that blocked `actor_account_id`.
+pub(in crate::notifications) async fn incoming_call_device_tokens(
+    pool: &PgPool,
+    recipients: &[String],
+    environment: &str,
+    actor_account_id: &str,
+) -> Result<Vec<(String,)>, sqlx_core::Error> {
+    query_as(
+        "SELECT push.device_token FROM cloud_voip_push_tokens push \
+         JOIN cloud_devices device ON device.device_id = push.device_id \
+         WHERE push.account_id = ANY($1) AND push.apns_environment = $2 \
+           AND device.revoked_at IS NULL \
+           AND EXISTS (SELECT 1 FROM cloud_refresh_tokens session \
+                       WHERE session.device_id = device.device_id \
+                         AND session.account_id = push.account_id \
+                         AND session.revoked_at IS NULL \
+                         AND session.expires_at::timestamptz > NOW()) \
+           AND NOT EXISTS (SELECT 1 FROM cloud_account_blocks block \
+                           WHERE block.blocker_account_id = push.account_id \
+                             AND block.blocked_account_id = $3)",
+    )
+    .bind(recipients)
+    .bind(environment)
+    .bind(actor_account_id)
+    .fetch_all(pool)
+    .await
+}
+
 impl PushNotificationService {
-    pub async fn send_incoming_call(&self, pool: &PgPool, call: &CallSnapshot, caller_name: &str) {
+    /// Rings the invited participants' devices. `actor_account_id` started
+    /// or rang the call; accounts that blocked the actor are not rung.
+    pub async fn send_incoming_call(
+        &self,
+        pool: &PgPool,
+        call: &CallSnapshot,
+        caller_name: &str,
+        actor_account_id: &str,
+    ) {
         let recipients = call
             .participants
             .iter()
@@ -19,20 +56,12 @@ impl PushNotificationService {
         if recipients.is_empty() {
             return;
         }
-        let tokens: Vec<(String,)> = match query_as(
-            "SELECT push.device_token FROM cloud_voip_push_tokens push \
-             JOIN cloud_devices device ON device.device_id = push.device_id \
-             WHERE push.account_id = ANY($1) AND push.apns_environment = $2 \
-               AND device.revoked_at IS NULL \
-               AND EXISTS (SELECT 1 FROM cloud_refresh_tokens session \
-                           WHERE session.device_id = device.device_id \
-                             AND session.account_id = push.account_id \
-                             AND session.revoked_at IS NULL \
-                             AND session.expires_at::timestamptz > NOW())",
+        let tokens = match incoming_call_device_tokens(
+            pool,
+            &recipients,
+            &self.environment,
+            actor_account_id,
         )
-        .bind(&recipients)
-        .bind(&self.environment)
-        .fetch_all(pool)
         .await
         {
             Ok(tokens) => tokens,
