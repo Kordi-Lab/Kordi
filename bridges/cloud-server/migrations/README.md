@@ -72,3 +72,14 @@ them. Owners then lose access to those files. These changes remove copies and
 cannot be reverted from the database, so rehearse on an isolated copy, take a
 verified backup, and record the version 116 index build timings for the sync
 event, message, and agent run tables before an authorized production run.
+
+The removal worker started by `serve` works through `cloud_content_removal_jobs`
+every 10 seconds: it removes stored digest copies, replaces quote previews of
+deleted messages, clears agent run prompts and task summaries, archives
+files-panel entries, and deletes attachment bytes that nothing else uses. It
+only acts on jobs queued by a delete, hide, or edit made after version 116, by
+the reconcile of such changes from an older replica, or by the operator
+backfill above. Sync responses report `content_removal_version` 1 only after an
+operator sets `KORDI_ATTACHMENT_BUCKET_UNVERSIONED=1` for a bucket without
+versioning and a startup deletion probe succeeds. See
+[`docs/data-deletion.md`](../../../docs/data-deletion.md).
