@@ -37,6 +37,7 @@ export function canonicalMessageAction(value: unknown): MessageActionMetadata | 
       attachmentCount: Math.max(0, Math.floor(numberValue(source.attachmentCount) ?? 0)),
       createdAtMs: numberValue(source.createdAtMs) ?? null,
       timeLabel: stringValue(source.timeLabel) ?? null,
+      ...(source.sourceDeleted === true ? { sourceDeleted: true } : {}),
     },
   };
 }
@@ -52,5 +53,6 @@ export function canonicalMessageActionSourceReference(
     mentions: action.source.mentions,
     attachmentCount: action.source.attachmentCount,
     time: action.source.timeLabel ?? null,
+    ...(action.source.sourceDeleted === true ? { deleted: true } : {}),
   };
 }
