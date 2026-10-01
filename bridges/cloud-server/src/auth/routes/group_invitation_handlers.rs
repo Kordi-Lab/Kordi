@@ -41,7 +41,6 @@ struct GroupInvitationRecord {
     invitation_id: String,
     inviter_account_id: String,
     inviter_display_name: Option<String>,
-    inviter_public_account_number: i64,
     inviter_avatar_url: Option<String>,
     snapshot: GroupInvitationSnapshot,
     expires_at: String,
@@ -57,7 +56,6 @@ type GroupInvitationRow = (
     String,
     String,
     Option<String>,
-    i64,
     Option<String>,
     serde_json::Value,
     String,
@@ -113,6 +111,47 @@ fn syncable_cloud_avatar_url(value: &str) -> Option<String> {
 
 fn group_invitation_has_capacity(snapshot: &GroupInvitationSnapshot) -> bool {
     snapshot.participants.len() < GROUP_INVITE_MAX_MEMBERS
+}
+
+/// An avatar that may be shown to someone who is not signed in. Generated
+/// avatars of older accounts use the account id as their seed, so a marker
+/// whose seed is (or looks like) an account id is dropped and clients show
+/// initials. Uploaded avatars, `https` images, and random seeds are kept.
+pub(super) fn public_avatar_url(value: Option<&str>, owner_account_id: &str) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() || value.len() > 4096 {
+        return None;
+    }
+    if crate::avatars::assets::parse_uploaded_avatar_marker(value).is_some() {
+        return Some(value.to_string());
+    }
+    if let Some(marker) = parse_generated_avatar_marker(value) {
+        let seed = marker.seed.as_str();
+        return (seed != owner_account_id.trim() && !seed.starts_with("acct_"))
+            .then(|| value.to_string());
+    }
+    let owner = owner_account_id.trim();
+    if value.contains("acct_") || (!owner.is_empty() && value.contains(owner)) {
+        return None;
+    }
+    (value.starts_with("https://")
+        || value.starts_with("data:image/png;base64,")
+        || value.starts_with("data:image/jpeg;base64,")
+        || value.starts_with("data:image/webp;base64,"))
+    .then(|| value.to_string())
+}
+
+/// The member count shown on a preview or landing page. Server-managed
+/// members such as PiP are not people, so they are not counted. The stored
+/// snapshot keeps them, because a group of one person and PiP is still a
+/// group that can be shared.
+fn display_member_count(snapshot: &GroupInvitationSnapshot) -> usize {
+    let service = crate::pip::service_account_id();
+    snapshot
+        .participants
+        .iter()
+        .filter(|participant| Some(participant.account_id.as_str()) != service)
+        .count()
 }
 
 #[cfg(test)]
