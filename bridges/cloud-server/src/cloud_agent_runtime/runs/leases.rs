@@ -248,6 +248,13 @@ pub(super) async fn runner_response_from_row(
         row.1 = "cancelled".into();
         row.2.clear();
     }
+    if matches!(row.1.as_str(), "leased" | "running")
+        && !super::revocation::requester_still_allowed(pool, &row.0).await?
+    {
+        super::revocation::cancel_revoked_run(pool, &row.0).await?;
+        row.1 = "cancelled".into();
+        row.2.clear();
+    }
     let provider_auth_available =
         super::super::provider_auth::snapshot_available_for_route(pool, &row.3, &row.7).await?;
     Ok(RunnerRunResponse {

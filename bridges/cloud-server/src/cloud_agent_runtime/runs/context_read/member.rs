@@ -66,7 +66,7 @@ pub(super) async fn authorize_member(
             runtime_route: None,
             idempotency_key: String::new(),
         };
-        if !super::super::authorization::validate_shared_cloud_agent_claim(pool, &claim).await? {
+        if !super::super::authorization::requester_may_invoke(pool, &claim).await? {
             return Err(RunError::NotFound);
         }
     }

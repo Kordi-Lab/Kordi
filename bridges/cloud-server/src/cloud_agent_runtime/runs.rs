@@ -10,13 +10,14 @@ mod group_target;
 pub(crate) mod identity;
 mod leases;
 mod prompt_history;
+mod revocation;
 pub mod run_tokens;
 pub(crate) mod subsession_lifecycle;
 pub(crate) mod subsessions;
 
 pub use authorization::{
     claim_conversation_admits_run, claim_has_shared_cloud_agent_target, execution_agent_id,
-    request_identity, requester_can_target_owner, validate_group_agent_claim,
+    request_identity, requester_can_target_owner, requester_may_invoke, validate_group_agent_claim,
     validate_shared_cloud_agent_claim,
 };
 pub(crate) use claims::runtime_route_for_claim;
@@ -47,6 +48,7 @@ pub use leases::{
 };
 #[cfg(test)]
 use prompt_history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
+pub use revocation::RELATIONSHIP_REVOKED;
 
 #[cfg(test)]
 mod tests {

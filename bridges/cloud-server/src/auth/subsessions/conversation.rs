@@ -155,7 +155,7 @@ async fn admitted_invocation(
     let visible = snapshot(pool, id, &session.account_id, false).await?;
     let invokes = invokes_agent(&input.text, &input.mentions, &visible.agent_id);
     if invokes {
-        let allowed:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active' WHERE s.subsession_id=$1 AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=$2))))")
+        let allowed:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active' WHERE s.subsession_id=$1 AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=$2))) AND cloud_requester_may_use_agent($2,s.owner_account_id,s.agent_id))")
             .bind(id).bind(&session.account_id).fetch_one(pool).await.map_err(db_error)?;
         if !allowed.0 {
             return Err(error(StatusCode::FORBIDDEN, "subsession_agent_unavailable"));
