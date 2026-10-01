@@ -139,3 +139,67 @@ fn an_open_connection_cannot_acquire_a_replacement_files_cache_identity() {
         matches!(connection_cache_key(&original, &path), Err(error) if error.contains("changed"))
     );
 }
+
+#[cfg(unix)]
+fn mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+#[test]
+#[cfg(unix)]
+fn new_databases_are_owner_only() {
+    let storage = ScopedKordiStorageRoot::new("canonical-owner-only-new");
+    let path = storage
+        .root()
+        .join("nested")
+        .join("canonical-sessions.sqlite3");
+
+    let conn = open_db_at_path(&path).unwrap();
+
+    assert_eq!(mode(path.parent().unwrap()), 0o700);
+    assert_eq!(mode(&path), 0o600);
+    assert_eq!(mode(&sqlite_sidecar(&path, "-wal")), 0o600);
+    assert_eq!(mode(&sqlite_sidecar(&path, "-shm")), 0o600);
+    drop(conn);
+}
+
+#[test]
+#[cfg(unix)]
+fn existing_readable_databases_become_owner_only() {
+    use std::os::unix::fs::PermissionsExt;
+    let storage = ScopedKordiStorageRoot::new("canonical-owner-only-existing");
+    let parent = storage.root().join("accounts");
+    let path = parent.join("canonical-sessions.sqlite3");
+    std::fs::create_dir_all(&parent).unwrap();
+    {
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE earlier_release (value INTEGER);")
+            .unwrap();
+    }
+    std::fs::set_permissions(&parent, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+    let conn = open_with_cache(&path, &cache()).unwrap();
+
+    assert_eq!(mode(&parent), 0o700);
+    assert_eq!(mode(&path), 0o600);
+    assert_eq!(mode(&sqlite_sidecar(&path, "-wal")), 0o600);
+    conn.prepare("SELECT * FROM earlier_release").unwrap();
+}
+
+#[test]
+#[cfg(unix)]
+fn reused_connections_do_not_change_modes_again() {
+    use std::os::unix::fs::PermissionsExt;
+    let storage = ScopedKordiStorageRoot::new("canonical-owner-only-reused");
+    let path = storage.root().join("canonical-sessions.sqlite3");
+    let cache = cache();
+    drop(open_with_cache(&path, &cache).unwrap());
+    // A deliberate change after the first open is respected by cached reuse.
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+
+    drop(open_with_cache(&path, &cache).unwrap());
+
+    assert_eq!(mode(&path), 0o640);
+}

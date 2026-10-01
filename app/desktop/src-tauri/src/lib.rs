@@ -16,6 +16,7 @@ mod link_preview;
 mod media_preview_window;
 mod menu_bar;
 mod message_notification;
+mod private_storage;
 mod project;
 mod remote_image;
 mod skill_library;
@@ -65,7 +66,8 @@ fn configure_cloud_app_data_dir(app: &tauri::App, is_cloud_edition: bool) {
         return;
     };
     // The Cloud bundle identifier gives ~/.korde isolated storage.
-    unsafe { std::env::set_var("APP_DATA_DIR", app_data_dir) };
+    unsafe { std::env::set_var("APP_DATA_DIR", &app_data_dir) };
+    let _ = private_storage::ensure_private_dir(&app_data_dir);
 }
 
 fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
@@ -238,6 +240,7 @@ pub fn run() {
             cloud_session::configure_keychain_scope(&app.config().identifier);
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
+            private_storage::harden_local_storage_roots();
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }

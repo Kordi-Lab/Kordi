@@ -180,3 +180,83 @@ async fn attaching_by_path_needs_a_native_selection_paste_or_reference() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[cfg(unix)]
+mod storage_dir {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    struct TempRoot(PathBuf);
+
+    impl TempRoot {
+        fn new(label: &str) -> Self {
+            let root = std::env::temp_dir().join(format!("{label}-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).expect("create temp root");
+            Self(root)
+        }
+    }
+
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).ok();
+        }
+    }
+
+    fn mode(path: &Path) -> u32 {
+        std::fs::symlink_metadata(path)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    #[test]
+    fn app_data_attachment_dir_is_created_owner_only() {
+        let root = TempRoot::new("kordi-attachment-app-data");
+        let dir = attachment_storage_dir_in(Some(root.0.clone()), Path::new("/unused")).unwrap();
+        assert_eq!(dir, root.0.join("tmp").join("attachments"));
+        assert_eq!(mode(&dir), 0o700);
+    }
+
+    #[test]
+    fn temp_fallback_is_created_owner_only() {
+        let root = TempRoot::new("kordi-attachment-temp-fresh");
+        let dir = attachment_storage_dir_in(None, &root.0).unwrap();
+        assert_eq!(dir, root.0.join(TEMP_ATTACHMENT_DIR_NAME));
+        assert_eq!(mode(&dir), 0o700);
+    }
+
+    #[test]
+    fn temp_fallback_tightens_an_existing_open_directory() {
+        let root = TempRoot::new("kordi-attachment-temp-open");
+        let existing = root.0.join(TEMP_ATTACHMENT_DIR_NAME);
+        std::fs::create_dir(&existing).unwrap();
+        std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o777)).unwrap();
+        attachment_storage_dir_in(None, &root.0).unwrap();
+        assert_eq!(mode(&existing), 0o700);
+    }
+
+    #[test]
+    fn temp_fallback_refuses_a_symlinked_directory() {
+        let root = TempRoot::new("kordi-attachment-temp-link");
+        let target = root.0.join("elsewhere");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::os::unix::fs::symlink(&target, root.0.join(TEMP_ATTACHMENT_DIR_NAME)).unwrap();
+        assert_eq!(
+            attachment_storage_dir_in(None, &root.0).unwrap_err(),
+            "Attachment storage is not private."
+        );
+        assert_eq!(mode(&target), 0o755);
+    }
+
+    #[test]
+    fn temp_fallback_refuses_a_file_in_place_of_the_directory() {
+        let root = TempRoot::new("kordi-attachment-temp-file");
+        std::fs::write(root.0.join(TEMP_ATTACHMENT_DIR_NAME), b"not a directory").unwrap();
+        assert_eq!(
+            attachment_storage_dir_in(None, &root.0).unwrap_err(),
+            "Attachment storage is not private."
+        );
+    }
+}

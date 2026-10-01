@@ -133,7 +133,7 @@ pub(super) fn open_db_at_path(path: &Path) -> Result<DatabaseConnection, String>
 
 fn open_with_cache(path: &Path, cache: &ConnectionCache) -> Result<DatabaseConnection, String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+        crate::private_storage::ensure_private_dir(parent).map_err(|err| err.to_string())?;
     }
     let normalized = std::fs::canonicalize(path)
         .or_else(|_| {
@@ -165,11 +165,19 @@ fn open_with_cache(path: &Path, cache: &ConnectionCache) -> Result<DatabaseConne
     conn.pragma_update(None, "query_only", false)
         .map_err(|error| error.to_string())?;
     if !reused {
+        // Tighten the database before WAL mode so SQLite creates the -wal and
+        // -shm files with the same owner-only mode. Permission changes are best
+        // effort and never block opening the database.
+        let _ = crate::private_storage::restrict_private_file(&normalized);
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;",
         )
         .map_err(|err| err.to_string())?;
+        for suffix in ["-wal", "-shm"] {
+            let _ =
+                crate::private_storage::restrict_private_file(&sqlite_sidecar(&normalized, suffix));
+        }
     }
     initialize_schema(&conn)?;
     let key = connection_cache_key(&conn, &normalized)?;
@@ -178,6 +186,12 @@ fn open_with_cache(path: &Path, cache: &ConnectionCache) -> Result<DatabaseConne
         key,
         cache: cache.clone(),
     })
+}
+
+fn sqlite_sidecar(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_os_string();
+    name.push(suffix);
+    PathBuf::from(name)
 }
 
 #[cfg(test)]
