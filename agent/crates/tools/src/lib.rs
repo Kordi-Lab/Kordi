@@ -58,6 +58,6 @@ pub use types::{
     ToolScheduling, WebSearchRuntime,
 };
 pub use web::public::{
-    private_network_endpoint_client_builder, public_endpoint_client_builder,
-    validate_private_network_endpoint, validate_public_endpoint,
+    endpoint_address_allowed, private_network_endpoint_client_builder,
+    public_endpoint_client_builder, validate_private_network_endpoint, validate_public_endpoint,
 };

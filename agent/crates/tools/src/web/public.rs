@@ -79,6 +79,19 @@ fn private_network_ip(ip: IpAddr) -> bool {
     }
 }
 
+/// Whether a connection may use this address: the policy that the clients
+/// from [`public_endpoint_client_builder`] (and, with `allow_private`,
+/// [`private_network_endpoint_client_builder`]) apply to every DNS answer.
+/// Use it to check the answers for an endpoint that is handed to a transport
+/// which resolves names itself and cannot apply the policy.
+pub fn endpoint_address_allowed(ip: IpAddr, allow_private: bool) -> bool {
+    if allow_private {
+        private_network_ip(ip)
+    } else {
+        public_ip(ip)
+    }
+}
+
 fn denied_with(message: &str) -> KordiError {
     KordiError::Tool(message.into())
 }
@@ -251,6 +264,27 @@ pub fn private_network_endpoint_client_builder() -> ClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn endpoint_address_policy_matches_the_guarded_clients() {
+        for ip in ["127.0.0.1", "10.0.0.5", "169.254.169.254", "::1", "fe80::1"] {
+            let ip = ip.parse().unwrap();
+            assert!(!endpoint_address_allowed(ip, false), "{ip}");
+        }
+        for ip in ["127.0.0.1", "10.0.0.5", "::1"] {
+            let ip = ip.parse().unwrap();
+            assert!(endpoint_address_allowed(ip, true), "{ip}");
+        }
+        for ip in ["169.254.169.254", "100.100.100.200", "fe80::1"] {
+            let ip = ip.parse().unwrap();
+            assert!(!endpoint_address_allowed(ip, true), "{ip}");
+        }
+        for ip in ["8.8.8.8", "2606:4700:4700::1111"] {
+            let ip = ip.parse().unwrap();
+            assert!(endpoint_address_allowed(ip, false), "{ip}");
+            assert!(endpoint_address_allowed(ip, true), "{ip}");
+        }
+    }
 
     #[test]
     fn rejects_private_literals_credentials_and_non_web_endpoints() {

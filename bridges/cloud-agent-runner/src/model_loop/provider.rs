@@ -13,7 +13,10 @@ use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelTool
 pub use endpoint::PRIVATE_PROVIDER_ENDPOINTS_ENV;
 use endpoint::{
     base_url_for, ensure_plain_api_key, ensure_provider_endpoint_allowed, ensure_supported_api,
-    normalize_provider, private_provider_endpoints_allowed,
+    normalize_provider,
+};
+pub(crate) use endpoint::{
+    ensure_endpoint_resolves_to_allowed_addresses, private_provider_endpoints_allowed,
 };
 use model_choice::snapshot_model;
 

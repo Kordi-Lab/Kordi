@@ -24,6 +24,13 @@ pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
 ) -> Result<(String, OmpState), ModelLoopError> {
     let mut auth = OpenAiProviderConfig::from_material(&auth_material)?;
     auth.apply_runtime_route(&run.runtime_route, &auth_material.provider)?;
+    // The worker connects to the provider itself, without the runner's
+    // guarded client, so check where the endpoint resolves before using it.
+    super::provider::ensure_endpoint_resolves_to_allowed_addresses(
+        &auth.base_url,
+        super::provider::private_provider_endpoints_allowed(),
+    )
+    .await?;
     let omp_provider = omp_provider(&auth).to_string();
     let context = client
         .fetch_omp_context(
