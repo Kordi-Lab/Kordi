@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
+import { safetyErrorMessage } from '@/features/safety/safetyCopy';
+
 import { ContactRequestTime } from '../components';
 import { IdentityAvatar } from '../components/IdentityAvatar';
 import { sentInviteDisplayName } from '../contactPresentation';
@@ -8,11 +10,28 @@ import type { ContactRequest } from '../types';
 
 type SentInvitesSectionProps = {
   requests: ContactRequest[];
+  /** Present only when the server supports withdrawing a request. */
+  onWithdrawRequest?: (request: ContactRequest) => Promise<void> | void;
 };
 
-export function SentInvitesSection({ requests }: SentInvitesSectionProps) {
+export function SentInvitesSection({ requests, onWithdrawRequest }: SentInvitesSectionProps) {
   const [isSentInvitesOpen, setIsSentInvitesOpen] = useState(false);
+  const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+  const [withdrawError, setWithdrawError] = useState('');
   const sentInvitesSummary = `${requests.length} awaiting approval`;
+
+  const withdraw = async (request: ContactRequest) => {
+    if (!onWithdrawRequest || withdrawingId) return;
+    setWithdrawingId(request.id);
+    setWithdrawError('');
+    try {
+      await onWithdrawRequest(request);
+    } catch (error) {
+      setWithdrawError(safetyErrorMessage(error, "Couldn't withdraw the request. Try again."));
+    } finally {
+      setWithdrawingId(null);
+    }
+  };
 
   return (
     <section className="app-contacts-sent-invites-row" aria-label="Sent contact invites">
@@ -52,9 +71,23 @@ export function SentInvitesSection({ requests }: SentInvitesSectionProps) {
                     <ContactRequestTime value={request.time} />
                   </div>
                 </div>
+                {onWithdrawRequest ? (
+                  <button
+                    type="button"
+                    className="app-contacts-action-chip app-button-quiet h-8 shrink-0 rounded-full px-3 text-[12px]"
+                    disabled={Boolean(withdrawingId)}
+                    aria-label={`Withdraw request to ${sentInviteDisplayName(request)}`}
+                    onClick={() => { void withdraw(request); }}
+                  >
+                    {withdrawingId === request.id ? 'Withdrawing…' : 'Withdraw'}
+                  </button>
+                ) : null}
               </div>
             </div>
           ))}
+          {withdrawError ? (
+            <div className="app-error-text px-3 py-1 text-[12px] leading-5 text-rose-200" aria-live="polite">{withdrawError}</div>
+          ) : null}
         </div>
       )}
     </section>

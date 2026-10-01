@@ -19,6 +19,7 @@ import { ContactsPage } from '@/kordi-app/pages';
 import type { Contact, ContactRequest } from '@/kordi-app/types';
 import { formatKordiHandle, normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
+import { useSafetyActions } from '@/features/safety/safetyActions';
 
 type CloudContactsAdapterProps = {
   account: CloudAccount;
@@ -31,12 +32,15 @@ type CloudContactsAdapterProps = {
  *   - contactRequests          (replaces with cloud pending requests)
  *   - onAcceptRequest / onRejectRequest / onAddContactByNodeId
  *     (routes them through the cloud auth client)
+ *   - onRemoveContact / onWithdrawRequest (cloud removal and withdrawal,
+ *     hidden when the server does not support them)
  *   - addableContacts          (clears legacy local addables; the hosted add
  *                               flow is a public Kordi ID lookup)
  */
 export function CloudContactsAdapter({ account, contactsPageProps }: CloudContactsAdapterProps) {
   const cloud = useCloudContacts(account);
   const presence = useCloudPresence(account);
+  const safety = useSafetyActions();
 
   const visibleCloudContacts = useMemo(() => {
     const search = contactsPageProps.contactSearch?.trim().toLowerCase() ?? '';
@@ -104,6 +108,22 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
     await cloud.rejectRequest(requestId);
   };
 
+  // Removal and withdrawal need a server that supports them; otherwise the
+  // contacts page hides both actions.
+  const onRemoveContact = safety.safetyFeaturesAvailable
+    ? async (contact: Contact) => {
+        const peerAccountId = cloudAccountIdForContact(contact);
+        if (!peerAccountId?.startsWith('acct_')) return;
+        await safety.removeContact(peerAccountId);
+      }
+    : undefined;
+
+  const onWithdrawRequest = safety.safetyFeaturesAvailable
+    ? async (request: ContactRequest) => {
+        if (request.sourceRequestId) await safety.withdrawContactRequest(request.sourceRequestId);
+      }
+    : undefined;
+
   const onAddContactByNodeId = async (rawId: string) => {
     const trimmed = rawId.trim();
     if (!trimmed) return;
@@ -164,6 +184,8 @@ export function CloudContactsAdapter({ account, contactsPageProps }: CloudContac
       activeContactRequest={activeContactRequest}
       onAcceptRequest={onAcceptRequest}
       onRejectRequest={onRejectRequest}
+      onWithdrawRequest={onWithdrawRequest}
+      onRemoveContact={onRemoveContact}
       onAddContactByNodeId={onAddContactByNodeId}
       onLookupContact={onLookupContact}
       onMessageContact={contactsPageProps.onMessageContact}

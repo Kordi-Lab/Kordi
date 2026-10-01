@@ -9,6 +9,13 @@ export const BLOCK_EXPLANATION = [
   "Blocking doesn't send anything to Kordi. To tell us about a problem, choose Report.",
 ] as const;
 
+export const REMOVE_CONTACT_HELPER = "You won't be able to message or call each other or see each other's online status "
+  + 'until one of you sends a new contact request and the other accepts. Your chat history stays.';
+
+export function contactRequestDisclosure(name: string): string {
+  return `If you accept, ${name} can message you, add you to groups, see when you're online, and ask your Kordi agent for help.`;
+}
+
 /** True when retrying the same request later may succeed. */
 export function isConnectionProblem(error: unknown): boolean {
   if (!(error instanceof CloudAuthError)) return true;

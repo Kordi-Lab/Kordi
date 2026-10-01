@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import { LoaderCircle, Trash2, X } from 'lucide-react';
+import { LoaderCircle, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { CLOUD_HOST_SENTINEL } from '@/features/cloud/cloudContactMapping';
+import { contactRequestDisclosure } from '@/features/safety/safetyCopy';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar } from '../components/IdentityAvatar';
 import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus } from '../contactPresentation';
 import type { Contact, ContactRequest } from '../types';
+import { ContactSafetyButtons, RemoveContactControl } from './ContactSafetyActions';
 
 export type ContactRequestActionKind = 'accept' | 'reject';
 export type ContactRequestActionState = 'accepting' | 'rejecting' | null;
@@ -40,9 +42,6 @@ export function ContactOverlays({
   requestActionState,
   onSubmitRequestAction,
 }: ContactOverlaysProps) {
-  const [removeContactState, setRemoveContactState] = useState<'idle' | 'saving' | 'error'>('idle');
-  const [removeContactError, setRemoveContactError] = useState('');
-
   const activeContactDetailBody = contactDetailBodyText(activeContact);
   const activeContactPresenceStatus = contactPresenceStatus(activeContact);
   const canRemoveActiveContact = Boolean(
@@ -50,19 +49,14 @@ export function ContactOverlays({
       && contactCanBeRemoved(activeContact),
   );
 
-  const submitRemoveContact = async () => {
-    if (!canRemoveActiveContact || removeContactState === 'saving') return;
-    setRemoveContactState('saving');
-    setRemoveContactError('');
-    try {
-      const contactToRemove = activeContact;
-      onCloseOverlay();
-      await onRemoveContact?.(contactToRemove);
-    } catch (error) {
-      setRemoveContactState('error');
-      setRemoveContactError(error instanceof Error ? error.message : 'Unable to delete contact');
-    }
-  };
+  const activeContactAccountId = activeContact.sourceHostId === CLOUD_HOST_SENTINEL && !activeContact.systemContact
+    ? activeContact.sourceParticipantId
+    : null;
+  const requestFromCloud = activeContactRequest?.sourceHostId === CLOUD_HOST_SENTINEL
+    && activeContactRequest.direction?.trim().toLowerCase() !== 'outgoing';
+  const requesterName = activeContactRequest
+    ? activeContactRequest.avatarName?.trim() || activeContactRequest.title
+    : '';
 
   return (
     <div className="app-transient-overlay app-overlay absolute inset-0 z-10 flex items-center justify-center px-4 py-8 backdrop-blur-[2px]">
@@ -115,32 +109,29 @@ export function ContactOverlays({
               <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.sourceHostId || !activeContact.sourceParticipantId}>
                 Message
               </Button>
+              <ContactSafetyButtons
+                accountId={activeContactAccountId}
+                name={activeContact.name}
+                onBeforeOpen={onCloseOverlay}
+              />
               {canRemoveActiveContact ? (
-                <Button
-                  variant="secondary"
-                  className="app-transient-flat-action app-transient-flat-action-danger rounded-[10px] shadow-none"
-                  onClick={() => { void submitRemoveContact(); }}
-                  disabled={removeContactState === 'saving'}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {removeContactState === 'saving' ? 'Deleting…' : 'Delete contact'}
-                </Button>
+                <RemoveContactControl
+                  name={activeContact.name}
+                  onRemove={() => onRemoveContact?.(activeContact)}
+                  onDone={onCloseOverlay}
+                />
               ) : null}
             </div>
-            {canRemoveActiveContact ? (
-              <div className={cn('app-error-text mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'app-transient-muted')} aria-live="polite">
-                {removeContactState === 'error'
-                  ? removeContactError || 'Unable to delete contact.'
-                  : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
-              </div>
-            ) : null}
           </div>
         ) : activeContactRequest ? (
           <div>
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="app-badge-neutral px-2.5 py-1 text-[10px] font-medium">{activeContactRequest.time}</div>
             </div>
-            <div className="app-transient-muted mb-5 text-sm">{activeContactRequest.detail}</div>
+            <div className={cn('app-transient-muted text-sm', requestFromCloud ? 'mb-3' : 'mb-5')}>{activeContactRequest.detail}</div>
+            {requestFromCloud ? (
+              <p className="app-transient-muted mt-0 mb-5 text-[12px] leading-5">{contactRequestDisclosure(requesterName)}</p>
+            ) : null}
             <div className="grid gap-1">
               <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => { onSubmitRequestAction(activeContactRequest, 'accept'); }} disabled={!canAcceptRequest || requestActionBusy}>
                 {requestActionState(activeContactRequest) === 'accepting' ? (
@@ -158,6 +149,14 @@ export function ContactOverlays({
                   </>
                 ) : 'Reject'}
               </Button>
+              {requestFromCloud ? (
+                <ContactSafetyButtons
+                  accountId={activeContactRequest.requesterNodeId}
+                  name={requesterName}
+                  contactRequestId={activeContactRequest.sourceRequestId}
+                  onBeforeOpen={onCloseOverlay}
+                />
+              ) : null}
               <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={onCloseOverlay} disabled={requestActionBusy}>
                 Close review
               </Button>

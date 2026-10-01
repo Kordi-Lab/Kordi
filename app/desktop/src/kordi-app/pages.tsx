@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Plus, Search, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { BlockedAccountsSection } from '@/features/safety/BlockedAccountsSection';
 import { cn } from '@/lib/utils';
 import { ContactRequestRow, ContactRow } from './components';
 import { ContactOverlays, type ContactRequestActionKind, type ContactRequestActionState } from './contacts/ContactOverlays';
@@ -20,6 +21,7 @@ type ContactsPageProps = {
   activeContactRequestId: string;
   onAcceptRequest?: (request: ContactRequest) => Promise<void> | void;
   onRejectRequest?: (request: ContactRequest) => Promise<void> | void;
+  onWithdrawRequest?: (request: ContactRequest) => Promise<void> | void;
   onAddContactByNodeId?: (nodeId: string) => Promise<void> | void;
   onLookupContact?: (idOrEmail: string) => Promise<AddContactLookupResult | null>;
   contactSearch: string;
@@ -46,6 +48,7 @@ export function ContactsPage({
   activeContactRequestId,
   onAcceptRequest,
   onRejectRequest,
+  onWithdrawRequest,
   onAddContactByNodeId,
   onLookupContact,
   contactSearch,
@@ -242,7 +245,7 @@ export function ContactsPage({
                   </section>
                 )}
 
-                {sentInviteCount > 0 && <SentInvitesSection requests={outgoingContactRequests} />}
+                {sentInviteCount > 0 && <SentInvitesSection requests={outgoingContactRequests} onWithdrawRequest={onWithdrawRequest} />}
               </div>
             )}
 
@@ -385,6 +388,7 @@ export function ContactsPage({
                       )}
                     </div>
                   ))}
+                  <BlockedAccountsSection />
                 </div>
               </ScrollArea>
             </div>
