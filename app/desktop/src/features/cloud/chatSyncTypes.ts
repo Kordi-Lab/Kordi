@@ -87,6 +87,8 @@ export type ChatSyncSyncResponse = {
   last_stream_seq: number;
   has_more: boolean;
   server_time: string;
+  /** 1 when the server removes stored text and files after a delete; absent means 0. */
+  content_removal_version?: number;
 };
 
 export type ChatSyncBootstrapResponse = {
@@ -104,6 +106,7 @@ export type ChatSyncBootstrapResponse = {
   next_cursor: string;
   last_stream_seq: number;
   server_time: string;
+  content_removal_version?: number;
 };
 
 export type ChatSyncConversationInput = {
