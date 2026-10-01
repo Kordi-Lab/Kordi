@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react';
 
 import { isNativeDesktopShell } from '@/lib/desktop';
+import { useLinkNetworkAccess } from '@/features/privacy/linkNetworkAccess';
 import {
   openExternalMessageLink,
   safeExternalHttpHref,
@@ -53,10 +54,12 @@ function compactPath(href: string) {
 }
 
 function LinkPreviewCard({ href, label }: { href: string; label: string }) {
-  const [metadata, setMetadata] = useState<LinkPreviewMetadata | null>(() => readCachedLinkPreview(href));
+  // A disallowed card never reads earlier cached metadata and never fetches.
+  const allowNetwork = useLinkNetworkAccess();
+  const [metadata, setMetadata] = useState<LinkPreviewMetadata | null>(() => (allowNetwork ? readCachedLinkPreview(href) : null));
   const [failed, setFailed] = useState(false);
   const [failedImageDataUrl, setFailedImageDataUrl] = useState<string | null>(null);
-  const canLoad = isNativeDesktopShell() && new URL(href).protocol.toLowerCase() === 'https:';
+  const canLoad = allowNetwork && isNativeDesktopShell() && new URL(href).protocol.toLowerCase() === 'https:';
 
   useEffect(() => {
     if (metadata || !canLoad) return;
@@ -73,12 +76,13 @@ function LinkPreviewCard({ href, label }: { href: string; label: string }) {
   }, [canLoad, href, metadata]);
 
   const hostname = useMemo(() => new URL(href).hostname.replace(/^www\./i, ''), [href]);
-  const title = metadata?.title ?? fallbackTitle(href, label);
-  const description = compactPath(href) ?? metadata?.description;
-  const imageUrl = metadata?.imageUrl ?? null;
+  const visibleMetadata = allowNetwork ? metadata : null;
+  const title = visibleMetadata?.title ?? fallbackTitle(href, label);
+  const description = compactPath(href) ?? visibleMetadata?.description;
+  const imageUrl = visibleMetadata?.imageUrl ?? null;
   const remoteImage = useRemoteAvatarImage(imageUrl, shouldLoadAvatarThroughNativeProxy(imageUrl));
-  const imageDataUrl = metadata?.imageDataUrl ?? (remoteImage.status === 'ready' ? remoteImage.dataUrl : null);
-  const state = metadata ? 'ready' : failed ? 'failed' : canLoad ? 'loading' : 'idle';
+  const imageDataUrl = visibleMetadata?.imageDataUrl ?? (remoteImage.status === 'ready' ? remoteImage.dataUrl : null);
+  const state = !allowNetwork ? 'disabled' : metadata ? 'ready' : failed ? 'failed' : canLoad ? 'loading' : 'idle';
 
   return (
     <a
@@ -91,7 +95,7 @@ function LinkPreviewCard({ href, label }: { href: string; label: string }) {
       onClick={(event) => { openExternalMessageLink(event, href); }}
     >
       <span className="app-message-link-preview-copy">
-        <span className="app-message-link-preview-site">{metadata?.siteName ?? hostname}</span>
+        <span className="app-message-link-preview-site">{visibleMetadata?.siteName ?? hostname}</span>
         <span className="app-message-link-preview-title">{title}</span>
         {description ? <span className="app-message-link-preview-description">{description}</span> : null}
       </span>

@@ -5,6 +5,8 @@ import {
   queuedMessageBubbleShapeClass,
   humanMessageBubbleShapeClass,
 } from '@/features/chat/messageBubbleShape';
+import { LinkNetworkAccessProvider } from '@/features/privacy/LinkPreviewAccess';
+import { useLinkPreviewPreference } from '@/features/privacy/linkPreviewPolicy';
 import { MessageInlineContent } from '@/kordi-app/components/messageInlineContent';
 import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -24,6 +26,10 @@ export function QueuedMessageBubble({
   own?: boolean;
   sender?: string;
 }) {
+  // Your own queued text may load site icons unless link previews are off.
+  // A peer's queued row has no resolved sender here, so it only loads under "Everyone".
+  const linkPreviewPreference = useLinkPreviewPreference();
+  const allowLinkNetwork = own ? linkPreviewPreference !== 'off' : linkPreviewPreference === 'everyone';
   return (
     <div className={cn('flex py-0.5', own ? 'justify-end' : 'justify-start')}>
       <div
@@ -50,7 +56,9 @@ export function QueuedMessageBubble({
           </div>
           <div className="mt-0.5 flex items-center gap-2">
             <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5" data-kordi-copy-surface="message">
-              <MessageInlineContent text={message.text} />
+              <LinkNetworkAccessProvider allowed={allowLinkNetwork}>
+                <MessageInlineContent text={message.text} />
+              </LinkNetworkAccessProvider>
             </div>
             {onEdit || onCancel ? <div
               className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center"

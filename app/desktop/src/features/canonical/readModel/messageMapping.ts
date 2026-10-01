@@ -447,6 +447,7 @@ export function mapCanonicalMessage(
     sender,
     senderOwnerName: agentPresentation.senderOwnerName,
     senderIdentityId: message.senderIdentityId,
+    senderHumanId: identity?.kind === 'human' ? identity.humanId?.trim() || null : null,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
     senderAvatarSeed: canonicalIdentityAvatarSeed(identity),

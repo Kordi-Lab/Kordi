@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
 import { NotoEmojiImage } from '@/features/emoji/NotoEmojiImage';
 import { attachmentFileFamily } from '@/features/chat/attachmentFileFamily';
+import { useLinkNetworkAccess } from '@/features/privacy/linkNetworkAccess';
 import type { MessageMention } from '../types';
 import {
   compactExternalLinkLabel,
@@ -23,13 +24,19 @@ export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
   const isFile = isDirectFileLink(href);
   const fileFamily = isFile ? attachmentFileFamily({ name: new URL(href).pathname }) : null;
   const descriptor = isFile ? null : siteIconDescriptorForHref(href);
-  const requestUrl = descriptor?.requestUrl ?? null;
+  // Loading a site icon contacts the linked website; it follows the same
+  // per-message decision as link previews.
+  const allowNetwork = useLinkNetworkAccess();
+  const requestUrl = allowNetwork ? descriptor?.requestUrl ?? null : null;
   const shouldLoad = shouldLoadAvatarThroughNativeProxy(requestUrl);
   const remoteIcon = useRemoteAvatarImage(requestUrl, shouldLoad);
   const [failedDataUrl, setFailedDataUrl] = useState<string | null>(null);
   const loadedDataUrl = remoteIcon.status === 'ready' && remoteIcon.dataUrl !== failedDataUrl
     ? remoteIcon.dataUrl
     : null;
+  const iconState = !allowNetwork
+    ? 'disabled'
+    : failedDataUrl && failedDataUrl === remoteIcon.dataUrl ? 'failed' : remoteIcon.status;
 
   return (
     <span
@@ -37,7 +44,7 @@ export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
       data-file-reference={isFile ? 'true' : undefined}
       data-file-family={fileFamily ?? undefined}
       data-site-icon-host={descriptor?.hostname}
-      data-site-icon-state={failedDataUrl && failedDataUrl === remoteIcon.dataUrl ? 'failed' : remoteIcon.status}
+      data-site-icon-state={iconState}
       aria-hidden="true"
     >
       {isFile ? (
