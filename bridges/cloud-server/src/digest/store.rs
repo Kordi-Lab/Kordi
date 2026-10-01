@@ -404,25 +404,37 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
         return fail(pool, run, Some(runner), "sources_changed").await;
     }
     let mut tx = pool.begin().await?;
-    let changed=query("UPDATE cloud_agent_fallback_runs SET status='completed',completed_at=$3,updated_at=$3 WHERE run_id=$1 AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at>$3").bind(run).bind(runner).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
+    // A finished digest run keeps no copy of the messages it read.
+    let changed=query("UPDATE cloud_agent_fallback_runs SET status='completed',prompt='',completed_at=$3,updated_at=$3 WHERE run_id=$1 AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at>$3").bind(run).bind(runner).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
     if changed.rows_affected() == 0 {
         return Err(sqlx_core::Error::RowNotFound);
     }
     query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=input_json,active_run_id=NULL,error_code=NULL,failure_count=0,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id=$3").bind(&account).bind(serde_json::to_value(output).unwrap()).bind(run).execute(&mut *tx).await?;
-    crate::chat_sync::store::append_account_hint(
-        &mut tx,
+    tx.commit().await?;
+    // The hint is written after the digest commits, in its own transaction,
+    // so completion never holds the digest row while it waits for the
+    // account's stream head, which message sends take in the other order.
+    // Devices also reload the digest when it is opened, so a lost hint only
+    // delays the refresh.
+    let mut hint = pool.begin().await?;
+    if crate::chat_sync::store::append_account_hint(
+        &mut hint,
         &account,
         "digest.updated",
         &json!({"updated":true}),
     )
     .await
-    .map_err(|_| sqlx_core::Error::Protocol("Could not publish digest update.".into()))?;
-    tx.commit().await
+    .is_err()
+        || hint.commit().await.is_err()
+    {
+        eprintln!("[digest] Could not publish the update hint for run {run}.");
+    }
+    Ok(())
 }
 
 pub async fn fail(pool: &PgPool, run: &str, runner: Option<&str>, code: &str) -> Result<()> {
     let mut tx = pool.begin().await?;
-    let changed=query("UPDATE cloud_agent_fallback_runs SET status='failed',error_code=$3,error_message='Digest update failed.',updated_at=$4 WHERE run_id=$1 AND ($2::text IS NULL OR claimed_by=$2) AND status IN ('queued','leased','running')").bind(run).bind(runner).bind(code).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
+    let changed=query("UPDATE cloud_agent_fallback_runs SET status='failed',prompt='',error_code=$3,error_message='Digest update failed.',updated_at=$4 WHERE run_id=$1 AND ($2::text IS NULL OR claimed_by=$2) AND status IN ('queued','leased','running')").bind(run).bind(runner).bind(code).bind(Utc::now().to_rfc3339()).execute(&mut *tx).await?;
     if changed.rows_affected() > 0 {
         // Repeated failures back off (1 minute, 5 minutes, 30 minutes, 2 hours,
         // then 12 hours) so a broken provider sign-in costs a handful of calls
