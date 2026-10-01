@@ -71,6 +71,9 @@ fn durable_event_and_message_schemas_are_valid_json_contracts() {
         "conversation.updated",
         "conversation.preferences.updated",
         "message.created",
+        "message.deleted",
+        "message.hidden",
+        "message.superseded",
         "delivery_cursor.updated",
         "read_cursor.updated",
     ] {
@@ -89,6 +92,36 @@ fn durable_event_and_message_schemas_are_valid_json_contracts() {
         message["properties"]["reactions"]["items"]["properties"]["account_ids"]["uniqueItems"],
         true
     );
+}
+
+#[test]
+fn content_removal_migration_adds_schema_without_rewriting_rows() {
+    let root = repository_root();
+    let migration = read(root.join("bridges/cloud-server/migrations/0116_content_removal.sql"))
+        .to_ascii_lowercase();
+    let statements = migration
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    for statement in statements.split(';').map(str::trim) {
+        for forbidden in [
+            "update",
+            "delete",
+            "truncate",
+            "drop",
+            "alter table cloud_chat",
+        ] {
+            assert!(
+                !statement.starts_with(forbidden),
+                "content removal of earlier data must stay an operator command: {statement}"
+            );
+        }
+        assert!(!statement.starts_with("insert into cloud_content_removal_jobs"));
+    }
+    let pool = read(root.join("bridges/cloud-server/src/pg/pool/embedded.rs"));
+    assert!(pool.contains("0116_content_removal.sql"));
+    assert!(!pool.contains("backfill_content_removal"));
 }
 
 #[test]

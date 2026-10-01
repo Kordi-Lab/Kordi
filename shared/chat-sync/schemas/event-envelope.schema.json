@@ -27,6 +27,8 @@
         "message.created",
         "message.updated",
         "message.deleted",
+        "message.hidden",
+        "message.superseded",
         "reaction.updated",
         "delivery_cursor.updated",
         "read_cursor.updated",
