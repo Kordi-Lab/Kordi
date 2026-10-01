@@ -2,6 +2,7 @@
 // reply", and the PiP switch: a labeled switch and a modal dialog that traps
 // focus and returns it to whatever opened it.
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
 
@@ -75,13 +76,16 @@ export function AgentTrustDialog({ title, children, actions, onClose, dataAttrib
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = dialogRef.current;
     dialog?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    // Window capture runs before any dialog underneath, which stays inert.
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -90,26 +94,28 @@ export function AgentTrustDialog({ title, children, actions, onClose, dataAttrib
         return;
       }
       if (event.key !== 'Tab' || !dialog) return;
+      event.stopPropagation();
       const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (focusable.length === 0) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const inside = dialog.contains(document.activeElement);
+      if (event.shiftKey && (!inside || document.activeElement === first)) {
         event.preventDefault();
         last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (!inside || document.activeElement === last)) {
         event.preventDefault();
         first?.focus();
       }
     };
-    document.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keydown', handleKeyDown, true);
       if (opener?.isConnected) opener.focus();
     };
   }, []);
 
-  return (
+  const overlay = (
     <div className="app-transient-overlay fixed inset-0 z-[300] grid place-items-center px-4" data-agent-trust-dialog={dataAttribute}>
       <div
         ref={dialogRef}
@@ -124,6 +130,7 @@ export function AgentTrustDialog({ title, children, actions, onClose, dataAttrib
       </div>
     </div>
   );
+  return typeof document === 'undefined' ? overlay : createPortal(overlay, document.body);
 }
 
 export function AgentTrustDialogButton({ children, primary, onClick, label }: {

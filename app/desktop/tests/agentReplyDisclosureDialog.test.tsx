@@ -18,11 +18,8 @@ import type { ReplyDisclosure, ReplyDisclosureRequest } from '../src/features/cl
 import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import { KORDI_PIP_AVATAR_URL } from '../src/features/pip/pipIdentity';
 import { AgentAiChip } from '../src/kordi-app/components/AgentOwnerTag';
-import {
-  AgentReplyDisclosureHost,
-  pipDisclosureText,
-  replyDisclosureRows,
-} from '../src/kordi-app/components/agentReplyDisclosureDialog';
+import { pipDisclosureText, replyDisclosureRows } from '../src/features/agentTrust/replyDisclosureCopy';
+import { AgentReplyDisclosureHost } from '../src/kordi-app/components/agentReplyDisclosureDialog';
 import type { Message } from '../src/kordi-app/types';
 import { turn } from './helpers/replyAttributionFixtures';
 import { flushReactUpdates, installDom } from './helpers/transcriptAttachmentDom';
@@ -137,7 +134,7 @@ test('the dialog shows the server answer, traps focus, and returns it on Escape'
   clearReplyDisclosureCache();
   const view = await openDialog(fakeApi(async (_t, _s, replies) => replies.map((reply) => ({ ...cloud, key: reply.key }))), agentReply);
   try {
-    const dialog = view.host.querySelector('[role="dialog"]');
+    const dialog = document.body.querySelector('[role="dialog"]');
     assert.ok(dialog, 'dialog is open');
     assert.equal(dialog.getAttribute('aria-modal'), 'true');
     assert.match(dialog.textContent ?? '', /About this reply/);
@@ -148,7 +145,7 @@ test('the dialog shows the server answer, traps focus, and returns it on Escape'
     await act(async () => {
       document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
-    assert.equal(view.host.querySelector('[role="dialog"]'), null);
+    assert.equal(document.body.querySelector('[role="dialog"]'), null);
     assert.equal(document.activeElement, view.opener, 'focus returns to the opener');
   } finally {
     await view.close();
@@ -160,24 +157,24 @@ test('missing, failed, and PiP replies use their own copy', async () => {
   clearReplyDisclosureCache();
   let view = await openDialog(fakeApi(async () => []), agentReply);
   try {
-    assert.match(view.host.textContent ?? '', /Details aren't available for this reply\./);
+    assert.match(document.body.textContent ?? '', /Details aren't available for this reply\./);
   } finally { await view.close(); clearReplyDisclosureCache(); }
 
   view = await openDialog(fakeApi(async () => { throw new CloudAuthError('server_error', 'down', 500); }), agentReply);
   try {
-    assert.match(view.host.querySelector('[role="alert"]')?.textContent ?? '', /Couldn't load details\. Try again\./);
+    assert.match(document.body.querySelector('[role="alert"]')?.textContent ?? '', /Couldn't load details\. Try again\./);
   } finally { await view.close(); clearReplyDisclosureCache(); }
 
   view = await openDialog(fakeApi(async () => { throw new CloudAuthError('unknown', 'not a member', 404); }), agentReply);
   try {
-    assert.match(view.host.textContent ?? '', /Details aren't available for this reply\./);
+    assert.match(document.body.textContent ?? '', /Details aren't available for this reply\./);
   } finally { await view.close(); clearReplyDisclosureCache(); }
 
   clearAiFeaturesCache();
   const pip: Message = { id: 'pip-1', role: 'person', sender: 'PiP', text: 'Plan updated', time: '', senderProfileImageUrl: KORDI_PIP_AVATAR_URL };
   view = await openDialog(fakeApi(async () => { throw new Error('PiP is never looked up'); }, 'Google'), pip);
   try {
-    const text = view.host.textContent ?? '';
+    const text = document.body.textContent ?? '';
     assert.match(text, /Runs for: Kordi/);
     assert.match(text, /It runs on Google through Kordi's account\./);
     assert.doesNotMatch(text, /Requested by/);

@@ -32,7 +32,6 @@ import type {
 } from '@/features/cloud/authClient';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
-  adminIdentityIdsFromMetadata,
   buildChatCreateGroupPersonOptions,
   contactCanonicalIdentityRequest,
   participantSpaceCanonicalMembershipSessionIds,
@@ -51,8 +50,16 @@ import {
   type ViewportSize,
 } from '@/pages/groupManagementGeometry';
 import { MemberContactProfileContent } from '@/pages/MemberContactProfilePopover';
+import { aiAccessMemberNames } from '@/features/agentTrust/aiAccessCopy';
+import { AiAccessPanel } from '@/kordi-app/components/aiAccessPanel';
+import {
+  contactStableId, duplicateNameCounts, filterGroupManagementMembers, groupActionErrorMessage, groupAdminIds,
+  hasDuplicateName, isHumanMember, isSelfMember, memberIsAdmin, memberMatchesIdentity, memberStableId,
+  normalizedSearch, visibleIdentityLabel,
+} from '@/pages/groupDetailsDialog.helpers';
 
 export type { GroupManagementPopoverAnchor } from '@/pages/groupManagementGeometry';
+export { filterGroupManagementMembers };
 
 export type GroupDetailsDialogProps = {
   isOpen: boolean;
@@ -73,125 +80,6 @@ export type GroupDetailsDialogProps = {
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
 };
-
-function isHumanMember(participant: ConversationParticipant) {
-  return participant.kind === 'human';
-}
-
-function isSelfMember(participant: ConversationParticipant) {
-  return participant.role === 'self' || (participant.kind === 'human' && participant.source === 'local');
-}
-
-function fallbackRoleAdminIds(members: ConversationParticipant[]) {
-  return members.filter((member) => member.role === 'admin').map((member) => member.id);
-}
-
-function groupAdminIds(space: ParticipantSpaceViewModel | null, members: ConversationParticipant[]) {
-  const activeSession = space?.sessions[0] ?? null;
-  if (space?.groupAdminIdentityIds?.length) {
-    return new Set(space.groupAdminIdentityIds.map((id) => id.trim()).filter(Boolean));
-  }
-  const metadataAdminIds = adminIdentityIdsFromMetadata(activeSession?.conversation.metadata);
-  const uniqueMetadataAdminIds = [...new Set(metadataAdminIds.map((id) => id.trim()).filter(Boolean))];
-  const creatorId = space?.groupCreatorIdentityId?.trim()
-    || activeSession?.conversation.canonicalCreatedByIdentityId?.trim()
-    || '';
-  if (uniqueMetadataAdminIds.length > 0) return new Set([creatorId, ...uniqueMetadataAdminIds].filter(Boolean));
-  const roleAdminIds = fallbackRoleAdminIds(members);
-  if (roleAdminIds.length > 0) return new Set([creatorId, ...roleAdminIds].filter(Boolean));
-  return new Set(creatorId ? [creatorId] : []);
-}
-
-function memberStableId(member: ConversationParticipant) {
-  return member.humanId?.trim()
-    || member.sourceIdentityId?.trim()
-    || member.id.trim();
-}
-
-function identityKeyVariants(value?: string | null) {
-  const key = value?.trim() ?? '';
-  if (!key) return [];
-  return key.startsWith('human:')
-    ? [key, key.slice('human:'.length)]
-    : [key, `human:${key}`];
-}
-
-function memberIdentityKeys(member: ConversationParticipant, currentAccountId?: string | null) {
-  return new Set([
-    ...identityKeyVariants(member.id),
-    ...identityKeyVariants(memberStableId(member)),
-    ...identityKeyVariants(member.humanId),
-    ...identityKeyVariants(member.sourceIdentityId),
-    ...(isSelfMember(member) ? identityKeyVariants(currentAccountId) : []),
-  ]);
-}
-
-function memberIsAdmin(member: ConversationParticipant, adminIds: Set<string>, currentAccountId?: string | null) {
-  const keys = memberIdentityKeys(member, currentAccountId);
-  return [...adminIds].some((adminId) => identityKeyVariants(adminId).some((key) => keys.has(key)));
-}
-
-function memberMatchesIdentity(member: ConversationParticipant, identityId?: string | null, currentAccountId?: string | null) {
-  const keys = memberIdentityKeys(member, currentAccountId);
-  return identityKeyVariants(identityId).some((key) => keys.has(key));
-}
-
-function contactStableId(contact: Contact) {
-  return contact.sourceHumanId?.trim()
-    || contact.sourceParticipantId?.trim()
-    || (contact.id.startsWith('cloud:') ? contact.id.slice('cloud:'.length).trim() : '')
-    || contact.id.trim();
-}
-
-function isOpaqueIdentityLabel(value: string) {
-  const normalized = value.trim().toLowerCase();
-  return normalized.startsWith('acct_')
-    || normalized.startsWith('human:acct_')
-    || normalized.startsWith('cloud:acct_');
-}
-
-function visibleIdentityLabel(value: string) {
-  const normalized = value.trim();
-  return normalized && !isOpaqueIdentityLabel(normalized) ? normalized : '';
-}
-
-function duplicateNameCounts(names: string[]) {
-  const counts = new Map<string, number>();
-  for (const name of names) {
-    const key = name.trim().toLowerCase();
-    if (!key) continue;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return counts;
-}
-
-function hasDuplicateName(name: string, counts: Map<string, number>) {
-  return (counts.get(name.trim().toLowerCase()) ?? 0) > 1;
-}
-
-function normalizedSearch(value: string) {
-  return value.trim().toLocaleLowerCase();
-}
-
-export function filterGroupManagementMembers(
-  members: ConversationParticipant[],
-  query: string,
-) {
-  const needle = normalizedSearch(query);
-  if (!needle) return members;
-  return members.filter((member) => [
-    member.name,
-    member.id,
-    member.humanId,
-    member.sourceIdentityId,
-  ].some((value) => value?.toLocaleLowerCase().includes(needle)));
-}
-
-function groupActionErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) return error.message.trim();
-  if (typeof error === 'string' && error.trim()) return error.trim();
-  return 'The group could not be updated. Try again.';
-}
 
 export function GroupDetailsDialog({
   isOpen,
@@ -956,6 +844,11 @@ export function GroupDetailsDialog({
                 </form>
               ) : null}
             </section>
+            <AiAccessPanel
+              sessionId={session?.canonicalSessionId ?? session?.conversation.canonicalSessionId ?? session?.id}
+              memberNames={aiAccessMemberNames(members)}
+              currentAccountId={currentAccountId}
+            />
           </div>
         </div>
       </div>

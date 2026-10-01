@@ -10,6 +10,8 @@ import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 import { ChatSenderProfileContext } from '@/pages/useChatSenderProfiles';
 import { conversationIsGroupChat } from '@/pages/chatsPage.model';
+import { aiAccessMemberNames } from '@/features/agentTrust/aiAccessCopy';
+import { AiAccessPanel } from '@/kordi-app/components/aiAccessPanel';
 
 type ActiveConversation = Conversation;
 
@@ -280,6 +282,10 @@ function ChatDetailPanelView({
             })}
           </div>
         </section>
+
+        {activeSessionId.startsWith('session:direct-person:') ? (
+          <AiAccessPanel sessionId={activeSessionId} mode="direct" memberNames={aiAccessMemberNames(activeConv.canonicalParticipants ?? [])} />
+        ) : null}
 
         {!activeConversationUsesCollaboration && activeSessionProject ? (
           <>

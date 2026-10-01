@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { ReplyDisclosure, ReplyDisclosureRequest } from '@/features/cloud/agentTrustTypes';
 import { agentTrustErrorStatus, defaultAgentTrustApi, type AgentTrustApi } from './agentTrustApi';
@@ -73,38 +73,39 @@ export function clearReplyDisclosureCache() {
   queues.clear();
 }
 
+const LOADING: ReplyDisclosureState = { status: 'loading', disclosure: null };
+const MISSING: ReplyDisclosureState = { status: 'missing', disclosure: null };
+
 /** The disclosure for one reply; `missing` when it cannot be looked up. */
 export function useReplyDisclosure(
   request: { sessionId: string; reply: ReplyDisclosureRequest } | null,
   api: AgentTrustApi = defaultAgentTrustApi(),
 ): ReplyDisclosureState & { retry: () => void } {
-  const [state, setState] = useState<ReplyDisclosureState>(
-    request ? { status: 'loading', disclosure: null } : { status: 'missing', disclosure: null },
-  );
   const [attempt, setAttempt] = useState(0);
-  const apiRef = useRef(api);
-  apiRef.current = api;
+  const [result, setResult] = useState<{ lookup: string; attempt: number; state: ReplyDisclosureState } | null>(null);
   const sessionId = request?.sessionId ?? null;
   const replyKey = request?.reply.key ?? null;
   const requestId = request?.reply.requestId ?? null;
   const ownerAccountId = request?.reply.ownerAccountId ?? null;
+  const lookup = sessionId && replyKey && requestId && ownerAccountId
+    ? [sessionId, replyKey, requestId, ownerAccountId].join('\u0000')
+    : null;
 
   useEffect(() => {
-    if (!sessionId || !replyKey || !requestId || !ownerAccountId) {
-      setState({ status: 'missing', disclosure: null });
-      return undefined;
-    }
+    if (!lookup || !sessionId || !replyKey || !requestId || !ownerAccountId) return undefined;
     let cancelled = false;
-    setState({ status: 'loading', disclosure: null });
-    loadReplyDisclosure(sessionId, { key: replyKey, requestId, ownerAccountId }, apiRef.current).then(
+    loadReplyDisclosure(sessionId, { key: replyKey, requestId, ownerAccountId }, api).then(
       (disclosure) => {
         if (cancelled) return;
-        setState(disclosure ? { status: 'ready', disclosure } : { status: 'missing', disclosure: null });
+        setResult({ lookup, attempt, state: disclosure ? { status: 'ready', disclosure } : MISSING });
       },
-      () => { if (!cancelled) setState({ status: 'error', disclosure: null }); },
+      () => { if (!cancelled) setResult({ lookup, attempt, state: { status: 'error', disclosure: null } }); },
     );
     return () => { cancelled = true; };
-  }, [attempt, ownerAccountId, replyKey, requestId, sessionId]);
+  }, [api, attempt, lookup, ownerAccountId, replyKey, requestId, sessionId]);
 
+  const state = !lookup
+    ? MISSING
+    : result?.lookup === lookup && result.attempt === attempt ? result.state : LOADING;
   return { ...state, retry: () => setAttempt((value) => value + 1) };
 }
