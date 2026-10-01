@@ -234,10 +234,11 @@ pub use redaction::{
     backfill_content_removal_history, reconcile_deleted_messages, reconcile_hidden_messages,
     request_was_deleted, HistoryBackfillReport, BACKFILL_WINDOW_DAYS,
 };
-// The removal worker and the media library queue jobs through these.
+// The removal worker and the media library queue and finish jobs through these.
 #[allow(unused_imports)]
 pub(crate) use redaction::{
-    enqueue_removal_job, message_identifiers, NewRemovalJob, RemovalReason,
+    cancel_queued_runs_for_deleted_request, conversation_session_ids, enqueue_removal_job,
+    message_identifiers, NewRemovalJob, RemovalReason,
 };
 mod service_members;
 mod support;

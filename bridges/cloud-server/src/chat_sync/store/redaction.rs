@@ -279,7 +279,7 @@ pub(super) fn normalize_identifiers(values: impl IntoIterator<Item = String>) ->
 }
 
 /// Both session ids a run or task may name for the conversation.
-pub(super) async fn conversation_session_ids(
+pub(crate) async fn conversation_session_ids(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: Uuid,
 ) -> Result<Vec<String>, StoreError> {
@@ -300,7 +300,7 @@ pub(super) async fn conversation_session_ids(
 /// Agent runs that have not started for a deleted request are cancelled with
 /// an empty prompt. Only `queued` rows match, so this never waits on a run in
 /// progress. Digest runs and sub-session runs are never touched.
-pub(super) async fn cancel_queued_runs_for_deleted_request(
+pub(crate) async fn cancel_queued_runs_for_deleted_request(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: Uuid,
     identifiers: &[String],
