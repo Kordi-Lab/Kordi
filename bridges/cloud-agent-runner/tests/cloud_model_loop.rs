@@ -7,7 +7,8 @@ use kordi_cloud_agent_runner::client::{
     ProviderAuthMaterial, RunnerClientError,
 };
 use kordi_cloud_agent_runner::model_loop::{
-    run_model_loop, tool_catalog, CloudModelProvider, ModelProviderResponse, ModelToolCall,
+    run_model_loop, run_model_loop_with_options, tool_catalog, CalendarApprovalWait,
+    CloudModelProvider, ModelLoopOptions, ModelProviderResponse, ModelToolCall,
     OpenAiProviderConfig,
 };
 use kordi_cloud_agent_runner::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
@@ -24,6 +25,9 @@ struct RecordingClient {
     exports: Arc<Mutex<Vec<ArtifactExportInput>>>,
     spawns: Mutex<Vec<Value>>,
     calendar: Option<Value>,
+    /// Calendar answers served in order before `calendar`.
+    calendar_pages: Mutex<Vec<Value>>,
+    calendar_reads: Mutex<usize>,
 }
 
 #[async_trait]
@@ -78,6 +82,11 @@ impl CloudAgentRunClient for RecordingClient {
     ) -> Result<Value, RunnerClientError> {
         assert_eq!(run_id, run().run_id);
         if tool == "read_calendar" {
+            *self.calendar_reads.lock().unwrap() += 1;
+            let mut pages = self.calendar_pages.lock().unwrap();
+            if !pages.is_empty() {
+                return Ok(pages.remove(0));
+            }
             return self
                 .calendar
                 .clone()

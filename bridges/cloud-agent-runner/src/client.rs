@@ -155,6 +155,19 @@ pub trait CloudAgentRunClient {
         run_id: &str,
         response_text: &str,
     ) -> Result<(), RunnerClientError>;
+
+    /// Completes a run and reports the model it called, which the server
+    /// shows in "About this reply". Clients that cannot report it complete
+    /// the run without it.
+    async fn complete_run_with_model(
+        &self,
+        run_id: &str,
+        response_text: &str,
+        _model: Option<&str>,
+    ) -> Result<(), RunnerClientError> {
+        self.complete_run(run_id, response_text).await
+    }
+
     async fn fail_run(
         &self,
         run_id: &str,
@@ -376,11 +389,26 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
         run_id: &str,
         response_text: &str,
     ) -> Result<(), RunnerClientError> {
+        self.complete_run_with_model(run_id, response_text, None)
+            .await
+    }
+
+    async fn complete_run_with_model(
+        &self,
+        run_id: &str,
+        response_text: &str,
+        model: Option<&str>,
+    ) -> Result<(), RunnerClientError> {
+        let mut body =
+            serde_json::json!({ "runnerId": self.runner_id, "responseText": response_text });
+        if let Some(model) = model {
+            body["model"] = serde_json::json!(model);
+        }
         let envelope: RunEnvelope = self
             .post_run_json(
                 run_id,
                 &format!("/v1/cloud/agent-runs/{run_id}/complete"),
-                serde_json::json!({ "runnerId": self.runner_id, "responseText": response_text }),
+                body,
             )
             .await?;
         let _ = envelope.run;

@@ -320,6 +320,8 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
+    // Reported with the reply, for "About this reply".
+    let model = crate::model_loop::effective_model(&auth_material, &run.runtime_route);
     let result = {
         let generation = run_model_loop(client, provider, &run, &sandbox, auth_material);
         tokio::pin!(generation);
@@ -349,7 +351,9 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
-    client.complete_run(&run.run_id, &response_text).await?;
+    client
+        .complete_run_with_model(&run.run_id, &response_text, model.as_deref())
+        .await?;
     Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
 }
 

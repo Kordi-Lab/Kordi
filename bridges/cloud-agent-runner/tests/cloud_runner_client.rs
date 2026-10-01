@@ -16,6 +16,7 @@ struct RecordedRequest {
     path: String,
     authorization: Option<String>,
     run_token: Option<String>,
+    body: Value,
 }
 
 fn run_json(run_id: &str) -> Value {
@@ -77,10 +78,12 @@ async fn handle(mut stream: TcpStream, recorded: Arc<Mutex<Vec<RecordedRequest>>
         }
         buffer.extend_from_slice(&chunk[..read]);
     }
+    let end = (header_end + 4 + content_length).min(buffer.len());
     recorded.lock().unwrap().push(RecordedRequest {
         path: path.clone(),
         authorization,
         run_token,
+        body: serde_json::from_slice(&buffer[header_end + 4..end]).unwrap_or(Value::Null),
     });
     let body = if path == "/v1/cloud/agent-runs/lease" {
         let mut run = run_json("car_a");
@@ -183,4 +186,34 @@ async fn an_execution_never_sends_another_executions_run_credential() {
     assert_eq!(requests[1].run_token, None);
     assert_eq!(requests[2].path, "/v1/cloud/agent-runs/car_other/running");
     assert_eq!(requests[2].run_token, None);
+}
+
+#[tokio::test]
+async fn completion_reports_the_model_used_only_when_known() {
+    let (base, recorded) = start_server().await;
+    let runner = HttpCloudAgentRunClient::new(
+        base,
+        "shared-runner-token".to_string(),
+        "runner-a".to_string(),
+    );
+    let execution = runner.for_execution();
+    execution.lease_next_run().await.unwrap().unwrap();
+    execution
+        .complete_run_with_model("car_a", "Done", Some("gpt-5.6-luna"))
+        .await
+        .unwrap();
+    execution.complete_run("car_a", "Done again").await.unwrap();
+
+    let requests = recorded.lock().unwrap().clone();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[1].path, "/v1/cloud/agent-runs/car_a/complete");
+    assert_eq!(
+        requests[1].run_token.as_deref(),
+        Some("run-token-for-car-a")
+    );
+    assert_eq!(requests[1].body["model"], "gpt-5.6-luna");
+    assert_eq!(requests[1].body["responseText"], "Done");
+    assert_eq!(requests[1].body["runnerId"], requests[2].body["runnerId"]);
+    assert!(requests[2].body.get("model").is_none());
+    assert_eq!(requests[2].body["responseText"], "Done again");
 }

@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
+mod calendar_wait;
 mod prompt;
 mod provider;
 
+pub use kordi_tools::calendar::CalendarApprovalWait;
 pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
 pub use provider::{
-    public_provider_client, OpenAiCompatibleProvider, OpenAiProviderConfig,
+    effective_model, public_provider_client, OpenAiCompatibleProvider, OpenAiProviderConfig,
     PRIVATE_PROVIDER_ENDPOINTS_ENV,
 };
 
@@ -52,12 +54,41 @@ pub trait CloudModelProvider {
     ) -> Result<ModelProviderResponse, ModelLoopError>;
 }
 
+/// Timing a model loop uses; tests shorten the calendar approval wait.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ModelLoopOptions {
+    pub calendar_wait: CalendarApprovalWait,
+}
+
 pub async fn run_model_loop<C, P>(
     client: &C,
     provider: &P,
     run: &CloudAgentRun,
     sandbox: &SandboxBackendHandle,
     auth_material: ProviderAuthMaterial,
+) -> Result<String, ModelLoopError>
+where
+    C: CloudAgentRunClient + Sync,
+    P: CloudModelProvider + Sync,
+{
+    run_model_loop_with_options(
+        client,
+        provider,
+        run,
+        sandbox,
+        auth_material,
+        ModelLoopOptions::default(),
+    )
+    .await
+}
+
+pub async fn run_model_loop_with_options<C, P>(
+    client: &C,
+    provider: &P,
+    run: &CloudAgentRun,
+    sandbox: &SandboxBackendHandle,
+    auth_material: ProviderAuthMaterial,
+    options: ModelLoopOptions,
 ) -> Result<String, ModelLoopError>
 where
     C: CloudAgentRunClient + Sync,
@@ -122,6 +153,9 @@ where
     }
     messages.push(json!({ "role": "user", "content": run.prompt }));
     let mut tool_calls_used = 0usize;
+    // Set once this run read the owner's calendar for sharing; from then on
+    // only conversation reads and the calendar itself may run.
+    let mut calendar_disclosed = false;
 
     for _ in 0..MAX_MODEL_CALLS {
         match provider.next_response(&auth, &messages, &tools).await? {
@@ -167,7 +201,16 @@ where
                             }
                         }]
                     }));
-                    let content = execute_model_tool(client, &executor, sandbox, run, &call).await;
+                    let content = execute_model_tool(
+                        client,
+                        &executor,
+                        sandbox,
+                        run,
+                        &call,
+                        options.calendar_wait,
+                        &mut calendar_disclosed,
+                    )
+                    .await;
                     messages.push(json!({
                         "role": "tool",
                         "tool_call_id": call.id,
@@ -188,7 +231,14 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     sandbox: &SandboxBackendHandle,
     run: &CloudAgentRun,
     call: &ModelToolCall,
+    calendar_wait: CalendarApprovalWait,
+    calendar_disclosed: &mut bool,
 ) -> Value {
+    if *calendar_disclosed
+        && !kordi_tools::calendar::CALENDAR_DISCLOSURE_TOOLS.contains(&call.name.as_str())
+    {
+        return kordi_tools::calendar::CALENDAR_EGRESS_CLOSED.into();
+    }
     if call.name == "task_operator" {
         if run.subsession_id.is_some() {
             return "Nested execution subsessions are not supported.".into();
@@ -230,13 +280,15 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
         {
             return format!("Calendar disclosure requires the owner's explicit request in this conversation. {}", kordi_tools::calendar::CALENDAR_UNAVAILABLE).into();
         }
-        return match client
-            .read_context(&run.run_id, &call.name, call.arguments.clone())
-            .await
-        {
-            Ok(value) => value.to_string().into(),
-            Err(_) => kordi_tools::calendar::CALENDAR_UNAVAILABLE.into(),
-        };
+        let outcome = calendar_wait::read_calendar(
+            client,
+            &run.run_id,
+            call.arguments.clone(),
+            calendar_wait,
+        )
+        .await;
+        *calendar_disclosed |= outcome.disclosed;
+        return outcome.content;
     }
     if matches!(call.name.as_str(), "search_sessions" | "read_session") {
         return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
