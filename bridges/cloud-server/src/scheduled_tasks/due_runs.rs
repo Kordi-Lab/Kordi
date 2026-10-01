@@ -44,12 +44,27 @@ async fn hold_due_task(
     Ok(still_due.map(|_| transaction))
 }
 
+type DueTaskRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    Value,
+    Value,
+    String,
+    Option<String>,
+);
+
+/// Starts every due task occurrence that no other scheduler holds. A task
+/// that fails to start is logged and left for the next sweep; it never stops
+/// the tasks after it, which may belong to other accounts.
 pub async fn claim_due_scheduled_task_runs(
     pool: &PgPool,
     now: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<ScheduledTaskRunResponse>, sqlx_core::Error> {
-    let rows = query_as::<_, (String, String, String, String, String, Value, Value, String, Option<String>)>(
+    let rows = query_as::<_, DueTaskRow>(
         "SELECT task_id, owner_account_id, created_by_account_id, target_runtime, prompt, tool_payload_json, schedule_json, next_run_at, next_run_at
            FROM scheduled_tool_tasks
           WHERE enabled = TRUE AND status = 'active' AND next_run_at IS NOT NULL AND next_run_at <= $1
@@ -62,7 +77,26 @@ pub async fn claim_due_scheduled_task_runs(
     .await?;
 
     let mut runs = Vec::new();
-    for (
+    for row in rows {
+        let task_id = row.0.clone();
+        match start_due_task(pool, row, now).await {
+            Ok(Some(run)) => runs.push(run),
+            Ok(None) => {}
+            Err(error) => eprintln!("[scheduled_tasks] start due task {task_id}: {error}"),
+        }
+    }
+    Ok(runs)
+}
+
+/// Records one due occurrence and moves the task to its next run time in the
+/// held transaction. On an error the hold is rolled back, so the occurrence
+/// is retried by a later sweep.
+async fn start_due_task(
+    pool: &PgPool,
+    row: DueTaskRow,
+    now: DateTime<Utc>,
+) -> Result<Option<ScheduledTaskRunResponse>, sqlx_core::Error> {
+    let (
         task_id,
         owner_account_id,
         created_by_account_id,
@@ -72,53 +106,50 @@ pub async fn claim_due_scheduled_task_runs(
         schedule_json,
         next_run_at,
         due_at_text,
-    ) in rows
-    {
-        let Some(mut held) = hold_due_task(pool, &task_id, &next_run_at).await? else {
-            continue;
-        };
-        let due_at = DateTime::parse_from_rfc3339(
-            due_at_text
-                .as_deref()
-                .ok_or_else(|| protocol_error("missing due_at"))?,
-        )
-        .map_err(|err| protocol_error(format!("invalid next_run_at: {err}")))?
-        .with_timezone(&Utc);
-        let mut run = create_run_for_task(
+    ) = row;
+    let Some(mut held) = hold_due_task(pool, &task_id, &next_run_at).await? else {
+        return Ok(None);
+    };
+    let due_at = DateTime::parse_from_rfc3339(
+        due_at_text
+            .as_deref()
+            .ok_or_else(|| protocol_error("missing due_at"))?,
+    )
+    .map_err(|err| protocol_error(format!("invalid next_run_at: {err}")))?
+    .with_timezone(&Utc);
+    let mut run = create_run_for_task(
+        pool,
+        &owner_account_id,
+        &task_id,
+        &target_runtime,
+        due_at,
+        now,
+    )
+    .await?;
+    if target_runtime == "cloud" {
+        enqueue_cloud_agent_fallback_run_for_scheduled_run(
             pool,
             &owner_account_id,
-            &task_id,
-            &target_runtime,
-            due_at,
+            &created_by_account_id,
+            &prompt,
+            &tool_payload_json,
+            &mut run,
             now,
         )
         .await?;
-        if target_runtime == "cloud" {
-            enqueue_cloud_agent_fallback_run_for_scheduled_run(
-                pool,
-                &owner_account_id,
-                &created_by_account_id,
-                &prompt,
-                &tool_payload_json,
-                &mut run,
-                now,
-            )
-            .await?;
-        }
-        let schedule = parse_schedule(schedule_json)?;
-        let next = next_run_after(&schedule, due_at)
-            .map_err(|err| protocol_error(err.to_string()))?
-            .map(ts);
-        query("UPDATE scheduled_tool_tasks SET next_run_at = $1, last_run_at = $2, last_run_status = $3, updated_at = $4 WHERE task_id = $5")
-            .bind(next)
-            .bind(next_run_at)
-            .bind(&run.status)
-            .bind(ts(now))
-            .bind(&task_id)
-            .execute(&mut *held)
-            .await?;
-        held.commit().await?;
-        runs.push(run);
     }
-    Ok(runs)
+    let schedule = parse_schedule(schedule_json)?;
+    let next = next_run_after(&schedule, due_at)
+        .map_err(|err| protocol_error(err.to_string()))?
+        .map(ts);
+    query("UPDATE scheduled_tool_tasks SET next_run_at = $1, last_run_at = $2, last_run_status = $3, updated_at = $4 WHERE task_id = $5")
+        .bind(next)
+        .bind(next_run_at)
+        .bind(&run.status)
+        .bind(ts(now))
+        .bind(&task_id)
+        .execute(&mut *held)
+        .await?;
+    held.commit().await?;
+    Ok(Some(run))
 }
