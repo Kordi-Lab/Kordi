@@ -84,6 +84,11 @@ pub(super) async fn list_devices(
     .into_response()
 }
 
+/// Updates the details the current device reports about itself. The
+/// platform can only be filled in while it is unset: desktop execution is
+/// limited to desktop platforms, so a session must not be able to relabel a
+/// phone as a Mac. Signing in again still records the platform the device
+/// registers with.
 pub(super) async fn update_current_device_metadata(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -98,7 +103,7 @@ pub(super) async fn update_current_device_metadata(
                OR device_name = 'cloud-email-password-device' THEN $1 \
              ELSE device_name \
            END, \
-           device_platform = COALESCE($2, device_platform), \
+           device_platform = COALESCE(device_platform, $2), \
            os_version = COALESCE($3, os_version), \
            app_version = COALESCE($4, app_version), \
            approximate_location = COALESCE($5, approximate_location) \
