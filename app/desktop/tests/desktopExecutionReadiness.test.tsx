@@ -115,7 +115,7 @@ test('execution waits for capability acknowledgement and ignores stale account r
     await view.render(<Probe accountId="acct_other" runtimeReady={false} />);
     assert.equal(ready, false);
     await waitFor(() => requests.length === 3);
-    assert.deepEqual(requests[2].input, { agentIds: [] });
+    assert.deepEqual(requests[2].input, { agentIds: [], contextContract: 2 });
     // Restoring the same capability list must obtain a fresh acknowledgement,
     // even while its withdrawal is still in flight.
     await view.render(<Probe accountId="acct_other" />);

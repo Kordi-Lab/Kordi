@@ -80,3 +80,24 @@ async fn history_uses_the_cloud_lease_without_a_local_canonical_session() {
         .await
         .contains("could not be loaded"));
 }
+
+#[test]
+fn member_reads_name_the_request_for_owner_runs_too() {
+    let identity = |requester: &str| kordi_core::types::RuntimeIdentity {
+        request_id: "request-1".into(),
+        agent_id: "cloud-agent:acct_owner".into(),
+        agent_name: "Scout".into(),
+        owner_account_id: "acct_owner".into(),
+        owner_name: "Owner".into(),
+        requester_account_id: requester.into(),
+        requester_name: "Requester".into(),
+        request_policy: None,
+    };
+    let own = member_authorization("session:group:g", Some(&identity("acct_owner")));
+    assert_eq!(own["sessionId"], "session:group:g");
+    assert_eq!(own["sourceRequestId"], "request-1");
+    let shared = member_authorization("session:group:g", Some(&identity("acct_member")));
+    assert_eq!(shared["sourceRequestId"], "request-1");
+    // The owner's private assistant reads without a request.
+    assert!(member_authorization("session:group:g", None)["sourceRequestId"].is_null());
+}

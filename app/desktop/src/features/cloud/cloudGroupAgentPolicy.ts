@@ -182,6 +182,20 @@ export function cloudGroupNativeContextMessages({
   ]);
 }
 
+/** Splits native context into conversation history and run instructions (the
+ * persona and the mention directory). A contract-2 lease replaces only the
+ * history with the server-built history, which applies AI access settings. */
+export function splitCloudAgentNativeContext(messages: readonly DesktopChatContextMessage[]): {
+  history: DesktopChatContextMessage[];
+  instructions: DesktopChatContextMessage[];
+} {
+  const isHistory = (message: DesktopChatContextMessage) => !message.contextRole || message.contextRole === 'history';
+  return {
+    history: messages.filter(isHistory),
+    instructions: messages.filter((message) => !isHistory(message)),
+  };
+}
+
 function cloudContextFingerprint(value: string): string {
   let hash = 2_166_136_261;
   for (let index = 0; index < value.length; index += 1) {
