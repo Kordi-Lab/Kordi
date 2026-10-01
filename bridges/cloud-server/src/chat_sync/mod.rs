@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub mod cursor;
 pub mod models;
 pub mod realtime;
+pub mod removal;
 pub mod retention;
 pub mod routes;
 pub mod store;

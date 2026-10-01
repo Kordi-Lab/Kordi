@@ -2,10 +2,18 @@
 mod attachment_actions;
 #[path = "chat_sync_e2e/content_removal.rs"]
 mod content_removal;
+#[path = "chat_sync_e2e/content_removal_digests.rs"]
+mod content_removal_digests;
+#[path = "chat_sync_e2e/content_removal_http.rs"]
+mod content_removal_http;
 #[path = "chat_sync_e2e/content_removal_jobs.rs"]
 mod content_removal_jobs;
+#[path = "chat_sync_e2e/content_removal_quotes.rs"]
+mod content_removal_quotes;
 #[path = "chat_sync_e2e/content_removal_runs.rs"]
 mod content_removal_runs;
+#[path = "chat_sync_e2e/content_removal_worker.rs"]
+mod content_removal_worker;
 #[path = "chat_sync_e2e/live_photos.rs"]
 mod live_photos;
 #[path = "chat_sync_e2e/thread_attention.rs"]

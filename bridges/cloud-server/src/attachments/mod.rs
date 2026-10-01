@@ -27,8 +27,8 @@ pub mod routes;
 use std::time::{Duration, SystemTime};
 
 use rusty_s3::actions::{
-    AbortMultipartUpload, CompleteMultipartUpload, CreateMultipartUpload, GetObject, HeadObject,
-    PutObject, S3Action, UploadPart,
+    AbortMultipartUpload, CompleteMultipartUpload, CreateMultipartUpload, DeleteObject, GetObject,
+    HeadObject, PutObject, S3Action, UploadPart,
 };
 use rusty_s3::{Bucket, Credentials, UrlStyle};
 use url::Url;
@@ -144,6 +144,64 @@ pub(crate) fn presign_attachment_download_url(
     Ok(action.sign(PRESIGNED_URL_TTL))
 }
 
+/// Sign a DELETE URL for `object_key` valid for [`PRESIGNED_URL_TTL`]. Used
+/// only by the server; never return it to a client or write it to a log.
+pub fn presign_delete_url(cfg: &S3Config, object_key: &str) -> Result<Url, PresignError> {
+    let bucket = cfg.bucket().map_err(PresignError::Bucket)?;
+    let creds = cfg.creds();
+    Ok(DeleteObject::new(&bucket, Some(&creds), object_key).sign(PRESIGNED_URL_TTL))
+}
+
+/// How long one object deletion may take before it counts as failed.
+const OBJECT_DELETE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// Deletes stored attachment bytes for the content removal worker.
+pub struct S3ObjectDeleter {
+    config: S3Config,
+    client: reqwest::Client,
+}
+
+impl S3ObjectDeleter {
+    pub fn new(config: S3Config) -> Self {
+        // Redirects are not followed, so a signed request never leaves the
+        // configured object store.
+        let client = reqwest::Client::builder()
+            .timeout(OBJECT_DELETE_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+        Self { config, client }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::chat_sync::removal::ObjectStoreDeleter for S3ObjectDeleter {
+    /// A 2xx or 404 response counts as deleted; 403 is reported separately
+    /// so an operator can tell missing permissions from other failures.
+    async fn delete_object(
+        &self,
+        object_key: &str,
+    ) -> Result<(), crate::chat_sync::removal::ObjectDeleteError> {
+        use crate::chat_sync::removal::ObjectDeleteError;
+        let url =
+            presign_delete_url(&self.config, object_key).map_err(|_| ObjectDeleteError::Failed)?;
+        let response = self
+            .client
+            .delete(url)
+            .send()
+            .await
+            .map_err(|_| ObjectDeleteError::Failed)?;
+        let status = response.status();
+        if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+            Ok(())
+        } else if status == reqwest::StatusCode::FORBIDDEN {
+            Err(ObjectDeleteError::Forbidden)
+        } else {
+            Err(ObjectDeleteError::Failed)
+        }
+    }
+}
+
 pub fn presign_head_url(cfg: &S3Config, object_key: &str) -> Result<Url, PresignError> {
     let bucket = cfg.bucket().map_err(PresignError::Bucket)?;
     let creds = cfg.creds();
@@ -216,6 +274,9 @@ pub fn url_expires_at(now: SystemTime) -> chrono::DateTime<chrono::Utc> {
     let target = now + PRESIGNED_URL_TTL;
     chrono::DateTime::<chrono::Utc>::from(target)
 }
+
+#[cfg(test)]
+mod deletion_tests;
 
 #[cfg(test)]
 mod tests {

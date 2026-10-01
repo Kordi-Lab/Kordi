@@ -228,6 +228,8 @@ mod message;
 mod subtyped_attachment_validation;
 pub use message::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 mod pin_snapshots;
+mod quote_redaction;
+pub(crate) use quote_redaction::scrub_quote_page;
 mod reaction;
 mod redaction;
 pub use redaction::{
