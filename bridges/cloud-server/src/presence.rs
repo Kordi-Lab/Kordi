@@ -262,9 +262,8 @@ pub async fn presence_observer_account_ids(
     let rows: Vec<(String,)> = query_as(
         "SELECT $1::TEXT AS account_id \
          UNION \
-         SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1 \
-         UNION \
-         SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1",
+         SELECT c.peer_account_id FROM cloud_contacts c \
+         WHERE c.account_id = $1 AND cloud_accounts_are_contacts($1, c.peer_account_id)",
     )
     .bind(account_id)
     .fetch_all(pool)
@@ -300,7 +299,8 @@ pub async fn contact_presence_summaries(
     let contact_ids: Vec<(String,)> = query_as(
         "SELECT $1::TEXT AS account_id \
          UNION \
-         SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1",
+         SELECT c.peer_account_id FROM cloud_contacts c \
+         WHERE c.account_id = $1 AND cloud_accounts_are_contacts($1, c.peer_account_id)",
     )
     .bind(account_id)
     .fetch_all(pool)

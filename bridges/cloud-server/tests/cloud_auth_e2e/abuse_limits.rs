@@ -198,7 +198,8 @@ async fn contact_adds_are_budgeted_per_account() {
 
     for _ in 0..100 {
         let response = router.clone().oneshot(add()).await.unwrap();
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        // The one-sided add now sends (or repeats) a contact request.
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
     }
     let limited = router.clone().oneshot(add()).await.unwrap();
     assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);

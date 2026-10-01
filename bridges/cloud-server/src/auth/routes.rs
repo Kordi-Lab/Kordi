@@ -58,8 +58,11 @@ use crate::avatars::{
 use crate::server::ServerState;
 
 mod app_invitation_handlers;
+mod block_handlers;
 mod contact_acceptance;
 mod contact_handlers;
+mod contact_relationship_handlers;
+mod contact_request_core;
 mod contact_request_handlers;
 mod device_handlers;
 mod device_operation_support;
@@ -80,8 +83,11 @@ mod support;
 mod types;
 
 use app_invitation_handlers::*;
+use block_handlers::*;
 use contact_acceptance::*;
 use contact_handlers::*;
+use contact_relationship_handlers::*;
+use contact_request_core::*;
 use contact_request_handlers::*;
 use device_handlers::*;
 use device_query_handlers::*;
@@ -101,6 +107,7 @@ use types::ErrorBody;
 
 pub use middleware::cloud_session_middleware;
 pub(crate) use session_forks::cloud_session_participants;
+pub(crate) use support::write_audit;
 pub use types::*;
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -194,6 +201,10 @@ pub fn routes_with_shared_rate_limiter(
         )
         .route("/v1/cloud/contacts", get(list_contacts).post(add_contact))
         .route(
+            "/v1/cloud/contacts/:peer_account_id",
+            delete(remove_contact),
+        )
+        .route(
             "/v1/cloud/contacts/requests",
             get(list_contact_requests).post(send_contact_request),
         )
@@ -204,6 +215,15 @@ pub fn routes_with_shared_rate_limiter(
         .route(
             "/v1/cloud/contacts/requests/:request_id/reject",
             post(reject_contact_request),
+        )
+        .route(
+            "/v1/cloud/contacts/requests/:request_id/withdraw",
+            post(withdraw_contact_request),
+        )
+        .route("/v1/cloud/blocks", get(list_blocks))
+        .route(
+            "/v1/cloud/blocks/:account_id",
+            put(block_account).delete(unblock_account),
         )
         .route(
             "/v1/cloud/presence/online",

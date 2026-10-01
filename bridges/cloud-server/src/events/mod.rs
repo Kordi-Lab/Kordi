@@ -149,8 +149,8 @@ impl EventBus {
     }
 
     /// Fire `kordi.events.contact.request.<event>.<recipient_account_id>`.
-    /// For `created`, the recipient is the one being asked. For
-    /// `accepted`/`rejected`, the recipient is the original requester
+    /// For `created` and `withdrawn`, the recipient is the one being asked.
+    /// For `accepted`/`rejected`, the recipient is the original requester
     /// (so their UI can flip "pending" → "accepted"/"rejected").
     pub async fn publish_contact_request_event(
         &self,
@@ -162,18 +162,9 @@ impl EventBus {
         if self.inner.is_none() {
             return;
         }
-        let recipient = match event_kind {
-            ContactRequestEventKind::Created => to_account_id,
-            ContactRequestEventKind::Accepted | ContactRequestEventKind::Rejected => {
-                from_account_id
-            }
-        };
+        let recipient = event_kind.recipient(from_account_id, to_account_id);
         let payload = ContactRequestEvent {
-            event_type: match event_kind {
-                ContactRequestEventKind::Created => "contact.request.created",
-                ContactRequestEventKind::Accepted => "contact.request.accepted",
-                ContactRequestEventKind::Rejected => "contact.request.rejected",
-            },
+            event_type: event_kind.event_type(),
             request_id,
             from_account_id,
             to_account_id,
@@ -186,14 +177,7 @@ impl EventBus {
                 return;
             }
         };
-        let subject = format!(
-            "kordi.events.contact.{}.{recipient}",
-            match event_kind {
-                ContactRequestEventKind::Created => "request.created",
-                ContactRequestEventKind::Accepted => "request.accepted",
-                ContactRequestEventKind::Rejected => "request.rejected",
-            }
-        );
+        let subject = format!("kordi.events.{}.{recipient}", event_kind.event_type());
         self.publish_raw(subject, body).await;
     }
 
@@ -307,6 +291,26 @@ pub enum ContactRequestEventKind {
     Created,
     Accepted,
     Rejected,
+    /// The sender withdrew a pending request; addressed to its recipient.
+    Withdrawn,
+}
+
+impl ContactRequestEventKind {
+    fn event_type(self) -> &'static str {
+        match self {
+            Self::Created => "contact.request.created",
+            Self::Accepted => "contact.request.accepted",
+            Self::Rejected => "contact.request.rejected",
+            Self::Withdrawn => "contact.request.withdrawn",
+        }
+    }
+
+    fn recipient<'a>(self, from_account_id: &'a str, to_account_id: &'a str) -> &'a str {
+        match self {
+            Self::Created | Self::Withdrawn => to_account_id,
+            Self::Accepted | Self::Rejected => from_account_id,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -353,4 +357,24 @@ struct PresenceAccountChanged<'a> {
     desktop_online: bool,
     desktop_last_seen_at: Option<&'a str>,
     occurred_at: String,
+}
+
+#[cfg(test)]
+mod contact_request_event_tests {
+    use super::ContactRequestEventKind;
+
+    #[test]
+    fn withdrawn_requests_reach_only_their_recipient() {
+        let kind = ContactRequestEventKind::Withdrawn;
+        assert_eq!(kind.event_type(), "contact.request.withdrawn");
+        assert_eq!(kind.recipient("acct_from", "acct_to"), "acct_to");
+        assert_eq!(
+            ContactRequestEventKind::Rejected.recipient("acct_from", "acct_to"),
+            "acct_from"
+        );
+        assert_eq!(
+            ContactRequestEventKind::Created.event_type(),
+            "contact.request.created"
+        );
+    }
 }
