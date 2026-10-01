@@ -9,8 +9,8 @@ export function canonicalMessageRole(
   identity?: CanonicalIdentity,
   profileHumanIdentityId?: string | null,
 ): Message['role'] {
-  const senderRole = message.senderRole;
-  if (message.messageKind === 'agent-model-change' || message.messageKind === AI_ACCESS_NOTICE_MESSAGE_KIND) return 'system';
+  const { senderRole, messageKind } = message;
+  if (messageKind === 'agent-model-change' || messageKind === AI_ACCESS_NOTICE_MESSAGE_KIND) return 'system';
   if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(senderRole)) {
     if (
       senderRole === 'external-agent'
