@@ -32,7 +32,8 @@ export function useAiFeatures(api: AgentTrustApi = defaultAgentTrustApi()) {
   return features;
 }
 
-/** Forgets cached AI features. Tests and sign-out use this. */
+/** Forgets cached AI features. Entries are per session token, so a new
+ * sign-in reads them again; tests use this to start clean. */
 export function clearAiFeaturesCache() {
   featuresByToken.clear();
 }

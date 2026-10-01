@@ -96,7 +96,7 @@ export function AiAccessPanel({ sessionId, mode = 'group', memberNames = new Map
         />
       ) : null}
       {isGroup ? <p className={`py-1 ${MUTED}`}>{AI_ACCESS_COPY.footer}</p> : null}
-      {ai.error ? <p role="alert" className="py-1 text-[11px] text-[color:var(--app-danger-text,#e5484d)]">{ai.error}</p> : null}
+      {ai.error ? <p role="alert" className="py-1 text-[11px] app-error-text text-rose-500">{ai.error}</p> : null}
       {confirmingRecent ? (
         <AgentTrustDialog
           title={AI_ACCESS_COPY.confirmTitle}

@@ -3,9 +3,9 @@ import { CornerDownLeft, MessagesSquare } from 'lucide-react';
 import { replyStatusText } from '@/features/chat/replyAttribution';
 import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import { quotedSenderLabel } from '@/lib/identityLabels';
+import { sourceSenderLabelWithAi } from '@/features/agentTrust/agentAuthorship';
 import { cn } from '@/lib/utils';
 import type { MessageReplySummary, MessageSourceReference } from '../types';
-import { sourceSenderLabelWithAi } from './forwardedFromHeader';
 import { useActiveLocalProfileIdentity } from './localProfileIdentity';
 import { MessageInlineContent } from './messageInlineContent';
 

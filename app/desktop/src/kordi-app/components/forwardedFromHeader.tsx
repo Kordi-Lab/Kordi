@@ -1,12 +1,6 @@
 import { Forward } from 'lucide-react';
 
-import { withAiLabel } from '@/features/agentTrust/agentAuthorship';
-
-/** Names a quoted or forwarded sender, marking messages an agent wrote. The
- * mark comes from the source message's kind, which the sender's app declares. */
-export function sourceSenderLabelWithAi(label: string, sourceMessageKind?: string | null) {
-  return withAiLabel(label, sourceMessageKind === 'agent-turn');
-}
+import { sourceSenderLabelWithAi } from '@/features/agentTrust/agentAuthorship';
 
 export function ForwardedFromHeader({ senderLabel, sourceMessageKind }: {
   senderLabel?: string | null;

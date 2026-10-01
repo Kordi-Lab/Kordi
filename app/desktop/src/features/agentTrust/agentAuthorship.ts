@@ -24,3 +24,9 @@ export function sourceMessageKindForMessage(
 export function withAiLabel(label: string, agentAuthored: boolean): string {
   return agentAuthored ? `${label} (AI)` : label;
 }
+
+/** Names a quoted or forwarded sender, marking messages an agent wrote. The
+ * mark comes from the source message's kind, which the sender's app declares. */
+export function sourceSenderLabelWithAi(label: string, sourceMessageKind?: string | null): string {
+  return withAiLabel(label, sourceMessageKind === 'agent-turn');
+}

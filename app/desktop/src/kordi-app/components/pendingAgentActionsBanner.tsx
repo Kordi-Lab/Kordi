@@ -86,7 +86,7 @@ export function PendingAgentActionsBanner({ sessionId, api, format }: {
           >
             {pending.error ? (
               <div className="mb-2 flex items-start gap-2">
-                <p role="alert" className="min-w-0 flex-1 text-[12px] text-[color:var(--app-danger-text,#e5484d)]">{pending.error}</p>
+                <p role="alert" className="min-w-0 flex-1 text-[12px] app-error-text text-rose-500">{pending.error}</p>
                 {pending.actions.length === 0 ? (
                   <button
                     type="button"
