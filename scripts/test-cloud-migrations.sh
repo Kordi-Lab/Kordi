@@ -47,6 +47,7 @@ tests=(
   title_tests::upgrade_from_75_preserves_shared_and_private_group_names
   title_tests::upgrade_from_89_repairs_only_proven_defaults_and_authenticated_titles
   email_verification_tests::upgrade_from_106_marks_only_provider_verified_primary_emails
+  consent_tests::upgrade_from_109_converts_one_way_contacts_only_with_peer_consent
 )
 index=0
 for test_name in "${tests[@]}"; do
