@@ -183,10 +183,11 @@ mod tests {
 
     #[test]
     fn embedded_versions_match_their_file_names() {
+        // Every quoted `.sql` literal in the table is a migration file name.
         let names = include_str!("embedded.rs")
-            .lines()
-            .filter_map(|line| line.split("migrations/").nth(1))
-            .filter_map(|rest| rest.split('_').next())
+            .split('"')
+            .filter(|token| token.ends_with(".sql"))
+            .filter_map(|file| file.split('_').next())
             .map(|number| number.parse::<i64>().unwrap())
             .collect::<Vec<_>>();
         let versions = EMBEDDED_MIGRATIONS

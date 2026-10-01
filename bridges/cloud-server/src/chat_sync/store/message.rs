@@ -8,6 +8,7 @@ use super::*;
 mod envelope_placement;
 mod fanout;
 mod group_identity;
+mod group_sender;
 mod mutations;
 mod server_refresh;
 mod voice;
@@ -17,7 +18,7 @@ use group_identity::{
     apply_group_control_title, load_existing_group_message, lock_group_message_fingerprint,
     normalize_group_envelope,
 };
-pub(super) use group_identity::{
+pub(super) use group_sender::{
     normalize_stored_group_agent_identity, verify_stored_custom_agent_senders,
 };
 pub use mutations::{delete_message, edit_message};

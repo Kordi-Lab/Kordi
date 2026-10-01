@@ -432,6 +432,8 @@ use object_store::*;
 
 #[path = "cloud_agent_runtime_e2e/artifacts.rs"]
 mod artifacts;
+#[path = "cloud_agent_runtime_e2e/attachment_uploads.rs"]
+mod attachment_uploads;
 #[path = "cloud_agent_runtime_e2e/attachments.rs"]
 mod attachments;
 #[path = "cloud_agent_runtime_e2e/avatar_assets.rs"]
