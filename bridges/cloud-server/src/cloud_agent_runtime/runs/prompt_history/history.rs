@@ -155,7 +155,7 @@ fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
     }
 }
 
-fn fallback_prompt_history_line(
+pub(super) fn fallback_prompt_history_line(
     requester_account_id: &str,
     owner_account_id: &str,
     message: &CloudFallbackHistoryMessage,

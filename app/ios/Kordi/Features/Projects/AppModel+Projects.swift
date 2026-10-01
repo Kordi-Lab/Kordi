@@ -4,7 +4,7 @@ extension AppModel {
     var projectConversations: [ConversationSummary] {
         guard let accountID = account?.accountId else { return conversations }
         let known = Set(conversations.map(\.sessionId)).union(archivedConversations.map(\.sessionId))
-        let missing = Set(projectDevices.flatMap { $0.projects.flatMap(\.sessions) }).subtracting(known)
+        let missing = projectDiscoverySessionIDs(Set(projectDevices.flatMap { $0.projects.flatMap(\.sessions) })).subtracting(known)
         return conversations + missing.sorted().map { id in
             ConversationSummary(id: "agent-session:\(id)", kind: .agent, peerAccountId: accountID,
                 agentId: account?.defaultAgent?.agentId ?? "cloud-agent:\(accountID)", ownerDisplayName: nil,

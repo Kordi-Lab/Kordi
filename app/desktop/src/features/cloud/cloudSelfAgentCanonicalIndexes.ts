@@ -5,6 +5,19 @@ import type { CloudSelfAgentRestoreMessage } from './cloudSelfAgentRestoreMessag
 
 const clean = (value?: string | null) => (value ?? '').trim();
 
+export function durableTerminalRequestIds(
+  messages: readonly CloudSelfAgentRestoreMessage[],
+  durableSourceEventIds?: ReadonlySet<string>,
+) {
+  return new Set(messages.flatMap((message) => (
+    durableSourceEventIds?.has(message.message.messageId)
+    && message.responseRequestId
+    && !['sending', 'queued', 'processing'].includes(message.responseDeliveryState ?? 'complete')
+      ? [message.responseRequestId]
+      : []
+  )));
+}
+
 export function cloudGroupReadCursorsBySessionId(
   canonicalState?: CanonicalSessionState | null,
 ): Record<string, CloudGroupReadCursor> {

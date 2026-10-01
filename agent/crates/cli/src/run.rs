@@ -139,6 +139,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         artifacts_dir: artifacts_dir.clone(),
         model: Some(model.clone()),
         execution_policy,
+        invocation_id: None,
         on_output: None,
         web_search: Some(kordi_tools::WebSearchRuntime {
             provider: provider.clone(),

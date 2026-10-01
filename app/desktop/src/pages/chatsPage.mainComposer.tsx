@@ -5,7 +5,6 @@ import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
-import { KordiCloudRuntimeCaption } from '@/pages/chatsPage.kordiCloudCaption';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
@@ -358,7 +357,6 @@ export function MainComposer({
             className="flex min-w-0 flex-wrap items-center gap-2 overflow-visible pr-1"
             data-composer-left-actions="true"
           >
-            {!editingMessage && useCompactRouteMenu ? <KordiCloudRuntimeCaption /> : null}
             {!editingMessage && useCompactRouteMenu ? (
               <CompactComposerModelMenu
                 scope="chat"
@@ -412,7 +410,6 @@ export function MainComposer({
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
                 <>
-                <KordiCloudRuntimeCaption />
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}

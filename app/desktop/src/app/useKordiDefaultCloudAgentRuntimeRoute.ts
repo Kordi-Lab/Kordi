@@ -61,13 +61,26 @@ export function resolveDefaultCloudAgentRuntimeRoute({
   // A Custom API model, or a provider this Mac has no account for, runs on its
   // hosted account and never falls back to another provider's model.
   const hostedOptions = authOptions.filter((option) => (
-    (option.providerId === selectedProviderId || option.providerId === normalizedSelectedProviderId)
+    (normalizeSelectedProviderId(option.providerId) ?? option.providerId) === normalizedSelectedProviderId
     && isHostedOnlyAccountChoice(option.value, registeredAccountChoices())
   ));
-  if (normalizedSelectedProviderId === 'custom' || (hostedOptions.length > 0 && !selectedProvider?.configured)) {
-    const account = hostedOptions.find((option) => option.active) ?? hostedOptions[0];
-    return account && chatModel.includes('/')
-      ? { model: chatModel, authProvider: account.providerId, authChoice: account.value, thinking: selectedThinking ?? null }
+  const activeHostedAccount = hostedOptions.find((option) => option.active);
+  if (normalizedSelectedProviderId === 'custom' || activeHostedAccount || (hostedOptions.length > 0 && !selectedProvider?.configured)) {
+    const modelProviderId = chatModel.split('/')[0];
+    const account = activeHostedAccount
+      ?? hostedOptions.find((option) => option.providerId === modelProviderId)
+      ?? hostedOptions[0];
+    if (!account || !chatModel.includes('/')) return null;
+    // The composer groups OpenAI and ChatGPT together, but the hosted worker
+    // requires the account's actual provider namespace and a model it serves.
+    const models = chatModelOptions.filter((option) => option.value.startsWith(`${account.providerId}/`));
+    const qualifiedModel = `${account.providerId}/${chatModel.slice(chatModel.indexOf('/') + 1)}`;
+    const preferredModel = preferredModelValueForProvider(account.providerId);
+    const model = models.find((option) => option.value === qualifiedModel)?.value
+      ?? models.find((option) => option.value === preferredModel)?.value
+      ?? models[0]?.value;
+    return model
+      ? { model, authProvider: account.providerId, authChoice: account.value, thinking: selectedThinking ?? null }
       : null;
   }
   const selectedModelIsAvailable = chatModelOptions.some((option) => option.value === chatModel);

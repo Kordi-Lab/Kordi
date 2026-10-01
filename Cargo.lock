@@ -3456,6 +3456,7 @@ dependencies = [
  "kordi-core",
  "kordi-hooks",
  "kordi-monitor",
+ "kordi-omp-runtime",
  "kordi-plugin-host",
  "kordi-provider",
  "kordi-session",
@@ -3487,6 +3488,7 @@ dependencies = [
  "chrono",
  "kordi-cli",
  "kordi-core",
+ "kordi-omp-runtime",
  "kordi-provider",
  "kordi-session",
  "kordi-tools",
@@ -3637,14 +3639,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "kordi-omp-runtime"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "libc",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "kordi-plugin-host"
 version = "0.0.18"
 dependencies = [
  "anyhow",
  "kordi-core",
  "kordi-hooks",
+ "libc",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",

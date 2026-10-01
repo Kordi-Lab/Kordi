@@ -2,6 +2,23 @@ import Testing
 @testable import Kordi
 
 struct ChatProjectTests {
+    @Test @MainActor func staleProjectCatalogDoesNotRestoreDeletedOrArchivedChats() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try #require(model.conversations.first { $0.kind == .agent && !$0.isAgentLaunchTemplate })
+        let emptySessionID = "empty-project-session"
+        model.projectDevices = [.init(id: "mac", name: "My Mac", online: true, projects: [
+            .init(id: "project", name: "App", sessions: [conversation.sessionId, emptySessionID]),
+        ])]
+        #expect(model.projectConversations.contains { $0.sessionId == emptySessionID })
+        #expect(await model.archiveConversation(conversation))
+        #expect(!model.projectConversations.contains { $0.sessionId == conversation.sessionId })
+        #expect(await model.restoreConversation(conversation))
+        #expect(model.projectConversations.contains { $0.sessionId == conversation.sessionId })
+        #expect(await model.deleteConversation(conversation))
+        #expect(!model.projectConversations.contains { $0.sessionId == conversation.sessionId })
+        #expect(model.projectConversations.contains { $0.sessionId == emptySessionID })
+    }
+
     @Test func validatesRepositoryInput() {
         #expect(ChatProjectRepositoryInput.normalize("https://github.com/example/app.git") == "example/app")
         #expect(ChatProjectRepositoryInput.normalize("git@github.com:example/app.git") == "example/app")

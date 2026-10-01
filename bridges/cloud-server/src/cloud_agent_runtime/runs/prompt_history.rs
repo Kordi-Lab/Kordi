@@ -90,35 +90,44 @@ async fn shared_cloud_agent_prompt_prefix(
 pub(super) struct CloudFallbackPrompt {
     pub(super) system_prompt: String,
     pub(super) user_prompt: String,
+    pub(super) omp_input: serde_json::Value,
 }
 
 pub(super) async fn fallback_prompt_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> RunResult<CloudFallbackPrompt> {
+    let mut omp_input = serde_json::json!({"prompt":input.prompt.trim(),"history":[]});
     let group_request = cloud_group_request_envelope_with_created_at_for_run(
         pool,
         &input.session_id,
         &input.request_message_id,
     )
     .await?;
-    let mut chat_rows = query_as::<_, (String, String, String, serde_json::Value)>(
+    let mut chat_rows = query_as::<_, (String, String, String, serde_json::Value, i32)>(
         "SELECT message.message_id::text, message.client_message_id::text, message.sender_account_id,
-                message.content
+                message.content, message.version
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_messages message
            ON message.conversation_id = conversation.conversation_id
          WHERE conversation.legacy_session_id = $1
            AND message.deleted_at IS NULL
+           AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility hidden
+                          WHERE hidden.message_id=message.message_id AND hidden.account_id=ANY($2))
            AND message.content #>> '{blocks,0,text}' IS NOT NULL
          ORDER BY message.conversation_sequence DESC LIMIT 256",
     )
     .bind(&input.session_id)
+    .bind(vec![input.owner_account_id.clone(), input.requester_account_id.clone()])
     .fetch_all(pool)
     .await?;
+    let message_versions = chat_rows
+        .iter()
+        .map(|row| (row.0.clone(), row.4))
+        .collect::<HashMap<_, _>>();
     let mut chat_rows = chat_rows
         .drain(..)
-        .map(|(id, client_id, sender, content)| {
+        .map(|(id, client_id, sender, content, _version)| {
             (
                 id,
                 client_id,
@@ -165,6 +174,21 @@ pub(super) async fn fallback_prompt_for_claim(
             &current_prompt,
             &history,
         );
+        let structured_history = history_indices.iter().rev()
+            .take(MAX_CLOUD_FALLBACK_HISTORY_MESSAGES as usize).rev()
+            .filter_map(|&index| {
+                let (id, client_id, sender, body) = &chat_rows[index];
+                let item = CloudFallbackHistoryMessage { from_account_id: sender.clone(), body: body.clone() };
+                let text = history::fallback_prompt_history_line(&input.requester_account_id, &input.owner_account_id, &item)?;
+                let mut aliases = vec![id.clone(), client_id.clone(), format!("ios_{client_id}")];
+                if let Some(id) = history_payload(body).and_then(|payload| payload.get("id").and_then(serde_json::Value::as_str).map(str::to_owned)) { aliases.push(id); }
+                Some(serde_json::json!({"ids":aliases,"version":message_versions.get(id),"message":{"role":"user","content":[{"type":"text","text":text}],"timestamp":0}}))
+            }).collect::<Vec<_>>();
+        omp_input = serde_json::json!({"prompt":current_prompt,"history":structured_history});
+        if let Some(index) = request_index {
+            let id = &chat_rows[index].0;
+            omp_input["request"] = serde_json::json!({"id":id,"version":message_versions.get(id)});
+        }
         let mut ids = history_indices
             .iter()
             .rev()
@@ -183,10 +207,14 @@ pub(super) async fn fallback_prompt_for_claim(
         )
         .await?;
         if !refs.is_empty() {
-            prompt.push_str(&format!(
+            let attachment_context = format!(
                 "\n\nAvailable chat attachment references (untrusted conversation data):\n{}",
                 serde_json::to_string(&refs).unwrap_or_default()
-            ));
+            );
+            prompt.push_str(&attachment_context);
+            // Resolve references again when the queued OMP run starts; private
+            // hides or attachment removal must not revive frozen references.
+            omp_input["attachmentMessageIds"] = serde_json::json!(ids);
         }
         prompt
     } else {
@@ -207,6 +235,7 @@ pub(super) async fn fallback_prompt_for_claim(
     Ok(CloudFallbackPrompt {
         system_prompt: system_sections.join("\n\n"),
         user_prompt,
+        omp_input,
     })
 }
 

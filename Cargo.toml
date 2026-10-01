@@ -16,6 +16,7 @@ members = [
     "bridges/cloud-server",
     "bridges/cloud-agent-runner",
     "shared/rust/protocol",
+    "shared/rust/omp-runtime",
 ]
 
 [workspace.package]
@@ -61,6 +62,7 @@ kordi-plugin-host = { version = "0.0.18", path = "agent/crates/plugin-host" }
 kordi-tui = { version = "0.0.18", path = "agent/crates/tui" }
 kordi-monitor = { version = "0.0.18", path = "agent/crates/kordi-monitor" }
 kordi-protocol = { version = "0.1.0", path = "shared/rust/protocol" }
+kordi-omp-runtime = { version = "0.1.0", path = "shared/rust/omp-runtime" }
 
 [profile.release]
 strip = "debuginfo"

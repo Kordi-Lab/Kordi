@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 
 import { useDesktopAuthUiState } from '@/features/auth/useDesktopAuthUiState';
+import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import {
   normalizeNavIdForCloud,
@@ -54,9 +55,10 @@ export function useKordiAuthNavigationState({
     visibleActiveSettingsSectionId,
   ]);
 
+  const hosted = useHostedAccountsSnapshot();
   const startupGateSatisfied = useMemo(
-    () => authStateSatisfiesStartupGate(desktopAuthState),
-    [desktopAuthState],
+    () => authStateSatisfiesStartupGate(desktopAuthState, hosted.accounts),
+    [desktopAuthState, hosted.accounts],
   );
   const openCloudAccountAuthentication = useCallback(() => {
     setCloudAccountDialogTab('auth');
@@ -67,7 +69,7 @@ export function useKordiAuthNavigationState({
     activeNav,
     activeSettingsSectionId: visibleActiveSettingsSectionId,
     desktopAuthState,
-    isDesktopAuthLoading,
+    isDesktopAuthLoading: isDesktopAuthLoading || (isNativeShell && !hosted.hasLoaded),
     startupGateSatisfied,
     setActiveNav,
     setActiveSettingsSectionId,

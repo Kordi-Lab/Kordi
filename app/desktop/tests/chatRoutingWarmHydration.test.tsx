@@ -25,6 +25,23 @@ test('warm group selection resolves its canonical page before collaboration hydr
   );
 });
 
+test('selected chat aliases hydrate their canonical session rather than showing only the catalog head', () => {
+  const sessionId = 'session:agent:history';
+  const alias = 'local-chat:history';
+  assert.equal(resolveCanonicalPageSessionId(
+    alias,
+    new Set([sessionId]),
+    [],
+    { id: alias, canonicalSessionId: sessionId },
+  ), sessionId);
+  assert.equal(resolveCanonicalPageSessionId(
+    alias,
+    new Set([sessionId]),
+    [],
+    { id: 'different-chat', canonicalSessionId: sessionId },
+  ), null, 'an unrelated selected conversation cannot redirect page hydration');
+});
+
 test('canonical history hydration never replaces cached rows with a placeholder', () => {
   const selected = {
     id: 'session:group:warm-history',

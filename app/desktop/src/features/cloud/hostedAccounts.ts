@@ -30,26 +30,26 @@ export function hostedAccountsFromSnapshots(snapshots: CloudProviderAuthSnapshot
 }
 
 /** Hosted accounts and the pinned OMP catalog that lists their providers' models. */
-export type HostedAccountsState = { accounts: HostedAccount[]; catalog: OmpCatalogEntry[] };
+export type HostedAccountsState = { accounts: HostedAccount[]; catalog: OmpCatalogEntry[]; hasLoaded: boolean };
 
 // One list for the app: the Authentication page publishes every load, and the
 // composer loads it once per Kordi session.
-const emptyState: HostedAccountsState = { accounts: [], catalog: [] };
+const emptyState: HostedAccountsState = { accounts: [], catalog: [], hasLoaded: false };
 let state: HostedAccountsState = emptyState;
 let generation = 0;
 const listeners = new Set<() => void>();
 
 function update(next: Partial<HostedAccountsState>) {
   const merged = { ...state, ...next };
-  if (merged.accounts === state.accounts && merged.catalog === state.catalog) return;
-  if (JSON.stringify(merged.accounts) === JSON.stringify(state.accounts) && merged.catalog === state.catalog) return;
+  if (merged.hasLoaded === state.hasLoaded && merged.catalog === state.catalog
+    && (merged.accounts === state.accounts || JSON.stringify(merged.accounts) === JSON.stringify(state.accounts))) return;
   state = merged;
   for (const listener of [...listeners]) listener();
 }
 
 function applySnapshots(snapshots: CloudProviderAuthSnapshot[]) {
   setHostedAccountChoices(snapshots.filter((snapshot) => !snapshot.revokedAt).map((snapshot) => snapshot.authChoice));
-  update({ accounts: hostedAccountsFromSnapshots(snapshots) });
+  update({ accounts: hostedAccountsFromSnapshots(snapshots), hasLoaded: true });
 }
 
 export function publishHostedProviderSnapshots(snapshots: CloudProviderAuthSnapshot[]) {
@@ -69,7 +69,9 @@ async function loadHostedAccounts() {
     ? await createCloudProviderAuthApi().listProviderAuthSnapshots(session.token, false).catch(() => null)
     : [];
   // A newer load or a publish from the Authentication page wins.
-  if (snapshots && started === generation) applySnapshots(snapshots);
+  if (started !== generation) return;
+  if (snapshots) applySnapshots(snapshots);
+  else update({ hasLoaded: true });
 }
 
 function subscribe(listener: () => void) {
@@ -77,9 +79,14 @@ function subscribe(listener: () => void) {
   return () => { listeners.delete(listener); };
 }
 
+/** Subscribe to account changes without starting another network load. */
+export function useHostedAccountsSnapshot(): HostedAccountsState {
+  return useSyncExternalStore(subscribe, () => state, () => emptyState);
+}
+
 /** Hosted accounts of the signed-in Kordi account; empty outside the desktop shell. */
 export function useHostedAccounts(enabled: boolean): HostedAccountsState {
-  const current = useSyncExternalStore(subscribe, () => state, () => emptyState);
+  const current = useHostedAccountsSnapshot();
   useEffect(() => {
     if (!enabled) return;
     void loadHostedAccounts();

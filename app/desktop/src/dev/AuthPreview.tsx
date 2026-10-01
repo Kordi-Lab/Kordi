@@ -235,8 +235,8 @@ export function AuthPreview({
               onDismissGate={() => setNotice(gateClosedNotice)}
               onEnterChat={(model, route) => setNotice((current) => [
                 current === gateClosedNotice ? current : '',
-                // A hosted-only account's chat carries its route and runs on Kordi Cloud.
-                `Chat would start with ${model ?? 'the default model'}${route ? ` on Kordi Cloud (${route.authProvider} account)` : ''}.`,
+                // A saved account's chat carries its account route.
+                `Chat would start with ${model ?? 'the default model'}${route ? ` using the ${route.authProvider} account` : ''}.`,
               ].filter(Boolean).join(' '))}
               onTestRoute={(input) => new Promise((resolve) => {
                 window.setTimeout(() => resolve({

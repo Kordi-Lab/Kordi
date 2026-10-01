@@ -61,7 +61,7 @@ export type PendingUserMessage = { text: string; time: string } | null;
 export type ComposerEnvironmentContext = {
   isNativeShell: boolean;
   hasAnyDesktopAuth: boolean;
-  hasLocalProviderAuth?: boolean;
+  hasConfiguredProviderAuth?: boolean;
 };
 
 export type ComposerConversationContext = {

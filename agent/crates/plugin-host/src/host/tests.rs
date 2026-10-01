@@ -139,6 +139,53 @@ async fn test_load_plugins_with_sample() {
 }
 
 #[tokio::test]
+async fn plugin_tool_receives_exact_invocation_context_and_streams_progress() {
+    if std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let dir = std::env::temp_dir().join(format!("kordi-plugin-context-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("plugin.js");
+    std::fs::write(
+        &path,
+        r#"module.exports = kordi => kordi.registerTool({
+      name: 'context_probe', description: 'Probe', parameters: { type: 'object' },
+      execute: async (callId, _args, ctx) => {
+        ctx.reportProgress('working');
+        return { content: [{ type: 'text', text: `${callId}|${ctx.cwd}` }] };
+      }
+    });"#,
+    )
+    .unwrap();
+    let mut host = PluginHost::load_plugins(&[path]).await.unwrap();
+    let chunks = std::sync::Mutex::new(Vec::new());
+    let result = host
+        .execute_tool_with_context(
+            "context_probe",
+            "call-from-model",
+            serde_json::json!({}),
+            &types::PluginContext {
+                cwd: Some(dir.display().to_string()),
+                ..Default::default()
+            },
+            Some(&|chunk| chunks.lock().unwrap().push(chunk.to_string())),
+        )
+        .await
+        .unwrap();
+    assert_eq!(chunks.into_inner().unwrap(), ["working"]);
+    assert_eq!(
+        result["content"][0]["text"],
+        format!("call-from-model|{}", dir.display())
+    );
+    host.kill().await;
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[tokio::test]
 async fn test_extension_ui_plumbing() {
     if std::process::Command::new("node")
         .arg("--version")
@@ -303,4 +350,43 @@ async fn test_execute_command_ignores_invalid_stdout_notifications() {
 
     host.kill().await;
     let _ = std::fs::remove_dir_all(&temp_dir);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn killing_plugin_host_stops_spawned_children() {
+    if std::process::Command::new("node")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let dir = tempfile::tempdir().expect("temporary plugin directory");
+    let plugin_path = dir.path().join("child.js");
+    let marker_path = dir.path().join("child-survived");
+    std::fs::write(&plugin_path, r#"
+        const { spawn } = require('node:child_process');
+        module.exports = kordi => kordi.registerCommand('spawn-child', {
+          description: 'Spawn delayed child',
+          handler: async args => {
+            spawn(process.execPath, ['-e',
+              'setTimeout(() => require("node:fs").writeFileSync(process.argv[1], "survived"), 700)',
+              args], { stdio: 'ignore' });
+            return { message: 'started' };
+          }
+        });
+    "#).expect("write plugin");
+    let mut host = PluginHost::load_plugins(&[plugin_path])
+        .await
+        .expect("plugin host");
+    host.execute_command("spawn-child", marker_path.to_str().unwrap())
+        .await
+        .expect("child started");
+    host.kill().await;
+    tokio::time::sleep(std::time::Duration::from_millis(900)).await;
+    assert!(
+        !marker_path.exists(),
+        "cancelled plugin subprocess continued after host termination"
+    );
 }

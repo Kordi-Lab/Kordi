@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::AtomicU64;
@@ -34,11 +36,15 @@ impl PluginHost {
             args.push(p.to_string_lossy().to_string());
         }
 
-        let mut child = Command::new("node")
+        let mut command = Command::new("node");
+        command
             .args(&args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::inherit());
+        #[cfg(unix)]
+        command.as_std_mut().process_group(0);
+        let mut child = command
             .spawn()
             .map_err(|e| PluginHostError::SpawnFailed(format!("node: {e}")))?;
 
@@ -133,12 +139,20 @@ impl PluginHost {
 
     /// Kill the plugin host process.
     pub async fn kill(&mut self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.child.id() {
+            let _ = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+        }
         let _ = self.child.kill().await;
     }
 }
 
 impl Drop for PluginHost {
     fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.child.id() {
+            let _ = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+        }
         let _ = self.child.start_kill();
     }
 }

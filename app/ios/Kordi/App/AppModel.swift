@@ -233,6 +233,10 @@ final class AppModel: ObservableObject {
         return (api, token, account.accountId)
     }
 
+    func projectDiscoverySessionIDs(_ sessionIDs: Set<String>) -> Set<String> {
+        sessionIDs.subtracting(hiddenCloudSessionIds).subtracting(deletedCloudSessionIds)
+    }
+
     func retainProjectConversation(_ conversation: ConversationSummary) {
         if !conversations.contains(where: { $0.sessionId == conversation.sessionId }) {
             conversations.append(conversation)
@@ -455,8 +459,8 @@ final class AppModel: ObservableObject {
             token = savedToken
             account = restoredAccount
             conversations = []
-        projectDevices = []
-        projectError = nil
+            projectDevices = []
+            projectError = nil
             if let snapshot = await wireCache.load(accountId: restoredAccount.accountId) {
                 if let visibility = snapshot.visibility {
                     applyCloudSessionVisibility(visibility)
