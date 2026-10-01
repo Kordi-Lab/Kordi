@@ -183,9 +183,16 @@ mod tests {
 
     #[test]
     fn embedded_versions_match_their_file_names() {
+        // Entries are either full struct literals or one-line
+        // `migration!(version, "description", "file.sql")` calls.
         let names = include_str!("embedded.rs")
             .lines()
-            .filter_map(|line| line.split("migrations/").nth(1))
+            .map(str::trim_start)
+            .filter_map(|line| match line.strip_prefix("migration!(") {
+                Some(call) => call.split('"').nth(3),
+                None => line.split("migrations/").nth(1),
+            })
+            .filter(|rest| rest.starts_with(|first: char| first.is_ascii_digit()))
             .filter_map(|rest| rest.split('_').next())
             .map(|number| number.parse::<i64>().unwrap())
             .collect::<Vec<_>>();

@@ -10,6 +10,19 @@ pub(super) struct EmbeddedMigration {
     pub(super) sql: &'static str,
 }
 
+/// One compact entry per embedded migration file.
+macro_rules! migration {
+    ($v:expr, $d:literal, $f:literal) => {
+        EmbeddedMigration {
+            version: $v,
+            description: $d,
+            sql: include_str!(concat!("../../../migrations/", $f)),
+        }
+    };
+}
+
+// Keep compact entries on one line each.
+#[rustfmt::skip]
 pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     EmbeddedMigration {
         version: 1,
@@ -453,51 +466,21 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "durable plan-card projection and immutable PiP context",
         sql: include_str!("../../../migrations/0099_plan_card_projection_and_pip_context.sql"),
     },
-    EmbeddedMigration {
-        version: 100,
-        description: "provider auth profile labels",
-        sql: include_str!("../../../migrations/0100_provider_auth_profile_labels.sql"),
-    },
-    EmbeddedMigration {
-        version: 101,
-        description: "provider auth model hint",
-        sql: include_str!("../../../migrations/0101_provider_auth_model_hint.sql"),
-    },
-    EmbeddedMigration {
-        version: 102,
-        description: "provider auth login sessions",
-        sql: include_str!("../../../migrations/0102_provider_auth_login_sessions.sql"),
-    },
-    EmbeddedMigration {
-        version: 103,
-        description: "provider auth login session method",
-        sql: include_str!("../../../migrations/0103_provider_auth_login_session_method.sql"),
-    },
-    EmbeddedMigration {
-        version: 104,
-        description: "provider auth payload version",
-        sql: include_str!("../../../migrations/0104_provider_auth_payload_version.sql"),
-    },
-    EmbeddedMigration {
-        version: 105,
-        description: "provider auth snapshot readiness",
-        sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
-    },
+    migration!(100, "provider auth profile labels", "0100_provider_auth_profile_labels.sql"),
+    migration!(101, "provider auth model hint", "0101_provider_auth_model_hint.sql"),
+    migration!(102, "provider auth login sessions", "0102_provider_auth_login_sessions.sql"),
+    migration!(103, "provider auth login session method", "0103_provider_auth_login_session_method.sql"),
+    migration!(104, "provider auth payload version", "0104_provider_auth_payload_version.sql"),
+    migration!(105, "provider auth snapshot readiness", "0105_provider_auth_snapshot_readiness.sql"),
     // Version 106 is left for changes in flight on other branches. The runner
     // refuses a recorded version whose description differs from this list.
-    EmbeddedMigration {
-        version: 107,
-        description: "account email verification",
-        sql: include_str!("../../../migrations/0107_account_email_verification.sql"),
-    },
-    EmbeddedMigration {
-        version: 108,
-        description: "session-bound realtime tickets",
-        sql: include_str!("../../../migrations/0108_realtime_ticket_sessions.sql"),
-    },
-    EmbeddedMigration {
-        version: 109,
-        description: "runner run token hash",
-        sql: include_str!("../../../migrations/0109_runner_run_token_hash.sql"),
-    },
+    migration!(107, "account email verification", "0107_account_email_verification.sql"),
+    migration!(108, "session-bound realtime tickets", "0108_realtime_ticket_sessions.sql"),
+    migration!(109, "runner run token hash", "0109_runner_run_token_hash.sql"),
+    // Versions 110 and 111 are reserved for changes in flight on other branches.
+    migration!(112, "agent trust: AI access, opt-outs, pending actions, run disclosure", "0112_agent_trust.sql"),
 ];
+
+#[cfg(test)]
+#[path = "embedded_tests.rs"]
+mod tests;
