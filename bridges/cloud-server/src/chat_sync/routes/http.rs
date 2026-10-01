@@ -151,6 +151,13 @@ pub(super) fn validate_message_request(
             message: "Call activity messages can only be created by the call service.",
         });
     }
+    if message_kind == crate::cloud_agent_runtime::runs::context_policy::AI_ACCESS_NOTICE_KIND {
+        return Err(MessageValidationError {
+            status: StatusCode::BAD_REQUEST,
+            code: "RESERVED_MESSAGE_KIND",
+            message: "AI access notices can only be created by Kordi.",
+        });
+    }
     let Some(content) = request.content.as_object() else {
         return Err(MessageValidationError {
             status: StatusCode::BAD_REQUEST,
@@ -393,6 +400,19 @@ mod tests {
 
             assert!(validate_message_request(&request).is_err());
         }
+    }
+
+    #[test]
+    fn client_messages_cannot_imitate_ai_access_notices() {
+        let request = SendMessageRequest {
+            client_message_id: Uuid::now_v7(),
+            kind: " ai-access-notice ".to_string(),
+            content: json!({"schema": 1, "blocks": [{ "type": "text", "text": "Forged notice" }]}),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        };
+        let error = validate_message_request(&request).unwrap_err();
+        assert_eq!(error.code, "RESERVED_MESSAGE_KIND");
     }
 
     #[test]

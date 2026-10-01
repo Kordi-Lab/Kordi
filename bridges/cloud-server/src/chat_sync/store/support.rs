@@ -154,7 +154,7 @@ pub(super) async fn load_conversation(
     .fetch_optional(&mut **transaction)
     .await?;
     let (personal_title, preferences_version) = preferences.ok_or(StoreError::Forbidden)?;
-    Ok(ConversationSnapshot {
+    let mut snapshot = [ConversationSnapshot {
         id: row.0,
         kind: parse_kind(&row.1)?,
         shared_title: row.2,
@@ -175,7 +175,10 @@ pub(super) async fn load_conversation(
             personal_title,
             version: preferences_version,
         },
-    })
+        ai_access: None,
+    }];
+    super::ai_access::attach_for_viewer(transaction, viewer_account_id, &mut snapshot).await?;
+    Ok(snapshot.into_iter().next().expect("one snapshot"))
 }
 
 pub(super) async fn load_active_conversation_projections(
@@ -210,7 +213,7 @@ pub(super) async fn load_active_conversation_projections(
     .await?;
     let members = member_rows(transaction, conversation_id).await?;
     let kind = parse_kind(&row.1)?;
-    Ok(preferences
+    let mut projections = preferences
         .into_iter()
         .map(|(account_id, personal_title, preferences_version)| {
             (
@@ -236,10 +239,13 @@ pub(super) async fn load_active_conversation_projections(
                         personal_title,
                         version: preferences_version,
                     },
+                    ai_access: None,
                 },
             )
         })
-        .collect())
+        .collect::<Vec<_>>();
+    super::ai_access::attach_projections(transaction, &mut projections).await?;
+    Ok(projections)
 }
 
 pub(super) async fn attachment_ids(

@@ -11,7 +11,7 @@ mod service;
 mod snapshots;
 
 pub use cipher::{EnvProviderAuthCipher, ProviderAuthCipher, ProviderAuthCipherError};
-pub(crate) use provider_family::equivalent_provider_ids;
+pub(crate) use provider_family::{equivalent_provider_ids, provider_display_label};
 pub use publish_request::{
     NormalizedProviderAuthSnapshotInput, PublishProviderAuthSnapshotRequest, MAX_PAYLOAD_BYTES,
 };

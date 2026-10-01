@@ -63,6 +63,44 @@ pub struct ConversationSnapshot {
     pub updated_at: DateTime<Utc>,
     pub members: Vec<MemberSnapshot>,
     pub preferences: ConversationPreferencesSnapshot,
+    /// What agents may use in this conversation, as the viewer sees it.
+    /// Absent for agent conversations and from servers without the setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai_access: Option<AiAccessSnapshot>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct AiAccessSnapshot {
+    /// `mentions` or `recent`. Direct conversations are always `recent`.
+    pub history_scope: String,
+    /// PiP's state in a group; `None` for other conversations.
+    pub pip: Option<PipAccessSnapshot>,
+    /// Active members who turned on "Don't let AI use my messages", sorted.
+    pub excluded_member_ids: Vec<String>,
+    pub viewer_excluded: bool,
+    pub viewer_can_manage: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PipAccessSnapshot {
+    pub available: bool,
+    /// The setting is on and PiP is an active member.
+    pub enabled: bool,
+    pub provider_label: Option<String>,
+}
+
+/// Exactly one AI access change. Unknown fields are refused so a client
+/// cannot believe a misspelled setting was applied.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateAiAccessRequest {
+    pub client_operation_id: Uuid,
+    #[serde(default)]
+    pub history_scope: Option<String>,
+    #[serde(default)]
+    pub pip_enabled: Option<bool>,
+    #[serde(default)]
+    pub exclude_my_messages: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]

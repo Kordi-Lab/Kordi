@@ -251,6 +251,18 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         .execute(&mut **transaction)
         .await?;
     }
+    if request.kind == ConversationKind::Group {
+        // New groups start mention-only, with PiP off until someone turns it on.
+        query(
+            "INSERT INTO cloud_chat_ai_policies (conversation_id, history_scope, pip_enabled, \
+             updated_by_account_id) VALUES ($1, 'mentions', false, $2) \
+             ON CONFLICT (conversation_id) DO NOTHING",
+        )
+        .bind(conversation_id)
+        .bind(account_id)
+        .execute(&mut **transaction)
+        .await?;
+    }
     let conversation = load_conversation(transaction, conversation_id, account_id).await?;
     for member in &members {
         let projection = if member == account_id {

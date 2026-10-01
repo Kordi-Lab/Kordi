@@ -1,7 +1,7 @@
 //! Server-managed members, such as PiP, belong to a conversation without being
 //! one of its people. Clients never list them, so member lists that clients
 //! send are compared, replaced, and counted as if they were not there, and a
-//! client can never remove one.
+//! client can never remove one; only the conversation's AI access setting can.
 
 use super::support::*;
 use super::*;
@@ -87,4 +87,62 @@ pub async fn join_service_member(
     }
     transaction.commit().await?;
     Ok(true)
+}
+
+/// Removes a server-managed member inside the caller's transaction and tells
+/// the remaining members' devices. Returns whether an active membership ended.
+pub async fn leave_service_member(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+    service_account_id: &str,
+) -> Result<bool, StoreError> {
+    let removed = query(
+        "UPDATE cloud_chat_conversation_members
+         SET membership_state = 'removed', left_at = now(), version = version + 1
+         WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active'",
+    )
+    .bind(conversation_id)
+    .bind(service_account_id)
+    .execute(&mut **transaction)
+    .await?
+    .rows_affected()
+        > 0;
+    if !removed {
+        return Ok(false);
+    }
+    query(
+        "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now()
+         WHERE conversation_id = $1",
+    )
+    .bind(conversation_id)
+    .execute(&mut **transaction)
+    .await?;
+    for (recipient, projection) in
+        load_active_conversation_projections(transaction, conversation_id).await?
+    {
+        insert_sync_event(
+            transaction,
+            &recipient,
+            "membership.updated",
+            Some(conversation_id),
+            Some(conversation_id),
+            Some(projection.version),
+            &json!({ "conversation": projection }),
+        )
+        .await?;
+    }
+    Ok(true)
+}
+
+/// `leave_service_member` in a transaction of its own.
+pub async fn leave_service_member_now(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    service_account_id: &str,
+) -> Result<bool, StoreError> {
+    let mut transaction = pool.begin().await?;
+    let removed =
+        leave_service_member(&mut transaction, conversation_id, service_account_id).await?;
+    transaction.commit().await?;
+    Ok(removed)
 }

@@ -28,6 +28,7 @@ const MAX_MESSAGE_CONTENT_BYTES: usize = 256 * 1024;
 const MAX_ATTACHMENTS_PER_MESSAGE: usize = 32;
 const MAX_IMAGE_PIXEL_DIMENSION: u64 = 100_000;
 
+mod ai_access;
 mod attachment_actions;
 mod group_envelope;
 mod http;
@@ -75,6 +76,7 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             get(history).post(send_message),
         )
         .merge(message_mutations::routes())
+        .merge(ai_access::routes())
         .merge(attachment_actions::routes())
         .route("/v2/chat/attention", get(thread_reads::attention))
         .route(
@@ -131,32 +133,18 @@ async fn create_conversation(
     )
     .await
     {
-        Ok(outcome) => {
+        // PiP joins a new group only when someone turns it on in AI access.
+        Ok(outcome) => (
             if outcome.inserted {
-                if let Some(pip) = state.pip() {
-                    if let Err(error) = crate::pip::membership::join_conversation(
-                        state.db_pool(),
-                        &pip.config().account_id,
-                        outcome.value.id,
-                    )
-                    .await
-                    {
-                        eprintln!("[pip] Could not join a new conversation: {error}");
-                    }
-                }
-            }
-            (
-                if outcome.inserted {
-                    StatusCode::CREATED
-                } else {
-                    StatusCode::OK
-                },
-                Json(ConversationResponse {
-                    conversation: outcome.value,
-                }),
-            )
-                .into_response()
-        }
+                StatusCode::CREATED
+            } else {
+                StatusCode::OK
+            },
+            Json(ConversationResponse {
+                conversation: outcome.value,
+            }),
+        )
+            .into_response(),
         Err(error) => store_error("create conversation", error),
     }
 }

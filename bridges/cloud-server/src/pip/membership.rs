@@ -1,5 +1,7 @@
-//! PiP is a standing member of every group conversation. Membership is not a
-//! setting: it is added at creation and backfilled at startup.
+//! PiP is a member of a group only while the group's AI access setting says so
+//! (`cloud_chat_ai_policies.pip_enabled`). Startup reconciles membership with
+//! the setting, which also repairs a rollback to a server that joined PiP to
+//! every group.
 
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
@@ -12,8 +14,9 @@ pub const PIP_CONVERSATION_KINDS: &[&str] = &["group"];
 
 /// Adds PiP to one conversation. Returns whether a new membership was created.
 /// Members' devices hear about it through `membership.updated`, and PiP starts
-/// reading at the conversation's newest message, so history from before PiP
-/// joined is never treated as new.
+/// reading at the conversation's newest message on every join, so neither
+/// history from before PiP joined nor messages from while it was off are ever
+/// read.
 pub async fn join_conversation(
     pool: &PgPool,
     pip_account_id: &str,
@@ -35,8 +38,8 @@ pub async fn join_conversation(
              FROM cloud_chat_conversations
              WHERE conversation_id = $1
              ON CONFLICT (conversation_id) DO UPDATE SET
-                 seen_sequence = GREATEST(cloud_pip_conversation_state.seen_sequence,
-                                          EXCLUDED.seen_sequence),
+                 seen_sequence = EXCLUDED.seen_sequence,
+                 context_start_sequence = EXCLUDED.context_start_sequence,
                  updated_at = now()",
         )
         .bind(conversation_id)
@@ -46,27 +49,74 @@ pub async fn join_conversation(
     Ok(inserted)
 }
 
-/// Backfills PiP into every existing conversation of a supported kind.
-pub async fn join_all_groups(pool: &PgPool, pip_account_id: &str) -> Result<u64, sqlx_core::Error> {
-    let missing: Vec<(Uuid,)> = query_as(
-        "SELECT conversation.conversation_id
+/// What startup reconciliation changed.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Reconciled {
+    /// Groups without a setting row, now recorded as they were.
+    pub grandfathered: u64,
+    pub joined: u64,
+    pub left: u64,
+}
+
+/// Makes PiP's group memberships match each group's setting:
+/// 1. groups with no setting row (created by an older server during a
+///    rollout) keep PiP exactly as they have it now;
+/// 2. PiP leaves groups where the setting is off;
+/// 3. PiP joins groups where the setting is on.
+pub async fn reconcile_groups(
+    pool: &PgPool,
+    pip_account_id: &str,
+) -> Result<Reconciled, sqlx_core::Error> {
+    let grandfathered = query(
+        "INSERT INTO cloud_chat_ai_policies (conversation_id, history_scope, pip_enabled)
+         SELECT conversation.conversation_id, 'mentions', EXISTS (
+             SELECT 1 FROM cloud_chat_conversation_members member
+             WHERE member.conversation_id = conversation.conversation_id
+               AND member.account_id = $1 AND member.membership_state = 'active')
          FROM cloud_chat_conversations conversation
          WHERE conversation.kind = ANY($2)
-           AND NOT EXISTS (
+         ON CONFLICT (conversation_id) DO NOTHING",
+    )
+    .bind(pip_account_id)
+    .bind(PIP_CONVERSATION_KINDS)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    let mismatched: Vec<(Uuid, bool)> = query_as(
+        "SELECT policy.conversation_id, policy.pip_enabled
+         FROM cloud_chat_ai_policies policy
+         JOIN cloud_chat_conversations conversation
+           ON conversation.conversation_id = policy.conversation_id
+         WHERE conversation.kind = ANY($2)
+           AND policy.pip_enabled <> EXISTS (
                SELECT 1 FROM cloud_chat_conversation_members member
-               WHERE member.conversation_id = conversation.conversation_id
-                 AND member.account_id = $1
-                 AND member.membership_state = 'active')",
+               WHERE member.conversation_id = policy.conversation_id
+                 AND member.account_id = $1 AND member.membership_state = 'active')
+         ORDER BY policy.conversation_id",
     )
     .bind(pip_account_id)
     .bind(PIP_CONVERSATION_KINDS)
     .fetch_all(pool)
     .await?;
-    let mut joined = 0;
-    for (conversation_id,) in missing {
-        if join_conversation(pool, pip_account_id, conversation_id).await? {
-            joined += 1;
+    let mut reconciled = Reconciled {
+        grandfathered,
+        ..Reconciled::default()
+    };
+    for (conversation_id, enabled) in mismatched {
+        if enabled {
+            if join_conversation(pool, pip_account_id, conversation_id).await? {
+                reconciled.joined += 1;
+            }
+        } else if crate::chat_sync::store::leave_service_member_now(
+            pool,
+            conversation_id,
+            pip_account_id,
+        )
+        .await
+        .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?
+        {
+            reconciled.left += 1;
         }
     }
-    Ok(joined)
+    Ok(reconciled)
 }
