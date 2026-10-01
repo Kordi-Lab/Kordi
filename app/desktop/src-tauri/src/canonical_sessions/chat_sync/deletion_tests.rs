@@ -111,3 +111,104 @@ fn stale_deleted_send_acknowledgement_clears_the_outbox_without_restoring_the_me
         .unwrap();
     assert_eq!(pending, 0);
 }
+
+#[test]
+fn content_free_removal_events_delete_and_superseded_events_are_ignored() {
+    let conversation = json!({"id": "conversation-1"});
+    for (event_type, payload) in [
+        (
+            "message.deleted",
+            json!({"message_id": "removed", "conversation": conversation}),
+        ),
+        ("message.hidden", json!({"message_id": "removed"})),
+        ("message.hidden", json!({})),
+    ] {
+        let mut conn = test_support::test_connection();
+        apply_on_connection(
+            &mut conn,
+            batch(
+                "acct_test",
+                vec![message("removed", 1), message("kept", 2)],
+                vec![],
+            ),
+        )
+        .unwrap();
+        apply_on_connection(
+            &mut conn,
+            batch(
+                "acct_test",
+                vec![],
+                vec![
+                    json!({"protocol_version": 2, "type": "message.superseded", "critical": false,
+                "stream_seq": 1, "entity_id": "kept", "payload": {"message_id": "kept"}}),
+                    json!({"protocol_version": 2, "type": event_type, "critical": true,
+                "stream_seq": 2, "entity_id": "removed", "payload": payload}),
+                ],
+            ),
+        )
+        .unwrap();
+        let ids = load_state(&conn, "acct_test")
+            .unwrap()
+            .messages
+            .iter()
+            .map(|message| message["id"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(ids, ["kept"], "{event_type}");
+        assert_eq!(
+            deletions::load_deleted_message_ids(&conn, "acct_test").unwrap(),
+            ["removed"],
+            "a superseded event must not remove its message"
+        );
+    }
+}
+
+#[test]
+fn removal_evicts_only_attachments_that_no_remaining_message_uses() {
+    let mut conn = test_support::test_connection();
+    let mut removed = message("removed", 1);
+    removed["attachment_ids"] = json!(["shared", "photo", "motion", "playback"]);
+    removed["content"] = json!({"legacy_attachments": [
+        {"attachmentId": "photo", "kind": "image", "livePhoto": {
+            "video": {"attachmentId": "motion"}, "playback": {"attachmentId": "playback"}}},
+        {"attachmentId": "legacy-only", "kind": "file"},
+    ]});
+    let mut neighbor = message("neighbor", 2);
+    neighbor["attachment_ids"] = json!(["shared"]);
+    apply_on_connection(
+        &mut conn,
+        batch("acct_test", vec![removed, neighbor], vec![]),
+    )
+    .unwrap();
+
+    let mut evicted = Vec::new();
+    let tx = conn.transaction().unwrap();
+    deletions::mark_message_deleted_with(&tx, "acct_test", "removed", |ids| {
+        evicted.extend_from_slice(ids);
+    })
+    .unwrap();
+    tx.commit().unwrap();
+
+    assert_eq!(evicted, ["legacy-only", "motion", "photo", "playback"]);
+    let tx = conn.transaction().unwrap();
+    let mut called = false;
+    deletions::mark_message_deleted_with(&tx, "acct_test", "never-downloaded", |_| called = true)
+        .unwrap();
+    assert!(
+        !called,
+        "a message without a stored snapshot has nothing to evict"
+    );
+}
+
+#[test]
+fn snapshot_attachment_ids_ignore_malformed_values() {
+    let ids = deletions::snapshot_attachment_ids(&json!({
+        "attachment_ids": ["a", " ", 7, null],
+        "content": {"legacy_attachments": [
+            {"attachmentId": " b "},
+            {"livePhoto": {"video": {"attachmentId": "c"}, "playback": "not-an-object"}},
+            "not-an-object",
+        ]},
+    }));
+    assert_eq!(ids.into_iter().collect::<Vec<_>>(), ["a", "b", "c"]);
+    assert!(deletions::snapshot_attachment_ids(&json!({"content": "text"})).is_empty());
+}

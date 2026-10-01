@@ -17,6 +17,7 @@ pub(crate) mod save_as;
 pub(crate) mod stream;
 
 use cloud_cache::download as download_cloud_attachment;
+use cloud_cache::evict as evict_cloud_attachments;
 use cloud_cache::write as write_cloud_attachment_cache;
 use cloud_cache::{cached as cached_cloud_attachment, copy as copy_cloud_attachment_cache};
 
@@ -240,6 +241,35 @@ pub async fn desktop_chat_cached_cloud_attachment_path(
 ) -> Result<Option<String>, String> {
     cached_cloud_attachment(&attachment_id, &name)
         .map(|path| path.map(|value| value.display().to_string()))
+}
+
+/// Best effort: removes cached copies of cloud attachments after their message
+/// is deleted or hidden. It acts only while `account_id` owns the active
+/// account storage, because the cache directory belongs to that account.
+pub(crate) fn evict_cloud_attachment_cache(account_id: &str, attachment_ids: &[String]) -> usize {
+    let active_account_id = crate::cloud_account_paths::cloud_account_storage_current()
+        .ok()
+        .flatten()
+        .map(|activation| activation.account_id);
+    evict_cloud_attachment_cache_for(active_account_id.as_deref(), account_id, attachment_ids)
+}
+
+fn evict_cloud_attachment_cache_for(
+    active_account_id: Option<&str>,
+    account_id: &str,
+    attachment_ids: &[String],
+) -> usize {
+    let account_id = account_id.trim();
+    if attachment_ids.is_empty() || account_id.is_empty() || active_account_id != Some(account_id) {
+        return 0;
+    }
+    match evict_cloud_attachments(attachment_ids) {
+        Ok(removed) => removed,
+        Err(error) => {
+            eprintln!("[kordi] Unable to remove cached attachment copies: {error}");
+            0
+        }
+    }
 }
 
 #[tauri::command]
