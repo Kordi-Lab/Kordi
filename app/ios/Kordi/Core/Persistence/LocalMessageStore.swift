@@ -291,16 +291,48 @@ final class LocalMessageStore {
     private var messageFingerprints: [String: [String: Int]] = [:]
     private var messageHasEarlier: [String: [String: Bool]] = [:]
 
-    init(inMemory: Bool = false) throws {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
-        container = try ModelContainer(
+    /// Opens the on-disk cache in `Application Support/Kordi/MessageStore`,
+    /// relocating it from SwiftData's default location first. Tests inject
+    /// `applicationSupportDirectory`; the legacy store is then
+    /// `<directory>/default.store`.
+    init(
+        inMemory: Bool = false,
+        applicationSupportDirectory: URL? = nil,
+        fileManager: FileManager = .default,
+        protection: any LocalDataProtecting = SystemLocalDataProtection()
+    ) throws {
+        if inMemory {
+            container = try LocalMessageStore.makeContainer(ModelConfiguration(isStoredInMemoryOnly: true))
+        } else {
+            let legacy = applicationSupportDirectory?.appendingPathComponent("default.store")
+                ?? ModelConfiguration(isStoredInMemoryOnly: false).url
+            let openStore = { (url: URL) in
+                try LocalMessageStore.makeContainer(ModelConfiguration(url: url, cloudKitDatabase: .none))
+            }
+            if let applicationSupport = applicationSupportDirectory
+                ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+                container = try MessageStoreLocation.open(
+                    legacy: legacy,
+                    applicationSupport: applicationSupport,
+                    fileManager: fileManager,
+                    protection: protection,
+                    using: openStore
+                )
+            } else {
+                container = try openStore(legacy)
+            }
+        }
+        context.autosaveEnabled = false
+        purgeLegacyRecords()
+    }
+
+    nonisolated private static func makeContainer(_ configuration: ModelConfiguration) throws -> ModelContainer {
+        try ModelContainer(
             for: CachedConversationRecord.self,
             CachedMessageRecord.self,
             CachedMessagePageRecord.self,
             configurations: configuration
         )
-        context.autosaveEnabled = false
-        purgeLegacyRecords()
     }
 
     func loadConversations(accountId: String) -> [ConversationSummary] {
