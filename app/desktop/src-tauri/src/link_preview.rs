@@ -235,25 +235,19 @@ fn link_preview_metadata(html: &str, base_url: &Url) -> DesktopLinkPreviewMetada
     }
 }
 
+/// Fetches page metadata for a link preview card.
+///
+/// Previews use the avatar image path: public HTTPS only, pinned DNS unless a
+/// configured proxy handles the connection, and validation on every redirect.
+/// When a system or environment HTTP(S) proxy is configured, the proxy
+/// resolves the destination and is trusted to apply its own destination
+/// policy; the local check that resolved addresses are public still runs.
+/// `image_data_url` is always `None`; artwork loads through the same proxy.
 #[tauri::command]
 pub async fn desktop_fetch_link_preview_metadata(
     url: String,
 ) -> Result<DesktopLinkPreviewMetadata, String> {
     let url = validated_remote_image_url(&url)?;
-    #[cfg(target_os = "macos")]
-    {
-        // Match iOS metadata and artwork through Apple's Link Presentation.
-        // Validate the initial DNS destination before handing it to the OS.
-        tokio::time::timeout(
-            LINK_PREVIEW_TIMEOUT,
-            crate::remote_image::resolve_public_remote_image_addrs(&url),
-        )
-        .await
-        .map_err(|_| "Link preview host lookup timed out.".to_string())??;
-        if let Ok(metadata) = macos::fetch(url.as_str()).await {
-            return Ok(metadata);
-        }
-    }
     tokio::time::timeout(LINK_PREVIEW_TIMEOUT, async move {
         let response = request_public_remote_image(url).await?;
         if response
@@ -288,46 +282,6 @@ pub async fn desktop_fetch_link_preview_metadata(
     })
     .await
     .map_err(|_| "Link preview request timed out.".to_string())?
-}
-
-#[cfg(target_os = "macos")]
-mod macos {
-    use super::DesktopLinkPreviewMetadata;
-    use std::ffi::{c_char, CStr, CString};
-
-    static REQUESTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
-
-    pub(super) async fn fetch(url: &str) -> Result<DesktopLinkPreviewMetadata, String> {
-        let permit = REQUESTS
-            .acquire()
-            .await
-            .map_err(|_| "Link preview is unavailable.")?;
-        let input = CString::new(url).map_err(|_| "Invalid link preview URL.")?;
-        tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            unsafe extern "C" {
-                fn kordi_fetch_link_preview(input: *const c_char) -> *mut c_char;
-                fn kordi_free_link_preview_result(result: *mut c_char);
-            }
-            // Swift copies the input before returning, and returns an owned C
-            // string. Copy it before freeing through the matching allocator.
-            let result = unsafe { kordi_fetch_link_preview(input.as_ptr()) };
-            if result.is_null() {
-                return Err("Native link preview is unavailable.".to_string());
-            }
-            let parsed = serde_json::from_slice::<DesktopLinkPreviewMetadata>(
-                unsafe { CStr::from_ptr(result) }.to_bytes(),
-            );
-            unsafe { kordi_free_link_preview_result(result) };
-            let metadata = parsed.map_err(|_| "Invalid native link preview.".to_string())?;
-            if metadata.title.is_none() && metadata.image_data_url.is_none() {
-                return Err("Native link preview is empty.".to_string());
-            }
-            Ok(metadata)
-        })
-        .await
-        .map_err(|_| "Native link preview failed.".to_string())?
-    }
 }
 
 #[cfg(test)]
@@ -368,6 +322,27 @@ mod tests {
 
         assert_eq!(metadata.title.as_deref(), Some("A useful page"));
         assert_eq!(metadata.image_url, None);
+    }
+
+    #[tokio::test]
+    async fn rejects_non_public_preview_targets_before_network() {
+        for url in [
+            "https://127.0.0.1/",
+            "https://localhost/",
+            "https://localhost./",
+            "https://[::1]/",
+            "http://example.com/",
+            "https://user:pw@example.com/",
+        ] {
+            // The command must fail with the URL validator's own error, which
+            // proves no host lookup or request ran for this target.
+            let validation_error =
+                validated_remote_image_url(url).expect_err("validator rejects the target");
+            let command_error = desktop_fetch_link_preview_metadata(url.to_string())
+                .await
+                .expect_err("command rejects the target");
+            assert_eq!(command_error, validation_error, "{url}");
+        }
     }
 
     #[test]
