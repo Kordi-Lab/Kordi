@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { useCompanionPanelPresence } from './useCompanionPanelPresence';
+import { focusCompanionToggleFromPanel, useCompanionPanelPresence } from './useCompanionPanelPresence';
 import type {
   DragEvent,
   PointerEvent as ReactPointerEvent,
@@ -142,7 +142,10 @@ export function useChatCompanionLayout({
       : `minmax(${isVisible ? 280 : 0}px, ${isVisible ? splitLeftFraction / (1 - splitLeftFraction) : 0}fr) ${isVisible ? 10 : 0}px minmax(280px, 1fr)`,
     panelWidth: `clamp(280px, calc((100cqw - 10px) * ${side === 'right' ? 1 - splitLeftFraction : splitLeftFraction}), calc(100cqw - 290px))`,
     setFolded: (value: boolean) => {
-      if (value) onHide?.();
+      if (value) {
+        focusCompanionToggleFromPanel();
+        onHide?.();
+      }
       setFoldedState({ pageConversationId, value });
     },
     placeCompanion,

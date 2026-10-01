@@ -394,6 +394,12 @@ export function useChatCompanionSession({
       ),
     },
     actions: {
+      openExisting: () => {
+        const existing = suggested ?? sessionOptions.find((option) => option.selectable)?.conversation;
+        if (!existing) return false;
+        activate(existing.id);
+        return true;
+      },
       cancelCreation,
       create,
       open,

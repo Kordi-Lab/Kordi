@@ -127,6 +127,7 @@ async fn lease_run(
                     AND lease_expires_at IS NOT NULL \
                     AND lease_expires_at::timestamptz <= $3::timestamptz \
                 )) \
+             AND NOT EXISTS(SELECT 1 FROM cloud_project_devices p, jsonb_array_elements(p.projects) project WHERE p.account_id=candidate.owner_account_id AND (project->'sessions') ? candidate.session_id) \
              AND NOT candidate.legacy_duplicate \
              AND ($4::text IS NULL OR candidate.run_id=$4) \
              AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( \

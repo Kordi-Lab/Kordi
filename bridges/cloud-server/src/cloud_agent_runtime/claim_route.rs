@@ -157,6 +157,15 @@ pub(super) async fn claim_cloud_agent_run(
         );
     }
 
+    if let Some(response) = crate::projects::cloud_execution_gate(
+        state.db_pool(),
+        &input.owner_account_id,
+        &input.session_id,
+    )
+    .await
+    {
+        return response;
+    }
     let now = Utc::now();
     let route_timeout = crate::presence::presence_timeout();
     let owner_desktop_online =

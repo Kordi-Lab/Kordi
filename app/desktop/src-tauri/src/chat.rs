@@ -24,6 +24,7 @@ mod message_execution;
 pub(crate) mod message_route;
 pub(crate) mod model_options;
 mod models;
+pub(crate) mod project_actions;
 pub(crate) mod session_actions;
 mod session_commands;
 mod session_lifecycle;

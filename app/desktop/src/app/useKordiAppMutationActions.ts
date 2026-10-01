@@ -49,7 +49,6 @@ export function useKordiAppMutationActions({
       setParticipantSpaceDrafts,
     },
     ui: {
-      projectsUi,
       composerUi,
     },
     auth: {
@@ -68,8 +67,6 @@ export function useKordiAppMutationActions({
       activeConvId,
       setActiveConvId,
       setActiveNav,
-      selectProject,
-      selectProjectSession,
     },
     composer: {
       activeChatQuote,
@@ -148,18 +145,16 @@ export function useKordiAppMutationActions({
     createProjectSession: handleCreateProjectSession,
   } = useKordiProjectActions({
     activeProject,
-    desktopState: desktopChatState,
+    activeConversationId: activeConvId,
+    setActiveConversationId: setActiveConvId,
     isNativeShell,
     refreshCanonicalState,
     refreshDesktopChat,
-    selectProject,
-    selectProjectSession,
     setActiveNav,
     setComposerAttachments: composerUi.setChatComposerAttachments,
     setComposerDrafts: composerUi.setComposerDrafts,
     setDesktopError: setDesktopChatError,
     setDesktopState: setDesktopChatState,
-    setExpandedProjectIds: projectsUi.setExpandedProjectIds,
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
   });
 

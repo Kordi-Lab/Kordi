@@ -26,7 +26,12 @@ mod prompt_context;
 mod shared_context;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
+mod project_membership;
+use project_membership::runtime_cwd_for_session;
 mod session_catalog;
+pub use project_membership::{
+    move_session_to_project, move_session_to_project_workspace, remove_session_from_project,
+};
 mod session_detail;
 mod transcript;
 mod turn_execution;
@@ -63,8 +68,8 @@ use model_options::{
 };
 use session_catalog::{
     fallback_session_display_title, load_project_info, open_sessions_db, project_group_id,
-    repair_session_title_from_history, runtime_cwd_for_session, session_activity_label,
-    session_title_from_messages, session_title_from_seed, truncate_chars,
+    repair_session_title_from_history, session_activity_label, session_title_from_messages,
+    session_title_from_seed, truncate_chars,
 };
 use session_detail::{
     build_agent_profile_from_setup, build_detail_from_setup, build_summary_from_setup,
@@ -682,23 +687,6 @@ pub fn hide_session(session_id: &str) -> Result<()> {
         "hidden",
         &row.cwd,
         row.project_root.as_deref(),
-    )
-}
-
-pub fn move_session_to_project(session_id: &str, project_root: &std::path::Path) -> Result<()> {
-    let conn = open_sessions_db()?;
-    let Some(_row) = kordi_session::store::get_session(&conn, session_id)? else {
-        bail!("Session not found: {session_id}");
-    };
-    let project_root_str = project_root.display().to_string();
-    let group_id = project_group_id(project_root);
-    kordi_session::store::upsert_project(&conn, &group_id, &project_root_str, None)?;
-    kordi_session::store::update_session_scope(
-        &conn,
-        session_id,
-        "project",
-        &project_root_str,
-        Some(&project_root_str),
     )
 }
 

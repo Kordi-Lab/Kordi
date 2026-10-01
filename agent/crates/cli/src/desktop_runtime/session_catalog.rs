@@ -217,33 +217,6 @@ pub(super) fn open_sessions_db() -> Result<rusqlite::Connection> {
     ))
 }
 
-pub(super) fn runtime_cwd_for_session(
-    fallback_cwd: std::path::PathBuf,
-    session_id: &str,
-) -> Result<std::path::PathBuf> {
-    let conn = open_sessions_db()?;
-    let Some(row) = kordi_session::store::get_session(&conn, session_id)? else {
-        return Ok(fallback_cwd);
-    };
-
-    if row.session_scope == "project"
-        && let Some(project_root) = row
-            .project_root
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-    {
-        return Ok(std::path::PathBuf::from(project_root));
-    }
-
-    let row_cwd = row.cwd.trim();
-    if row_cwd.is_empty() {
-        Ok(fallback_cwd)
-    } else {
-        Ok(std::path::PathBuf::from(row_cwd))
-    }
-}
-
 pub fn list_session_summaries(cwd: &std::path::Path) -> Result<Vec<DesktopChatSessionSummary>> {
     let conn = open_sessions_db()?;
     let cwd_str = cwd.display().to_string();

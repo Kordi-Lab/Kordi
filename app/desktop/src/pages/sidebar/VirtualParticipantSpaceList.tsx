@@ -4,15 +4,16 @@ import {
 } from 'react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { ChatSidebarRow } from './chatSidebarRows';
+import { estimatedChatSidebarRowSize, type ChatSidebarRow } from './chatSidebarRows';
 import type { Virtualizer } from '@tanstack/react-virtual';
 import {
   CHANNEL_HEIGHT, HEADER_HEIGHT,
   visibleChannelRange, type ParticipantSpaceBlock,
 } from './participantSpaceLayout';
 
-function ParticipantSpaceBlockView({ block, top, scrollTop, viewportHeight, renderRow }: {
+function ParticipantSpaceBlockView({ block, top, scrollTop, viewportHeight, renderRow, compactChannels }: {
   block: ParticipantSpaceBlock;
+  compactChannels: boolean;
   top: number;
   scrollTop: number;
   viewportHeight: number;
@@ -33,19 +34,33 @@ function ParticipantSpaceBlockView({ block, top, scrollTop, viewportHeight, rend
     const timer = window.setTimeout(() => setRetainedChannels([]), delay);
     return () => window.clearTimeout(timer);
   }, [expanded, retainedChannels]);
-  const { start, end } = visibleChannelRange(
-    channels.length, scrollTop - top - HEADER_HEIGHT, viewportHeight,
-  );
+  const offsets = useMemo(() => {
+    const positions = [0];
+    for (const row of channels) positions.push(positions[positions.length - 1] + (compactChannels ? estimatedChatSidebarRowSize(row) : CHANNEL_HEIGHT));
+    return positions;
+  }, [channels, compactChannels]);
+  const contentHeight = offsets[offsets.length - 1];
+  const headerHeight = compactChannels ? estimatedChatSidebarRowSize(block.header) : HEADER_HEIGHT;
+  const range = visibleChannelRange(channels.length, scrollTop - top - headerHeight, viewportHeight);
+  let low = 0;
+  let high = offsets.length;
+  const target = scrollTop - top - headerHeight;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (offsets[middle] < target) low = middle + 1; else high = middle;
+  }
+  const start = compactChannels ? Math.max(0, Math.min(channels.length, low) - 5) : range.start;
+  const end = compactChannels ? Math.min(channels.length, start + Math.ceil(viewportHeight / 26) + 10) : range.end;
   return (
     <>
       <div data-chat-sidebar-row={block.header.key}>{renderRow(block.header)}</div>
       <div className="app-participant-channel-reveal"
-        style={{ height: expanded ? channels.length * CHANNEL_HEIGHT : 0 }}
+        style={{ height: expanded ? contentHeight : 0 }}
         aria-hidden={!expanded} inert={!expanded}>
-        <div className="relative w-full" style={{ height: channels.length * CHANNEL_HEIGHT }}>
+        <div className="relative w-full" style={{ height: contentHeight }}>
           {channels.slice(start, end).map((row, offset) => (
             <div key={row.key} data-chat-sidebar-row={row.key} className="absolute left-0 top-0 w-full"
-              style={{ height: CHANNEL_HEIGHT, transform: `translateY(${(start + offset) * CHANNEL_HEIGHT}px)` }}>
+              style={{ height: offsets[start + offset + 1] - offsets[start + offset], transform: `translateY(${offsets[start + offset]}px)` }}>
               {renderRow(row)}
             </div>
           ))}
@@ -60,9 +75,10 @@ function ParticipantSpaceBlockView({ block, top, scrollTop, viewportHeight, rend
  * the channel content retains its identity, position and opacity.
  */
 export function VirtualParticipantSpaceList({
-  blocks, virtualizer, scrollRef, setScrollElement, activeSessionId, scrollClassName, scrollStyle, dataMode, renderRow, emptyState,
+  blocks, virtualizer, scrollRef, setScrollElement, activeSessionId, compactChannels = false, scrollClassName, scrollStyle, dataMode, renderRow, emptyState,
 }: {
   blocks: ParticipantSpaceBlock[];
+  compactChannels?: boolean;
   virtualizer: Virtualizer<HTMLDivElement, Element>;
   scrollRef: RefObject<HTMLDivElement | null>;
   setScrollElement: RefCallback<HTMLDivElement>;
@@ -118,23 +134,24 @@ export function VirtualParticipantSpaceList({
     const clip = groupElement.querySelector<HTMLElement>('.app-participant-channel-reveal');
     // A newly selected group may still have its collapsed measurement. Keep
     // the selection pending until the clip and scroll extent can reveal it.
-    if (clip && clip.offsetHeight + 1 < block.channels.length * CHANNEL_HEIGHT) return;
+    if (clip && clip.offsetHeight + 1 < block.channels.reduce((total, row) => total + (compactChannels ? estimatedChatSidebarRowSize(row) : CHANNEL_HEIGHT), 0)) return;
     const groupTop = virtualizer.measurementsCache[blockIndex]?.start ?? 0;
     const headerHeight = (groupElement.firstElementChild as HTMLElement | null)?.offsetHeight ?? HEADER_HEIGHT;
-    const channelTop = groupTop + headerHeight + channelIndex * CHANNEL_HEIGHT;
-    if (channelTop + CHANNEL_HEIGHT > totalSize + 1) return;
+    const channelTop = groupTop + headerHeight + block.channels.slice(0, channelIndex).reduce((total, row) => total + (compactChannels ? estimatedChatSidebarRowSize(row) : CHANNEL_HEIGHT), 0);
+    const channelHeight = compactChannels ? estimatedChatSidebarRowSize(block.channels[channelIndex]) : CHANNEL_HEIGHT;
+    if (channelTop + channelHeight > totalSize + 1) return;
     if (channelTop < viewport.scrollTop) virtualizer.scrollToOffset(channelTop);
-    else if (channelTop + CHANNEL_HEIGHT > viewport.scrollTop + viewportHeight) {
-      virtualizer.scrollToOffset(channelTop + CHANNEL_HEIGHT - viewportHeight);
+    else if (channelTop + channelHeight > viewport.scrollTop + viewportHeight) {
+      virtualizer.scrollToOffset(channelTop + channelHeight - viewportHeight);
     }
-    if (channelTop >= viewport.scrollTop - 1 && channelTop + CHANNEL_HEIGHT <= viewport.scrollTop + viewportHeight + 1) {
+    if (channelTop >= viewport.scrollTop - 1 && channelTop + channelHeight <= viewport.scrollTop + viewportHeight + 1) {
       scrolledSession.current = activeSessionId;
     }
-  }, [activeBlockIndex, activeBlockSize, activeBlockStart, activeSessionId, blocks, scrollRef, scrollTop, totalSize, viewportHeight, virtualizer]);
+  }, [activeBlockIndex, activeBlockSize, activeBlockStart, activeSessionId, blocks, scrollRef, scrollTop, totalSize, viewportHeight, virtualizer, compactChannels]);
   const virtualRows = virtualizer.getVirtualItems();
   const visibleBlocks = virtualRows.length ? virtualRows : blocks.slice(0, 12).map((block, index) => ({
     index, key: block.header.key,
-    start: blocks.slice(0, index).reduce((height, item) => height + HEADER_HEIGHT + item.channels.length * CHANNEL_HEIGHT, 0),
+    start: blocks.slice(0, index).reduce((height, item) => height + (compactChannels ? estimatedChatSidebarRowSize(item.header) : HEADER_HEIGHT) + item.channels.reduce((total, row) => total + (compactChannels ? estimatedChatSidebarRowSize(row) : CHANNEL_HEIGHT), 0), 0),
   }));
   return (
     <ScrollArea ref={setScrollElement} className={scrollClassName} style={scrollStyle}
@@ -149,7 +166,7 @@ export function VirtualParticipantSpaceList({
               data-participant-space-block="true" className="absolute left-0 top-0 w-full"
               style={{ transform: `translateY(${item.start}px)` }}>
               <ParticipantSpaceBlockView block={blocks[item.index]} top={item.start} scrollTop={scrollTop}
-                viewportHeight={viewportHeight} renderRow={renderRow}/>
+                viewportHeight={viewportHeight} compactChannels={compactChannels} renderRow={renderRow}/>
             </div>
           ))}
         </div>

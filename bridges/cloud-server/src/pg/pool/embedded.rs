@@ -484,4 +484,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "private OMP runtime replay state",
         sql: include_str!("../../../migrations/0106_omp_runtime_state.sql"),
     },
+    EmbeddedMigration {
+        version: 107,
+        description: "account-scoped desktop projects",
+        sql: include_str!("../../../migrations/0107_chat_projects.sql"),
+    },
 ];
