@@ -219,7 +219,11 @@ pub async fn delete_message(
         return Ok(());
     }
 
-    if sender_account_id != account_id {
+    // AI access notices stay visible to everyone; members can only hide them
+    // for themselves.
+    if sender_account_id != account_id
+        || current.kind == crate::cloud_agent_runtime::runs::context_policy::AI_ACCESS_NOTICE_KIND
+    {
         return Err(StoreError::Forbidden);
     }
     if current.deleted_at.is_some() {
