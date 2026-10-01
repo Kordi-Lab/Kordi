@@ -317,3 +317,20 @@ test('cloud contacts route removal and withdrawal through the safety actions', (
   assert.match(source, /safety\.removeContact\(peerAccountId\)/);
   assert.match(source, /safety\.safetyFeaturesAvailable\s*\n?\s*\?/);
 });
+
+test('group member profiles offer block and report only for other people', async () => {
+  const { MemberContactProfileContent } = await import('../src/pages/MemberContactProfilePopover');
+  const member = (id: string, name: string) => ({ id, name, kind: 'human' as const, role: 'person', source: 'cloud', humanId: id.slice('human:'.length) });
+  const profile = (participant: ReturnType<typeof member>, isSelf = false, safety: SafetyActions = safetyStub()) => renderToStaticMarkup(
+    createElement(SafetyActionsContext.Provider, { value: safety },
+      createElement(MemberContactProfileContent, { participant, contacts: [], isSelf })),
+  );
+
+  const other = profile(member('human:acct_bea', 'Bea'));
+  assert.match(other, /data-member-contact-action="block"/);
+  assert.match(other, /data-member-contact-action="report"/);
+  assert.doesNotMatch(profile(member('human:acct_me', 'Me'), true), /data-member-contact-safety-actions/);
+  assert.doesNotMatch(profile(member('human:acct_kordi_pip', 'PiP')), /data-member-contact-safety-actions/);
+  assert.doesNotMatch(profile(member('human:acct_bea', 'Bea'), false, UNAVAILABLE_SAFETY_ACTIONS), /data-member-contact-safety-actions/);
+  assert.match(profile(member('human:acct_bea', 'Bea'), false, safetyStub({ blockedAccountIds: new Set(['acct_bea']) })), /data-member-contact-action="unblock"/);
+});

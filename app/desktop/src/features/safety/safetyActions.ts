@@ -12,11 +12,11 @@ export type SafetyActions = {
    */
   safetyFeaturesAvailable: boolean;
   blockedAccountIds: ReadonlySet<string>;
-  openBlock(target: SafetyAccountTarget): void;
-  openUnblock(target: SafetyAccountTarget): void;
-  openReport(target: ReportTarget): void;
-  removeContact(peerAccountId: string): Promise<void>;
-  withdrawContactRequest(requestId: string): Promise<void>;
+  openBlock(this: void, target: SafetyAccountTarget): void;
+  openUnblock(this: void, target: SafetyAccountTarget): void;
+  openReport(this: void, target: ReportTarget): void;
+  removeContact(this: void, peerAccountId: string): Promise<void>;
+  withdrawContactRequest(this: void, requestId: string): Promise<void>;
 };
 
 const noop = () => undefined;
