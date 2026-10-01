@@ -839,8 +839,8 @@ export async function createDesktopChatSession(options?: { independent?: boolean
   return invokeDesktop<DesktopChatState>('desktop_chat_new_session', options);
 }
 
-export async function createDesktopProjectSession(projectRoot: string, title?: string) {
-  return invokeDesktop<DesktopChatState>('desktop_chat_new_project_session', { projectRoot, title });
+export async function createDesktopProjectSession(projectRoot: string, title?: string, workspace?: import('@/features/projects/gitWorkspace').ChatWorkspaceSelection) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_new_project_session', { projectRoot, title, workspace });
 }
 
 export async function prepareDesktopChatDraftSession() {
@@ -863,8 +863,8 @@ export async function deleteDesktopChatSessionForever(sessionId: string, activeS
   return invokeDesktop<DesktopChatState>('desktop_chat_delete_session_forever', { sessionId, activeSessionId });
 }
 
-export async function moveDesktopChatSessionToProject(sessionId: string, projectRoot: string) {
-  return invokeDesktop<DesktopChatState>('desktop_chat_move_session_to_project', { sessionId, projectRoot });
+export async function moveDesktopChatSessionToProject(sessionId: string, projectRoot: string, workspace?: import('@/features/projects/gitWorkspace').ChatWorkspaceSelection) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_move_session_to_project', { sessionId, projectRoot, workspace });
 }
 
 export type DesktopChatForkSessionResult = {

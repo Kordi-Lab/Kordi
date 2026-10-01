@@ -24,12 +24,18 @@ pub(super) async fn build_plugin_runtime(
     let tool_registrations = host.registered_tools().to_vec();
     let command_registrations = host.registered_commands().to_vec();
     let shared_host = Arc::new(Mutex::new(host));
+    let plugin_paths = Arc::new(extension_files.to_vec());
 
     let tools = tool_registrations
         .iter()
         .cloned()
         .map(|registration| {
-            Box::new(PluginTool::new(shared_host.clone(), registration)) as Box<dyn Tool>
+            Box::new(PluginTool::new(
+                shared_host.clone(),
+                registration,
+                plugin_paths.clone(),
+                ui_handler.clone(),
+            )) as Box<dyn Tool>
         })
         .collect();
 
@@ -105,11 +111,23 @@ fn map_plugin_tool_registration(tool: &HostRegisteredTool) -> RegisteredTool {
 struct PluginTool {
     host: Arc<Mutex<PluginHost>>,
     registration: HostRegisteredTool,
+    plugin_paths: Arc<Vec<PathBuf>>,
+    ui_handler: SharedUiHandler,
 }
 
 impl PluginTool {
-    fn new(host: Arc<Mutex<PluginHost>>, registration: HostRegisteredTool) -> Self {
-        Self { host, registration }
+    fn new(
+        host: Arc<Mutex<PluginHost>>,
+        registration: HostRegisteredTool,
+        plugin_paths: Arc<Vec<PathBuf>>,
+        ui_handler: SharedUiHandler,
+    ) -> Self {
+        Self {
+            host,
+            registration,
+            plugin_paths,
+            ui_handler,
+        }
     }
 }
 
@@ -130,14 +148,40 @@ impl Tool for PluginTool {
     async fn execute(
         &self,
         params: Value,
-        _ctx: &ToolContext,
-        _cancel: CancellationToken,
+        ctx: &ToolContext,
+        cancel: CancellationToken,
     ) -> KordiResult<ToolResult> {
-        let mut host = self.host.lock().await;
-        let result = host
-            .execute_tool(self.name(), self.name(), params)
-            .await
-            .map_err(|err| KordiError::Plugin(err.to_string()))?;
+        let mut host = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(KordiError::Plugin("Plugin tool cancelled".into())),
+            host = self.host.lock() => host,
+        };
+        let invocation_id = ctx
+            .invocation_id
+            .clone()
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let plugin_context = PluginContext {
+            cwd: Some(ctx.cwd.display().to_string()),
+            has_ui: false,
+            ..PluginContext::default()
+        };
+        let result = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => {
+                // Plugins may ignore AbortSignal. Terminate that host so a
+                // cancelled tool cannot continue mutating the owner's files.
+                host.kill().await;
+                if let Ok(mut replacement) = PluginHost::load_plugins(&self.plugin_paths).await {
+                    replacement.set_ui_handler(self.ui_handler.clone());
+                    *host = replacement;
+                }
+                return Err(KordiError::Plugin("Plugin tool cancelled".into()));
+            },
+            result = host.execute_tool_with_context(
+                self.name(), &invocation_id, params, &plugin_context,
+                ctx.on_output.as_deref(),
+            ) => result.map_err(|err| KordiError::Plugin(err.to_string()))?,
+        };
         map_tool_result(result)
     }
 }

@@ -12,6 +12,8 @@
 }
 
 .app-native-titlebar-navigation {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -20,16 +22,77 @@
 }
 
 .app-native-titlebar-title {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
-  padding: 0 14px;
-  border-left: 1px solid var(--app-nav-rail-glass-border);
+  padding: 0 14px 0 calc(14px + var(--app-native-navigation-overhang, 0px));
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.app-native-titlebar-workspace {
+  position: relative;
+  display: grid;
+  container-type: inline-size;
+  min-width: 0;
+  height: 100%;
+  margin-right: var(--app-native-detail-width, 0px);
+  transition-property: grid-template-columns;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+.app-native-titlebar-workspace::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  inset-inline-start: var(--app-native-navigation-overhang, 0px);
+  width: 1px;
+  height: 18px;
+  background: var(--app-nav-rail-glass-border);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.app-native-titlebar-main { display: flex; align-items: center; min-width: 0; grid-column: 1; grid-row: 1; }
+.app-native-titlebar-workspace[data-companion-side="left"] > .app-native-titlebar-main { grid-column: 3; }
+.app-native-companion-titlebar-host { display: contents; }
+.app-native-companion-titlebar {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+  grid-row: 1;
+  -webkit-app-region: no-drag;
+}
+.app-native-companion-titlebar[data-side="right"] { grid-column: 3; }
+.app-native-companion-titlebar[data-side="left"] { grid-column: 1; }
+.app-native-companion-titlebar[data-open="false"] { overflow: hidden; pointer-events: none; }
+.app-native-companion-titlebar-surface { height: 100%; }
+.app-native-companion-titlebar[data-side="left"] .app-native-companion-titlebar-surface { float: right; }
+.app-native-companion-titlebar .app-chat-pane-header {
+  z-index: auto;
+  height: 100%;
+  min-height: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px 0 14px;
+  border-bottom: 0;
+  box-shadow: none;
+}
+.app-native-titlebar-workspace:has(.app-native-companion-titlebar[data-side="left"][data-open="true"]) .app-native-titlebar-title { padding-left: 14px; }
+.app-native-companion-titlebar[data-side="left"] .app-chat-pane-header { padding-left: calc(14px + var(--app-native-navigation-overhang, 0px)); }
+.app-native-companion-titlebar :is(.app-chat-pane-title-row, h2) {
+  height: 28px;
+  min-height: 0;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--utility-foreground);
+}
+.app-native-companion-titlebar h2 { display: flex; align-items: center; }
+.app-native-companion-titlebar :is([data-chat-session-subtitle], .app-companion-overview-header p) { display: none; }
+html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(--app-native-detail-width, 0px) + 6px); }
 
 .app-native-titlebar-actions {
   display: flex;
@@ -133,6 +196,7 @@
 @media (prefers-reduced-motion: reduce) {
   .app-native-viewport .app-shell-layout-grid,
   .app-native-titlebar { transition-duration: 0s; }
+  .app-native-titlebar-workspace { transition-duration: 0s !important; }
 }
 
 html.kordi-native-shell .kordi-app .app-shell-content {
@@ -140,6 +204,12 @@ html.kordi-native-shell .kordi-app .app-shell-content {
   border-radius: 0 12px 12px 0;
 }
 
+
+/* A folded sidebar leaves the icon rail beside the workspace. Keep its edge
+   quiet; the short titlebar separator provides the visual division. */
+html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-shell-layout-grid > .app-shell-content {
+  border-left-width: 0;
+}
 
 .app-native-viewport > .app-shell {
   display: grid;

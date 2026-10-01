@@ -85,3 +85,64 @@ fn mirrored_local_history_requests_keep_their_native_terminal_reply() {
         }
     }
 }
+
+#[test]
+fn native_request_with_exact_live_cloud_wire_id_does_not_export_second_reply() {
+    for (kind, should_suppress) in [("text", true), ("canonical-history-user", false)] {
+        let conn = test_conn();
+        append_message_in_db(
+            &conn,
+            AppendCanonicalMessageRequest {
+                id: Some("native-request".into()),
+                session_id: "session:self-agent".into(),
+                sender_identity_id: "human:local".into(),
+                sender_role: "user".into(),
+                message_kind: "text".into(),
+                content_text: "Check status".into(),
+                content: Some(serde_json::json!({ "desktopEntryId": "wire-request" })),
+                parent_message_id: None,
+                delegated_exchange_id: None,
+                status: Some("sent".into()),
+                created_at_ms: Some(1000),
+                source_transport: Some("desktop-chat".into()),
+                source_event_id: Some("native-event".into()),
+            },
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_sync_conversations VALUES('owner','conversation','session:self-agent',1,'{}',1000)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_sync_messages VALUES('owner','wire-request','client-request',?1,'conversation',1,1,'{}',1000)",
+            [kind],
+        )
+        .unwrap();
+        let assistant = kordi_cli::desktop_runtime::DesktopChatMessage {
+            role: "assistant".into(),
+            sender: Some("Kordi".into()),
+            text: "Status is ready.".into(),
+            detail: None,
+            time_label: "Now".into(),
+            timestamp_ms: 2000,
+            thinking_text: None,
+            tools: Vec::new(),
+            attachments: Vec::new(),
+            failed: false,
+            cancelled: false,
+            entry_id: Some("native-answer".into()),
+        };
+        let result = sync_desktop_chat_message(
+            &conn,
+            "session:self-agent",
+            "human:local",
+            "agent:local",
+            1,
+            &assistant,
+            Some("native-request"),
+        )
+        .unwrap();
+        assert_eq!(result.is_none(), should_suppress, "wire kind: {kind}");
+    }
+}

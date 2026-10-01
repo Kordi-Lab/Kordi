@@ -6,6 +6,7 @@ mod cloud_account_paths;
 mod cloud_api_endpoint;
 use canonical_sessions::desktop_canonical_reconcile_message_mirror;
 use cloud_api_endpoint::cloud_api_base_url_from_env;
+mod cloud_host_activity;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
@@ -73,6 +74,9 @@ fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
     }
     match cloud_session::cloud_session_load() {
         Ok(Some(session)) => {
+            if let Err(err) = cloud_host_activity::start() {
+                eprintln!("[kordi] Unable to keep Cloud agent host active: {err}");
+            }
             if let Err(err) =
                 cloud_account_paths::cloud_account_storage_activate(session.account_id)
             {
@@ -98,71 +102,7 @@ use window_lifecycle::{
 use workspace::DesktopWorkspaceStatus;
 
 #[cfg(test)]
-mod window_lifecycle_tests {
-    use super::is_cloud_edition_context;
-    use crate::cloud_api_endpoint::DEFAULT_CLOUD_API_BASE_URL;
-    use crate::cloud_presence::{offline_url, should_publish_offline_on_exit};
-
-    #[test]
-    fn update_restart_skips_presence_offline() {
-        assert!(should_publish_offline_on_exit(None));
-        assert!(should_publish_offline_on_exit(Some(0)));
-        assert!(!should_publish_offline_on_exit(Some(
-            tauri::RESTART_EXIT_CODE
-        )));
-    }
-
-    #[test]
-    fn native_presence_offline_url_uses_cloud_api_base() {
-        assert_eq!(
-            offline_url("http://127.0.0.1:17081/"),
-            "http://127.0.0.1:17081/v1/cloud/presence/offline"
-        );
-        assert_eq!(
-            offline_url(DEFAULT_CLOUD_API_BASE_URL),
-            "https://kordi.ai/v1/cloud/presence/offline"
-        );
-    }
-
-    #[test]
-    fn cloud_bundle_identifier_enables_cloud_edition_without_runtime_env() {
-        assert!(is_cloud_edition_context(None, None, "io.kordi.cloud"));
-        assert!(is_cloud_edition_context(
-            None,
-            None,
-            "io.kordi.cloud.factory-preview"
-        ));
-    }
-
-    #[test]
-    fn cloud_preview_bundle_identifier_uses_isolated_cloud_storage() {
-        assert!(is_cloud_edition_context(
-            None,
-            None,
-            "io.kordi.cloud.group-management-preview"
-        ));
-        assert!(!is_cloud_edition_context(None, None, "io.kordi.cloudish"));
-    }
-
-    #[test]
-    fn desktop_bundle_identifier_defaults_to_local_edition() {
-        assert!(!is_cloud_edition_context(None, None, "io.kordi.desktop"));
-    }
-
-    #[test]
-    fn explicit_runtime_edition_overrides_bundle_identifier() {
-        assert!(is_cloud_edition_context(
-            Some("cloud"),
-            None,
-            "io.kordi.desktop"
-        ));
-        assert!(!is_cloud_edition_context(
-            Some("local"),
-            None,
-            "io.kordi.cloud"
-        ));
-    }
-}
+mod window_lifecycle_tests;
 
 #[tauri::command]
 fn desktop_workspace_status() -> DesktopWorkspaceStatus {
@@ -277,6 +217,9 @@ pub fn run() {
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,
             project::desktop_project_create_new,
+            project::import::desktop_project_choose_folder,
+            project::import::desktop_project_clone_github,
+            project::import::desktop_project_github_repositories,
             project::desktop_save_project_settings,
             canonical_sessions::desktop_canonical_session_state,
             canonical_sessions::desktop_canonical_session_catalog,
@@ -400,13 +343,15 @@ pub fn run() {
             chat::agent_builder::desktop_agent_builder_install_skill,
             chat::agent_builder::desktop_agent_builder_discard,
             chat::desktop_chat_new_session,
-            chat::desktop_chat_new_project_session,
+            chat::project_actions::desktop_chat_new_project_session,
             chat::desktop_chat_prepare_draft_session,
             chat::desktop_chat_update_session_config,
             chat::desktop_chat_rename_session,
             chat::desktop_chat_archive_session,
             chat::desktop_chat_delete_session_forever,
-            chat::desktop_chat_move_session_to_project,
+            chat::project_actions::desktop_chat_move_session_to_project,
+            project::git_workspace::desktop_project_git_workspace,
+            chat::project_actions::desktop_project_prepare_remote_session,
             chat::desktop_chat_fork_session_from_message,
             chat::desktop_chat_send_message,
             chat::desktop_chat_start_message,
@@ -459,6 +404,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");
     app.run(|app_handle, event| match event {
+        tauri::RunEvent::Exit => {
+            cloud_host_activity::exit();
+        }
         tauri::RunEvent::ExitRequested { code, .. } if should_publish_offline_on_exit(code) => {
             publish_stored_offline_on_exit();
         }

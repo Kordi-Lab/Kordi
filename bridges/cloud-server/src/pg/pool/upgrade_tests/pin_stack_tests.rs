@@ -2,8 +2,8 @@ use super::*;
 
 #[tokio::test]
 #[ignore = "requires a dedicated empty migration fixture"]
-async fn upgrade_from_105_preserves_pins_and_rolling_writes() {
-    let pool = fixture(105).await;
+async fn upgrade_from_107_preserves_pins_and_rolling_writes() {
+    let pool = fixture(107).await;
     let conversation = Uuid::new_v4();
     let session = format!("session:group:{conversation}");
     query("INSERT INTO cloud_chat_conversations(conversation_id,kind,created_by_account_id,client_operation_id,creation_fingerprint,legacy_session_id) VALUES($1,'group','fixture-owner',$1,'pin-stack-fixture',$2)")

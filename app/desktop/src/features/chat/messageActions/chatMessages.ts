@@ -5,6 +5,7 @@ import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateRed
 import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSessionRuntimeRoute';
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
 import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
+import { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
 import { waitForCloudAgentTurn } from '@/features/cloud/cloudAgentLocalExecution';
 import { cloudAgentNoProviderNoticeText,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
@@ -244,45 +245,7 @@ export function chatDraftSessionIdsToClearForSend(activeSessionId: string, resol
     .filter((sessionId, index, sessionIds) => Boolean(sessionId) && sessionIds.indexOf(sessionId) === index);
 }
 
-function messageAuthorKind(message: Message): 'human' | 'agent' {
-  if (message.senderType === 'agent' || message.role === 'owned-agent' || message.role === 'external-agent') return 'agent';
-  return 'human';
-}
-
-function messageContextText(message: Message): string {
-  return (message.turn?.assistantText ?? message.text).trim();
-}
-
-function restoredSelfAgentContextMessageId(message: Message): string | null {
-  const ids = [
-    message.id,
-    message.entryId,
-    ...(message.replyAliasIds ?? []),
-  ]
-    .map((value) => value?.trim() ?? '')
-    .filter(Boolean);
-  const cloudMessageId = ids.find((id) => id.startsWith('msg:cloud:self:'));
-  if (cloudMessageId) return cloudMessageId;
-  if (!message.isForkSnapshot) return null;
-  return ids.find((id) => id.startsWith('msg:')) ?? ids[0] ?? null;
-}
-
-export function restoredSelfAgentContextMessages(messages: readonly Message[]): DesktopChatContextMessage[] {
-  return messages.flatMap((message) => {
-    if (message.messageAction?.kind === 'forward') return [];
-    const id = restoredSelfAgentContextMessageId(message);
-    const text = messageContextText(message);
-    if (!id || !text) return [];
-    const authorKind = messageAuthorKind(message);
-    return [{
-      id,
-      authorName: message.sender?.trim() || (authorKind === 'agent' ? 'Kordi' : 'Me'),
-      authorKind,
-      text,
-      createdAtMs: null,
-    }];
-  });
-}
+export { restoredSelfAgentContextMessages } from './restoredSelfAgentContext';
 
 export function useChatMessageActions({
   activeConversationUsesCollaboration,
@@ -305,7 +268,7 @@ export function useChatMessageActions({
   desktopChatState,
   canonicalSessionState,
   hasAnyDesktopAuth,
-  hasLocalProviderAuth = hasAnyDesktopAuth, openAgentAuthentication,
+  hasConfiguredProviderAuth = hasAnyDesktopAuth, openAgentAuthentication,
   desktopLiveTurn,
   resolveChatRuntimeRoute,
   handleLocalSlashCommand,
@@ -497,13 +460,40 @@ export function useChatMessageActions({
       const previewText = attachmentSummaryText(dispatchMessage.text);
       const quote = composerQuoteFromMessageAction(message.messageAction);
       const preparedCanonicalMessage = prepareCanonicalQueuedMessage(dispatchMessage, canonicalHumanIdentityId, 'sent');
+      const route = message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId);
+      if (routeRunsOnKordiCloud(route)) {
+        const turn = await startLocalAgentTurn({
+          targetConversationId: message.sessionId,
+          canonicalSessionId: message.sessionId,
+          canonicalSessionState,
+          text: dispatchMessage.text,
+          attachmentPaths,
+          route,
+          contextMessages: message.contextMessages ?? [],
+          setCanonicalSessionState,
+          setDesktopChatError,
+          watchTurn: watchLocalTurnAndFlushQueue,
+        }, preparedCanonicalMessage, dispatchMessage.attachments);
+        if (turn) throw new Error('A hosted queued request unexpectedly started a local turn.');
+        setDesktopChatState((current) => {
+          const currentTargetsSession = current?.activeSessionId === message.sessionId
+            && current.activeSession.id === message.sessionId;
+          const baseState = materializedState && !currentTargetsSession ? materializedState : current;
+          return baseState
+            ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, dispatchMessage.text, dispatchMessage.attachments, message.time, [], quote, preparedCanonicalMessage?.messageId ?? null)
+            : current;
+        });
+        releaseLocalChatSend(localChatSendInFlightRef, message.sessionId);
+        flushQueuedDesktopMessagesForSessionRef.current(message.sessionId);
+        return;
+      }
       const queuedRow = await persistQueuedDesktopMessage(dispatchMessage, canonicalHumanIdentityId, 'sent');
       if (queuedRow) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, queuedRow));
       const turn = await startDesktopChatMessage(
         message.sessionId,
         voiceMessageAgentText(dispatchMessage.text, dispatchMessage.attachments),
         attachmentPaths,
-        message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId),
+        route,
         message.contextMessages ?? [],
         [],
         null,
@@ -528,7 +518,7 @@ export function useChatMessageActions({
       enqueueLocalQueuedMessage(message, 'front');
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send queued chat message');
     }
-  }, [attachmentSummaryText, canonicalHumanIdentityId, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, resolveChatRuntimeRoute, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, waitForSessionQueue, watchLocalTurnAndFlushQueue]);
+  }, [attachmentSummaryText, canonicalHumanIdentityId, canonicalSessionState, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, resolveChatRuntimeRoute, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, waitForSessionQueue, watchLocalTurnAndFlushQueue]);
 
   useEffect(() => {
     flushQueuedDesktopMessagesForSessionRef.current = (sessionId: string) => {
@@ -642,7 +632,7 @@ export function useChatMessageActions({
         return;
       }
       const linkedTurn = await startLocalAgentTurn(turnContext, preparedCanonicalMessage, attachments);
-      if (linkedTurn) void markLocalAgentMessageDelivered(turnContext, preparedCanonicalMessage);
+      if (linkedTurn) void markLocalAgentMessageDelivered(turnContext, preparedCanonicalMessage).catch(() => undefined);
       if (linkedTurn) watchLocalTurnAndFlushQueue(linkedTurn, localAgentNoProviderCompletion(turnContext, preparedCanonicalMessage)); else releaseLocalChatSend(localChatSendInFlightRef, targetConversationId);
       if (setSendingState) setIsDesktopChatSending(false);
     } catch (error) {
@@ -934,7 +924,7 @@ export function useChatMessageActions({
     const selectedMentionTarget = selectedComposerAgentMentionTarget(text, selectedChatAgentMentionRef.current, desktopCollaborationState); selectedChatAgentMentionRef.current = null;
     const mentionedTarget = selectedMentionTarget
       ?? await resolvePreferredAgentMentionTarget(text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation, activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person');
-    if (!hasLocalProviderAuth && retryMessage?.messageAction?.kind !== 'forward' && isOwnedAgentMention(mentionedTarget, text.startsWith('@') && localAgentMentioned)) {
+    if (!hasConfiguredProviderAuth && retryMessage?.messageAction?.kind !== 'forward' && isOwnedAgentMention(mentionedTarget, text.startsWith('@') && localAgentMentioned)) {
       setDesktopChatError(cloudAgentNoProviderNoticeText());
       if (openAgentAuthentication) openAgentAuthentication(); else await handleLocalSlashCommand('/login');
       if (quoteForSend?.action === 'thread') throw new Error(cloudAgentNoProviderNoticeText());
@@ -1721,7 +1711,7 @@ export function useChatMessageActions({
     desktopChatState,
     canonicalSessionState,
     hasAnyDesktopAuth,
-    hasLocalProviderAuth, openAgentAuthentication,
+    hasConfiguredProviderAuth, openAgentAuthentication,
     desktopLiveTurn,
     clearComposerAfterSend,
     collaborationDraftSendClaims,

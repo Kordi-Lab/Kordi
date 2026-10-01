@@ -404,25 +404,6 @@ pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
     }))
 }
 
-pub(crate) async fn request_received_at(
-    pool: &PgPool,
-    session_id: &str,
-    request_message_id: &str,
-) -> Result<Option<DateTime<Utc>>, sqlx_core::Error> {
-    if let Some((_, created_at)) =
-        cloud_group_request_envelope_with_created_at_for_run(pool, session_id, request_message_id)
-            .await?
-    {
-        return DateTime::parse_from_rfc3339(&created_at)
-            .map(|date| Some(date.with_timezone(&Utc)))
-            .map_err(|error| sqlx_core::Error::Decode(Box::new(error)));
-    }
-    Ok(query_as::<_, (DateTime<Utc>,)>(
-        "SELECT m.created_at FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id)
-         WHERE m.message_id::text=$1 AND c.legacy_session_id=$2 AND m.deleted_at IS NULL",
-    ).bind(request_message_id).bind(session_id).fetch_optional(pool).await?.map(|row| row.0))
-}
-
 pub(super) async fn latest_cloud_group_envelope_for_session(
     pool: &PgPool,
     session_id: &str,

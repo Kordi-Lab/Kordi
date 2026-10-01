@@ -1,6 +1,6 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useMemo, useState, type MouseEventHandler, type ReactNode } from 'react';
-import { NativeChatTitlebarContext } from '@/app/nativeChatTitlebarContext';
+import { NativeChatTitlebarContext, type NativeCompanionTitlebarLayout } from '@/app/nativeChatTitlebarContext';
 
 import {
   nativeWindowResizeDirection,
@@ -73,9 +73,11 @@ export function AppShellFrame({
   const instanceLabel = previewInstanceLabel();
   const [titleHost, setTitleHost] = useState<HTMLDivElement | null>(null);
   const [actionsHost, setActionsHost] = useState<HTMLDivElement | null>(null);
+  const [companionHost, setCompanionHost] = useState<HTMLDivElement | null>(null);
+  const [companionLayout, setCompanionLayout] = useState<NativeCompanionTitlebarLayout | null>(null);
   const chatTitlebar = useMemo(() => isNativeShell
-    ? { title: titleHost, actions: actionsHost }
-    : null, [isNativeShell, titleHost, actionsHost]);
+    ? { title: titleHost, actions: actionsHost, companion: companionHost, setCompanionLayout }
+    : null, [isNativeShell, titleHost, actionsHost, companionHost]);
   const handleNativeWindowDragMouseDown: MouseEventHandler<HTMLDivElement> = (event) => {
     const shellBounds = event.currentTarget.getBoundingClientRect();
     const resizeDirection = nativeWindowResizeDirection({
@@ -126,6 +128,7 @@ export function AppShellFrame({
             : 'app-shell-preview mx-auto rounded-[26px] border',
         )}
         data-layout-resizing={isLayoutResizing ? 'true' : undefined}
+        data-sidebar-collapsed={collapseChatSessions ? 'true' : undefined}
         onMouseDownCapture={isNativeShell ? handleNativeWindowDragMouseDown : undefined}
         style={
           isNativeShell
@@ -142,6 +145,9 @@ export function AppShellFrame({
           <NativeTitlebar
             titleHostRef={setTitleHost}
             actionsHostRef={setActionsHost}
+            companionHostRef={setCompanionHost}
+            companionLayout={companionLayout}
+            detailRailWidth={showRightDetailRail && !isDetailPanelCollapsed ? detailRailWidth : 0}
             windowTitle={windowTitle}
             leftWorkspaceWidth={leftWorkspaceWidth}
             collapseChatSessions={collapseChatSessions}

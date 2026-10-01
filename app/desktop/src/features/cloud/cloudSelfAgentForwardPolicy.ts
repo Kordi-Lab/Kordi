@@ -11,13 +11,25 @@ export function localSelfAgentRequestCanPublishExecution(message: CanonicalSessi
 }
 
 export function cloudSelfAgentForwardMessageKind(
-  operation: Pick<CloudSelfAgentSyncOperation, 'role' | 'sessionId'>,
+  operation: Pick<CloudSelfAgentSyncOperation, 'role' | 'sessionId' | 'agentRuntimeRoute' | 'queued' | 'cancelledWhileQueued' | 'historyOnly'>,
   historySessionIds: ReadonlySet<string>,
 ) {
+  // A new hosted turn is an execution request, even in a session whose local
+  // transcript is mirrored as history. Recovered history must never rerun.
+  if (operation.role === 'user' && operation.agentRuntimeRoute
+    && !operation.queued && !operation.cancelledWhileQueued && !operation.historyOnly) return null;
   if (!historySessionIds.has(operation.sessionId)) return null;
   return operation.role === 'user'
     ? 'canonical-history-user'
     : 'canonical-history-agent';
+}
+
+/** A live hosted request still needs the shared desktop execution lease. */
+export function publishedSelfAgentRequestAlreadyExecutedLocally(
+  operation: Pick<CloudSelfAgentSyncOperation, 'agentRuntimeRoute' | 'queued' | 'cancelledWhileQueued' | 'historyOnly'>,
+): boolean {
+  return !operation.agentRuntimeRoute
+    || Boolean(operation.queued || operation.cancelledWhileQueued || operation.historyOnly);
 }
 
 export function cloudSelfAgentShouldPublishProgress(

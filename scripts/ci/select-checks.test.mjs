@@ -104,6 +104,17 @@ test('shared Rust dependency changes select server and desktop but not iOS', (t)
   assert.equal(group(manifest, 'frontend').applicable, false);
 });
 
+test('OMP worker-only changes run the server adapter and packaging checks', (t) => {
+  const fixture = changedFilesFixture(t, ['shared/omp-runtime/src/worker.ts']);
+  const manifest = manifestFrom(
+    runSelection(['--changed-files', fixture, '--json', '--base', shaA, '--head', shaB]),
+  );
+  assert.equal(group(manifest, 'server').applicable, true);
+  assert.equal(group(manifest, 'desktop').applicable, true);
+  assert.equal(group(manifest, 'ios').applicable, false);
+  assert.equal(group(manifest, 'frontend').applicable, false);
+});
+
 test('shared lockfiles select every group', (t) => {
   for (const sharedPath of ['pnpm-lock.yaml', '.github/workflows/blocking-ci.yml', 'Cargo.lock']) {
     const fixture = changedFilesFixture(t, [sharedPath]);

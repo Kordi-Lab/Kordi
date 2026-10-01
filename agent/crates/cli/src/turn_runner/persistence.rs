@@ -102,7 +102,7 @@ pub(crate) async fn append_user_message_with_id(
     Ok(())
 }
 
-pub(super) async fn append_custom_message(
+pub(crate) async fn append_custom_message(
     conn: &Arc<Mutex<rusqlite::Connection>>,
     session_id: &str,
     message: serde_json::Value,
@@ -141,7 +141,7 @@ fn assistant_error_entry(parent_id: Option<EntryId>, model: &Model, message: &st
     }
 }
 
-pub(super) async fn append_assistant_error_message(
+pub(crate) async fn append_assistant_error_message(
     conn: &Arc<Mutex<rusqlite::Connection>>,
     session_id: &str,
     model: &Model,
@@ -153,7 +153,7 @@ pub(super) async fn append_assistant_error_message(
     Ok(())
 }
 
-pub(super) async fn append_assistant_cancelled_message(
+pub(crate) async fn append_assistant_cancelled_message(
     conn: &Arc<Mutex<rusqlite::Connection>>,
     session_id: &str,
     model: &Model,

@@ -225,6 +225,25 @@ final class AppModel: ObservableObject {
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
     @Published private(set) var conversations: [ConversationSummary] = []
+    @Published var projectDevices: [ChatProjectDevice] = []
+    @Published var projectError: String?
+
+    func projectContext() throws -> (CloudAPIClient, String, String) {
+        guard let token, let account else { throw ChatProjectFailure(message: "Sign in to use your projects.") }
+        return (api, token, account.accountId)
+    }
+
+    func projectDiscoverySessionIDs(_ sessionIDs: Set<String>) -> Set<String> {
+        sessionIDs.subtracting(hiddenCloudSessionIds).subtracting(deletedCloudSessionIds)
+    }
+
+    func retainProjectConversation(_ conversation: ConversationSummary) {
+        if !conversations.contains(where: { $0.sessionId == conversation.sessionId }) {
+            conversations.append(conversation)
+            cacheCurrentConversations()
+        }
+    }
+
     @Published private(set) var archivedConversations: [ConversationSummary] = []
     @Published private(set) var pinnedSessionIds = Set<String>()
     @Published private(set) var mutedSessionIds = Set<String>()
@@ -440,6 +459,8 @@ final class AppModel: ObservableObject {
             token = savedToken
             account = restoredAccount
             conversations = []
+            projectDevices = []
+            projectError = nil
             if let snapshot = await wireCache.load(accountId: restoredAccount.accountId) {
                 if let visibility = snapshot.visibility {
                     applyCloudSessionVisibility(visibility)
@@ -588,6 +609,8 @@ final class AppModel: ObservableObject {
         contactPresenceByAccountID = [:]
         contactRequests = []
         conversations = []
+        projectDevices = []
+        projectError = nil
         messagesByConversation = [:]
         subsessions = [:]
         stoppingSubsessionIDs = []

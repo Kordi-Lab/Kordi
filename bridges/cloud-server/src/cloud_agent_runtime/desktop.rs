@@ -1,8 +1,9 @@
 //! Desktop admission and publication use the same durable run as the cloud runner.
-use super::runs::{
-    claim_run_for_desktop, error_response, execution_agent_id, run_error_response,
-    validate_shared_cloud_agent_claim, ClaimRunRequest,
+use super::provider_auth::{
+    provider_auth_for_account_route, EnvProviderAuthCipher, ProviderAuthCipher,
+    ProviderAuthForRunResult, RunnerProviderAuthMaterialEnvelope,
 };
+use super::runs::{error_response, execution_agent_id, run_error_response, ClaimRunRequest};
 use crate::{auth::routes::CloudSession, server::ServerState};
 use axum::{
     extract::{Path, State},
@@ -18,6 +19,10 @@ use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[path = "desktop_claim.rs"]
+mod claim;
+pub(super) use claim::claim;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,48 +65,15 @@ pub(super) async fn ready(
     }
 }
 
-/// Account choices whose credential exists only as a hosted snapshot.
-const HOSTED_ONLY_CHOICE_PREFIXES: [&str; 4] = [
-    "cloud-api-key:",
-    "cloud-login:",
-    "ios-codex:",
-    "ios-api-key:",
-];
-
-/// Whether a route names an account only the cloud runner can hold. Local
-/// choices such as `profile:` or `local-active-*` may run on the owner Mac.
-fn names_hosted_only_account(auth_choice: Option<&str>) -> bool {
-    auth_choice.map(str::trim).is_some_and(|choice| {
-        HOSTED_ONLY_CHOICE_PREFIXES
-            .iter()
-            .any(|prefix| choice.starts_with(prefix))
-    })
-}
-
 pub(super) async fn prefer_ready_desktop(
     pool: &PgPool,
     input: &ClaimRunRequest,
 ) -> super::runs::RunResult<bool> {
-    // The owner Mac cannot hold a hosted-only credential, so waiting for it
-    // would only delay the turn; the cloud runner may take it at once. Only
-    // the route the run will execute counts: a contact's own request route
-    // is replaced by the owner's agent route and cannot skip the owner Mac.
-    let route = super::runs::runtime_route_for_claim(pool, input).await?;
-    if names_hosted_only_account(route.default_auth_choice.as_deref()) {
-        return Ok(false);
-    }
+    // A ready owner Mac executes regardless of where the selected provider
+    // account is stored. Hosted credentials are resolved for its claimed run.
     let agent = execution_agent_id(pool, input).await?;
-    let Some(received_at) =
-        super::runs::request_received_at(pool, &input.session_id, &input.request_message_id)
-            .await?
-    else {
-        return Ok(false);
-    };
-    if received_at <= Utc::now() - chrono::Duration::seconds(10) {
-        return Ok(false);
-    }
-    // Readiness only grants a short admission window. An unresponsive desktop
-    // must not block fallback forever merely because the application is online.
+    // Fresh capability and presence are the admission boundary. If the Mac
+    // stops heartbeating, Cloud may claim the same request after they expire.
     let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds')")
         .bind(&input.owner_account_id).bind(agent).fetch_one(pool).await?;
     Ok(row.0)
@@ -166,57 +138,100 @@ fn expired() -> Response {
     )
 }
 
-pub(super) async fn claim(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Json(mut input): Json<DesktopClaimInput>,
-) -> Response {
-    if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
-        return denied();
-    }
-    match super::subsession_execution::claim(
-        state.db_pool(),
-        &session,
-        &input.run,
-        &executor(&session, input.claim_id),
-    )
-    .await
-    {
-        Ok(Some(value)) => return context_scope_response(state.db_pool(), value).await,
-        Ok(None) => {}
-        Err(error) => {
-            return run_error_response(
-                "subsession admission",
-                "Could not admit the follow-up.",
-                error,
-            )
-        }
-    }
-    let result = async {
-        let Some((request_id,wire_id))=super::runs::request_identity(state.db_pool(),&input.run.session_id,&input.run.request_message_id).await? else { return Ok::<_,super::runs::RunError>(None); };
-        input.run.request_message_id=request_id;
-        let agent = execution_agent_id(state.db_pool(), &input.run).await?;
-        let allowed: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) JOIN cloud_chat_conversation_members member ON member.conversation_id=c.conversation_id WHERE m.message_id::text=$1 AND c.legacy_session_id=$2 AND m.sender_account_id=$3 AND m.deleted_at IS NULL AND member.account_id=$4 AND member.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) WHERE r.device_id=$5 AND d.account_id=$4 AND d.revoked_at IS NULL AND r.agent_id=$6 AND r.updated_at>now()-interval '35 seconds')")
-            .bind(wire_id).bind(&input.run.session_id).bind(&input.run.requester_account_id).bind(&session.account_id).bind(&session.device_id).bind(agent).fetch_one(state.db_pool()).await?;
-        if !allowed.0 || !super::runs::validate_group_agent_claim(state.db_pool(), &input.run).await? || !validate_shared_cloud_agent_claim(state.db_pool(), &input.run).await? { return Ok::<_, super::runs::RunError>(None); }
-        let owner = executor(&session, input.claim_id);
-        let run = claim_run_for_desktop(state.db_pool(), &input.run, &owner).await?;
-        let acquired: (bool,) = query_as("SELECT execution_backend='desktop' AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FROM cloud_agent_fallback_runs WHERE run_id=$1")
-            .bind(&run.run_id).bind(owner).fetch_one(state.db_pool()).await?;
-        let identity = if acquired.0 { Some(super::runs::identity::identity_for_run(state.db_pool(), &run.run_id).await?) } else { None };
-        Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity})))
-    }.await;
-    match result {
-        Ok(Some(value)) => context_scope_response(state.db_pool(), value).await,
-        Ok(None) => denied(),
-        Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
-    }
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct RenewalInput {
     claim_id: Uuid,
+}
+
+/// Material is returned only to the authenticated owner Mac holding this
+/// run's current execution lease. The browser never receives this response.
+pub(super) async fn provider_auth(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(run_id): Path<String>,
+    Json(input): Json<RenewalInput>,
+) -> Response {
+    let owner = executor(&session, input.claim_id);
+    let route = match desktop_provider_route(state.db_pool(), &session, &run_id, &owner).await {
+        Ok(Some(route)) => route,
+        Ok(None) => return expired(),
+        Err(error) => {
+            return run_error_response(
+                "desktop provider auth",
+                "Could not load provider account.",
+                error.into(),
+            )
+        }
+    };
+    let cipher = EnvProviderAuthCipher::from_env().ok();
+    let result = provider_auth_for_account_route(
+        state.db_pool(),
+        cipher
+            .as_ref()
+            .map(|value| value as &dyn ProviderAuthCipher),
+        &session.account_id,
+        &route,
+        Some(&run_id),
+    )
+    .await;
+    // Resolving an OAuth account can refresh its token. Check the lease again
+    // before handing the resulting short-lived material to the desktop.
+    match desktop_provider_route(state.db_pool(), &session, &run_id, &owner).await {
+        Ok(Some(current)) if current == route => {}
+        Ok(_) => return expired(),
+        Err(error) => {
+            return run_error_response(
+                "desktop provider auth",
+                "Could not load provider account.",
+                error.into(),
+            )
+        }
+    }
+    match result {
+        Ok(ProviderAuthForRunResult::Found(provider_auth)) => {
+            Json(RunnerProviderAuthMaterialEnvelope { provider_auth }).into_response()
+        }
+        Ok(ProviderAuthForRunResult::ProviderAuthNotFound) => error_response(
+            "provider_auth_not_found",
+            "Provider account was not found for this run.",
+            StatusCode::NOT_FOUND,
+        ),
+        Ok(ProviderAuthForRunResult::ProviderAuthCipherUnavailable) => error_response(
+            "provider_auth_not_configured",
+            "Provider accounts are unavailable.",
+            StatusCode::SERVICE_UNAVAILABLE,
+        ),
+        Ok(ProviderAuthForRunResult::RunNotFound) => expired(),
+        Err(error) => run_error_response(
+            "desktop provider auth",
+            "Could not load provider account.",
+            error.into(),
+        ),
+    }
+}
+
+async fn desktop_provider_route(
+    pool: &PgPool,
+    session: &CloudSession,
+    run_id: &str,
+    owner: &str,
+) -> Result<Option<Value>, sqlx_core::Error> {
+    let row: Option<(Value,)> = query_as(
+        "SELECT r.runtime_route_json FROM cloud_agent_fallback_runs r \
+         JOIN cloud_devices d ON d.device_id=$3 AND d.account_id=$2 \
+         WHERE r.run_id=$1 AND r.owner_account_id=$2 AND r.claimed_by=$4 \
+         AND r.execution_backend='desktop' AND r.status IN ('leased','running') \
+         AND r.lease_expires_at::timestamptz>now() \
+         AND d.device_platform IN ('macos','desktop') AND d.revoked_at IS NULL",
+    )
+    .bind(run_id)
+    .bind(&session.account_id)
+    .bind(&session.device_id)
+    .bind(owner)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|value| value.0))
 }
 
 pub(super) async fn admit(
@@ -433,32 +448,5 @@ pub(super) async fn read_member_context(
             "Conversation retrieval is unavailable.",
             error,
         ),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::names_hosted_only_account;
-
-    #[test]
-    fn only_hosted_only_choices_skip_the_owner_mac_window() {
-        for choice in [
-            "cloud-api-key:work",
-            "cloud-login:0b0e8f6e-6d59-4f43-9a4e-8f1e0c5f9a11",
-            "ios-codex:personal",
-            " ios-api-key:anthropic",
-        ] {
-            assert!(names_hosted_only_account(Some(choice)), "{choice}");
-        }
-        for choice in [
-            "profile:work",
-            "local-active-oauth",
-            "default",
-            "cloud-api-key",
-            "",
-        ] {
-            assert!(!names_hosted_only_account(Some(choice)), "{choice}");
-        }
-        assert!(!names_hosted_only_account(None));
     }
 }

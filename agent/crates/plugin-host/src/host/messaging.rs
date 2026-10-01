@@ -48,7 +48,12 @@ impl PluginHost {
             return None;
         }
 
-        match tokio::time::timeout(Duration::from_secs(30), self.read_response_for_id(id)).await {
+        match tokio::time::timeout(
+            Duration::from_secs(30),
+            self.read_response_for_id(id, None, None),
+        )
+        .await
+        {
             Ok(Ok(Some(result))) => match serde_json::from_value::<kordi_hooks::HookResult>(result)
             {
                 Ok(hr) => {
@@ -93,6 +98,18 @@ impl PluginHost {
         tool_call_id: &str,
         params: serde_json::Value,
     ) -> Result<serde_json::Value, PluginHostError> {
+        self.execute_tool_with_context(name, tool_call_id, params, &PluginContext::default(), None)
+            .await
+    }
+
+    pub async fn execute_tool_with_context(
+        &mut self,
+        name: &str,
+        tool_call_id: &str,
+        params: serde_json::Value,
+        context: &PluginContext,
+        on_progress: Option<&(dyn Fn(&str) + Send + Sync)>,
+    ) -> Result<serde_json::Value, PluginHostError> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
         let request = serde_json::json!({
@@ -103,6 +120,7 @@ impl PluginHost {
                 "name": name,
                 "toolCallId": tool_call_id,
                 "params": params,
+                "context": context,
             },
         });
 
@@ -110,7 +128,12 @@ impl PluginHost {
             .await
             .map_err(|e| PluginHostError::Io(format!("send execute_tool: {e}")))?;
 
-        match tokio::time::timeout(Duration::from_secs(60), self.read_response_for_id(id)).await {
+        match tokio::time::timeout(
+            Duration::from_secs(60),
+            self.read_response_for_id(id, Some(tool_call_id), on_progress),
+        )
+        .await
+        {
             Ok(Ok(Some(result))) => Ok(result),
             Ok(Ok(None)) => Err(PluginHostError::ProcessExited),
             Ok(Err(e)) => Err(PluginHostError::Io(format!("read tool response: {e}"))),
@@ -151,7 +174,12 @@ impl PluginHost {
             .await
             .map_err(|e| PluginHostError::Io(format!("send execute_command: {e}")))?;
 
-        match tokio::time::timeout(Duration::from_secs(60), self.read_response_for_id(id)).await {
+        match tokio::time::timeout(
+            Duration::from_secs(60),
+            self.read_response_for_id(id, None, None),
+        )
+        .await
+        {
             Ok(Ok(Some(result))) => Ok(result),
             Ok(Ok(None)) => Err(PluginHostError::ProcessExited),
             Ok(Err(e)) => Err(PluginHostError::Io(format!("read command response: {e}"))),
@@ -194,6 +222,8 @@ impl PluginHost {
     pub(super) async fn read_response_for_id(
         &mut self,
         id: u64,
+        progress_call_id: Option<&str>,
+        on_progress: Option<&(dyn Fn(&str) + Send + Sync)>,
     ) -> Result<Option<serde_json::Value>, std::io::Error> {
         loop {
             let msg = match self.read_message().await? {
@@ -241,6 +271,20 @@ impl PluginHost {
                 "ui_request" => {
                     if let Some(params) = msg.get("params") {
                         self.handle_ui_request_inline(params.clone()).await;
+                    }
+                }
+                "tool_progress" => {
+                    if let (Some(callback), Some(chunk)) = (
+                        on_progress,
+                        msg.get("params")
+                            .filter(|params| {
+                                params.get("toolCallId").and_then(|value| value.as_str())
+                                    == progress_call_id
+                            })
+                            .and_then(|params| params.get("chunk"))
+                            .and_then(|value| value.as_str()),
+                    ) {
+                        callback(chunk);
                     }
                 }
                 _ => {

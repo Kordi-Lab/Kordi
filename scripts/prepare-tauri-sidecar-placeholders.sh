@@ -21,7 +21,7 @@ fi
 
 mkdir -p "$binaries_dir"
 
-for name in kordi bridges; do
+for name in kordi bridges kordi-omp; do
   path="$binaries_dir/$name-$target_triple"
   if [ ! -f "$path" ]; then
     cat > "$path" <<'EOF'

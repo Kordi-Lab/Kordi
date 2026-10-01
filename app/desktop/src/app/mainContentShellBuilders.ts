@@ -2,6 +2,7 @@ import type { ComponentProps } from 'react';
 
 import { ChatsPage } from '@/pages/ChatsPage';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
+import { chatHasConnectedProvider } from '@/pages/chatsPage.model';
 
 import type { MainContentShellArgs } from '@/app/kordiShellSlots.types';
 
@@ -147,7 +148,10 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     onPrefetchChatSession: args.handlePrefetchChatSession,
     },
     auth: {
-    hasAnyAuth: authStateSatisfiesStartupGate(args.desktopAuthState),
+    hasAnyAuth: chatHasConnectedProvider(
+      authStateSatisfiesStartupGate(args.desktopAuthState),
+      args.composerProviderOptions,
+    ),
     onOpenAuthSettings: args.openAuthSettings,
     onOpenAccountAuthentication: args.openCloudAccountAuthentication,
     },

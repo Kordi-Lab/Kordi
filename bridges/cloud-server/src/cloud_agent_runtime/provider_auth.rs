@@ -21,6 +21,7 @@ pub use resolve::{
 pub use service::{
     RunnerProviderAuthMaterial, RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
 };
+pub(crate) use snapshots::live_snapshot_for_route;
 pub(crate) use snapshots::snapshot_available_for_route;
 pub use snapshots::{
     current_snapshot, list_snapshots, publish_snapshot, record_snapshot_used, revoke_snapshot,

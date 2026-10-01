@@ -16,6 +16,7 @@ import { buildChatCreatePeopleContactLookup } from '@/features/chat/chatCreateFl
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
+import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
 import type { ComposerQuoteState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
@@ -28,6 +29,7 @@ export function useKordiAppMutationActions({
   workspace: KordiWorkspaceState;
   runtime: KordiAppRuntimeActions;
 }) {
+  const hosted = useHostedAccountsSnapshot();
   const {
     environment: {
       isNativeShell,
@@ -47,7 +49,6 @@ export function useKordiAppMutationActions({
       setParticipantSpaceDrafts,
     },
     ui: {
-      projectsUi,
       composerUi,
     },
     auth: {
@@ -66,8 +67,6 @@ export function useKordiAppMutationActions({
       activeConvId,
       setActiveConvId,
       setActiveNav,
-      selectProject,
-      selectProjectSession,
     },
     composer: {
       activeChatQuote,
@@ -146,18 +145,16 @@ export function useKordiAppMutationActions({
     createProjectSession: handleCreateProjectSession,
   } = useKordiProjectActions({
     activeProject,
-    desktopState: desktopChatState,
+    activeConversationId: activeConvId,
+    setActiveConversationId: setActiveConvId,
     isNativeShell,
     refreshCanonicalState,
     refreshDesktopChat,
-    selectProject,
-    selectProjectSession,
     setActiveNav,
     setComposerAttachments: composerUi.setChatComposerAttachments,
     setComposerDrafts: composerUi.setComposerDrafts,
     setDesktopError: setDesktopChatError,
     setDesktopState: setDesktopChatState,
-    setExpandedProjectIds: projectsUi.setExpandedProjectIds,
     setOpenComposerSelector: composerUi.setOpenComposerSelector,
   });
 
@@ -175,7 +172,7 @@ export function useKordiAppMutationActions({
     cloudAccountId: cloudSession.account?.accountId,
     conversations: chatConversations,
     isNativeShell,
-    hasAgentProvider: authStateSatisfiesStartupGate(desktopAuthState),
+    hasAgentProvider: authStateSatisfiesStartupGate(desktopAuthState, hosted.accounts),
     createOwnedAgentSession: runtime.sessions.handleCreateChatSession,
     openAgentAuthentication: openCloudAccountAuthentication,
     startCollaborationPersonSession:

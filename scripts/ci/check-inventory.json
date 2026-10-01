@@ -83,7 +83,7 @@
       "workflow": "ci-rust.yml",
       "command": "pnpm check:server",
       "runner": "ubuntu-latest",
-      "prerequisites": ["cargo"],
+      "prerequisites": ["cargo", "bun"],
       "paths": [
         "agent/**",
         "app/server/**",
@@ -93,6 +93,7 @@
         "bridges/cloud-temporal-bridge/**",
         "bridges/Cargo.toml",
         "shared/rust/**",
+        "shared/omp-runtime/**",
         "shared/blob-emoji/**",
         "shared/chat-sync/**",
         "shared/agent-targeting/**",
@@ -113,7 +114,8 @@
         "cloud agent runner tests",
         "CLI lib tests",
         "desktop-runtime tests",
-        "cloud server tests"
+        "cloud server tests",
+        "OMP worker and adapter integration tests"
       ]
     },
     {
@@ -149,11 +151,12 @@
       "workflow": "ci-platforms.yml",
       "command": "pnpm check:desktop",
       "runner": "macos-15",
-      "prerequisites": ["cargo", "xcode"],
+      "prerequisites": ["cargo", "xcode", "bun"],
       "paths": [
         "app/desktop/src-tauri/**",
         "agent/**",
         "shared/rust/**",
+        "shared/omp-runtime/**",
         "shared/agent-targeting/**",
         "shared/artifacts/**",
         "shared/blob-emoji/**",
@@ -165,7 +168,7 @@
       "always": false,
       "serial": false,
       "timeoutMinutes": 45,
-      "outputs": ["Tauri dependency surface", "Tauri clippy", "Tauri crate tests"]
+      "outputs": ["Tauri dependency surface", "Tauri clippy", "Tauri crate tests", "OMP worker and Mac adapter tests"]
     },
     {
       "id": "ios",

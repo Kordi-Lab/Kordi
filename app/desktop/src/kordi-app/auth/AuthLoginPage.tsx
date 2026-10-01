@@ -130,7 +130,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
       : view.error?.message ?? null;
 
   return (
-    <div className="grid min-h-0 w-full pb-6 pt-6">
+    <div className="grid min-h-0 min-w-0 w-full pb-6 pt-6">
       {unavailable ? <AuthPageNotice>{OMP_UNAVAILABLE_MESSAGE}</AuthPageNotice> : null}
       <SettingsSection className="app-auth-detail-section">
         <SettingsRow
@@ -202,7 +202,7 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
       </SettingsSection>
 
       {started ? (
-        <SettingsSection title="Steps" className="app-auth-detail-section">
+        <SettingsSection title="Steps" className="app-auth-detail-section min-w-0">
           {signInUrl && kind !== 'api-key' ? (
             <>
               <SettingsRow
@@ -218,8 +218,18 @@ export function AuthLoginPage({ method, suggestedAccountName, client, openExtern
               ) : null}
               <SettingsRow
                 title="Link"
-                description={<span className="block truncate font-mono text-[11px]" title={signInUrl}>{signInUrl}</span>}
-                control={<AuthActionButton key="copy-link" type="button" className={authButtonNeutralClass} onClick={() => copy(signInUrl, 'link')}>{copied === 'link' ? 'Copied' : 'Copy link'}</AuthActionButton>}
+                className="min-w-0"
+                description={(
+                  <a
+                    href={signInUrl}
+                    title={signInUrl}
+                    onClick={(event) => { event.preventDefault(); openExternal(signInUrl); }}
+                    className={`${linkClass} block min-w-0 max-w-full truncate font-mono focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--app-sidebar-accent)]`}
+                  >
+                    {signInUrl}
+                  </a>
+                )}
+                control={<AuthActionButton key="copy-link" type="button" className={authButtonNeutralClass} aria-live="polite" onClick={() => copy(signInUrl, 'link')}>{copied === 'link' ? 'Copied' : 'Copy link'}</AuthActionButton>}
               />
             </>
           ) : null}

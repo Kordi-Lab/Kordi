@@ -152,6 +152,15 @@ async fn claim_run_with_executor(
     input: &ClaimRunRequest,
     desktop_executor: Option<&str>,
 ) -> RunResult<CloudAgentRunResponse> {
+    if let Some(device) =
+        crate::projects::session_device(pool, &input.owner_account_id, &input.session_id).await?
+    {
+        if !desktop_executor
+            .is_some_and(|executor| executor.starts_with(&format!("desktop:{device}:")))
+        {
+            return Err(super::RunError::ContextUnavailable("Open Kordi on the project Mac to run this task. Project files are available only on that device."));
+        }
+    }
     let agent_id = super::execution_agent_id(pool, input).await?;
     let existing: Option<(String, String, Option<String>, String, String, String)> = query_as(
         "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
@@ -191,8 +200,8 @@ async fn claim_run_with_executor(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
             requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at,
-            execution_backend, execution_agent_id, claimed_by, lease_expires_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16)
+            execution_backend, execution_agent_id, claimed_by, lease_expires_at, omp_input_json
+         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16, $17)
          ON CONFLICT (owner_account_id, execution_agent_id, request_message_id) WHERE NOT legacy_duplicate DO UPDATE SET request_message_id = cloud_agent_fallback_runs.request_message_id
          RETURNING run_id, status, sandbox_id, created_at, updated_at, execution_backend",
     )
@@ -212,6 +221,7 @@ async fn claim_run_with_executor(
     .bind(&agent_id)
     .bind(desktop_executor)
     .bind(lease_expires_at)
+    .bind(&prompt.omp_input)
     .fetch_one(pool)
     .await?;
 
