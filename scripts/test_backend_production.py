@@ -211,10 +211,39 @@ class ProductionTests(unittest.TestCase):
             lambda spec: spec["egress"][0]["ports"].append({"port": 5432, "protocol": "TCP"}),
             lambda spec: spec["egress"][1]["to"][0]["ipBlock"].update({"except": []}),
             lambda spec: spec["egress"].append({"to": [{"ipBlock": {"cidr": "10.42.0.0/16"}}]}),
+            lambda spec: spec["egress"].append({"to": [{"ipBlock": {"cidr": "::/0"}}]}),
+            lambda spec: spec["egress"].append({"to": [{"ipBlock": {"cidr": "::/0", "except": ["fc00::/7"]}}]}),
+            lambda spec: spec["egress"][0]["to"][0]["podSelector"]["matchLabels"].update({"k8s-app": "other"}),
+            lambda spec: spec["egress"][0]["to"][0].pop("namespaceSelector"),
         ]:
             self.assertIsNotNone(weakened(change))
         self.assertIsNone(weakened(lambda spec: spec["egress"].append(
             {"to": [{"ipBlock": {"cidr": "10.0.0.0/8", "except": ["10.0.0.0/8"]}}]})))
+        self.assertIsNone(weakened(lambda spec: spec["egress"].append({"to": [{"ipBlock": {
+            "cidr": "::/0", "except": ["::1/128", "fc00::/7", "fe80::/10", "::ffff:0:0/96", "64:ff9b::/96"]}}]})))
+
+    def test_other_policies_cannot_allow_traffic_for_sandbox_pods(self):
+        named = dict(sandbox_policy(), metadata={"name": SANDBOX_POLICY})
+
+        def listed(*others):
+            return {"items": [named, *others]}
+
+        allow_all = {"egress": [{}], "policyTypes": ["Egress"]}
+        for selector in [{}, {"matchLabels": {"app.kubernetes.io/component": "agent-sandbox"}},
+                         {"matchLabels": {"kordi.ai/sandbox-id": "sandbox-a"}},
+                         {"matchExpressions": [{"key": "tier", "operator": "Exists"}]}]:
+            other = {"metadata": {"name": "extra"}, "spec": dict(allow_all, podSelector=selector)}
+            with patch("backend_deploy_production.run",
+                       side_effect=[json.dumps(sandbox_policy()), json.dumps(listed(other))]):
+                with self.assertRaises(ValueError, msg=str(selector)):
+                    verify_sandbox_network_policy()
+        server_selector = {"matchLabels": {"app.kubernetes.io/name": "kordi-cloud-server"}}
+        unrelated = {"metadata": {"name": "server"}, "spec": dict(allow_all, podSelector=server_selector)}
+        deny_all = {"metadata": {"name": "default-deny"},
+                    "spec": {"podSelector": {}, "policyTypes": ["Ingress", "Egress"]}}
+        with patch("backend_deploy_production.run",
+                   side_effect=[json.dumps(sandbox_policy()), json.dumps(listed(unrelated, deny_all))]):
+            verify_sandbox_network_policy()
 
     def test_the_policy_manifest_matches_what_promotion_requires(self):
         manifest = (ROOT / "bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml").read_text()
