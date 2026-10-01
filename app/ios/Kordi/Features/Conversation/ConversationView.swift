@@ -1801,7 +1801,7 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onCopy: {
-                    UIPasteboard.general.string = message.text
+                    MessageClipboard.copy(message.text)
                     dismissMessageActions()
                 },
                 onShareMessage: {
@@ -2058,7 +2058,7 @@ struct ConversationView: View {
             .filter { selectedMessageIDs.contains($0.id) }
             .map { "\($0.authorName) · \($0.createdAt.formatted(date: .omitted, time: .shortened))\n\($0.text)" }
             .joined(separator: "\n\n")
-        UIPasteboard.general.string = text
+        MessageClipboard.copy(text)
     }
 
     private func pinMessage(_ target: ChatMessage, shared: Bool) {

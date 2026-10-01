@@ -1084,7 +1084,7 @@ private struct MarkdownCodeBlock: View {
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 12)
                 Button {
-                    UIPasteboard.general.string = source
+                    MessageClipboard.copy(source)
                     withAnimation(.easeOut(duration: 0.15)) { copied = true }
                     Task {
                         try? await Task.sleep(for: .seconds(1.2))
