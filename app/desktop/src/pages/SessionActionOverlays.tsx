@@ -154,7 +154,7 @@ export function SessionContextMenu({
           }}
         >
           <Trash2 className="app-transient-action-icon" aria-hidden="true" />
-          Delete chat…
+          Remove chat…
         </button>
       </div>
     </div>
@@ -333,15 +333,16 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
   return (
     <AppDialog
       titleId="remove-chat-dialog-title"
+      descriptionId="remove-chat-dialog-description"
       onDismiss={cancel}
       dismissDisabled={isDeleting}
       busy={isDeleting}
       presentation="popover"
       anchorRect={target.anchorRect}
     >
-      <AppDialogTitle id="remove-chat-dialog-title" className="text-[13px] leading-5">Delete this chat from your list?</AppDialogTitle>
-      <p className="app-transient-muted mt-2 text-[11px] leading-4">
-        This does not delete it for other participants. It will return only when a new visible message arrives.
+      <AppDialogTitle id="remove-chat-dialog-title" className="text-[13px] leading-5">Remove this chat from your list?</AppDialogTitle>
+      <p id="remove-chat-dialog-description" className="app-transient-muted mt-2 text-[11px] leading-4">
+        This doesn't delete its messages for anyone. The chat comes back when a new message arrives.
       </p>
       {error ? (
         <div className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">
@@ -358,7 +359,7 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
           onClick={() => { void confirm(); }}
         >
           {isDeleting ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
-          <span>{isDeleting ? 'Deleting…' : error ? 'Try again' : 'Delete chat'}</span>
+          <span>{isDeleting ? 'Removing…' : error ? 'Try again' : 'Remove chat'}</span>
         </Button>
       </AppDialogActions>
     </AppDialog>
