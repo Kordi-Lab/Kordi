@@ -2,7 +2,9 @@
 //!
 //! The runner authenticates with its runner token; this module binds the
 //! action to the run's owner (PiP's system account) and the run's own
-//! conversation, so a run can never touch another chat's card.
+//! conversation, so a run can never touch another chat's card. PiP proposes
+//! cards; its answers, votes, and plan decisions come back as
+//! `{"status": "suggested", ...}` until a person confirms them.
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -17,7 +19,8 @@ use uuid::Uuid;
 
 use crate::server::ServerState;
 
-use super::routes::{dispatch_row, Actor};
+use super::routes::{dispatch, Actor};
+use super::suggestions::Dispatched;
 use super::wire::Request;
 
 fn represented_accounts(prompt: &str) -> BTreeSet<String> {
@@ -120,8 +123,23 @@ pub async fn runner_action(
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: represented_accounts(&prompt),
     };
-    match dispatch_row(state.db_pool(), &actor, request).await {
-        Ok(row) => {
+    match dispatch(state.db_pool(), &actor, request).await {
+        Ok(Dispatched::Suggested {
+            row,
+            action_id,
+            awaiting,
+        }) => {
+            // The card did not change, so there is nothing to refresh or mark
+            // seen. The model learns that a person still has to confirm.
+            Json(json!({
+                "status": "suggested",
+                "pendingActionId": action_id,
+                "awaiting": awaiting,
+                "card": crate::pip::context::compact_card(&row),
+            }))
+            .into_response()
+        }
+        Ok(Dispatched::Applied(row)) => {
             // Publish each successful tool mutation, even if a later model
             // step fails before the run completion callback.
             if let Err(error) =

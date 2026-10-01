@@ -180,7 +180,33 @@ async fn sender_group_alias_can_read_only_the_admitted_owners_calendar() {
     let leased = read_json(leased).await;
     assert_eq!(leased["run"]["runId"], run);
     let run_token = lease_run_token(&leased);
-    let read = router.clone().oneshot(post_json_with_run_token(&format!("/v1/cloud/agent-runs/{run}/context"), "runner-test-token", &run_token, json!({"runnerId":"group-calendar-runner","tool":"read_calendar","arguments":{"shareInConversation":true}}))).await.unwrap();
+    let read_calendar = || {
+        post_json_with_run_token(
+            &format!("/v1/cloud/agent-runs/{run}/context"),
+            "runner-test-token",
+            &run_token,
+            json!({"runnerId":"group-calendar-runner","tool":"read_calendar","arguments":{"shareInConversation":true}}),
+        )
+    };
+    // Sharing in the group first waits for the owner's approval.
+    let waiting = router.clone().oneshot(read_calendar()).await.unwrap();
+    assert_eq!(waiting.status(), StatusCode::OK);
+    let waiting = read_json(waiting).await;
+    assert_eq!(waiting["status"], "approval_required");
+    let approved = router
+        .clone()
+        .oneshot(post_json_with_token(
+            &format!(
+                "/v1/cloud/agent-actions/{}/decision",
+                waiting["pendingActionId"].as_str().unwrap()
+            ),
+            &owner.token,
+            json!({"decision": "approve"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(approved.status(), StatusCode::OK);
+    let read = router.clone().oneshot(read_calendar()).await.unwrap();
     assert_eq!(read.status(), StatusCode::OK);
     assert_eq!(
         read_json(read).await["events"][0]["title"],

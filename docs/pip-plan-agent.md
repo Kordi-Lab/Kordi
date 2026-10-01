@@ -1,10 +1,11 @@
 # PiP, the built-in plan agent
 
 Stage 1 of the proactive plan-card work for #1546. PiP is a system-managed
-Cloud agent that lives in every group conversation, notices when a concrete
-plan is forming, and keeps one shared plan card per conversation honest. It
+Cloud agent that group conversations can turn on. It notices when a concrete
+plan is forming and keeps one shared plan card per conversation honest. It
 runs on a Kordi-operated provider credential, never on a member's key, and it
-never reads or writes anyone's personal calendar.
+never reads or writes anyone's personal calendar. PiP only suggests answers
+and decisions; people confirm them in Kordi.
 
 ## Identity
 
@@ -12,8 +13,16 @@ PiP mirrors the Kordi Support agent's plumbing: a system account
 (`acct_kordi_pip` by default), a locked agent definition
 (`cloud_agent_kordi_pip`), a default agent profile so member listings render
 it, and a `ServiceProviderAuth` credential resolved at run time from server
-configuration. It is bootstrapped at server start and joins every existing
-group conversation; new groups get PiP at creation. Direct and AI sessions are
+configuration. It is bootstrapped at server start.
+
+Whether PiP is a member is a per-conversation setting
+(`cloud_chat_ai_policies.pip_enabled`, the "PiP plan helper" switch in AI
+access). Groups that existed before the setting keep PiP. New groups start
+without PiP unless the creator turns it on; current apps do this right after
+creating the group, and a new channel inherits the setting of the channel it
+was created from. Turning PiP off removes it from the conversation and
+retires its waiting suggestions; every change posts a notice. At startup the
+server reconciles membership with the setting. Direct and AI sessions are
 excluded until both clients render a third member there.
 
 ## Configuration
@@ -32,22 +41,22 @@ from the ignored `deploy/dev/.env` file.
 
 PiP is warm, brief, and practical. It speaks only when a hook gives it a
 reason and never repeats a nudge. Its messages exist to move the group: open
-a vote, ask the one person whose answer is missing (by `@handle`), confirm a
-deal, or remind people shortly before the event. Member responses live on
-the card, never in PiP's chat lines.
+a vote, ask the one person whose answer is missing (by `@handle`), suggest a
+deal for the organizer to confirm, or remind people shortly before the event.
+Member responses live on the card, never in PiP's chat lines.
 
 | Situation | What PiP does |
 | --- | --- |
 | The chat names competing days, times, or places | opens a vote on its own (`propose` a polling card with 2 to 4 options), without anyone asking |
 | Votes or answers missing for a while | asks the missing people by name, once per card |
-| The group settles, or the vote has a clear winner and the organizer agrees | `confirm` (with `optionId` when the poll decides it); one message saying what is fixed |
-| A member cannot make it | `rsvp` no for that member only; the plan stands |
-| The organizer cancels, or the group calls it off | `cancel` |
-| Genuinely unclear whether a confirmed plan stands | asks one question and `reopen`s the card |
+| The group settles, or the vote has a clear winner and the organizer agrees | suggests `rsvp` yes for each member who agreed and `confirm` (with `optionId` when the poll decides it); one message saying what it suggested |
+| A member cannot make it | suggests `rsvp` no for that member only; the plan stands |
+| The organizer cancels, or the group calls it off | suggests `cancel` |
+| Genuinely unclear whether a confirmed plan stands | asks one question and suggests `reopen` |
 | 24 hours and 2 hours before start | one reminder each, while the card is open |
 
 Confirming with an option marks everyone who voted for it as attending.
-Confirming adds the plan to every attending member's Kordi calendar
+A confirmed plan is added to every attending member's Kordi calendar
 (`bridges/cloud-server/src/plan_cards/calendar.rs`), keyed by the card so
 later changes update the same entry; a decline or a cancellation removes it.
 
@@ -122,12 +131,13 @@ confirm, and writing calendars never use the model.
    `POST /v1/cloud/agent-runs/:run_id/plan-card`, authenticated with the
    runner token. Every action, not only a proposal, must target a card in
    the run's own conversation.
-4. The server records the action as PiP (`bridges/cloud-server/src/plan_cards/runner.rs`).
-   PiP may record another active member's RSVP, vote, confirmation, or
-   cancellation from what that member said; a signed-in member still acts only
-   for themselves. Every participant on a card must be an active member of
-   its conversation, since a confirmed plan writes to their calendars and
-   digests.
+4. The server binds the action to PiP's run (`bridges/cloud-server/src/plan_cards/runner.rs`).
+   PiP proposes and revises cards directly. Its RSVPs, votes,
+   confirmations, cancellations, and reopenings become suggestions (see
+   below) and the tool result says `{"status":"suggested", ...}`. A
+   signed-in member acts only for themselves. Every participant on a card
+   must be an active member of its conversation, since a confirmed plan
+   writes to their calendars and digests.
 5. When the run changed the card, PiP posts the card as its own message; the
    run's final JSON `{"message": ..., "hooksHandled": [...]}` is then posted as
    a separate text message from PiP when `message` is non-empty. `@Handle` tokens that
@@ -139,6 +149,30 @@ between attempts (`bridges/cloud-server/src/pip/retry.rs`). Progress is never
 reset on failure, so a persistently failing provider costs a handful of calls
 per day, not thousands. A chat whose run expired or ended without clearing
 its reservation is released on the next stale-run check.
+
+## Suggestions
+
+PiP never records an answer or a decision for anyone
+(`bridges/cloud-server/src/plan_cards/suggestions.rs`). A PiP `rsvp`,
+`vote`, `confirm`, `cancel`, or `reopen` leaves the card unchanged and
+creates a pending action instead:
+
+| PiP calls | Pending action | Who decides |
+| --- | --- | --- |
+| `rsvp` or `vote` for a member | `plan_rsvp` or `plan_vote` | that member; only for members who wrote in the run's new messages, and never for a member who keeps their messages from AI |
+| `confirm`, `cancel`, `reopen` | `plan_confirm`, `plan_cancel`, `plan_reopen`, carrying the card revision PiP saw | any organizer of the plan or chat owner or admin |
+| `propose` | none; the card changes. The organizer starts pending like everyone else and gets a `plan_rsvp` yes suggestion | the organizer |
+
+Suggestions expire after 24 hours, and a newer one for the same thing
+replaces the older one. People see them through `GET /v1/cloud/agent-actions`
+and decide with `POST /v1/cloud/agent-actions/:action_id/decision`. Approving
+applies the change as the person who decided, through the same checks as a
+card button, with the stored revision: a plan that changed since answers
+`409 plan_changed` and the suggestion is retired. Declining changes nothing.
+A member who answers or votes on the card directly, or a manager who decides
+the plan directly, settles PiP's matching suggestions. Every change sends
+`agent_action.updated` to the people who may decide it; older apps ignore it,
+and their members keep using the card buttons.
 
 ## How the card reaches the clients
 
@@ -185,6 +219,11 @@ instead of a generated face, and a "Built-in agent" tag next to its name.
 - Decision and route cards.
 
 ## Validation
+
+The agent-trust package adds `plan_cards::pip_suggestion_tests` (database)
+and `bridges/cloud-server/tests/agent_actions_e2e.rs`. The development run
+recorded below predates suggestions: PiP then recorded answers and decisions
+itself.
 
 Unit coverage: `cargo test -p kordi-cloud-server --lib pip::`,
 `cargo test -p kordi-cloud-server --lib plan_cards::` and

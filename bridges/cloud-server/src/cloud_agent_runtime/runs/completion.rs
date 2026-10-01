@@ -21,15 +21,34 @@ use super::{RunError, RunResult};
 
 type FailedRunRow = (String, String, String, String, Option<String>);
 
+/// The longest model name a runner may report for a run.
+pub const DISCLOSED_MODEL_LIMIT: usize = 200;
+
 #[derive(Debug, Deserialize)]
 pub struct CompleteRunRequest {
     #[serde(rename = "runnerId")]
     pub runner_id: String,
     #[serde(rename = "responseText")]
     pub response_text: String,
+    /// The model the runner actually called, shown in "About this reply".
+    /// Older runners omit it.
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 impl CompleteRunRequest {
+    /// The reported model when it is a plausible name: non-empty and at most
+    /// 200 characters. Anything else is not recorded, and the reply shows the
+    /// model as not reported; the reply itself still completes.
+    pub fn disclosed_model(&self) -> Option<String> {
+        self.model
+            .as_deref()
+            .map(str::trim)
+            .filter(|model| !model.is_empty())
+            .filter(|model| model.chars().count() <= DISCLOSED_MODEL_LIMIT)
+            .map(str::to_string)
+    }
+
     pub fn runner_id(&self) -> Option<String> {
         let trimmed = self.runner_id.trim();
         if trimmed.is_empty() {
@@ -103,6 +122,29 @@ pub async fn complete_run(
     runner_id: &str,
     response_text: &str,
 ) -> RunResult<RunnerRunResponse> {
+    complete_run_with_model(pool, run_id, runner_id, response_text, None).await
+}
+
+/// Completes a run and records the model the runner used, for runs that are
+/// still leased by this runner.
+pub async fn complete_run_with_model(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+    response_text: &str,
+    model: Option<&str>,
+) -> RunResult<RunnerRunResponse> {
+    if let Some(model) = model {
+        sqlx_core::query::query(
+            "UPDATE cloud_agent_fallback_runs SET disclosed_model = $3 \
+             WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
+        )
+        .bind(run_id)
+        .bind(runner_id)
+        .bind(model)
+        .execute(pool)
+        .await?;
+    }
     if let Some(run) =
         super::subsession_lifecycle::finish(pool, run_id, runner_id, response_text, true).await?
     {

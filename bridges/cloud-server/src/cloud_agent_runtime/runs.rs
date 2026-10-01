@@ -26,7 +26,9 @@ pub use claims::{
     claim_run, claim_run_for_desktop, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
     CloudAgentRunLookupResponse, CloudAgentRunResponse,
 };
-pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest};
+pub use completion::{
+    complete_run, complete_run_with_model, fail_run, CompleteRunRequest, FailRunRequest,
+};
 #[cfg(test)]
 use delivery::{
     cloud_group_response_recipients, direct_person_peer_account_id, is_scheduled_run_request_id,

@@ -20,9 +20,9 @@ use crate::cloud_agent_runtime::provider_auth::{
 };
 use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
 use crate::cloud_agent_runtime::runs::{
-    canary_lease_permitted, canary_leases_for_any_run_enabled, complete_run, error_response,
-    fail_run, lease_canary_run, lease_next_run, lookup_run_for_request, mark_run_running,
-    run_error_response, runner_unauthorized, CompleteRunRequest, FailRunRequest,
+    canary_lease_permitted, canary_leases_for_any_run_enabled, complete_run_with_model,
+    error_response, fail_run, lease_canary_run, lease_next_run, lookup_run_for_request,
+    mark_run_running, run_error_response, runner_unauthorized, CompleteRunRequest, FailRunRequest,
     RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
 };
 use crate::server::ServerState;
@@ -181,6 +181,8 @@ pub fn routes(state: Arc<ServerState>) -> Router {
     );
 
     user_routes
+        .merge(super::agent_actions::routes(state.clone()))
+        .merge(super::disclosure::routes(state.clone()))
         .merge(provider_auth_routes::routes(state))
         .merge(runner_routes)
         .merge(public_catalog)
@@ -267,7 +269,16 @@ async fn complete_runner_run(
             StatusCode::BAD_REQUEST,
         );
     };
-    match complete_run(state.db_pool(), &run_id, &runner_id, &input.response_text).await {
+    let model = input.disclosed_model();
+    match complete_run_with_model(
+        state.db_pool(),
+        &run_id,
+        &runner_id,
+        &input.response_text,
+        model.as_deref(),
+    )
+    .await
+    {
         Ok(run) => {
             notify_run_response(&state, run.response_message_id.as_deref()).await;
             Json(RunnerRunEnvelope { run }).into_response()

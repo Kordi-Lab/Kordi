@@ -19,6 +19,7 @@ use crate::{
 
 use super::models::{PlanCardRow, PlanCardRsvp};
 use super::store;
+use super::suggestions::{self, Dispatched};
 use super::wire::{blank_to_none, error, store_error, Rejection, Request};
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -63,8 +64,22 @@ async fn handle(
         on_behalf_of_conversation: None,
         represented_accounts: BTreeSet::new(),
     };
+    let action = request.action();
+    let event_id = suggestions::event_of(&request);
     match dispatch_row(state.db_pool(), &actor, request).await {
         Ok(row) => {
+            // Acting on the card directly settles PiP's matching suggestions.
+            let event_id = event_id.unwrap_or_else(|| row.event_id.clone());
+            if let Err(error) = suggestions::supersede_after_member_action(
+                state.db_pool(),
+                &actor.account_id,
+                action,
+                &event_id,
+            )
+            .await
+            {
+                eprintln!("[plan_cards] Could not settle PiP's suggestions: {error}");
+            }
             // A member's response belongs on the card, not in the chat: PiP's
             // message that carries this card is refreshed in place for
             // everyone, with no new line and no model run.
@@ -86,9 +101,10 @@ async fn handle(
 }
 
 /// Who is acting on a card. A signed-in member acts for themselves only. A
-/// service agent (PiP) acts inside one conversation and may record another
-/// active member's RSVP, confirmation, or cancellation from what that member
-/// said in the chat.
+/// service agent (PiP) acts inside one conversation: it proposes cards, and
+/// its answers, votes, and plan decisions become suggestions a person must
+/// confirm, only for members who wrote in the new messages
+/// (`represented_accounts`).
 pub(crate) struct Actor {
     pub account_id: String,
     pub on_behalf_of_conversation: Option<Uuid>,
@@ -108,20 +124,10 @@ async fn is_active_member(pool: &PgPool, conversation_id: Uuid, account_id: &str
     .unwrap_or(false)
 }
 
-/// Validates that `acting_for` may be acted on by this actor: either it is the
-/// actor itself, or the actor is a service agent and `acting_for` is an active
-/// member of the actor's conversation.
-async fn may_act_for(pool: &PgPool, actor: &Actor, acting_for: &str) -> bool {
-    if acting_for == actor.account_id {
-        return true;
-    }
-    match actor.on_behalf_of_conversation {
-        Some(conversation_id) if actor.represented_accounts.contains(acting_for) => {
-            is_active_member(pool, conversation_id, acting_for).await
-        }
-        Some(_) => false,
-        None => false,
-    }
+/// Every change is made by the person it concerns: an actor acts only for
+/// itself.
+fn may_act_for(actor: &Actor, acting_for: &str) -> bool {
+    acting_for == actor.account_id
 }
 
 /// A PiP run acts only on cards in its own conversation, whatever event id the
@@ -149,8 +155,8 @@ async fn require_in_scope(pool: &PgPool, actor: &Actor, event_id: &str) -> Resul
 }
 
 /// A member deciding a plan for everyone (confirming, reopening, or canceling
-/// it) must be its organizer or an owner or admin of the chat. PiP's runs
-/// decide from what members said in the chat.
+/// it) must be its organizer or an owner or admin of the chat. PiP only
+/// suggests these decisions.
 async fn require_plan_manager(
     pool: &PgPool,
     account_id: &str,
@@ -185,13 +191,38 @@ fn forbidden(message: &str) -> Rejection {
 }
 
 /// Applies one request and returns the resulting card, or the error response
-/// to send back. The member route and PiP's runner both act through here.
+/// to send back. For PiP's suggestions the card is returned unchanged.
 pub(crate) async fn dispatch_row(
     pool: &PgPool,
     actor: &Actor,
     request: Request,
 ) -> Result<PlanCardRow, Rejection> {
-    apply(pool, actor, request).await
+    dispatch(pool, actor, request)
+        .await
+        .map(Dispatched::into_row)
+}
+
+/// Applies one request. The member route and PiP's runner both act through
+/// here; only PiP's runs produce suggestions.
+pub(crate) async fn dispatch(
+    pool: &PgPool,
+    actor: &Actor,
+    request: Request,
+) -> Result<Dispatched, Rejection> {
+    let pip = actor.on_behalf_of_conversation.is_some();
+    if pip && !matches!(request, Request::Propose(_)) {
+        if let Some(event_id) = suggestions::event_of(&request) {
+            require_in_scope(pool, actor, &event_id).await?;
+        }
+        return suggestions::suggest(pool, actor, request).await;
+    }
+    let row = apply(pool, actor, request).await?;
+    if pip {
+        if let Err(error) = suggestions::after_pip_propose(pool, actor, &row).await {
+            eprintln!("[plan_cards] Could not suggest the organizer's answer: {error}");
+        }
+    }
+    Ok(Dispatched::Applied(row))
 }
 
 async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCardRow, Rejection> {
@@ -233,7 +264,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
             option_id,
             ..
         } => {
-            if !may_act_for(pool, actor, &participant_id).await {
+            if !may_act_for(actor, &participant_id) {
                 return Err(forbidden("You can only cast your own vote."));
             }
             store::vote(pool, &event_id, &participant_id, option_id.trim())
@@ -256,9 +287,8 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                         StatusCode::BAD_REQUEST,
                     )
                 })?;
-            // A member records only their own RSVP. PiP may record another
-            // active member's RSVP from what that member said in the chat.
-            if !may_act_for(pool, actor, &participant_id).await {
+            // A member records only their own RSVP.
+            if !may_act_for(actor, &participant_id) {
                 return Err(forbidden("You can only record your own RSVP."));
             }
             let note = blank_to_none(note);
@@ -272,7 +302,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
             confirmed_by,
             option_id,
         } => {
-            if !may_act_for(pool, actor, &confirmed_by).await {
+            if !may_act_for(actor, &confirmed_by) {
                 return Err(forbidden(
                     "confirmedBy must match the authenticated account.",
                 ));
@@ -302,9 +332,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                     StatusCode::BAD_REQUEST,
                 ));
             }
-            if actor.on_behalf_of_conversation.is_none() {
-                require_plan_manager(pool, &actor.account_id, &event_id).await?;
-            }
+            require_plan_manager(pool, &actor.account_id, &event_id).await?;
             store::reopen(pool, &event_id, revision, &actor.account_id, &reason)
                 .await
                 .map_err(store_error)
@@ -315,7 +343,7 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
             canceled_by,
             reason,
         } => {
-            if !may_act_for(pool, actor, &canceled_by).await {
+            if !may_act_for(actor, &canceled_by) {
                 return Err(forbidden(
                     "canceledBy must match the authenticated account.",
                 ));

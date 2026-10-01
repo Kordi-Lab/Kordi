@@ -86,25 +86,22 @@ pub(super) fn keeps_answers(previous: &PlanCardRow, args: &PlanCardProposeArgs) 
 }
 
 /// A participant's answer on the revised card: the one they gave if it still
-/// applies, otherwise pending, and yes for the organizer who proposed it.
+/// applies, otherwise pending. The organizer starts pending too: PiP proposes
+/// cards, and only suggests the organizer's yes for them to confirm.
 pub(super) fn revised_rsvp(
     previous: Option<&PlanCardRow>,
     account_id: &str,
-    organizer: bool,
+    _organizer: bool,
 ) -> PlanCardRsvp {
-    let kept = previous
+    previous
         .and_then(|row| {
             row.participants
                 .iter()
                 .find(|participant| participant.account_id == account_id)
         })
         .map(|participant| participant.rsvp)
-        .filter(|rsvp| *rsvp != PlanCardRsvp::Pending);
-    match kept {
-        Some(rsvp) => rsvp,
-        None if organizer => PlanCardRsvp::Yes,
-        None => PlanCardRsvp::Pending,
-    }
+        .filter(|rsvp| *rsvp != PlanCardRsvp::Pending)
+        .unwrap_or(PlanCardRsvp::Pending)
 }
 
 #[cfg(test)]
