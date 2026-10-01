@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -62,6 +62,23 @@ test('migration matrix retains explicit ignored fixtures and serialized runtime 
   for (const version of ['75', 'digest_76', '88']) assert.ok(source.includes(`upgrade_from_${version}`));
   assert.ok(source.includes('multiple_live_executors_require_drain_without_losing_history'));
   assert.ok(source.includes('upgrade_from_89_repairs_only_proven_defaults_and_authenticated_titles'));
+});
+
+test('every database-backed cloud-server suite runs against a fresh database', () => {
+  const source = read('./test-cloud-migrations.sh');
+  const serviceStep = source.slice(source.indexOf('migration_create_database kordi_migration_test_service'));
+  assert.match(serviceStep, /DATABASE_URL="\$\(migration_database_url kordi_migration_test_service\)"/);
+  assert.match(serviceStep, /cargo test -p kordi-cloud-server --lib /);
+  assert.match(serviceStep, /-- --test-threads=1/);
+  const testsDir = new URL('../bridges/cloud-server/tests/', import.meta.url);
+  const databaseSuites = readdirSync(testsDir)
+    .filter(name => name.endsWith('.rs'))
+    .filter(name => readFileSync(new URL(name, testsDir), 'utf8').includes('DATABASE_URL'))
+    .map(name => name.slice(0, -'.rs'.length));
+  assert.ok(databaseSuites.includes('cloud_auth_e2e'));
+  for (const suite of databaseSuites) {
+    assert.match(source, new RegExp(`--test ${suite}\\b`), `${suite} must run with DATABASE_URL`);
+  }
 });
 
 test('native migration fixtures cannot connect to an inherited database or public listener', () => {
