@@ -78,13 +78,18 @@ export function messageAttentionSnapshot(
 export function newMessageAttentionEvents({
   previous,
   conversations,
+  suppressedSenderIdentityIds,
 }: {
   previous: MessageAttentionSnapshot;
   conversations: Conversation[];
+  /** Senders whose messages never notify, such as `human:<account>` identities the user blocked. */
+  suppressedSenderIdentityIds?: ReadonlySet<string>;
 }): DesktopMessageAttentionEvent[] {
   return conversations.flatMap((conversation) => {
     const message = latestIncomingMessage(conversation);
     if (!message?.id) return [];
+    const senderIdentityId = message.senderIdentityId?.trim();
+    if (senderIdentityId && suppressedSenderIdentityIds?.has(senderIdentityId)) return [];
     const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
     const unreadCount = Math.max(0, conversation.unread ?? 0);
     const prior = previous[sessionId];
