@@ -1,11 +1,13 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckCheck, CheckCircle2, Copy, Eye, Forward, MessagesSquare, Pencil, Pin, TextQuote, Trash2 } from 'lucide-react';
+import { CheckCheck, CheckCircle2, Copy, Eye, Flag, Forward, MessagesSquare, Pencil, Pin, TextQuote, Trash2 } from 'lucide-react';
 
 import {
   attachmentMediaGalleryIndex,
   attachmentPreviewUrl,
 } from '@/features/chat/attachmentMediaGallery';
 import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow';
+import { reportTargetForMessage } from '@/features/safety/reportSelectionStore';
+import { useSafetyActions } from '@/features/safety/safetyActions';
 import { cn } from '@/lib/utils';
 import type { Message, MessageAttachment, MessageReplyDestination } from '../types';
 import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
@@ -142,6 +144,12 @@ export function MessageContextMenuContent({
   const canDelete = Boolean(onDeleteMessage && messageCanDelete(msg));
   const canReact = actionEligible
     && Boolean(msg.reactionConversationId && msg.reactionTargetMessageId && onReactMessage);
+  const safety = useSafetyActions();
+  // Others' hosted messages only: a report cites them by their server ids.
+  const reportTarget = safety.safetyFeaturesAvailable && actionEligible && !transcriptMessageIsOwnHuman(msg)
+    && Boolean(msg.reactionConversationId && msg.reactionTargetMessageId)
+    ? reportTargetForMessage(msg)
+    : null;
   const closeAfter = (action?: (message: Message) => void) => {
     action?.(msg);
     onClose?.();
@@ -216,6 +224,7 @@ export function MessageContextMenuContent({
         ) : null}
         {actionEligible ? <div className="app-transient-divider mx-3 my-1 border-t" role="separator" /> : null}
         {actionEligible ? <Action action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={() => closeAfter(onSelectMessage)} /> : null}
+        {reportTarget ? <Action action="report" icon={<Flag className="h-4 w-4" />} label="Report…" onClick={() => { onClose?.(); safety.openReport(reportTarget); }} /> : null}
         {canDelete ? <Action action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" destructive onClick={() => closeAfter(onDeleteMessage)} /> : null}
         <SeenRow summary={msg.readReceiptSummary} />
       </div> : null}
