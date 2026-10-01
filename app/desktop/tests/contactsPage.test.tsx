@@ -11,6 +11,19 @@ import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentit
 import type { Contact, ContactRequest } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
+function readSource(path: string) {
+  return readFileSync(new URL(path, import.meta.url), 'utf8');
+}
+
+// The contacts page keeps its overlays and sent invites in sibling modules.
+function readContactsPageSource() {
+  return [
+    '../src/kordi-app/pages.tsx',
+    '../src/kordi-app/contacts/ContactOverlays.tsx',
+    '../src/kordi-app/contacts/SentInvitesSection.tsx',
+  ].map(readSource).join('\n');
+}
+
 function contact(overrides: Partial<Contact> = {}): Contact {
   return {
     id: 'contact-1',
@@ -136,7 +149,7 @@ test('contacts page summarizes outgoing-only pending invites without showing the
 });
 
 test('sent invites section has independent fold and expand controls', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const source = readSource('../src/kordi-app/contacts/SentInvitesSection.tsx');
 
   assert.match(source, /isSentInvitesOpen/);
   assert.match(source, /setIsSentInvitesOpen\(\(open\) => !open\)/);
@@ -145,11 +158,9 @@ test('sent invites section has independent fold and expand controls', () => {
 });
 
 test('sent invite rows use real account avatars in a compact row', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
-  const sentInvitesStart = source.indexOf('{sentInviteCount > 0 && (');
-  const sentInvitesEnd = source.indexOf('<div className="app-contacts-section-heading', sentInvitesStart);
-  assert.ok(sentInvitesStart >= 0, 'Sent invites source block should be present');
-  const sentInvitesBlock = source.slice(sentInvitesStart, sentInvitesEnd > sentInvitesStart ? sentInvitesEnd : undefined);
+  const source = readSource('../src/kordi-app/contacts/SentInvitesSection.tsx');
+  const sentInvitesBlock = source;
+  assert.match(readSource('../src/kordi-app/pages.tsx'), /sentInviteCount > 0 && <SentInvitesSection/);
 
   assert.match(source, /<IdentityAvatar/);
   assert.match(source, /imageUrl=\{request\.profileImageUrl\}/);
@@ -260,7 +271,7 @@ test('active contact rows stay visually neutral until hover', () => {
 });
 
 test('contacts page uses positive-only request activity and flat page-plane controls', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const source = readContactsPageSource();
   const componentSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
   const shellCss = readDesktopShellCss();
   const themeOverridesCss = shellCss;
@@ -277,7 +288,7 @@ test('contacts page uses positive-only request activity and flat page-plane cont
   assert.match(source, /app-contacts-add-button h-8 rounded-\[8px\]/);
   assert.match(source, /app-contacts-sent-invites-row/);
   assert.match(source, /pendingRequestCount > 0 && \(/);
-  assert.match(source, /sentInviteCount > 0 && \(/);
+  assert.match(source, /sentInviteCount > 0 && <SentInvitesSection/);
   assert.doesNotMatch(source, /app-contacts-status-chip|No pending|None sent/);
   assert.doesNotMatch(source, /Classified as my agents/);
   assert.doesNotMatch(source, /Foldable classes with quick letter jump/);
@@ -399,7 +410,7 @@ test('contact overlays use the shared popup shell with flat actions at rest', ()
 });
 
 test('contact detail modal removes redundant repeated metadata and unused profile action', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const source = readContactsPageSource();
 
   assert.doesNotMatch(source, />\s*Contact detail\s*</);
   assert.doesNotMatch(source, /Owner: \{selfObjectLabel\(activeContact\.owner\)\}/);
@@ -428,7 +439,7 @@ test('contact detail modal suppresses detail text when it repeats the visible ac
 });
 
 test('contacts add surface uses concise public Kordi ID controls without implementation wording', () => {
-  const source = readFileSync(new URL('../src/kordi-app/pages.tsx', import.meta.url), 'utf8');
+  const source = readContactsPageSource();
 
   assert.match(source, /placeholder="Kordi ID, e\.g\. @482731906"/);
   assert.match(source, /Send request/);
