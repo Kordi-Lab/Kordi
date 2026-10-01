@@ -314,6 +314,7 @@ pub async fn sync_batch(
         encoded_bytes += event_bytes;
         events.push(event);
     }
+    redaction::guard_replayed_events(pool, account_id, &mut events).await?;
     attachment_actions::project_events(pool, account_id, &mut events).await?;
     let next_stream_seq = events
         .last()

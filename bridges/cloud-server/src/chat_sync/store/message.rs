@@ -5,13 +5,19 @@ use super::subtyped_attachment_validation::{
 use super::support::*;
 use super::*;
 
+mod attachment_links;
 mod envelope_placement;
 mod fanout;
 mod group_identity;
 mod mutations;
 mod server_refresh;
 mod voice;
+use attachment_links::require_linkable_attachments;
 pub(super) use envelope_placement::ensure_rewrite_keeps_envelope_placement;
+pub(super) use envelope_placement::CLOUD_GROUP_PREFIX;
+// The removal worker's quote step decodes the other two envelope kinds.
+#[allow(unused_imports)]
+pub(super) use envelope_placement::{CLOUD_AGENT_RESPONSE_PREFIX, CLOUD_DIRECT_PREFIX};
 pub(super) use fanout::fanout_message_sync_event;
 use group_identity::{
     apply_group_control_title, load_existing_group_message, lock_group_message_fingerprint,
@@ -93,16 +99,18 @@ pub(crate) async fn send_message_in_transaction(
         )
         .await?;
     }
-    let existing: Option<(Uuid, String)> = query_as(
-        "SELECT message_id, request_fingerprint FROM cloud_chat_messages \
+    let existing: Option<(Uuid, String, Option<DateTime<Utc>>)> = query_as(
+        "SELECT message_id, request_fingerprint, deleted_at FROM cloud_chat_messages \
          WHERE sender_account_id = $1 AND client_message_id = $2",
     )
     .bind(account_id)
     .bind(request.client_message_id)
     .fetch_optional(&mut **transaction)
     .await?;
-    if let Some((message_id, stored_fingerprint)) = existing {
-        if stored_fingerprint != request_fingerprint {
+    if let Some((message_id, stored_fingerprint, deleted_at)) = existing {
+        // A retried send of a deleted message gets its tombstone back, so a
+        // resend from any device can never recreate the content.
+        if deleted_at.is_none() && stored_fingerprint != request_fingerprint {
             return Err(StoreError::IdempotencyKeyReused);
         }
         let message = load_message(transaction, message_id).await?;
@@ -182,19 +190,7 @@ pub(crate) async fn send_message_in_transaction(
         }
     }
     if !attachment_ids.is_empty() {
-        let valid_attachments: (i64,) = query_as(
-            "SELECT COUNT(*) FROM cloud_attachments \
-             WHERE attachment_id = ANY($1) AND owner_account_id = $2 AND finalized_at IS NOT NULL",
-        )
-        .bind(&attachment_ids)
-        .bind(account_id)
-        .fetch_one(&mut **transaction)
-        .await?;
-        if valid_attachments.0 != attachment_ids.len() as i64 {
-            return Err(StoreError::InvalidInput(
-                "one or more attachments are unavailable",
-            ));
-        }
+        require_linkable_attachments(transaction, account_id, &attachment_ids).await?;
         if message_kind == "voice" {
             let voice_attachment: Option<(Option<String>,)> = query_as(
                 "SELECT content_type FROM cloud_attachments \
@@ -322,8 +318,8 @@ pub(crate) async fn replace_server_message_in_transaction(
     if message_kind.is_empty() || message_kind.chars().count() > 64 {
         return Err(StoreError::InvalidInput("message kind is invalid"));
     }
-    let row: Option<(Uuid, String, Value)> = query_as(
-        "SELECT message_id, message_kind, content \
+    let row: Option<(Uuid, String, Value, Option<DateTime<Utc>>)> = query_as(
+        "SELECT message_id, message_kind, content, deleted_at \
          FROM cloud_chat_messages \
          WHERE sender_account_id = $1 AND client_message_id = $2 FOR UPDATE",
     )
@@ -331,10 +327,11 @@ pub(crate) async fn replace_server_message_in_transaction(
     .bind(client_message_id)
     .fetch_optional(&mut **transaction)
     .await?;
-    let Some((message_id, stored_kind, stored_content)) = row else {
+    let Some((message_id, stored_kind, stored_content, deleted_at)) = row else {
         return Ok(None);
     };
-    if stored_kind == message_kind && stored_content == content {
+    // A deleted message stays a tombstone; no later server write restores it.
+    if deleted_at.is_some() || (stored_kind == message_kind && stored_content == content) {
         return Ok(Some(load_message(transaction, message_id).await?));
     }
 
@@ -377,35 +374,29 @@ pub async fn replace_message_snapshot(
     let live_resources = live_photo_resources(&content, &normalized_attachments)?;
 
     let mut transaction = pool.begin().await?;
-    let row: Option<(Uuid, String)> = query_as(
-        "SELECT conversation_id, sender_account_id FROM cloud_chat_messages \
+    let row: Option<(Uuid, String, Option<DateTime<Utc>>)> = query_as(
+        "SELECT conversation_id, sender_account_id, deleted_at FROM cloud_chat_messages \
          WHERE message_id = $1 FOR UPDATE",
     )
     .bind(message_id)
     .fetch_optional(&mut *transaction)
     .await?;
-    let Some((conversation_id, stored_sender_account_id)) = row else {
+    let Some((conversation_id, stored_sender_account_id, deleted_at)) = row else {
         return Err(StoreError::NotFound);
     };
     if stored_sender_account_id != sender_account_id {
         return Err(StoreError::Forbidden);
     }
     require_active_member(&mut transaction, conversation_id, sender_account_id).await?;
-    if !normalized_attachments.is_empty() {
-        let valid_attachments: (i64,) = query_as(
-            "SELECT COUNT(*) FROM cloud_attachments \
-             WHERE attachment_id = ANY($1) AND owner_account_id = $2 AND finalized_at IS NOT NULL",
-        )
-        .bind(&normalized_attachments)
-        .bind(sender_account_id)
-        .fetch_one(&mut *transaction)
-        .await?;
-        if valid_attachments.0 != normalized_attachments.len() as i64 {
-            return Err(StoreError::InvalidInput(
-                "one or more attachments are unavailable",
-            ));
-        }
+    if deleted_at.is_some() {
+        // A late generation snapshot or artifact link never writes content
+        // or links back into a deleted message.
+        let tombstone = load_message(&mut transaction, message_id).await?;
+        transaction.commit().await?;
+        return Ok(tombstone);
     }
+    require_linkable_attachments(&mut transaction, sender_account_id, &normalized_attachments)
+        .await?;
     validate_subtyped_attachment_bytes(&mut transaction, sender_account_id, &subtyped_attachments)
         .await?;
     validate_live_photo_resources(&mut transaction, sender_account_id, &live_resources).await?;

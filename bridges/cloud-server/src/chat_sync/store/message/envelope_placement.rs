@@ -10,9 +10,10 @@ use serde_json::{json, Value};
 
 use super::super::StoreError;
 
-pub(super) const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
-pub(super) const CLOUD_DIRECT_PREFIX: &str = "kordi-cloud-message:";
-pub(super) const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
+pub(in crate::chat_sync::store) const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
+pub(in crate::chat_sync::store) const CLOUD_DIRECT_PREFIX: &str = "kordi-cloud-message:";
+pub(in crate::chat_sync::store) const CLOUD_AGENT_RESPONSE_PREFIX: &str =
+    "kordi-cloud-agent-response:";
 pub(super) const RESERVED_ENVELOPE_PREFIXES: [&str; 3] = [
     CLOUD_GROUP_PREFIX,
     CLOUD_DIRECT_PREFIX,

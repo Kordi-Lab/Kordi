@@ -123,4 +123,5 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(version: 107, "account email verification", "0107_account_email_verification.sql"),
     migration!(version: 108, "session-bound realtime tickets", "0108_realtime_ticket_sessions.sql"),
     migration!(version: 109, "runner run token hash", "0109_runner_run_token_hash.sql"),
+    migration!(version: 116, "content removal jobs and deletion indexes", "0116_content_removal.sql"),
 ];

@@ -246,7 +246,11 @@ pub async fn set_attachment_reaction(
     };
     let message = load_message(&mut transaction, current.id).await?;
     if changed {
+        let hidden = redaction::hidden_recipients(&mut transaction, current.id).await?;
         for recipient in active_member_ids(&mut transaction, conversation_id).await? {
+            if hidden.contains(&recipient) {
+                continue;
+            }
             let conversation =
                 load_conversation(&mut transaction, conversation_id, &recipient).await?;
             insert_noncritical_sync_event(
@@ -315,6 +319,8 @@ pub async fn delete_attachment(
                     &json!({ "message_id": current.id }),
                 )
                 .await?;
+                redaction::finish_hide(&mut transaction, account_id, conversation_id, current.id)
+                    .await?;
             }
         } else if changed {
             let conversation =
@@ -334,6 +340,11 @@ pub async fn delete_attachment(
         return Ok(if empty { None } else { Some(visible) });
     }
     let empty = replacement.attachment_ids.is_empty() && !has_content(&replacement.content);
+    // Read before the rewrite: the job removes these files, and quotes and
+    // agent runs refer to an emptied message by these ids.
+    let identifiers = redaction::message_identifiers(&current);
+    let mut removed: Vec<String> = removed.into_iter().collect();
+    removed.sort();
     if empty {
         query("UPDATE cloud_chat_messages SET content='{\"schema\":1,\"blocks\":[]}'::jsonb, version=version+1, deleted_at=now(), generation_status=NULL,provider_response_id=NULL WHERE message_id=$1")
             .bind(current.id).execute(&mut *transaction).await?;
@@ -348,7 +359,6 @@ pub async fn delete_attachment(
     } else {
         query("UPDATE cloud_chat_messages SET content=$2,version=version+1,edited_at=now() WHERE message_id=$1")
             .bind(current.id).bind(&replacement.content).execute(&mut *transaction).await?;
-        let removed: Vec<_> = removed.into_iter().collect();
         query("DELETE FROM cloud_chat_message_attachments WHERE message_id=$1 AND attachment_id=ANY($2)")
             .bind(current.id).bind(&removed).execute(&mut *transaction).await?;
     }
@@ -372,6 +382,23 @@ pub async fn delete_attachment(
         &message,
     )
     .await?;
+    if empty {
+        redaction::finish_delete_for_everyone(
+            &mut transaction,
+            &message,
+            &identifiers,
+            &current.attachment_ids,
+        )
+        .await?;
+    } else {
+        redaction::finish_content_change(
+            &mut transaction,
+            &message,
+            redaction::RemovalReason::AttachmentRemoved,
+            &removed,
+        )
+        .await?;
+    }
     let result = if empty {
         None
     } else {

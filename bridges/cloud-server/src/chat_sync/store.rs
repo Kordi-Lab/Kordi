@@ -229,6 +229,13 @@ mod subtyped_attachment_validation;
 pub use message::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 mod pin_snapshots;
 mod reaction;
+mod redaction;
+pub use redaction::{reconcile_deleted_messages, reconcile_hidden_messages, request_was_deleted};
+// The removal worker and the media library queue jobs through these.
+#[allow(unused_imports)]
+pub(crate) use redaction::{
+    enqueue_removal_job, message_identifiers, NewRemovalJob, RemovalReason,
+};
 mod service_members;
 mod support;
 mod sync_events;

@@ -64,7 +64,7 @@ pub async fn backfill_missing_images(
     }
     let mut metadata = Vec::new();
     for (position, image) in images.iter().enumerate() {
-        let blob: Option<(String, i64)> = query_as("SELECT content_type,size_bytes FROM cloud_attachments WHERE attachment_id=$1 AND owner_account_id=$2 AND finalized_at IS NOT NULL AND content_type IN ('image/png','image/jpeg','image/webp','image/gif')")
+        let blob: Option<(String, i64)> = query_as("SELECT content_type,size_bytes FROM cloud_attachments WHERE attachment_id=$1 AND owner_account_id=$2 AND finalized_at IS NOT NULL AND purge_requested_at IS NULL AND content_type IN ('image/png','image/jpeg','image/webp','image/gif') FOR SHARE")
             .bind(&image.attachment_id).bind(account).fetch_optional(&mut *tx).await?;
         let Some((mime, size)) = blob else {
             return Err(StoreError::InvalidInput("image is unavailable"));
