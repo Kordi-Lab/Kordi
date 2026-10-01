@@ -23,8 +23,8 @@ import {
   updateCanonicalSessionMetadata,
 } from '@/lib/desktop';
 
-import { LEAVE_GROUP_UNAVAILABLE } from '@/features/safety/groupLeave';
-import { safetyFeaturesAvailableFor } from '@/features/safety/useCloudBlocks';
+import { LEAVE_GROUP_UNAVAILABLE, selfLeaveMode } from '@/features/safety/groupLeave';
+import { cloudBlocksSnapshot } from '@/features/safety/useCloudBlocks';
 
 import { leaveGroupAsSelf } from './groupSelfLeave';
 import { canonicalGroupParticipantsForSessions } from './groupMembershipState';
@@ -128,7 +128,11 @@ export function useKordiGroupMemberRoles({
         (session) => session.id === rootSessionId,
       )?.createdByIdentityId?.trim()
       || actorIdentityId;
-    if (identityId === actorIdentityId && account && safetyFeaturesAvailableFor(account.accountId)) {
+    const leaveMode = identityId === actorIdentityId ? selfLeaveMode({
+      isCreator: groupCreatorIdentityId === actorIdentityId,
+      serverSupport: account ? cloudBlocksSnapshot(account.accountId) : null,
+    }) : null;
+    if (leaveMode === 'server' && account) {
       const creator = currentState.identities.find((identity) => identity.id === groupCreatorIdentityId);
       await leaveGroupAsSelf({
         account, state: currentState, actorIdentityId, groupContextSessionIds, groupSessionIds,
@@ -140,9 +144,7 @@ export function useKordiGroupMemberRoles({
       return;
     }
     // Without the server leave nobody would take over, so the creator stays.
-    if (identityId === actorIdentityId && groupCreatorIdentityId === actorIdentityId) {
-      throw new Error(LEAVE_GROUP_UNAVAILABLE);
-    }
+    if (leaveMode === 'unavailable') throw new Error(LEAVE_GROUP_UNAVAILABLE);
     let nextState = currentState;
     for (const sessionId of groupSessionIds) {
       nextState = await removeCanonicalSessionParticipant({

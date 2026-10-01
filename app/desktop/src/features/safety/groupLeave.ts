@@ -38,6 +38,27 @@ export function memberCanBeRemoved({
   return isSelf ? (!isCreator || safetyFeaturesAvailable) : (!isCreator && canManageMembers && !admin);
 }
 
+export type SelfLeaveMode = 'server' | 'envelope-only' | 'unavailable';
+
+/**
+ * How a person leaves a group. The server leave is tried unless the server is
+ * known to lack it (an empty 404 from the block list), so a block list that
+ * failed to load does not quietly skip the server; a leave that then finds no
+ * route still falls back to envelopes. The creator needs confirmed support,
+ * because on an older server nobody would take the group over.
+ */
+export function selfLeaveMode({
+  isCreator,
+  serverSupport,
+}: {
+  isCreator: boolean;
+  /** The block list store's state, or null without a signed-in account. */
+  serverSupport: { loaded: boolean; available: boolean } | null;
+}): SelfLeaveMode {
+  if (isCreator) return serverSupport?.loaded && serverSupport.available ? 'server' : 'unavailable';
+  return serverSupport?.available ? 'server' : 'envelope-only';
+}
+
 export type LeaveSuccessorCandidate = {
   identityId: string;
   accountId: string;

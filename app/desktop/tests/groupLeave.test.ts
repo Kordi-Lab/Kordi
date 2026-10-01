@@ -14,6 +14,7 @@ import {
   leaveGroupPrompt,
   memberCanBeRemoved,
   runGroupLeave,
+  selfLeaveMode,
 } from '../src/features/safety/groupLeave';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -227,10 +228,25 @@ test('an owner leaving a group tells every channel, names a successor, and leave
   }
 });
 
+test('leaving tries the server unless it is known to lack the leave, and the creator needs confirmed support', () => {
+  const confirmed = { loaded: true, available: true };
+  const olderServer = { loaded: true, available: false };
+  const notLoadedYet = { loaded: false, available: true };
+  assert.equal(selfLeaveMode({ isCreator: false, serverSupport: confirmed }), 'server');
+  assert.equal(selfLeaveMode({ isCreator: false, serverSupport: notLoadedYet }), 'server', 'a failed block list load still leaves on the server');
+  assert.equal(selfLeaveMode({ isCreator: false, serverSupport: olderServer }), 'envelope-only');
+  assert.equal(selfLeaveMode({ isCreator: false, serverSupport: null }), 'envelope-only');
+  assert.equal(selfLeaveMode({ isCreator: true, serverSupport: confirmed }), 'server');
+  assert.equal(selfLeaveMode({ isCreator: true, serverSupport: notLoadedYet }), 'unavailable');
+  assert.equal(selfLeaveMode({ isCreator: true, serverSupport: olderServer }), 'unavailable');
+  assert.equal(selfLeaveMode({ isCreator: true, serverSupport: null }), 'unavailable');
+});
+
 test('the group member hook leaves through the server only when it is supported', () => {
   const source = readFileSync(new URL('../src/app/useKordiGroupMemberRoles.ts', import.meta.url), 'utf8');
-  assert.match(source, /identityId === actorIdentityId && account && safetyFeaturesAvailableFor\(account\.accountId\)/);
-  assert.match(source, /throw new Error\(LEAVE_GROUP_UNAVAILABLE\)/);
+  assert.match(source, /serverSupport: account \? cloudBlocksSnapshot\(account\.accountId\) : null/);
+  assert.match(source, /if \(leaveMode === 'server' && account\)/);
+  assert.match(source, /if \(leaveMode === 'unavailable'\) throw new Error\(LEAVE_GROUP_UNAVAILABLE\)/);
   const dialog = readFileSync(new URL('../src/pages/GroupDetailsDialog.tsx', import.meta.url), 'utf8');
   assert.match(dialog, /memberCanBeRemoved\(\{ isSelf, isCreator, admin, canManageMembers, safetyFeaturesAvailable \}\)/);
   assert.match(dialog, /leaveGroupPrompt\(space\.title, isCreator\)/);
