@@ -122,6 +122,8 @@ struct MessageBubble: View, Equatable {
     let authorAvatarSource: String?
     let authorAvatarSeed: String?
     let ownAccountId: String?
+    /// Whether links in this message may load previews and site icons.
+    var allowsLinkNetworkFetch = false
     let automaticallyPresentsActions: Bool
     let backgroundSessions: [BackgroundAgentSessionPresentation]
     let fullScreenVideoAttachmentID: String?
@@ -212,6 +214,7 @@ struct MessageBubble: View, Equatable {
             && lhs.authorAvatarSource == rhs.authorAvatarSource
             && lhs.authorAvatarSeed == rhs.authorAvatarSeed
             && lhs.ownAccountId == rhs.ownAccountId
+            && lhs.allowsLinkNetworkFetch == rhs.allowsLinkNetworkFetch
             && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
             && lhs.backgroundSessions == rhs.backgroundSessions
             && lhs.fullScreenVideoAttachmentID == rhs.fullScreenVideoAttachmentID
@@ -499,6 +502,7 @@ struct MessageBubble: View, Equatable {
                 actionAttachment = nil
             }
         }
+        .environment(\.linkNetworkFetchDecision, allowsLinkNetworkFetch)
     }
 
     static func allowsReactions(
@@ -752,7 +756,12 @@ struct MessageBubble: View, Equatable {
 
             if hasVisibleMessageText {
                 if let url = standaloneLinkPreviewURL {
-                    MessageLinkPreview(url: url, foreground: bubbleTextColor, secondaryForeground: bubbleTextColor.opacity(0.88))
+                    MessageLinkPreview(
+                        url: url,
+                        foreground: bubbleTextColor,
+                        secondaryForeground: bubbleTextColor.opacity(0.88),
+                        allowsNetworkFetch: allowsLinkNetworkFetch
+                    )
                 } else {
                     MarkdownMessageContent(
                         text: message.text,

@@ -395,6 +395,9 @@ struct CloudContact: Codable, Hashable, Identifiable {
     var defaultAgent: CloudDefaultAgentProfile? = nil
     let nodeId: String?
     let createdAt: String
+    /// `system_agent` marks built-in support contacts, which never count as
+    /// trusted senders for link previews.
+    var contactKind: String? = nil
 
     var id: String { accountId }
     var preferredName: String { displayName?.nonEmpty ?? kordiId?.nonEmpty ?? "Kordi user" }

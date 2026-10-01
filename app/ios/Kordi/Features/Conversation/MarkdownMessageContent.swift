@@ -670,6 +670,8 @@ private struct InlineMarkdownText: View {
     let text: String
     let font: Font
     @State private var siteIcons: [String: UIImage] = [:]
+    @Environment(\.linkNetworkFetchDecision) private var linkNetworkFetchDecision
+    @AppStorage(LinkPreviewSetting.storageKey) private var linkPreviewSettingRawValue = LinkPreviewSetting.contacts.rawValue
     @Environment(\.composerMentionTargets) private var mentionTargets
     @Environment(\.messageMentions) private var mentions
     @Environment(\.messageInlineAccent) private var inlineAccent
@@ -691,7 +693,20 @@ private struct InlineMarkdownText: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .task(id: text) { await loadSiteIcons(for: parts) }
+        .task(id: LinkFetchTaskKey(value: text, allowed: allowsLinkNetworkFetch)) {
+            guard allowsLinkNetworkFetch else {
+                siteIcons = [:]
+                return
+            }
+            await loadSiteIcons(for: parts)
+        }
+    }
+
+    /// Outside a message (Digest) there is no sender decision, so icons load
+    /// only when the setting is Everyone.
+    private var allowsLinkNetworkFetch: Bool {
+        linkNetworkFetchDecision
+            ?? (LinkPreviewSetting(storedValue: linkPreviewSettingRawValue) == .everyone)
     }
 
     private func textWithLinkIcons(_ parts: [KordiMarkdownInlinePart]) -> Text {
@@ -709,6 +724,7 @@ private struct InlineMarkdownText: View {
     private func siteIcon(for url: URL) -> Image {
         if Self.isDirectFileLink(url) { return Image(systemName: "doc.text") }
         let host = url.host?.lowercased() ?? ""
+        guard allowsLinkNetworkFetch else { return Image(systemName: "link") }
         return (siteIcons[host] ?? PreviewData.linkShowcaseSiteIcon(for: host))
             .map { Image(uiImage: $0) } ?? Image(systemName: "link")
     }
@@ -731,10 +747,7 @@ private struct InlineMarkdownText: View {
             guard case let .link(_, url) = part,
                   !Self.isDirectFileLink(url),
                   let host = url.host?.lowercased(),
-                  host.contains("."),
-                  !host.hasSuffix(".local"),
-                  !host.contains(":"),
-                  !host.allSatisfy({ $0.isNumber || $0 == "." }),
+                  LinkPreviewPolicy.isPreviewableURL(URL(string: "https://\(host)/")),
                   seenHosts.insert(host).inserted else { return nil }
             return host
         }.prefix(4)
@@ -742,8 +755,7 @@ private struct InlineMarkdownText: View {
         for host in hosts where siteIcons[host] == nil {
             guard !Task.isCancelled else { return }
             if PreviewData.isLinkShowcase { continue }
-            let source = "https://\(host)/favicon.ico"
-            guard let image = await AvatarImageLoader.image(from: source) else { continue }
+            guard let image = await LinkSiteIconLoader.icon(forHost: host) else { continue }
             let renderer = UIGraphicsImageRenderer(size: CGSize(width: 14, height: 14))
             siteIcons[host] = renderer.image { _ in
                 image.draw(in: CGRect(x: 0, y: 0, width: 14, height: 14))
