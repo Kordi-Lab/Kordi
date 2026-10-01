@@ -99,7 +99,10 @@ async fn omp_state_is_private_route_scoped_and_fenced_with_completion() {
         ))
         .await
         .unwrap();
-    assert_eq!(late.status(), StatusCode::NOT_FOUND);
+    // The completed run has no current lease, so its runner credential is
+    // refused before the completion is considered.
+    assert_eq!(late.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(read_json(late).await["errorCode"], "invalid_run_token");
     let next_claim = router
         .clone()
         .oneshot(post_json_with_token(
@@ -174,7 +177,9 @@ async fn omp_state_is_private_route_scoped_and_fenced_with_completion() {
         ))
         .await
         .unwrap();
-    assert_eq!(expired.status(), StatusCode::NOT_FOUND);
+    // An expired lease no longer authorizes run-specific runner requests.
+    assert_eq!(expired.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(read_json(expired).await["errorCode"], "invalid_run_token");
     let (count,): (i64,) = query_as("SELECT count(*) FROM cloud_agent_omp_state WHERE run_id=$1")
         .bind(&run)
         .fetch_one(&pool)
