@@ -36,7 +36,8 @@ import {
   normalizeCloudSelfAgentRestoreMessage,
   type CloudSelfAgentRestoreMessage,
 } from './cloudSelfAgentRestoreMessage';
-import { restoredForkSnapshotCloudMessageIds } from './cloudSelfAgentCanonicalIndexes';
+import { durableTerminalRequestIds, restoredForkSnapshotCloudMessageIds } from './cloudSelfAgentCanonicalIndexes';
+import { leasedResponseEchoes } from './cloudSelfAgentLeasedResponseAliases';
 
 export { isSharedCloudSessionId } from './cloudSelfAgentRestoreMessage';
 export { cloudGroupReadCursorsBySessionId } from './cloudSelfAgentCanonicalIndexes';
@@ -94,7 +95,7 @@ export function planCloudSelfAgentCanonicalSync({
       - cloudSelfAgentRestoreDependencyRank(right)
       || left.messageId.localeCompare(right.messageId)
     ));
-  const normalizedMessages = sorted
+  const allNormalizedMessages = sorted
     .map((message) => normalizeCloudSelfAgentRestoreMessage(
       message,
       groupRowByWireMessageId?.has(message.messageId),
@@ -102,17 +103,11 @@ export function planCloudSelfAgentCanonicalSync({
     .filter((
       message,
     ): message is CloudSelfAgentRestoreMessage => Boolean(message));
-  const durableTerminalRequestIds = new Set(
-    normalizedMessages.flatMap((message) => (
-      durableSourceEventIds?.has(message.message.messageId)
-      && message.responseRequestId
-      && !['sending', 'queued', 'processing'].includes(
-        message.responseDeliveryState ?? 'complete',
-      )
-        ? [message.responseRequestId]
-        : []
-    )),
-  );
+  const echoAliases = leasedResponseEchoes(allNormalizedMessages, state.messages);
+  const normalizedMessages = allNormalizedMessages.filter((message) => (
+    !echoAliases.omittedWireIds.has(message.message.messageId)
+  ));
+  const terminalRequestIds = durableTerminalRequestIds(normalizedMessages, durableSourceEventIds);
   const forkSnapshotCloudMessageIds =
     restoredForkSnapshotCloudMessageIds(
       normalizedMessages,
@@ -127,7 +122,9 @@ export function planCloudSelfAgentCanonicalSync({
   const plannedCanonicalMessageIdByDuplicateKey =
     new Map<string, string>();
   const plannedMessageIndexByCanonicalId = new Map<string, number>();
-  const mirrorReconciliations: CloudSelfAgentCanonicalSyncPlan['mirrorReconciliations'] = [];
+  const mirrorReconciliations: CloudSelfAgentCanonicalSyncPlan['mirrorReconciliations'] = [
+    ...echoAliases.reconciliations,
+  ];
   const existingCanonicalMessageIndex =
     createCloudSelfAgentCanonicalMessageIndex(state.messages);
   const localUserMessageByClientMessageId =
@@ -145,6 +142,9 @@ export function planCloudSelfAgentCanonicalSync({
           : []
       )),
     });
+  for (const [wireId, preferredId] of echoAliases.preferredResponseIdByOriginalWireId) {
+    legacyResponseIdByStableCanonicalId.set(cloudSelfAgentStableResponseId(wireId), preferredId);
+  }
   const sessionPlanner = createCloudSelfAgentSessionPlanner({
     state,
     forksBySessionId,
@@ -204,7 +204,7 @@ export function planCloudSelfAgentCanonicalSync({
     }
     if (
       responseRequestId
-      && durableTerminalRequestIds.has(responseRequestId)
+      && terminalRequestIds.has(responseRequestId)
     ) continue;
     const existingStableResponse = responseRequestId
       ? existingCanonicalMessageIndex.byId.get(stableCanonicalMessageId)

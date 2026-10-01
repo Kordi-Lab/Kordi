@@ -1,9 +1,163 @@
 //! Atomic convergence of a local-first message and its delayed Cloud mirror.
 
-use rusqlite::{params, Connection};
+mod exported_intent;
+pub(super) use exported_intent::cloud_request_client_message_id;
+use exported_intent::exported_agent_intent_matches;
+
+use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::Value;
 
 use super::super::{hash_hex, now_ms, open_db, select_message};
+
+fn exact_cloud_history_reply_echo(
+    conn: &Connection,
+    preferred: &super::super::CanonicalSessionMessage,
+    duplicate: &super::super::CanonicalSessionMessage,
+) -> Result<Option<String>, String> {
+    if preferred.source_transport.as_deref() != Some("cloud-self-agent")
+        || duplicate.source_transport.as_deref() != Some("cloud-self-agent")
+        || preferred.session_id != duplicate.session_id
+        || preferred.sender_role != "owned-agent"
+        || duplicate.sender_role != "owned-agent"
+        || preferred.message_kind != "agent-turn"
+        || duplicate.message_kind != "agent-turn"
+        || preferred.sender_identity_id != duplicate.sender_identity_id
+    {
+        return Ok(None);
+    }
+    let Some(parent_id) = preferred.parent_message_id.as_deref() else {
+        return Ok(None);
+    };
+    let Some(parent) = select_message(conn, parent_id)? else {
+        return Ok(None);
+    };
+    let parent_transport = parent.source_transport.as_deref();
+    let parent_wire_id = match parent_transport {
+        Some("cloud-self-agent") => parent.source_event_id.as_deref(),
+        Some("desktop-chat") => parent
+            .content
+            .as_ref()
+            .and_then(|content| content.get("desktopEntryId"))
+            .and_then(Value::as_str),
+        Some("desktop-chat-ui") => duplicate
+            .content
+            .as_ref()
+            .and_then(|content| content.get("cloudRequestMessageId"))
+            .and_then(Value::as_str),
+        _ => None,
+    };
+    let Some(request_wire_id) = parent_wire_id.filter(|id| !id.trim().is_empty()) else {
+        return Ok(None);
+    };
+    let Some(direct_wire_id) = duplicate.source_event_id.as_deref() else {
+        return Ok(None);
+    };
+    let direct_request_wire_id = duplicate
+        .content
+        .as_ref()
+        .and_then(|content| content.get("cloudRequestMessageId"))
+        .and_then(Value::as_str);
+    if parent.session_id != preferred.session_id
+        || parent.sender_role != "user"
+        || direct_request_wire_id != Some(request_wire_id)
+    {
+        return Ok(None);
+    }
+    let original_request_id = if parent_transport == Some("desktop-chat-ui")
+        || parent_transport == Some("cloud-self-agent")
+    {
+        Some(parent.id.clone())
+    } else {
+        conn.query_row(
+            "SELECT id FROM session_messages
+             WHERE session_id = ?1 AND sender_role = 'user'
+               AND source_transport = 'cloud-self-agent' AND source_event_id = ?2
+             LIMIT 1",
+            params![preferred.session_id, request_wire_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        // The native transcript can materialize before the Cloud request
+        // does. Its entry ID is the exact Cloud wire ID, so retain that
+        // canonical user row when the Cloud projection is still absent.
+        .or_else(|| Some(parent.id.clone()))
+    };
+    let Some(original_request_id) = original_request_id else {
+        return Ok(None);
+    };
+    let expected_request_client_id = (parent_transport == Some("desktop-chat-ui"))
+        .then(|| cloud_request_client_message_id(&preferred.session_id, &parent.id));
+    let wire_proof = conn
+        .query_row(
+            "SELECT 1 FROM chat_sync_messages echo
+         JOIN chat_sync_messages direct
+           ON direct.account_id = echo.account_id
+          AND direct.conversation_id = echo.conversation_id
+         JOIN chat_sync_messages request
+           ON request.account_id = echo.account_id
+          AND request.conversation_id = echo.conversation_id
+         JOIN chat_sync_conversations conversation
+           ON conversation.account_id = echo.account_id
+          AND conversation.conversation_id = echo.conversation_id
+         WHERE echo.message_kind = 'canonical-history-agent'
+           AND json_extract(echo.snapshot_json, '$.content.canonical_history.local_message_id') = ?1
+           AND direct.message_id = ?2
+           AND direct.message_kind = 'text'
+           AND conversation.client_session_id = ?3
+           AND request.message_id = ?4
+           AND request.message_kind = 'text'
+           AND (?5 IS NULL OR request.client_message_id = ?5)
+         LIMIT 1",
+            params![
+                preferred.id,
+                direct_wire_id,
+                preferred.session_id,
+                request_wire_id,
+                expected_request_client_id,
+            ],
+            |_| Ok(()),
+        )
+        .optional()
+        .map(|row| row.is_some())
+        .map_err(|error| error.to_string())?;
+    Ok(wire_proof.then_some(original_request_id))
+}
+
+fn enrich_cloud_history_reply_from_direct_reply(
+    conn: &Connection,
+    preferred: &super::super::CanonicalSessionMessage,
+    duplicate: &super::super::CanonicalSessionMessage,
+    original_request_id: &str,
+) -> Result<(), String> {
+    let mut content = duplicate
+        .content
+        .clone()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({}));
+    content["replyToMessageId"] = Value::String(original_request_id.to_string());
+    content["requestId"] = Value::String(original_request_id.to_string());
+    let content_json = content.to_string();
+    let content_hash = hash_hex(&format!("{}|{}", duplicate.content_text, content_json), 16);
+    conn.execute(
+        "UPDATE session_messages
+         SET content_text = ?2, content_json = ?3, content_hash = ?4,
+             status = ?5, parent_message_id = ?6,
+             updated_at_ms = MAX(updated_at_ms, ?7)
+         WHERE id = ?1",
+        params![
+            preferred.id,
+            duplicate.content_text,
+            content_json,
+            content_hash,
+            duplicate.status,
+            original_request_id,
+            now_ms(),
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
 
 fn replace_json_message_reference(
     value: &mut Value,
@@ -103,7 +257,18 @@ pub(crate) fn reconcile_canonical_message_mirror_in_db(
     );
     let preferred_is_cloud = preferred.source_transport.as_deref() == Some("cloud-self-agent");
     let duplicate_is_cloud = duplicate.source_transport.as_deref() == Some("cloud-self-agent");
-    let (local, cloud) = if preferred_is_local && duplicate_is_cloud {
+    let cloud_reply_request_id =
+        exact_cloud_history_reply_echo(&transaction, &preferred, &duplicate)?;
+    let cloud_reply_echo = cloud_reply_request_id.is_some();
+    let (local, cloud) = if let Some(original_request_id) = cloud_reply_request_id.as_deref() {
+        enrich_cloud_history_reply_from_direct_reply(
+            &transaction,
+            &preferred,
+            &duplicate,
+            original_request_id,
+        )?;
+        (&preferred, &duplicate)
+    } else if preferred_is_local && duplicate_is_cloud {
         (&preferred, &duplicate)
     } else if preferred_is_cloud && duplicate_is_local {
         (&duplicate, &preferred)
@@ -133,10 +298,11 @@ pub(crate) fn reconcile_canonical_message_mirror_in_db(
             && (local.parent_message_id == cloud.parent_message_id
                 || exported_agent_intent_matches(&transaction, local, cloud)?)
     };
-    if local.session_id != cloud.session_id
-        || !sender_matches
-        || local.message_kind != cloud.message_kind
-        || !payload_matches
+    if !cloud_reply_echo
+        && (local.session_id != cloud.session_id
+            || !sender_matches
+            || local.message_kind != cloud.message_kind
+            || !payload_matches)
     {
         return Err("Canonical mirror reconciliation did not match one user intent".to_string());
     }
@@ -287,22 +453,4 @@ pub(in crate::canonical_sessions) fn desktop_canonical_reconcile_message_mirror(
 ) -> Result<bool, String> {
     let conn = open_db()?;
     reconcile_canonical_message_mirror_in_db(&conn, &preferred_message_id, &duplicate_message_id)
-}
-
-fn exported_agent_intent_matches(
-    conn: &Connection,
-    local: &super::super::CanonicalSessionMessage,
-    cloud: &super::super::CanonicalSessionMessage,
-) -> Result<bool, String> {
-    if local.content_text.trim() != cloud.content_text.trim() {
-        return Ok(false);
-    }
-    conn.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chat_sync_messages wire JOIN chat_sync_conversations conversation
-         ON conversation.account_id=wire.account_id AND conversation.conversation_id=wire.conversation_id
-         WHERE wire.message_id=?1 AND wire.message_kind='canonical-history-agent' AND conversation.client_session_id=?2
-         AND COALESCE(json_extract(wire.snapshot_json,'$.content.canonical_history.local_message_id'),
-                      json_extract(wire.snapshot_json,'$.content.canonical_history.localMessageId'))=?3)",
-        params![cloud.source_event_id,local.session_id,local.id], |row|row.get(0),
-    ).map_err(|error|error.to_string())
 }

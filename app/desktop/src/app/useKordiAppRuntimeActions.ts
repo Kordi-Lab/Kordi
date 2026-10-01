@@ -7,6 +7,7 @@ import type { KordiWorkspaceState } from '@/app/useKordiWorkspaceState';
 import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
+import { useHostedAccountsSnapshot } from '@/features/cloud/hostedAccounts';
 
 export function useKordiAppRuntimeActions({
   foundation,
@@ -15,6 +16,7 @@ export function useKordiAppRuntimeActions({
   foundation: KordiAppFoundation;
   workspace: KordiWorkspaceState;
 }) {
+  const hosted = useHostedAccountsSnapshot();
   const {
     environment: {
       isNativeShell,
@@ -193,7 +195,7 @@ export function useKordiAppRuntimeActions({
   } = useComposerController({
     environment: {
       isNativeShell,
-      hasLocalProviderAuth: authStateSatisfiesStartupGate(desktopAuthState),
+      hasConfiguredProviderAuth: authStateSatisfiesStartupGate(desktopAuthState, hosted.accounts),
       hasAnyDesktopAuth:
         authStateHasChatReadyProvider(desktopAuthState, chatModelOptions),
     },

@@ -15,9 +15,7 @@ import { isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { ChatsPageProps } from '@/pages/chatsPage.types';
-import {
-  ChatCompanionWorkspace,
-} from '@/pages/chatsPage.companionWorkspace';
+import { ChatCompanionWorkspace } from '@/pages/chatsPage.companionWorkspace';
 import { ChatMainWorkspace } from '@/pages/chatsPage.mainWorkspace';
 import { ChatThreadPanel } from '@/pages/ChatThreadPanel';
 import { useChatThreadSelection } from '@/pages/useChatThreadSelection';
@@ -412,8 +410,10 @@ export function ChatsPage({
   ) : null;
   const selectCompanionView = (view: CompanionView) => {
     if (view === 'chat' && (!companionConversation || companionConversation.agentSubsessionId)) {
-      void openSideAgentPanel();
-      return;
+      if (!companionSession.actions.openExisting()) {
+        void openSideAgentPanel();
+        return;
+      }
     }
     setCompanionView(view);
     if (view === 'chat') destinations.companion.showMessages();
@@ -461,7 +461,7 @@ export function ChatsPage({
               toolbar: {
                 view: companionView,
                 isOpen: showCompanionPane,
-                canOpenChat: canOpenSideAgentPanel,
+                canOpenChat: canOpenSideAgentPanel || companionSession.sessionOptions.some((option) => option.selectable),
                 hasChat: Boolean(companionConversation),
                 onSelect: selectCompanionView,
                 onHide: () => companionLayout.setFolded(true),

@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import type { ChatSyncConversation, CloudAccount } from '../src/features/cloud/authClient';
 import { cloudSelfAgentOperationClientMessageId, planCloudSelfAgentSessionReconciliation, planCloudSelfAgentSync, seedCloudSelfAgentForwardSyncLedger } from '../src/features/cloud/useCloudCollaborationState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
+import { cloudSelfAgentForwardMessageKind } from '../src/features/cloud/cloudSelfAgentForwardPolicy';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -53,6 +54,35 @@ function aiConversation(
     },
   };
 }
+test('a first hosted send during hydration stays live while recovered and previously published messages stay history', () => {
+  const sessionId = 'session:first-hosted';
+  const route = { model: 'openai-codex/gpt-5.5', authProvider: 'openai-codex', authChoice: 'cloud-login:work' };
+  const state = {
+    sessions: [{ id: sessionId, kind: 'self-agent', status: 'active', title: 'New chat' }],
+    identities: [], participants: [], profile: { humanIdentityId: 'human:me' },
+    messages: [
+      ['old', 900, 'desktop-chat-ui'], ['fresh', 1001, 'desktop-chat-ui'],
+      ['restored', 1002, 'cloud-self-agent'], ['published', 1003, 'desktop-chat-ui'],
+    ].map(([id, createdAtMs, sourceTransport], index) => ({
+      id, sessionId, senderRole: 'user', messageKind: 'text', contentText: 'hi', status: 'sent',
+      createdAtMs, updatedAtMs: createdAtMs, sequenceNum: index + 1, sourceTransport,
+      content: { agentRuntimeRoute: route, deliveryState: 'sent' },
+    })),
+  } as unknown as CanonicalSessionState;
+  assert.equal(planCloudSelfAgentSessionReconciliation(state, [])[0]?.recoverHistory, true);
+  // Hydration finishes after the send, but the boundary was set before it.
+  const { ledger } = seedCloudSelfAgentForwardSyncLedger(state, {}, 1500, 1000);
+  assert.ok(ledger.old);
+  assert.equal(ledger.fresh, undefined);
+  ledger.published = { cloudMessageId: 'existing-remote-message', syncedAtMs: 1100 };
+  const recovery = new Set([sessionId]);
+  const operations = planCloudSelfAgentSync(state, ledger, { createdAfterMs: 1000, recoverSessionIds: recovery });
+  assert.deepEqual(operations.map((operation) => [operation.localMessageId, cloudSelfAgentForwardMessageKind(operation, recovery)]), [
+    ['old', 'canonical-history-user'], ['fresh', null],
+    ['restored', 'canonical-history-user'], ['published', 'canonical-history-user'],
+  ]);
+});
+
 test('agent-session reconciliation creates absent sessions and repairs empty canonical histories', () => {
   const state = {
     sessions: [

@@ -25,6 +25,7 @@ import {
 import type {
   CanonicalMessagePage, CanonicalTimelineCursor,
   CanonicalSessionState,
+  Conversation,
   DesktopCollaborationState,
 } from '@/kordi-app/types';
 import {
@@ -65,10 +66,17 @@ export function resolveCanonicalPageSessionId(
   candidate: string | null | undefined,
   catalogSessionIds: ReadonlySet<string>,
   conversations: DesktopCollaborationState['conversations'] = [],
+  selectedConversation?: Pick<Conversation, 'id' | 'canonicalSessionId'> | null,
 ) {
   const id = candidate?.trim() ?? '';
   if (!id) return null;
   if (catalogSessionIds.has(id)) return id;
+  const selectedSessionId = selectedConversation?.id === id
+    ? selectedConversation.canonicalSessionId?.trim()
+    : null;
+  if (selectedSessionId && catalogSessionIds.has(selectedSessionId)) {
+    return selectedSessionId;
+  }
   const explicitCloudSessionId = isCloudCollaborationConversationId(id)
     ? cloudSessionIdFromConversationId(id)
     : null;
@@ -370,12 +378,14 @@ export function useKordiCanonicalSessionStore({
 
 export function useKordiCanonicalPageHydration({
   activeConversationId,
+  activeConversation,
   activeProjectSessionId,
   collaborationState,
   hydrateSessionPage,
   store,
 }: {
   activeConversationId: string;
+  activeConversation?: Pick<Conversation, 'id' | 'canonicalSessionId'> | null;
   activeProjectSessionId: string;
   collaborationState: DesktopCollaborationState | null;
   hydrateSessionPage: (
@@ -388,6 +398,8 @@ export function useKordiCanonicalPageHydration({
   ) => Promise<CanonicalMessagePage | null>;
   store: CanonicalStore;
 }) {
+  const selectedConversationId = activeConversation?.id;
+  const selectedCanonicalSessionId = activeConversation?.canonicalSessionId;
   const activePageSessionIds = useMemo(() => {
     const catalogSessionIds = new Set(
       store.catalog?.sessions.map((session) => session.id) ?? [],
@@ -397,6 +409,10 @@ export function useKordiCanonicalPageHydration({
         candidate,
         catalogSessionIds,
         collaborationState?.conversations,
+        selectedConversationId ? {
+          id: selectedConversationId,
+          canonicalSessionId: selectedCanonicalSessionId,
+        } : null,
       )
     );
     return uniqueStrings([
@@ -405,6 +421,8 @@ export function useKordiCanonicalPageHydration({
     ]);
   }, [
     activeConversationId,
+    selectedConversationId,
+    selectedCanonicalSessionId,
     activeProjectSessionId,
     collaborationState?.conversations,
     store.catalog?.sessions,

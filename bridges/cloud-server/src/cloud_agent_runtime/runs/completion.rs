@@ -27,6 +27,8 @@ pub struct CompleteRunRequest {
     pub runner_id: String,
     #[serde(rename = "responseText")]
     pub response_text: String,
+    #[serde(rename = "ompState", default)]
+    pub omp_state: Option<super::omp_state::OmpState>,
 }
 
 impl CompleteRunRequest {
@@ -103,8 +105,25 @@ pub async fn complete_run(
     runner_id: &str,
     response_text: &str,
 ) -> RunResult<RunnerRunResponse> {
-    if let Some(run) =
-        super::subsession_lifecycle::finish(pool, run_id, runner_id, response_text, true).await?
+    complete_run_with_state(pool, run_id, runner_id, response_text, None).await
+}
+
+pub async fn complete_run_with_state(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+    response_text: &str,
+    omp_state: Option<&super::omp_state::OmpState>,
+) -> RunResult<RunnerRunResponse> {
+    if let Some(run) = super::subsession_lifecycle::finish_with_state(
+        pool,
+        run_id,
+        runner_id,
+        response_text,
+        true,
+        omp_state,
+    )
+    .await?
     {
         return Ok(run);
     }
@@ -145,6 +164,9 @@ pub async fn complete_run(
         return Err(RunError::NotFound);
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
+    if let Some(state) = omp_state {
+        super::omp_state::validate_for_run(&mut tx, run_id, runner_id, state).await?;
+    }
     let response_body = super::subsessions::with_links(pool, run_id, &response_body).await?;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
         if let Some(message_id) = ensure_scheduled_direct_person_response_message(
@@ -233,6 +255,9 @@ pub async fn complete_run(
     };
     let now = Utc::now();
     let now_text = now.to_rfc3339();
+    if let Some(state) = omp_state {
+        super::omp_state::save(&mut tx, run_id, runner_id, &response_message_id, state).await?;
+    }
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'completed', response_message_id = $3, \

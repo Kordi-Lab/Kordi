@@ -16,6 +16,22 @@ COPY shared ./shared
 
 RUN cargo build --release -p kordi-cloud-agent-runner
 
+# Build the same pinned standalone OMP worker used by the Mac sidecar. It is
+# packaged but remains dormant unless KORDI_CLOUD_AGENT_ENGINE=omp is selected.
+FROM docker.io/oven/bun:1.4.2 AS omp-builder
+ARG TARGETARCH
+WORKDIR /workspace/shared/omp-runtime
+COPY shared/omp-runtime/package.json shared/omp-runtime/bun.lock ./
+RUN bun install --frozen-lockfile
+COPY shared/omp-runtime ./
+RUN case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-gnu ;; \
+      arm64) triple=aarch64-unknown-linux-gnu ;; \
+      *) echo 'Unsupported OMP runner architecture' >&2; exit 1 ;; \
+    esac \
+    && bun scripts/build-standalone.mjs /omp-out "$triple" \
+    && cp "/omp-out/kordi-omp-$triple" /omp-out/kordi-omp
+
 FROM docker.io/library/debian:bookworm-slim AS runtime
 
 RUN apt-get update \
@@ -32,5 +48,9 @@ RUN groupadd --system --gid 10001 kordi-sandbox \
        --home-dir /nonexistent --shell /usr/sbin/nologin kordi-sandbox
 
 COPY --from=builder /workspace/target/release/kordi-cloud-agent-runner /usr/local/bin/kordi-cloud-agent-runner
+COPY --from=omp-builder /omp-out/kordi-omp /usr/local/bin/kordi-omp
+COPY --from=omp-builder /omp-out/pi_natives.*.node /usr/local/bin/
+
+ENV KORDI_OMP_WORKER_ENTRY=/usr/local/bin/kordi-omp
 
 ENTRYPOINT ["/usr/local/bin/kordi-cloud-agent-runner"]

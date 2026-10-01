@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { VirtualParticipantSpaceList } from './VirtualParticipantSpaceList';
-import { CHANNEL_HEIGHT, HEADER_HEIGHT, participantSpaceBlocks } from './participantSpaceLayout';
+import { CHANNEL_HEIGHT, participantSpaceBlocks } from './participantSpaceLayout';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -52,6 +52,7 @@ const SessionRow = memo(function SessionRow({
 export function VirtualChatList({
   rows,
   groupChannels = false,
+  compactChannels = false,
   activeSessionId,
   scrollRef,
   scrollClassName,
@@ -62,6 +63,7 @@ export function VirtualChatList({
 }: {
   rows: readonly ChatSidebarRow[];
   groupChannels?: boolean;
+  compactChannels?: boolean;
   activeSessionId?: string | null;
   scrollRef?: RefObject<HTMLDivElement | null>;
   scrollClassName?: string;
@@ -80,12 +82,12 @@ export function VirtualChatList({
     internalScrollRef.current = node;
     if (scrollRef) scrollRef.current = node;
   }, [scrollRef]);
-  const blocks = useMemo(() => groupChannels ? participantSpaceBlocks(rows) : [], [groupChannels, rows]);
+  const blocks = useMemo(() => groupChannels ? participantSpaceBlocks(rows, compactChannels) : [], [groupChannels, compactChannels, rows]);
   const virtualizer = useVirtualizer({
     count: groupChannels ? blocks.length : rows.length,
     getScrollElement: () => internalScrollRef.current,
     estimateSize: (index) => groupChannels
-      ? HEADER_HEIGHT + blocks[index].channels.length * CHANNEL_HEIGHT
+      ? estimatedChatSidebarRowSize(blocks[index].header) + blocks[index].channels.reduce((total, row) => total + (compactChannels ? estimatedChatSidebarRowSize(row) : CHANNEL_HEIGHT), 0)
       : estimatedChatSidebarRowSize(rows[index]),
     getItemKey: (index) => (groupChannels ? blocks[index]?.header.key : rows[index]?.key) ?? `missing:${index}`,
     overscan: groupChannels ? 4 : rows.length <= 100 ? rows.length : 24,
@@ -154,7 +156,7 @@ export function VirtualChatList({
   if (groupChannels) {
     return <VirtualParticipantSpaceList blocks={blocks} virtualizer={virtualizer}
       scrollRef={internalScrollRef} setScrollElement={setScrollElement} activeSessionId={activeSessionId}
-      scrollClassName={scrollClassName} scrollStyle={scrollStyle} dataMode={dataMode}
+      compactChannels={compactChannels} scrollClassName={scrollClassName} scrollStyle={scrollStyle} dataMode={dataMode}
       renderRow={renderRow} emptyState={emptyState}/>;
   }
   return (

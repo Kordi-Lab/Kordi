@@ -151,7 +151,11 @@ pub fn cloud_session_store(
         device_id,
     };
     let json = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
-    secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)
+    secret_store(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)?;
+    if let Err(err) = crate::cloud_host_activity::start() {
+        eprintln!("[kordi] Unable to keep Cloud agent host active: {err}");
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -173,7 +177,9 @@ pub fn cloud_session_clear() -> Result<(), String> {
         .flatten()
         .map(|session| session.account_id);
     tauri::async_runtime::spawn(crate::digest_calendar::clear_reminders(account_id));
-    secret_delete(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
+    secret_delete(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)?;
+    crate::cloud_host_activity::stop();
+    Ok(())
 }
 
 /// Persist the installation keypair independently of account sign-out. Only

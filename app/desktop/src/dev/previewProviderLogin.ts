@@ -87,7 +87,7 @@ export function createPreviewProviderLogin(loadCatalog: () => Promise<OmpCatalog
     const snapshot: ProviderLoginSnapshot = {
       snapshotId: `snap_preview_${counter}`,
       provider: entry.login.storeCredentialsAs ?? entry.provider,
-      authChoice: `omp-${entry.flow === 'api-key' ? 'api-key' : 'oauth'}:preview-${counter}`,
+      authChoice: entry.flow === 'api-key' ? `omp-api-key:preview-${counter}` : `cloud-login:preview-${counter}`,
       label: entry.label,
     };
     options.onSnapshot(snapshot);

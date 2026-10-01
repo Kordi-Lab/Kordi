@@ -1,6 +1,14 @@
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
+export function focusCompanionToggleFromPanel() {
+  if (typeof document === 'undefined') return;
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && focused.closest('.app-companion-panel-motion, .app-native-companion-titlebar')) {
+    document.querySelector<HTMLButtonElement>('.app-companion-toolbar button:not(:disabled)')?.focus({ preventScroll: true });
+  }
+}
+
 /** Keep content mounted through its exit; rapid reversals reuse the same panel. */
 export function useCompanionPanelPresence(open: boolean, conversationId: string) {
   const reducedMotion = useReducedMotion();
@@ -13,10 +21,7 @@ export function useCompanionPanelPresence(open: boolean, conversationId: string)
 
   useLayoutEffect(() => {
     if (open || !present) return;
-    const focused = document.activeElement;
-    if (focused instanceof HTMLElement && focused.closest('.app-companion-panel-motion')) {
-      document.querySelector<HTMLButtonElement>('.app-companion-toolbar button:not(:disabled)')?.focus({ preventScroll: true });
-    }
+    focusCompanionToggleFromPanel();
   }, [open, present]);
 
   useEffect(() => {

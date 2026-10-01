@@ -7,6 +7,8 @@ import { localSelfAgentRequestCanPublishExecution } from '../src/features/cloud/
 import { planCloudSelfAgentSync, type CloudSelfAgentSyncLedger, type CloudSelfAgentSyncOperation } from '../src/features/cloud/cloudSelfAgentForwardSync';
 import { publishCloudSelfAgentOperations } from '../src/features/cloud/cloudSelfAgentForwardExecution';
 import { parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { cloudSelfAgentForwardMessageKind } from '../src/features/cloud/cloudSelfAgentForwardPolicy';
+import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 
 const queued: QueuedDesktopChatMessage = {
   id: 'queued-local-chat:session:request-b', sessionId: 'session', scope: 'chat',
@@ -90,4 +92,30 @@ test('read receipts cannot attach an active reply to the next queued request', (
   const pending = { ...stateFor('queued').messages[0], status: 'read' };
   assert.equal(localSelfAgentRequestCanPublishExecution(pending), false);
   assert.equal(localSelfAgentRequestCanPublishExecution(stateFor('sent').messages[0]), true);
+});
+
+test('hosted queued drafts stay local until dispatch, then publish one executable request', () => {
+  const hosted = {
+    ...queued,
+    runtimeRoute: { model: 'openai/gpt', authProvider: 'openai', authChoice: 'cloud-login:synthetic' },
+  };
+  const state = (status: 'queued' | 'sent') => {
+    const prepared = prepareCanonicalQueuedMessage(hosted, 'human', status)!;
+    return {
+      ...stateFor(status),
+      messages: [{ ...prepared.request, sequenceNum: 1, updatedAtMs: 1000 } as CanonicalSessionMessage],
+    };
+  };
+  const pending = state('queued');
+  assert.equal(mapCanonicalMessage(pending.messages[0], new Map())?.statusChips?.[0], 'queued');
+  const ledger: CloudSelfAgentSyncLedger = { unrelated: { cloudMessageId: 'other-wire', syncedAtMs: 1 } };
+  assert.deepEqual(planCloudSelfAgentSync(pending, ledger), []);
+  assert.equal(ledger[hosted.id], undefined, 'a local queue cannot consume the request wire identity');
+
+  const dispatched = planCloudSelfAgentSync(state('sent'), ledger);
+  assert.equal(dispatched.length, 1);
+  assert.equal(dispatched[0].localMessageId, hosted.id);
+  assert.equal(dispatched[0].queued, undefined);
+  assert.deepEqual(dispatched[0].agentRuntimeRoute, { ...hosted.runtimeRoute, thinking: null });
+  assert.equal(cloudSelfAgentForwardMessageKind(dispatched[0], new Set([hosted.sessionId])), null);
 });

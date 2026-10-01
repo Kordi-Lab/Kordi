@@ -24,6 +24,17 @@ pub(super) async fn finish(
     text: &str,
     succeeded: bool,
 ) -> RunResult<Option<RunnerRunResponse>> {
+    finish_with_state(pool, run_id, runner_id, text, succeeded, None).await
+}
+
+pub(super) async fn finish_with_state(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+    text: &str,
+    succeeded: bool,
+    omp_state: Option<&super::omp_state::OmpState>,
+) -> RunResult<Option<RunnerRunResponse>> {
     let exists:(bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs WHERE run_id=$1 AND subsession_id IS NOT NULL)").bind(run_id).fetch_one(pool).await?;
     if !exists.0 {
         return Ok(None);
@@ -38,6 +49,16 @@ pub(super) async fn finish(
     let owned:Option<(Uuid,)> = query_as("SELECT subsession_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE")
         .bind(run_id).bind(runner_id).fetch_optional(&mut *tx).await?;
     let (id,) = owned.ok_or(RunError::NotFound)?;
+    if let Some(state) = omp_state {
+        super::omp_state::save(
+            &mut tx,
+            run_id,
+            runner_id,
+            &format!("result:{run_id}"),
+            state,
+        )
+        .await?;
+    }
     let now = chrono::Utc::now();
     let follow = query(
         "UPDATE cloud_agent_subsession_chat SET response_text=$2,updated_at=now() WHERE run_id=$1",

@@ -12,6 +12,7 @@ fn ctx_with_runtime(runtime: Option<SessionObservationRuntime>) -> ToolContext {
         artifacts_dir: PathBuf::from("/tmp/artifacts"),
         model: None,
         execution_policy: crate::ExecutionPolicy::Safety,
+        invocation_id: None,
         on_output: None,
         web_search: None,
         reach_out: None,

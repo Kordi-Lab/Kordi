@@ -78,7 +78,7 @@ test('OpenAI: the provider page has no inputs, the picker lists four methods, an
   await detail(page).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(steps(page).getByText('Verifying with OMP…')).toBeVisible();
   await finishAndReturn(page, 'Billing key');
-  await expect(account(page, 'Billing key')).toContainText('API key · Hosted in your Kordi account');
+  await expect(account(page, 'Billing key')).toContainText('API key');
 
   const routeTest = section(page, 'Test route');
   const providerSelect = routeTest.getByRole('combobox', { name: 'Provider' });
@@ -93,10 +93,10 @@ test('OpenAI: the provider page has no inputs, the picker lists four methods, an
   const codexModel = codex.models.find((id) => id !== codex.defaultModel) ?? codex.models[0];
   await accountSelect.selectOption({ label: 'Work' });
   await modelSelect.selectOption(codexModel);
-  await routeTest.getByRole('button', { name: 'Test route' }).click();
+  await routeTest.getByRole('button', { name: 'Run test' }).click();
   await expect(routeTest.getByRole('button', { name: 'Testing…' })).toBeDisabled();
   const result = routeTest.getByRole('status');
-  await expect(result).toContainText(`OMP confirmed · Work · openai-codex/${codexModel}`);
+  await expect(result).toContainText(`Confirmed · Work · openai-codex/${codexModel}`);
   expect(await result.innerText()).not.toMatch(secretLikeText);
 
   await providerSelect.selectOption({ label: 'OpenAI' });
@@ -105,8 +105,8 @@ test('OpenAI: the provider page has no inputs, the picker lists four methods, an
   const apiModel = openAiApi.models.find((id) => !codex.models.includes(id)) ?? openAiApi.models[0];
   await modelSelect.selectOption(apiModel);
   await routeTest.getByRole('combobox', { name: 'Thinking' }).selectOption('high');
-  await routeTest.getByRole('button', { name: 'Test route' }).click();
-  await expect(result).toContainText(`OMP confirmed · Billing key · openai/${apiModel}`);
+  await routeTest.getByRole('button', { name: 'Run test' }).click();
+  await expect(result).toContainText(`Confirmed · Billing key · openai/${apiModel}`);
   expect(await result.innerText()).not.toMatch(secretLikeText);
 
   await account(page, 'Billing key').getByRole('button', { name: 'Remove' }).click();
@@ -161,7 +161,7 @@ test('api-key login shows OMP instructions, the key link and placeholder, then s
   await key.fill('preview-cerebras-value');
   await detail(page).getByRole('button', { name: 'Save', exact: true }).click();
   await finishAndReturn(page, 'Research');
-  await expect(account(page, 'Research')).toContainText('API key · Hosted in your Kordi account');
+  await expect(account(page, 'Research')).toContainText('API key');
   await expect(account(page, 'Research').getByText('Active', { exact: true })).toBeVisible();
   await startChat(page).click();
   await expect(chatNotice(page, `cerebras/${defaultModel('cerebras')}`, 'cerebras')).toBeVisible();
@@ -202,7 +202,7 @@ test('oauth-code login appends the sign-in link, the pasted code, progress and t
   expect(positions.every((position) => position >= 0)).toBe(true);
   expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   await finishAndReturn(page, 'Studio');
-  await expect(account(page, 'Studio')).toContainText('Browser sign-in · Hosted in your Kordi account');
+  await expect(account(page, 'Studio')).toContainText('Browser sign-in');
 });
 
 test('a ChatGPT browser sign-in finishes on its own when the browser lands on localhost', async ({ page }) => {
@@ -216,7 +216,9 @@ test('a ChatGPT browser sign-in finishes on its own when the browser lands on lo
   expect(await steps(page).innerText()).not.toMatch(/localhost|code=|Redirect URL or code/);
   await expect(page.getByText(callbackHint)).toHaveCount(0);
   await expectReturnedWith(page, 'Studio');
-  await expect(account(page, 'Studio')).toContainText('ChatGPT · Hosted in your Kordi account');
+  await expect(account(page, 'Studio')).toContainText('ChatGPT');
+  await expect(startChat(page)).toBeEnabled();
+  expect(await selectOptions(section(page, 'Test route').getByRole('combobox', { name: 'Account' }))).toEqual(['Work', 'Personal', 'Studio']);
   expect(offOrigin).toEqual([]);
 });
 
@@ -249,7 +251,7 @@ test('vendor-token login asks the OMP prompt with masked entry and keeps the sec
   await expectDistinctStepDescriptions(page);
   await expect(steps(page).getByText('preview-gateway-value')).toHaveCount(0);
   await finishAndReturn(page, 'Work');
-  await expect(account(page, 'Work')).toContainText('Vendor token · Hosted in your Kordi account');
+  await expect(account(page, 'Work')).toContainText('Vendor token');
 });
 
 test('Anthropic API keys start the api-key method', async ({ page }) => {
@@ -264,7 +266,7 @@ test('Anthropic API keys start the api-key method', async ({ page }) => {
   await steps(page).getByRole('button', { name: 'Start chat' }).click();
   await expect(chatNotice(page, `anthropic/${defaultModel('anthropic')}`, 'anthropic')).toBeVisible();
   await expectReturnedWith(page, 'Billing');
-  await expect(account(page, 'Billing')).toContainText('API key · Hosted in your Kordi account');
+  await expect(account(page, 'Billing')).toContainText('API key');
 });
 
 test('Custom API accounts carry a model: save one, chat with it, and add one to an older account', async ({ page }) => {
@@ -284,9 +286,9 @@ test('Custom API accounts carry a model: save one, chat with it, and add one to 
   await detail(page).getByRole('button', { name: 'Save key' }).click();
   await expect(heading(page)).toHaveText('Custom API');
   await expectReturnedWith(page, 'Team');
-  await expect(account(page, 'Team')).toContainText('Custom API · deepseek-chat · Hosted in your Kordi account');
+  await expect(account(page, 'Team')).toContainText('Custom API · deepseek-chat');
   await expect(page.getByText(/Key saved|Choose a model below/)).toHaveCount(0);
-  // A hosted-only account's chat carries its route: it runs on Kordi Cloud, not on this Mac.
+  // The saved account's chat carries its account route.
   await startChat(page).click();
   await expect(chatNotice(page, 'custom/deepseek-chat', 'custom')).toBeVisible();
 
@@ -310,7 +312,7 @@ test('a completed ChatGPT device sign-in returns with the account added and read
   await steps(page).getByRole('button', { name: 'Open sign-in page' }).click();
   await expect(steps(page).getByText(/Confirming sign-in/)).toBeVisible();
   await finishAndReturn(page, 'Team');
-  await expect(account(page, 'Team')).toContainText('ChatGPT · Hosted in your Kordi account');
+  await expect(account(page, 'Team')).toContainText('ChatGPT');
   for (const name of ['Work', 'Personal']) await expect(account(page, name)).toBeVisible();
   expect(await selectOptions(section(page, 'Test route').getByRole('combobox', { name: 'Account' }))).toEqual(['Work', 'Personal', 'Team']);
   expect(offOrigin).toEqual([]);
@@ -335,11 +337,10 @@ test('a session routed to a removed account shows it as unavailable and blocks s
   await expect(session.getByRole('button', { name: 'model route', exact: true })).toBeVisible();
 });
 
-test('the composer lists every hosted account to run on Kordi Cloud, and a local account returns to this Mac', async ({ page }) => {
+test('the composer identifies saved accounts by name and provider', async ({ page }) => {
   await openPreview(page, 'settings', { provider: 'openai', flags: ['hostedAccounts'] });
   const session = section(page, 'Agent session');
-  const caption = session.getByText('Runs on Kordi Cloud', { exact: true });
-  await expect(caption).toHaveCount(0);
+  await expect(session.getByText('Runs on Kordi Cloud', { exact: true })).toHaveCount(0);
   const openProviders = async () => {
     await session.getByRole('button', { name: 'model route', exact: true }).click();
     const menu = page.getByRole('dialog', { name: 'Agent model' });
@@ -347,7 +348,7 @@ test('the composer lists every hosted account to run on Kordi Cloud, and a local
     return menu;
   };
   let menu = await openProviders();
-  for (const [name, detail] of [['research', /cerebras · runs on kordi cloud/], ['team', /chatgpt · runs on kordi cloud/], ['gateway', /custom api · runs on kordi cloud/]] as const) {
+  for (const [name, detail] of [['research', /cerebras/], ['team', /chatgpt/], ['gateway', /custom api/]] as const) {
     await expect(menu.getByRole('button', { name: new RegExp(`^${name}`) })).toContainText(detail);
   }
   const reconnect = menu.getByRole('button', { name: /^old laptop/ });
@@ -355,21 +356,21 @@ test('the composer lists every hosted account to run on Kordi Cloud, and a local
   await expect(reconnect).toHaveAttribute('title', 'Account needs reconnecting');
   await expect(reconnect).toContainText('account needs reconnecting');
 
-  // A hosted account applies its Kordi Cloud route with its provider's catalog models.
+  // A saved account applies its route with its provider's catalog models.
   await menu.getByRole('button', { name: /^research/ }).click();
   await menu.getByRole('button', { name: 'save' }).click();
-  await expect(caption).toBeVisible();
-  await expect(session).toContainText(`cerebras/${ompProvider('cerebras').models[0]} on cloud-api-key:preview-research`);
+  await expect(session.getByText('Runs on Kordi Cloud', { exact: true })).toHaveCount(0);
 
   menu = await openProviders();
+  await expect(menu.getByRole('button', { name: /^research/ })).toContainText('selected');
   await menu.getByRole('button', { name: /^gateway/ }).click();
   await menu.getByRole('button', { name: 'save' }).click();
-  await expect(session).toContainText('custom/deepseek-chat on cloud-api-key:preview-gateway');
 
   menu = await openProviders();
+  await expect(menu.getByRole('button', { name: /^gateway/ })).toContainText('selected');
   await menu.getByRole('button', { name: /^chatgpt\s*work/ }).click();
   await menu.getByRole('button', { name: 'save' }).click();
-  await expect(caption).toHaveCount(0);
+  await expect(session.getByText('Runs on Kordi Cloud', { exact: true })).toHaveCount(0);
 });
 
 test('a desktop sign-in whose hosted copy expired asks to reconnect', async ({ page }) => {

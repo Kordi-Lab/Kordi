@@ -7,6 +7,7 @@ import {
   mergeOmpAuthState,
   loadPinnedOmpCatalog,
   refreshOmpCatalog,
+  withKnownLoginMethods,
   type OmpCatalog,
 } from '../src/kordi-app/auth/ompCatalog';
 import { BUNDLED_CATALOG_FALLBACK_NOTICE, CATALOG_UNAVAILABLE_NOTICE, loadAuthOmpCatalog } from '../src/kordi-app/auth/useAuthOmpCatalog';
@@ -128,6 +129,48 @@ test('saved accounts attach to the OMP entry through the provider alias table', 
   assert.equal(codex?.supportsApiKey, false, 'a vendor token variable is not an API key');
   assert.deepEqual(merged?.providers.find((provider) => provider.id === 'google')?.options.map((option) => option.label), ['Gemini key']);
   assert.equal(merged?.providers.some((provider) => provider.id === 'google-gemini' || provider.id === 'codex'), false);
+});
+
+test('a completed ChatGPT browser login stays in the OpenAI account list', () => {
+  const saved = snapshot('openai-codex', 'cloud-login:opaque-session', 'Personal');
+  const { providers } = buildOmpDisplayProviders(authState([]), [saved], pinnedOmpCatalog.providers);
+  const openAi = providers.find((provider) => provider.id === 'openai');
+  assert.equal(openAi?.configured, true);
+  assert.deepEqual(openAi?.methods[0].options.map((option) => [option.label, option.method, option.profileId]),
+    [['Personal', 'OAuth', saved.snapshotId]]);
+  assert.deepEqual(openAi?.methods[1].options, []);
+});
+
+test('an opaque Copilot sign-in choice stays in its OAuth method', () => {
+  const saved = snapshot('github-copilot', 'cloud-login:opaque-session', 'Work');
+  const { providers } = buildOmpDisplayProviders(authState([]), [saved], pinnedOmpCatalog.providers);
+  const copilot = providers.find((provider) => provider.id === 'github-copilot');
+  assert.equal(copilot?.methods[0].options[0]?.method, 'OAuth');
+  assert.equal(copilot?.methods[0].options[0]?.label, 'Work');
+});
+
+test('old opaque accounts for mixed-method providers stay visible with neutral method text', () => {
+  for (const providerId of ['anthropic', 'cloudflare-ai-gateway']) {
+    const saved = snapshot(providerId, 'cloud-login:opaque-session', 'Work');
+    const { providers } = buildOmpDisplayProviders(authState([]), [saved], pinnedOmpCatalog.providers);
+    const provider = providers.find((item) => item.id === providerId);
+    assert.equal(provider?.methods.find((method) => method.mode === 'oauth')?.options[0]?.label, 'Work', providerId);
+    assert.equal(provider?.methods.find((method) => method.mode === 'oauth')?.options[0]?.method, 'Account', providerId);
+    assert.equal(provider?.methods.find((method) => method.mode === 'api-key')?.options.length, 0, providerId);
+    assert.equal(provider?.methods.flatMap((method) => method.options).length, 1, providerId);
+  }
+});
+
+test('the current mixed-provider login keeps its known method across snapshot refresh', () => {
+  for (const loginMethod of ['sign-in', 'api-key'] as const) {
+    const saved = snapshot('anthropic', 'cloud-login:opaque-session', 'Work');
+    const refreshed = withKnownLoginMethods([saved], new Map([[saved.snapshotId, loginMethod]]));
+    const { providers } = buildOmpDisplayProviders(authState([]), refreshed, pinnedOmpCatalog.providers);
+    const anthropic = providers.find((item) => item.id === 'anthropic');
+    const expectedMode = loginMethod === 'sign-in' ? 'oauth' : 'api-key';
+    assert.equal(anthropic?.methods.find((method) => method.mode === expectedMode)?.options[0]?.method,
+      loginMethod === 'sign-in' ? 'OAuth' : 'API key');
+  }
 });
 
 test('lm-studio and ollama stay local and are never merged into similar OMP entries', () => {

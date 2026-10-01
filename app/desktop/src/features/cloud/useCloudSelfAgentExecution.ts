@@ -214,11 +214,27 @@ export function useCloudSelfAgentExecution({
           .catch(() => null);
         if (cloudAgentRunAlreadyOwnsRequest(existingRun) || isInactive()) return;
 
+        const targetCloudAgentId =
+          cloudDirectMessageTargetCloudAgentId(request.body)
+          || cloudAgentSessionTargetFromMessages(
+            selfMessages,
+            account.accountId,
+            request,
+          )?.targetCloudAgentId
+          || null;
+        const executionRoute = cloudAgentRuntimeRouteForTargetCloudAgent({
+          targetCloudAgentId,
+          cloudAgentDefinitionsById,
+          routesByRuntimeSessionId: effectiveRoutesBySessionId,
+          runtimeSessionId: candidateRuntimeSessionId,
+          fallbackRoute: defaultRoute,
+          requestRoute,
+        });
         const lease = await acquireDesktopExecutionLease(client, session.token, {
           requestMessageId: request.messageId, sessionId, ownerAccountId: account.accountId,
           requesterAccountId: account.accountId, prompt: (voice ? voiceAgentText(voice) : cloudDirectMessageDisplayText(request.body)),
-          runtimeRoute: requestRoute ? { defaultModel: requestRoute.model, defaultAuthProvider: requestRoute.authProvider,
-            defaultAuthChoice: requestRoute.authChoice, thinking: requestRoute.thinking } : undefined,
+          runtimeRoute: executionRoute ? { defaultModel: executionRoute.model, defaultAuthProvider: executionRoute.authProvider,
+            defaultAuthChoice: executionRoute.authChoice, thinking: executionRoute.thinking } : undefined,
           idempotencyKey: `request:${request.messageId}`,
         });
         if (!lease) return;
@@ -245,14 +261,6 @@ export function useCloudSelfAgentExecution({
             processedRequestIdsRef.current.delete(request.messageId);
             return;
           }
-          const targetCloudAgentId =
-            cloudDirectMessageTargetCloudAgentId(request.body)
-            || cloudAgentSessionTargetFromMessages(
-              selfMessages,
-              account.accountId,
-              request,
-            )?.targetCloudAgentId
-            || null;
           const ownerName =
             account.displayName || account.primaryEmail || 'Me';
           const contextMessages = [
@@ -367,14 +375,7 @@ export function useCloudSelfAgentExecution({
               agentAttachments
                 .map((attachment) => attachment.localPath?.trim() || '')
                 .filter(Boolean),
-              cloudAgentRuntimeRouteForTargetCloudAgent({
-                targetCloudAgentId,
-                cloudAgentDefinitionsById,
-                routesByRuntimeSessionId: effectiveRoutesBySessionId,
-                runtimeSessionId,
-                fallbackRoute: defaultRoute,
-                requestRoute,
-              }),
+              executionRoute,
               lease.contextMessages(contextMessages),
               [],
               null,

@@ -41,16 +41,16 @@ export type LocalAgentTurnContext = {
 
 export { routeRunsOnKordiCloud };
 
-/** Frees the session for the next send; a Kordi Cloud turn has no local turn to wait for. */
+/** Frees the send path; leased execution is tracked separately from delivery. */
 export function releaseLocalChatSend(inFlightRef: MutableRefObject<{ sessionId: string | null } | null>, sessionId: string) {
   if (inFlightRef.current?.sessionId === sessionId) inFlightRef.current = null;
 }
 
 /**
  * Starts the agent turn for a stored user message. A route on a hosted-only
- * account runs on Kordi Cloud instead: the message is delivered with its route,
- * the cloud request carries it to the runner, and nothing runs on this Mac,
- * so the result is null.
+ * account enters shared admission first: the message carries its route and
+ * the online Mac acquires the execution lease before starting its native turn.
+ * Delivery returns null because the leased executor owns turn tracking.
  */
 export async function startLocalAgentTurn(
   context: LocalAgentTurnContext,
@@ -58,6 +58,7 @@ export async function startLocalAgentTurn(
   attachments: readonly AttachmentItem[],
 ): Promise<DesktopChatTurnSnapshot | null> {
   if (routeRunsOnKordiCloud(context.route)) {
+    if (!prepared) throw new Error('Unable to send to Kordi Cloud before chat identity is ready. Try again.');
     await markLocalAgentMessageDelivered(context, prepared);
     return null;
   }
@@ -84,20 +85,26 @@ function deliveredCanonicalMessage(context: LocalAgentTurnContext, prepared: Pre
   return { ...sent, request: { ...sent.request, content: { ...content, agentRuntimeRoute: context.route } } };
 }
 
-export function markLocalAgentMessageDelivered(
+export async function markLocalAgentMessageDelivered(
   context: LocalAgentTurnContext,
   prepared: PreparedCanonicalUserMessage | null,
+  persist: (request: Parameters<typeof upsertCanonicalMessageFast>[0]) => Promise<unknown> = upsertCanonicalMessageFast,
 ): Promise<void> {
   const sentCanonicalMessage = deliveredCanonicalMessage(context, prepared);
-  if (!sentCanonicalMessage) return Promise.resolve();
+  if (!sentCanonicalMessage) return;
+  try {
+    await persist(sentCanonicalMessage.request);
+  } catch (error) {
+    context.setDesktopChatError(error instanceof Error ? error.message : 'Unable to update message delivery status');
+    throw error;
+  }
+  const hostedRoute = routeRunsOnKordiCloud(context.route) ? context.route : null;
   context.setCanonicalSessionState((current) => markOptimisticCanonicalMessageSent(
     current,
     context.canonicalSessionId,
     sentCanonicalMessage.messageId,
+    hostedRoute ? { agentRuntimeRoute: hostedRoute } : {},
   ));
-  return upsertCanonicalMessageFast(sentCanonicalMessage.request).then(() => undefined, (error: unknown) => {
-    context.setDesktopChatError(error instanceof Error ? error.message : 'Unable to update message delivery status');
-  });
 }
 
 /** When the finished turn reports a missing provider, store the delivered request and a failed reply notice. */
@@ -153,8 +160,10 @@ export function dispatchLocalAgentVoiceTurn(
   void (async () => {
     let turnStarted = false;
     try {
-      const agentVoice = await transcribeAgentVoiceAttachments(attachments, transcription);
-      await deliveryWrite;
+      const [agentVoice] = await Promise.all([
+        transcribeAgentVoiceAttachments(attachments, transcription),
+        deliveryWrite,
+      ]);
       let dispatchedCanonicalMessage = delivered;
       if (agentVoice.outcome && delivered) {
         const transcribedMessage = preparedCanonicalUserMessageWithAttachments(

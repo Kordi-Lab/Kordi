@@ -373,8 +373,8 @@ export function cloudFallbackRunClaimsForMessages({
         const processingAtMs = processingDirectRequestAtMsByPeerId
           .get(peerId)
           ?.get(message.messageId) ?? observedAtMs;
-        // A request on a hosted-only account never runs on the Mac: claim it
-        // for Kordi Cloud at once, with its route.
+        // Submit hosted-account requests with their exact route immediately.
+        // Shared admission keeps a ready Mac first and permits Cloud fallback offline.
         const requestRoute = cloudDirectMessageAgentRuntimeRoute(message.body);
         const kordiCloudRoute = routeRunsOnKordiCloud(requestRoute) ? requestRoute : null;
         if (

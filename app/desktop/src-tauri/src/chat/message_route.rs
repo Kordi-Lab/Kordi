@@ -18,17 +18,25 @@ pub(super) fn apply_desktop_chat_message_route(
     };
 
     if let Some(model) = normalized_message_route_value(route.model.as_ref()) {
-        session
-            .set_model(model)
-            .map_err(|error| error.to_string())?;
+        if super::hosted_provider_auth::route_uses_hosted_auth(Some(route)) {
+            session
+                .set_hosted_model(model)
+                .map_err(|error| error.to_string())?;
+        } else {
+            session
+                .set_model(model)
+                .map_err(|error| error.to_string())?;
+        }
     }
-    if let (Some(auth_provider), Some(auth_choice)) = (
-        normalized_message_route_value(route.auth_provider.as_ref()),
-        normalized_message_route_value(route.auth_choice.as_ref()),
-    ) {
-        session
-            .set_auth_choice(auth_provider, auth_choice)
-            .map_err(|error| error.to_string())?;
+    if !super::hosted_provider_auth::route_uses_hosted_auth(Some(route)) {
+        if let (Some(auth_provider), Some(auth_choice)) = (
+            normalized_message_route_value(route.auth_provider.as_ref()),
+            normalized_message_route_value(route.auth_choice.as_ref()),
+        ) {
+            session
+                .set_auth_choice(auth_provider, auth_choice)
+                .map_err(|error| error.to_string())?;
+        }
     }
     if let Some(thinking) = normalized_message_route_value(route.thinking.as_ref()) {
         session

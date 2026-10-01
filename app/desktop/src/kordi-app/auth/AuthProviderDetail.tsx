@@ -48,7 +48,7 @@ type AuthProviderDetailProps = {
   /** Receives a browser sign-in's localhost redirect on this Mac. */
   loginCallbackCapture?: LoginCallbackCapture | null;
   openExternal?: (url: string) => void;
-  onLoginCompleted?: (snapshot: ProviderLoginSnapshot) => void;
+  onLoginCompleted?: (snapshot: ProviderLoginSnapshot, method: 'sign-in' | 'api-key') => void;
   /** A Custom API account was saved; the page returns to the provider with it highlighted. */
   onAccountAdded?: (authChoice: string) => void;
   /** Opens a chat with the active account; offered when a sign-in completes. */
@@ -178,7 +178,7 @@ export function AuthProviderDetail({
           onBack={back}
           onDone={() => navigate(null)}
           onStartChat={onStartChat}
-          onCompleted={(snapshot) => onLoginCompleted?.(snapshot)}
+          onCompleted={(snapshot) => onLoginCompleted?.(snapshot, method.kind === 'api-key' ? 'api-key' : 'sign-in')}
         />
         </Suspense>
       );
