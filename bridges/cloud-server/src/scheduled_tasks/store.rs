@@ -13,6 +13,8 @@ use crate::scheduled_tasks::schedule::{
     initial_next_run_at, next_run_after, ScheduledTaskSchedule,
 };
 
+pub use super::due_runs::claim_due_scheduled_task_runs;
+
 type TaskRow = (
     String,
     String,
@@ -44,15 +46,15 @@ type RunRow = (
     Option<String>,
 );
 
-fn ts(value: DateTime<Utc>) -> String {
+pub(super) fn ts(value: DateTime<Utc>) -> String {
     value.to_rfc3339()
 }
 
-fn protocol_error(message: impl Into<String>) -> sqlx_core::Error {
+pub(super) fn protocol_error(message: impl Into<String>) -> sqlx_core::Error {
     sqlx_core::Error::Protocol(message.into())
 }
 
-fn parse_schedule(value: Value) -> Result<ScheduledTaskSchedule, sqlx_core::Error> {
+pub(super) fn parse_schedule(value: Value) -> Result<ScheduledTaskSchedule, sqlx_core::Error> {
     serde_json::from_value(value)
         .map_err(|err| protocol_error(format!("invalid schedule_json: {err}")))
 }
@@ -336,7 +338,7 @@ pub async fn mark_scheduled_task_run_failed(
     Ok(())
 }
 
-async fn create_run_for_task(
+pub(super) async fn create_run_for_task(
     pool: &PgPool,
     owner_account_id: &str,
     task_id: &str,
@@ -389,7 +391,7 @@ pub async fn list_scheduled_task_runs(
     Ok(rows.into_iter().map(row_to_run).collect())
 }
 
-async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
+pub(super) async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
     pool: &PgPool,
     owner_account_id: &str,
     created_by_account_id: &str,
@@ -420,79 +422,4 @@ async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
             .map_err(RunError::into_persistence_error)?;
     }
     Ok(())
-}
-
-pub async fn claim_due_scheduled_task_runs(
-    pool: &PgPool,
-    now: DateTime<Utc>,
-    limit: i64,
-) -> Result<Vec<ScheduledTaskRunResponse>, sqlx_core::Error> {
-    let rows = query_as::<_, (String, String, String, String, String, Value, Value, String, Option<String>)>(
-        "SELECT task_id, owner_account_id, created_by_account_id, target_runtime, prompt, tool_payload_json, schedule_json, next_run_at, next_run_at
-           FROM scheduled_tool_tasks
-          WHERE enabled = TRUE AND status = 'active' AND next_run_at IS NOT NULL AND next_run_at <= $1
-          ORDER BY next_run_at ASC, task_id ASC
-          LIMIT $2"
-    )
-    .bind(ts(now))
-    .bind(limit)
-    .fetch_all(pool)
-    .await?;
-
-    let mut runs = Vec::new();
-    for (
-        task_id,
-        owner_account_id,
-        created_by_account_id,
-        target_runtime,
-        prompt,
-        tool_payload_json,
-        schedule_json,
-        next_run_at,
-        due_at_text,
-    ) in rows
-    {
-        let due_at = DateTime::parse_from_rfc3339(
-            due_at_text
-                .as_deref()
-                .ok_or_else(|| protocol_error("missing due_at"))?,
-        )
-        .map_err(|err| protocol_error(format!("invalid next_run_at: {err}")))?
-        .with_timezone(&Utc);
-        let mut run = create_run_for_task(
-            pool,
-            &owner_account_id,
-            &task_id,
-            &target_runtime,
-            due_at,
-            now,
-        )
-        .await?;
-        if target_runtime == "cloud" {
-            enqueue_cloud_agent_fallback_run_for_scheduled_run(
-                pool,
-                &owner_account_id,
-                &created_by_account_id,
-                &prompt,
-                &tool_payload_json,
-                &mut run,
-                now,
-            )
-            .await?;
-        }
-        let schedule = parse_schedule(schedule_json)?;
-        let next = next_run_after(&schedule, due_at)
-            .map_err(|err| protocol_error(err.to_string()))?
-            .map(ts);
-        query("UPDATE scheduled_tool_tasks SET next_run_at = $1, last_run_at = $2, last_run_status = $3, updated_at = $4 WHERE task_id = $5")
-            .bind(next)
-            .bind(next_run_at)
-            .bind(&run.status)
-            .bind(ts(now))
-            .bind(&task_id)
-            .execute(pool)
-            .await?;
-        runs.push(run);
-    }
-    Ok(runs)
 }

@@ -26,6 +26,8 @@ use tower::util::ServiceExt;
 
 #[path = "scheduled_task_tool_e2e/budgets.rs"]
 mod budgets;
+#[path = "scheduled_task_tool_e2e/due_claims.rs"]
+mod due_claims;
 
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
@@ -178,6 +180,7 @@ async fn scheduled_task_store_creates_lists_pauses_resumes_and_deletes() {
 #[tokio::test]
 async fn scheduled_task_store_does_not_strand_new_once_tasks_at_or_before_creation_time() {
     let Some(pool) = try_pool().await else { return };
+    let _sweep = due_claims::SWEEP.lock().await;
     let account_id = format!("acct_owner_{}", uuid::Uuid::new_v4().simple());
     seed_account(&pool, &account_id).await;
     let now = Utc.with_ymd_and_hms(2026, 6, 8, 9, 0, 30).unwrap();
@@ -411,6 +414,7 @@ async fn scheduled_task_run_history_lists_latest_runs_for_owned_task() {
 #[tokio::test]
 async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
     let Some(pool) = try_pool().await else { return };
+    let _sweep = due_claims::SWEEP.lock().await;
     let account_id = format!("acct_owner_{}", uuid::Uuid::new_v4().simple());
     seed_account(&pool, &account_id).await;
     let cloud = create_scheduled_task(
