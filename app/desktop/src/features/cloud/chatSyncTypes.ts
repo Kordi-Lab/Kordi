@@ -37,6 +37,8 @@ export type ChatSyncConversation = {
   updated_at: string;
   members: ChatSyncMember[];
   preferences: ChatSyncPreferences;
+  /** Absent for agent conversations and from servers without AI access settings. */
+  ai_access?: import('./agentTrustTypes').ChatSyncAiAccess | null;
 };
 
 export type ChatSyncMessage = {

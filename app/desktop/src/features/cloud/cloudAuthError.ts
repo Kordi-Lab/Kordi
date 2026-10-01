@@ -34,6 +34,9 @@ export type CloudAuthErrorCode =
   | 'network_error'
   | 'plan_card_revision_conflict'
   | 'omp_unavailable'
+  // AI access settings (v2 chat) and actions that need a person.
+  | 'PIP_UNAVAILABLE' | 'CHAT_FORBIDDEN'
+  | 'plan_changed' | 'agent_action_closed' | 'agent_action_not_found' | 'plan_card_forbidden'
   | 'unknown';
 
 export class CloudAuthError extends Error {
@@ -75,6 +78,8 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'group_invitation_expired', 'group_invitation_full', 'group_invitation_permission_denied',
   'group_invitation_missing', 'self_group_invitation', 'wrong_group_invitation_account',
   'server_error', 'plan_card_revision_conflict', 'omp_unavailable',
+  'PIP_UNAVAILABLE', 'CHAT_FORBIDDEN',
+  'plan_changed', 'agent_action_closed', 'agent_action_not_found', 'plan_card_forbidden',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {

@@ -1,3 +1,4 @@
+import { AgentTrustClient } from './agentTrustClient';
 import type { CloudMessage, CloudSessionTitle, CloudSyncResponse, SendCloudMessageOptions, UpdateCloudSessionTitleInput } from './authClient';
 import { ChatSyncConversationClient } from './chatSyncConversationClient';
 import { ChatSyncState, type ChatSyncRequest } from './chatSyncState';
@@ -15,6 +16,8 @@ export class ChatSyncClient {
   private readonly state: ChatSyncState;
   private readonly conversations: ChatSyncConversationClient;
   private readonly sync: ChatSyncSyncClient;
+  /** AI access settings, actions that need a person, and reply disclosure. */
+  readonly agentTrust: AgentTrustClient;
 
   constructor(options: ChatSyncClientOptions) {
     this.state = new ChatSyncState(
@@ -25,6 +28,7 @@ export class ChatSyncClient {
     );
     this.conversations = new ChatSyncConversationClient(this.state);
     this.sync = new ChatSyncSyncClient(this.state);
+    this.agentTrust = new AgentTrustClient(this.state);
     this.state.bootstrap = (token) => this.sync.bootstrapChatSync(token);
     this.state.ensureConversation = (token, input) => (
       this.conversations.ensureChatConversation(token, input)

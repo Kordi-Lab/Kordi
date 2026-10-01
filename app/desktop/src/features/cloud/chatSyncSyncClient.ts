@@ -1,3 +1,4 @@
+import { notifyAgentActionUpdated, notifyAiAccess } from '@/features/agentTrust/agentTrustEvents';
 import type { CloudSyncEvent, CloudSyncResponse } from './authClient';
 import { normalizeCloudMessageSnapshot } from './cloudMessageSnapshot';
 import { chatSyncSessionTitle, cloudMessageFromChatSync, directSessionId, conversationPeer } from './chatSyncMapping';
@@ -294,6 +295,7 @@ export class ChatSyncSyncClient {
         },
       },
     } satisfies CloudSyncEvent : null;
+    if (event.type === 'agent_action.updated') return notifyAgentActionUpdated(event.payload);
     if (event.type === 'call.created' || event.type === 'call.updated') {
       return [{
         ...base,
@@ -356,6 +358,7 @@ export class ChatSyncSyncClient {
     if ((event.type === 'conversation.created'
       || event.type === 'conversation.updated'
       || event.type === 'membership.updated') && conversation) {
+      notifyAiAccess(conversation);
       return [sessionTitleEvent!];
     }
     if ([
