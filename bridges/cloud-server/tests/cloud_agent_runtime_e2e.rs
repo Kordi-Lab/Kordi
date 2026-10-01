@@ -229,6 +229,19 @@ async fn accept_contacts(router: &axum::Router, from: &TestAccount, to: &TestAcc
     assert_eq!(accepted.status(), StatusCode::OK);
 }
 
+/// Lets agents asked in a group read its recent messages, for checks that
+/// need the whole conversation rather than mention-only context.
+async fn allow_recent_history(pool: &sqlx_postgres::PgPool, conversation_id: uuid::Uuid) {
+    sqlx_core::query::query(
+        "INSERT INTO cloud_chat_ai_policies (conversation_id, history_scope) VALUES ($1, 'recent') \
+         ON CONFLICT (conversation_id) DO UPDATE SET history_scope = 'recent'",
+    )
+    .bind(conversation_id)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 async fn count_cloud_agent_runs_for_key(
     pool: &sqlx_postgres::PgPool,
     idempotency_key: &str,

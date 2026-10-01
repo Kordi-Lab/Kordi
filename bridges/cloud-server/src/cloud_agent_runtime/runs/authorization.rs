@@ -10,13 +10,16 @@ use super::group_target::human_group_target;
 use super::{ClaimRunRequest, RunResult};
 
 /// Resolve transport aliases without changing the durable group request identity.
+/// With a sender, only that account's messages can match, so a later message
+/// from another member that reuses the logical id never becomes the request.
 pub async fn request_identity(
     pool: &PgPool,
     session_id: &str,
     request_id: &str,
+    sender: Option<&str>,
 ) -> RunResult<Option<(String, String)>> {
-    let mut rows=query_as::<_,(String,String,String)>("SELECT m.message_id::text,m.client_message_id::text,m.content #>> '{blocks,0,text}' FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) WHERE c.legacy_session_id=$1 AND m.deleted_at IS NULL AND m.content #>> '{blocks,0,text}' IS NOT NULL ORDER BY m.conversation_sequence DESC")
-        .bind(session_id).fetch(pool);
+    let mut rows=query_as::<_,(String,String,String)>("SELECT m.message_id::text,m.client_message_id::text,m.content #>> '{blocks,0,text}' FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) WHERE c.legacy_session_id=$1 AND ($2::text IS NULL OR m.sender_account_id=$2) AND m.deleted_at IS NULL AND m.content #>> '{blocks,0,text}' IS NOT NULL ORDER BY m.conversation_sequence DESC")
+        .bind(session_id).bind(sender).fetch(pool);
     while let Some((wire, client, body)) = rows.try_next().await? {
         let logical = super::envelopes::parse_cloud_group_envelope(&body)
             .and_then(|envelope| envelope.message.map(|message| message.id));

@@ -35,14 +35,16 @@ pub(super) async fn authorize_member(
 ) -> RunResult<ContextScope> {
     let owner = actor.account.clone().ok_or(RunError::NotFound)?;
     let (session_id, source) = actor.observation.as_ref().ok_or(RunError::NotFound)?;
-    let (request_message_id, requester) = if let Some(source) = source {
+    let (request_message_id, requester, agent_id) = if let Some(source) = source {
         // A child retains its parent's admitted request identity, not an expired
         // execution lease. Recheck membership, visibility and Agent sharing on every read.
-        let (logical, wire) = super::super::request_identity(pool, session_id, source)
+        let (logical, wire) = super::super::request_identity(pool, session_id, source, None)
             .await?
             .ok_or(RunError::NotFound)?;
-        let run: Option<(String, String)> = query_as(
-            "SELECT request_message_id,requester_account_id FROM cloud_agent_fallback_runs
+        let run: Option<(String, String, String)> = query_as(
+            "SELECT request_message_id,requester_account_id,
+                    COALESCE(NULLIF(execution_agent_id,''),'cloud-agent:'||owner_account_id)
+             FROM cloud_agent_fallback_runs
              WHERE owner_account_id=$1 AND session_id=$2 AND request_message_id IN ($3,$4)
              AND status IN ('leased','running','completed') ORDER BY created_at DESC LIMIT 1",
         )
@@ -54,7 +56,9 @@ pub(super) async fn authorize_member(
         .await?;
         run.ok_or(RunError::NotFound)?
     } else {
-        (String::new(), owner.clone())
+        // Without a source this is the owner's own private assistant: the
+        // owner's view of the conversation, minus other members' opt-outs.
+        (String::new(), owner.clone(), String::new())
     };
     if source.is_some() {
         let claim = ClaimRunRequest {
@@ -75,8 +79,10 @@ pub(super) async fn authorize_member(
         request_message_id,
         owner,
         requester,
+        agent_id,
         conversation_id: uuid::Uuid::nil(),
         title: String::new(),
         kind: String::new(),
+        policy: None,
     })
 }

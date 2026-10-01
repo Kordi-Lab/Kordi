@@ -23,7 +23,7 @@ async fn group_logical_request_prefers_mac_and_rejects_another_default_agent_own
         .oneshot(post_json_with_token(
             "/v1/cloud/agent-runs/desktop/ready",
             &owner.token,
-            json!({"agentIds":[format!("cloud-agent:{}",owner.account_id)]}),
+            json!({"agentIds":[format!("cloud-agent:{}",owner.account_id)],"contextContract":2}),
         ))
         .await
         .unwrap();

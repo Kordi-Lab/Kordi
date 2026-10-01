@@ -18,11 +18,14 @@ use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
+mod contract;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ReadyInput {
     agent_ids: Vec<String>,
+    #[serde(default = "contract::legacy")]
+    context_contract: u8,
 }
 
 pub(super) async fn ready(
@@ -43,8 +46,8 @@ pub(super) async fn ready(
             let own: Option<(String,)> = query_as("SELECT agent_id FROM cloud_agent_definitions WHERE agent_id=$1 AND owner_account_id=$2 AND status='active'")
                 .bind(agent).bind(&session.account_id).fetch_optional(&mut *tx).await?;
             if agent != &format!("cloud-agent:{}", session.account_id) && own.is_none() { return Ok(false); }
-            query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id) VALUES($1,$2) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now()")
-                .bind(&session.device_id).bind(agent).execute(&mut *tx).await?;
+            query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id,context_contract) VALUES($1,$2,$3) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now(),context_contract=EXCLUDED.context_contract")
+                .bind(&session.device_id).bind(agent).bind(i16::from(input.context_contract)).execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok(true)
@@ -102,8 +105,9 @@ pub(super) async fn prefer_ready_desktop(
     }
     // Readiness only grants a short admission window. An unresponsive desktop
     // must not block fallback forever merely because the application is online.
-    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds')")
-        .bind(&input.owner_account_id).bind(agent).fetch_one(pool).await?;
+    let contract = contract::min_ready_contract(pool, input).await?;
+    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.context_contract>=$3 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds')")
+        .bind(&input.owner_account_id).bind(agent).bind(contract).fetch_one(pool).await?;
     Ok(row.0)
 }
 
@@ -113,6 +117,8 @@ pub(super) struct DesktopClaimInput {
     #[serde(flatten)]
     run: ClaimRunRequest,
     claim_id: Uuid,
+    #[serde(default = "contract::legacy")]
+    context_contract: u8,
 }
 
 fn executor(session: &CloudSession, claim_id: Uuid) -> String {
@@ -193,21 +199,24 @@ pub(super) async fn claim(
         }
     }
     let result = async {
-        let Some((request_id,wire_id))=super::runs::request_identity(state.db_pool(),&input.run.session_id,&input.run.request_message_id).await? else { return Ok::<_,super::runs::RunError>(None); };
+        let Some((request_id,wire_id))=super::runs::request_identity(state.db_pool(),&input.run.session_id,&input.run.request_message_id,Some(&input.run.requester_account_id)).await? else { return Ok::<_,super::runs::RunError>(None); };
         input.run.request_message_id=request_id;
         let agent = execution_agent_id(state.db_pool(), &input.run).await?;
         let allowed: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) JOIN cloud_chat_conversation_members member ON member.conversation_id=c.conversation_id WHERE m.message_id::text=$1 AND c.legacy_session_id=$2 AND m.sender_account_id=$3 AND m.deleted_at IS NULL AND member.account_id=$4 AND member.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) WHERE r.device_id=$5 AND d.account_id=$4 AND d.revoked_at IS NULL AND r.agent_id=$6 AND r.updated_at>now()-interval '35 seconds')")
             .bind(wire_id).bind(&input.run.session_id).bind(&input.run.requester_account_id).bind(&session.account_id).bind(&session.device_id).bind(agent).fetch_one(state.db_pool()).await?;
         if !allowed.0 || !super::runs::claim_conversation_admits_run(state.db_pool(), &input.run).await? || !super::runs::validate_group_agent_claim(state.db_pool(), &input.run).await? || !validate_shared_cloud_agent_claim(state.db_pool(), &input.run).await? { return Ok::<_, super::runs::RunError>(None); }
+        if let Some(refused) = contract::gate(state.db_pool(), &input.run, input.context_contract).await? { return Ok(Some(Err(refused))); }
         let owner = executor(&session, input.claim_id);
         let run = claim_run_for_desktop(state.db_pool(), &input.run, &owner).await?;
         let acquired: (bool,) = query_as("SELECT execution_backend='desktop' AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FROM cloud_agent_fallback_runs WHERE run_id=$1")
             .bind(&run.run_id).bind(owner).fetch_one(state.db_pool()).await?;
         let identity = if acquired.0 { Some(super::runs::identity::identity_for_run(state.db_pool(), &run.run_id).await?) } else { None };
-        Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity})))
+        let value = json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity});
+        Ok(Some(Ok(contract::with_server_context(state.db_pool(), &input.run, input.context_contract, value).await?)))
     }.await;
     match result {
-        Ok(Some(value)) => context_scope_response(state.db_pool(), value).await,
+        Ok(Some(Ok(value))) => context_scope_response(state.db_pool(), value).await,
+        Ok(Some(Err(refused))) => refused,
         Ok(None) => denied(),
         Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
     }

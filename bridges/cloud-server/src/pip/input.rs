@@ -78,6 +78,14 @@ fn message_text(content: &Value) -> String {
     out
 }
 
+/// Whether a message may reach PiP. Notices are never input, and nothing a
+/// member who turned on "Don't let AI use my messages" posted here reaches
+/// PiP, so PiP never suggests an answer for that member.
+fn admits_message(opted_out: &BTreeSet<String>, sender: &str, kind: &str) -> bool {
+    kind != crate::cloud_agent_runtime::runs::context_policy::AI_ACCESS_NOTICE_KIND
+        && !opted_out.contains(sender)
+}
+
 /// Reminder hook for a card starting soon, unless it already went out.
 fn reminder_hook(candidate: &Candidate, event_id: &str, start_at: Option<&str>) -> Option<Value> {
     let start = start_at.and_then(parse_pg_timestamp)?;
@@ -139,8 +147,15 @@ pub(super) async fn build_input(
     .bind(context::CONTEXT_MESSAGE_FETCH)
     .fetch_all(pool)
     .await?;
+    let opted_out: Vec<(String,)> =
+        query_as("SELECT account_id FROM cloud_chat_ai_opt_outs WHERE conversation_id = $1")
+            .bind(candidate.conversation_id)
+            .fetch_all(pool)
+            .await?;
+    let opted_out: BTreeSet<String> = opted_out.into_iter().map(|(account,)| account).collect();
     let messages = context::budget_messages(
         rows.into_iter()
+            .filter(|row| admits_message(&opted_out, &row.2, &row.4))
             .map(
                 |(id, sequence, sender, display_name, kind, content, created_at)| {
                     context::ContextMessage {
@@ -276,6 +291,15 @@ mod tests {
             context_start_sequence: 0,
             hooks_fired,
         }
+    }
+
+    #[test]
+    fn notices_and_opted_out_members_never_reach_pip() {
+        let opted_out = BTreeSet::from(["acct_quiet".to_string()]);
+        assert!(admits_message(&opted_out, "acct_open", "text"));
+        assert!(admits_message(&opted_out, "acct_open", "voice"));
+        assert!(!admits_message(&opted_out, "acct_quiet", "text"));
+        assert!(!admits_message(&opted_out, "acct_open", "ai-access-notice"));
     }
 
     #[test]

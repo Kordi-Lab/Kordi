@@ -56,10 +56,14 @@ pub(crate) async fn read(
         (Some(session), Some(request)) if input.share_in_conversation => {
             // Resolve transport aliases, then revalidate the canonical human sender,
             // active membership, message visibility and deletion on every read.
-            let (_, wire) =
-                crate::cloud_agent_runtime::runs::request_identity(pool, session, request)
-                    .await?
-                    .ok_or(RunError::NotFound)?;
+            let (_, wire) = crate::cloud_agent_runtime::runs::request_identity(
+                pool,
+                session,
+                request,
+                Some(account),
+            )
+            .await?
+            .ok_or(RunError::NotFound)?;
             let sources =
                 super::store::sources(pool, account, Some(std::slice::from_ref(&wire))).await?;
             if !sources.iter().any(|source| {

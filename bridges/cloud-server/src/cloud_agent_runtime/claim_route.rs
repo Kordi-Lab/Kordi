@@ -90,6 +90,7 @@ pub(super) async fn claim_cloud_agent_run(
         state.db_pool(),
         &input.session_id,
         &input.request_message_id,
+        Some(&session.account_id),
     )
     .await
     {

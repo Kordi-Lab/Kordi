@@ -18,7 +18,7 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         .oneshot(post_json_with_token(
             "/v1/cloud/agent-runs/desktop/ready",
             &owner.token,
-            json!({"agentIds":[agent]}),
+            json!({"agentIds":[agent],"contextContract":2}),
         ))
         .await
         .unwrap();
@@ -76,7 +76,7 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         )
         .await;
         let claim_id = uuid::Uuid::new_v4();
-        let input = |request: &str, claim: uuid::Uuid| json!({"claimId":claim,"requestMessageId":request,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":requester.account_id,"prompt":"Reply once","idempotencyKey":format!("shared:{claim}")});
+        let input = |request: &str, claim: uuid::Uuid| json!({"claimId":claim,"requestMessageId":request,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":requester.account_id,"prompt":"Reply once","idempotencyKey":format!("shared:{claim}"),"contextContract":2});
         let claimed = router
             .clone()
             .oneshot(post_json_with_token(

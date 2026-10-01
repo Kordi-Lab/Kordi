@@ -1,4 +1,5 @@
 //! Run-authorized history for both desktop and cloud executors.
+use super::context_policy::ContextPolicy;
 use super::{ClaimRunRequest, RunError, RunResult};
 use crate::server::ServerState;
 use serde::Deserialize;
@@ -30,9 +31,13 @@ pub(super) struct ContextScope {
     request_message_id: String,
     owner: String,
     requester: String,
+    /// The run's agent; empty for a member's private read.
+    agent_id: String,
     conversation_id: uuid::Uuid,
     title: String,
     kind: String,
+    /// Which messages this read may return, set by `conversation_scope`.
+    policy: Option<ContextPolicy>,
 }
 
 pub(crate) async fn read_context(
@@ -70,14 +75,16 @@ async fn authorize(pool: &PgPool, run_id: &str, actor: &ContextActor) -> RunResu
     if actor.observation.is_some() {
         return member::authorize_member(pool, actor).await;
     }
-    let run: Option<(String,String,String,String)> = query_as(
-        "SELECT run.session_id, COALESCE(sub.parent_request_id,parent.request_message_id,run.request_message_id), run.owner_account_id, run.requester_account_id
+    let run: Option<(String,String,String,String,String)> = query_as(
+        "SELECT run.session_id, COALESCE(sub.parent_request_id,parent.request_message_id,run.request_message_id), run.owner_account_id, run.requester_account_id,
+                COALESCE(NULLIF(run.execution_agent_id,''),'cloud-agent:'||run.owner_account_id)
          FROM cloud_agent_fallback_runs run LEFT JOIN cloud_agent_fallback_runs parent ON parent.run_id=run.parent_run_id LEFT JOIN cloud_agent_subsessions sub ON sub.subsession_id=run.subsession_id
          WHERE run.run_id=$1 AND run.claimed_by=$2 AND run.execution_backend=$3
          AND ($4::text IS NULL OR run.owner_account_id=$4)
          AND run.status IN ('leased','running') AND run.lease_expires_at::timestamptz>now()"
     ).bind(run_id).bind(&actor.executor).bind(actor.backend).bind(&actor.account).fetch_optional(pool).await?;
-    let (session_id, request_message_id, owner, requester) = run.ok_or(RunError::NotFound)?;
+    let (session_id, request_message_id, owner, requester, agent_id) =
+        run.ok_or(RunError::NotFound)?;
     let claim = ClaimRunRequest {
         session_id: session_id.clone(),
         request_message_id: request_message_id.clone(),
@@ -95,9 +102,11 @@ async fn authorize(pool: &PgPool, run_id: &str, actor: &ContextActor) -> RunResu
         request_message_id,
         owner,
         requester,
+        agent_id,
         conversation_id: uuid::Uuid::nil(),
         title: String::new(),
         kind: String::new(),
+        policy: None,
     })
 }
 
@@ -155,5 +164,20 @@ async fn conversation_scope(pool: &PgPool, mut scope: ContextScope) -> RunResult
     scope.conversation_id = conversation_id;
     scope.title = title.unwrap_or_else(|| "Conversation".into());
     scope.kind = kind;
+    // A member's private assistant reads without a run: only opt-outs apply.
+    // Every run read is limited to what the run's requester may give its agent.
+    scope.policy = Some(if scope.agent_id.is_empty() {
+        ContextPolicy::for_private_read(pool, conversation_id, &scope.owner).await?
+    } else {
+        ContextPolicy::for_run(
+            pool,
+            &scope.session_id,
+            &scope.owner,
+            &scope.requester,
+            &scope.agent_id,
+            Some(&scope.request_message_id),
+        )
+        .await?
+    });
     Ok(scope)
 }

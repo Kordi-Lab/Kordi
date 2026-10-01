@@ -1,6 +1,7 @@
 mod authorization;
 mod claims;
 mod completion;
+pub(crate) mod context_policy;
 pub(super) mod context_read;
 mod delivery;
 mod envelopes;
@@ -11,6 +12,7 @@ pub(crate) mod identity;
 mod leases;
 mod prompt_history;
 pub mod run_tokens;
+mod speakers;
 pub(crate) mod subsession_lifecycle;
 pub(crate) mod subsessions;
 
@@ -45,6 +47,7 @@ pub use leases::{
     mark_run_running, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest, RunnerRunResponse,
     CANARY_LEASES_ENV, CANARY_RUN_PREFIX,
 };
+pub(crate) use prompt_history::context_history_for_claim;
 #[cfg(test)]
 use prompt_history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
 
@@ -360,6 +363,7 @@ mod tests {
                     ),
                 },
             ],
+            &|_| true,
         );
 
         assert!(prompt.contains("Conversation history:\nRequester: what is xuzhu city weather"));

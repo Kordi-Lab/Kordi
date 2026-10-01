@@ -27,13 +27,13 @@ async fn desktop_and_cloud_share_one_run_and_preserve_queue_during_takeover() {
     .await;
     let request_a = insert_test_message(&pool, &owner.account_id, conversation, "Request A").await;
     let request_b = insert_test_message(&pool, &owner.account_id, conversation, "Request B").await;
-    let input = |request: &str, claim_id: uuid::Uuid| json!({"requestMessageId":request,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":owner.account_id,"prompt":"Test execution", "idempotencyKey":format!("attempt:{claim_id}"),"claimId":claim_id});
+    let input = |request: &str, claim_id: uuid::Uuid| json!({"requestMessageId":request,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":owner.account_id,"prompt":"Test execution", "idempotencyKey":format!("attempt:{claim_id}"),"claimId":claim_id,"contextContract":2});
     let ready = router
         .clone()
         .oneshot(post_json_with_token(
             "/v1/cloud/agent-runs/desktop/ready",
             &owner.token,
-            json!({"agentIds":[format!("cloud-agent:{}",owner.account_id)]}),
+            json!({"agentIds":[format!("cloud-agent:{}",owner.account_id)],"contextContract":2}),
         ))
         .await
         .unwrap();
