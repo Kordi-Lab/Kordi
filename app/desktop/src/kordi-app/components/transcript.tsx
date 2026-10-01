@@ -30,7 +30,7 @@ import type {
   Message,MessageAttachment,
   MessageSourceReference
 } from '../types';
-import { AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
+import { AgentAiChip,AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
 import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { HumanMessageMarkdown } from './humanMessageMarkdown';
@@ -634,7 +634,7 @@ function MessageBubbleView({
               <div className="app-message-meta">
                 {msg.sender}
               </div>
-              <AgentOwnerTag name={agentOwnerName} />
+              <AgentAiChip message={msg} /><AgentOwnerTag name={agentOwnerName} />
               {forkButton}
               {forkChip}
             </div>
@@ -805,7 +805,7 @@ function MessageBubbleView({
       )}
       data-transcript-density={compactDensity}
     >
-      {showHeaderMeta ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
+      {showHeaderMeta ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} message={msg} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
         hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',

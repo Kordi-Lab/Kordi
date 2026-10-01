@@ -16,10 +16,14 @@ export type AiAccessUpdatedDetail = {
   aiAccess: ChatSyncAiAccess | null;
 };
 
-function dispatch<T>(name: string, detail: T): void {
+/** Dispatches on `window` with the window's own event class. */
+export function dispatchWindowEvent<T>(name: string, detail: T): void {
   if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
-  window.dispatchEvent(new CustomEvent<T>(name, { detail }));
+  const EventClass = (window as unknown as { CustomEvent?: typeof CustomEvent }).CustomEvent ?? CustomEvent;
+  window.dispatchEvent(new EventClass<T>(name, { detail }));
 }
+
+const dispatch = dispatchWindowEvent;
 
 /** Handles `agent_action.updated`. It changes no chat state, so it yields no sync events. */
 export function notifyAgentActionUpdated(payload: Record<string, unknown>): CloudSyncEvent[] {

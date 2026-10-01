@@ -1,11 +1,12 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckCheck, CheckCircle2, Copy, Eye, Forward, MessagesSquare, Pencil, Pin, TextQuote, Trash2 } from 'lucide-react';
+import { CheckCheck, CheckCircle2, Copy, Eye, Forward, Info, MessagesSquare, Pencil, Pin, TextQuote, Trash2 } from 'lucide-react';
 
 import {
   attachmentMediaGalleryIndex,
   attachmentPreviewUrl,
 } from '@/features/chat/attachmentMediaGallery';
 import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow';
+import { messageOffersReplyDisclosure, requestReplyDisclosure } from '@/features/agentTrust/replyDisclosureTarget';
 import { cn } from '@/lib/utils';
 import type { Message, MessageAttachment, MessageReplyDestination } from '../types';
 import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
@@ -214,6 +215,7 @@ export function MessageContextMenuContent({
             ? <Action action="unpin" icon={<Pin className="h-4 w-4" />} label="Unpin" onClick={() => closeAfter(onRequestUnpinMessage)} />
             : <Action action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={() => closeAfter(onRequestPinMessage)} />
         ) : null}
+        {messageOffersReplyDisclosure(msg) ? <Action action="about-reply" icon={<Info className="h-4 w-4" />} label="About this reply" onClick={() => closeAfter(requestReplyDisclosure)} /> : null}
         {actionEligible ? <div className="app-transient-divider mx-3 my-1 border-t" role="separator" /> : null}
         {actionEligible ? <Action action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={() => closeAfter(onSelectMessage)} /> : null}
         {canDelete ? <Action action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" destructive onClick={() => closeAfter(onDeleteMessage)} /> : null}

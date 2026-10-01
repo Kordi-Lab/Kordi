@@ -264,6 +264,8 @@ export type Message = {
   sender?: string;
   /** Human owner shown as secondary attribution for agent messages. */
   senderOwnerName?: string | null;
+  /** The owner and request of the run an agent reply answers ("About this reply"). */
+  agentRunRef?: import('@/features/agentTrust/replyDisclosureTarget').AgentRunRef | null;
   /** Canonical human/agent identity for profile actions in shared transcripts. */
   senderIdentityId?: string | null;
   sourceSenderLabel?: string | null;

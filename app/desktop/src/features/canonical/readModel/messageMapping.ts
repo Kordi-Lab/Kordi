@@ -1,3 +1,4 @@
+import { agentRunRefFromContent } from '@/features/agentTrust/replyDisclosureTarget';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
@@ -446,6 +447,7 @@ export function mapCanonicalMessage(
     role,
     sender,
     senderOwnerName: agentPresentation.senderOwnerName,
+    agentRunRef: isAgentTurn ? agentRunRefFromContent(content) : null,
     senderIdentityId: message.senderIdentityId,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
     senderProfileImageUrl: identity?.profileImageUrl ?? null,
