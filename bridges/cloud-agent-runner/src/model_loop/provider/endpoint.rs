@@ -16,7 +16,7 @@ pub(super) fn normalize_provider(provider: &str) -> &str {
 
 /// Endpoints the runner knows without a `baseUrl` in the snapshot. Any other
 /// provider must carry its own `baseUrl`.
-fn default_base_url(provider: &str, api_mode: OpenAiApiMode) -> Option<&'static str> {
+pub(super) fn default_base_url(provider: &str, api_mode: OpenAiApiMode) -> Option<&'static str> {
     if api_mode == OpenAiApiMode::CodexOAuth {
         return Some("https://chatgpt.com/backend-api");
     }
@@ -171,7 +171,8 @@ pub(super) fn ensure_provider_endpoint_allowed(
 /// policy that the guarded provider clients apply when they connect. The OMP
 /// worker opens provider connections itself and cannot apply that policy, so
 /// this check runs before an endpoint is handed to it. It does not cover a
-/// name that is rebound after the check, or a redirect the worker follows.
+/// name that is rebound after the check, or a redirect the worker follows,
+/// which is why the worker is only handed built-in vendor endpoints.
 pub(crate) async fn ensure_endpoint_resolves_to_allowed_addresses(
     base_url: &str,
     allow_private: bool,

@@ -24,6 +24,7 @@ A busy Mac retains its queue. Changing the model engine does not change the exis
 - The desktop adapter lives in `agent/crates/cli/src/desktop_runtime/omp_turn.rs`; the cloud adapter lives in `bridges/cloud-agent-runner/src/model_loop/omp.rs`.
 - A request freezes provider, model, account material, history, tools, and capability scope. Model fallback is disabled. Plugins cannot redirect the selected model.
 - Frames carry run and attempt IDs plus monotonic output sequence numbers. Output size, execution time, model steps, and tool calls are bounded. Cancellation or supervisor shutdown terminates the worker process group, including its Eval subprocess.
+- The cloud runner hands the worker only accounts on a provider's built-in endpoint. The worker opens its own provider connections, so it cannot check each DNS answer or redirect against the runner's address policy. An account with its own `baseUrl` runs on the Rust model loop, whose provider client checks both. Serving such accounts through OMP requires an address-checking egress proxy in the runner and an egress network policy for the runner pod first.
 
 Kordi host tools override identically named OMP tools such as `read`, `edit`, and `bash`. The adapter uses OMP's `CustomTool` calling convention, including its fifth-position abort signal. This boundary is covered by actual worker tests.
 

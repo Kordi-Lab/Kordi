@@ -12,8 +12,8 @@ use crate::client::{AgentRuntimeRoute, ProviderAuthMaterial};
 use super::{CloudModelProvider, ModelLoopError, ModelProviderResponse, ModelToolCall};
 pub use endpoint::PRIVATE_PROVIDER_ENDPOINTS_ENV;
 use endpoint::{
-    base_url_for, ensure_plain_api_key, ensure_provider_endpoint_allowed, ensure_supported_api,
-    normalize_provider,
+    base_url_for, default_base_url, ensure_plain_api_key, ensure_provider_endpoint_allowed,
+    ensure_supported_api, normalize_provider,
 };
 pub(crate) use endpoint::{
     ensure_endpoint_resolves_to_allowed_addresses, private_provider_endpoints_allowed,
@@ -129,6 +129,12 @@ impl OpenAiProviderConfig {
             return Err(ModelLoopError::Provider(CUSTOM_MODEL_MISSING.to_string()));
         }
         Ok(())
+    }
+
+    /// Whether this account uses its provider's built-in vendor endpoint
+    /// rather than a `baseUrl` of its own.
+    pub fn uses_builtin_endpoint(&self) -> bool {
+        default_base_url(&self.provider, self.api_mode) == Some(self.base_url.as_str())
     }
 
     fn request_options(&self) -> RequestOptions {
