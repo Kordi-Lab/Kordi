@@ -249,7 +249,7 @@ export function mapCollaborationConversationToViewModel(
     const mentions = collaborationMessageMentions(conversation, message);
     const attachments = collaborationMessageAttachments(message);
     const normalizedDeliveryState = normalizeDeliveryState(message.deliveryState);
-    if (message.messageKind === 'agent-model-change') {
+    if (['agent-model-change', 'ai-access-notice'].includes(message.messageKind ?? '')) {
       return [{
         id: messageId,
         role: 'system' as const,

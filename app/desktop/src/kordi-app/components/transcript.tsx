@@ -712,7 +712,7 @@ function MessageBubbleView({
       {showInlineHumanSender ? (
         <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4" data-transcript-leading-decoration="true">{msg.sender}<PipSenderTag avatarUrl={msg.senderProfileImageUrl} /></div>
       ) : null}
-      {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
+      {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} sourceMessageKind={forwardedSource.sourceMessageKind} /> : null}
       {standaloneEmojiItem ? <StandaloneEmojiMessage item={standaloneEmojiItem} own={isOwnHumanMessage} status={bubbleDeliveryStatus} /> : showCompactFooter ? (
         showInlineCompactFooter ? (
           <div className="leading-[1.45]">

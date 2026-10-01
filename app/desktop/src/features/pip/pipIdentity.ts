@@ -3,7 +3,7 @@
 export const KORDI_PIP_ACCOUNT_ID = 'acct_kordi_pip';
 export const KORDI_PIP_AGENT_ID = 'cloud_agent_kordi_pip';
 export const KORDI_PIP_NAME = 'PiP';
-export const KORDI_PIP_TAG = 'Built-in agent';
+export const KORDI_PIP_TAG = 'Built-in AI agent';
 export const KORDI_PIP_AVATAR_URL = '/kordi-pip-avatar.svg';
 
 export function isPipAvatarUrl(url: string | null | undefined): boolean {

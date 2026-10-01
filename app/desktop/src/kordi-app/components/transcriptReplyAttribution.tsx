@@ -5,6 +5,7 @@ import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigatio
 import { quotedSenderLabel } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import type { MessageReplySummary, MessageSourceReference } from '../types';
+import { sourceSenderLabelWithAi } from './forwardedFromHeader';
 import { useActiveLocalProfileIdentity } from './localProfileIdentity';
 import { MessageInlineContent } from './messageInlineContent';
 
@@ -30,7 +31,10 @@ export function SourceMessageQuote({
 }) {
   const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
   if (!sourceMessage) return null;
-  const senderLabel = quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName);
+  const senderLabel = sourceSenderLabelWithAi(
+    quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName),
+    sourceMessage.sourceMessageKind,
+  );
   const text = sourceQuoteText(sourceMessage);
   const navigate = () => {
     if (onNavigateToMessage) {

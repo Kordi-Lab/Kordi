@@ -34,6 +34,7 @@ export function collaborationMessageActionSourceReference(action: Message['messa
   return {
     messageId: action.source.sourceMessageId,
     senderLabel: action.source.senderLabel,
+    sourceMessageKind: action.source.sourceMessageKind ?? null,
     text: action.source.textPreview,
     mentions: action.source.mentions,
     attachmentCount: action.source.attachmentCount,

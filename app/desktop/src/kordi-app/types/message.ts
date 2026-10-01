@@ -113,6 +113,8 @@ export type MessageMention = {
 export type MessageSourceReference = {
   messageId: string;
   senderLabel?: string | null;
+  /** 'agent-turn' when the quoted message was written by an agent. */
+  sourceMessageKind?: string | null;
   text: string;
   mentions?: MessageMention[];
   attachmentCount?: number;

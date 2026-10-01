@@ -79,7 +79,7 @@ function leadingOption(options: MessagePlanCardOption[]): MessagePlanCardOption 
  * message; buttons act for the signed-in member, and the card refreshes for
  * everyone through the same message. PiP decides in chat what happens next.
  */
-/** PiP's "Built-in agent" tag beside its name; nothing for anyone else. */
+/** PiP's "Built-in AI agent" tag beside its name; nothing for anyone else. */
 export function PipSenderTag({ avatarUrl }: { avatarUrl?: string | null }) {
   return isPipAvatarUrl(avatarUrl) ? <span className="app-sender-tag">{KORDI_PIP_TAG}</span> : null;
 }
