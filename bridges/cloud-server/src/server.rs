@@ -154,6 +154,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
             crate::auth::password::PasswordHasherConfig::production(),
             rate_limiter.clone(),
         ))
+        .merge(crate::safety::routes(state.clone(), rate_limiter.clone()))
         .merge(
             crate::chat_sync::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter.clone())),
@@ -355,6 +356,7 @@ pub async fn run(
     crate::pip::spawn(state.clone());
     crate::plan_cards::projection::spawn(state.db_pool().clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
+    crate::safety::spawn_report_retention_worker(state.db_pool().clone());
     if let Some(notifications) = state.notifications() {
         notifications.spawn_message_notification_worker(state.db_pool().clone());
         notifications.spawn_calendar_worker(state.db_pool().clone());
