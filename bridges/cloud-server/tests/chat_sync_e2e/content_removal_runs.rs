@@ -213,6 +213,18 @@ async fn reconcile_repairs_deletes_and_hides_made_by_an_older_server() {
         .await
         .unwrap();
 
+    // The operator dry run counts without writing.
+    let before = stored_rows(&pool, hidden.id).await;
+    let report = store::backfill_content_removal_history(&pool, false)
+        .await
+        .unwrap();
+    assert!(!report.applied);
+    assert!(
+        report.hidden_rows >= 1 && report.deleted_messages >= 1,
+        "{report:?}"
+    );
+    assert_eq!(stored_rows(&pool, hidden.id).await, before);
+
     let since = chrono::Utc::now() - chrono::Duration::minutes(30);
     store::reconcile_deleted_messages(&pool, since, 10_000)
         .await

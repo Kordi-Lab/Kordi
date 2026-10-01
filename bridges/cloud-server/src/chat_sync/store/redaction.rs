@@ -8,7 +8,8 @@
 //! the work that does not belong in the request, such as digests, agent run
 //! prompts, quote previews, and stored files. See `docs/data-deletion.md`.
 //!
-//! Content changed before this server version is left as it is.
+//! Content changed before this server version is left as it is until an
+//! operator runs `kordi-cloud-server backfill-content-removal --apply`.
 
 use std::collections::HashSet;
 
@@ -17,6 +18,7 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use super::message::CLOUD_GROUP_PREFIX;
 use super::*;
 
+mod history;
 mod jobs;
 mod reconcile;
 #[cfg(test)]
@@ -24,6 +26,7 @@ mod server_message_tests;
 #[cfg(test)]
 mod tests;
 
+pub use history::{backfill_content_removal_history, HistoryBackfillReport, BACKFILL_WINDOW_DAYS};
 pub(crate) use jobs::{enqueue_removal_job, NewRemovalJob, RemovalReason};
 pub use reconcile::{reconcile_deleted_messages, reconcile_hidden_messages};
 
@@ -56,8 +59,7 @@ macro_rules! snapshot_version_sql {
         )
     };
 }
-#[cfg(test)]
-pub(super) use content_free_payload_sql;
+pub(super) use {content_free_payload_sql, snapshot_version_sql};
 
 /// The payload of a new content-free row for one recipient.
 pub(super) fn content_free_payload(message_id: Uuid, conversation: Option<&Value>) -> Value {

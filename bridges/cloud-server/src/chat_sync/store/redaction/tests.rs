@@ -161,12 +161,14 @@ fn removal_reasons_mark_only_their_own_steps_pending() {
         steps(RemovalReason::AttachmentReleased),
         (false, false, true, false)
     );
+    assert_eq!(steps(RemovalReason::Backfill), (true, true, false, false));
     let reasons = [
         RemovalReason::MessageDeleted,
         RemovalReason::MessageEdited,
         RemovalReason::MessageHidden,
         RemovalReason::AttachmentRemoved,
         RemovalReason::AttachmentReleased,
+        RemovalReason::Backfill,
     ];
     let migration = include_str!("../../../../migrations/0116_content_removal.sql");
     for reason in reasons {

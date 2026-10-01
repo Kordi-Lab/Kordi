@@ -230,7 +230,10 @@ pub use message::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 mod pin_snapshots;
 mod reaction;
 mod redaction;
-pub use redaction::{reconcile_deleted_messages, reconcile_hidden_messages, request_was_deleted};
+pub use redaction::{
+    backfill_content_removal_history, reconcile_deleted_messages, reconcile_hidden_messages,
+    request_was_deleted, HistoryBackfillReport, BACKFILL_WINDOW_DAYS,
+};
 // The removal worker and the media library queue jobs through these.
 #[allow(unused_imports)]
 pub(crate) use redaction::{

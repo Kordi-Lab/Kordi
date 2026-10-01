@@ -15,6 +15,7 @@ pub(crate) enum RemovalReason {
     /// file alive is deleted.
     #[allow(dead_code)]
     AttachmentReleased,
+    Backfill,
 }
 
 /// Which worker steps a job runs.
@@ -34,6 +35,7 @@ impl RemovalReason {
             Self::MessageHidden => "message_hidden",
             Self::AttachmentRemoved => "attachment_removed",
             Self::AttachmentReleased => "attachment_released",
+            Self::Backfill => "backfill",
         }
     }
 
@@ -42,6 +44,7 @@ impl RemovalReason {
             Self::MessageDeleted => (true, true, true, true),
             Self::MessageEdited | Self::MessageHidden => (true, false, false, false),
             Self::AttachmentRemoved | Self::AttachmentReleased => (false, false, true, false),
+            Self::Backfill => (true, true, false, false),
         };
         RemovalSteps {
             digests,

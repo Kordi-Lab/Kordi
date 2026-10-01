@@ -44,3 +44,31 @@ a verified backup before an explicitly authorized production rollout. Deploy the
 server before updating the macOS/iOS clients. The history API is membership-gated,
 paged, and filters private actions to the actor account; existing pin-state APIs
 and older clients remain compatible.
+
+Version 116 adds the content removal schema: indexes that find the replay rows
+of one message, purge columns on `cloud_attachments`, the identifier-only
+`cloud_content_removal_jobs` queue, and the `cloud_content_removal_state` row.
+It rewrites and deletes nothing. From this version on, "Delete for everyone",
+"Remove from my view", and edits rewrite the affected replay rows in the same
+transaction, and replay checks deletion and hide state when it reads. Content
+changed before the upgrade stays as it is: automatic repair of changes written
+by an older replica during a rolling upgrade reaches back only to the time
+version 116 was applied (`automatic_since`).
+
+Removing earlier copies is an explicit operator step. It reports counts and
+changes nothing unless `--apply` is given:
+
+```sh
+kordi-cloud-server backfill-content-removal          # dry run
+kordi-cloud-server backfill-content-removal --apply  # write
+```
+
+Applying it queues file removal for photos already removed from live messages,
+makes the hiding account's replay rows of hidden messages content-free, marks
+replay rows of earlier versions of edited messages `message.superseded`, clears
+the prompts of finished digest runs, and queues one job that redacts messages
+deleted in the last 91 days and removes their files when nothing else uses
+them. Owners then lose access to those files. These changes remove copies and
+cannot be reverted from the database, so rehearse on an isolated copy, take a
+verified backup, and record the version 116 index build timings for the sync
+event, message, and agent run tables before an authorized production run.

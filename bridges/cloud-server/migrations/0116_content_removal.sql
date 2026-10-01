@@ -2,7 +2,9 @@
 -- replay rows or object storage. See docs/data-deletion.md.
 --
 -- This migration only adds indexes, columns, and tables. It never rewrites or
--- deletes existing rows; content changed before this version is left as it is.
+-- deletes existing rows. Content changed before this version is handled only
+-- by the operator command `kordi-cloud-server backfill-content-removal`, which
+-- reports counts by default and writes only with `--apply`.
 
 CREATE INDEX IF NOT EXISTS idx_cloud_chat_sync_events_entity
     ON cloud_chat_user_sync_events(entity_id, account_id) WHERE entity_id IS NOT NULL;
