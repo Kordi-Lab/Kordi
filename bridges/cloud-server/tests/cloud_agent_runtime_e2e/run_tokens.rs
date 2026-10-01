@@ -50,6 +50,10 @@ async fn runner_error_code(response: axum::response::Response) -> (StatusCode, V
 async fn run_specific_runner_endpoints_require_the_leased_runs_token() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    std::env::set_var(
+        "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
+        "test-provider-auth-key-that-is-long-enough",
+    );
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
     let owner = signup(&router, "run-token-owner", "Owner").await;
@@ -96,6 +100,15 @@ async fn run_specific_runner_endpoints_require_the_leased_runs_token() {
         (
             "context",
             json!({ "runnerId": "run-token-runner-a", "tool": "read_session", "arguments": {} }),
+        ),
+        (
+            "omp-context",
+            json!({
+                "runnerId": "run-token-runner-a",
+                "provider": "openai",
+                "model": "gpt-test",
+                "authSnapshotId": "snapshot"
+            }),
         ),
         (
             "complete",

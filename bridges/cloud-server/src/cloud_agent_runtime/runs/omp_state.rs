@@ -157,8 +157,12 @@ pub(crate) async fn context_route(
     Path(run_id): Path<String>,
     Json(input): Json<ContextInput>,
 ) -> Response {
-    if !super::super::routes::runner_authorized_for_scheduled_tasks(&headers) {
-        return super::runner_unauthorized();
+    // Runtime context is run-specific, so it needs the run-scoped credential
+    // of the current lease as well as the shared runner token.
+    if let Err(response) =
+        super::super::routes::runner_run_authorized(&state, &headers, &run_id).await
+    {
+        return response;
     }
     match context(state.db_pool(), &run_id, input).await {
         Ok(value) => Json(value).into_response(),
