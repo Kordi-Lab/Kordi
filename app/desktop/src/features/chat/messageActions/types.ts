@@ -63,7 +63,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'setOpenComposerSelector'
 > & Pick<
   ComposerEnvironmentContext,
-  'hasAnyDesktopAuth' | 'hasLocalProviderAuth' | 'isNativeShell'
+  'hasAnyDesktopAuth' | 'hasConfiguredProviderAuth' | 'isNativeShell'
 > & Pick<
   ComposerMessageRuntimeContext,
   | 'isDesktopChatSending'

@@ -2,7 +2,7 @@ use kordi_tools::{web_fetch::WebFetchTool, web_search::WebSearchTool, Tool};
 use serde_json::{json, Value};
 
 pub fn cloud_sandbox_system_prompt() -> &'static str {
-    "You are running in Kordi Cloud fallback because the owner device is offline. \
+    "You are running in Kordi Cloud fallback. \
 You may work only inside the Cloud sandbox workspace. You cannot read owner laptop files, \
 owner-local services, localhost/private networks, other users' data, or unsynced private resources. \
 Do not ask for approval prompts; unavailable actions should be explained as runtime boundaries. \

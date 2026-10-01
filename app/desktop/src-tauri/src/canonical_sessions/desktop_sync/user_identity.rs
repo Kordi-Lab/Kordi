@@ -49,3 +49,36 @@ pub(super) fn enrich_runtime_entry_id(
     .map_err(|error| error.to_string())?;
     Ok(())
 }
+
+/// A Cloud request can reach the local database after its native transcript
+/// entry has already been mirrored. The runtime entry ID is the Cloud wire ID,
+/// so it is a stable identity for merging that exact late local copy.
+pub(super) fn reconcile_native_user_mirrors(
+    conn: &Connection,
+    session_id: &str,
+    cloud_message_id: &str,
+    entry_id: &str,
+) -> Result<(), String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT id FROM session_messages
+             WHERE session_id = ?1 AND sender_role = 'user'
+               AND source_transport = 'desktop-chat'
+               AND json_extract(content_json, '$.desktopEntryId') = ?2",
+        )
+        .map_err(|error| error.to_string())?;
+    let local_ids = statement
+        .query_map(params![session_id, entry_id], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    drop(statement);
+    for local_id in local_ids {
+        crate::canonical_sessions::commands::reconcile_canonical_message_mirror_in_db(
+            conn,
+            cloud_message_id,
+            &local_id,
+        )?;
+    }
+    Ok(())
+}

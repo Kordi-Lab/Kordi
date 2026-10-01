@@ -177,7 +177,7 @@ test('desktop capabilities allow explicit Tauri move and directional resize call
       < gateSource.indexOf('shouldStartNativeWindowDrag({'),
     'the login gate must preserve the same resize-before-move priority',
   );
-  assert.match(frameSource, /top: `\$\{APP_WINDOW_RESIZE_EDGE\}px`/);
+  assert.match(frameSource, /<NativeTitlebar/);
   assert.match(loginSource, /style=\{CLOUD_LOGIN_WINDOW_DRAG_STYLE\}/);
   assert.equal(CLOUD_LOGIN_WINDOW_DRAG_STYLE.top, `${APP_WINDOW_RESIZE_EDGE}px`);
 });

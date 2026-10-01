@@ -55,7 +55,7 @@ function sidePanelBlock(source: string): string {
   const composition = blockBetween(
     source,
     'const companionPane = companionConversation',
-    'const splitDivider = <ChatCompanionSplitDivider',
+    'const selectCompanionView =',
   );
   return [
     composition,
@@ -468,6 +468,7 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
   const materializerStart = source.indexOf('const materializeLocalChatTarget = useCallback');
   const queuedSendStart = source.indexOf('const sendQueuedLocalMessage = useCallback', materializerStart);
   const materializerBlock = source.slice(materializerStart, queuedSendStart);
+  const queuedSendBlock = source.slice(queuedSendStart, source.indexOf('flushQueuedDesktopMessagesForSessionRef.current =', queuedSendStart));
   const materializeIndex = sharedSendBlock.indexOf('await materializeTarget()');
   const sendIndex = sharedSendBlock.indexOf('await startLocalAgentTurn(');
 
@@ -482,4 +483,6 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
   assert.match(targetSource, /await fetchDesktopChatState\(sessionId\)/, 'materialization should fetch the complete target runtime transcript');
   assert.match(targetSource, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/, 'materialization should fail closed if the runtime returns another session');
   assert.match(materializerBlock, /setDesktopChatState\(materializedState\)/, 'the panel should render from the hydrated runtime state during the turn');
+  assert.match(queuedSendBlock, /if \(routeRunsOnKordiCloud\(route\)\) \{[\s\S]*?await startLocalAgentTurn\(/,
+    'a queued hosted request must enter the shared hosted dispatch boundary before any native local turn');
 });

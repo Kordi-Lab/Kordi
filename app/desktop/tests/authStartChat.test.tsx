@@ -56,6 +56,16 @@ test('Start chat opens the active account with its provider default model', () =
   assert.equal(target?.model, `openai-codex/${defaultModel('openai-codex')}`);
 });
 
+test('a completed hosted ChatGPT login enables Start chat with its OMP model', () => {
+  const openai = display('openai', [], [hosted('openai-codex', 'Personal')]);
+  const target = startChatTarget(openai);
+  assert.equal(target?.account.label, 'Personal');
+  assert.equal(target?.account.hosted, true);
+  assert.equal(target?.account.providerId, 'openai-codex');
+  assert.equal(target?.model, `openai-codex/${defaultModel('openai-codex')}`);
+  assert.equal(startChatBlockedReason(openai), null);
+});
+
 test('Start chat prefers the saved preferred model and falls back to the first account', () => {
   const cerebras = entry('cerebras');
   const preferred = cerebras.models.find((model) => model !== defaultModel('cerebras')) ?? cerebras.models[0];
@@ -116,7 +126,7 @@ test('a new hosted account becomes active only when the provider had no active a
   assert.equal(startChatTarget(openai)?.account.label, 'Work');
 });
 
-test('an active hosted account shows Active, and other hosted accounts show Hosted', () => {
+test('an active saved account shows Active, and other saved accounts show their storage', () => {
   const provider = withActiveAccount(display('cerebras', [], [hosted('cerebras', 'Research'), hosted('cerebras', 'Billing')]), 'cloud-login:research');
   const markup = renderToStaticMarkup(createElement(AuthSavedAccounts, {
     provider,
@@ -128,9 +138,20 @@ test('an active hosted account shows Active, and other hosted accounts show Host
   const billing = markup.slice(markup.indexOf('aria-label="Billing"'));
   assert.match(research, />Added</);
   assert.match(research, />Active</);
-  assert.doesNotMatch(research, />Hosted</);
-  assert.match(billing, />Hosted</);
+  assert.doesNotMatch(research, />In your account</);
+  assert.match(billing, />In your account</);
   assert.doesNotMatch(billing, />Active</);
+});
+
+test('an old mixed-provider account uses neutral saved-account copy', () => {
+  const provider = display('anthropic', [], [hosted('anthropic', 'Studio')]);
+  const markup = renderToStaticMarkup(createElement(AuthSavedAccounts, {
+    provider,
+    onSelectAuthChoice: () => {},
+    onRemoveAuthProfile: () => {},
+  }));
+  assert.match(markup, /Saved account/);
+  assert.doesNotMatch(markup, /Browser sign-in · Hosted|API key · Hosted/);
 });
 
 test('adding an account returns to the provider page instead of staying on the form', () => {
@@ -165,7 +186,7 @@ test('a Custom API row shows its model, or asks for one with an edit action', ()
   }));
   const gateway = markup.slice(markup.indexOf('aria-label="Gateway"'), markup.indexOf('aria-label="Legacy"'));
   const legacy = markup.slice(markup.indexOf('aria-label="Legacy"'));
-  assert.match(gateway, /Custom API · deepseek-chat · Hosted in your Kordi account/);
+  assert.match(gateway, /Custom API · deepseek-chat/);
   assert.doesNotMatch(gateway, new RegExp(CUSTOM_MODEL_REQUIRED));
   assert.match(gateway, />Edit</);
   assert.match(legacy, new RegExp(CUSTOM_MODEL_REQUIRED));

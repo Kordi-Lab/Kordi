@@ -23,7 +23,7 @@ import {
 } from '@/features/cloud/cloudAgentRuntime';
 import { resolveCloudAgentRuntimeRouteChange } from '@/features/cloud/cloudAgentRuntimeRouteChange';
 import { cloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
-import { runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
+import { routeRunsOnKordiCloud, runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 type CanonicalStore = ReturnType<
@@ -41,6 +41,22 @@ type CloudCollaborationViewModel = ReturnType<
 type ComposerUi = ReturnType<
   typeof import('@/app/useKordiLocalUiState').useKordiLocalUiState
 >['composerUi'];
+
+/** Show the route a new chat will actually use, while explicit session routes keep priority. */
+export function chatComposerSelectionForRoute(
+  current: ComposerUi['composerSelections'],
+  activeRoute: DesktopChatMessageRoute | null,
+  defaultRoute: DesktopChatMessageRoute | null,
+) {
+  const route = activeRoute?.model?.trim()
+    ? activeRoute
+    : routeRunsOnKordiCloud(defaultRoute) ? defaultRoute : null;
+  const model = route?.model?.trim();
+  if (!model) return current;
+  const thinking = route?.thinking?.trim() || current.chat.thinking;
+  if (current.chat.model === model && current.chat.thinking === thinking) return current;
+  return { ...current, chat: { ...current.chat, model, thinking } };
+}
 
 export function useCloudAgentRuntimeRouteSync({
   accountId,
@@ -150,23 +166,15 @@ export function useCloudAgentRuntimeRouteSync({
 
   const setComposerSelections = composerUi.setComposerSelections;
   useEffect(() => {
-    const model = activeRuntimeRoute?.model?.trim();
-    if (!model) return;
-    setComposerSelections((current) => {
-      const thinking = activeRuntimeRoute?.thinking?.trim()
-        || current.chat.thinking;
-      if (
-        current.chat.model === model
-        && current.chat.thinking === thinking
-      ) return current;
-      return {
-        ...current,
-        chat: { ...current.chat, model, thinking },
-      };
-    });
+    if (!activeRuntimeRoute?.model?.trim() && !routeRunsOnKordiCloud(defaultCloudAgentRuntimeRoute)) return;
+    setComposerSelections((current) => chatComposerSelectionForRoute(
+      current,
+      activeRuntimeRoute,
+      defaultCloudAgentRuntimeRoute,
+    ));
   }, [
-    activeRuntimeRoute?.model,
-    activeRuntimeRoute?.thinking,
+    activeRuntimeRoute,
+    defaultCloudAgentRuntimeRoute,
     setComposerSelections,
   ]);
 

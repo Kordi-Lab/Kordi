@@ -14,7 +14,7 @@ pub(super) fn request_mutation_flags(context_rewritten: bool) -> RequestMutation
     }
 }
 
-pub(super) async fn send_extension_event_safe(
+pub(crate) async fn send_extension_event_safe(
     extensions: &ExtensionCommandRegistry,
     event: Event,
     event_tx: &mpsc::UnboundedSender<TurnEvent>,

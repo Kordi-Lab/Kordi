@@ -10,19 +10,21 @@ function source(relativePath: string) {
 
 function cssBlock(css: string, selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+  return Array.from(css.matchAll(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`, 'g')), match => match[1]).join('\n');
 }
 
 test('split chat panes share one header, tab, and content geometry contract', () => {
   const chatsPage = source('pages/ChatsPage.tsx');
+  const companionLayout = source('pages/chatsPage.companionLayout.tsx');
   const mainHeader = source('pages/chatsPage.mainHeader.tsx');
   const companionHeader = source('pages/chatsPage.companionHeader.tsx');
   const mainWorkspace = source('pages/chatsPage.mainWorkspace.tsx');
   const companionWorkspace = source('pages/chatsPage.companionWorkspace.tsx');
   const css = readDesktopShellCss();
 
-  assert.match(chatsPage, /app-chat-split-workspace/);
-  assert.match(chatsPage, /data-chat-split-workspace="true"/);
+  assert.match(chatsPage, /<ChatCompanionLayout/);
+  assert.match(companionLayout, /app-chat-split-workspace/);
+  assert.match(companionLayout, /data-chat-split-workspace="true"/);
 
   for (const header of [mainHeader, companionHeader]) {
     assert.match(header, /app-page-header app-chat-pane-header/);

@@ -23,6 +23,7 @@ const probes = new Map([
   ['node', () => (process.version ? null : 'Node.js is required')],
   ['pnpm', () => probeCommand('pnpm', ['--version'])],
   ['cargo', () => probeCommand('cargo', ['--version'])],
+  ['bun', () => probeCommand('bun', ['--version'])],
   ['git', () => probeCommand('git', ['--version'])],
   [
     'xcode',

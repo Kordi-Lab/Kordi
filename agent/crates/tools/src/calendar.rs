@@ -130,6 +130,7 @@ mod tests {
             artifacts_dir: std::env::temp_dir(),
             model: None,
             execution_policy: crate::ExecutionPolicy::Safety,
+            invocation_id: None,
             on_output: None,
             web_search: None,
             reach_out: None,

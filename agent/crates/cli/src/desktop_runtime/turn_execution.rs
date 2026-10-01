@@ -10,6 +10,7 @@ use super::attachments::{
     expand_prompt_for_policy, expand_prompt_with_attachment_paths, load_images_from_paths,
 };
 use super::model_options::request_thinking_for_model_with_auth;
+use super::omp_turn::{DesktopTurnEngine, selected_desktop_turn_engine};
 use super::{
     DesktopChatSessionDetail, DesktopRuntimeSession, ensure_session_row_created,
     maybe_name_session_from_prompt, refresh_provider_runtime_fields,
@@ -186,10 +187,23 @@ impl DesktopRuntimeSession {
 
         let scoped = self.has_shared_observation_scope()?;
         let turn_config =
-            build_turn_config(&mut self.setup, cancel, execution_policy, scoped, workspace)?;
+            build_turn_config(&mut self.setup, cancel, execution_policy, scoped, workspace);
+        if self.setup.ephemeral_auth.is_some() {
+            // The spawned turn owns its private copy. Drop the session's copy
+            // immediately so another turn cannot reuse a stale hosted token.
+            self.clear_ephemeral_provider_auth();
+        }
+        let turn_config = turn_config?;
         let (turn_event_tx, turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
-        let handle =
-            tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
+        let engine = selected_desktop_turn_engine();
+        let handle = tokio::spawn(async move {
+            match engine {
+                DesktopTurnEngine::Rust => run_turn(turn_config, turn_event_tx, prompt_text).await,
+                DesktopTurnEngine::Omp => {
+                    super::omp_turn::run_turn(turn_config, turn_event_tx, prompt_text).await
+                }
+            }
+        });
 
         Ok(DesktopRuntimeTurn {
             event_rx: turn_event_rx,
@@ -277,6 +291,7 @@ pub(super) fn build_turn_config(
             artifacts_dir: setup.tool_ctx.artifacts_dir.clone(),
             model: None,
             execution_policy,
+            invocation_id: None,
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),
             reach_out: setup.tool_ctx.reach_out.clone(),

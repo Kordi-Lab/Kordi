@@ -13,8 +13,10 @@ export function cleanRuntimeRouteText(value?: string | null): string | null {
 }
 
 /**
- * A route whose account is hosted-only runs on the Kordi Cloud runner, which
- * receives the credential for the claimed run only; this Mac never holds it.
+ * Identifies a hosted account requiring shared execution admission.
+ * Credential storage does not choose the executor: an online owner Mac takes
+ * the lease and uses short-lived provider material; cloud is the fallback.
+ * The historical name is retained for existing callers.
  */
 export function routeRunsOnKordiCloud(route?: DesktopChatMessageRoute | null): boolean {
   return Boolean(cleanRuntimeRouteText(route?.model))

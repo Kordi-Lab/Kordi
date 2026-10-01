@@ -18,6 +18,7 @@ fn make_ctx(runtime: Option<TaskOperatorRuntime>) -> ToolContext {
         artifacts_dir: "/tmp".into(),
         model: None,
         execution_policy: crate::ExecutionPolicy::Safety,
+        invocation_id: None,
         on_output: None,
         web_search: None,
         reach_out: None,

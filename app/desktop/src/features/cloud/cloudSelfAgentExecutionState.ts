@@ -2,6 +2,7 @@ import type {
   CanonicalSessionState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
+import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAccount, CloudMessage } from './authClient';
 import { cloudSelfAgentRequestClientMessageId } from './cloudSelfAgentIdentity';
 import {
@@ -9,7 +10,7 @@ import {
   parseCloudAgentCancel,
   parseCloudAgentResponse,
 } from './cloudAgentMessages';
-import { cloudDirectMessageAction, cloudDirectMessageAgentRuntimeRoute } from './cloudDirectMessages';
+import { cloudDirectMessageAction } from './cloudDirectMessages';
 import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import type { CloudMessageIndex } from './cloudMessageIndex';
@@ -61,6 +62,9 @@ export function localSelfAgentRequestClientMessageIds(
     sessionIds.has(message.sessionId)
     && message.senderRole === 'user'
     && !message.sourceTransport?.startsWith('cloud-')
+    // Hosted-account sends are delivered first and execute only after the Mac
+    // acquires the shared lease. They have not started a native turn yet.
+    && !routeRunsOnKordiCloud((message.content as { agentRuntimeRoute?: DesktopChatMessageRoute } | null)?.agentRuntimeRoute)
       ? [cloudSelfAgentRequestClientMessageId(message.sessionId, message.id)]
       : []
   )));
@@ -99,8 +103,6 @@ export function pendingCloudSelfAgentExecutionRequests({
   return selfMessages.filter((message) => {
     if (!cloudMessageIsSelfAgentRequest(message, account)) return false;
     if (message.clientMessageId && ignoredClientMessageIds.has(message.clientMessageId)) return false;
-    // A hosted-only account's request runs on Kordi Cloud, never on this Mac.
-    if (routeRunsOnKordiCloud(cloudDirectMessageAgentRuntimeRoute(message.body))) return false;
     if (!cloudMessageActionAllowsAgentTrigger(
       cloudDirectMessageAction(message.body),
     )) return false;

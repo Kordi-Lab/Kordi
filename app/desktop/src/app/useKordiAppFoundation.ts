@@ -6,7 +6,6 @@ import { useAcceptedCloudGroupNavigation } from '@/app/useAcceptedCloudGroupNavi
 import { projects } from '@/kordi-app/data';
 import { useKordiAuthNavigationState } from '@/app/useKordiAuthNavigationState';
 import {
-  useKordiCanonicalPageHydration,
   useKordiCanonicalSessionStore,
 } from '@/app/useKordiCanonicalSessionStore';
 import { useKordiCloudAgentActions } from '@/app/useKordiCloudAgentActions';
@@ -369,14 +368,6 @@ export function useKordiAppFoundation({
     collaborationState: desktopCollaborationState,
   });
   const syncLocalAvatarSeeds = (seeds: LocalAvatarSeeds) => assignLocalAvatarSeeds(localAvatarSeedsRef, seeds);
-  useKordiCanonicalPageHydration({
-    activeConversationId: activeConvId,
-    activeProjectSessionId,
-    collaborationState: desktopCollaborationState,
-    hydrateSessionPage: hydrateCanonicalSessionPage,
-    store: canonicalStore,
-  });
-
   const {
     archiveCloudAgent: handleArchiveCloudAgent,
     createCloudAgent: handleCreateCloudAgent,

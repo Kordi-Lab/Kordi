@@ -64,6 +64,27 @@ pub struct ProviderAuthMaterial {
     pub payload: serde_json::Value,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpContext {
+    pub prompt: String,
+    pub messages: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OmpState {
+    pub schema_version: u32,
+    pub provider: String,
+    pub model: String,
+    pub auth_snapshot_id: String,
+    pub messages: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub replayable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkpoint: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Deserialize)]
 struct ProviderAuthEnvelope {
     #[serde(rename = "providerAuth")]
@@ -141,6 +162,16 @@ pub trait CloudAgentRunClient {
         run_id: &str,
         response_text: &str,
     ) -> Result<(), RunnerClientError>;
+    async fn complete_run_with_omp_state(
+        &self,
+        _run_id: &str,
+        _response_text: &str,
+        _state: OmpState,
+    ) -> Result<(), RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "OMP state persistence is unavailable".into(),
+        ))
+    }
     async fn fail_run(
         &self,
         run_id: &str,
@@ -152,6 +183,17 @@ pub trait CloudAgentRunClient {
         &self,
         run_id: &str,
     ) -> Result<ProviderAuthMaterial, RunnerClientError>;
+    async fn fetch_omp_context(
+        &self,
+        _run_id: &str,
+        _provider: &str,
+        _model: &str,
+        _auth_snapshot_id: &str,
+    ) -> Result<OmpContext, RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "OMP context is unavailable".into(),
+        ))
+    }
 
     async fn read_context(
         &self,
@@ -314,6 +356,20 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
         Ok(())
     }
 
+    async fn complete_run_with_omp_state(
+        &self,
+        run_id: &str,
+        response_text: &str,
+        state: OmpState,
+    ) -> Result<(), RunnerClientError> {
+        let envelope: RunEnvelope = self.post_json(
+            &format!("/v1/cloud/agent-runs/{run_id}/complete"),
+            serde_json::json!({ "runnerId": self.runner_id, "responseText": response_text, "ompState": state }),
+        ).await?;
+        let _ = envelope.run;
+        Ok(())
+    }
+
     async fn fail_run(
         &self,
         run_id: &str,
@@ -345,6 +401,19 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             )
             .await?;
         Ok(envelope.provider_auth)
+    }
+
+    async fn fetch_omp_context(
+        &self,
+        run_id: &str,
+        provider: &str,
+        model: &str,
+        auth_snapshot_id: &str,
+    ) -> Result<OmpContext, RunnerClientError> {
+        self.post_json(
+            &format!("/v1/cloud/agent-runs/{run_id}/omp-context"),
+            serde_json::json!({ "runnerId": self.runner_id, "provider": provider, "model": model, "authSnapshotId": auth_snapshot_id }),
+        ).await
     }
 
     async fn read_context(

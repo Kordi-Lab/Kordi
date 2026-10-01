@@ -46,6 +46,7 @@ import {
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import { loadSession } from './session';
 import { useCloudDirectAgentFallback } from './useCloudDirectAgentFallback';
+import { useHostedSelfAgentRunProgress } from './useHostedSelfAgentRunProgress';
 
 export const CLOUD_GROUP_AGENT_STATUS_RECHECK_MS = 5_000;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 2 * 60_000;
@@ -81,6 +82,9 @@ export function useCloudAgentAvailability({
   initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;
 }): CloudFallbackRunClaimer {
+  const trackHostedSelfAgentRun = useHostedSelfAgentRunProgress({
+    accountId: account?.accountId, client, messageIndexRef, setCanonicalSessionState,
+  });
   const offlineTimersRef = useRef<Map<string, number>>(new Map());
   const claimedRunKeysRef = useRef<Set<string>>(new Set());
   const claimingRunKeysRef = useRef<Set<string>>(new Set());
@@ -116,6 +120,7 @@ export function useCloudAgentAvailability({
     claimingRunKeysRef.current.add(claim.idempotencyKey);
     try {
       const run = await client.claimCloudAgentRun(token, claim);
+      trackHostedSelfAgentRun(claim, run, token);
       if (!cloudAgentRunAlreadyOwnsRequest(run)) return 'terminal-failure';
       claimedRunKeysRef.current.add(claim.idempotencyKey);
       return 'claimed';
@@ -132,7 +137,7 @@ export function useCloudAgentAvailability({
     } finally {
       claimingRunKeysRef.current.delete(claim.idempotencyKey);
     }
-  }, [client, reportWarning]);
+  }, [client, reportWarning, trackHostedSelfAgentRun]);
 
   useEffect(() => {
     if (!account || !canonicalSessionState || !setCanonicalSessionState) {

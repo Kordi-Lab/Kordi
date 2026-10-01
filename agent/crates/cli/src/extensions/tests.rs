@@ -24,3 +24,4 @@ fn node_available() -> bool {
 mod command_runtime;
 mod package_resources;
 mod parsing;
+mod plugin_tools;

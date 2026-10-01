@@ -195,6 +195,7 @@ mod tests {
             artifacts_dir: dir.to_path_buf(),
             model: None,
             execution_policy: crate::ExecutionPolicy::Safety,
+            invocation_id: None,
             on_output: None,
             web_search: None,
             reach_out: None,

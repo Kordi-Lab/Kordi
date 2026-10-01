@@ -247,3 +247,46 @@ test('cancelled native recovery returns incomplete without publishing', async ()
     native.restore();
   }
 });
+
+test('native recovery restores a directory group even when it has no messages', async () => {
+  const native = mockNativeHistory([]);
+  const restored: string[] = [];
+  let flushes = 0;
+  try {
+    assert.equal(await recoverNativeCloudGroupHistory({
+      accountId: ACCOUNT_ID,
+      applyControl: async (_wire, envelope) => {
+        assert.equal(envelope.kind, 'group-invite');
+        assert.equal(envelope.message, undefined);
+        assert.deepEqual(envelope.participants.map(member => member.accountId), [ACCOUNT_ID, 'acct_peer']);
+        restored.push(envelope.groupId);
+      },
+      flushCanonicalState: () => { flushes += 1; },
+      onSessionSettled: () => {},
+      shouldContinue: () => true,
+    }), true);
+    assert.deepEqual(restored, [SESSION_ID]);
+    assert.equal(flushes, 1);
+  } finally {
+    native.restore();
+  }
+});
+
+test('native recovery restores a group whose latest legacy payload cannot be decoded', async () => {
+  const native = mockNativeHistory([{
+    ...message(1), content: { schema: 1, blocks: [{ type: 'text', text: 'kordi-cloud-group:invalid' }] },
+  }]);
+  const restored: string[] = [];
+  try {
+    assert.equal(await recoverNativeCloudGroupHistory({
+      accountId: ACCOUNT_ID,
+      applyControl: async (_wire, envelope) => { restored.push(envelope.groupId); },
+      flushCanonicalState: () => {},
+      onSessionSettled: () => {},
+      shouldContinue: () => true,
+    }), true);
+    assert.deepEqual(restored, [SESSION_ID]);
+  } finally {
+    native.restore();
+  }
+});

@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react';
+import { useCompanionPanelPresence } from './useCompanionPanelPresence';
 import type {
   DragEvent,
   PointerEvent as ReactPointerEvent,
+  KeyboardEvent,
 } from 'react';
 
 import type { Conversation } from '@/kordi-app/types';
@@ -18,12 +20,16 @@ type UseChatCompanionLayoutInput = {
   pageConversationId: string;
   activePaneKind: 'human' | 'agent' | null;
   companionConversation: Conversation | null;
+  hasOverview?: boolean;
+  onHide?: () => void;
 };
 
 export function useChatCompanionLayout({
   pageConversationId,
   activePaneKind,
   companionConversation,
+  hasOverview = false,
+  onHide,
 }: UseChatCompanionLayoutInput) {
   const [humanPaneSide, setHumanPaneSide] = useState<CompanionSide>('left');
   const [foldedState, setFoldedState] = useState({
@@ -42,9 +48,11 @@ export function useChatCompanionLayout({
   const [splitLeftFraction, setSplitLeftFraction] = useState(0.5);
   const [dropPreviewSide, setDropPreviewSide] = useState<CompanionSide | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const side = chatCompanionSideForPaneKinds(activePaneKind, humanPaneSide);
-  const isVisible = Boolean(companionConversation && !isFolded);
+  const isVisible = Boolean((companionConversation || hasOverview) && !isFolded);
+  const panelMotion = useCompanionPanelPresence(isVisible, pageConversationId);
 
   const placeCompanion = (nextSide: CompanionSide) => {
     setHumanPaneSide(humanSideForCompanionSide(activePaneKind, nextSide));
@@ -97,6 +105,7 @@ export function useChatCompanionLayout({
   };
   const onDividerPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
+    setIsResizing(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     updateSplit(event.clientX);
   };
@@ -105,31 +114,45 @@ export function useChatCompanionLayout({
     updateSplit(event.clientX);
   };
   const onDividerPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    setIsResizing(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
 
+  const onDividerKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home') return;
+    event.preventDefault();
+    setSplitLeftFraction(current => event.key === 'Home' ? 0.5 : clampChatSplitFraction(current + (event.key === 'ArrowLeft' ? -0.05 : 0.05)));
+  };
+
   return {
     side,
     isVisible,
+    isPresent: panelMotion.present,
+    motionDuration: isResizing ? 0 : panelMotion.duration,
     isFolded,
     isDragging,
     dropPreviewSide,
     containerRef,
-    gridColumns: isVisible
-      ? `minmax(280px, ${splitLeftFraction}fr) 10px minmax(280px, ${1 - splitLeftFraction}fr)`
-      : undefined,
-    setFolded: (value: boolean) => setFoldedState({
-      pageConversationId,
-      value,
-    }),
+    // Keep all three tracks, including the zero-width closed track, so the
+    // browser can interpolate space continuously and reverse mid-transition.
+    gridColumns: side === 'right'
+      ? `minmax(280px, 1fr) ${isVisible ? 10 : 0}px minmax(${isVisible ? 280 : 0}px, ${isVisible ? (1 - splitLeftFraction) / splitLeftFraction : 0}fr)`
+      : `minmax(${isVisible ? 280 : 0}px, ${isVisible ? splitLeftFraction / (1 - splitLeftFraction) : 0}fr) ${isVisible ? 10 : 0}px minmax(280px, 1fr)`,
+    panelWidth: `clamp(280px, calc((100cqw - 10px) * ${side === 'right' ? 1 - splitLeftFraction : splitLeftFraction}), calc(100cqw - 290px))`,
+    setFolded: (value: boolean) => {
+      if (value) onHide?.();
+      setFoldedState({ pageConversationId, value });
+    },
     placeCompanion,
     clearDropPreview: () => setDropPreviewSide(null),
     onDragStart,
     onDragEnd,
     onDragOver,
     onDrop,
+    onDividerKeyDown,
+    splitPercent: Math.round(splitLeftFraction * 100),
     onDividerPointerDown,
     onDividerPointerMove,
     onDividerPointerUp,

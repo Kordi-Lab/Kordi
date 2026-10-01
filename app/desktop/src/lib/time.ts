@@ -21,6 +21,20 @@ const desktopDateFormatters = new Map<string, Intl.DateTimeFormat>();
 const desktopDateTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const desktopTranscriptTimeFormatters = new Map<string, Intl.DateTimeFormat>();
 const desktopRelativeDayFormatters = new Map<string, Intl.RelativeTimeFormat>();
+let deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+let deviceTimeZoneCheckedAt = Date.now();
+
+export function refreshDesktopTimeZone() {
+  deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  deviceTimeZoneCheckedAt = Date.now();
+  return deviceTimeZone;
+}
+
+function currentDesktopTimeZone() {
+  const now = Date.now();
+  if (now < deviceTimeZoneCheckedAt || now - deviceTimeZoneCheckedAt >= 60_000) refreshDesktopTimeZone();
+  return deviceTimeZone;
+}
 
 function formatterKey(parts: Array<string | boolean | undefined>) {
   return parts.map((part) => String(part ?? '')).join('|');
@@ -32,10 +46,14 @@ function localesKey(locales?: Intl.LocalesArgument) {
 }
 
 function cachedFormatter(cache: Map<string, Intl.DateTimeFormat>, key: string, locales: Intl.LocalesArgument, options: Intl.DateTimeFormatOptions) {
-  const existing = cache.get(key);
+  // Intl captures the device timezone when the formatter is constructed. A
+  // traveler can change that timezone without restarting the desktop app.
+  const timeZone = options.timeZone ?? currentDesktopTimeZone();
+  const zonedKey = formatterKey([key, timeZone]);
+  const existing = cache.get(zonedKey);
   if (existing) return existing;
-  const formatter = new Intl.DateTimeFormat(locales, options);
-  cache.set(key, formatter);
+  const formatter = new Intl.DateTimeFormat(locales, { ...options, timeZone });
+  cache.set(zonedKey, formatter);
   return formatter;
 }
 
@@ -197,4 +215,23 @@ export function formatDesktopContactRequestTimeLabel(
   return Number.isFinite(timestampMs)
     ? formatDesktopTranscriptTimeLabel(timestampMs, options)
     : value;
+}
+
+/** Expanded transcript label: numeric date, weekday, and local clock time. */
+export function formatDesktopTranscriptDetailedTimeLabel(
+  value: Date | number,
+  options: DesktopTranscriptTimeOptions = {},
+) {
+  const timeZone = options.timeZone ?? currentDesktopTimeZone();
+  const date = toDate(value);
+  const [year, month, day] = formatDesktopDate(date, { timeZone }).split('-');
+  const [currentYear] = formatDesktopDate(options.now ?? Date.now(), { timeZone }).split('-');
+  const weekday = cachedFormatter(
+    desktopTranscriptTimeFormatters,
+    formatterKey(['weekday', localesKey(options.locales), timeZone]),
+    options.locales,
+    { weekday: 'long', timeZone },
+  ).format(date);
+  const calendarDate = `${year === currentYear ? '' : `${year}/`}${Number(month)}/${Number(day)}`;
+  return `${calendarDate} ${weekday} ${formatDesktopClockTime(date, { timeZone })}`;
 }

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import { assembleMainContentSlot } from '../src/app/assembleMainContentSlot';
 import { assembleSidebarSlot } from '../src/app/assembleSidebarSlot';
 import { buildChatsPageProps } from '../src/app/mainContentShellBuilders';
+import { publishHostedProviderSnapshots } from '../src/features/cloud/hostedAccounts';
 
 function directPersonConversation() {
   return {
@@ -122,6 +123,7 @@ function baseSidebarArgs(overrides: Record<string, unknown> = {}) {
 
 function baseShellArgs(calls: string[], overrides: Record<string, unknown> = {}) {
   return {
+    composerProviderOptions: [],
     activeNav: 'contacts',
     chatConversations: [directPersonConversation()],
     setActiveNav: (nav: string) => calls.push(`nav:${nav}`),
@@ -290,6 +292,30 @@ test('sidebar agent creation opens Authentication before creating a session with
   await element.props.chatActions.onStartChatWithAgent({ id: 'agent:local', isOwned: true });
 
   assert.deepEqual(calls, ['authentication']);
+});
+
+test('sidebar starts chats with a saved hosted account instead of reopening Authentication', async () => {
+  const calls: string[] = [];
+  const element = assembleSidebarSlot(baseSidebarArgs({
+    desktopAuthState: { hasAnyAuth: false, providers: [] },
+    openCloudAccountAuthentication: () => { calls.push('authentication'); },
+    handleCreateChatSession: async () => { calls.push('createLocal'); },
+    handleStartChatWithAgent: async () => { calls.push('startAgent'); },
+  }) as never) as never as {
+    props: { chatActions: { onStartChatWithAgent: (agent: Record<string, unknown>) => Promise<void> } };
+  };
+  // The login finishes after the menu was rendered; the action must use the saved account now.
+  publishHostedProviderSnapshots([{
+    snapshotId: 'saved', provider: 'openai-codex', authChoice: 'cloud-login:saved',
+    label: 'Work', createdAt: '2026-01-01T00:00:00Z', revokedAt: null,
+  }]);
+  try {
+    await element.props.chatActions.onStartChatWithAgent({ id: 'desktop:local-agent', isOwned: true });
+    await element.props.chatActions.onStartChatWithAgent({ id: 'agent:custom', isOwned: true });
+    assert.deepEqual(calls, ['createLocal', 'startAgent']);
+  } finally {
+    publishHostedProviderSnapshots([]);
+  }
 });
 
 test('contact Message starts a fresh person session instead of selecting an existing one', () => {

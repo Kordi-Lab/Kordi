@@ -102,7 +102,7 @@ function cloudArgs(runtime: 'agent' | 'person', send: UseChatMessageActionsArgs[
       ? { hostId: 'cloud', nodeId: 'peer', humanId: 'peer', runtime: 'agent', agentId: 'cloud_agent_synthetic', displayName: 'Synthetic Agent' }
       : { hostId: 'cloud', nodeId: 'peer', humanId: 'peer', runtime: 'person' },
     activeConvMentionScope: { id: `cloud:conversation:peer:${runtime}`, canonicalSessionId: `session:direct-${runtime}:owner:peer` },
-    isNativeShell: true, hasAnyDesktopAuth: true, hasLocalProviderAuth: true, desktopChatState: null, canonicalSessionState: null,
+    isNativeShell: true, hasAnyDesktopAuth: true, hasConfiguredProviderAuth: true, desktopChatState: null, canonicalSessionState: null,
     desktopCollaborationState: { activeHostId: 'cloud', hosts: [host], conversations: [] } as unknown as DesktopCollaborationState,
     desktopLiveTurn: null, queuedDesktopMessagesBySession: {},
     composerDrafts: { chat: '', project: '' }, composerSelections: { chat: { model: 'test', thinking: 'default', mode: 'agent' } },

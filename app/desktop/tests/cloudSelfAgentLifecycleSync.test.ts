@@ -1,6 +1,8 @@
 import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import { encodeCloudAgentResponse, isCloudAgentControlMessage } from '../src/features/cloud/cloudAgentMessages';
@@ -15,6 +17,8 @@ import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kord
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { queuedTranscriptRequestIds } from '../src/features/chat/queuedDesktopMessages';
 import { selectVisibleCloudAgentResponses } from '../src/features/cloud/cloudAgentResponseSelection';
+import { canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '../src/features/chat/agentProcessingVisibility';
+import { LiveChatTurnCard } from '../src/kordi-app/components/transcriptLiveTurns';
 
 const account: CloudAccount = {
   accountId: 'acct_me', displayName: 'Me Cloud', primaryEmail: 'me@example.com',
@@ -79,6 +83,76 @@ test('ownership claims never flash processing and native queue admission survive
     [request, queued, { ...claim, createdAt: '2026-09-05T10:00:02Z' }], new Map(), () => false, () => false,
     Date.parse('2026-09-05T10:00:03Z'),
   ).visibleMessages.map((row) => row.messageId), [request.messageId, queued.messageId]);
+});
+
+test('empty native queue and preparing progress reach visible status before the terminal reply', () => {
+  const request = requestMessage('request-empty-progress', 'Hi', '2026-09-05T10:00:00Z');
+  const queued = {
+    ...request,
+    messageId: 'progress-queued',
+    createdAt: '2026-09-05T10:00:00.500Z',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: '',
+      deliveryState: 'processing',
+      execution: { phase: 'queued', summary: 'Queued next', steps: [], updatedAtMs: 500, completed: false },
+    }),
+  };
+  const progress = {
+    ...request,
+    messageId: 'progress-empty',
+    createdAt: '2026-09-05T10:00:01Z',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: '',
+      deliveryState: 'processing',
+      execution: { phase: 'preparing', summary: '', steps: [], updatedAtMs: 1000, completed: false },
+    }),
+  };
+  const terminal = {
+    ...request,
+    messageId: 'progress-terminal',
+    createdAt: '2026-09-05T10:00:02Z',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'Hello',
+      deliveryState: 'complete',
+      execution: { phase: 'complete', summary: 'Done', steps: [], updatedAtMs: 2000, completed: true },
+    }),
+  };
+  const queuedPlan = planCloudSelfAgentCanonicalSync({ account, messages: [request, queued], state: emptyState() });
+  const queuedRow = queuedPlan.messageRequests.find((row) => row.senderRole === 'owned-agent');
+  const mappedQueue = mapCanonicalMessage({ ...queuedRow, sequenceNum: 2, updatedAtMs: 500 } as CanonicalSessionMessage,
+    new Map());
+  assert.equal(mappedQueue?.turn?.status, 'queued');
+  assert.equal(canDisplayAgentTurn(mappedQueue!.turn!), true);
+  assert.equal(shouldShowAgentWaitingAnimation(mappedQueue!.turn!), false);
+  assert.match(renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn: mappedQueue!.turn!,
+  })), /Queued…/);
+
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [request, queued, progress], state: emptyState() });
+  const processing = plan.messageRequests.find((row) => row.senderRole === 'owned-agent');
+  assert.equal(processing?.status, 'processing');
+  const mapped = mapCanonicalMessage({ ...processing, sequenceNum: 2, updatedAtMs: 1000 } as CanonicalSessionMessage,
+    new Map());
+  assert.equal(mapped?.turn?.status, 'processing');
+  assert.equal(shouldShowAgentWaitingAnimation(mapped!.turn!), true);
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn: mapped!.turn!, onStopActiveTurn: () => undefined,
+  }));
+  assert.match(markup, /Waiting for agent response/);
+
+  const terminalPlan = planCloudSelfAgentCanonicalSync({
+    account, messages: [request, queued, progress, terminal], state: emptyState(),
+  });
+  const terminalRow = terminalPlan.messageRequests.find((row) => row.senderRole === 'owned-agent');
+  const mappedTerminal = mapCanonicalMessage({ ...terminalRow, sequenceNum: 2, updatedAtMs: 2000 } as CanonicalSessionMessage,
+    new Map());
+  assert.equal(mappedTerminal?.turn?.status, 'complete');
+  const terminalMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn: mappedTerminal!.turn! }));
+  assert.doesNotMatch(terminalMarkup, /Queued…|Waiting for agent response/);
+  assert.match(terminalMarkup, /Hello/);
 });
 
 test('cloud self-agent canonical identity uses the editable runtime name', () => {

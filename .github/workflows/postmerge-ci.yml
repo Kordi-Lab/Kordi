@@ -189,6 +189,9 @@ jobs:
       - name: Cache Rust build outputs
         uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7
 
+      - name: Install pinned Bun runtime
+        run: npm install --global bun@1.4.2
+
       - name: Build desktop without signing credentials
         run: >-
           pnpm --dir app/desktop tauri:build:cloud

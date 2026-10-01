@@ -19,9 +19,10 @@ export function canDisplayAgentTurn(turn: DesktopChatTurnSnapshot, messages: rea
       && [message.id, message.entryId, ...(message.replyAliasIds ?? [])].includes(requestId)
   )) : undefined;
   if (request?.statusChips?.some((status) => ['draft', 'sending', 'queued', 'pending', 'failed', 'cancelled'].includes(status.trim().toLowerCase()))) return false;
+  if (turn.status === 'queued') return true;
   // Keep cancellation controls available for sent outreach requests, without
   // treating those controls as a processing event.
-  return agentTurnHasStarted(turn) || Boolean(turn.pendingCollaborationAgentRequest);
+  return agentTurnHasStarted(turn) || Boolean(turn.pendingCollaborationAgentRequest) || Boolean(turn.hostedRunStatus);
 }
 
 export function shouldShowAgentWaitingAnimation(turn: DesktopChatTurnSnapshot) {

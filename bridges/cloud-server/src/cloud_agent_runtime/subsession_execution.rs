@@ -8,7 +8,14 @@ use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-type FollowHistoryRow = (String, String, String, Option<Value>, Option<String>);
+type FollowHistoryRow = (
+    String,
+    String,
+    String,
+    Option<Value>,
+    Option<String>,
+    Option<String>,
+);
 
 pub(super) async fn pending(
     State(state): State<Arc<ServerState>>,
@@ -168,7 +175,11 @@ pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter_map(|m| Some(json!({"role":m["role"].as_str()?,"content":m["text"].as_str()?})))
+        .filter_map(|m| {
+            Some(
+                json!({"role":m["role"].as_str()?,"content":m["text"].as_str()?,"entryId":m["id"]}),
+            )
+        })
         .collect();
     // Replay frozen metadata alongside the original input, not labels looked up
     // today. Older turns without a snapshot retain their existing representation.
@@ -177,9 +188,9 @@ pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
     if let Some((identity,)) = initial_identity {
         result.insert(0, json!({"role":"runtimeIdentity","content":identity}));
     }
-    let rows:Vec<FollowHistoryRow>=query_as("SELECT a.display_name,c.text,c.response_text,r.turn_identity,r.prompt FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND c.sequence<$2 ORDER BY c.sequence DESC LIMIT 128")
+    let rows:Vec<FollowHistoryRow>=query_as("SELECT a.display_name,c.text,c.response_text,r.turn_identity,r.prompt,r.run_id FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND c.sequence<$2 ORDER BY c.sequence DESC LIMIT 128")
         .bind(id).bind(sequence).fetch_all(pool).await?;
-    for (name, text, response, identity, prompt) in rows.into_iter().rev() {
+    for (name, text, response, identity, prompt, prior_run) in rows.into_iter().rev() {
         if let Some(identity) = identity {
             result.push(json!({"role":"runtimeIdentity","content":identity}));
             result.push(json!({"role":"user","content":prompt.unwrap_or(text)}));
@@ -189,7 +200,7 @@ pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
             );
         }
         if !response.is_empty() {
-            result.push(json!({"role":"assistant","content":response}));
+            result.push(json!({"role":"assistant","content":response,"entryId":prior_run.map(|run|format!("result:{run}"))}));
         }
     }
     Ok(result)

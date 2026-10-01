@@ -191,6 +191,7 @@ mod tests {
             artifacts_dir: PathBuf::from("/tmp"),
             model: None,
             execution_policy: ExecutionPolicy::Safety,
+            invocation_id: None,
             on_output: None,
             web_search: None,
             reach_out: None,

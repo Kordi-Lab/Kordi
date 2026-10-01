@@ -1,0 +1,100 @@
+.app-companion-toolbar { display: flex; align-items: center; gap: 2px; margin-top: 2px; }
+.app-companion-toolbar > button,
+.app-companion-overview-header > button, .app-companion-month-heading button {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  height: 28px; min-width: 28px; padding: 4px; border-radius: 7px;
+  color: var(--utility-muted-text); background: transparent; cursor: pointer;
+}
+.app-companion-toolbar svg { width: 15px; height: 15px; stroke-width: 1.6; }
+.app-companion-toolbar button:hover,
+.app-companion-overview button:hover { background: var(--app-control-hover); color: var(--utility-foreground); }
+.app-companion-toolbar button[aria-pressed="true"] { background: var(--app-control-active); color: var(--utility-foreground); }
+.app-companion-toolbar button:disabled { opacity: .4; cursor: default; }
+.app-companion-toolbar :is(button, summary):focus-visible, .app-companion-overview :is(button, [tabindex]):focus-visible {
+  outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: 2px;
+}
+.app-chat-pane-header:has(.app-companion-toolbar) { z-index: 45; gap: 4px; }
+.app-chat-pane-header:has(.app-companion-toolbar) > div:last-of-type { gap: 4px; }
+.app-companion-overview { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; color: var(--utility-foreground); background: var(--app-main-bg); }
+.app-companion-overview-header { display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; }
+.app-companion-overview-header h2 { font-size: 17px; font-weight: 600; line-height: 24px; }
+.app-companion-overview-header p { font-size: 11px; color: var(--utility-muted-text); }
+.app-companion-overview-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px; }
+.app-companion-status { margin: 8px 0; color: var(--utility-muted-text); font-size: 12px; line-height: 1.6; }
+.app-companion-overview > .app-companion-status { padding: 0 16px; }
+.app-companion-status button { text-decoration: underline; text-underline-offset: 3px; }
+.app-companion-freshness { margin-bottom: 12px; color: var(--utility-muted-text); font-size: 10px; line-height: 1.5; }
+.app-companion-digest-section { margin-bottom: 24px; }
+.app-companion-overview h3 { font-size: 12px; font-weight: 600; }
+.app-companion-digest-section article { padding: 12px 0; border-bottom: 1px solid var(--app-divider); }
+.app-companion-overview h4 { font-size: 13px; line-height: 1.5; font-weight: 500; overflow-wrap: anywhere; }
+.app-companion-digest-section article > p { margin: 6px 0; font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.app-companion-calendar { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.app-companion-month { flex-shrink: 0; padding: 0 12px 12px; border-bottom: 1px solid var(--app-divider); }
+.app-companion-month-heading { display: flex; gap: 2px; align-items: center; margin-bottom: 8px; }
+.app-companion-month-heading h3 { flex: 1; }
+.app-companion-month-heading button { font-size: 11px; }
+.app-companion-date-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; font-size: 11px; text-align: center; }
+.app-companion-date-grid > span { padding: 4px; color: var(--utility-muted-text); }
+.app-companion-date-grid button { position: relative; height: 28px; border-radius: 6px; }
+.app-companion-date-grid button[data-outside="true"] { color: var(--utility-muted-text); opacity: .6; }
+.app-companion-date-grid button[aria-current="date"] { font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.app-companion-date-grid button[aria-pressed="true"] { background: var(--app-control-active); outline: 1px solid var(--app-nav-rail-focus-ring); }
+.app-companion-event-dot[data-has-events="true"] { position: absolute; bottom: 2px; left: calc(50% - 1px); width: 3px; height: 3px; background: currentColor; border-radius: 50%; }
+.app-companion-agenda section { padding-bottom: 16px; }
+.app-companion-agenda section > h3 { margin-bottom: 8px; }
+.app-companion-event-time { color: var(--utility-muted-text); font-size: 11px; line-height: 20px; }
+.app-companion-agenda article p { margin-top: 2px; color: var(--utility-muted-text); font-size: 11px; overflow-wrap: anywhere; }
+.app-chat-split-workspace[data-chat-companion-side="right"] > :is(.app-chat-main-workspace, .app-chat-pane-layout),
+.app-chat-split-workspace[data-chat-companion-side="left"] > :is(.app-chat-companion-pane, .app-companion-overview, .app-companion-panel-motion) { grid-column: 1; grid-row: 1; }
+.app-chat-split-workspace[data-chat-companion-side="left"] > :is(.app-chat-main-workspace, .app-chat-pane-layout),
+.app-chat-split-workspace[data-chat-companion-side="right"] > :is(.app-chat-companion-pane, .app-companion-overview, .app-companion-panel-motion) { grid-column: 3; grid-row: 1; }
+.app-chat-split-workspace > .app-chat-split-divider { grid-column: 2; grid-row: 1; }
+.app-chat-split-divider:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: -2px; }
+
+.digest-page.digest-companion-page { padding: 0; container-type: normal; overflow: hidden; }
+.digest-companion-page > .digest-notices:empty { display: none; }
+.app-companion-agenda-entry { padding: 4px 0; border-bottom: 1px solid var(--app-divider); }
+.app-companion-agenda-event {
+  display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 8px;
+  width: 100%; text-align: left; padding: 9px 0; border: 0; border-radius: 7px;
+}
+.digest-companion-page .app-companion-agenda-event { border: 0; padding: 9px 0; }
+.app-companion-event-summary { min-width: 0; }
+.app-companion-event-summary strong { display: block; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.app-companion-event-summary small { display: block; color: var(--utility-muted-text); font-size: 11px; margin-top: 2px; }
+.app-companion-agenda-entry > .digest-related-links { margin: 0 0 8px 70px; }
+.digest-companion-page .app-companion-date-grid button { min-height: 28px; height: 28px; padding: 0; border: 0; font-size: 11px; }
+.digest-companion-page .app-companion-month-heading h3 { font-size: 12px; }
+.digest-companion-page .app-companion-month-heading button { min-height: 28px; height: 28px; padding: 4px; border: 0; }
+.app-companion-digest-section > article > button { margin: 6px 8px 0 0; }
+.app-companion-refresh { margin-bottom: 10px; }
+
+.app-companion-proposals { margin-top: 12px; border-top: 1px solid var(--app-divider); padding-top: 16px; }
+.app-companion-proposals > h3 { color: var(--utility-muted-text); }
+.app-companion-proposal { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px 0; min-width: 0; }
+.app-companion-proposal + .app-companion-proposal { border-top: 1px solid var(--app-divider); }
+.app-companion-proposal > h4 { width: 100%; margin: 0; }
+.app-companion-proposal .digest-attribution { max-width: 100%; }
+.app-companion-proposal .digest-people { margin: 0; gap: 6px 12px; }
+.app-companion-proposal .digest-person { min-width: 0; max-width: 100%; font-size: 11px; }
+.app-companion-proposal .digest-person > span { overflow-wrap: anywhere; }
+.app-companion-proposal .digest-person-avatar { width: 22px; height: 22px; flex-shrink: 0; }
+.app-companion-proposal > button { align-self: flex-start; white-space: nowrap; margin-top: 2px; }
+.app-companion-agenda > .digest-calendar-connections { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--app-divider); }
+
+.app-chat-split-workspace {
+  container-type: inline-size;
+  transition-property: grid-template-columns;
+  transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+.app-companion-panel-motion {
+  position: relative;
+  min-width: 0; min-height: 0; height: 100%; overflow: hidden;
+}
+.app-companion-panel-surface { height: 100%; min-height: 0; }
+.app-companion-panel-motion[data-side="left"] > .app-companion-panel-surface { float: right; }
+.app-companion-panel-motion[data-open="false"] { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .app-chat-split-workspace { transition-duration: 0s !important; }
+}

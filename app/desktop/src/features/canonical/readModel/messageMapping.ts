@@ -486,6 +486,8 @@ export function mapCanonicalMessage(
           error: cancelled ? null : failed ? (legacyCollaborationAgentFailure ? 'Message failed' : agentTurnErrorText) : null,
           replyToMessageId,
           pendingCollaborationAgentRequest,
+          hostedRunStatus: !completed && (content.hostedRunStatus === 'queued' || content.hostedRunStatus === 'leased' || content.hostedRunStatus === 'running')
+            ? content.hostedRunStatus : undefined,
         }
       : undefined,
   };

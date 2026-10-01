@@ -7,6 +7,7 @@ import { useKordiShellArgs } from '@/app/useKordiShellArgs';
 import { useKordiShellViewModel } from '@/app/useKordiShellViewModel';
 import { useKordiSideAgentSessionActions } from '@/app/useKordiSideAgentSessionActions';
 import type { KordiWorkspaceState } from '@/app/useKordiWorkspaceState';
+import { navItems } from '@/kordi-app/data/navigation';
 
 export function useKordiAppShellComposition({
   foundation,
@@ -443,6 +444,17 @@ export function useKordiAppShellComposition({
 
   return {
     rootThemeClass,
+    windowTitle: navigation.activeNav === 'chats'
+      ? conversations.activeConv?.name || 'Chats'
+      : navigation.activeNav === 'projects'
+        ? projects.activeProjectSession?.name || projects.activeProject?.name || 'Projects'
+        : navItems.find(item => item.id === navigation.activeNav)?.label || 'Kordi',
+    onToggleSessionPanel: layout.showSessionRail
+      ? () => layout.setIsSessionPanelCollapsed(value => !value)
+      : undefined,
+    onToggleDetailPanel: navigation.activeNav !== 'chats' && layout.showRightDetailRail
+      ? () => layout.setIsDetailPanelCollapsed(value => !value)
+      : undefined,
     isNativeShell: environment.isNativeShell,
     isLayoutResizing: layout.isLayoutResizing,
     windowSize: layout.windowSize,

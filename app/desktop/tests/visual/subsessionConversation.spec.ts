@@ -168,7 +168,7 @@ test('Tasks shows authoritative Agent thread entries and frozen execution time, 
 
 test('private Ask Agent and shared Agent threads keep separate identities, avatars and drafts', async ({ page }) => {
   await page.goto('/tests/visual/subsessionConversation.html');
-  await page.getByRole('button', { name: 'Ask Agent', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
   const panel = page.locator('[data-chat-side-agent-panel="true"]');
   await expect(panel.getByText('Ask Agent · Private workspace', { exact: true })).toBeVisible();
   await expect(panel.getByText('Only you · Agent session', { exact: true })).toBeVisible();
@@ -193,7 +193,7 @@ test('private Ask Agent and shared Agent threads keep separate identities, avata
   await panel.getByRole('button', { name: 'Send to Planet research', exact: true }).click();
   await expect(field).toHaveText('');
   await panel.getByRole('button', { name: 'Close side chat', exact: true }).click();
-  await page.getByRole('button', { name: 'Ask Agent', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat', exact: true }).click();
   await expect(field).toHaveText('PRIVATE_DRAFT_CANARY');
   await panel.getByRole('button', { name: 'Send to Private workspace', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as {privateSends: {id:string;text:string}[]}).privateSends)).toMatchObject([{id:'private-session',text:'PRIVATE_DRAFT_CANARY'}]);
@@ -247,7 +247,7 @@ test('subsession has a bounded transcript, visible composer, and explicit identi
   });
   await expect(page.locator('[data-related-agent-session-status="done"]')).toBeVisible();
   await panel.getByRole('button', { name: 'Close side chat', exact: true }).click();
-  await expect(panel).toHaveCount(0);
+  await expect(panel).toBeHidden();
   await page.getByRole('button', { name: 'Open background agent session: Planet research' }).click();
   await expect(panel.getByText('Hello everyone', { exact: true })).toBeVisible();
   await expect(panel).toHaveAttribute('data-companion-session-id', 'fixture-child');

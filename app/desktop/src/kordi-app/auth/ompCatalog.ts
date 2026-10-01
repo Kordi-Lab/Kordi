@@ -19,6 +19,17 @@ export type OmpCatalog = {
   providers: OmpCatalogEntry[];
 };
 
+/** UI-only hint for a login completed during this visit; older snapshots omit it. */
+export type DisplayAuthSnapshot = CloudProviderAuthSnapshot & { loginMethod?: 'sign-in' | 'api-key' };
+
+/** Keeps a just-completed login's method when the saved list refreshes. */
+export function withKnownLoginMethods(
+  snapshots: CloudProviderAuthSnapshot[],
+  known: ReadonlyMap<string, 'sign-in' | 'api-key'>,
+): DisplayAuthSnapshot[] {
+  return snapshots.map((snapshot) => ({ ...snapshot, loginMethod: known.get(snapshot.snapshotId) }));
+}
+
 const authKinds = new Set<OmpProviderAuth['kind']>(['api-key', 'oauth-code', 'device-code', 'custom', 'native']);
 
 function ompAuthKind(kind: string): OmpProviderAuth['kind'] {
@@ -26,6 +37,7 @@ function ompAuthKind(kind: string): OmpProviderAuth['kind'] {
 }
 
 const loginKinds = new Set<OmpLoginKind>(['api-key', 'oauth-code', 'device-code', 'custom', 'env-only']);
+const signInKinds = new Set<OmpLoginKind>(['oauth-code', 'device-code', 'custom']);
 
 function ompLoginKind(kind: string): OmpLoginKind {
   return loginKinds.has(kind as OmpLoginKind) ? kind as OmpLoginKind : 'custom';
@@ -160,10 +172,22 @@ function snapshotTarget(snapshot: CloudProviderAuthSnapshot, providerIds: Readon
   return ompProviderIdFor(snapshot.provider, providerIds);
 }
 
+function snapshotMethod(snapshot: DisplayAuthSnapshot, providerId: string, entry: OmpCatalogEntry | undefined) {
+  if (snapshot.loginMethod === 'sign-in') return 'OAuth';
+  if (snapshot.loginMethod === 'api-key') return 'API key';
+  if (providerId === 'openai-codex' || providerId === 'github-copilot') return 'OAuth';
+  if (snapshot.authChoice.startsWith('cloud-login:') && entry?.login && signInKinds.has(entry.login.kind)) {
+    // A mixed provider's old snapshot has no stored method. Show the account
+    // with neutral copy until a future login provides a method hint.
+    return loginAcceptsApiKey(entry.login) ? 'Account' : 'OAuth';
+  }
+  return /codex|oauth|device/i.test(snapshot.authChoice) ? 'OAuth' : 'API key';
+}
+
 /** OMP defines every provider; Kordi contributes saved accounts, local model servers, and sign-in adapters. */
 export function mergeOmpAuthState(
   authState: DesktopAuthState | null,
-  snapshots: CloudProviderAuthSnapshot[],
+  snapshots: DisplayAuthSnapshot[],
   catalog: OmpCatalogEntry[],
 ): DesktopAuthState | null {
   if (!authState) return null;
@@ -190,10 +214,11 @@ export function mergeOmpAuthState(
     const provider = providers.get(targetId) ?? ompProvider({ id: targetId, models: [] }, []);
     providers.set(targetId, provider);
     const hasCloudOption = provider.options.some((option) => option.source === 'Cloud');
+    const entry = entries.find((item) => item.id === targetId);
     provider.options.push({
       value: snapshot.authChoice,
       profileId: snapshot.snapshotId,
-      method: /codex|oauth|device/i.test(snapshot.authChoice) ? 'OAuth' : 'API key',
+      method: snapshotMethod(snapshot, targetId, entry),
       source: 'Cloud',
       label: snapshot.label || 'Saved account',
       modelHint: snapshot.modelHint,
@@ -201,7 +226,6 @@ export function mergeOmpAuthState(
     });
     savedChoices.add(snapshot.authChoice);
     provider.configured = true;
-    const entry = entries.find((item) => item.id === targetId);
     if (snapshot.modelHint && !hasCloudOption && entry?.models.includes(snapshot.modelHint)) {
       provider.preferredModel = `${targetId}/${snapshot.modelHint}`;
     }
@@ -209,7 +233,6 @@ export function mergeOmpAuthState(
   return { ...authState, providers: [...providers.values()], hasAnyAuth: authState.hasAnyAuth || snapshots.length > 0 };
 }
 
-const signInKinds = new Set<OmpLoginKind>(['oauth-code', 'device-code', 'custom']);
 /** Hooks whose OMP flow shows a one-time device code. */
 const deviceHooks = new Set(['openai-codex-device', 'github-copilot']);
 
@@ -268,7 +291,7 @@ function catalogMethods(item: AuthDisplayProvider, entry: OmpCatalogEntry | unde
       detail: login.kind === 'device-code' || deviceHooks.has(login.hook ?? '')
         ? `Sign in on ${name}'s page with a one-time code.`
         : login.kind === 'oauth-code' ? `Sign in with your ${name} account in the browser.` : `Connect ${name} with the details OMP asks for.`,
-      options: options.filter((option) => option.method === 'OAuth'),
+      options: options.filter((option) => option.method === 'OAuth' || option.method === 'Account'),
     });
   }
   if (ompLoginMethods(login).includes('api-key')) {
@@ -277,7 +300,7 @@ function catalogMethods(item: AuthDisplayProvider, entry: OmpCatalogEntry | unde
       mode: 'api-key',
       title: 'API key',
       detail: `Paste a ${name} API key. OMP checks it and stores it in your Kordi account.`,
-      options: options.filter((option) => option.method !== 'OAuth'),
+      options: options.filter((option) => option.method === 'API key'),
     });
   }
   return methods;
@@ -293,7 +316,7 @@ const noLocalAccounts: DesktopAuthState = { authPath: '', hasAnyAuth: false, pro
  */
 export function buildOmpDisplayProviders(
   authState: DesktopAuthState | null,
-  snapshots: CloudProviderAuthSnapshot[],
+  snapshots: DisplayAuthSnapshot[],
   catalog: OmpCatalogEntry[],
 ): { authState: DesktopAuthState | null; providers: AuthDisplayProvider[] } {
   const merged = mergeOmpAuthState(authState ?? noLocalAccounts, snapshots, catalog);

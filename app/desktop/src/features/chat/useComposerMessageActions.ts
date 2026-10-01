@@ -40,7 +40,7 @@ export function useComposerMessageActions({
   messageRuntime,
   derived,
 }: UseComposerMessageActionsArgs) {
-  const { isNativeShell, hasAnyDesktopAuth, hasLocalProviderAuth } = environment;
+  const { isNativeShell, hasAnyDesktopAuth, hasConfiguredProviderAuth } = environment;
   const {
     activeConversationUsesCollaboration,
     chatConversations,
@@ -199,7 +199,7 @@ export function useComposerMessageActions({
     attachmentSummaryText,
     canonicalSessionState,
     hasAnyDesktopAuth,
-    hasLocalProviderAuth,
+    hasConfiguredProviderAuth,
     openAgentAuthentication,
     canonicalHumanIdentityId,
     chatComposerAttachments,

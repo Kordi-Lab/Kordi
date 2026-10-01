@@ -1,8 +1,9 @@
-import {requestThreadNavigation,useThreadNavigation} from '@/features/cloud/threadAttention';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { participantSpaceCreateKey } from '@/app/useKordiAppModelHelpers';
 import { hasCachedCloudSessionVisibility } from '@/features/cloud/cloudDiffSync';
 import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
+import { useSelectedChatHistoryHydration } from '@/app/useSelectedChatHistoryHydration';
+import { useChatThreadNavigation } from '@/app/useChatThreadNavigation';
 import { useKordiCollaborationMentions } from '@/app/useKordiCollaborationMentions';
 import { useKordiDesktopActivity } from '@/app/useKordiDesktopActivity';
 import { useKordiMessageActions } from '@/app/useKordiMessageActions';
@@ -199,6 +200,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     () => conversationWithHydratedSupportRoute(selectedActiveConv, cloudContacts),
     [cloudContacts, selectedActiveConv],
   );
+  useSelectedChatHistoryHydration(foundation, selectedActiveConv);
 
   const {
     activeMessageSelection,
@@ -288,25 +290,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     ? collaborationContactRequests
     : demoContactRequests;
 
-  const threadNavigation=useThreadNavigation();
-  const handledThreadNavigation=useRef<number|null>(null);
-  useEffect(()=>{
-    if(!threadNavigation || handledThreadNavigation.current===threadNavigation.nonce)return;
-    handledThreadNavigation.current=threadNavigation.nonce;
-    const conversation=chatConversations.find(item=>item.id===threadNavigation.sessionId || item.canonicalSessionId===threadNavigation.sessionId);
-    setActiveNav('chats');
-    setActiveConvId(conversation?.id??threadNavigation.sessionId);
-  },[threadNavigation,chatConversations,setActiveNav,setActiveConvId]);
-
-  const openNotificationSession = useCallback((sessionId: string, messageId: string) => {
-    const conversation = chatConversations.find((candidate) => (
-      candidate.id === sessionId
-      || candidate.canonicalSessionId === sessionId
-    ));
-    setActiveNav('chats');
-    setActiveConvId(conversation?.id ?? sessionId);
-    requestThreadNavigation(conversation?.canonicalSessionId ?? sessionId, messageId);
-  }, [chatConversations, setActiveConvId, setActiveNav]);
+  const openNotificationSession = useChatThreadNavigation(chatConversations, setActiveNav, setActiveConvId);
 
   const {
     activeContactRequest,
