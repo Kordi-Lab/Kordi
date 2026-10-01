@@ -470,4 +470,20 @@ final class LinkPreviewPolicyTests: XCTestCase {
         XCTAssertFalse(markdown.contains("AvatarImageLoader"))
         XCTAssertTrue(markdown.contains("LinkSiteIconLoader.icon(forHost: host)"))
     }
+
+    func testPrivacySettingsCopy() {
+        XCTAssertEqual(
+            PrivacySettingsView.linkPreviewFooter(for: .contacts),
+            "Kordi loads previews and site icons only for links you send and links from people in your contacts. Other links show just the web address. Loading a preview connects this iPhone to the linked website, which can see your IP address and when the link was viewed."
+        )
+        XCTAssertEqual(
+            PrivacySettingsView.linkPreviewFooter(for: .everyone),
+            "Kordi loads previews and site icons for every link, including links from agents and from people who aren't in your contacts. Loading a preview connects this iPhone to the linked website, which can see your IP address and when the link was viewed."
+        )
+        XCTAssertEqual(
+            PrivacySettingsView.linkPreviewFooter(for: .off),
+            "Kordi doesn't load link previews or site icons. Links show just the web address. Loading a preview connects this iPhone to the linked website, which can see your IP address and when the link was viewed."
+        )
+        XCTAssertTrue(NotificationSettingsView.messagePreviewsFooter.hasSuffix("alerts only say \"New message\"."))
+    }
 }
