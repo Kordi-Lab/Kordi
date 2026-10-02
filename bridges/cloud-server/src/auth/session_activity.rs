@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -14,6 +13,9 @@ use sqlx_postgres::PgPool;
 
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
+use recipients::publish_chat_event;
+
+mod recipients;
 
 const CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 
@@ -151,54 +153,12 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
     (status, Json(body)).into_response()
 }
 
-async fn publish_chat_event(
-    pool: &PgPool,
-    account_ids: &[String],
-    conversation_account_id: &str,
-    session_id: &str,
-    event_type: &str,
-    payload: serde_json::Value,
-) -> Result<(), crate::chat_sync::store::StoreError> {
-    let conversation_id = crate::chat_sync::store::conversation_id_for_session(
-        pool,
-        conversation_account_id,
-        session_id,
-    )
-    .await?;
-    crate::chat_sync::store::publish_user_sync_events(
-        pool,
-        account_ids,
-        event_type,
-        conversation_id,
-        payload,
-    )
-    .await
-}
-
 fn task_activity_sync_payload(task: &CloudTaskActivitySummary) -> serde_json::Value {
     serde_json::json!({ "task": task })
 }
 
 fn artifact_activity_sync_payload(artifact: &CloudArtifactActivitySummary) -> serde_json::Value {
     serde_json::json!({ "artifact": artifact })
-}
-
-fn cloud_activity_recipient_ids(
-    owner_account_id: &str,
-    participant_account_ids: &[String],
-) -> Vec<String> {
-    let mut ids = BTreeSet::new();
-    for value in participant_account_ids {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            ids.insert(trimmed.to_string());
-        }
-    }
-    let owner = owner_account_id.trim();
-    if !owner.is_empty() {
-        ids.insert(owner.to_string());
-    }
-    ids.into_iter().collect()
 }
 
 fn clean_optional_activity_text(value: Option<&str>) -> Option<String> {
@@ -489,11 +449,9 @@ async fn upsert_cloud_task_activity(
             )
         }
     };
-    let recipients =
-        cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
     let _ = publish_chat_event(
         pool,
-        &recipients,
+        &req.participant_account_ids,
         &session.account_id,
         &session_id,
         "task.upsert",
@@ -599,11 +557,9 @@ async fn upsert_cloud_artifact_activity(
             )
         }
     };
-    let recipients =
-        cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
     let _ = publish_chat_event(
         pool,
-        &recipients,
+        &req.participant_account_ids,
         &session.account_id,
         &session_id,
         "artifact.upsert",
@@ -822,23 +778,5 @@ mod tests {
         assert_eq!(payload["artifact"]["sessionId"], "session:group:one");
         assert_eq!(payload["artifact"]["artifactId"], "docs/plan.md");
         assert_eq!(payload["artifact"]["attachmentId"], "att_1");
-    }
-
-    #[test]
-    fn cloud_activity_recipient_ids_exclude_duplicates_and_empty_values() {
-        let recipients = cloud_activity_recipient_ids(
-            "acct_owner",
-            &[
-                "acct_b".to_string(),
-                "acct_owner".to_string(),
-                " ".to_string(),
-                "acct_b".to_string(),
-            ],
-        );
-
-        assert_eq!(
-            recipients,
-            vec!["acct_b".to_string(), "acct_owner".to_string()]
-        );
     }
 }
