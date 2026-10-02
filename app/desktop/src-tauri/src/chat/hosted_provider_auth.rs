@@ -219,6 +219,11 @@ pub(super) async fn resolve_for_turn(
         .build()
         .map_err(|_| UNAVAILABLE)?;
     let mut body = json!({ "claimId": lease.claim_id });
+    // The device key cannot be rotated between signing the proof and the
+    // server checking it.
+    let key_use = crate::cloud_session::device_key_rotation::DEVICE_KEY_USE
+        .read()
+        .await;
     if let Some(challenge) = request_challenge(&client, &base_url, &session.token, lease).await? {
         body["deviceProof"] = device_proof(&base_url, &session, lease, challenge).await?;
     }
@@ -229,6 +234,7 @@ pub(super) async fn resolve_for_turn(
         .send()
         .await
         .map_err(|_| UNAVAILABLE)?;
+    drop(key_use);
     if !response.status().is_success() {
         let body = read_limited(response, MAX_CHALLENGE_BYTES)
             .await

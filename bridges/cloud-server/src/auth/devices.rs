@@ -119,20 +119,30 @@ pub fn normalize_device_metadata(value: DeviceMetadataUpdateRequest) -> Normaliz
     }
 }
 
-pub fn normalize_device_registration(
-    value: DeviceRegistrationRequest,
-) -> Result<NormalizedDeviceRegistration, DeviceInputError> {
-    let key_algorithm = value.key_algorithm.trim().to_ascii_lowercase();
-    if key_algorithm != "p256" {
+/// A registrable installation public key: a P-256 key in the encodings
+/// [`parse_p256_public_key`] accepts, trimmed.
+pub fn normalize_p256_public_key(
+    public_key: &str,
+    key_algorithm: &str,
+) -> Result<String, DeviceInputError> {
+    if !key_algorithm.trim().eq_ignore_ascii_case("p256") {
         return Err(DeviceInputError::UnsupportedKeyAlgorithm);
     }
-    let public_key = value.public_key.trim();
+    let public_key = public_key.trim();
     if public_key.is_empty()
         || public_key.len() > MAX_PUBLIC_KEY_CHARS
         || parse_p256_public_key(public_key).is_none()
     {
         return Err(DeviceInputError::InvalidPublicKey);
     }
+    Ok(public_key.to_string())
+}
+
+pub fn normalize_device_registration(
+    value: DeviceRegistrationRequest,
+) -> Result<NormalizedDeviceRegistration, DeviceInputError> {
+    let public_key = normalize_p256_public_key(&value.public_key, &value.key_algorithm)?;
+    let key_algorithm = "p256".to_string();
 
     Ok(NormalizedDeviceRegistration {
         display_name: clean_optional(value.display_name.as_deref(), MAX_DEVICE_NAME_CHARS),
@@ -144,7 +154,7 @@ pub fn normalize_device_registration(
             value.approximate_location.as_deref(),
             MAX_LOCATION_CHARS,
         ),
-        public_key: public_key.to_string(),
+        public_key,
         key_algorithm,
     })
 }

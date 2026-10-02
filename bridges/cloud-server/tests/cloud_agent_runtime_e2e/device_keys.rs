@@ -10,7 +10,7 @@ pub(super) fn random_device_key() -> SigningKey {
 }
 
 /// The base64url DER SubjectPublicKeyInfo the desktop registers.
-fn spki(key: &SigningKey) -> String {
+pub(super) fn spki(key: &SigningKey) -> String {
     let der = key.verifying_key().to_public_key_der().unwrap();
     URL_SAFE_NO_PAD.encode(der.as_bytes())
 }

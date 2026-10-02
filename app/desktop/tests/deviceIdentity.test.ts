@@ -56,6 +56,21 @@ test('the desktop registers the native public key and never handles the private 
   });
 });
 
+test('each registration reads the current native key', async () => {
+  const commands: string[] = [];
+  let identity = { publicKeySpki: 'native-public-key', keyAlgorithm: 'p256' };
+  await withNativeShell(async (command) => nativeShell(identity, commands)(command), async () => {
+    assert.equal((await installationDeviceRegistration()).publicKey, 'native-public-key');
+    // The native runtime replaced the key while the page stayed open.
+    identity = { publicKeySpki: 'rotated-public-key', keyAlgorithm: 'p256' };
+    const registration = await installationDeviceRegistration();
+    assert.equal(registration.publicKey, 'rotated-public-key');
+    assert.equal(registration.appVersion, '1.2.3');
+    assert.equal(commands.filter((command) => command === 'cloud_device_identity_public').length, 2);
+    assert.equal(commands.filter((command) => command === 'cloud_device_system_metadata').length, 1);
+  });
+});
+
 test('an unusable native identity fails registration instead of creating a webview key', async () => {
   for (const identity of [null, { publicKeySpki: '', keyAlgorithm: 'p256' }, { publicKeySpki: 'key', keyAlgorithm: 'rsa' }]) {
     const commands: string[] = [];

@@ -62,6 +62,7 @@ mod contact_acceptance;
 mod contact_handlers;
 mod contact_request_handlers;
 mod device_handlers;
+mod device_key_rotation;
 mod device_operation_support;
 mod device_query_handlers;
 mod device_types;
@@ -84,6 +85,7 @@ use contact_acceptance::*;
 use contact_handlers::*;
 use contact_request_handlers::*;
 use device_handlers::*;
+use device_key_rotation::{device_key_rotation_challenge, rotate_current_device_key};
 use device_query_handlers::*;
 use device_types::*;
 use expressive_media::*;
@@ -157,6 +159,14 @@ pub fn routes_with_shared_rate_limiter(
         .route(
             "/v1/cloud/auth/devices/current",
             put(update_current_device_metadata),
+        )
+        .route(
+            "/v1/cloud/auth/devices/current/key-rotation/challenge",
+            post(device_key_rotation_challenge),
+        )
+        .route(
+            "/v1/cloud/auth/devices/current/key-rotation",
+            post(rotate_current_device_key),
         )
         .route(
             "/v1/cloud/auth/devices/revoke-others",

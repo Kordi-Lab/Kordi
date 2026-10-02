@@ -171,4 +171,5 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(version: 114, "desktop device proofs", "0114_desktop_device_proofs.sql"),
     migration!(version: 117, "account email verification", "0117_account_email_verification.sql"),
     migration!(version: 118, "OMP state replay flag", "0118_omp_state_replayable.sql"),
+    migration!(version: 119, "device key rotation", "0119_device_key_rotation.sql"),
 ];

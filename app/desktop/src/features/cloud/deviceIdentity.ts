@@ -27,9 +27,11 @@ type NativePublicIdentity = {
   keyAlgorithm: string;
 };
 
+type DeviceMetadataRegistration = Omit<CloudDeviceRegistration, 'publicKey' | 'keyAlgorithm'>;
+
 // Browser previews have no native key store; they keep a per-page identity.
 let memoryIdentity: StoredDeviceIdentity | null = null;
-let identityPromise: Promise<CloudDeviceRegistration> | null = null;
+let metadataPromise: Promise<DeviceMetadataRegistration> | null = null;
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined'
@@ -192,26 +194,26 @@ async function desktopAppVersion(): Promise<string> {
   }
 }
 
-async function resolveDeviceRegistration(): Promise<CloudDeviceRegistration> {
-  const publicKey = await installationPublicKey();
+async function resolveDeviceMetadata(): Promise<DeviceMetadataRegistration> {
   const metadata = await desktopMetadata();
-  return {
-    ...metadata,
-    appVersion: await desktopAppVersion(),
-    publicKey,
-    keyAlgorithm: 'p256',
-  };
+  return { ...metadata, appVersion: await desktopAppVersion() };
 }
 
-export function installationDeviceRegistration(): Promise<CloudDeviceRegistration> {
-  identityPromise ??= resolveDeviceRegistration().catch((error) => {
-    identityPromise = null;
+/**
+ * The registration that sign-in sends. The public key is read each time,
+ * because the native runtime can replace the installation key while the
+ * page stays open; the device details are read once.
+ */
+export async function installationDeviceRegistration(): Promise<CloudDeviceRegistration> {
+  const publicKey = await installationPublicKey();
+  metadataPromise ??= resolveDeviceMetadata().catch((error) => {
+    metadataPromise = null;
     throw error;
   });
-  return identityPromise;
+  return { ...(await metadataPromise), publicKey, keyAlgorithm: 'p256' };
 }
 
 export function __resetDeviceIdentityForTests(): void {
   memoryIdentity = null;
-  identityPromise = null;
+  metadataPromise = null;
 }
