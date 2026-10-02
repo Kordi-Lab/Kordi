@@ -12,5 +12,6 @@ Use the semantic tokens in `src/styles/theme-palette.css`. Existing shell, chat,
 - Menus and dialogs: nearly opaque tinted glass, readable text, and a shared selected state. Portaled surfaces receive their tokens on the body and explicit appearance markers.
 - Accessibility: checked text pairs exceed 4.5:1 contrast. Reduced transparency and increased contrast use opaque surfaces.
 - Layout: the sidebar column equals the navigation rail plus session panel width; no unused strip belongs between the list and chat.
+- Projects: the section label and chevron fold the project list directly. Preserve individual folder expansion states, Pinned, and Recents; keep project creation beside the label.
 
 Keep status colors, such as errors and availability, meaningful and separate from the theme accent.

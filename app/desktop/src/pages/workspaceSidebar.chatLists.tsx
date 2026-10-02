@@ -112,13 +112,6 @@ export function WorkspaceChatLists({
               expanded={!collapsed.has(descriptor.spaceId)}
               onToggle={() => toggle(descriptor.spaceId)}
               onCreateProject={projects?.enabled ? projects.openImporter : undefined}
-              onSetProjectsExpanded={(expanded) => setCollapsed((current) => {
-                const next = new Set(current);
-                for (const id of grouped.groups.keys()) {
-                  if (expanded) next.delete(id); else next.add(id);
-                }
-                return next;
-              })}
             />
           ) : descriptor.key.startsWith('project-more:') ? (
             <button type="button" className="chat-project-show-more"
