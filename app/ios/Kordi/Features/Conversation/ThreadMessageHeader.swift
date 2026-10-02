@@ -7,7 +7,7 @@ struct ThreadMessageHeader: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) { author; timestamp }
+            HStack(alignment: .firstTextBaseline, spacing: 6) { author; timestamp }
             VStack(alignment: .leading, spacing: 2) { author; timestamp }
         }
         .accessibilityElement(children: .combine)
@@ -15,7 +15,7 @@ struct ThreadMessageHeader: View {
 
     private var author: some View {
         HStack(spacing: 5) {
-            Text(authorName).font(.subheadline.weight(.semibold))
+            Text(authorName).font(.footnote.weight(.semibold))
             if KordiPipIdentity.matches(name: authorName, seed: avatarSeed) {
                 Text(KordiPipIdentity.tag).font(.caption2.weight(.medium)).foregroundStyle(.secondary)
             }

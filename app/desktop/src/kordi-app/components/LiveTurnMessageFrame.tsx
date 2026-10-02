@@ -29,7 +29,7 @@ export function LiveTurnMessageFrame({ turn, sender, showSourceQuote, onNavigate
     <div id={id} data-transcript-message-root="true" className="app-thread-message-row app-thread-turn flex w-full flex-col">
       {showSourceQuote && turn.sourceMessage ? <SourceMessageQuoteRow sourceMessage={turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
       <div className="app-thread-message-main flex">
-        <IdentityAvatar kind="agent" seed={agentAvatarSeed} name={sender} className="h-8 w-8 shrink-0" />
+        <IdentityAvatar kind="agent" seed={agentAvatarSeed} name={sender} className="h-7 w-7 shrink-0" />
         <div className="app-message-hover-time-trigger min-w-0 flex-1">
           <ThreadMessageHeader name={sender} msg={{ role: 'owned-agent', text: '', time, timestampMs }} />
           {children}

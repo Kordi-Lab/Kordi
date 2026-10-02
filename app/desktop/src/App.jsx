@@ -3,6 +3,7 @@ import KordiApp from './KordiApp.tsx'
 import AuthPopup from './AuthPopup.tsx'
 import AttachmentMediaWindow from './AttachmentMediaWindow.tsx'
 import CallWindow from './CallWindow.tsx'
+import { useInterfaceZoom } from './app/interfaceZoom'
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false
@@ -11,6 +12,7 @@ function isNativeDesktopShell() {
 
 function App() {
   const isNativeShell = isNativeDesktopShell()
+  useInterfaceZoom(isNativeShell)
 
   useEffect(() => {
     document.documentElement.classList.toggle('kordi-native-shell', isNativeShell)

@@ -11,8 +11,8 @@
 .kordi-app .app-thread-message-row {
   align-items: stretch;
   max-width: 100%;
-  gap: 3px;
-  padding-block: 5px;
+  gap: 2px;
+  padding-block: 2px;
 }
 .kordi-app .app-thread-message-main {
   width: 100%;
@@ -44,7 +44,7 @@
   color: var(--utility-foreground);
   align-items: flex-start;
 }
-.app-thread-message-header { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 2px; line-height: 20px; }
+.app-thread-message-header { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 0; line-height: 18px; }
 .app-thread-message-author { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 600; }
 .app-thread-message-time { flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--utility-muted-text); }
 .kordi-app .app-thread-message-row .app-message-hover-time { display: none; }
@@ -55,19 +55,19 @@
   margin: 0;
   justify-content: flex-start;
   padding-right: 0;
-  padding-left: 40px;
+  padding-left: 36px;
 }
 .kordi-app .app-thread-turn > .app-thread-message-main > .app-message-hover-time-trigger { flex: 1; width: 100%; max-width: 100%; }
-.kordi-app .app-thread-turn > div:last-child:not(.app-thread-message-main):not(.app-thread-quote-row) { padding-left: 40px; }
+.kordi-app .app-thread-turn > div:last-child:not(.app-thread-message-main):not(.app-thread-quote-row) { padding-left: 36px; }
 
-.kordi-app .app-thread-quote-row { position: relative; padding-left: 40px; }
+.kordi-app .app-thread-quote-row { position: relative; padding-left: 36px; }
 .app-thread-quote-row::before {
   content: "";
   position: absolute;
-  left: 15px;
-  top: 13px;
-  width: 19px;
-  height: 19px;
+  left: 13px;
+  top: 11px;
+  width: 17px;
+  height: 17px;
   border-top: 1.5px solid var(--utility-muted-text);
   border-left: 1.5px solid var(--utility-muted-text);
   border-top-left-radius: 6px;
@@ -79,7 +79,7 @@
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  min-height: 26px;
+  min-height: 22px;
   padding: 0;
   border: 0;
   color: var(--utility-muted-text);
@@ -97,3 +97,6 @@
 .kordi-app .app-thread-turn .app-live-turn-card,
 .kordi-app .app-thread-turn .app-live-turn-response-panel { max-width: 100%; }
 .kordi-app .app-thread-turn .app-live-assistant-answer-surface { padding: 0; border-radius: 0; background: transparent; }
+.kordi-app .app-thread-message-row :where(p, li, blockquote, td, th) { font-size: 13px; line-height: 1.4; }
+.kordi-app .app-thread-message-row [data-kordi-copy-surface="message"] > :not(:first-child),
+.kordi-app .app-thread-turn .app-live-assistant-answer-markdown > :not(:first-child) { margin-top: 6px; }
