@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import type { ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { formatDesktopDate } from '@/lib/time';
 
@@ -21,42 +21,7 @@ function groupCreatedLabel(space: ParticipantSpaceViewModel) {
 }
 
 function GroupProfileAvatar({ space }: { space: ParticipantSpaceViewModel }) {
-  const avatars = space.avatarStack.length > 0
-    ? space.avatarStack.slice(0, 3)
-    : [{ kind: 'human' as const, seed: space.id, imageUrl: null }];
-  if (avatars.length === 1) {
-    const avatar = avatars[0];
-    return (
-      <IdentityAvatar
-        kind={avatar.kind}
-        seed={avatar.seed}
-        isSelf={avatar.isSelf}
-        name={space.title}
-        imageUrl={avatar.imageUrl ?? undefined}
-        className="h-16 w-16 border border-white/10"
-      />
-    );
-  }
-  return (
-    <div className="flex h-16 w-[5.5rem] items-center justify-center -space-x-6" aria-hidden="true">
-      {avatars.map((avatar, index) => (
-        <span
-          key={`${avatar.seed}-${index}`}
-          className="relative inline-flex rounded-full"
-          style={{ zIndex: avatars.length - index }}
-        >
-          <IdentityAvatar
-            kind={avatar.kind}
-            seed={avatar.seed}
-            isSelf={avatar.isSelf}
-            name={space.title}
-            imageUrl={avatar.imageUrl ?? undefined}
-            className="h-12 w-12 border-2 border-[color:var(--app-transient-surface-fallback)]"
-          />
-        </span>
-      ))}
-    </div>
-  );
+  return <GroupAvatar avatars={space.avatarStack} imageUrl={space.groupAvatar?.imageUrl} name={space.title} className="h-16 w-16" />;
 }
 
 function GroupProfileAction({

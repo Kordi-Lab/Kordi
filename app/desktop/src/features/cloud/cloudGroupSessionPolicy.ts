@@ -46,6 +46,7 @@ export function cloudGroupSessionPreparationSignature(
     groupId: envelope.groupId.trim(),
     groupSpaceId: envelope.groupSpaceId?.trim() || envelope.groupId.trim(),
     groupTitle: envelope.groupTitle?.trim() || null,
+    groupAvatar: envelope.groupAvatar ?? null,
     createdByAccountId: envelope.createdByAccountId.trim(),
     participants,
     sessionTitle: envelope.sessionTitle ?? null,

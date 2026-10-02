@@ -4100,7 +4100,7 @@ private struct EmptyConversation: View {
             if conversation.kind == .group {
                 GroupAvatarStack(
                     participants: conversation.groupParticipants,
-                    size: 68
+                    size: 68, imageSource: conversation.avatarSource
                 )
             } else {
                 IdentityAvatar(

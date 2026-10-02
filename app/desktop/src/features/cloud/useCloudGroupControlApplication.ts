@@ -286,6 +286,7 @@ export function useCloudGroupControlApplication({
       deferPublish?: boolean;
       historyReplay?: boolean;
       catalogGroupTitle?: string | null;
+      catalogGroupAvatar?: CloudGroupControlEnvelope['groupAvatar'];
     } = {},
   ) => {
     const currentAccountId = account?.accountId ?? null;
@@ -302,6 +303,7 @@ export function useCloudGroupControlApplication({
       envelope,
       historyReplay: options.historyReplay,
       catalogGroupTitle: options.catalogGroupTitle,
+      catalogGroupAvatar: options.catalogGroupAvatar,
       runtime: {
         account,
         client,

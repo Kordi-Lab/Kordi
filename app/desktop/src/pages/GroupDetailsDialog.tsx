@@ -1,3 +1,5 @@
+import { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
+export { filterGroupManagementMembers } from './groupManagementMembers';
 import {
   useCallback,
   useEffect,
@@ -30,6 +32,7 @@ import type {
   CloudGroupInvitationCreateInput,
   CloudGroupInvitationSummary,
 } from '@/features/cloud/authClient';
+import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
   adminIdentityIdsFromMetadata,
@@ -61,6 +64,7 @@ export type GroupDetailsDialogProps = {
   currentAccountId?: string | null;
   onClose: () => void;
   onRename: (sessionIds: string[], name: string) => Promise<void> | void;
+  onUpdateAvatar?: (sessionIds: string[], dataUrl: string | null) => Promise<void> | void;
   onAddMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
   onRemoveMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
   onSetAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
@@ -169,24 +173,6 @@ function hasDuplicateName(name: string, counts: Map<string, number>) {
   return (counts.get(name.trim().toLowerCase()) ?? 0) > 1;
 }
 
-function normalizedSearch(value: string) {
-  return value.trim().toLocaleLowerCase();
-}
-
-export function filterGroupManagementMembers(
-  members: ConversationParticipant[],
-  query: string,
-) {
-  const needle = normalizedSearch(query);
-  if (!needle) return members;
-  return members.filter((member) => [
-    member.name,
-    member.id,
-    member.humanId,
-    member.sourceIdentityId,
-  ].some((value) => value?.toLocaleLowerCase().includes(needle)));
-}
-
 function groupActionErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   if (typeof error === 'string' && error.trim()) return error.trim();
@@ -200,6 +186,7 @@ export function GroupDetailsDialog({
   currentAccountId,
   onClose,
   onRename,
+  onUpdateAvatar,
   onAddMembers,
   onRemoveMember,
   onSetAdmin,
@@ -514,6 +501,7 @@ export function GroupDetailsDialog({
               </div>
             ) : null}
 
+            {onUpdateAvatar ? <GroupAvatarEditor avatars={space.avatarStack} name={space.title} imageUrl={space.groupAvatar?.imageUrl} disabled={!canManageGroup || Boolean(pendingAction)} onUpload={(dataUrl) => onUpdateAvatar(groupMembershipSessionIds, dataUrl)} onRemove={() => onUpdateAvatar(groupMembershipSessionIds, null)} /> : null}
             <section aria-label="Group members">
               <label htmlFor={memberSearchId} className="sr-only">Search group members</label>
               <div className="app-group-management-search relative mb-3">

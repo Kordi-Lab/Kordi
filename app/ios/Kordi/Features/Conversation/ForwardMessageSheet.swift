@@ -314,7 +314,7 @@ private struct ForwardDestinationRow: View {
     @ViewBuilder private var avatar: some View {
         let conversation = destination.conversation
         if conversation.kind == .group {
-            GroupAvatarStack(participants: conversation.groupParticipants, size: 34)
+            GroupAvatarStack(participants: conversation.groupParticipants, size: 34, imageSource: conversation.avatarSource)
         } else {
             IdentityAvatar(name: conversation.agentDisplayName?.nonEmpty ?? conversation.displayName,
                 imageSource: conversation.avatarSource, kind: conversation.kind, size: 34,

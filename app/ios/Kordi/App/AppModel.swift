@@ -4124,6 +4124,27 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func updateGroupAvatar(_ space: GroupSpaceSummary, dataURL: String?) async -> Bool {
+        guard let account, space.canManage(accountId: account.accountId) else { errorMessage = "Only a group admin can change this image."; return false }
+        if previewMode {
+            let ids = Set(space.membershipSessions.map(\.sessionId))
+            conversations = conversations.map { var value = $0; if ids.contains(value.sessionId) { value.avatarSource = dataURL }; return value }
+            return true
+        }
+        guard let token else { return false }
+        do {
+            let image: String?
+            if let dataURL { image = try await api.uploadAvatarAsset(token: token, entityType: "human", entityId: account.accountId, dataURL: dataURL) } else { image = nil }
+            let avatar = CloudGroupAvatar(imageUrl: image, updatedAtMs: Date().timeIntervalSince1970 * 1_000)
+            guard let conversation = space.membershipSessions.first(where: { $0.canManageGroup(accountId: account.accountId) }) else { return false }
+            let participants = groupParticipantsIncludingSelf(conversation, account: account)
+            try await sendGroupControl(kind: "group-avatar-update", conversation: conversation, participants: participants,
+                groupTitle: space.displayName, groupAvatar: avatar, targetAccountIds: Set(participants.map(\.accountId)).subtracting([account.accountId]), token: token, account: account)
+            await rebuildConversationCatalog()
+            return true
+        } catch { errorMessage = userFacing(error, fallback: "Could not update the group image."); return false }
+    }
+
     func renameGroupSpace(_ space: GroupSpaceSummary, to title: String) async -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
@@ -4286,7 +4307,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func createGroup(with selectedContacts: [CloudContact], title: String?) async -> ConversationSummary? {
+    func createGroup(with selectedContacts: [CloudContact], title: String?, avatarDataURL: String? = nil) async -> ConversationSummary? {
         guard let token, let account else { return nil }
 
         var contactsByAccountID: [String: CloudContact] = [:]
@@ -4301,6 +4322,14 @@ final class AppModel: ObservableObject {
             return nil
         }
 
+        let image: String?
+        do {
+            if let avatarDataURL {
+                image = try await api.uploadAvatarAsset(token: token, entityType: "human", entityId: account.accountId, dataURL: avatarDataURL)
+            } else { image = nil }
+        }
+        catch { errorMessage = userFacing(error, fallback: "Could not upload the group image."); return nil }
+        let avatar = image.map { CloudGroupAvatar(imageUrl: $0, updatedAtMs: Date().timeIntervalSince1970 * 1_000) }
         let sessionID = "session:group:\(UUID().uuidString.lowercased())"
         let enteredTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         let groupTitle = enteredTitle ?? contacts.map(\.preferredName).joined(separator: ", ")
@@ -4335,7 +4364,7 @@ final class AppModel: ObservableObject {
             lastMessage: "Group conversation",
             lastActivityAt: Date(),
             unreadCount: 0,
-            avatarSource: nil,
+            avatarSource: image,
             agentActivity: nil,
             sessionId: sessionID,
             groupSpaceId: sessionID,
@@ -4349,6 +4378,7 @@ final class AppModel: ObservableObject {
                 conversation: provisional,
                 participants: participants,
                 groupTitle: groupTitle,
+                groupAvatar: avatar,
                 targetAccountIds: Set(contacts.map(\.accountId)),
                 token: token,
                 account: account
@@ -5890,55 +5920,12 @@ final class AppModel: ObservableObject {
         return [sent]
     }
 
-    private func groupParticipantsIncludingSelf(
-        _ conversation: ConversationSummary,
-        account: CloudAccount
-    ) -> [CloudGroupParticipant] {
-        hydratedGroupParticipants(conversation, account: account)
-    }
-
-    private func hydratedGroupParticipants(
-        _ conversation: ConversationSummary,
-        account: CloudAccount
-    ) -> [CloudGroupParticipant] {
-        var byAccountID = Dictionary(uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0) })
-        for contact in contacts {
-            guard let participant = byAccountID[contact.accountId] else { continue }
-            byAccountID[contact.accountId] = CloudGroupParticipant(
-                accountId: participant.accountId,
-                displayName: contact.preferredName,
-                avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
-                agentId: contact.defaultAgent?.agentId ?? participant.agentId,
-                agentDisplayName: contact.defaultAgent?.displayName ?? participant.agentDisplayName,
-                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource ?? participant.agentAvatarUrl,
-                role: participant.role,
-                joinedAt: participant.joinedAt
-            )
-        }
-        byAccountID[account.accountId] = CloudGroupParticipant(
-            accountId: account.accountId,
-            displayName: account.preferredName,
-            avatarUrl: account.avatar.imageSource,
-            agentId: account.defaultAgent?.agentId,
-            agentDisplayName: account.defaultAgent?.displayName,
-            agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
-            role: byAccountID[account.accountId]?.role.nonEmpty ?? "self",
-            joinedAt: byAccountID[account.accountId]?.joinedAt
-        )
-        return byAccountID.values.sorted(by: CloudGroupParticipant.canonicalPrecedes)
-    }
-
-    nonisolated static func groupControlTitle(kind: String, displayTitle: String, sharedTitle: String?) -> String? {
-        // Only an explicit channel rename may publish the displayed title.
-        // Historical member-private labels must never become shared channel names.
-        kind == "session-title-update" ? displayTitle.nonEmpty : sharedTitle.nonEmpty
-    }
-
     private func sendGroupControl(
         kind: String,
         conversation: ConversationSummary,
         participants: [CloudGroupParticipant],
         groupTitle: String?,
+        groupAvatar: CloudGroupAvatar? = nil,
         targetAccountIds: Set<String>,
         token: String,
         account: CloudAccount,
@@ -5957,6 +5944,7 @@ final class AppModel: ObservableObject {
             groupId: conversation.sessionId,
             groupSpaceId: conversation.groupSpaceId ?? conversation.sessionId,
             groupTitle: groupTitle,
+            groupAvatar: groupAvatar,
             createdByAccountId: account.accountId,
             actor: actor,
             participants: participants,
@@ -5978,7 +5966,7 @@ final class AppModel: ObservableObject {
         guard let recipient = targetAccountIds
             .filter({ !$0.isEmpty && $0 != account.accountId })
             .sorted()
-            .first else { return }
+            .first ?? (kind == "group-avatar-update" ? account.accountId : nil) else { return }
         let sent = try await api.sendMessage(
             token: token,
             peerAccountId: recipient,

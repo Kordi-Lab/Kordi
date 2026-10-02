@@ -43,6 +43,7 @@ struct NewChatView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var groupName = ""
+    @State private var groupAvatarDataURL: String?
     @State private var selectedGroupContactIDs = Set<String>()
     @State private var isCreatingGroup = false
     @State private var showsProviderAuthentication = false
@@ -174,6 +175,10 @@ struct NewChatView: View {
 
     private var groupPage: some View {
         List {
+            Section("Group image") {
+                GroupAvatarPicker(participants: selectedGroupParticipants, imageSource: groupAvatarDataURL,
+                                  disabled: isCreatingGroup) { groupAvatarDataURL = $0 }
+            }
             Section("Group name") {
                 TextField("Optional", text: $groupName)
                     .textInputAutocapitalization(.words)
@@ -251,13 +256,20 @@ struct NewChatView: View {
         }
     }
 
+    private var selectedGroupParticipants: [CloudGroupParticipant] {
+        model.contacts.filter { selectedGroupContactIDs.contains($0.accountId) }.map {
+            CloudGroupParticipant(accountId: $0.accountId, displayName: $0.preferredName,
+                                  avatarUrl: $0.avatarUrl, role: "person")
+        }
+    }
+
     private func createGroup() {
         guard !isCreatingGroup else { return }
         let selected = model.contacts.filter { selectedGroupContactIDs.contains($0.accountId) }
         guard selected.count >= 2 else { return }
         isCreatingGroup = true
         Task {
-            if let conversation = await model.createGroup(with: selected, title: groupName) {
+            if let conversation = await model.createGroup(with: selected, title: groupName, avatarDataURL: groupAvatarDataURL) {
                 select(conversation)
             }
             isCreatingGroup = false

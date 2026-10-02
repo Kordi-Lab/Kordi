@@ -619,7 +619,7 @@ actor CloudAPIClient {
         )
     }
 
-    private func uploadAvatarAsset(
+    func uploadAvatarAsset(
         token: String,
         entityType: String,
         entityId: String,

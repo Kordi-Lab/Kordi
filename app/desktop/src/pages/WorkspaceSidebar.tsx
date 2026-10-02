@@ -106,6 +106,7 @@ export function WorkspaceSidebar({
     addContactPlaceholder,
     onCreateChatSessionInParticipantSpace,
     onRenameChatGroup,
+    onUpdateChatGroupAvatar,
     onRenameChatSession,
     onAddChatGroupMembers,
     onRemoveChatGroupMember,
@@ -426,6 +427,7 @@ export function WorkspaceSidebar({
           setGroupDetailsAnchor(null);
         }}
         onRename={onRenameChatGroup}
+        onUpdateAvatar={onUpdateChatGroupAvatar}
         onAddMembers={onAddChatGroupMembers}
         onRemoveMember={onRemoveChatGroupMember}
         onSetAdmin={onSetChatGroupAdmin}
