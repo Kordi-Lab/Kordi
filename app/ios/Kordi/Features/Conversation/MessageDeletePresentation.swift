@@ -16,6 +16,9 @@ struct MessageDeletePresentation: Equatable {
     let footnote: String?
 
     static let removeFromViewHelper = "Hides it on your devices. Others in the chat still see it."
+    /// Status text after a message or a photo could not be deleted.
+    static let deleteFailedText = "Could not delete the message. Try again."
+    static let photoDeleteFailedText = "Could not delete the photo. Try again."
     static let footnoteText = "People who already saw it may have saved a copy or taken a screenshot. "
         + "If an agent already read it, the agent's reply and what it received stay."
 

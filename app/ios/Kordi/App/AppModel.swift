@@ -2587,7 +2587,7 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             guard self.token == token, account?.accountId == accountID else { return false }
-            errorMessage = userFacing(error, fallback: "Could not delete this photo.")
+            errorMessage = userFacing(error, fallback: MessageDeletePresentation.photoDeleteFailedText)
             return false
         }
     }
@@ -2675,7 +2675,7 @@ final class AppModel: ObservableObject {
             } catch {
                 guard self.token == token, account?.accountId == deletingAccountID,
                       !CloudTransportErrorPolicy.isCancellation(error) else { return false }
-                errorMessage = userFacing(error, fallback: "Could not delete the message. Try again.")
+                errorMessage = userFacing(error, fallback: MessageDeletePresentation.deleteFailedText)
                 return false
             }
         }

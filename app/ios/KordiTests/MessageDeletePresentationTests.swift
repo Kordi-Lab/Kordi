@@ -100,7 +100,16 @@ final class MessageDeletePresentationTests: XCTestCase {
         XCTAssertTrue(conversation.contains("serverDeletesStoredCopies: model.serverContentRemovalVersion >= 1"))
         XCTAssertTrue(conversation.contains("isGroup: conversation.kind == .group, peerName: conversation.displayName"))
         let model = try String(contentsOf: root.appendingPathComponent("Kordi/App/AppModel.swift"), encoding: .utf8)
-        XCTAssertTrue(model.contains("fallback: \"Could not delete the message. Try again.\""))
+        XCTAssertTrue(model.contains("fallback: MessageDeletePresentation.deleteFailedText"))
+        XCTAssertTrue(model.contains("fallback: MessageDeletePresentation.photoDeleteFailedText"))
+        XCTAssertTrue(conversation.contains("model.errorMessage ?? MessageDeletePresentation.deleteFailedText"))
+        XCTAssertFalse(model.contains("Could not delete this photo."))
+        XCTAssertFalse(conversation.contains("Could not delete this message."))
+    }
+
+    func testDeleteFailuresUseTheRetryWording() {
+        XCTAssertEqual(MessageDeletePresentation.deleteFailedText, "Could not delete the message. Try again.")
+        XCTAssertEqual(MessageDeletePresentation.photoDeleteFailedText, "Could not delete the photo. Try again.")
     }
 
     func testFailedSendKeepsTheRemoveFailedMessageChoice() {

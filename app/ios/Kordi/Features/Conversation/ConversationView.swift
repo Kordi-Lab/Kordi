@@ -2122,7 +2122,7 @@ struct ConversationView: View {
             } else {
                 deleteCaptureFrames.cancelPendingCapture()
                 pendingMessageDeletion = nil
-                messageMutationError = model.errorMessage ?? "Could not delete this message."
+                messageMutationError = model.errorMessage ?? MessageDeletePresentation.deleteFailedText
             }
         }
     }
