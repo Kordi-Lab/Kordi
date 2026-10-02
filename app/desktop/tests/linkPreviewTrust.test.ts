@@ -11,6 +11,12 @@ import {
 import { nextServerContactRows } from '../src/features/cloud/cloudContactsSnapshot';
 import { trustedLinkPreviewHumanIds } from '../src/features/privacy/linkPreviewPolicy';
 
+const SELF = 'acct_self';
+
+function serverRows(previous: readonly CloudContactSummary[], refreshed: readonly CloudContactSummary[]) {
+  return nextServerContactRows(previous, refreshed, SELF, SELF);
+}
+
 function row(accountId: string, overrides: Partial<CloudContactSummary> = {}): CloudContactSummary {
   return {
     accountId,
@@ -23,22 +29,22 @@ function row(accountId: string, overrides: Partial<CloudContactSummary> = {}): C
 }
 
 test('server contact rows are replaced on refresh, keep identity when unchanged, and drop removed rows', () => {
-  const first = nextServerContactRows([], [row('acct_a'), row('acct_b')]);
+  const first = serverRows([], [row('acct_a'), row('acct_b')]);
   assert.deepEqual(first.map((item) => item.accountId), ['acct_a', 'acct_b']);
 
-  const same = nextServerContactRows(first, structuredClone([...first]));
+  const same = serverRows(first, structuredClone([...first]));
   assert.equal(same, first, 'an equal response keeps the previous array so trust does not recompute');
 
-  const dropped = nextServerContactRows(first, [row('acct_b')]);
+  const dropped = serverRows(first, [row('acct_b')]);
   assert.deepEqual(dropped.map((item) => item.accountId), ['acct_b']);
   assert.notEqual(dropped, first);
 });
 
 test('a contact hint from another account never grants link preview trust', () => {
-  const self = 'acct_self';
-  const serverRows = [row('acct_friend')];
+  const self = SELF;
+  const responseRows = [row('acct_friend')];
   let display = { contacts: [row('acct_friend')], requests: [] };
-  let serverContacts = nextServerContactRows([], serverRows);
+  let serverContacts = serverRows([], responseRows);
 
   // Any account can send a contact.added event naming the viewer as the peer.
   const hintedId = cloudContactAddedActorAccountId(
@@ -49,11 +55,11 @@ test('a contact hint from another account never grants link preview trust', () =
   display = mergeCloudContactSummarySnapshot(display, row('acct_stranger'));
 
   // The refresh that follows the hint returns only the viewer's own rows.
-  display = applyCloudContactsRefreshSnapshot(display, { contacts: serverRows, requests: [] }, {
+  display = applyCloudContactsRefreshSnapshot(display, { contacts: responseRows, requests: [] }, {
     startedMutationRevision: 2,
     currentMutationRevision: 2,
   });
-  serverContacts = nextServerContactRows(serverContacts, serverRows);
+  serverContacts = serverRows(serverContacts, responseRows);
 
   assert.ok(
     display.contacts.some((contact) => contact.accountId === 'acct_stranger'),
@@ -64,13 +70,32 @@ test('a contact hint from another account never grants link preview trust', () =
 });
 
 test('a contact the server stops returning loses link preview trust on the next refresh', () => {
-  const before = nextServerContactRows([], [row('acct_friend'), row('acct_other')]);
+  const before = serverRows([], [row('acct_friend'), row('acct_other')]);
   assert.ok(trustedLinkPreviewHumanIds({ selfAccountId: 'acct_self', serverContacts: before }).has('acct_friend'));
 
-  const after = nextServerContactRows(before, [row('acct_other')]);
+  const after = serverRows(before, [row('acct_other')]);
   const trusted = trustedLinkPreviewHumanIds({ selfAccountId: 'acct_self', serverContacts: after });
   assert.equal(trusted.has('acct_friend'), false);
   assert.equal(trusted.has('acct_other'), true);
+});
+
+test('a contacts response fetched with another account session never replaces the rows', () => {
+  const own = serverRows([], [row('acct_friend')]);
+  const otherAccountRows = [row('acct_other_contact')];
+
+  const switched = nextServerContactRows(own, otherAccountRows, SELF, 'acct_second');
+  assert.equal(switched, own);
+  assert.equal(
+    trustedLinkPreviewHumanIds({ selfAccountId: SELF, serverContacts: switched }).has('acct_other_contact'),
+    false,
+  );
+  assert.equal(nextServerContactRows([], otherAccountRows, SELF, null).length, 0, 'a missing session grants nothing');
+  assert.equal(nextServerContactRows([], otherAccountRows, ' ', ' ').length, 0, 'an empty store account grants nothing');
+  assert.deepEqual(
+    nextServerContactRows(own, otherAccountRows, SELF, ` ${SELF} `).map((item) => item.accountId),
+    ['acct_other_contact'],
+    'the same account replaces the rows',
+  );
 });
 
 test('the trust hook reads only the server contact rows of the contacts store', () => {

@@ -51,11 +51,18 @@ export function applyCloudContactsRefreshSnapshot(
  * takes realtime hints or optimistic updates, so rows another account adds
  * through an event, and rows the server no longer returns, never appear here.
  * Use it for privacy decisions such as link previews.
+ *
+ * A response fetched with another account's session (the signed-in account
+ * changed while the request was in flight) never replaces the rows.
  */
 export function nextServerContactRows(
   previous: readonly CloudContactSummary[],
   refreshed: readonly CloudContactSummary[],
+  storeAccountId: string,
+  sessionAccountId: string | null | undefined,
 ): readonly CloudContactSummary[] {
+  const expectedAccountId = storeAccountId.trim();
+  if (!expectedAccountId || sessionAccountId?.trim() !== expectedAccountId) return previous;
   return cloudContactSummaryArraysEqual(previous, refreshed) ? previous : [...refreshed];
 }
 

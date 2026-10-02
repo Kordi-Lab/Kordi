@@ -267,7 +267,7 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
         { contacts, requests },
         { startedMutationRevision, currentMutationRevision: store.mutationRevision },
       );
-      const serverContacts = nextServerContactRows(store.snapshot.serverContacts, contacts);
+      const serverContacts = nextServerContactRows(store.snapshot.serverContacts, contacts, store.accountId, session.accountId);
       publishCloudContactsStore(store, { ...next, serverContacts, loading: false, error: null, initialLoadSettled: true });
     } catch (err) {
       publishCloudContactsStore(store, {
