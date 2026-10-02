@@ -18,6 +18,7 @@ import {
   cloudGroupMentionInstruction,
 } from './cloudGroupMentions';
 import { cloudAgentId } from './cloudAgentIdentity';
+import { AI_ACCESS_NOTICE_MESSAGE_KIND } from '@/features/canonical/readModel/messageRole';
 import type {
   CloudGroupControlEnvelope,
   CloudGroupParticipant,
@@ -80,7 +81,9 @@ export function cloudGroupNativeContextMessages({
 }): DesktopChatContextMessage[] {
   const contextIds = cloudGroupAgentContextMessageIds(groupRows, groupId, requestMessageId, respondingAccountId);
   const history = compactCloudAgentNativeContextMessages(
-    groupRows.flatMap(({ envelope }) => {
+    groupRows.flatMap(({ envelope, wire }) => {
+      // An AI access notice is a conversation record, never agent context.
+      if (wire.messageKind === AI_ACCESS_NOTICE_MESSAGE_KIND) return [];
       if (
         envelope?.kind !== 'group-message'
         || envelope.groupId !== groupId

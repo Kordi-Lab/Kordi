@@ -78,6 +78,10 @@ async fn desktop_and_cloud_share_one_run_and_preserve_queue_during_takeover() {
     let two = read_json(two).await;
     assert_eq!(one["runId"], two["runId"]);
     assert_ne!(one["acquired"], two["acquired"]);
+    // Nothing filters an agent conversation, so the Mac keeps its local
+    // history and the claim builds no server context.
+    assert!(one.get("serverContext").is_none(), "{one}");
+    assert!(two.get("serverContext").is_none(), "{two}");
     let claim_a = if one["acquired"] == true {
         claim_one
     } else {

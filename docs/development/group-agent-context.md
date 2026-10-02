@@ -43,7 +43,7 @@ A member's private assistant reading a synced conversation without a run (`read-
 
 ### Desktop executor contract
 
-Desktop executors declare `contextContract` in `ready` and `claim`. Contract 2 executors receive `serverContext` with an acquired claim (the same bounded history the cloud prompt uses) and use it instead of their local cache. Executors that send no contract are legacy executors:
+Desktop executors declare `contextContract` in `ready` and `claim`. Contract 2 executors receive `serverContext` with an acquired claim wherever the conversation's settings filter the run's history: a mention-only group, or a member's opt-out that applies to the run (the requester's and the owner's own opt-outs never do). It is the same bounded history the cloud prompt uses, at most eight messages of up to 800 characters, and the executor uses it instead of its local cache. Where nothing is filtered (agent conversations, direct conversations and recent groups without such an opt-out), the claim carries no `serverContext` and the executor keeps its local history, which leaves AI access notices out. In a direct conversation, a run with an opt-out that applies therefore sees fewer earlier messages than one without. Executors that send no contract are legacy executors:
 
 | Claim | Legacy executor |
 | --- | --- |

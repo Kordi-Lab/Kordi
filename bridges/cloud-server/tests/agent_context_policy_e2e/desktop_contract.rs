@@ -36,9 +36,19 @@ async fn desktop_claim(
     request_id: &str,
     contract: Option<u8>,
 ) -> (StatusCode, Value) {
+    desktop_claim_in(group, &group.session, requester, request_id, contract).await
+}
+
+async fn desktop_claim_in(
+    group: &Group,
+    session: &str,
+    requester: &TestAccount,
+    request_id: &str,
+    contract: Option<u8>,
+) -> (StatusCode, Value) {
     let claim_id = Uuid::new_v4();
     let mut body = json!({"claimId": claim_id, "requestMessageId": request_id,
-        "sessionId": group.session, "ownerAccountId": group.owner.account_id,
+        "sessionId": session, "ownerAccountId": group.owner.account_id,
         "requesterAccountId": requester.account_id, "prompt": "@Kordi help",
         "idempotencyKey": format!("desktop:{claim_id}")});
     if let Some(contract) = contract {
@@ -222,4 +232,121 @@ async fn a_legacy_mac_does_not_delay_cloud_fallback_for_other_members() {
     let (status, body) = group.claim_cloud(&group.requester, &second).await;
     assert_eq!(status, StatusCode::CONFLICT, "{body}");
     assert_eq!(body["errorCode"], "owner_online");
+}
+
+/// The direct conversation the owner and the requester share as contacts.
+async fn direct_conversation(group: &Group) -> (String, Uuid) {
+    let mut pair = [
+        group.owner.account_id.clone(),
+        group.requester.account_id.clone(),
+    ];
+    pair.sort();
+    let session = format!("session:direct-person:{}:{}", pair[0], pair[1]);
+    let (conversation,): (Uuid,) =
+        query_as("SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id=$1")
+            .bind(&session)
+            .fetch_one(&group.pool)
+            .await
+            .unwrap();
+    (session, conversation)
+}
+
+async fn say_direct(group: &Group, conversation: Uuid, sender: &TestAccount, text: &str) -> String {
+    chat_store::send_message(
+        &group.pool,
+        &sender.account_id,
+        conversation,
+        SendMessageRequest {
+            client_message_id: Uuid::now_v7(),
+            kind: "text".to_string(),
+            content: json!({"schema": 1, "blocks": [{"type": "text", "text": text}]}),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        },
+    )
+    .await
+    .expect("store direct message")
+    .value
+    .id
+    .to_string()
+}
+
+#[tokio::test]
+async fn current_macs_keep_local_history_where_nothing_is_left_out() {
+    let Some(group) = Group::new("contract-unfiltered").await else {
+        return;
+    };
+    let tag = group.tag.clone();
+    ready_mac(&group, Some(2)).await;
+    // A group that lets agents read recent messages, with no opt-outs.
+    let (status, _) = group
+        .set_ai_access(&group.owner, json!({"history_scope": "recent"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    group
+        .say(&group.member, &format!("m-{tag}"), "Lunch at noon?")
+        .await;
+    let request_id = format!("q-{tag}");
+    group
+        .ask(&group.requester, &request_id, "summarize", None)
+        .await;
+    let (status, body) = desktop_claim(&group, &group.requester, &request_id, Some(2)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["acquired"], true);
+    assert!(body.get("serverContext").is_none(), "{body}");
+
+    // A direct conversation, where the contact asks the owner's agent.
+    let (direct, conversation) = direct_conversation(&group).await;
+    say_direct(
+        &group,
+        conversation,
+        &group.owner,
+        &format!("OWNER_NOTE_{tag}"),
+    )
+    .await;
+    say_direct(
+        &group,
+        conversation,
+        &group.requester,
+        &format!("PEER_NOTE_{tag}"),
+    )
+    .await;
+    let peer_request = say_direct(&group, conversation, &group.requester, "What did we say?").await;
+    let (status, body) =
+        desktop_claim_in(&group, &direct, &group.requester, &peer_request, Some(2)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["acquired"], true);
+    assert!(body.get("serverContext").is_none(), "{body}");
+
+    // Once the contact opts out, the owner's own request there is filtered.
+    let (status, body) = call(
+        &group.router,
+        request(
+            "PUT",
+            &format!(
+                "/v2/chat/conversations/{}/ai-access",
+                urlencoding_session(&direct)
+            ),
+            Some(&group.requester.token),
+            Some(json!({"client_operation_id": Uuid::new_v4(), "exclude_my_messages": true})),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let own_request = say_direct(&group, conversation, &group.owner, "Recap please").await;
+    let (status, body) =
+        desktop_claim_in(&group, &direct, &group.owner, &own_request, Some(2)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["acquired"], true);
+    let context = &body["serverContext"];
+    assert_eq!(context["historyScope"], "recent", "{body}");
+    let serialized = context.to_string();
+    assert!(
+        serialized.contains(&format!("OWNER_NOTE_{tag}")),
+        "{context}"
+    );
+    assert!(
+        !serialized.contains(&format!("PEER_NOTE_{tag}")),
+        "{context}"
+    );
 }

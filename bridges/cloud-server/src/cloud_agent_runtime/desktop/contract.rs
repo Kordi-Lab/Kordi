@@ -4,8 +4,10 @@
 //! local cache, so it cannot apply a conversation's AI access settings.
 //! Contract 2 executors use the history the server sends with the claim
 //! (`serverContext`), which the same context policy as the cloud runner
-//! builds. A legacy executor is refused wherever its local context could
-//! include messages the run may not use.
+//! builds. The server sends it wherever the conversation's AI access settings
+//! filter the run's history; elsewhere the executor keeps its local history.
+//! A legacy executor is refused wherever its local context could include
+//! messages the run may not use.
 
 use std::sync::OnceLock;
 
@@ -137,7 +139,17 @@ pub(super) async fn min_ready_contract(pool: &PgPool, run: &ClaimRunRequest) -> 
     })
 }
 
-/// Adds the server-built history to an acquired contract-2 claim.
+/// Whether a run's history needs the server's filter: a mention-only group,
+/// or a member's opt-out that applies to this run. Otherwise nothing is left
+/// out, and a current executor keeps its local history, which agent
+/// conversations need and which direct conversations keep longer than the
+/// server's eight-message preview.
+pub(super) fn sends_server_context(mentions_group: bool, excluded: bool) -> bool {
+    mentions_group || excluded
+}
+
+/// Adds the server-built history to an acquired contract-2 claim whose
+/// history the conversation's AI access settings filter.
 pub(super) async fn with_server_context(
     pool: &PgPool,
     run: &ClaimRunRequest,
@@ -147,13 +159,16 @@ pub(super) async fn with_server_context(
     if contract < DESKTOP_CONTEXT_CONTRACT || value["acquired"] != true {
         return Ok(value);
     }
-    let (mentions_group, _) = needs_filtered_context(
+    let (mentions_group, excluded) = needs_filtered_context(
         pool,
         &run.session_id,
         &run.owner_account_id,
         &run.requester_account_id,
     )
     .await?;
+    if !sends_server_context(mentions_group, excluded) {
+        return Ok(value);
+    }
     let messages = context_history_for_claim(pool, run).await?;
     value["serverContext"] = json!({
         "contract": DESKTOP_CONTEXT_CONTRACT,
@@ -197,6 +212,16 @@ mod tests {
         assert_eq!(decide(1, false, true, false, deny), Gate::Quiet);
         assert_eq!(decide(1, false, true, false, allow), Gate::Allow);
         assert_eq!(decide(1, false, false, false, deny), Gate::Allow);
+    }
+
+    #[test]
+    fn server_context_is_sent_only_where_settings_filter_history() {
+        assert!(sends_server_context(true, false));
+        assert!(sends_server_context(false, true));
+        assert!(sends_server_context(true, true));
+        // Agent conversations, direct conversations and recent groups with
+        // no opt-out that applies keep the executor's local history.
+        assert!(!sends_server_context(false, false));
     }
 
     #[test]

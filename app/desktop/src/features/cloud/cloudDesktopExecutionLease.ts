@@ -6,7 +6,9 @@ import type { DesktopChatContextMessage } from '@/lib/desktop';
 // The native deadline is shorter than the server lease, including network delay.
 export const DESKTOP_EXECUTION_WATCHDOG_MS = 30_000;
 /** Context contract 2: this executor uses the history the server sends with a
- * claim (`serverContext`), which applies the conversation's AI access settings. */
+ * claim (`serverContext`), which applies the conversation's AI access settings.
+ * The server sends it only where those settings filter the run's history; a
+ * claim without it keeps the local history. */
 export const DESKTOP_CONTEXT_CONTRACT = 2;
 
 export type DesktopServerContext = {
