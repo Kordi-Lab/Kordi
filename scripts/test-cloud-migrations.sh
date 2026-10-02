@@ -48,6 +48,7 @@ tests=(
   title_tests::upgrade_from_75_preserves_shared_and_private_group_names
   title_tests::upgrade_from_89_repairs_only_proven_defaults_and_authenticated_titles
   email_verification_tests::upgrade_from_108_marks_only_provider_verified_primary_emails
+  omp_state_tests::upgrade_from_117_flags_only_replayable_omp_states
 )
 index=0
 for test_name in "${tests[@]}"; do
