@@ -1134,7 +1134,35 @@ struct MessageBubble: View, Equatable {
     }
 
     /// One quiet line under the bubble that names the quoted message and jumps back to it.
+    /// A deleted source has nothing to jump to, so it is plain text.
+    @ViewBuilder
     private func quoteLine(_ source: MessageActionSource) -> some View {
+        if source.sourceDeleted == true { deletedQuoteLine(source) } else { quoteButton(source) }
+    }
+
+    private func deletedQuoteLine(_ source: MessageActionSource) -> some View {
+        let isOwn = message.author == .me
+        let senderLabel = MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: selfDisplayName)
+        let previewText = MessageQuotePresentation.previewText(
+            source.textPreview, attachmentCount: source.attachmentCount, sourceDeleted: true)
+        return HStack(spacing: 6) {
+            if !isOwn { MessageQuoteBar() }
+            BlobEmojiPreviewText(text: "\(senderLabel): \(previewText)")
+                .font(.caption)
+                .italic()
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if isOwn { MessageQuoteBar() }
+        }
+        .frame(maxWidth: 260, minHeight: 28, alignment: isOwn ? .trailing : .leading)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Quoted message from \(senderLabel): \(previewText)")
+        .accessibilityIdentifier("message-quote-source-deleted")
+    }
+
+    private func quoteButton(_ source: MessageActionSource) -> some View {
         let isOwn = message.author == .me
         let senderLabel = MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: selfDisplayName)
         let previewText = MessageQuotePresentation.previewText(source.textPreview, attachmentCount: source.attachmentCount)
@@ -3956,7 +3984,10 @@ enum MessageQuotePresentation {
         return selfDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "Me"
     }
 
-    static func previewText(_ textPreview: String, attachmentCount: Int) -> String {
+    static let deletedSourceText = "Original message was deleted"
+
+    static func previewText(_ textPreview: String, attachmentCount: Int, sourceDeleted: Bool? = nil) -> String {
+        if sourceDeleted == true { return deletedSourceText }
         let text = textPreview.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         if !text.isEmpty { return text }
         guard attachmentCount > 0 else { return "" }

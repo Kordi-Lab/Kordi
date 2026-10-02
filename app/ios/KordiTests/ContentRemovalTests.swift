@@ -2,7 +2,7 @@ import XCTest
 @testable import Kordi
 
 /// Client side of the server's content removal contract: the capability
-/// version and content-free removal events.
+/// version, content-free removal events, and deleted quote sources.
 final class ContentRemovalTests: XCTestCase {
     // MARK: Capability version
 
@@ -88,6 +88,91 @@ final class ContentRemovalTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    // MARK: Deleted quote sources
+
+    func testMessageActionSourceDecodesWithAndWithoutSourceDeleted() throws {
+        let scrubbed = #"{"sourceSessionId":"session:direct","sourceMessageId":"m1","senderLabel":"Maya","textPreview":"","attachmentCount":0,"createdAtMs":1786000000000,"sourceDeleted":true}"#
+        let legacy = #"{"sourceSessionId":"session:direct","sourceMessageId":"m1","senderLabel":"Maya","textPreview":"Hello","attachmentCount":1}"#
+
+        let deleted = try JSONDecoder().decode(MessageActionSource.self, from: Data(scrubbed.utf8))
+        let live = try JSONDecoder().decode(MessageActionSource.self, from: Data(legacy.utf8))
+
+        XCTAssertEqual(deleted.sourceDeleted, true)
+        XCTAssertEqual(deleted.textPreview, "")
+        XCTAssertNil(deleted.mentions)
+        XCTAssertNil(live.sourceDeleted)
+        XCTAssertEqual(live.textPreview, "Hello")
+        // Replies this app writes never claim a deleted source.
+        let encoded = try JSONEncoder().encode(live)
+        XCTAssertFalse(String(decoding: encoded, as: UTF8.self).contains("sourceDeleted"))
+    }
+
+    func testDirectGroupAndAgentResponseEnvelopesKeepTheDeletedSourceFlag() throws {
+        let source = #"{"sourceSessionId":"session:direct","sourceMessageId":"m1","senderLabel":"Maya","textPreview":"","attachmentCount":0,"sourceDeleted":true}"#
+        let action = #"{"schemaVersion":1,"kind":"quote","source":\#(source)}"#
+        let direct = #"{"schemaVersion":1,"kind":"message","text":"Replying","messageAction":\#(action)}"#
+        let body = CloudMessageCodec.directPrefix + ContentRemovalFixtures.base64URL(direct)
+        XCTAssertEqual(CloudMessageCodec.directEnvelope(body)?.messageAction?.source.sourceDeleted, true)
+        let response = #"{"text":"Answer","messageAction":{"schemaVersion":1,"kind":"thread","source":\#(source)}}"#
+        let responseBody = CloudMessageCodec.agentResponsePrefix + ContentRemovalFixtures.base64URL(response)
+        XCTAssertEqual(CloudMessageCodec.agentResponseMessageAction(responseBody)?.source.sourceDeleted, true)
+        XCTAssertEqual(CloudMessageCodec.displayText(responseBody), "Answer")
+
+        let groupSource = MessageActionSource(
+            sourceSessionId: "session:group", sourceMessageId: "group-message", senderLabel: "Maya",
+            textPreview: "", attachmentCount: 0, sourceDeleted: true
+        )
+        let participant = CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "owner")
+        let envelope = CloudGroupControlEnvelope(
+            kind: "group-message", groupId: "group", groupSpaceId: nil, groupTitle: "Group",
+            createdByAccountId: "acct_me", actor: participant, participants: [participant],
+            message: CloudGroupMessagePayload(
+                id: "reply", senderAccountId: "acct_me", text: "Replying", createdAtMs: 1_786_000_000_000,
+                senderKind: "human", senderDisplayName: "Me", deliveryState: "complete",
+                replyToMessageId: "group-message", requestId: nil, messageAction: .quote(groupSource)
+            )
+        )
+        let decoded = try XCTUnwrap(CloudGroupMessageCodec.parse(CloudGroupMessageCodec.encode(envelope)))
+        XCTAssertEqual(decoded.message?.messageAction?.source.sourceDeleted, true)
+    }
+
+    func testDeletedSourcePreviewReplacesTheQuotedText() {
+        XCTAssertEqual(
+            MessageQuotePresentation.previewText("", attachmentCount: 0, sourceDeleted: true),
+            "Original message was deleted"
+        )
+        XCTAssertEqual(
+            MessageQuotePresentation.previewText("Stale words", attachmentCount: 2, sourceDeleted: true),
+            "Original message was deleted"
+        )
+        XCTAssertEqual(MessageQuotePresentation.previewText("Hello  there", attachmentCount: 0), "Hello there")
+        XCTAssertEqual(
+            MessageQuotePresentation.previewText("Hello", attachmentCount: 0, sourceDeleted: false),
+            "Hello"
+        )
+    }
+
+    func testDeletedQuoteIsPlainTextWithoutANavigationHint() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "private func deletedQuoteLine("))
+        let end = try XCTUnwrap(source.range(of: "private func quoteButton(", range: start.upperBound..<source.endIndex))
+        let body = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertTrue(source.contains("if source.sourceDeleted == true { deletedQuoteLine(source) } else { quoteButton(source) }"))
+        XCTAssertFalse(body.contains("Button"))
+        XCTAssertFalse(body.contains("accessibilityHint"))
+        XCTAssertTrue(body.contains(".italic()"))
+        XCTAssertTrue(body.contains(".foregroundStyle(.secondary)"))
+        XCTAssertTrue(body.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(body.contains(".accessibilityLabel(\"Quoted message from \\(senderLabel): \\(previewText)\")"))
+    }
 }
 
 private enum ContentRemovalFixtures {
@@ -114,6 +199,13 @@ private enum ContentRemovalFixtures {
             baseURL: URL(string: "http://127.0.0.1:17081")!,
             session: URLSession(configuration: configuration)
         )
+    }
+
+    static func base64URL(_ json: String) -> String {
+        Data(json.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
     }
 }
 
