@@ -168,13 +168,22 @@ pub(super) async fn claim_context(
     .await?
     .map(|(_, wire)| wire)
     .unwrap_or_default();
-    let reply_action = crate::cloud_agent_runtime::shared_threads::reply_thread_action(
-        pool,
-        &input.session_id,
-        &input.request_message_id,
-        &input.owner_account_id,
-    )
-    .await?;
+    // The thread route only scopes a request inside this window, and the
+    // agent's responses follow their request, so read it from the loaded rows
+    // instead of scanning every response the owner has posted here.
+    let reply_action = rows
+        .iter()
+        .position(|row| row.0 == request_wire)
+        .and_then(|index| {
+            crate::cloud_agent_runtime::shared_threads::reply_thread_action_in_rows(
+                rows[index + 1..]
+                    .iter()
+                    .map(|(_, _, sender, body)| (sender.as_str(), body.as_str())),
+                &input.session_id,
+                &input.request_message_id,
+                &input.owner_account_id,
+            )
+        });
     let (request_index, mut history) =
         context_history_indices(&rows, &request_wire, reply_action.as_ref());
     history.retain(|&index| {

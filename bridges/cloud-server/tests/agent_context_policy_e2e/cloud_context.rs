@@ -292,3 +292,55 @@ async fn private_reads_and_digests_apply_opt_outs_but_not_scope() {
     assert!(authorized(&group.owner, &history.chatter).await);
     assert!(!authorized(&group.owner, &history.notice).await);
 }
+
+#[tokio::test]
+async fn a_request_answered_in_a_thread_reads_that_thread() {
+    let Some(group) = Group::new("policy-thread").await else {
+        return;
+    };
+    let tag = group.tag.clone();
+    let (status, _) = group
+        .set_ai_access(&group.owner, json!({"history_scope": "recent"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let root_id = format!("r-{tag}");
+    group
+        .say(&group.member2, &root_id, &format!("ROOT_{tag}"))
+        .await;
+    let thread = json!({"kind": "thread", "source": {
+        "sourceSessionId": group.session, "sourceMessageId": root_id}});
+    group
+        .post(
+            &group.member2,
+            json!({"id": format!("t-{tag}"), "senderAccountId": group.member2.account_id,
+                "senderKind": "human", "text": format!("IN_THREAD_{tag}"),
+                "messageAction": thread,
+                "createdAtMs": chrono::Utc::now().timestamp_millis()}),
+        )
+        .await;
+    group
+        .say(&group.member, &format!("m-{tag}"), &format!("MAIN_{tag}"))
+        .await;
+    let request_id = format!("q-{tag}");
+    group
+        .ask(&group.requester, &request_id, "and then?", None)
+        .await;
+    // The owner's agent placed its answer in the thread, then failed, so
+    // the requester's app asks the cloud to answer.
+    group
+        .post(
+            &group.owner,
+            json!({"id": format!("a-{tag}"), "senderAccountId": group.owner.account_id,
+                "senderKind": "agent", "senderAgentId": group.agent(),
+                "requestId": request_id, "text": "Could not answer.",
+                "deliveryState": "failed", "messageAction": thread,
+                "createdAtMs": chrono::Utc::now().timestamp_millis()}),
+        )
+        .await;
+    let (status, run) = group.claim_cloud(&group.requester, &request_id).await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+    let prompt = group.run_prompt(run["runId"].as_str().unwrap()).await;
+    assert!(prompt.contains(&format!("ROOT_{tag}")), "{prompt}");
+    assert!(prompt.contains(&format!("IN_THREAD_{tag}")), "{prompt}");
+    assert!(!prompt.contains(&format!("MAIN_{tag}")), "{prompt}");
+}

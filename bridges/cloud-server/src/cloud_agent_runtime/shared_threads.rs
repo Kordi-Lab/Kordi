@@ -54,6 +54,22 @@ pub(super) fn reply_thread_action_from_body(
     Some(action.clone())
 }
 
+/// The route from `(sender, body)` rows the caller already loaded, oldest
+/// first, that follow the request. A response always follows its request, so
+/// the lookup reads only the caller's bounded window and adds no query. The
+/// newest matching response wins, as in `reply_thread_action`.
+pub(super) fn reply_thread_action_in_rows<'a>(
+    rows_after_request: impl DoubleEndedIterator<Item = (&'a str, &'a str)>,
+    session_id: &str,
+    request_id: &str,
+    owner: &str,
+) -> Option<Value> {
+    rows_after_request
+        .rev()
+        .filter(|(sender, _)| *sender == owner)
+        .find_map(|(_, body)| reply_thread_action_from_body(body, session_id, request_id, owner))
+}
+
 pub(super) async fn reply_thread_action(
     pool: &PgPool,
     session_id: &str,
@@ -95,5 +111,52 @@ mod tests {
         assert!(reply_thread_action_from_body(&body, "other", "request", "owner").is_none());
         assert!(reply_thread_action_from_body(&body, "group", "other", "owner").is_none());
         assert!(reply_thread_action_from_body(&body, "group", "request", "other").is_none());
+    }
+
+    fn route_body(request: &str, root: &str) -> String {
+        let value = serde_json::json!({"kind":"group-message", "groupId":"group", "message":{
+            "senderKind":"agent", "senderAccountId":"owner", "requestId":request,
+            "messageAction":{"kind":"thread","source":{"sourceSessionId":"group","sourceMessageId":root}}
+        }});
+        format!(
+            "kordi-cloud-group:{}",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&value).unwrap())
+        )
+    }
+
+    #[test]
+    fn the_route_comes_from_the_loaded_rows_after_the_request() {
+        let older = route_body("request", "older-root");
+        let newer = route_body("request", "newer-root");
+        let other_request = route_body("other", "other-root");
+        let rows = [
+            ("owner", older.as_str()),
+            ("member", "plain text"),
+            ("owner", other_request.as_str()),
+            ("owner", newer.as_str()),
+        ];
+        let root = |action: Option<Value>| {
+            action.and_then(|action| {
+                action
+                    .pointer("/source/sourceMessageId")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+        };
+        let found = reply_thread_action_in_rows(rows.into_iter(), "group", "request", "owner");
+        assert_eq!(root(found).as_deref(), Some("newer-root"));
+        // A route outside the rows the caller passes is never found.
+        assert!(reply_thread_action_in_rows(
+            rows[1..3].iter().copied(),
+            "group",
+            "request",
+            "owner"
+        )
+        .is_none());
+        // A route posted by anyone but the owner is never followed.
+        let forged = [("member", newer.as_str())];
+        assert!(
+            reply_thread_action_in_rows(forged.into_iter(), "group", "request", "owner").is_none()
+        );
     }
 }
