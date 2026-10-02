@@ -3,6 +3,8 @@ import type { ConversationParticipant } from '@/kordi-app/types';
 
 export const AI_ACCESS_COPY = {
   title: 'AI access',
+  channelLabel: 'Channel',
+  channelUnavailable: 'AI access isn\'t available for this channel.',
   scopeLabel: 'What agents can see',
   mentionsLabel: 'Only messages sent to them',
   recentLabel: 'Recent messages',
@@ -22,6 +24,12 @@ export const AI_ACCESS_COPY = {
   createPipLabel: 'Add PiP, the plan helper',
   createPipFailure: 'The group was created, but PiP couldn\'t be turned on. You can turn it on in AI access.',
 } as const;
+
+/** The section title; in a group with several channels it names the channel. */
+export function aiAccessTitle(channelName?: string | null): string {
+  const name = channelName?.trim();
+  return name ? `${AI_ACCESS_COPY.title} for ${name}` : AI_ACCESS_COPY.title;
+}
 
 function providerName(provider: string | null | undefined) {
   return provider?.trim() || 'an AI provider';

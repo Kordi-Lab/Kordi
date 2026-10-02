@@ -1,6 +1,8 @@
 // Membership and identity helpers for the group details dialog.
 import { adminIdentityIdsFromMetadata } from '@/features/chat/chatCreateFlows';
-import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
+import type {
+  Contact, ConversationParticipant, ParticipantSpaceSessionViewModel, ParticipantSpaceViewModel,
+} from '@/kordi-app/types';
 
 export function isHumanMember(participant: ConversationParticipant) {
   return participant.kind === 'human';
@@ -119,4 +121,26 @@ export function groupActionErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message.trim();
   if (typeof error === 'string' && error.trim()) return error.trim();
   return 'The group could not be updated. Try again.';
+}
+
+/** The session id AI access calls use for one channel of a group. */
+export function aiAccessSessionId(session: ParticipantSpaceSessionViewModel): string {
+  return session.canonicalSessionId ?? session.conversation.canonicalSessionId ?? session.id;
+}
+
+/**
+ * The channel the AI access panel covers. Settings belong to each channel, so
+ * it is the channel the person picked in the panel, else the one they have
+ * open, else the group's first channel.
+ */
+export function aiAccessChannel(
+  space: ParticipantSpaceViewModel | null,
+  activeSessionId: string | null | undefined,
+  pickedSessionId: string | null | undefined,
+): ParticipantSpaceSessionViewModel | null {
+  const sessions = space?.sessions ?? [];
+  const find = (id: string | null | undefined) => (id
+    ? sessions.find((session) => session.id === id || aiAccessSessionId(session) === id)
+    : undefined);
+  return find(pickedSessionId) ?? find(activeSessionId) ?? sessions[0] ?? null;
 }

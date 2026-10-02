@@ -1,8 +1,10 @@
 // "AI access" for a group or direct conversation: what agents asked here can
-// see, "Don't let AI use my messages", who turned it on, and PiP.
+// see, "Don't let AI use my messages", who turned it on, and PiP. Settings
+// belong to one conversation; in a group with several channels the panel
+// names the channel it covers and offers the others.
 import { useId, useState } from 'react';
 
-import { AI_ACCESS_COPY, pipHelpText, turnedOnByText } from '@/features/agentTrust/aiAccessCopy';
+import { AI_ACCESS_COPY, aiAccessTitle, pipHelpText, turnedOnByText } from '@/features/agentTrust/aiAccessCopy';
 import type { AgentTrustApi } from '@/features/agentTrust/agentTrustApi';
 import { useConversationAiAccess } from '@/features/agentTrust/useConversationAiAccess';
 import type { ChatSyncAiHistoryScope } from '@/features/cloud/agentTrustTypes';
@@ -10,8 +12,13 @@ import { AgentTrustDialog, AgentTrustDialogButton, AgentTrustSwitchRow } from '.
 
 const MUTED = 'text-[11px] leading-[1.45] text-[color:var(--utility-muted-text)]';
 
+export type AiAccessChannel = { sessionId: string; name: string };
+
 export type AiAccessPanelProps = {
   sessionId: string | null | undefined;
+  /** A group's channels; with more than one, the panel names and offers them. */
+  channels?: readonly AiAccessChannel[];
+  onSelectChannel?: (sessionId: string) => void;
   /** Direct conversations offer only "Don't let AI use my messages". */
   mode?: 'group' | 'direct';
   memberNames?: ReadonlyMap<string, string>;
@@ -19,18 +26,40 @@ export type AiAccessPanelProps = {
   api?: AgentTrustApi;
 };
 
-export function AiAccessPanel({ sessionId, mode = 'group', memberNames = new Map(), currentAccountId, api }: AiAccessPanelProps) {
+export function AiAccessPanel({
+  sessionId, channels = [], onSelectChannel, mode = 'group', memberNames = new Map(), currentAccountId, api,
+}: AiAccessPanelProps) {
   const ai = useConversationAiAccess(sessionId, api);
   const headingId = useId();
+  const channelId = useId();
   const scopeLabelId = useId();
   const scopeHelpId = useId();
   const [confirmingRecent, setConfirmingRecent] = useState(false);
-  if (ai.status === 'unavailable') return null;
-  if (ai.status === 'loading' || !ai.access) {
+  const pickable = mode === 'group' && channels.length > 1 ? channels : [];
+  const channelName = pickable.find((channel) => channel.sessionId === sessionId?.trim())?.name;
+  const heading = <h3 id={headingId} className="text-[11px] font-semibold">{aiAccessTitle(channelName)}</h3>;
+  const channelPicker = pickable.length > 0 ? (
+    <label htmlFor={channelId} className="mt-1 flex items-center gap-2 text-[12px]">
+      <span className="font-medium">{AI_ACCESS_COPY.channelLabel}</span>
+      <select
+        id={channelId}
+        value={sessionId?.trim() ?? ''}
+        disabled={ai.pending}
+        onChange={(event) => onSelectChannel?.(event.currentTarget.value)}
+        className="h-7 min-w-0 flex-1 rounded-[9px] border border-[color:var(--app-transient-border)] bg-transparent px-2 text-[12px] outline-none focus:border-[color:var(--app-transient-focus-ring)]"
+      >
+        {pickable.map((channel) => <option key={channel.sessionId} value={channel.sessionId}>{channel.name}</option>)}
+      </select>
+    </label>
+  ) : null;
+  if (ai.status === 'unavailable' && !channelPicker) return null;
+  if (ai.status !== 'ready' || !ai.access) {
+    const unavailable = ai.status === 'unavailable';
     return (
-      <section aria-labelledby={headingId} className="app-ai-access-panel mt-3 border-t pt-2" data-ai-access-panel="loading">
-        <h3 id={headingId} className="px-1.5 text-[11px] font-semibold">{AI_ACCESS_COPY.title}</h3>
-        <p role="status" className={`px-1.5 ${MUTED}`}>Loading…</p>
+      <section aria-labelledby={headingId} className="app-ai-access-panel mt-3 border-t px-1.5 pt-2" data-ai-access-panel={unavailable ? 'unavailable' : 'loading'}>
+        {heading}
+        {channelPicker}
+        <p role="status" className={MUTED}>{unavailable ? AI_ACCESS_COPY.channelUnavailable : 'Loading…'}</p>
       </section>
     );
   }
@@ -46,7 +75,8 @@ export function AiAccessPanel({ sessionId, mode = 'group', memberNames = new Map
 
   return (
     <section aria-labelledby={headingId} className="app-ai-access-panel mt-3 border-t px-1.5 pt-2" data-ai-access-panel={mode}>
-      <h3 id={headingId} className="text-[11px] font-semibold">{AI_ACCESS_COPY.title}</h3>
+      {heading}
+      {channelPicker}
       {isGroup ? (
         <div className="py-2">
           <div id={scopeLabelId} className="text-[12px] font-medium leading-5">{AI_ACCESS_COPY.scopeLabel}</div>

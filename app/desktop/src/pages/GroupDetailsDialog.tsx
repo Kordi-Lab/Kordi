@@ -52,8 +52,9 @@ import {
 import { MemberContactProfileContent } from '@/pages/MemberContactProfilePopover';
 import { aiAccessMemberNames } from '@/features/agentTrust/aiAccessCopy';
 import { AiAccessPanel } from '@/kordi-app/components/aiAccessPanel';
+import type { AgentTrustApi } from '@/features/agentTrust/agentTrustApi';
 import {
-  contactStableId, duplicateNameCounts, filterGroupManagementMembers, groupActionErrorMessage, groupAdminIds,
+  aiAccessChannel, aiAccessSessionId, contactStableId, duplicateNameCounts, filterGroupManagementMembers, groupActionErrorMessage, groupAdminIds,
   hasDuplicateName, isHumanMember, isSelfMember, memberIsAdmin, memberMatchesIdentity, memberStableId,
   normalizedSearch, visibleIdentityLabel,
 } from '@/pages/groupDetailsDialog.helpers';
@@ -64,6 +65,8 @@ export { filterGroupManagementMembers };
 export type GroupDetailsDialogProps = {
   isOpen: boolean;
   space: ParticipantSpaceViewModel | null;
+  /** The open chat; AI access starts on it when it is one of this group's channels. */
+  activeSessionId?: string | null;
   contacts: Contact[];
   currentAccountId?: string | null;
   onClose: () => void;
@@ -79,11 +82,13 @@ export type GroupDetailsDialogProps = {
   onRevokeGroupInvitation?: (invitationId: string) => Promise<void>;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
+  aiAccessApi?: AgentTrustApi;
 };
 
 export function GroupDetailsDialog({
   isOpen,
   space,
+  activeSessionId,
   contacts,
   currentAccountId,
   onClose,
@@ -97,6 +102,7 @@ export function GroupDetailsDialog({
   onRevokeGroupInvitation,
   onMessageContact,
   anchorRect = null,
+  aiAccessApi,
 }: GroupDetailsDialogProps) {
   const memberSearchId = useId();
   const addSearchId = useId();
@@ -119,8 +125,14 @@ export function GroupDetailsDialog({
   const [actionError, setActionError] = useState<string | null>(null);
   const [gridFocusId, setGridFocusId] = useState<string | null>(null);
   const [showAllMembers, setShowAllMembers] = useState(false);
+  const [pickedAiChannelId, setPickedAiChannelId] = useState<string | null>(null);
 
   const session = space?.sessions[0] ?? null;
+  const aiChannel = aiAccessChannel(space, activeSessionId, pickedAiChannelId);
+  const aiChannels = useMemo(() => (space?.sessions ?? []).map((channel) => ({
+    sessionId: aiAccessSessionId(channel),
+    name: channel.title.trim() || space?.title || 'Channel',
+  })), [space]);
   const groupSessionIds = useMemo(
     () => (space ? participantSpaceCanonicalSessionIds(space) : []),
     [space],
@@ -225,6 +237,7 @@ export function GroupDetailsDialog({
     setActionError(null);
     setGridFocusId(null);
     setShowAllMembers(false);
+    setPickedAiChannelId(null);
   }, [isOpen, space?.id, space?.title]);
 
   useEffect(() => {
@@ -845,9 +858,12 @@ export function GroupDetailsDialog({
               ) : null}
             </section>
             <AiAccessPanel
-              sessionId={session?.canonicalSessionId ?? session?.conversation.canonicalSessionId ?? session?.id}
+              sessionId={aiChannel ? aiAccessSessionId(aiChannel) : null}
+              channels={aiChannels}
+              onSelectChannel={setPickedAiChannelId}
               memberNames={aiAccessMemberNames(members)}
               currentAccountId={currentAccountId}
+              api={aiAccessApi}
             />
           </div>
         </div>
