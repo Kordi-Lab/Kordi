@@ -19,6 +19,7 @@ import {
   chooseLeaveSuccessor,
   LEAVE_GROUP_ERROR,
   runGroupLeave,
+  sendEachLeaveEnvelope,
   type LeaveSuccessorCandidate,
 } from '@/features/safety/groupLeave';
 import { leaveConversation, resolveCloudConversation } from '@/features/safety/safetyClient';
@@ -102,7 +103,7 @@ export async function leaveGroupAsSelf(input: GroupSelfLeaveInput): Promise<'lef
 
   return runGroupLeave({
     isOwner,
-    sendLeaveEnvelopes: () => Promise.all(input.groupContextSessionIds.map((sessionId) => input.sendCloudGroupControl({
+    sendLeaveEnvelopes: () => sendEachLeaveEnvelope(input.groupContextSessionIds.map((sessionId) => () => input.sendCloudGroupControl({
       targetAccountIds: input.targetAccountIds,
       kind: 'group-update',
       groupId: sessionId,

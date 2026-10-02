@@ -15,6 +15,7 @@ import {
   memberCanBeRemoved,
   runGroupLeave,
   selfLeaveMode,
+  sendEachLeaveEnvelope,
 } from '../src/features/safety/groupLeave';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -55,6 +56,35 @@ test('a refused envelope does not stop the leave', async () => {
   });
   assert.equal(await runGroupLeave(steps), 'left');
   assert.deepEqual(order, ['envelope', 'leave', 'local']);
+});
+
+test('a connection problem on one channel stops the leave even when another channel refused first', async () => {
+  const refused = new CloudAuthError('CHAT_FORBIDDEN', 'not a member', 403);
+  const offline = new CloudAuthError('network_error', 'offline', 0);
+  const later = (error: Error) => new Promise((_resolve, reject) => setTimeout(() => reject(error), 5));
+  const { order, steps } = recordingSteps({
+    envelope: () => sendEachLeaveEnvelope([() => Promise.reject(refused), () => later(offline)]),
+  });
+  await assert.rejects(runGroupLeave(steps), { message: LEAVE_GROUP_ERROR });
+  assert.deepEqual(order, ['envelope'], 'neither the server nor this device changes');
+
+  // Refusals alone, on any number of channels, do not stop the leave.
+  const onlyRefused = recordingSteps({
+    envelope: () => sendEachLeaveEnvelope([() => Promise.reject(refused), () => later(refused), async () => {}]),
+  });
+  assert.equal(await runGroupLeave(onlyRefused.steps), 'left');
+  assert.deepEqual(onlyRefused.order, ['envelope', 'leave', 'local']);
+});
+
+test('every channel is told before a leave decides, even after a quick refusal', async () => {
+  const sent: string[] = [];
+  const refused = new CloudAuthError('CHAT_FORBIDDEN', 'not a member', 403);
+  await assert.rejects(sendEachLeaveEnvelope([
+    async () => { sent.push('root'); throw refused; },
+    async () => { await new Promise((resolve) => setTimeout(resolve, 5)); sent.push('channel'); },
+  ]), (error) => error === refused);
+  assert.deepEqual(sent, ['root', 'channel']);
+  await sendEachLeaveEnvelope([]);
 });
 
 test('a server without the leave route falls back to the envelope-only leave', async () => {
@@ -225,6 +255,57 @@ test('an owner leaving a group tells every channel, names a successor, and leave
     __setSessionBackendForTests(null);
     if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow);
     else Reflect.deleteProperty(globalThis, 'window');
+  }
+});
+
+test('a leave from the group stops when one channel could not be told, even if another refused first', async () => {
+  const rootConversationId = '00000000-0000-4000-8000-0000000000ab';
+  const calls: string[] = [];
+  __setSessionBackendForTests({ load: async () => ({ token: 'tok', accountId: 'acct_me', expiresAt: '2099-01-01' }), save: async () => {}, clear: async () => {} });
+  const client = new CloudAuthClient({
+    baseUrl: 'http://srv',
+    fetchImpl: async (input) => {
+      const url = String(input).replace('http://srv', '');
+      calls.push(url);
+      if (url.endsWith('/v2/chat/sync/bootstrap')) {
+        return Response.json({ protocol_version: 2, latest_messages: [], conversations: [{
+          id: rootConversationId, kind: 'group', shared_title: 'Design', version: 3, created_by_account_id: 'acct_b',
+          legacy_session_id: 'session:group:root', latest_message_sequence: 4, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+          members: [{ account_id: 'acct_me', role: 'member', membership_state: 'active', joined_at: '2026-01-01T00:00:00Z', version: 1, last_delivered_sequence: 0, last_read_sequence: 0 }],
+          preferences: { account_id: 'acct_me', version: 1, personal_title: null },
+        }] });
+      }
+      return Response.json({ left_conversation_ids: [rootConversationId], successor_account_id: null });
+    },
+  });
+  const account = { accountId: 'acct_me', kordiId: '482731906', displayName: 'Me', primaryEmail: null, avatarUrl: null,
+    avatar: { entityType: 'human', entityId: 'acct_me', source: 'generated', style: 'lorelei', seed: 'me', rendererVersion: 'r', uploadedAsset: null, version: 1, updatedAt: '2026-01-01T00:00:00Z' },
+    nodeId: null, passwordSet: true } as const;
+  let published = false;
+  try {
+    await assert.rejects(leaveGroupAsSelf({
+      account,
+      state: groupState(),
+      actorIdentityId: 'human:me',
+      groupContextSessionIds: ['session:group:root', 'session:group:channel'],
+      groupSessionIds: ['session:group:root', 'session:group:channel'],
+      rootSessionId: 'session:group:root',
+      fallbackGroupSpaceId: 'session:group:root',
+      groupCreatorIdentityId: 'human:b',
+      createdByAccountId: 'acct_b',
+      targetAccountIds: ['acct_b', 'acct_c'],
+      sendCloudGroupControl: async (input) => {
+        if (input.groupId === 'session:group:root') throw new CloudAuthError('CHAT_FORBIDDEN', 'not a member', 403);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        throw new CloudAuthError('network_error', 'offline', 0);
+      },
+      setCanonicalState: () => { published = true; },
+      client,
+    }), { message: LEAVE_GROUP_ERROR });
+    assert.ok(!calls.some((url) => url.endsWith('/leave')), 'the server leave never runs');
+    assert.equal(published, false, 'this device keeps the group');
+  } finally {
+    __setSessionBackendForTests(null);
   }
 });
 

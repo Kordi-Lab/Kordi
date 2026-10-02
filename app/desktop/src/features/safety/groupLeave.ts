@@ -105,6 +105,19 @@ export type GroupLeaveSteps = {
 };
 
 /**
+ * Sends every channel's leave envelope and waits for all of them. A
+ * connection problem on any channel is reported ahead of a refusal on
+ * another, so a quick refusal never hides a channel that was not told.
+ */
+export async function sendEachLeaveEnvelope(sends: readonly (() => Promise<unknown>)[]): Promise<void> {
+  const results = await Promise.allSettled(sends.map((send) => send()));
+  const failures = results.flatMap((result) => (result.status === 'rejected' ? [result.reason as unknown] : []));
+  if (failures.length === 0) return;
+  const retryable = failures.findIndex((failure) => isRetryableCloudDeliveryError(failure));
+  throw failures[Math.max(retryable, 0)];
+}
+
+/**
  * Runs a leave in a fixed order: envelopes, then the server, then this
  * device. A connection problem stops it before anything changes here. A
  * server without the leave route keeps the older envelope-only leave, which
