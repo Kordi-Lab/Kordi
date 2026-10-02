@@ -258,12 +258,20 @@ async fn files_panel_entries_do_not_keep_a_file_and_stay_hidden() {
     let http = http_chat(&pool, "http-files-panel").await;
     let file = stored_photo(&pool, &http.chat.owner).await;
     let message = send_files(&pool, &http.chat, std::slice::from_ref(&file)).await;
+    let message_id = message.id.to_string();
     let entry = |artifact_id: &str, attachment: Option<&str>| {
         json!({
             "sessionId": http.chat.session_id, "artifactId": artifact_id, "name": "photo.png",
             "path": artifact_id, "kind": "image", "category": "artifact",
             "attachmentId": attachment, "participantAccountIds": [http.chat.peer]
         })
+    };
+    // An entry created from the message, with no file of its own.
+    let from_message = |summary: &str| {
+        let mut body = entry("from-message.md", None);
+        body["sourceMessageId"] = json!(format!("collaboration-message:{message_id}"));
+        body["summary"] = json!(summary);
+        body
     };
     let publish = |body: Value| {
         call(
@@ -279,6 +287,10 @@ async fn files_panel_entries_do_not_keep_a_file_and_stay_hidden() {
         StatusCode::OK
     );
     assert_eq!(publish(entry("kept.md", None)).await.0, StatusCode::OK);
+    assert_eq!(
+        publish(from_message("summary of the message")).await.0,
+        StatusCode::OK
+    );
 
     delete_for_everyone(&pool, &http.chat, &message).await;
     let objects = FakeObjects::default();
@@ -295,10 +307,21 @@ async fn files_panel_entries_do_not_keep_a_file_and_stay_hidden() {
         .unwrap();
         assert_eq!(archived, 1);
     }
-    // Publishing the entry again does not bring the removed file back.
+    // Publishing the entries again neither lists nor changes them.
     assert_eq!(
         publish(entry("removed.png", Some(&file))).await.0,
         StatusCode::OK
+    );
+    let (status, republished) = publish(from_message("published again")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(republished["artifact"]["archivedAt"].is_string());
+    assert_eq!(republished["artifact"]["summary"], "summary of the message");
+    // Positive control: an unrelated entry still takes a new publish.
+    let mut kept_again = entry("kept.md", None);
+    kept_again["summary"] = json!("still here");
+    assert_eq!(
+        publish(kept_again).await.1["artifact"]["summary"],
+        "still here"
     );
     let (status, activity) = call(
         &http.router,

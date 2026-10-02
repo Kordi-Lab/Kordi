@@ -83,3 +83,9 @@ backfill above. Sync responses report `content_removal_version` 1 only after an
 operator sets `KORDI_ATTACHMENT_BUCKET_UNVERSIONED=1` for a bucket without
 versioning and a startup deletion probe succeeds. See
 [`docs/data-deletion.md`](../../../docs/data-deletion.md).
+
+Version 117 adds a nullable `removed_at` column to `cloud_session_artifacts`
+and changes no existing row. The removal worker sets it with `archived_at` when
+it archives a files-panel entry created from a message deleted for everyone,
+or one whose file it deleted. A later publish of the same entry from a client
+then leaves it archived and unlisted.

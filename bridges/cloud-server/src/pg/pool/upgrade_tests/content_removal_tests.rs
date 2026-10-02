@@ -141,6 +141,7 @@ async fn seed(pool: &PgPool) -> Seeded {
     )
     .await;
     execute(pool, "INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at) VALUES('digest_fixture','digest_fixture','digest','digest','fixture-owner','fixture-owner','completed','Digest prompt text','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
+    execute(pool, "INSERT INTO cloud_session_artifacts(artifact_activity_id,session_id,artifact_id,name,path,kind,category,summary,created_by_account_id,created_at,updated_at) VALUES('artifactact_fixture','fixture-session','plan.md','plan.md','plan.md','document','artifact','Plan summary','fixture-owner','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')").await;
     Seeded {
         conversation,
         hidden,
@@ -185,6 +186,14 @@ async fn upgrade_from_109_keeps_rows_until_the_operator_backfill_applies() {
     assert_eq!(rows(&pool).await, before);
     assert!(jobs(&pool).await.is_empty());
     assert_eq!(digest_prompt(&pool).await, "Digest prompt text");
+    let artifact: (Option<String>, Option<String>, bool) = query_as(
+        "SELECT summary, archived_at, removed_at IS NULL FROM cloud_session_artifacts \
+         WHERE artifact_activity_id = 'artifactact_fixture'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(artifact, (Some("Plan summary".into()), None, true));
     let since = chrono::Utc::now() - chrono::Duration::days(91);
     assert_eq!(
         store::reconcile_deleted_messages(&pool, since, 100)

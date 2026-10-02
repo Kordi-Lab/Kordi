@@ -572,7 +572,8 @@ async fn upsert_cloud_artifact_activity(
            summary = EXCLUDED.summary, source_message_id = EXCLUDED.source_message_id, \
            attachment_id = EXCLUDED.attachment_id, content_type = EXCLUDED.content_type, \
            size_bytes = EXCLUDED.size_bytes, updated_at = EXCLUDED.updated_at, archived_at = NULL \
-         WHERE cloud_session_artifacts.updated_at <= EXCLUDED.updated_at",
+         WHERE cloud_session_artifacts.updated_at <= EXCLUDED.updated_at \
+           AND cloud_session_artifacts.removed_at IS NULL",
     )
     .bind(&artifact_activity_id)
     .bind(&session_id)

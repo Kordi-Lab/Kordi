@@ -4,6 +4,9 @@
 //! cleared and files-panel entries created from it are archived. When a
 //! file's bytes are deleted, files-panel entries that point at it are
 //! archived. Each change is published to the conversation's active members.
+//!
+//! An entry archived here is also marked `removed_at`, so a client that
+//! publishes it again can neither restore nor change it.
 
 use uuid::Uuid;
 
@@ -100,10 +103,11 @@ pub(crate) async fn archive_artifacts_for_message(
         return Ok(0);
     }
     let rows: Vec<ArtifactRow> = query_as(&format!(
-        "UPDATE cloud_session_artifacts SET archived_at = $3, updated_at = $3 \
+        "UPDATE cloud_session_artifacts \
+         SET archived_at = COALESCE(archived_at, $3), updated_at = $3, removed_at = now() \
          WHERE session_id = ANY($1) \
            AND regexp_replace(source_message_id, '^collaboration-message:', '') = ANY($2) \
-           AND archived_at IS NULL \
+           AND removed_at IS NULL \
          RETURNING {ARTIFACT_COLUMNS}"
     ))
     .bind(sessions)
@@ -130,8 +134,9 @@ pub(crate) async fn archive_artifacts_for_attachment(
     attachment_id: &str,
 ) -> Result<u64, crate::chat_sync::store::StoreError> {
     let rows: Vec<ArtifactRow> = query_as(&format!(
-        "UPDATE cloud_session_artifacts SET archived_at = $2, updated_at = $2 \
-         WHERE attachment_id = $1 AND archived_at IS NULL \
+        "UPDATE cloud_session_artifacts \
+         SET archived_at = COALESCE(archived_at, $2), updated_at = $2, removed_at = now() \
+         WHERE attachment_id = $1 AND removed_at IS NULL \
          RETURNING {ARTIFACT_COLUMNS}"
     ))
     .bind(attachment_id)
