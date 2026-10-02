@@ -51,6 +51,26 @@ Outgoing messages appear optimistically and retain their original client message
 
 The iPhone currently uses ordered HTTP cursor recovery while foregrounded instead of opening the desktop presence WebSocket. It must not make the service believe the owner's Mac execution runtime is online.
 
+## Contact consent, blocks, reports, and leaving groups
+
+The iPhone uses the routes described in [Contacts and blocking](trust-and-safety/contacts-and-blocking.md) and [Abuse reports](trust-and-safety/abuse-reports.md):
+
+```http
+DELETE /v1/cloud/contacts/:peerAccountId
+POST   /v1/cloud/contacts/requests/:requestId/withdraw
+GET    /v1/cloud/blocks
+PUT    /v1/cloud/blocks/:accountId
+DELETE /v1/cloud/blocks/:accountId
+POST   /v1/cloud/reports
+POST   /v2/chat/conversations/:conversationId/leave
+```
+
+- Feature detection uses only `GET /v1/cloud/blocks`. An empty 404 there means the server has none of these actions yet, and the app hides remove, withdraw, block, report, and leave. A 404 with an error code from any other route is an ordinary missing record.
+- A message report names one message by its canonical id (`reactionTargetMessageId`, else the message id) and its conversation; the server copies the evidence and finds the sender. An account report may carry the contact request it came from. The app keeps one `clientReportId` while the same report is retried.
+- Leaving a group posts a `group-update` to each channel that lists everyone except the leaver and carries `memberLeaves` (a leaving owner lists the successor as `admin`), then calls the leave route once on the group's main conversation with the successor as a hint, then removes the group locally. A connection failure before the server leave stops it without local changes.
+- Group participants from older envelopes are dropped when the canonical membership says they left or were removed, so later updates never list them again.
+- Direct chats with someone who is no longer a contact stay readable; a refused send shows the server's message.
+
 ## Attachments and agent execution
 
 Attachment upload and download stay on the authenticated resource API, while attachment relationships are stored on canonical chat messages. Agent requests claim execution through the Cloud agent-run APIs. Owner-online claims execute on the connected macOS runtime; otherwise the hosted fallback runner can execute. Every result is persisted as a canonical assistant message before it is considered delivered.
