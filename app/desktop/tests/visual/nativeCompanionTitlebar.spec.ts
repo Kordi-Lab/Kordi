@@ -84,6 +84,8 @@ test.describe('native split motion', () => {
   test('the sidebar button keeps its bounds while its icon and expanded state change', async ({ page }) => {
     await page.goto('/tests/visual/chatProjectWorkspace.html');
     await page.evaluate(() => document.documentElement.classList.add('kordi-native-shell'));
+    await page.getByRole('group', { name: 'Companion panel' }).getByRole('button', { name: 'Chat', exact: true }).click();
+    await expect(page.locator('.app-native-companion-titlebar')).toBeVisible();
     const button = page.locator('.app-native-titlebar-navigation > button');
     const initialBounds = (await button.boundingBox())!;
     const expandedIcon = await button.locator('svg').innerHTML();
