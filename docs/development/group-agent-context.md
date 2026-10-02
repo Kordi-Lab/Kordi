@@ -41,6 +41,8 @@ Every change that alters a stored value posts a notice as the member who made it
 
 A member's private assistant reading a synced conversation without a run (`read-context` without `sourceRequestId`) is not limited by "What agents can see"; only other members' opt-outs apply. Digests follow the same rule.
 
+A cloud run's initial prompt is built when the run is claimed. If the conversation's settings change before a runner leases the run (a member opts out, or the group narrows what agents can see), the lease rebuilds the prompt under the current settings; the stored prompt is left as it was. A change after the lease applies to every later `read_session` and `search_sessions` call, which check the settings on each read, but it cannot recall what the provider already received. The same holds for desktop runs, which start right after their claim.
+
 ### Desktop executor contract
 
 Desktop executors declare `contextContract` in `ready` and `claim`. Contract 2 executors receive `serverContext` with an acquired claim wherever the conversation's settings filter the run's history: a mention-only group, or a member's opt-out that applies to the run (the requester's and the owner's own opt-outs never do). It is the same bounded history the cloud prompt uses, at most eight messages of up to 800 characters, and the executor uses it instead of its local cache. Where nothing is filtered (agent conversations, direct conversations and recent groups without such an opt-out), the claim carries no `serverContext` and the executor keeps its local history, which leaves AI access notices out. In a direct conversation, a run with an opt-out that applies therefore sees fewer earlier messages than one without. Executors that send no contract are legacy executors:

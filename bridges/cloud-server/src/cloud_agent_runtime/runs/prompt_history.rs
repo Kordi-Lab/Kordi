@@ -14,12 +14,14 @@ use super::envelopes::{
 use super::{ClaimRunRequest, RunResult};
 
 mod history;
+mod lease_refresh;
 mod server_context;
 use history::{
     action_context_suffix, context_history_indices, history_payload, strip_leading_agent_mention,
     MAX_CLOUD_FALLBACK_HISTORY_MESSAGES,
 };
 pub(super) use history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
+pub(super) use lease_refresh::prompt_for_lease;
 pub(crate) use server_context::context_history_for_claim;
 
 async fn shared_cloud_agent_prompt_prefix(

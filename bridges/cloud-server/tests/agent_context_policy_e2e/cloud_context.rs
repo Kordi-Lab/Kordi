@@ -294,6 +294,78 @@ async fn private_reads_and_digests_apply_opt_outs_but_not_scope() {
 }
 
 #[tokio::test]
+async fn a_lease_after_an_access_change_rebuilds_the_prompt() {
+    let Some(group) = Group::new("policy-lease").await else {
+        return;
+    };
+    let tag = group.tag.clone();
+    let (status, _) = group
+        .set_ai_access(&group.owner, json!({"history_scope": "recent"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    group
+        .say(
+            &group.member,
+            &format!("m-{tag}"),
+            &format!("SECRET_M_{tag}"),
+        )
+        .await;
+    group
+        .say(
+            &group.member2,
+            &format!("c-{tag}"),
+            &format!("CHATTER_M2_{tag}"),
+        )
+        .await;
+    let request_id = format!("q-{tag}");
+    group
+        .ask(
+            &group.requester,
+            &request_id,
+            &format!("CURRENT_{tag}"),
+            None,
+        )
+        .await;
+    let (status, run) = group.claim_cloud(&group.requester, &request_id).await;
+    assert_eq!(status, StatusCode::OK, "{run}");
+    let run_id = run["runId"].as_str().unwrap();
+    // Positive control: the claim read recent messages from everyone.
+    let claimed = group.run_prompt(run_id).await;
+    assert!(claimed.contains(&format!("SECRET_M_{tag}")), "{claimed}");
+    assert!(claimed.contains(&format!("CHATTER_M2_{tag}")), "{claimed}");
+
+    // Before a runner leases the run, the member opts out and the owner
+    // narrows the group back to messages sent to agents.
+    let (status, _) = group
+        .set_ai_access(&group.member, json!({"exclude_my_messages": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = group
+        .set_ai_access(&group.owner, json!({"history_scope": "mentions"}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let leased = kordi_cloud_server::cloud_agent_runtime::runs::lease_canary_run(
+        &group.pool,
+        RUNNER_ID,
+        run_id,
+    )
+    .await
+    .unwrap()
+    .expect("the queued run is leased");
+    assert_eq!(leased.run_id, run_id);
+    for left_out in [format!("SECRET_M_{tag}"), format!("CHATTER_M2_{tag}")] {
+        assert!(!leased.prompt.contains(&left_out), "{}", leased.prompt);
+    }
+    assert!(
+        leased.prompt.ends_with(&format!("CURRENT_{tag}")),
+        "{}",
+        leased.prompt
+    );
+    // The stored prompt is left as it was.
+    assert_eq!(group.run_prompt(run_id).await, claimed);
+}
+
+#[tokio::test]
 async fn a_request_answered_in_a_thread_reads_that_thread() {
     let Some(group) = Group::new("policy-thread").await else {
         return;
