@@ -1,6 +1,7 @@
 pub mod artifacts;
 mod claim_route;
 mod desktop;
+mod device_proof;
 pub mod policy;
 pub mod provider_auth;
 mod provider_auth_intent;

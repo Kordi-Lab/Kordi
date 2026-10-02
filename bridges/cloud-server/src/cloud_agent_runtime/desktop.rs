@@ -1,8 +1,4 @@
 //! Desktop admission and publication use the same durable run as the cloud runner.
-use super::provider_auth::{
-    provider_auth_for_account_route, EnvProviderAuthCipher, ProviderAuthCipher,
-    ProviderAuthForRunResult, RunnerProviderAuthMaterialEnvelope,
-};
 use super::runs::{error_response, execution_agent_id, run_error_response, ClaimRunRequest};
 use crate::{auth::routes::CloudSession, server::ServerState};
 use axum::{
@@ -23,11 +19,17 @@ use uuid::Uuid;
 #[path = "desktop_claim.rs"]
 mod claim;
 pub(super) use claim::claim;
+#[path = "desktop_provider_auth.rs"]
+mod provider_auth_route;
+pub(super) use provider_auth_route::{provider_auth, provider_auth_challenge};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct ReadyInput {
     agent_ids: Vec<String>,
+    /// Set by desktops that sign device proofs for hosted provider material.
+    #[serde(default)]
+    device_proof: bool,
 }
 
 pub(super) async fn ready(
@@ -48,8 +50,8 @@ pub(super) async fn ready(
             let own: Option<(String,)> = query_as("SELECT agent_id FROM cloud_agent_definitions WHERE agent_id=$1 AND owner_account_id=$2 AND status='active'")
                 .bind(agent).bind(&session.account_id).fetch_optional(&mut *tx).await?;
             if agent != &format!("cloud-agent:{}", session.account_id) && own.is_none() { return Ok(false); }
-            query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id) VALUES($1,$2) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now()")
-                .bind(&session.device_id).bind(agent).execute(&mut *tx).await?;
+            query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id,device_proof) VALUES($1,$2,$3) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now(),device_proof=EXCLUDED.device_proof")
+                .bind(&session.device_id).bind(agent).bind(input.device_proof).execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok(true)
@@ -72,10 +74,15 @@ pub(super) async fn prefer_ready_desktop(
     // A ready owner Mac executes regardless of where the selected provider
     // account is stored. Hosted credentials are resolved for its claimed run.
     let agent = execution_agent_id(pool, input).await?;
+    // Runs on hosted provider accounts need a Mac that proves possession of
+    // its registered device key. Without one, the cloud runner executes them.
+    let hosted = super::device_proof::route_uses_hosted_auth(
+        &super::runs::runtime_route_for_claim(pool, input).await?,
+    );
     // Fresh capability and presence are the admission boundary. If the Mac
     // stops heartbeating, Cloud may claim the same request after they expire.
-    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds')")
-        .bind(&input.owner_account_id).bind(agent).fetch_one(pool).await?;
+    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds' AND (NOT $3 OR (r.device_proof AND d.device_key_algorithm='p256')))")
+        .bind(&input.owner_account_id).bind(agent).bind(hosted).fetch_one(pool).await?;
     Ok(row.0)
 }
 
@@ -142,96 +149,6 @@ fn expired() -> Response {
 #[serde(rename_all = "camelCase")]
 pub(super) struct RenewalInput {
     claim_id: Uuid,
-}
-
-/// Material is returned only to the authenticated owner Mac holding this
-/// run's current execution lease. The browser never receives this response.
-pub(super) async fn provider_auth(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Path(run_id): Path<String>,
-    Json(input): Json<RenewalInput>,
-) -> Response {
-    let owner = executor(&session, input.claim_id);
-    let route = match desktop_provider_route(state.db_pool(), &session, &run_id, &owner).await {
-        Ok(Some(route)) => route,
-        Ok(None) => return expired(),
-        Err(error) => {
-            return run_error_response(
-                "desktop provider auth",
-                "Could not load provider account.",
-                error.into(),
-            )
-        }
-    };
-    let cipher = EnvProviderAuthCipher::from_env().ok();
-    let result = provider_auth_for_account_route(
-        state.db_pool(),
-        cipher
-            .as_ref()
-            .map(|value| value as &dyn ProviderAuthCipher),
-        &session.account_id,
-        &route,
-        Some(&run_id),
-    )
-    .await;
-    // Resolving an OAuth account can refresh its token. Check the lease again
-    // before handing the resulting short-lived material to the desktop.
-    match desktop_provider_route(state.db_pool(), &session, &run_id, &owner).await {
-        Ok(Some(current)) if current == route => {}
-        Ok(_) => return expired(),
-        Err(error) => {
-            return run_error_response(
-                "desktop provider auth",
-                "Could not load provider account.",
-                error.into(),
-            )
-        }
-    }
-    match result {
-        Ok(ProviderAuthForRunResult::Found(provider_auth)) => {
-            Json(RunnerProviderAuthMaterialEnvelope { provider_auth }).into_response()
-        }
-        Ok(ProviderAuthForRunResult::ProviderAuthNotFound) => error_response(
-            "provider_auth_not_found",
-            "Provider account was not found for this run.",
-            StatusCode::NOT_FOUND,
-        ),
-        Ok(ProviderAuthForRunResult::ProviderAuthCipherUnavailable) => error_response(
-            "provider_auth_not_configured",
-            "Provider accounts are unavailable.",
-            StatusCode::SERVICE_UNAVAILABLE,
-        ),
-        Ok(ProviderAuthForRunResult::RunNotFound) => expired(),
-        Err(error) => run_error_response(
-            "desktop provider auth",
-            "Could not load provider account.",
-            error.into(),
-        ),
-    }
-}
-
-async fn desktop_provider_route(
-    pool: &PgPool,
-    session: &CloudSession,
-    run_id: &str,
-    owner: &str,
-) -> Result<Option<Value>, sqlx_core::Error> {
-    let row: Option<(Value,)> = query_as(
-        "SELECT r.runtime_route_json FROM cloud_agent_fallback_runs r \
-         JOIN cloud_devices d ON d.device_id=$3 AND d.account_id=$2 \
-         WHERE r.run_id=$1 AND r.owner_account_id=$2 AND r.claimed_by=$4 \
-         AND r.execution_backend='desktop' AND r.status IN ('leased','running') \
-         AND r.lease_expires_at::timestamptz>now() \
-         AND d.device_platform IN ('macos','desktop') AND d.revoked_at IS NULL",
-    )
-    .bind(run_id)
-    .bind(&session.account_id)
-    .bind(&session.device_id)
-    .bind(owner)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row.map(|value| value.0))
 }
 
 pub(super) async fn admit(

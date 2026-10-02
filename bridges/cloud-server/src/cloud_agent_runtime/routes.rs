@@ -91,6 +91,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::desktop::provider_auth),
         )
         .route(
+            "/v1/cloud/agent-runs/:run_id/desktop/provider-auth/challenge",
+            post(super::desktop::provider_auth_challenge),
+        )
+        .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
         )

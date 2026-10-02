@@ -127,15 +127,10 @@ pub fn normalize_device_registration(
         return Err(DeviceInputError::UnsupportedKeyAlgorithm);
     }
     let public_key = value.public_key.trim();
-    if public_key.is_empty() || public_key.len() > MAX_PUBLIC_KEY_CHARS {
-        return Err(DeviceInputError::InvalidPublicKey);
-    }
-    let decoded = URL_SAFE_NO_PAD
-        .decode(public_key)
-        .map_err(|_| DeviceInputError::InvalidPublicKey)?;
-    let valid_x963 = PublicKey::from_sec1_bytes(&decoded).is_ok();
-    let valid_spki = PublicKey::from_public_key_der(&decoded).is_ok();
-    if !valid_x963 && !valid_spki {
+    if public_key.is_empty()
+        || public_key.len() > MAX_PUBLIC_KEY_CHARS
+        || parse_p256_public_key(public_key).is_none()
+    {
         return Err(DeviceInputError::InvalidPublicKey);
     }
 
@@ -152,6 +147,15 @@ pub fn normalize_device_registration(
         public_key: public_key.to_string(),
         key_algorithm,
     })
+}
+
+/// Decodes a registered P-256 installation public key: base64url of either a
+/// SEC1 point (iOS) or a DER SubjectPublicKeyInfo document (desktop).
+pub fn parse_p256_public_key(encoded: &str) -> Option<PublicKey> {
+    let decoded = URL_SAFE_NO_PAD.decode(encoded.trim()).ok()?;
+    PublicKey::from_sec1_bytes(&decoded)
+        .or_else(|_| PublicKey::from_public_key_der(&decoded))
+        .ok()
 }
 
 pub fn legacy_device_registration(default_name: &str) -> NormalizedDeviceRegistration {
