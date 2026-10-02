@@ -217,6 +217,8 @@ mod public_identity;
 mod realtime_sign_out;
 #[path = "cloud_auth_e2e/session_and_presence.rs"]
 mod session_and_presence;
+#[path = "cloud_auth_e2e/session_activity_access.rs"]
+mod session_activity_access;
 #[path = "cloud_auth_e2e/session_list_actions.rs"]
 mod session_list_actions;
 #[path = "cloud_auth_e2e/session_list_fixtures.rs"]

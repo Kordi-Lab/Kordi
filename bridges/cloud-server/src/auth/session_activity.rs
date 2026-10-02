@@ -15,6 +15,7 @@ use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 use recipients::publish_chat_event;
 
+mod access;
 mod recipients;
 
 const CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
@@ -397,6 +398,10 @@ async fn upsert_cloud_task_activity(
         );
     };
 
+    let pool = state.db_pool();
+    if let Err(refused) = access::require_writer(pool, &session.account_id, &session_id).await {
+        return refused;
+    }
     let updated_at =
         cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
     let task_activity_id = format!("taskact_{}", uuid::Uuid::new_v4().simple());
@@ -407,7 +412,6 @@ async fn upsert_cloud_task_activity(
             .map(|value| serde_json::Value::String(value.trim().to_string()))
             .collect(),
     );
-    let pool = state.db_pool();
     if query(
         "INSERT INTO cloud_session_tasks \
          (task_activity_id, session_id, task_id, title, summary, status, created_by_account_id, \
@@ -418,7 +422,8 @@ async fn upsert_cloud_task_activity(
            target_account_id = EXCLUDED.target_account_id, participants_json = EXCLUDED.participants_json, \
            artifact_ids_json = EXCLUDED.artifact_ids_json, response_message_id = EXCLUDED.response_message_id, \
            updated_at = EXCLUDED.updated_at, archived_at = NULL \
-         WHERE cloud_session_tasks.updated_at <= EXCLUDED.updated_at",
+         WHERE cloud_session_tasks.updated_at <= EXCLUDED.updated_at \
+           AND cloud_session_tasks.created_by_account_id = EXCLUDED.created_by_account_id",
     )
     .bind(&task_activity_id)
     .bind(&session_id)
@@ -440,7 +445,8 @@ async fn upsert_cloud_task_activity(
     }
 
     let task = match fetch_cloud_task_activity(pool, &session_id, &task_id).await {
-        Ok(Some(task)) => task,
+        Ok(Some(task)) if task.created_by_account_id == session.account_id => task,
+        Ok(Some(_)) => return access::recorded_by_someone_else(),
         _ => {
             return err(
                 "server_error",
@@ -510,10 +516,13 @@ async fn upsert_cloud_artifact_activity(
         );
     };
 
+    let pool = state.db_pool();
+    if let Err(refused) = access::require_writer(pool, &session.account_id, &session_id).await {
+        return refused;
+    }
     let updated_at =
         cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
     let artifact_activity_id = format!("artifactact_{}", uuid::Uuid::new_v4().simple());
-    let pool = state.db_pool();
     if query(
         "INSERT INTO cloud_session_artifacts \
          (artifact_activity_id, session_id, artifact_id, name, path, kind, category, summary, \
@@ -524,7 +533,8 @@ async fn upsert_cloud_artifact_activity(
            summary = EXCLUDED.summary, source_message_id = EXCLUDED.source_message_id, \
            attachment_id = EXCLUDED.attachment_id, content_type = EXCLUDED.content_type, \
            size_bytes = EXCLUDED.size_bytes, updated_at = EXCLUDED.updated_at, archived_at = NULL \
-         WHERE cloud_session_artifacts.updated_at <= EXCLUDED.updated_at",
+         WHERE cloud_session_artifacts.updated_at <= EXCLUDED.updated_at \
+           AND cloud_session_artifacts.created_by_account_id = EXCLUDED.created_by_account_id",
     )
     .bind(&artifact_activity_id)
     .bind(&session_id)
@@ -548,7 +558,8 @@ async fn upsert_cloud_artifact_activity(
     }
 
     let artifact = match fetch_cloud_artifact_activity(pool, &session_id, &artifact_id).await {
-        Ok(Some(artifact)) => artifact,
+        Ok(Some(artifact)) if artifact.created_by_account_id == session.account_id => artifact,
+        Ok(Some(_)) => return access::recorded_by_someone_else(),
         _ => {
             return err(
                 "server_error",
@@ -576,7 +587,7 @@ async fn upsert_cloud_artifact_activity(
 
 async fn list_cloud_session_activity(
     State(state): State<Arc<ServerState>>,
-    Extension(_session): Extension<CloudSession>,
+    Extension(session): Extension<CloudSession>,
     Query(q): Query<ListCloudSessionActivityQuery>,
 ) -> Response {
     let Some(session_id) = clean_required_activity_text(&q.session_id, 256) else {
@@ -586,48 +597,11 @@ async fn list_cloud_session_activity(
             StatusCode::BAD_REQUEST,
         );
     };
-    let pool = state.db_pool();
-    let task_rows: Vec<TaskRow> = match query_as(
-        "SELECT task_activity_id, session_id, task_id, title, summary, status, \
-                created_by_account_id, target_account_id, participants_json, artifact_ids_json, \
-                response_message_id, created_at, updated_at, archived_at \
-         FROM cloud_session_tasks WHERE session_id = $1 AND archived_at IS NULL \
-         ORDER BY updated_at ASC, task_id ASC",
-    )
-    .bind(&session_id)
-    .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not list task activity.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-    let artifact_rows: Vec<ArtifactRow> = match query_as(
-        "SELECT artifact_activity_id, session_id, artifact_id, name, path, kind, category, \
-                summary, created_by_account_id, source_message_id, attachment_id, content_type, \
-                size_bytes, created_at, updated_at, archived_at \
-         FROM cloud_session_artifacts WHERE session_id = $1 AND archived_at IS NULL \
-         ORDER BY updated_at ASC, artifact_id ASC",
-    )
-    .bind(&session_id)
-    .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not list artifact activity.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-
+    let (task_rows, artifact_rows) =
+        match access::visible_rows(state.db_pool(), &session.account_id, &session_id).await {
+            Ok(rows) => rows,
+            Err(refused) => return refused,
+        };
     Json(CloudSessionActivityResponse {
         tasks: task_rows.into_iter().map(task_summary_from_row).collect(),
         artifacts: artifact_rows
