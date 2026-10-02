@@ -142,6 +142,10 @@ services:
       KORDI_PIP_ENABLED: ${KORDI_PIP_ENABLED:-false}
       KORDI_PIP_OPENAI_API_KEY: ${KORDI_PIP_OPENAI_API_KEY:-}
       KORDI_PIP_OPENAI_MODEL: ${KORDI_PIP_OPENAI_MODEL:-}
+      # Whether Macs without the current agent context contract may answer
+      # other members' requests in mention-only groups: `deny` (default) or
+      # `allow_without_opt_outs` during a rollout. Opt-outs always apply.
+      KORDI_AGENT_CONTEXT_LEGACY_DESKTOP: ${KORDI_AGENT_CONTEXT_LEGACY_DESKTOP:-deny}
     command: ["serve", "--port", "17081"]
     depends_on:
       postgres:

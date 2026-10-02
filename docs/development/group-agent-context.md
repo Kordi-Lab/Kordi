@@ -52,7 +52,7 @@ Desktop executors declare `contextContract` in `ready` and `claim`. Contract 2 e
 | Another member's request where someone opted out | `acquired:false`; the requester's app claims cloud fallback |
 | Another member's request in a mention-only group | `acquired:false` while `KORDI_AGENT_CONTEXT_LEGACY_DESKTOP` is `deny` (the default); `allow_without_opt_outs` lets legacy executors answer there during a rollout. Opt-outs are always enforced |
 
-A legacy executor that would refuse a claim never counts as a ready owner Mac, so it does not delay cloud fallback.
+A legacy executor that would refuse a claim never counts as a ready owner Mac, so it does not delay cloud fallback. The server reads `KORDI_AGENT_CONTEXT_LEGACY_DESKTOP` once at startup; on the development compose stack, set it in `deploy/dev/.env` and recreate the `cloud-server` container.
 
 ### Workspaces
 
