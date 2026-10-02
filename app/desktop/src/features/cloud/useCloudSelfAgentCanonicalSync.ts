@@ -47,7 +47,8 @@ export function useCloudSelfAgentCanonicalSync({
   messageIndex,
   forksBySessionId,
   titlesBySessionId,
-  initialMessagesSettled,
+  headMessagesReady,
+  authoritativeMessagesReady,
   onSettled,
   reportWarning,
 }: {
@@ -61,7 +62,8 @@ export function useCloudSelfAgentCanonicalSync({
   messageIndex: CloudMessageIndex;
   forksBySessionId: Record<string, CloudSessionForkSummary>;
   titlesBySessionId: CloudSessionTitlesById;
-  initialMessagesSettled: boolean;
+  headMessagesReady: boolean;
+  authoritativeMessagesReady: boolean;
   onSettled?: () => void;
   reportWarning: (message: string, error: unknown) => void;
 }) {
@@ -74,7 +76,8 @@ export function useCloudSelfAgentCanonicalSync({
     messageIndex,
     forksBySessionId,
     titlesBySessionId,
-    initialMessagesSettled,
+    headMessagesReady,
+    authoritativeMessagesReady,
     onSettled,
     reportWarning,
   });
@@ -124,7 +127,8 @@ export function useCloudSelfAgentCanonicalSync({
       messageIndex,
       forksBySessionId,
       titlesBySessionId,
-      initialMessagesSettled,
+      headMessagesReady,
+      authoritativeMessagesReady,
       onSettled,
       reportWarning,
     };
@@ -133,7 +137,8 @@ export function useCloudSelfAgentCanonicalSync({
     agentDisplayName,
     canonicalState,
     forksBySessionId,
-    initialMessagesSettled,
+    headMessagesReady,
+    authoritativeMessagesReady,
     messageIndex,
     messagesByPeer,
     onSettled,
@@ -147,7 +152,7 @@ export function useCloudSelfAgentCanonicalSync({
       !account
       || !canonicalState
       || !setCanonicalState
-      || (!initialMessagesSettled && !isNativeDesktopShell())
+      || (!headMessagesReady && !isNativeDesktopShell())
     ) return;
     const nativeHistory = nativeHistoryRef.current.accountId === account.accountId
       ? nativeHistoryRef.current
@@ -189,51 +194,56 @@ export function useCloudSelfAgentCanonicalSync({
     ) {
       const signature = cloudSelfAgentCanonicalSyncPlanSignature(syncPlan);
       if (inFlightRef.current) return;
-      if (
+      const headAlreadyPersisted = (
         completedRef.current?.accountId === account.accountId
         && completedRef.current.signature === signature
-      ) return;
-      if (
-        failedRef.current?.accountId === account.accountId
-        && failedRef.current.signature === signature
-      ) return;
-
-      const accountId = account.accountId;
-      inFlightRef.current = { accountId, signature };
-      void persistCloudSelfAgentCanonicalSyncPlan(syncPlan, {
-        shouldContinue: () => (
-          mountedRef.current
-          && latestInputRef.current.account?.accountId === accountId
-        ),
-      }).then((batch) => {
+      );
+      if (!headAlreadyPersisted) {
         if (
-          !batch
-          || !mountedRef.current
-          || latestInputRef.current.account?.accountId !== accountId
+          failedRef.current?.accountId === account.accountId
+          && failedRef.current.signature === signature
         ) return;
-        completedRef.current = { accountId, signature };
-        failedRef.current = null;
-        latestInputRef.current.setCanonicalState?.((current) => (
-          mergeCloudSelfAgentCanonicalSyncBatch(current, batch)
-        ));
-        if (nativeHistory.recovered) latestInputRef.current.onSettled?.();
-      }).catch((error) => {
-        failedRef.current = { accountId, signature };
-        latestInputRef.current.reportWarning(
-          '[cloud-self-agent-sync] failed to materialize cloud session locally',
-          error,
-        );
-      }).finally(() => {
-        if (
-          inFlightRef.current?.accountId === accountId
-          && inFlightRef.current.signature === signature
-        ) {
-          inFlightRef.current = null;
-        }
-        if (mountedRef.current) requestFollowUp();
-      });
-      return;
+
+        const accountId = account.accountId;
+        inFlightRef.current = { accountId, signature };
+        void persistCloudSelfAgentCanonicalSyncPlan(syncPlan, {
+          shouldContinue: () => (
+            mountedRef.current
+            && latestInputRef.current.account?.accountId === accountId
+          ),
+        }).then((batch) => {
+          if (
+            !batch
+            || !mountedRef.current
+            || latestInputRef.current.account?.accountId !== accountId
+          ) return;
+          completedRef.current = { accountId, signature };
+          failedRef.current = null;
+          latestInputRef.current.setCanonicalState?.((current) => (
+            mergeCloudSelfAgentCanonicalSyncBatch(current, batch)
+          ));
+          if (nativeHistory.recovered) latestInputRef.current.onSettled?.();
+        }).catch((error) => {
+          failedRef.current = { accountId, signature };
+          latestInputRef.current.reportWarning(
+            '[cloud-self-agent-sync] failed to materialize cloud session locally',
+            error,
+          );
+        }).finally(() => {
+          if (
+            inFlightRef.current?.accountId === accountId
+            && inFlightRef.current.signature === signature
+          ) {
+            inFlightRef.current = null;
+          }
+          if (mountedRef.current) requestFollowUp();
+        });
+        return;
+      }
     }
+    // Cached heads can render before bootstrap. Only authoritative history
+    // may finish recovery, and a completed head must not skip that phase.
+    if (!authoritativeMessagesReady) return;
     if (nativeHistory.failed) return;
     if (!nativeHistory.recovered) {
       if (nativeHistory.inFlight) return;
@@ -439,7 +449,8 @@ export function useCloudSelfAgentCanonicalSync({
     agentDisplayName,
     canonicalState,
     forksBySessionId,
-    initialMessagesSettled,
+    headMessagesReady,
+    authoritativeMessagesReady,
     followUpRevision,
     messageIndex,
     messagesByPeer,
