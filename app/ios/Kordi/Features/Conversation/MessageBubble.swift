@@ -256,7 +256,7 @@ struct MessageBubble: View, Equatable {
 
             if !isThreadLayout && message.author == .me { Spacer(minLength: 34) }
 
-            VStack(alignment: !isThreadLayout && message.author == .me ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: !isThreadLayout && message.author == .me ? .trailing : .leading, spacing: isThreadLayout ? 2 : 4) {
                 if isThreadLayout {
                     if let source = visibleReplySource { quoteLine(source) }
                     if !groupedWithPrevious || visibleReplySource != nil {
@@ -653,7 +653,7 @@ struct MessageBubble: View, Equatable {
             if isThreadLayout {
                 bubbleContents
                     .padding(.trailing, message.author == .me && !message.isEdited ? 24 : 0)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 1)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 AdaptiveBubbleLayout(
@@ -730,7 +730,7 @@ struct MessageBubble: View, Equatable {
 
     @ViewBuilder
     private var bubbleContents: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: isThreadLayout ? 4 : 7) {
             if !isThreadLayout && showAuthor && message.author == .person {
                 authorHeader
             }
@@ -783,6 +783,7 @@ struct MessageBubble: View, Equatable {
                 } else {
                     MarkdownMessageContent(
                         text: message.text,
+                        density: isThreadLayout ? .threads : .standard,
                         mentionTargets: mentionTargets,
                         mentions: message.mentions,
                         inlineAccent: bubbleInlineAccentColor,

@@ -628,7 +628,7 @@ function MessageBubbleView({
         ) : null}
         {threadLayout && !plainAgentResponse && (msg.sourceMessage ?? msg.turn.sourceMessage) ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage ?? msg.turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
         <div className={cn("flex w-fit max-w-full items-end gap-2", threadLayout && "app-thread-message-main")}>
-          {threadLayout ? <IdentityAvatar kind="agent" seed={msg.senderAvatarSeed || currentLocalAgentAvatarSeed} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-8 w-8 shrink-0" /> : null}
+          {threadLayout ? <IdentityAvatar kind="agent" seed={msg.senderAvatarSeed || currentLocalAgentAvatarSeed} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-7 w-7 shrink-0" /> : null}
           <div className="app-message-hover-time-trigger min-w-0 w-fit max-w-[58rem]">
             <div className="flex w-full items-center gap-1.5">
               {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
@@ -837,7 +837,7 @@ function MessageBubbleView({
                 imageUrl={msg.senderProfileImageUrl}
                 className={cn(
                   'mb-0.5 border border-white/10 transition hover:ring-2 hover:ring-[color:var(--app-sidebar-accent)]/35',
-                  useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
+                  threadLayout || useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
                 )}
               />
             </button>
@@ -849,12 +849,12 @@ function MessageBubbleView({
               imageUrl={msg.senderProfileImageUrl}
               className={cn(
                 'mb-0.5 border border-white/10',
-                useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
+                threadLayout || useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8',
               )}
             />
           )
         ) : showAvatarSlot ? (
-          <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
+          <span className={cn('app-message-avatar-spacer shrink-0', threadLayout || useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
         <TranscriptMessageSurface data-message-context-menu-anchor="true"
           data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
