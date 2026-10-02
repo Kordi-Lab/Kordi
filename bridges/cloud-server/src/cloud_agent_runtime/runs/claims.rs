@@ -179,6 +179,7 @@ async fn claim_run_with_executor(
         pool,
         &input.session_id,
         &input.request_message_id,
+        &input.requester_account_id,
     )
     .await
     .map_err(|error| match error {

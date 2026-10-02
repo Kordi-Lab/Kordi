@@ -366,6 +366,15 @@ async fn records_of_a_deleted_request_are_cleared() {
         !completed && !steps[1],
         "the run in progress keeps the step open"
     );
+    let (wait,): (f64,) = query_as(
+        "SELECT EXTRACT(EPOCH FROM next_attempt_at - now())::float8 \
+         FROM cloud_content_removal_jobs WHERE job_id = $1",
+    )
+    .bind(ids[0])
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!((30.0..=60.0).contains(&wait), "waits a minute, not {wait}");
 
     let (summary, archived): (Option<String>, Option<String>) = query_as(
         "SELECT task.summary, artifact.archived_at FROM cloud_session_tasks task, cloud_session_artifacts artifact \
@@ -392,9 +401,14 @@ async fn records_of_a_deleted_request_are_cleared() {
             ));
     }
 
-    // When the run in progress ends, its prompt is cleared too.
+    // When the run in progress ends, its prompt is cleared at the next check.
     query("UPDATE cloud_agent_fallback_runs SET status = 'completed' WHERE run_id = $1")
         .bind(&running)
+        .execute(&pool)
+        .await
+        .unwrap();
+    query("UPDATE cloud_content_removal_jobs SET next_attempt_at = now() WHERE job_id = $1")
+        .bind(ids[0])
         .execute(&pool)
         .await
         .unwrap();

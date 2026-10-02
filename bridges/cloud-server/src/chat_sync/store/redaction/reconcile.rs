@@ -54,16 +54,20 @@ pub async fn reconcile_deleted_messages(
     Ok(handled)
 }
 
+/// (conversation, client id, sender, version, deleted at) of a message.
+type DeletedMessageRow = (Uuid, Uuid, String, i32, Option<DateTime<Utc>>);
+
 async fn reconcile_deleted_message(pool: &PgPool, message_id: Uuid) -> Result<bool, StoreError> {
     let mut transaction = pool.begin().await?;
-    let row: Option<(Uuid, Uuid, i32, Option<DateTime<Utc>>)> = query_as(
-        "SELECT conversation_id, client_message_id, version, deleted_at \
+    let row: Option<DeletedMessageRow> = query_as(
+        "SELECT conversation_id, client_message_id, sender_account_id, version, deleted_at \
          FROM cloud_chat_messages WHERE message_id = $1 FOR UPDATE",
     )
     .bind(message_id)
     .fetch_optional(&mut *transaction)
     .await?;
-    let Some((conversation_id, client_message_id, version, Some(_))) = row else {
+    let Some((conversation_id, client_message_id, sender_account_id, version, Some(_))) = row
+    else {
         return Ok(false);
     };
     let (queued,): (bool,) = query_as(
@@ -106,7 +110,16 @@ async fn reconcile_deleted_message(pool: &PgPool, message_id: Uuid) -> Result<bo
     let identifiers = normalize_identifiers(identifiers);
     let attachment_ids = attachment_ids.into_iter().collect::<Vec<_>>();
     redact_deleted_message_events(&mut transaction, message_id, version).await?;
-    cancel_queued_runs_for_deleted_request(&mut transaction, conversation_id, &identifiers).await?;
+    cancel_queued_runs_for_deleted_request(
+        &mut transaction,
+        &DeletedRequest {
+            conversation_id,
+            message_id,
+            sender_account_id: Some(&sender_account_id),
+            identifiers: &identifiers,
+        },
+    )
+    .await?;
     enqueue_removal_job(
         &mut transaction,
         NewRemovalJob {

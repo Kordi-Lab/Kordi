@@ -239,8 +239,9 @@ pub use redaction::{
 // The removal worker and the media library queue and finish jobs through these.
 #[allow(unused_imports)]
 pub(crate) use redaction::{
-    cancel_queued_runs_for_deleted_request, conversation_session_ids, enqueue_removal_job,
-    message_identifiers, NewRemovalJob, RemovalReason,
+    cancel_queued_runs_for_deleted_request, conversation_session_ids, deleted_request_runs_sql,
+    enqueue_removal_job, exclusive_identifiers, message_identifiers, DeletedRequest, NewRemovalJob,
+    RemovalReason,
 };
 mod service_members;
 mod support;

@@ -66,11 +66,13 @@ pub(crate) struct NewRemovalJob<'a> {
 
 /// Queues a removal job in the caller's transaction. Returns false when an
 /// equivalent job already exists, such as a second deletion of one message.
+/// A job without attachment ids has no file step to run.
 pub(crate) async fn enqueue_removal_job(
     transaction: &mut Transaction<'_, Postgres>,
     job: NewRemovalJob<'_>,
 ) -> Result<bool, StoreError> {
-    let steps = job.reason.steps();
+    let mut steps = job.reason.steps();
+    steps.attachments &= !job.attachment_ids.is_empty();
     let result = query(
         "INSERT INTO cloud_content_removal_jobs \
          (job_id, reason, account_id, conversation_id, message_id, source_identifiers, \

@@ -7,8 +7,11 @@
 //! leases due jobs and runs each pending step in the order digests, records,
 //! attachments, quotes. A failing step does not stop the others. Steps do
 //! bounded work and keep their place in `progress`, so a long job finishes
-//! over several attempts. Failed attempts back off from 30 seconds to at most
-//! 6 hours, and jobs never give up.
+//! over several attempts. Due jobs are leased in `next_attempt_at` order, so a
+//! job with more work never starves newer ones. A job waiting on an agent run
+//! that is still working on its request checks again after a minute. Failed
+//! attempts back off from 30 seconds to at most 6 hours, and jobs never give
+//! up.
 //!
 //! Log lines carry job ids, reasons, steps, and codes only; never content,
 //! object keys, or URLs. See `docs/data-deletion.md`.
@@ -36,6 +39,9 @@ pub use schedule::{
 
 /// A job's attempt count at which the worker logs it once more.
 const ATTEMPTS_WORTH_REPORTING: i32 = 10;
+/// How long a job waits before checking again on an agent run that is still
+/// working on its deleted request.
+const WAIT_SECONDS: f64 = 60.0;
 
 /// Why an object could not be deleted.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +75,9 @@ enum StepOutcome {
     Retained,
     /// Progress was made and more work remains.
     More,
+    /// Something else must finish first, such as an agent run still working
+    /// on the deleted request; the job checks again after `WAIT_SECONDS`.
+    Wait,
     Failed(&'static str),
 }
 
@@ -82,6 +91,7 @@ impl StepOutcome {
             Self::Done => "done".to_string(),
             Self::Retained => "retained".to_string(),
             Self::More => "more".to_string(),
+            Self::Wait => "wait".to_string(),
             Self::Failed(code) => format!("error:{code}"),
         }
     }
@@ -114,6 +124,28 @@ impl Job {
         } else {
             self.source_identifiers.clone()
         }
+    }
+
+    /// The job's ids that no other message of the conversation also uses, so
+    /// records of other people's messages are never matched. Computed once and
+    /// kept in `progress`.
+    async fn exclusive_identifiers(&mut self, pool: &PgPool) -> Result<Vec<String>, StoreError> {
+        if let Some(cached) = self.progress["exclusiveIdentifiers"].as_array() {
+            return Ok(cached
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect());
+        }
+        let identifiers = match (self.conversation_id, self.message_id) {
+            (Some(conversation_id), Some(message_id)) => {
+                store::exclusive_identifiers(pool, conversation_id, message_id, &self.identifiers())
+                    .await?
+            }
+            _ => self.identifiers(),
+        };
+        self.progress["exclusiveIdentifiers"] = json!(identifiers);
+        Ok(identifiers)
     }
 }
 
@@ -149,7 +181,7 @@ async fn lease_job(
            WHERE completed_at IS NULL AND next_attempt_at <= now() \
              AND (leased_until IS NULL OR leased_until < now()) \
              AND ($1::uuid[] IS NULL OR job_id = ANY($1)) AND NOT (job_id = ANY($2)) \
-           ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED) \
+           ORDER BY next_attempt_at, created_at LIMIT 1 FOR UPDATE SKIP LOCKED) \
          RETURNING job_id, reason, account_id, conversation_id, message_id, source_identifiers, \
            attachment_ids, digests_done_at IS NULL, records_done_at IS NULL, \
            attachments_done_at IS NULL, quotes_done_at IS NULL, progress, attempts, leased_until",
@@ -220,7 +252,7 @@ async fn run_job(
         }
         let outcome = match index {
             0 => steps::digests(pool, &mut job).await,
-            1 => records::run(pool, &job).await,
+            1 => records::run(pool, &mut job).await,
             2 => attachments::run(pool, objects, &mut job).await,
             _ => steps::quotes(pool, &mut job).await,
         };
@@ -240,7 +272,16 @@ async fn run_job(
         _ => None,
     });
     let completed = done.iter().all(|done| *done);
-    let retry_seconds = retry_delay(job.attempts.saturating_add(1)).as_secs_f64();
+    let failure = failure.filter(|_| !completed);
+    // Unfinished work runs again at once; due jobs are leased in
+    // `next_attempt_at` order, so it never starves newer jobs. A job with
+    // nothing left but a wait checks again later.
+    let waiting = outcomes.contains(&StepOutcome::Wait) && !outcomes.contains(&StepOutcome::More);
+    let delay_seconds = match (failure, waiting) {
+        (Some(_), _) => retry_delay(job.attempts.saturating_add(1)).as_secs_f64(),
+        (None, true) => WAIT_SECONDS,
+        (None, false) => 0.0,
+    };
     let attempts: Option<(i32,)> = query_as(
         "UPDATE cloud_content_removal_jobs SET \
            digests_done_at = CASE WHEN $2 THEN COALESCE(digests_done_at, now()) ELSE digests_done_at END, \
@@ -252,8 +293,7 @@ async fn run_job(
            completed_at = CASE WHEN $7 THEN now() END, \
            attempts = attempts + CASE WHEN $8::text IS NULL THEN 0 ELSE 1 END, \
            last_error_code = CASE WHEN $7 THEN NULL ELSE COALESCE($8, last_error_code) END, \
-           next_attempt_at = CASE WHEN $8::text IS NULL THEN now() \
-             ELSE now() + make_interval(secs => $9) END, \
+           next_attempt_at = now() + make_interval(secs => $9), \
            leased_until = NULL, updated_at = now() \
          WHERE job_id = $1 AND leased_until = $10 \
          RETURNING attempts",
@@ -265,8 +305,8 @@ async fn run_job(
     .bind(done[3])
     .bind(&job.progress)
     .bind(completed)
-    .bind(failure.filter(|_| !completed))
-    .bind(retry_seconds)
+    .bind(failure)
+    .bind(delay_seconds)
     .bind(job.leased_until)
     .fetch_optional(pool)
     .await?;

@@ -54,7 +54,10 @@ pub(super) async fn quotes(pool: &PgPool, job: &mut Job) -> StepOutcome {
         Ok(None) => return StepOutcome::Done,
         Err(error) => return StepOutcome::Failed(database_error(error)),
     };
-    let identifiers = job.identifiers();
+    let identifiers = match job.exclusive_identifiers(pool).await {
+        Ok(identifiers) => identifiers,
+        Err(error) => return StepOutcome::Failed(database_error(error)),
+    };
     let mut after = job.progress["quoteAfterSequence"].as_i64().unwrap_or(0);
     let mut examined = 0;
     while examined < QUOTE_MESSAGES_PER_ATTEMPT {

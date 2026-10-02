@@ -32,12 +32,13 @@ async fn run_state(pool: &PgPool, run_id: &str) -> (String, String, Option<Strin
         .expect("load run")
 }
 
-fn claim(session_id: &str, request_id: &str, owner: &str) -> ClaimRunRequest {
+/// A claim for `owner`'s agent that `requester`, the request's sender, makes.
+fn claim(session_id: &str, request_id: &str, owner: &str, requester: &str) -> ClaimRunRequest {
     ClaimRunRequest {
         request_message_id: request_id.to_string(),
         session_id: session_id.to_string(),
         owner_account_id: owner.to_string(),
-        requester_account_id: owner.to_string(),
+        requester_account_id: requester.to_string(),
         prompt: "Summarize the request".to_string(),
         runtime_route: None,
         idempotency_key: Uuid::new_v4().to_string(),
@@ -102,7 +103,7 @@ async fn deleted_requests_cancel_queued_runs_and_refuse_new_ones() {
     )
     .await;
     assert!(
-        !store::request_was_deleted(&pool, &group.session_id, &logical_id)
+        !store::request_was_deleted(&pool, &group.session_id, &logical_id, &group.owner)
             .await
             .unwrap()
     );
@@ -125,11 +126,15 @@ async fn deleted_requests_cancel_queued_runs_and_refuse_new_ones() {
     assert_eq!(run_state(&pool, &unrelated).await.0, "queued");
 
     assert!(
-        store::request_was_deleted(&pool, &group.session_id, &logical_id)
+        store::request_was_deleted(&pool, &group.session_id, &logical_id, &group.owner)
             .await
             .unwrap()
     );
-    let refused = claim_run(&pool, &claim(&group.session_id, &logical_id, &group.peer)).await;
+    let refused = claim_run(
+        &pool,
+        &claim(&group.session_id, &logical_id, &group.peer, &group.owner),
+    )
+    .await;
     assert!(
         matches!(refused, Err(RunError::ContextUnavailable(_))),
         "{refused:?}"
@@ -147,14 +152,19 @@ async fn deleted_requests_cancel_queued_runs_and_refuse_new_ones() {
         format!("ios_{}", deleted.client_message_id),
     ] {
         assert!(
-            store::request_was_deleted(&pool, &chat.session_id, &request_id)
+            store::request_was_deleted(&pool, &chat.session_id, &request_id, &chat.owner)
                 .await
                 .unwrap()
         );
     }
     let refused = claim_run(
         &pool,
-        &claim(&chat.session_id, &deleted.id.to_string(), &chat.owner),
+        &claim(
+            &chat.session_id,
+            &deleted.id.to_string(),
+            &chat.owner,
+            &chat.owner,
+        ),
     )
     .await;
     assert!(
@@ -162,14 +172,22 @@ async fn deleted_requests_cancel_queued_runs_and_refuse_new_ones() {
         "{refused:?}"
     );
     // Positive control: a live request in the same chat is still claimable.
-    assert!(
-        !store::request_was_deleted(&pool, &chat.session_id, &live.id.to_string())
-            .await
-            .unwrap()
-    );
+    assert!(!store::request_was_deleted(
+        &pool,
+        &chat.session_id,
+        &live.id.to_string(),
+        &chat.owner
+    )
+    .await
+    .unwrap());
     let accepted = claim_run(
         &pool,
-        &claim(&chat.session_id, &live.id.to_string(), &chat.owner),
+        &claim(
+            &chat.session_id,
+            &live.id.to_string(),
+            &chat.owner,
+            &chat.owner,
+        ),
     )
     .await
     .expect("a live request is claimable");

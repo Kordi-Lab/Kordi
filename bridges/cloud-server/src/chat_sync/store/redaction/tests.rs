@@ -1,3 +1,7 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+
+use super::super::message::CLOUD_GROUP_PREFIX;
+use super::identifiers::{identifier_key, MAX_IDENTIFIER_CHARS};
 use super::*;
 
 fn snapshot(content: Value) -> MessageSnapshot {
@@ -178,4 +182,21 @@ fn removal_reasons_mark_only_their_own_steps_pending() {
             reason.as_str()
         );
     }
+}
+
+#[test]
+fn identifiers_compare_without_prefixes_case_or_uuid_format() {
+    let id = Uuid::parse_str("01900000-0000-7000-8000-00000000000a").unwrap();
+    for form in [
+        id.to_string(),
+        format!("ios_{id}"),
+        format!("collaboration-message:{id}"),
+        id.to_string().to_uppercase(),
+        id.simple().to_string(),
+        format!(" {id} "),
+    ] {
+        assert_eq!(identifier_key(&form), id.to_string(), "{form}");
+    }
+    assert_eq!(identifier_key("Logical-ID"), "logical-id");
+    assert_ne!(identifier_key("logical-a"), identifier_key("logical-b"));
 }

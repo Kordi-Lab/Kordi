@@ -112,12 +112,16 @@ pub async fn purge_attachment(
     Ok(PurgeOutcome::Purged)
 }
 
-/// Purges the job's files that are not finished yet, a few per attempt.
+/// Purges the job's files that are not finished yet, a few per attempt. A job
+/// with no files is done without object storage.
 pub(super) async fn run(
     pool: &PgPool,
     objects: Option<&dyn ObjectStoreDeleter>,
     job: &mut Job,
 ) -> StepOutcome {
+    if job.attachment_ids.is_empty() {
+        return StepOutcome::Done;
+    }
     let Some(objects) = objects else {
         return StepOutcome::Failed("object_store_unavailable");
     };

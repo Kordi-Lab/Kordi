@@ -13,12 +13,10 @@
 
 use std::collections::HashSet;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-
-use super::message::CLOUD_GROUP_PREFIX;
 use super::*;
 
 mod history;
+mod identifiers;
 mod jobs;
 mod reconcile;
 #[cfg(test)]
@@ -27,11 +25,10 @@ mod server_message_tests;
 mod tests;
 
 pub use history::{backfill_content_removal_history, HistoryBackfillReport, BACKFILL_WINDOW_DAYS};
+pub(crate) use identifiers::{exclusive_identifiers, message_identifiers};
+use identifiers::{normalize_identifiers, snapshot_identifiers};
 pub(crate) use jobs::{enqueue_removal_job, NewRemovalJob, RemovalReason};
 pub use reconcile::{reconcile_deleted_messages, reconcile_hidden_messages};
-
-/// The longest identifier kept for a removal job.
-const MAX_IDENTIFIER_CHARS: usize = 300;
 
 /// The content-free payload of a rewritten replay row, as SQL over a row
 /// aliased `event`; the single source of truth for every statement that
@@ -217,67 +214,6 @@ pub(super) async fn guard_replayed_events(
     Ok(())
 }
 
-/// Every id another record may use to refer to this message: the canonical
-/// id, the client id, the iOS form of the client id, and the logical id of a
-/// group envelope. Direct envelopes carry no id of their own; direct quotes
-/// use the canonical id. Compute it before the content is emptied.
-pub(crate) fn message_identifiers(message: &MessageSnapshot) -> Vec<String> {
-    let mut values = vec![
-        message.id.to_string(),
-        message.client_message_id.to_string(),
-        format!("ios_{}", message.client_message_id),
-    ];
-    values.extend(group_envelope_ids(&message.content));
-    normalize_identifiers(values)
-}
-
-/// The same ids read from a stored snapshot, which may be incomplete.
-pub(super) fn snapshot_identifiers(snapshot: &Value) -> Vec<String> {
-    let mut values = Vec::new();
-    if let Some(id) = snapshot.get("id").and_then(Value::as_str) {
-        values.push(id.to_string());
-    }
-    if let Some(client_id) = snapshot.get("client_message_id").and_then(Value::as_str) {
-        values.push(client_id.to_string());
-        values.push(format!("ios_{client_id}"));
-    }
-    if let Some(content) = snapshot.get("content") {
-        values.extend(group_envelope_ids(content));
-    }
-    normalize_identifiers(values)
-}
-
-fn group_envelope_ids(content: &Value) -> Vec<String> {
-    content
-        .get("blocks")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
-        .filter_map(|block| block.get("text").and_then(Value::as_str))
-        .filter_map(|text| text.trim_start().strip_prefix(CLOUD_GROUP_PREFIX))
-        .filter_map(|encoded| URL_SAFE_NO_PAD.decode(encoded.trim()).ok())
-        .filter_map(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
-        .filter_map(|envelope| {
-            envelope
-                .get("message")?
-                .get("id")?
-                .as_str()
-                .map(ToString::to_string)
-        })
-        .collect()
-}
-
-pub(super) fn normalize_identifiers(values: impl IntoIterator<Item = String>) -> Vec<String> {
-    let mut seen = HashSet::new();
-    values
-        .into_iter()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty() && value.chars().count() <= MAX_IDENTIFIER_CHARS)
-        .filter(|value| seen.insert(value.clone()))
-        .collect()
-}
-
 /// Both session ids a run or task may name for the conversation.
 pub(crate) async fn conversation_session_ids(
     transaction: &mut Transaction<'_, Postgres>,
@@ -297,28 +233,52 @@ pub(crate) async fn conversation_session_ids(
     Ok(sessions)
 }
 
+/// A message deleted for everyone, as agent runs refer to it.
+pub(crate) struct DeletedRequest<'a> {
+    pub(crate) conversation_id: Uuid,
+    pub(crate) message_id: Uuid,
+    /// The sender, when the message row still exists.
+    pub(crate) sender_account_id: Option<&'a str>,
+    /// Every id a run may use for the request.
+    pub(crate) identifiers: &'a [String],
+}
+
+/// SQL that limits run statements to runs of the deleted request: runs that
+/// name it by its canonical id (`$3`), or runs its sender (`$4`) requested
+/// under any of its ids (`$2`). A client chooses every id except the canonical
+/// one, so a run another person requested is never matched through them.
+macro_rules! deleted_request_runs_sql {
+    () => {
+        "session_id = ANY($1) AND request_message_id = ANY($2) \
+         AND (request_message_id = $3 OR requester_account_id = $4) \
+         AND run_id NOT LIKE 'digest\\_%'"
+    };
+}
+pub(crate) use deleted_request_runs_sql;
+
 /// Agent runs that have not started for a deleted request are cancelled with
 /// an empty prompt. Only `queued` rows match, so this never waits on a run in
 /// progress. Digest runs and sub-session runs are never touched.
 pub(crate) async fn cancel_queued_runs_for_deleted_request(
     transaction: &mut Transaction<'_, Postgres>,
-    conversation_id: Uuid,
-    identifiers: &[String],
+    request: &DeletedRequest<'_>,
 ) -> Result<u64, StoreError> {
-    if identifiers.is_empty() {
+    if request.identifiers.is_empty() {
         return Ok(0);
     }
-    let sessions = conversation_session_ids(transaction, conversation_id).await?;
-    let result = query(
+    let sessions = conversation_session_ids(transaction, request.conversation_id).await?;
+    let result = query(concat!(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'cancelled', prompt = '', error_code = 'request_deleted', \
              error_message = 'The request was deleted before the agent started.', \
-             completed_at = $3, updated_at = $3 \
-         WHERE status = 'queued' AND session_id = ANY($1) AND request_message_id = ANY($2) \
-           AND run_id NOT LIKE 'digest\\_%' AND subsession_id IS NULL",
-    )
+             completed_at = $5, updated_at = $5 \
+         WHERE status = 'queued' AND subsession_id IS NULL AND ",
+        deleted_request_runs_sql!()
+    ))
     .bind(&sessions)
-    .bind(identifiers)
+    .bind(request.identifiers)
+    .bind(request.message_id.to_string())
+    .bind(request.sender_account_id)
     .bind(Utc::now().to_rfc3339())
     .execute(&mut **transaction)
     .await?;
@@ -326,14 +286,20 @@ pub(crate) async fn cancel_queued_runs_for_deleted_request(
 }
 
 /// Whether `request_id` names a message of the session's conversation that
-/// was deleted for everyone. Group envelope ids are matched through the
-/// removal job, because the deleted content no longer carries them.
+/// was deleted for everyone, for a run `requester_account_id` asks for. The
+/// canonical id matches whoever asks. A client-chosen id (a client id, its
+/// iOS form, or a group envelope id) matches only the requester's own deleted
+/// message, because another member may reuse it for a different message.
+/// Group envelope ids are matched through the removal job, because the
+/// deleted content no longer carries them.
 pub async fn request_was_deleted(
     pool: &PgPool,
     session_id: &str,
     request_id: &str,
+    requester_account_id: &str,
 ) -> Result<bool, StoreError> {
     let (session_id, request_id) = (session_id.trim(), request_id.trim());
+    let requester_account_id = requester_account_id.trim();
     if session_id.is_empty() || request_id.is_empty() {
         return Ok(false);
     }
@@ -348,17 +314,21 @@ pub async fn request_was_deleted(
            SELECT 1 FROM cloud_chat_messages message \
            JOIN conversation ON conversation.conversation_id = message.conversation_id \
            WHERE message.deleted_at IS NOT NULL \
-             AND (message.message_id = $3 OR message.client_message_id = $3) \
+             AND (message.message_id = $3 \
+                  OR (message.client_message_id = $3 AND message.sender_account_id = $5)) \
          ) OR EXISTS ( \
            SELECT 1 FROM cloud_content_removal_jobs job \
            JOIN conversation ON conversation.conversation_id = job.conversation_id \
+           LEFT JOIN cloud_chat_messages message ON message.message_id = job.message_id \
            WHERE job.reason = 'message_deleted' AND $4 = ANY(job.source_identifiers) \
+             AND (job.message_id::text = $4 OR message.sender_account_id = $5) \
          )",
     )
     .bind(session_id)
     .bind(canonical_session)
     .bind(request_uuid)
     .bind(request_id)
+    .bind(requester_account_id)
     .fetch_one(pool)
     .await?;
     Ok(deleted)
@@ -374,8 +344,16 @@ pub(super) async fn finish_delete_for_everyone(
     attachment_ids: &[String],
 ) -> Result<(), StoreError> {
     redact_deleted_message_events(transaction, tombstone.id, tombstone.version).await?;
-    cancel_queued_runs_for_deleted_request(transaction, tombstone.conversation_id, identifiers)
-        .await?;
+    cancel_queued_runs_for_deleted_request(
+        transaction,
+        &DeletedRequest {
+            conversation_id: tombstone.conversation_id,
+            message_id: tombstone.id,
+            sender_account_id: Some(&tombstone.sender_account_id),
+            identifiers,
+        },
+    )
+    .await?;
     enqueue_removal_job(
         transaction,
         NewRemovalJob {
