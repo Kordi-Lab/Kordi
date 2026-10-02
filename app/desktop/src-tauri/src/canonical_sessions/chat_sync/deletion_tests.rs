@@ -172,30 +172,79 @@ fn removal_evicts_only_attachments_that_no_remaining_message_uses() {
             "video": {"attachmentId": "motion"}, "playback": {"attachmentId": "playback"}}},
         {"attachmentId": "legacy-only", "kind": "file"},
     ]});
-    let mut neighbor = message("neighbor", 2);
+    let mut second = message("second", 2);
+    second["attachment_ids"] = json!(["second-photo"]);
+    let mut neighbor = message("neighbor", 3);
     neighbor["attachment_ids"] = json!(["shared"]);
     apply_on_connection(
         &mut conn,
-        batch("acct_test", vec![removed, neighbor], vec![]),
+        batch("acct_test", vec![removed, second, neighbor], vec![]),
     )
     .unwrap();
 
-    let mut evicted = Vec::new();
+    // Nothing is decided inside the transaction; both removals are checked in
+    // one pass after it commits.
     let tx = conn.transaction().unwrap();
-    deletions::mark_message_deleted_with(&tx, "acct_test", "removed", |ids| {
+    mark_message_deleted(&tx, "acct_test", "removed").unwrap();
+    mark_message_deleted(&tx, "acct_test", "second").unwrap();
+    tx.commit().unwrap();
+    let mut evicted = Vec::new();
+    deletions::evict_unused_cached_files_with(&conn, "acct_test", |ids| {
         evicted.extend_from_slice(ids);
+    });
+    evicted.sort();
+    assert_eq!(
+        evicted,
+        ["legacy-only", "motion", "photo", "playback", "second-photo"]
+    );
+    let mut called = false;
+    deletions::evict_unused_cached_files_with(&conn, "acct_test", |_| called = true);
+    assert!(!called, "queued ids are evicted once");
+
+    let tx = conn.transaction().unwrap();
+    let mut collected = false;
+    deletions::mark_message_deleted_with(&tx, "acct_test", "never-downloaded", |_| {
+        collected = true;
     })
     .unwrap();
-    tx.commit().unwrap();
-
-    assert_eq!(evicted, ["legacy-only", "motion", "photo", "playback"]);
-    let tx = conn.transaction().unwrap();
-    let mut called = false;
-    deletions::mark_message_deleted_with(&tx, "acct_test", "never-downloaded", |_| called = true)
-        .unwrap();
     assert!(
-        !called,
+        !collected,
         "a message without a stored snapshot has nothing to evict"
+    );
+}
+
+#[test]
+fn a_rolled_back_removal_evicts_nothing() {
+    let mut conn = test_support::test_connection();
+    let mut removed = message("removed", 1);
+    removed["attachment_ids"] = json!(["photo"]);
+    apply_on_connection(&mut conn, batch("acct_test", vec![removed], vec![])).unwrap();
+    let tx = conn.transaction().unwrap();
+    mark_message_deleted(&tx, "acct_test", "removed").unwrap();
+    tx.rollback().unwrap();
+    let mut called = false;
+    deletions::evict_unused_cached_files_with(&conn, "acct_test", |_| called = true);
+    assert!(!called);
+    assert_eq!(load_state(&conn, "acct_test").unwrap().messages.len(), 1);
+}
+
+#[test]
+fn one_pass_finds_every_attachment_still_in_use() {
+    let mut conn = test_support::test_connection();
+    let mut messages = Vec::new();
+    for index in 0..20 {
+        let mut kept = message(&format!("kept-{index}"), index + 1);
+        kept["attachment_ids"] = json!([format!("file-{index}")]);
+        messages.push(kept);
+    }
+    apply_on_connection(&mut conn, batch("acct_test", messages, vec![])).unwrap();
+    let candidates = (0..25)
+        .map(|index| format!("file-{index}"))
+        .collect::<std::collections::BTreeSet<_>>();
+    let unused = deletions::unreferenced_attachment_ids(&conn, "acct_test", candidates).unwrap();
+    assert_eq!(
+        unused,
+        ["file-20", "file-21", "file-22", "file-23", "file-24"]
     );
 }
 

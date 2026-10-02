@@ -119,7 +119,7 @@ pub struct ChatSyncPendingOperation {
 mod apply;
 mod compaction;
 pub(crate) mod deletions;
-pub(super) use deletions::mark_message_deleted;
+pub(super) use deletions::{evict_unused_cached_files, mark_message_deleted};
 mod message_reads;
 mod outbox;
 mod pins;

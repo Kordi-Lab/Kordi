@@ -179,6 +179,7 @@ pub(super) fn delete_cloud_message_in_db(
     };
     let deleted = delete_message_rows(&transaction, &rows)?;
     transaction.commit().map_err(|error| error.to_string())?;
+    super::super::chat_sync::evict_unused_cached_files(conn, account_id);
     Ok(deleted)
 }
 

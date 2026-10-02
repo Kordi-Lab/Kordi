@@ -4,23 +4,29 @@ use super::*;
 
 // A removal is terminal for this viewer. Keep its marker even when bootstrap
 // replaces the message cache, so an older page or later edit cannot restore it.
+//
+// The removed message's attachment ids are queued in a connection-scoped
+// table that rolls back with the transaction. Call
+// `evict_unused_cached_files` after the transaction ends to remove the cached
+// files that no remaining message uses.
 pub(in crate::canonical_sessions) fn mark_message_deleted(
     tx: &Transaction<'_>,
     account_id: &str,
     message_id: &str,
 ) -> Result<(), String> {
     mark_message_deleted_with(tx, account_id, message_id, |attachment_ids| {
-        crate::chat::attachments::evict_cloud_attachment_cache(account_id, attachment_ids);
+        // Cache eviction is best effort: queueing never blocks the removal.
+        let _ = queue_cache_eviction(tx, account_id, &attachment_ids);
     })
 }
 
-/// Records the removal, then hands `evict` the attachment ids that no remaining
-/// message of this account uses, so their cached files can be removed.
+/// Records the removal and hands `collect` the attachment ids the removed
+/// message used. Nothing is scanned or deleted on disk here.
 pub(super) fn mark_message_deleted_with(
     tx: &Transaction<'_>,
     account_id: &str,
     message_id: &str,
-    evict: impl FnOnce(&[String]),
+    collect: impl FnOnce(BTreeSet<String>),
 ) -> Result<(), String> {
     tx.execute(
         "INSERT OR IGNORE INTO chat_sync_message_deletions (account_id, message_id)
@@ -40,11 +46,100 @@ pub(super) fn mark_message_deleted_with(
         params![account_id, message_id],
     )
     .map_err(|error| error.to_string())?;
-    let unused = unreferenced_attachment_ids(tx, account_id, attachment_ids).unwrap_or_default();
+    if !attachment_ids.is_empty() {
+        collect(attachment_ids);
+    }
+    Ok(())
+}
+
+fn queue_cache_eviction(
+    tx: &Transaction<'_>,
+    account_id: &str,
+    attachment_ids: &BTreeSet<String>,
+) -> Result<(), String> {
+    tx.execute_batch(
+        "CREATE TEMP TABLE IF NOT EXISTS chat_sync_cache_eviction_candidates (
+             account_id TEXT NOT NULL,
+             attachment_id TEXT NOT NULL,
+             PRIMARY KEY (account_id, attachment_id)
+         )",
+    )
+    .map_err(|error| error.to_string())?;
+    for attachment_id in attachment_ids {
+        tx.execute(
+            "INSERT OR IGNORE INTO temp.chat_sync_cache_eviction_candidates
+             (account_id, attachment_id) VALUES (?1, ?2)",
+            params![account_id, attachment_id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// After the transaction that removed messages has ended, removes the cached
+/// files of queued attachment ids that no remaining message of the account
+/// uses. It reads the account's messages once for all of them, and never
+/// fails the caller.
+pub(in crate::canonical_sessions) fn evict_unused_cached_files(
+    conn: &Connection,
+    account_id: &str,
+) {
+    evict_unused_cached_files_with(conn, account_id, |unused| {
+        crate::chat::attachments::evict_cloud_attachment_cache(account_id, unused);
+    });
+}
+
+pub(super) fn evict_unused_cached_files_with(
+    conn: &Connection,
+    account_id: &str,
+    evict: impl FnOnce(&[String]),
+) {
+    let Ok(candidates) = take_cache_eviction_candidates(conn, account_id) else {
+        return;
+    };
+    if candidates.is_empty() {
+        return;
+    }
+    let unused = unreferenced_attachment_ids(conn, account_id, candidates).unwrap_or_default();
     if !unused.is_empty() {
         evict(&unused);
     }
-    Ok(())
+}
+
+fn take_cache_eviction_candidates(
+    conn: &Connection,
+    account_id: &str,
+) -> Result<BTreeSet<String>, String> {
+    let queued: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_temp_master
+             WHERE type = 'table' AND name = 'chat_sync_cache_eviction_candidates')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if !queued {
+        return Ok(BTreeSet::new());
+    }
+    let candidates = {
+        let mut statement = conn
+            .prepare(
+                "SELECT attachment_id FROM temp.chat_sync_cache_eviction_candidates
+                 WHERE account_id = ?1",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([account_id], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+        rows.collect::<Result<BTreeSet<_>, _>>()
+            .map_err(|error| error.to_string())?
+    };
+    conn.execute(
+        "DELETE FROM temp.chat_sync_cache_eviction_candidates WHERE account_id = ?1",
+        [account_id],
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(candidates)
 }
 
 /// Attachment ids in a message snapshot, including Live Photo companions.
@@ -101,29 +196,33 @@ fn stored_attachment_ids(
         .unwrap_or_default())
 }
 
-// A remaining snapshot that mentions the id keeps the cached file. A false
+// A remaining snapshot that mentions an id keeps its cached file. A false
 // match only keeps a file longer, which is the safe direction for a cache.
-fn unreferenced_attachment_ids(
-    tx: &Transaction<'_>,
+// One pass over the account's messages checks every candidate.
+pub(super) fn unreferenced_attachment_ids(
+    conn: &Connection,
     account_id: &str,
     attachment_ids: BTreeSet<String>,
 ) -> Result<Vec<String>, String> {
-    let mut unused = Vec::new();
-    for attachment_id in attachment_ids {
-        let needle = serde_json::to_string(&attachment_id).map_err(|error| error.to_string())?;
-        let referenced: bool = tx
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM chat_sync_messages
-                 WHERE account_id = ?1 AND instr(snapshot_json, ?2) > 0)",
-                params![account_id, needle],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        if !referenced {
-            unused.push(attachment_id);
-        }
+    let mut remaining = attachment_ids
+        .into_iter()
+        .map(|id| serde_json::to_string(&id).map(|needle| (id, needle)))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let mut statement = conn
+        .prepare("SELECT snapshot_json FROM chat_sync_messages WHERE account_id = ?1")
+        .map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query([account_id])
+        .map_err(|error| error.to_string())?;
+    while !remaining.is_empty() {
+        let Some(row) = rows.next().map_err(|error| error.to_string())? else {
+            break;
+        };
+        let snapshot: String = row.get(0).map_err(|error| error.to_string())?;
+        remaining.retain(|(_, needle)| !snapshot.contains(needle.as_str()));
     }
-    Ok(unused)
+    Ok(remaining.into_iter().map(|(id, _)| id).collect())
 }
 
 pub(super) fn load_deleted_message_ids(
