@@ -10,6 +10,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::Postgres;
 
+use crate::auth::session::session_inactivity_cutoff;
 use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
 
 const MAX_DEVICE_NAME_CHARS: usize = 80;
@@ -181,17 +182,31 @@ pub async fn authorize_device(
         .execute(&mut **transaction)
         .await?;
 
-    let existing: Option<(String, Option<String>, String)> = query_as(
-        "SELECT device_id, revoked_at, authorization_state FROM cloud_devices \
+    let now = Utc::now();
+    let existing: Option<(String, Option<String>, String, bool)> = query_as(
+        "SELECT device_id, revoked_at, authorization_state, last_seen_at <= $3 \
+         FROM cloud_devices \
          WHERE account_id = $1 AND device_public_key = $2 FOR UPDATE",
     )
     .bind(account_id)
     .bind(&registration.public_key)
+    .bind(session_inactivity_cutoff(now).to_rfc3339())
     .fetch_optional(&mut **transaction)
     .await?;
-    let now = Utc::now().to_rfc3339();
+    let now = now.to_rfc3339();
 
-    if let Some((device_id, revoked_at, authorization_state)) = existing {
+    if let Some((device_id, revoked_at, authorization_state, was_inactive)) = existing {
+        if was_inactive {
+            query(
+                "UPDATE cloud_refresh_tokens SET revoked_at = $1 \
+                 WHERE account_id = $2 AND device_id = $3 AND revoked_at IS NULL",
+            )
+            .bind(&now)
+            .bind(account_id)
+            .bind(&device_id)
+            .execute(&mut **transaction)
+            .await?;
+        }
         let next_authorization_state = if revoked_at.is_some() {
             initial_authorization_state
         } else {
