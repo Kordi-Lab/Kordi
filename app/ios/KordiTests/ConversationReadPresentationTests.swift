@@ -817,12 +817,23 @@ final class ConversationReadPresentationTests: XCTestCase {
 
         XCTAssertFalse(source.contains("Task.sleep(for: .milliseconds(180))"))
         XCTAssertEqual(source.components(separatedBy: "deleteTarget = conversation").count - 1, 2)
-        XCTAssertTrue(source.contains(".alert(\n            \"Delete this chat from your list?\""))
-        XCTAssertTrue(source.contains("It will return only when a new visible message arrives."))
+        XCTAssertTrue(source.contains(".alert(\n            \"Remove this chat from your list?\""))
+        XCTAssertTrue(source.contains("This doesn't delete its messages for anyone. The chat comes back when a new message arrives."))
+        XCTAssertTrue(source.contains("Button(\"Remove chat\", role: .destructive)"))
+        XCTAssertFalse(source.contains("\"Delete chat\""))
+        XCTAssertFalse(source.contains("Delete this chat from your list?"))
+        XCTAssertEqual(source.components(separatedBy: ".accessibilityAction(named: \"Remove chat\")").count - 1, 3)
+        XCTAssertTrue(source.contains("Swipe left to mute, remove, or archive."))
+        let model = try String(
+            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/AppModel.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(model.contains("fallback: \"Could not remove this chat. Try again.\""))
         XCTAssertFalse(source.contains("deleteTarget.map { \"delete:"))
         XCTAssertFalse(source.contains(".id(deleteTarget?.sessionId"))
         XCTAssertFalse(source.contains("listLayoutIdentity"))
-        XCTAssertFalse(source.contains(".confirmationDialog(\n            \"Delete this chat from your list?\""))
+        XCTAssertFalse(source.contains(".confirmationDialog(\n            \"Remove this chat from your list?\""))
         XCTAssertEqual(
             source.components(separatedBy: "Button(role: .destructive) {")
                 .dropFirst()

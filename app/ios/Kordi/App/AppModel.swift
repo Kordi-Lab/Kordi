@@ -4727,7 +4727,7 @@ final class AppModel: ObservableObject {
                 if let messages { messagesByConversation[conversation.id] = messages }
                 if let activity { sessionActivityByID[conversation.sessionId] = activity }
                 cacheCurrentConversations()
-                errorMessage = userFacing(error, fallback: "Could not delete this session.")
+                errorMessage = userFacing(error, fallback: "Could not remove this chat. Try again.")
                 return false
             }
         }

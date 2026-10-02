@@ -234,20 +234,20 @@ struct ChatHomeView: View {
                 : "This name is synchronized with Kordi on macOS.")
         }
         .alert(
-            "Delete this chat from your list?",
+            "Remove this chat from your list?",
             isPresented: Binding(
                 get: { deleteTarget != nil },
                 set: { if !$0 { deleteTarget = nil } }
             )
         ) {
-            Button("Delete chat", role: .destructive) {
+            Button("Remove chat", role: .destructive) {
                 guard let target = deleteTarget else { return }
                 deleteTarget = nil
                 Task { _ = await model.deleteConversation(target) }
             }
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("This does not delete it for other participants. It will return only when a new visible message arrives.")
+            Text("This doesn't delete its messages for anyone. The chat comes back when a new message arrives.")
         }
         .overlay(alignment: .bottom) {
             if let error = model.errorMessage {
@@ -522,10 +522,10 @@ struct ChatHomeView: View {
         .accessibilityAction(named: "Archive") {
             Task { _ = await model.archiveConversation(conversation) }
         }
-        .accessibilityAction(named: "Delete chat") {
+        .accessibilityAction(named: "Remove chat") {
             requestDelete(conversation)
         }
-        .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, delete, or archive.")
+        .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, remove, or archive.")
         .chatHomeRow(separatorLeading: 71)
     }
 
@@ -569,10 +569,10 @@ struct ChatHomeView: View {
         .accessibilityAction(named: "Archive") {
             Task { _ = await model.archiveConversation(item.conversation) }
         }
-        .accessibilityAction(named: "Delete chat") {
+        .accessibilityAction(named: "Remove chat") {
             requestDelete(item.conversation)
         }
-        .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, delete, or archive.")
+        .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, remove, or archive.")
         .chatHomeRow(separatorLeading: 16)
     }
 
@@ -639,7 +639,7 @@ struct ChatHomeView: View {
             ChatCircularSwipeAction(id: "archive", label: "Archive", systemImage: "archivebox", color: .gray) {
                 Task { _ = await model.archiveConversation(conversation) }
             },
-            ChatCircularSwipeAction(id: "delete", label: "Delete", systemImage: "trash", color: .red, role: .destructive) {
+            ChatCircularSwipeAction(id: "delete", label: "Remove", systemImage: "trash", color: .red, role: .destructive) {
                 requestDelete(conversation)
             },
             ChatCircularSwipeAction(id: "mute", label: isMuted ? "Unmute" : "Mute", systemImage: isMuted ? "bell" : "bell.slash", color: .orange) {
@@ -727,7 +727,7 @@ struct ChatHomeView: View {
         Button(role: .destructive) {
             requestDelete(conversation)
         } label: {
-            Label("Delete", systemImage: "trash")
+            Label("Remove chat", systemImage: "trash")
         }
     }
 
@@ -894,20 +894,20 @@ struct ArchivedChatsView: View {
             }
         }
         .alert(
-            "Delete this chat from your list?",
+            "Remove this chat from your list?",
             isPresented: Binding(
                 get: { deleteTarget != nil },
                 set: { if !$0 { deleteTarget = nil } }
             )
         ) {
-            Button("Delete chat", role: .destructive) {
+            Button("Remove chat", role: .destructive) {
                 guard let target = deleteTarget else { return }
                 deleteTarget = nil
                 Task { _ = await model.deleteConversation(target) }
             }
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("This does not delete it for other participants. It will return only when a new visible message arrives.")
+            Text("This doesn't delete its messages for anyone. The chat comes back when a new message arrives.")
         }
     }
 
@@ -951,7 +951,7 @@ struct ArchivedChatsView: View {
             Button(role: .destructive) {
                 requestDelete(conversation)
             } label: {
-                Label("Delete chat", systemImage: "trash")
+                Label("Remove chat", systemImage: "trash")
             }
         }
         .circularChatSwipeActions(
@@ -961,7 +961,7 @@ struct ArchivedChatsView: View {
                 ChatCircularSwipeAction(id: "restore", label: "Restore", systemImage: "archivebox.fill", color: .blue) {
                     Task { _ = await model.restoreConversation(conversation) }
                 },
-                ChatCircularSwipeAction(id: "delete", label: "Delete", systemImage: "trash", color: .red, role: .destructive) {
+                ChatCircularSwipeAction(id: "delete", label: "Remove", systemImage: "trash", color: .red, role: .destructive) {
                     requestDelete(conversation)
                 }
             ]
@@ -969,7 +969,7 @@ struct ArchivedChatsView: View {
         .accessibilityAction(named: "Restore") {
             Task { _ = await model.restoreConversation(conversation) }
         }
-        .accessibilityAction(named: "Delete chat") {
+        .accessibilityAction(named: "Remove chat") {
             requestDelete(conversation)
         }
         .accessibilityHint("Double-tap to open this archived chat.")
