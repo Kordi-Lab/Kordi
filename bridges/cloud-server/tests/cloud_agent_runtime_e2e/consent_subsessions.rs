@@ -212,3 +212,127 @@ async fn task_threads_in_a_direct_chat_stop_with_the_contact() {
     .unwrap();
     assert_eq!(state, "cancelled");
 }
+
+/// A follow-up a removed contact queued for the owner's default agent on the
+/// owner's desktop is cancelled, so it no longer holds back the owner's own
+/// later follow-up in the same thread.
+#[tokio::test]
+async fn a_revoked_queued_follow_up_does_not_stall_the_thread_on_the_desktop() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let owner = signup(&router, "consent-queue-owner", "Owner").await;
+    let peer = signup(&router, "consent-queue-peer", "Peer").await;
+    accept_contacts(&router, &peer, &owner).await;
+    let session = format!("session:group:{}", uuid::Uuid::new_v4());
+    let conversation = create_test_conversation(
+        &pool,
+        &owner.account_id,
+        &session,
+        ConversationKind::Group,
+        vec![peer.account_id.clone()],
+    )
+    .await;
+    let agent = format!("cloud-agent:{}", owner.account_id);
+    let request = format!(
+        "kordi-cloud-message:{}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+            json!({"schemaVersion": 1, "kind": "message", "text": "@Kordi plan this",
+                   "targetCloudAgentId": agent,
+                   "targetCloudAgentOwnerAccountId": owner.account_id})
+            .to_string()
+        )
+    );
+    let request_id = insert_test_message(&pool, &peer.account_id, conversation, &request).await;
+    let id = uuid::Uuid::new_v4();
+    let uri = format!("/v1/cloud/agent-subsessions/{id}");
+    let (status, created) = send(
+        &router,
+        put_json_with_token(
+            &uri,
+            &owner.token,
+            &json!({"parentSessionId": session, "parentRequestId": request_id,
+                    "title": "Plan", "status": "done", "expectedVersion": 0,
+                    "messages": [{"id": "input", "role": "user", "text": "Task brief",
+                                  "timestampMs": 1000}]}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{created}");
+    let follow_up = |account: &TestAccount, text: &str| {
+        let message = uuid::Uuid::new_v4();
+        let mention = json!([{"label": "Kordi", "targetKind": "agent", "agentId": agent,
+                              "startUtf16": 0, "lengthUtf16": 6}]);
+        (
+            message,
+            post_json_with_token(
+                &format!("{uri}/messages"),
+                &account.token,
+                json!({"clientMessageId": message, "text": text, "mentions": mention}),
+            ),
+        )
+    };
+    let (from_peer, request) = follow_up(&peer, "@Kordi continue");
+    assert_eq!(send(&router, request).await.0, StatusCode::OK);
+    let (from_owner, request) = follow_up(&owner, "@Kordi summarize");
+    assert_eq!(send(&router, request).await.0, StatusCode::OK);
+    let run_of = |message: uuid::Uuid| {
+        sqlx_core::query_as::query_as::<_, (String, String)>(
+            "SELECT r.run_id, r.status FROM cloud_agent_subsession_chat c \
+             JOIN cloud_agent_fallback_runs r ON r.run_id = c.run_id WHERE c.message_id = $1",
+        )
+        .bind(message)
+        .fetch_one(&pool)
+    };
+    let (peer_run, _) = run_of(from_peer).await.unwrap();
+
+    sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")
+        .bind(&owner.account_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let (status, _) = send(
+        &router,
+        post_json_with_token(
+            "/v1/cloud/agent-runs/desktop/ready",
+            &owner.token,
+            json!({"agentIds": [agent]}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    set_contacts(&pool, &owner, &peer, false).await;
+
+    // The owner's desktop no longer sees the peer's follow-up, and it is
+    // cancelled rather than left queued.
+    let (status, pending) = send(
+        &router,
+        get_with_token("/v1/cloud/agent-subsessions/pending", &owner.token),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{pending}");
+    let listed: Vec<&str> = pending
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|row| row["messageId"].as_str())
+        .collect();
+    assert_eq!(listed, vec![from_owner.to_string().as_str()]);
+    assert_eq!(run_of(from_peer).await.unwrap().1, "cancelled");
+
+    // The owner's own follow-up can now run.
+    let (status, claimed) = send(
+        &router,
+        post_json_with_token(
+            "/v1/cloud/agent-runs/desktop/claim",
+            &owner.token,
+            json!({"claimId": uuid::Uuid::new_v4(), "requestMessageId": from_owner,
+                   "sessionId": id, "ownerAccountId": owner.account_id,
+                   "requesterAccountId": owner.account_id, "prompt": "@Kordi summarize",
+                   "idempotencyKey": format!("follow:{from_owner}")}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{claimed}");
+    assert_eq!(claimed["acquired"], true, "{claimed}");
+    assert_ne!(claimed["runId"], peer_run);
+}

@@ -10,10 +10,28 @@ use uuid::Uuid;
 
 type FollowHistoryRow = (String, String, String, Option<Value>, Option<String>);
 
+/// Cancels this desktop's queued follow-ups that `pending` would hide because
+/// their sender or the owner lost access: one of them left the chat, or the
+/// sender may no longer use the agent (a removed contact or a block). Left
+/// queued, each would hold back every later follow-up in its thread, since a
+/// follow-up starts only after the earlier ones finish.
+async fn cancel_hidden_queued(pool: &PgPool, owner: &str, device: &str) -> RunResult<()> {
+    let hidden:Vec<(String,)>=query_as("SELECT r.run_id FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id WHERE s.owner_account_id=$1 AND s.publisher_device_id=$2 AND s.execution_backend='desktop' AND r.status='queued' AND NOT (EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active') AND cloud_requester_may_use_agent(c.sender_account_id,s.owner_account_id,s.agent_id)) ORDER BY c.sequence LIMIT 16")
+        .bind(owner).bind(device).fetch_all(pool).await?;
+    for (run,) in hidden {
+        // The sender is the run's requester, so the recheck cancels the run.
+        revalidate(pool, &run).await?;
+    }
+    Ok(())
+}
+
 pub(super) async fn pending(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Result<Json<Vec<Value>>, axum::http::StatusCode> {
+    cancel_hidden_queued(state.db_pool(), &session.account_id, &session.device_id)
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let rows:Vec<(String,Uuid,String,String,String)>=query_as("SELECT r.run_id,s.subsession_id,c.message_id::text,c.sender_account_id,c.text FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active' WHERE EXISTS(SELECT 1 FROM cloud_chat_conversation_members owner_member WHERE owner_member.conversation_id=s.parent_conversation_id AND owner_member.account_id=s.owner_account_id AND owner_member.membership_state='active') AND cloud_requester_may_use_agent(c.sender_account_id,s.owner_account_id,s.agent_id) AND s.owner_account_id=$1 AND s.publisher_device_id=$2 AND s.execution_backend='desktop' AND r.status='queued' ORDER BY c.sequence LIMIT 16")
         .bind(&session.account_id).bind(&session.device_id).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut pending = Vec::new();
