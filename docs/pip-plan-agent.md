@@ -65,9 +65,10 @@ later changes update the same entry; a decline or a cancellation removes it.
 
 ## When PiP spends a model call
 
-PiP is always on in every group once `KORDI_PIP_OPENAI_API_KEY` is set;
-`KORDI_PIP_ENABLED=false` switches it off. There are no per-group caps. A
-five-second sweep considers a group only when one of these holds:
+PiP is available once `KORDI_PIP_OPENAI_API_KEY` is set, and
+`KORDI_PIP_ENABLED=false` switches it off everywhere. It joins, and reads, only
+groups whose AI access setting turns it on. There are no per-group caps. A
+five-second sweep considers such a group only when one of these holds:
 
 | Trigger | Condition |
 | --- | --- |
@@ -216,7 +217,7 @@ card renders it, at the newest snapshot known for that plan; every earlier
 copy keeps just its text.
 
 Both clients recognise PiP by its account id: it gets its own chick mark
-instead of a generated face, and a "Built-in agent" tag next to its name.
+instead of a generated face, and a "Built-in AI agent" tag next to its name.
 
 ## What this stage does not include
 
