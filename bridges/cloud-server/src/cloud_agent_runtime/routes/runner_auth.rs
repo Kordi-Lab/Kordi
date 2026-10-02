@@ -1,7 +1,9 @@
 //! Runner credentials: the shared runner token identifies a runner, and
 //! run-specific requests also need the run-scoped token of that run's lease.
 
+use axum::extract::Request;
 use axum::http::HeaderMap;
+use axum::middleware::Next;
 use axum::response::Response;
 
 use crate::cloud_agent_runtime::runs::run_tokens::{
@@ -29,6 +31,16 @@ pub(super) fn runner_authorized(headers: &HeaderMap) -> bool {
         return false;
     };
     secrets_match(presented, &expected)
+}
+
+/// Refuses a runner route before its body is read or parsed unless the
+/// request carries the shared runner token. Handlers still check the
+/// run-scoped token of the run they act on.
+pub(super) async fn require_runner_token(request: Request, next: Next) -> Response {
+    if !runner_authorized(request.headers()) {
+        return runner_unauthorized();
+    }
+    next.run(request).await
 }
 
 pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
