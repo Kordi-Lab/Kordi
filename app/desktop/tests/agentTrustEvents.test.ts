@@ -7,6 +7,7 @@ import {
   type AgentActionUpdatedDetail,
   type AiAccessUpdatedDetail,
 } from '../src/features/agentTrust/agentTrustEvents';
+import { normalizeAiAccess } from '../src/features/cloud/agentTrustClient';
 import { ChatSyncState } from '../src/features/cloud/chatSyncState';
 import { ChatSyncSyncClient } from '../src/features/cloud/chatSyncSyncClient';
 import type { ChatSyncConversation, ChatSyncEvent, ChatSyncSyncResponse } from '../src/features/cloud/chatSyncTypes';
@@ -122,6 +123,8 @@ test('conversation and membership updates announce AI access by session id', asy
     assert.equal(capture.received.length, 2);
     assert.equal(capture.received[0]?.sessionId, 'session:group:trust');
     assert.deepEqual(capture.received[0]?.aiAccess?.excluded_member_ids, ['acct_c']);
+    // An older server lists only active members; they count for every filter.
+    assert.deepEqual(capture.received[0]?.aiAccess?.excluded_account_ids, ['acct_c']);
   } finally {
     capture.restore();
   }
@@ -137,4 +140,13 @@ test('snapshots from servers without AI access settings announce nothing', async
   } finally {
     capture.restore();
   }
+});
+
+test('members who left with the setting on stay excluded but are not listed as turned on by', () => {
+  const access = normalizeAiAccess({
+    history_scope: 'mentions', pip: null, excluded_member_ids: ['acct_c', ' '],
+    excluded_account_ids: ['acct_left', 'acct_c', 7], viewer_excluded: false, viewer_can_manage: false,
+  });
+  assert.deepEqual(access?.excluded_member_ids, ['acct_c']);
+  assert.deepEqual(access?.excluded_account_ids, ['acct_left', 'acct_c']);
 });

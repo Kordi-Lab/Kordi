@@ -76,7 +76,14 @@ pub struct AiAccessSnapshot {
     /// PiP's state in a group; `None` for other conversations.
     pub pip: Option<PipAccessSnapshot>,
     /// Active members who turned on "Don't let AI use my messages", sorted.
+    /// Settings screens list these.
     pub excluded_member_ids: Vec<String>,
+    /// Everyone whose messages here stay away from other people's AI, sorted:
+    /// the active members above and anyone who left with the setting on.
+    /// Filters on devices (a Mac's private assistant search) read this list,
+    /// so a member's earlier messages stay out after they leave.
+    #[serde(default)]
+    pub excluded_account_ids: Vec<String>,
     pub viewer_excluded: bool,
     pub viewer_can_manage: bool,
 }

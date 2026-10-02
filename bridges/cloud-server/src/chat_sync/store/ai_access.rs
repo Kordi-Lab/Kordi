@@ -138,6 +138,7 @@ fn snapshot_for(
             .filter(|account_id| active(account_id))
             .cloned()
             .collect(),
+        excluded_account_ids: settings.opted_out.iter().cloned().collect(),
         viewer_excluded: settings.opted_out.contains(viewer),
         viewer_can_manage,
     })
@@ -278,7 +279,7 @@ mod tests {
     }
 
     #[test]
-    fn groups_default_to_mentions_and_list_only_active_opted_out_members() {
+    fn groups_default_to_mentions_and_list_active_opted_out_members_for_settings() {
         let group = conversation(
             ConversationKind::Group,
             vec![
@@ -294,6 +295,8 @@ mod tests {
         let owner = snapshot_for(Some(&settings), "acct_owner", &group).unwrap();
         assert_eq!(owner.history_scope, "mentions");
         assert_eq!(owner.excluded_member_ids, ["acct_member"]);
+        // Device filters still leave out the messages of a member who left.
+        assert_eq!(owner.excluded_account_ids, ["acct_left", "acct_member"]);
         assert!(owner.viewer_can_manage);
         assert!(!owner.viewer_excluded);
         let pip = owner.pip.expect("groups report PiP");

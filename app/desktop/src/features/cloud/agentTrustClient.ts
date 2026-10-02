@@ -46,13 +46,16 @@ export function normalizeAiAccess(value: unknown): ChatSyncAiAccess | null {
   const access = record(value);
   if (!access) return null;
   const scope = access.history_scope === 'recent' ? 'recent' : 'mentions';
-  const excluded = Array.isArray(access.excluded_member_ids)
-    ? [...new Set(access.excluded_member_ids.flatMap((id) => text(id) ?? []))]
-    : [];
+  const ids = (value: unknown) => (Array.isArray(value)
+    ? [...new Set(value.flatMap((id) => text(id) ?? []))]
+    : []);
+  const excluded = ids(access.excluded_member_ids);
   return {
     history_scope: scope,
     pip: normalizePip(access.pip),
     excluded_member_ids: excluded,
+    // Older servers send only the active members.
+    excluded_account_ids: [...new Set([...ids(access.excluded_account_ids), ...excluded])],
     viewer_excluded: access.viewer_excluded === true,
     viewer_can_manage: access.viewer_can_manage === true,
   };

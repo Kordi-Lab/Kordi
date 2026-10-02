@@ -8,10 +8,13 @@
 //! reads with its owner's own view.
 //!
 //! The list comes from the `ai_access` field of the conversation snapshot the
-//! server sent, stored in `chat_sync_conversations.snapshot_json`. A message
-//! is left out when a person on the list wrote it, unless that person is the
-//! signed-in account. When the list is not empty, a message whose author
-//! cannot be matched to an account is left out too.
+//! server sent, stored in `chat_sync_conversations.snapshot_json`:
+//! `excluded_account_ids` (everyone with the setting on, including members
+//! who left, so their earlier messages stay out) together with
+//! `excluded_member_ids` (the active members, all an older server sends). A
+//! message is left out when a person on the list wrote it, unless that person
+//! is the signed-in account. When the list is not empty, a message whose
+//! author cannot be matched to an account is left out too.
 
 use std::collections::HashSet;
 
@@ -51,20 +54,22 @@ pub(super) fn excluded_accounts(
         let Ok(value) = serde_json::from_str::<Value>(&snapshot) else {
             continue;
         };
-        let Some(ids) = value
-            .get("ai_access")
-            .and_then(|access| access.get("excluded_member_ids"))
-            .and_then(Value::as_array)
-        else {
+        let Some(access) = value.get("ai_access") else {
             continue;
         };
-        excluded.extend(
-            ids.iter()
-                .filter_map(Value::as_str)
-                .map(str::trim)
-                .filter(|id| !id.is_empty())
-                .map(ToString::to_string),
-        );
+        for key in ["excluded_account_ids", "excluded_member_ids"] {
+            excluded.extend(
+                access
+                    .get(key)
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty())
+                    .map(ToString::to_string),
+            );
+        }
     }
     if let Some(viewer) = viewer {
         excluded.remove(viewer);

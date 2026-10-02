@@ -130,6 +130,32 @@ fn private_search_and_reads_leave_out_members_who_opted_out() {
 }
 
 #[test]
+fn a_member_who_left_with_the_setting_on_stays_left_out() {
+    let conn = test_conn();
+    let session_id = seed_session_with_messages(&conn);
+    // Bob left: the server lists him only among every account with the
+    // setting on, not among the active members.
+    remember_conversation(&conn, "alice", &session_id, &[]);
+    conn.execute(
+        "UPDATE chat_sync_conversations SET snapshot_json = json_set(snapshot_json, '$.ai_access.excluded_account_ids', json('[\"bob\"]'))",
+        [],
+    )
+    .unwrap();
+    assert!(search(&conn, "alice", "canary").is_empty());
+    assert_eq!(
+        read_ids(&conn, &session_id, "alice", None),
+        vec!["msg:1", "msg:3"]
+    );
+    // Positive control: with no one listed, Bob's earlier message is found.
+    conn.execute(
+        "UPDATE chat_sync_conversations SET snapshot_json = json_set(snapshot_json, '$.ai_access.excluded_account_ids', json('[]'))",
+        [],
+    )
+    .unwrap();
+    assert_eq!(search(&conn, "alice", "canary"), vec!["msg:2"]);
+}
+
+#[test]
 fn the_signed_in_member_still_sees_their_own_messages() {
     let conn = test_conn();
     let session_id = seed_session_with_messages(&conn);

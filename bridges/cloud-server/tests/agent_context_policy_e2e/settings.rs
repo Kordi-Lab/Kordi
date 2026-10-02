@@ -336,3 +336,44 @@ async fn pip_cannot_be_turned_on_without_pip_and_clients_cannot_send_notices() {
     assert_eq!(error["error"]["code"], "RESERVED_MESSAGE_KIND");
     assert_eq!(notice_count(&group).await, 0);
 }
+
+#[tokio::test]
+async fn a_member_who_leaves_stays_excluded_for_device_filters() {
+    let Some(group) = Group::new("settings-left").await else {
+        return;
+    };
+    let (status, body) = group
+        .set_ai_access(&group.member, json!({"exclude_my_messages": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["conversation"]["ai_access"]["excluded_account_ids"],
+        json!([group.member.account_id])
+    );
+    query(
+        "UPDATE cloud_chat_conversation_members SET membership_state = 'left', left_at = now()
+         WHERE conversation_id = $1 AND account_id = $2",
+    )
+    .bind(group.conversation)
+    .bind(&group.member.account_id)
+    .execute(&group.pool)
+    .await
+    .unwrap();
+    let (status, view) = call(
+        &group.router,
+        request(
+            "GET",
+            &format!("/v2/chat/conversations/{}/ai-access", group.conversation),
+            Some(&group.owner.token),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{view}");
+    // Settings list only people still here; device filters keep everyone.
+    assert_eq!(view["ai_access"]["excluded_member_ids"], json!([]));
+    assert_eq!(
+        view["ai_access"]["excluded_account_ids"],
+        json!([group.member.account_id])
+    );
+}

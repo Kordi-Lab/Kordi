@@ -14,7 +14,10 @@ export type ChatSyncPipAccess = {
 export type ChatSyncAiAccess = {
   history_scope: ChatSyncAiHistoryScope;
   pip: ChatSyncPipAccess | null;
+  /** Active members with "Don't let AI use my messages" on, for settings. */
   excluded_member_ids: string[];
+  /** Everyone with it on, including members who left. Local filters read this. */
+  excluded_account_ids?: string[];
   viewer_excluded: boolean;
   viewer_can_manage: boolean;
 };
