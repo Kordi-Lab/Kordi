@@ -1149,6 +1149,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     let author: MessageAuthor
     let authorName: String
     let senderOwnerName: String?
+    /// Server-stored sender account of a human message; nil for agent output
+    /// and when unknown. Privacy decisions fail closed on nil.
+    var senderAccountId: String? = nil
     var text: String
     let createdAt: Date
     let editedAt: Date?
@@ -1235,6 +1238,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         author: MessageAuthor,
         authorName: String,
         senderOwnerName: String? = nil,
+        senderAccountId: String? = nil,
         text: String,
         createdAt: Date,
         editedAt: Date? = nil,
@@ -1266,6 +1270,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.author = author
         self.authorName = authorName
         self.senderOwnerName = senderOwnerName
+        self.senderAccountId = senderAccountId
         self.text = text
         self.createdAt = createdAt
         self.editedAt = editedAt
@@ -1304,6 +1309,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             author: author,
             authorName: authorName,
             senderOwnerName: senderOwnerName,
+            senderAccountId: senderAccountId,
             text: "",
             createdAt: createdAt,
             cloudMessageVersion: cloudMessageVersion,
@@ -1348,6 +1354,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, clientMessageId, conversationId, conversationSequence, author, authorName, senderOwnerName, text, createdAt, editedAt, cloudMessageVersion, deliveryState, errorMessage
         case localTimelineAnchorID
+        case senderAccountId
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind, voiceMessage
         case agentExecution
@@ -1366,6 +1373,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         author = try container.decode(MessageAuthor.self, forKey: .author)
         authorName = try container.decode(String.self, forKey: .authorName)
         senderOwnerName = try container.decodeIfPresent(String.self, forKey: .senderOwnerName)
+        senderAccountId = try container.decodeIfPresent(String.self, forKey: .senderAccountId)
         text = try container.decode(String.self, forKey: .text)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         editedAt = try container.decodeIfPresent(Date.self, forKey: .editedAt)

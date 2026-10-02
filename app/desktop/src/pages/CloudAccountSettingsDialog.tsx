@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
+import { Bell, Hand, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -14,6 +14,7 @@ import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
+import { PrivacySettingsPanel } from '@/features/privacy/PrivacySettingsPanel';
 import {
   canonicalAvatarImageSource,
   generatedAvatarPreviewUrl,
@@ -21,7 +22,7 @@ import {
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
 
-export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'appearance';
+export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'privacy' | 'appearance';
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -165,6 +166,7 @@ export function CloudAccountSettingsDialog({
       items: [
         { id: 'auth', label: 'Authentication', icon: KeyRound, keywords: ['providers', 'accounts', 'api key', 'omp'] },
         { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['alerts', 'sound', 'badge'] },
+        { id: 'privacy', label: 'Privacy', icon: Hand, keywords: ['link previews', 'site icons', 'local data'] },
         { id: 'appearance', label: 'Appearance', icon: Palette, keywords: ['theme', 'dark', 'light'] },
       ],
     },
@@ -361,6 +363,12 @@ export function CloudAccountSettingsDialog({
     </div>
   );
 
+  const privacyPanel = (
+    <div className="app-cloud-account-settings-section max-w-[680px]">
+      <PrivacySettingsPanel isNativeShell={isNativeShell} />
+    </div>
+  );
+
   const devicesPanel = <CloudDevicesPanel key={account.accountId} accountId={account.accountId} />;
 
   return createPortal(
@@ -392,7 +400,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-10">
-              {activeTab === 'profile' ? profilePanel : activeTab === 'devices' ? devicesPanel : activeTab === 'auth' ? authPanel : activeTab === 'notifications' ? notificationsPanel : appearancePanel}
+              {activeTab === 'profile' ? profilePanel : activeTab === 'devices' ? devicesPanel : activeTab === 'auth' ? authPanel : activeTab === 'notifications' ? notificationsPanel : activeTab === 'privacy' ? privacyPanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>

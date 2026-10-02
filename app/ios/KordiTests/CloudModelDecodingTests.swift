@@ -957,6 +957,29 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(message.reactions?.first?.accountIds, ["acct_a", "acct_b"])
     }
 
+    func testChatMessageSenderAccountIdIsOptionalAndRoundTrips() throws {
+        let legacy = Data(#"{"id":"msg","conversationId":"contact","author":"person","authorName":"Peer","text":"https://example.com/","createdAt":0,"deliveryState":"delivered"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(ChatMessage.self, from: legacy).senderAccountId)
+
+        let message = ChatMessage(
+            id: "msg", conversationId: "contact", author: .person, authorName: "Peer",
+            senderAccountId: "acct_peer", text: "https://example.com/", createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: nil
+        )
+        let decoded = try JSONDecoder().decode(ChatMessage.self, from: JSONEncoder().encode(message))
+        XCTAssertEqual(decoded.senderAccountId, "acct_peer")
+        XCTAssertEqual(decoded, message)
+        XCTAssertEqual(message.planCardPart().senderAccountId, "acct_peer")
+    }
+
+    func testCloudContactDecodesOptionalContactKind() throws {
+        let plain = try JSONDecoder().decode(CloudContact.self, from: Data(#"{"accountId":"acct_friend","kordiId":"123456789","displayName":"Friend","avatarUrl":null,"nodeId":null,"createdAt":"2026-09-01T00:00:00Z"}"#.utf8))
+        XCTAssertNil(plain.contactKind)
+        let support = try JSONDecoder().decode(CloudContact.self, from: Data(#"{"contactId":"contact_support","contactKind":"system_agent","accountId":"acct_support","displayName":"Support","avatarUrl":null,"nodeId":null,"createdAt":"2026-09-01T00:00:00Z"}"#.utf8))
+        XCTAssertEqual(support.contactKind, "system_agent")
+        XCTAssertNil(support.kordiId)
+    }
+
     func testCachedLegacyMessageDefaultsMissingReactionsToEmpty() throws {
         let payload = Data(#"{"messageId":"msg_legacy","fromAccountId":"acct_peer","toAccountId":"acct_me","body":"Hello","createdAt":"2026-08-24T00:00:00Z","deliveredAt":null,"readAt":null,"direction":"incoming","sessionId":"session_1","attachments":[]}"#.utf8)
 

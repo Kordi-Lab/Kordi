@@ -60,8 +60,9 @@ pub fn cloud_account_storage_activate(
     let account_id = normalize_account_id(&account_id)?;
     let parent = account_storage_parent(&account_id)?;
     let storage_root = parent.join("kordi");
-    std::fs::create_dir_all(&storage_root)
+    crate::private_storage::ensure_private_dir(&storage_root)
         .map_err(|err| format!("cloud_account_storage_create_failed: {err}"))?;
+    let _ = crate::private_storage::restrict_private_dir(&parent);
 
     let current = active_storage()
         .lock()
@@ -174,6 +175,35 @@ mod tests {
             );
             assert!(PathBuf::from(&activation.storage_root).starts_with(dir.join("accounts")));
             assert!(!activation.requires_reload);
+        });
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn activation_keeps_account_directories_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &std::path::Path| {
+            std::fs::symlink_metadata(path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777
+        };
+        with_app_data_dir(|dir| {
+            let fresh = cloud_account_storage_activate("acct_alpha".to_string()).unwrap();
+            let fresh_root = PathBuf::from(&fresh.storage_root);
+            assert_eq!(mode(&fresh_root), 0o700);
+            assert_eq!(mode(fresh_root.parent().unwrap()), 0o700);
+
+            // Directories created by earlier releases are tightened as well.
+            let parent = dir.join("accounts").join(account_dir_name("acct_beta"));
+            std::fs::create_dir_all(parent.join("kordi")).unwrap();
+            for path in [parent.clone(), parent.join("kordi")] {
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+            cloud_account_storage_activate("acct_beta".to_string()).unwrap();
+            assert_eq!(mode(&parent), 0o700);
+            assert_eq!(mode(&parent.join("kordi")), 0o700);
         });
     }
 

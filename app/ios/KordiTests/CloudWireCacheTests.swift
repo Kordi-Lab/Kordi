@@ -92,4 +92,44 @@ final class CloudWireCacheTests: XCTestCase {
         XCTAssertEqual(current?.messagesByPeer["me"]?.first?.canonicalHistoryLocalMessageId, "local")
     }
 
+    func testSnapshotDirectoryIsExcludedFromBackupAndAvailableAfterFirstUnlock() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-wire-protection-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let recorder = RecordingLocalDataProtection()
+        let cache = CloudWireCache(directory: directory, protection: recorder)
+
+        let missing = await cache.load(accountId: "me")
+        XCTAssertNil(missing)
+        XCTAssertEqual(recorder.calls, [], "Loading must not create a missing directory")
+
+        await cache.save(accountId: "me", cursor: "1", messagesByPeer: [:])
+        await cache.save(accountId: "me", cursor: "2", messagesByPeer: [:])
+        let restored = await cache.load(accountId: "me")
+
+        XCTAssertEqual(restored?.cursor, "2")
+        XCTAssertTrue(try isExcludedFromBackup(directory))
+        XCTAssertEqual(recorder.calls, [.prepare(
+            path: directory.path,
+            protection: .completeUntilFirstUserAuthentication,
+            excludeFromBackup: true
+        )], "The directory is prepared once per cache instance")
+    }
+
+    func testFirstLoadProtectsAnExistingSnapshotDirectory() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-wire-upgrade-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        await CloudWireCache(directory: directory, protection: RecordingLocalDataProtection(failsPrepare: true))
+            .save(accountId: "me", cursor: "unsaved", messagesByPeer: [:])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path),
+            "A directory that cannot be prepared is never written")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let recorder = RecordingLocalDataProtection()
+
+        _ = await CloudWireCache(directory: directory, protection: recorder).load(accountId: "me")
+
+        XCTAssertTrue(try isExcludedFromBackup(directory))
+        XCTAssertEqual(recorder.calls.count, 1)
+    }
 }

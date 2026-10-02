@@ -51,13 +51,28 @@ actor CloudAPIClient {
     /// Requests must fail fast instead of waiting on an unreachable proxy.
     /// `waitsForConnectivity` suspends the session timers while a PAC resolver
     /// is stuck, which left sends in a permanent sending state.
+    /// Authorized API responses carry account data, so they never enter the
+    /// shared on-disk URL cache.
     static let reliableSession: URLSession = {
+        purgeLegacyResponseCacheOnce()
         let configuration = URLSessionConfiguration.default
         configuration.waitsForConnectivity = false
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = 90
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: configuration)
     }()
+
+    static let responseCachePurgeMarker = "kordi.privacy.apiResponseCachePurged.v1"
+
+    /// Removes API responses that earlier builds left in the shared URL cache.
+    /// This also clears regenerable cached avatars once.
+    static func purgeLegacyResponseCacheOnce(defaults: UserDefaults = .standard, cache: URLCache = .shared) {
+        guard !defaults.bool(forKey: responseCachePurgeMarker) else { return }
+        cache.removeAllCachedResponses()
+        defaults.set(true, forKey: responseCachePurgeMarker)
+    }
 
     private let baseURL: URL
     private let session: URLSession

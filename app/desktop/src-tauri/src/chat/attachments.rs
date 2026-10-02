@@ -22,12 +22,31 @@ use cloud_cache::{cached as cached_cloud_attachment, copy as copy_cloud_attachme
 
 pub(crate) const MAX_CHAT_ATTACHMENT_SIZE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
+/// Attachment staging directory under the system temporary directory, used
+/// only when `APP_DATA_DIR` is unset.
+pub(crate) const TEMP_ATTACHMENT_DIR_NAME: &str = "kordi-desktop-attachments";
+
 fn attachment_storage_dir() -> Result<PathBuf, String> {
-    let dir = std::env::var_os("APP_DATA_DIR")
-        .map(PathBuf::from)
-        .map(|path| path.join("tmp").join("attachments"))
-        .unwrap_or_else(|| std::env::temp_dir().join("kordi-desktop-attachments"));
-    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+    attachment_storage_dir_in(
+        std::env::var_os("APP_DATA_DIR").map(PathBuf::from),
+        &std::env::temp_dir(),
+    )
+}
+
+fn attachment_storage_dir_in(
+    app_data_dir: Option<PathBuf>,
+    temp_root: &Path,
+) -> Result<PathBuf, String> {
+    let Some(app_data_dir) = app_data_dir else {
+        // A shared temporary directory may already hold an entry created by
+        // another account, so staging fails unless this account owns it.
+        let dir = temp_root.join(TEMP_ATTACHMENT_DIR_NAME);
+        crate::private_storage::ensure_owned_private_dir(&dir)
+            .map_err(|_| "Attachment storage is not private.".to_string())?;
+        return Ok(dir);
+    };
+    let dir = app_data_dir.join("tmp").join("attachments");
+    crate::private_storage::ensure_private_dir(&dir).map_err(|err| err.to_string())?;
     Ok(dir)
 }
 

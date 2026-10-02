@@ -221,7 +221,16 @@ final class AppModel: ObservableObject {
     let digestCalendarRead = DigestReadCoordinator<DigestCalendarResponse>()
     let digestWarmup = DigestWarmupCoordinator()
     let digestCalendarSync = DigestCalendarSyncCoordinator()
-    @Published private(set) var contacts: [CloudContact] = []
+    @Published private(set) var contacts: [CloudContact] = [] {
+        didSet { contactAccountIDs = Self.linkPreviewContactAccountIDs(contacts) }
+    }
+    /// Accounts whose links may load previews under "From contacts".
+    @Published private(set) var contactAccountIDs: Set<String> = []
+
+    /// Built-in support contacts are not trusted senders.
+    nonisolated static func linkPreviewContactAccountIDs(_ contacts: [CloudContact]) -> Set<String> {
+        Set(contacts.filter { $0.contactKind != "system_agent" }.map(\.accountId))
+    }
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
     @Published private(set) var conversations: [ConversationSummary] = []
@@ -2973,6 +2982,7 @@ final class AppModel: ObservableObject {
                     author: message.author,
                     authorName: message.authorName,
                     senderOwnerName: message.senderOwnerName,
+                    senderAccountId: message.senderAccountId,
                     text: message.text,
                     createdAt: message.createdAt,
                     editedAt: message.editedAt,
@@ -6009,6 +6019,7 @@ final class AppModel: ObservableObject {
             conversationSequence: message.conversationSequence,
             author: author,
             authorName: author == .me ? "You" : conversation.displayName,
+            senderAccountId: author == .agent ? nil : message.fromAccountId,
             text: CloudMessageCodec.displayText(message.body),
             createdAt: parseCloudDate(message.createdAt),
             editedAt: message.editedAt.map(parseCloudDate),
@@ -6067,6 +6078,7 @@ final class AppModel: ObservableObject {
                             ?? (KordiPipIdentity.isPip(accountId: wire.fromAccountId)
                                 ? KordiPipIdentity.displayName
                                 : conversation.displayName),
+                    senderAccountId: wire.fromAccountId,
                     text: CloudMessageCodec.displayText(wire.body),
                     createdAt: parseCloudDate(wire.createdAt),
                     editedAt: wire.editedAt.map(parseCloudDate),
@@ -6161,9 +6173,12 @@ final class AppModel: ObservableObject {
         var chatMessages = rowsByMessageId.compactMap { messageId, rows -> ChatMessage? in
             guard visibleMessageIds.contains(messageId) else { return nil }
             guard let (wire, payload) = rows.max(by: { $0.1.createdAtMs < $1.1.createdAtMs }) else { return nil }
+            // The stored sender is set by the server; the envelope copy is
+            // written by the sending client.
+            let senderAccountID = wire.fromAccountId
             let author: MessageAuthor = payload.senderKind == "agent"
                 ? .agent
-                : payload.senderAccountId == ownAccountId ? .me : .person
+                : senderAccountID == ownAccountId ? .me : .person
             let delivery = author == .me
                 ? CloudMessageStateProjector.groupDeliverySummary(
                     messageId: messageId,
@@ -6186,6 +6201,7 @@ final class AppModel: ObservableObject {
                     ? "You"
                     : author == .agent ? agentName : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
                 senderOwnerName: author == .agent ? ownerName : nil,
+                senderAccountId: author == .agent ? nil : senderAccountID,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (

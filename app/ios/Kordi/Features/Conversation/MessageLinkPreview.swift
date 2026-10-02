@@ -84,6 +84,11 @@ final class LinkPreviewMetadataCache {
             return LinkPreviewMetadataValue(metadata: metadata)
         }
 #endif
+        // Link Presentation cannot limit redirects or resolved addresses, so
+        // only public HTTPS names on the default port reach it.
+        guard LinkPreviewPolicy.isPreviewableURL(url) else {
+            return LinkPreviewMetadataValue(metadata: nil)
+        }
         return await withCheckedContinuation { continuation in
             let provider = LPMetadataProvider()
             let retention = LinkMetadataProviderRetention(provider)
@@ -100,6 +105,9 @@ struct MessageLinkPreview: View {
     let url: URL
     var foreground: Color = .primary
     var secondaryForeground: Color = .secondary
+    /// Without permission the card shows the address only and nothing is
+    /// fetched; metadata cached by an earlier allowed render is not shown.
+    var allowsNetworkFetch = false
     @State private var metadata: LPLinkMetadata?
     @State private var artwork: UIImage?
 
@@ -113,9 +121,10 @@ struct MessageLinkPreview: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Open \(displayTitle) on \(displayHost)")
-        .task(id: url) {
+        .task(id: LinkFetchTaskKey(value: url.absoluteString, allowed: allowsNetworkFetch)) {
             metadata = nil
             artwork = nil
+            guard allowsNetworkFetch, LinkPreviewPolicy.isPreviewableURL(url) else { return }
             let loaded = await LinkPreviewMetadataCache.shared.metadata(for: url).metadata
             guard !Task.isCancelled else { return }
             metadata = loaded

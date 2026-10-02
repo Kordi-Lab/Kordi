@@ -5,6 +5,8 @@ import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGall
 import { messageDeliveryVisual,shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
+import { LinkNetworkAccessProvider } from '@/features/privacy/LinkPreviewAccess';
+import { useMessageLinkNetworkAccess } from '@/features/privacy/linkNetworkAccess';
 import { relatedAgentSessionsFromTools,type RelatedAgentSessionRunStatus } from '@/features/chat/relatedAgentSessions';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { selfDisplayName } from '@/lib/identityLabels';
@@ -23,13 +25,7 @@ import {
   Undo2
 } from 'lucide-react';
 import { memo,useLayoutEffect,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
-import type {
-  Contact,
-  ContactRequest,
-  EditFilePreview,
-  Message,MessageAttachment,
-  MessageSourceReference
-} from '../types';
+import type { Contact, ContactRequest, EditFilePreview, Message, MessageAttachment, MessageSourceReference } from '../types';
 import { AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
 import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
@@ -195,7 +191,7 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
   );
 }
 export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact' | 'agent-compact';
-function MessageBubbleView({
+function MessageBubbleBody({
   msg,
   onOpenSource,
   onStopCollaborationAgentRequest,
@@ -933,7 +929,11 @@ function MessageBubbleView({
   );
 }
 
-export type MessageBubbleProps = Parameters<typeof MessageBubbleView>[0];
+export type MessageBubbleProps = Parameters<typeof MessageBubbleBody>[0];
+function MessageBubbleView(props: MessageBubbleProps) {
+  const allowLinkNetwork = useMessageLinkNetworkAccess(props.msg);
+  return <LinkNetworkAccessProvider allowed={allowLinkNetwork}><MessageBubbleBody {...props} /></LinkNetworkAccessProvider>;
+}
 export const MessageBubble = memo(MessageBubbleView, messageBubblePropsEqual);
 function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
