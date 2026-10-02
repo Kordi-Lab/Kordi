@@ -50,15 +50,7 @@ impl ContextPolicy {
                 )
                 .await?
                 {
-                    let body: Option<(serde_json::Value,)> = query_as(
-                        "SELECT content FROM cloud_chat_messages WHERE message_id::text = $1",
-                    )
-                    .bind(&wire)
-                    .fetch_optional(pool)
-                    .await?;
-                    let body = body
-                        .map(|(content,)| crate::chat_sync::voice::body_for_agent(&content))
-                        .unwrap_or_default();
+                    let body = request_body(pool, conversation_id, &window, &wire).await?;
                     request = Some((wire, logical, body));
                 }
             }
@@ -142,6 +134,35 @@ async fn conversation(
     }))
 }
 
+/// Reads one message of the run's conversation by primary key.
+pub(super) const REQUEST_BODY_SQL: &str =
+    "SELECT content FROM cloud_chat_messages WHERE conversation_id = $1 AND message_id = $2";
+
+/// The request's first text block as agents read it. The request is normally
+/// among the window's newest rows; otherwise it is read by primary key within
+/// the run's conversation, never by a text match across every conversation.
+pub(super) async fn request_body(
+    pool: &PgPool,
+    conversation_id: Uuid,
+    window: &[WindowRow],
+    wire: &str,
+) -> RunResult<String> {
+    if let Some((.., body)) = window.iter().find(|(id, ..)| id == wire) {
+        return Ok(body.clone());
+    }
+    let Ok(message_id) = Uuid::parse_str(wire) else {
+        return Ok(String::new());
+    };
+    let row: Option<(Value,)> = query_as(REQUEST_BODY_SQL)
+        .bind(conversation_id)
+        .bind(message_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(row
+        .map(|(content,)| crate::chat_sync::voice::body_for_agent(&content))
+        .unwrap_or_default())
+}
+
 async fn opt_outs(
     pool: &PgPool,
     conversation_id: Uuid,
@@ -221,3 +242,7 @@ pub(crate) async fn needs_filtered_context(
             .is_empty();
     Ok((scope == HistoryScope::Mentions, excluded))
 }
+
+#[cfg(test)]
+#[path = "load_tests.rs"]
+mod tests;
