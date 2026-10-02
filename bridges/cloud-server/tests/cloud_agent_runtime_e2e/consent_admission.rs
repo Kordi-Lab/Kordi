@@ -26,7 +26,11 @@ async fn claim(router: &axum::Router, caller: &TestAccount, body: Value) -> (Sta
     (status, read_json(response).await)
 }
 
-async fn remove_contact(pool: &sqlx_postgres::PgPool, left: &TestAccount, right: &TestAccount) {
+pub(super) async fn remove_contact(
+    pool: &sqlx_postgres::PgPool,
+    left: &TestAccount,
+    right: &TestAccount,
+) {
     sqlx_core::query::query(
         "DELETE FROM cloud_contacts WHERE (account_id = $1 AND peer_account_id = $2) \
          OR (account_id = $2 AND peer_account_id = $1)",
@@ -80,7 +84,10 @@ async fn direct_requests(
     (owner, requester, session, requests)
 }
 
-async fn run_state(pool: &sqlx_postgres::PgPool, run_id: &str) -> (String, Option<String>) {
+pub(super) async fn run_state(
+    pool: &sqlx_postgres::PgPool,
+    run_id: &str,
+) -> (String, Option<String>) {
     sqlx_core::query_as::query_as(
         "SELECT status, error_code FROM cloud_agent_fallback_runs WHERE run_id = $1",
     )
@@ -159,7 +166,7 @@ async fn shared_agent(pool: &sqlx_postgres::PgPool, owner: &TestAccount) -> Stri
     agent_id
 }
 
-fn group_request(
+pub(super) fn group_request(
     session: &str,
     owner: &TestAccount,
     requester: &TestAccount,

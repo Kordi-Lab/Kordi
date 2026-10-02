@@ -64,6 +64,21 @@ pub(super) async fn run_still_allowed(pool: &PgPool, run_id: &str) -> RunResult<
     .await
 }
 
+/// Rechecks a run its executor still holds, for the owner's desktop as for
+/// the cloud runner. A subsession turn follows
+/// `subsession_execution::revalidate`; any other run that lost access is
+/// cancelled. Returns whether the run may continue.
+pub(crate) async fn recheck_held_run(pool: &PgPool, run_id: &str) -> RunResult<bool> {
+    if !crate::cloud_agent_runtime::subsession_execution::revalidate(pool, run_id).await? {
+        return Ok(false);
+    }
+    if run_still_allowed(pool, run_id).await? {
+        return Ok(true);
+    }
+    cancel_revoked_run(pool, run_id).await?;
+    Ok(false)
+}
+
 /// Whether the agent's owner may still write in the chat `session_id` names,
 /// where the run's answer is delivered as the owner's message. A direct or AI
 /// chat with another person needs a contact, as every chat message does

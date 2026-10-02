@@ -48,6 +48,7 @@ pub use leases::{
 };
 #[cfg(test)]
 use prompt_history::{fallback_prompt_with_history, CloudFallbackHistoryMessage};
+pub(crate) use revocation::recheck_held_run;
 pub use revocation::{destination_accepts_owner, RELATIONSHIP_REVOKED};
 
 #[cfg(test)]
