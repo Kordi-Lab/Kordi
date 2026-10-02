@@ -231,6 +231,10 @@ final class AppModel: ObservableObject {
     /// the server has no blocks, reports, removal, withdrawal, or leaving
     /// yet. Every new safety action is hidden then.
     @Published var safetyFeaturesAvailable = true
+    /// Bumped after this person leaves a group on this device, so open
+    /// screens for its conversations can close (`leftGroupSessionIds`).
+    @Published private(set) var leftGroupRevision = 0
+    private(set) var leftGroupSessionIds = Set<String>()
     @Published private(set) var conversations: [ConversationSummary] = []
     @Published private(set) var archivedConversations: [ConversationSummary] = []
     @Published private(set) var pinnedSessionIds = Set<String>()
@@ -619,6 +623,7 @@ final class AppModel: ObservableObject {
         deviceReviewRequired = false
         blockedAccounts = []
         safetyFeaturesAvailable = true
+        leftGroupSessionIds = []
         cloudMessagesByPeer = [:]
         cloudMessageIndicesByPeer = [:]
         sessionForksById = [:]
@@ -8005,6 +8010,8 @@ extension AppModel {
         })
         await rebuildConversationCatalog()
         await persistCloudSnapshot(accountId: account.accountId)
+        leftGroupSessionIds = Set(space.membershipSessions.map(\.sessionId))
+        leftGroupRevision &+= 1
         return .done
     }
 }

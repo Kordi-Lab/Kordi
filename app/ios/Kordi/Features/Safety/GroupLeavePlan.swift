@@ -142,11 +142,37 @@ enum GroupLeavePlan {
         return ["CHAT_ENTITY_NOT_FOUND", "CHAT_FORBIDDEN", "chat_conversation_missing"].contains(error.code)
     }
 
+    /// The navigation path after leaving: screens for the group's
+    /// conversations close, together with anything opened on top of them.
+    static func navigationPath(
+        _ path: [MainNavigationRoute],
+        afterLeaving sessionIds: Set<String>
+    ) -> [MainNavigationRoute] {
+        guard !sessionIds.isEmpty,
+              let first = path.firstIndex(where: { route in
+                  route.conversationSessionId.map(sessionIds.contains) ?? false
+              }) else { return path }
+        return Array(path[..<first])
+    }
+
     static func confirmationMessage(isOwner: Bool, successorName: String?) -> String {
         let body = "You'll stop getting messages from this group and all of its channels, "
             + "and it will be removed from your devices. To come back, you'll need an invite "
             + "link from someone in the group."
         guard isOwner else { return body }
         return body + " You're the group owner, so \(successorName?.nonEmpty ?? "another member") will become the owner."
+    }
+}
+
+private extension MainNavigationRoute {
+    var conversationSessionId: String? {
+        switch self {
+        case .conversation(let conversation), .sessionDetails(let conversation):
+            conversation.sessionId
+        case .message(let route):
+            route.conversation.sessionId
+        case .newChat, .archived:
+            nil
+        }
     }
 }

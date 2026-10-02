@@ -544,6 +544,12 @@ struct MainTabView: View {
             path = [.conversation(chat)]
             model.startedAgentChat = nil
         }
+        .task(id: model.leftGroupRevision) {
+            // Leaving a group closes its open chat and details screens.
+            guard model.leftGroupRevision > 0 else { return }
+            let remaining = GroupLeavePlan.navigationPath(path, afterLeaving: model.leftGroupSessionIds)
+            if remaining != path { path = remaining }
+        }
         .task(id: model.pendingThreadRoute) {
             guard let route = model.pendingThreadRoute else { return }
             let destination = MainTab.destination(for: route.conversation.kind)

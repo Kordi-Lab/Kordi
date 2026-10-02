@@ -112,6 +112,30 @@ struct GroupLeavePlanTests {
         #expect(!GroupLeavePlan.isAlreadyGone(CloudAPIError(code: "server_error", message: "", statusCode: 404)))
     }
 
+    @Test func leavingClosesTheGroupsScreensAndWhatIsAboveThem() {
+        func summary(_ sessionId: String, kind: ConversationKind = .group) -> ConversationSummary {
+            ConversationSummary(
+                id: "\(kind):\(sessionId)", kind: kind, peerAccountId: "acct_bea", agentId: nil,
+                ownerDisplayName: nil, displayName: sessionId, lastMessage: "",
+                lastActivityAt: Date(timeIntervalSince1970: 1_790_000_000), unreadCount: 0,
+                avatarSource: nil, agentActivity: nil, sessionId: sessionId
+            )
+        }
+        let other = summary("session:direct-person:acct_bea:acct_me", kind: .person)
+        let channel = summary("session:group:channel")
+        let path: [MainNavigationRoute] = [
+            .conversation(other),
+            .message(KordiMessageNotificationRoute(conversation: channel, messageID: "m1")),
+            .sessionDetails(channel),
+            .newChat(.addContact),
+        ]
+        let left: Set<String> = ["session:group:root", "session:group:channel"]
+        #expect(GroupLeavePlan.navigationPath(path, afterLeaving: left) == [.conversation(other)])
+        // Positive control: screens for other conversations stay open.
+        #expect(GroupLeavePlan.navigationPath([.conversation(other)], afterLeaving: left) == [.conversation(other)])
+        #expect(GroupLeavePlan.navigationPath(path, afterLeaving: []) == path)
+    }
+
     @Test func confirmationNamesTheNextOwner() {
         let member = GroupLeavePlan.confirmationMessage(isOwner: false, successorName: "Bea")
         #expect(!member.contains("owner"))
