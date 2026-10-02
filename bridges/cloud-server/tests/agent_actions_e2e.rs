@@ -349,6 +349,17 @@ impl Group {
         .fetch_all(&self.pool)
         .await
         .unwrap();
+        // Older apps stop syncing on a critical event type they do not know.
+        let (critical,): (i64,) = query_as(
+            "SELECT count(*) FROM cloud_chat_user_sync_events
+             WHERE event_type = 'agent_action.updated'
+               AND payload->'agentAction'->>'actionId' = $1 AND critical",
+        )
+        .bind(action_id)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap();
+        assert_eq!(critical, 0, "agent_action.updated must stay skippable");
         rows.into_iter().map(|row| row.0).collect()
     }
 

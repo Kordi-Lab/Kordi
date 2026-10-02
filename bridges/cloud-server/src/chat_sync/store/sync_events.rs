@@ -201,3 +201,33 @@ pub async fn append_account_hint(
     .await?;
     Ok(())
 }
+
+/// Refresh hints about one conversation for several accounts. They are not
+/// critical, so an app that does not know the event type skips it and keeps
+/// syncing instead of asking the person to update.
+pub async fn append_conversation_hints_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_ids: &[String],
+    event_type: &str,
+    conversation_id: Option<Uuid>,
+    payload: &Value,
+) -> Result<(), StoreError> {
+    let recipients = account_ids
+        .iter()
+        .map(|account_id| account_id.trim())
+        .filter(|account_id| !account_id.is_empty())
+        .collect::<BTreeSet<_>>();
+    for recipient in recipients {
+        insert_noncritical_sync_event(
+            transaction,
+            recipient,
+            event_type,
+            conversation_id,
+            None,
+            None,
+            payload,
+        )
+        .await?;
+    }
+    Ok(())
+}

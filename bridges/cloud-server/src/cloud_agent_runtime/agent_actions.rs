@@ -28,7 +28,7 @@ use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
-use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
+use crate::chat_sync::store::{append_conversation_hints_in_transaction, StoreError};
 use crate::server::ServerState;
 
 mod calendar;
@@ -291,15 +291,15 @@ async fn recipients(
 }
 
 /// Sends `agent_action.updated` with the action's current state to the people
-/// who may decide it, in the transaction that changed it. Older apps ignore
-/// the unknown event type.
+/// who may decide it, in the transaction that changed it. The event is not
+/// critical, so older apps skip the unknown type and keep syncing.
 pub(crate) async fn publish(
     tx: &mut Transaction<'_, Postgres>,
     action_id: Uuid,
 ) -> Result<(), sqlx_core::Error> {
     let row = load_in_transaction(tx, action_id).await?;
     let recipients = recipients(tx, &row).await?;
-    append_user_sync_events_in_transaction(
+    append_conversation_hints_in_transaction(
         tx,
         &recipients,
         "agent_action.updated",

@@ -256,7 +256,7 @@ pub use service_members::{join_service_member, leave_service_member, leave_servi
 pub use support::{
     append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
 };
-pub use sync_events::append_account_hint;
+pub use sync_events::{append_account_hint, append_conversation_hints_in_transaction};
 use sync_events::{insert_noncritical_sync_event, insert_sync_event, insert_sync_event_fanout};
 pub use titles::{update_personal_title, update_shared_title};
 
