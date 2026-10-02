@@ -14,14 +14,11 @@ import {
   type CloudPublicProfile,
 } from './authClient';
 import { cloudContactSummaryKey } from './cloudContactTypes';
-import {
-  CLOUD_HOST_SENTINEL,
-  cloudContactInitials,
-  cloudContactToContact,
-} from './cloudContactMapping';
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import { cloudContactToContact } from './cloudContactMapping';
+import { cloudRequestToContactRequest } from './cloudContactRequestMapping';
 import {
   applyCloudContactsRefreshSnapshot,
+  forgetCloudContactSnapshot,
   type CloudContactsSnapshot,
 } from './cloudContactsSnapshot';
 import { loadSession } from './session';
@@ -32,10 +29,10 @@ import {
   type CloudSupportTicketInput,
   type CloudSupportTicketResult,
 } from './supportClient';
-import { formatKordiHandle } from './kordiId';
 
 export { applyCloudContactsRefreshSnapshot } from './cloudContactsSnapshot';
 export { CLOUD_HOST_SENTINEL, cloudContactToContact, isCloudContact } from './cloudContactMapping';
+export { cloudRequestToContactRequest, isPendingIncomingCloudContactRequest } from './cloudContactRequestMapping';
 export type { CloudContactsSnapshot } from './cloudContactsSnapshot';
 
 export type UseCloudContactsResult = {
@@ -74,6 +71,8 @@ type CloudContactsStore = {
   refreshPromise: Promise<void> | null;
   refreshAgain: boolean;
   mutationRevision: number;
+  /** Contacts the latest successful refresh listed. */
+  confirmedContactKeys: Set<string>;
   pollTimer: ReturnType<typeof window.setInterval> | null;
   ws: WebSocket | null;
   wsOpening: boolean;
@@ -205,6 +204,7 @@ function cloudContactsStoreFor(accountId: string): CloudContactsStore {
     refreshPromise: null,
     refreshAgain: false,
     mutationRevision: 0,
+    confirmedContactKeys: new Set(),
     pollTimer: null,
     ws: null,
     wsOpening: false,
@@ -261,7 +261,9 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
         { contacts: store.snapshot.contacts, requests: store.snapshot.requests },
         { contacts, requests },
         { startedMutationRevision, currentMutationRevision: store.mutationRevision },
+        store.confirmedContactKeys,
       );
+      store.confirmedContactKeys = new Set(contacts.map(cloudContactSummaryKey));
       publishCloudContactsStore(store, { ...next, loading: false, error: null, initialLoadSettled: true });
     } catch (err) {
       publishCloudContactsStore(store, {
@@ -327,6 +329,14 @@ function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAu
     .finally(() => {
       store.wsOpening = false;
     });
+}
+
+/** Drops a removed or blocked person from the account's contacts at once. */
+export function forgetCloudContact(accountId: string, peerAccountId: string): void {
+  const store = cloudContactStores.get(accountId);
+  if (!store) return;
+  store.confirmedContactKeys.delete(cloudContactSummaryKey({ accountId: peerAccountId }));
+  applyCloudContactsSnapshot(store, (current) => forgetCloudContactSnapshot(current, peerAccountId));
 }
 
 function startCloudContactsStore(store: CloudContactsStore, client: CloudAuthClient) {
@@ -486,35 +496,5 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     rejectRequest,
     submitSupportRequest,
     getSupportRequest,
-  };
-}
-
-export function isPendingIncomingCloudContactRequest(request: Pick<ContactRequest, 'direction' | 'status'>): boolean {
-  return request.direction === 'incoming' && request.status === 'pending';
-}
-
-export function cloudRequestToContactRequest(row: CloudContactRequest): ContactRequest {
-  const counterpartKordiHandle = formatKordiHandle(row.counterpart?.kordiId);
-  const counterpartName = row.counterpart?.displayName?.trim() || counterpartKordiHandle || 'Kordi user';
-  const counterpartId = row.direction === 'incoming' ? row.fromAccountId : row.toAccountId;
-  const title = row.direction === 'incoming'
-    ? `${counterpartName} wants to connect`
-    : `Request sent to ${counterpartName}`;
-  return {
-    id: `cloud:${row.requestId}`,
-    initials: cloudContactInitials(counterpartName),
-    title,
-    detail: row.message?.trim() || counterpartKordiHandle || 'Kordi ID unavailable',
-    time: row.createdAt,
-    profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
-    avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),
-    avatarName: counterpartName,
-    source: 'collaboration',
-    sourceHostId: CLOUD_HOST_SENTINEL,
-    sourceRequestId: row.requestId,
-    requesterNodeId: row.fromAccountId,
-    targetNodeId: row.toAccountId,
-    status: row.status,
-    direction: row.direction,
   };
 }

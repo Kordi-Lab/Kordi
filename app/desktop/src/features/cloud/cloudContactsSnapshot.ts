@@ -6,15 +6,27 @@ export type CloudContactsSnapshot = {
   requests: CloudContactRequest[];
 };
 
+/**
+ * Merges a server refresh into the current snapshot. A contact accepted on
+ * this device stays listed while the server catches up, but a contact an
+ * earlier refresh confirmed (`confirmedContactKeys`) and this one no longer
+ * lists was removed or blocked, on this device or elsewhere, and is dropped.
+ */
 export function applyCloudContactsRefreshSnapshot(
   current: CloudContactsSnapshot,
   refreshed: CloudContactsSnapshot,
   revisions: { startedMutationRevision: number; currentMutationRevision: number },
+  confirmedContactKeys: ReadonlySet<string> = new Set(),
 ): CloudContactsSnapshot {
   if (revisions.startedMutationRevision !== revisions.currentMutationRevision) return current;
 
+  const refreshedKeys = new Set(refreshed.contacts.map(cloudContactSummaryKey));
   const contactsByAccountId = new Map<string, CloudContactSummary>();
-  for (const contact of current.contacts) contactsByAccountId.set(cloudContactSummaryKey(contact), contact);
+  for (const contact of current.contacts) {
+    const key = cloudContactSummaryKey(contact);
+    if (confirmedContactKeys.has(key) && !refreshedKeys.has(key)) continue;
+    contactsByAccountId.set(key, contact);
+  }
   for (const contact of refreshed.contacts) {
     const key = cloudContactSummaryKey(contact);
     const existing = contactsByAccountId.get(key);
@@ -43,6 +55,17 @@ export function applyCloudContactsRefreshSnapshot(
     contacts: cloudContactSummaryArraysEqual(current.contacts, contacts) ? current.contacts : contacts,
     requests: cloudContactRequestArraysEqual(current.requests, requests) ? current.requests : requests,
   };
+}
+
+/** The snapshot without `peerAccountId` as a contact, after removing or blocking them. */
+export function forgetCloudContactSnapshot(
+  snapshot: CloudContactsSnapshot,
+  peerAccountId: string,
+): CloudContactsSnapshot {
+  const contacts = snapshot.contacts.filter((contact) => (
+    contact.contactKind === 'system_agent' || contact.accountId !== peerAccountId
+  ));
+  return contacts.length === snapshot.contacts.length ? snapshot : { ...snapshot, contacts };
 }
 
 function cloudContactSummariesEqual(left: CloudContactSummary, right: CloudContactSummary): boolean {

@@ -6,7 +6,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react';
 
 import { CloudAuthError, defaultCloudAuthClient, type CloudAccount } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
-import { useCloudContacts } from '@/features/cloud/useCloudContacts';
+import { forgetCloudContact, useCloudContacts } from '@/features/cloud/useCloudContacts';
 
 import { BlockAccountDialog } from './BlockAccountDialog';
 import { ReportDialog } from './ReportDialog';
@@ -59,6 +59,7 @@ export function SafetyActionsProvider({ account, children }: { account: CloudAcc
     const result = await blockAccount(client, token, target.accountId);
     if (accountId) {
       rememberBlockedAccount(accountId, result.block);
+      forgetCloudContact(accountId, target.accountId);
       void refreshCloudBlocks(accountId);
     }
     void refreshContacts();
@@ -97,13 +98,14 @@ export function SafetyActionsProvider({ account, children }: { account: CloudAcc
     openReport: (target) => { if (safetyFeaturesAvailable) setDialog({ kind: 'report', target }); },
     removeContact: async (peerAccountId) => {
       await removeContact(client, await sessionToken(), peerAccountId);
+      if (accountId) forgetCloudContact(accountId, peerAccountId);
       await refreshContacts();
     },
     withdrawContactRequest: async (requestId) => {
       await withdrawContactRequest(client, await sessionToken(), requestId);
       await refreshContacts();
     },
-  }), [account, blockedAccountIds, client, refreshContacts, safetyFeaturesAvailable, sessionToken]);
+  }), [account, accountId, blockedAccountIds, client, refreshContacts, safetyFeaturesAvailable, sessionToken]);
 
   const dismiss = useCallback(() => setDialog(null), []);
   const reportTarget = dialog?.kind === 'report' ? dialog.target : null;
