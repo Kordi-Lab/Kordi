@@ -277,10 +277,31 @@ async fn rejoining_pip_starts_reading_at_the_newest_message() {
         .unwrap());
     assert!(!pip_active(&pool, chat, &pip).await);
     send_text(&pool, &member, chat, "Still off").await;
-    set_pip_setting(&pool, chat, true).await;
-    assert!(super::membership::join_conversation(&pool, &pip, chat)
+    // Old enough that the sweep's two-minute rule would pick them up.
+    query("UPDATE cloud_chat_messages SET created_at = now() - interval '10 minutes' WHERE conversation_id = $1")
+        .bind(chat)
+        .execute(&pool)
         .await
-        .unwrap());
+        .unwrap();
+    set_pip_setting(&pool, chat, true).await;
+    // The step that commits the membership already moved PiP's reading
+    // position, so a sweep right after it finds nothing from while PiP was off.
+    assert!(crate::chat_sync::store::join_service_member(
+        &pool,
+        chat,
+        &pip,
+        super::membership::PIP_CONVERSATION_KINDS
+    )
+    .await
+    .unwrap());
+    let swept: Vec<(Uuid, Option<String>, i64, i64, i64, serde_json::Value)> =
+        query_as(super::store::SWEEP_SQL)
+            .bind(&pip)
+            .bind(1000_i64)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(swept.iter().all(|row| row.0 != chat), "{swept:?}");
     let (seen, context_start, latest): (i64, i64, i64) = query_as(
         "SELECT state.seen_sequence, state.context_start_sequence, conversation.latest_message_sequence
          FROM cloud_pip_conversation_state state

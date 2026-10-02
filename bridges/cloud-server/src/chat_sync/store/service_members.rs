@@ -32,6 +32,12 @@ pub(super) fn without_service_members(mut account_ids: Vec<String>) -> Vec<Strin
 /// it locks that row first, so a change that turns it off either commits
 /// before this read, and nothing joins, or waits for this join and then
 /// removes the member.
+///
+/// The member's reading position (`cloud_pip_conversation_state`; PiP is the
+/// only server-managed member) moves to the newest message in the same
+/// transaction, so the PiP sweep never sees the new membership with a position
+/// from before it joined, or from an earlier membership on a rejoin. PiP never
+/// reads history from before it joined or messages from while it was off.
 pub async fn join_service_member(
     pool: &PgPool,
     conversation_id: Uuid,
@@ -82,6 +88,20 @@ pub async fn join_service_member(
     query(
         "UPDATE cloud_chat_conversations SET version = version + 1, updated_at = now()
          WHERE conversation_id = $1",
+    )
+    .bind(conversation_id)
+    .execute(&mut *transaction)
+    .await?;
+    query(
+        "INSERT INTO cloud_pip_conversation_state
+             (conversation_id, seen_sequence, context_start_sequence)
+         SELECT conversation_id, latest_message_sequence, latest_message_sequence
+         FROM cloud_chat_conversations
+         WHERE conversation_id = $1
+         ON CONFLICT (conversation_id) DO UPDATE SET
+             seen_sequence = EXCLUDED.seen_sequence,
+             context_start_sequence = EXCLUDED.context_start_sequence,
+             updated_at = now()",
     )
     .bind(conversation_id)
     .execute(&mut *transaction)

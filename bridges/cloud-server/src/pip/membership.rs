@@ -16,39 +16,22 @@ pub const PIP_CONVERSATION_KINDS: &[&str] = &["group"];
 /// the setting off (or no setting row) nothing changes. Returns whether a new
 /// membership was created.
 /// Members' devices hear about it through `membership.updated`, and PiP starts
-/// reading at the conversation's newest message on every join, so neither
-/// history from before PiP joined nor messages from while it was off are ever
-/// read.
+/// reading at the conversation's newest message on every join, in the same
+/// transaction that commits the membership, so neither history from before PiP
+/// joined nor messages from while it was off are ever read.
 pub async fn join_conversation(
     pool: &PgPool,
     pip_account_id: &str,
     conversation_id: Uuid,
 ) -> Result<bool, sqlx_core::Error> {
-    let inserted = crate::chat_sync::store::join_service_member(
+    crate::chat_sync::store::join_service_member(
         pool,
         conversation_id,
         pip_account_id,
         PIP_CONVERSATION_KINDS,
     )
     .await
-    .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-    if inserted {
-        query(
-            "INSERT INTO cloud_pip_conversation_state
-                 (conversation_id, seen_sequence, context_start_sequence)
-             SELECT conversation_id, latest_message_sequence, latest_message_sequence
-             FROM cloud_chat_conversations
-             WHERE conversation_id = $1
-             ON CONFLICT (conversation_id) DO UPDATE SET
-                 seen_sequence = EXCLUDED.seen_sequence,
-                 context_start_sequence = EXCLUDED.context_start_sequence,
-                 updated_at = now()",
-        )
-        .bind(conversation_id)
-        .execute(pool)
-        .await?;
-    }
-    Ok(inserted)
+    .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))
 }
 
 /// What startup reconciliation changed.
