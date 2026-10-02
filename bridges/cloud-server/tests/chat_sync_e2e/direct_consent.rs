@@ -1,14 +1,14 @@
 use super::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
-fn requires_contact(result: Result<impl Sized, StoreError>) -> bool {
+pub(crate) fn requires_contact(result: Result<impl Sized, StoreError>) -> bool {
     matches!(
         result,
         Err(StoreError::RelationshipRequired(message)) if message == store::DIRECT_REQUIRES_CONTACT
     )
 }
 
-fn text(body: &str) -> SendMessageRequest {
+pub(crate) fn text(body: &str) -> SendMessageRequest {
     SendMessageRequest {
         client_message_id: Uuid::now_v7(),
         kind: "text".to_string(),
@@ -18,7 +18,7 @@ fn text(body: &str) -> SendMessageRequest {
     }
 }
 
-fn direct(peer: &str, session: String) -> CreateConversationRequest {
+pub(crate) fn direct(peer: &str, session: String) -> CreateConversationRequest {
     CreateConversationRequest {
         client_operation_id: Uuid::now_v7(),
         kind: ConversationKind::Direct,
@@ -28,7 +28,7 @@ fn direct(peer: &str, session: String) -> CreateConversationRequest {
     }
 }
 
-async fn remove_contact(pool: &PgPool, left: &str, right: &str) {
+pub(crate) async fn remove_contact(pool: &PgPool, left: &str, right: &str) {
     query(
         "DELETE FROM cloud_contacts WHERE (account_id = $1 AND peer_account_id = $2) \
          OR (account_id = $2 AND peer_account_id = $1)",
@@ -40,7 +40,7 @@ async fn remove_contact(pool: &PgPool, left: &str, right: &str) {
     .expect("remove contact");
 }
 
-async fn block(pool: &PgPool, blocker: &str, blocked: &str) {
+pub(crate) async fn block(pool: &PgPool, blocker: &str, blocked: &str) {
     query(
         "INSERT INTO cloud_account_blocks (blocker_account_id, blocked_account_id) VALUES ($1, $2)",
     )
@@ -51,7 +51,7 @@ async fn block(pool: &PgPool, blocker: &str, blocked: &str) {
     .expect("block account");
 }
 
-async fn attachment(pool: &PgPool, owner: &str, content_type: &str) -> String {
+pub(crate) async fn attachment(pool: &PgPool, owner: &str, content_type: &str) -> String {
     let id = format!("att-{}", Uuid::new_v4());
     query("INSERT INTO cloud_attachments(attachment_id,owner_account_id,object_key,created_at,finalized_at,content_type,detected_content_type,size_bytes) VALUES($1,$2,$1,$3,$3,$4,$4,100)")
         .bind(&id).bind(owner).bind(chrono::Utc::now().to_rfc3339()).bind(content_type)
@@ -287,49 +287,7 @@ async fn removing_a_contact_makes_their_direct_chat_read_only() {
     ));
 }
 
-#[tokio::test]
-async fn support_chats_are_exempt_and_agent_chats_follow_the_contact_rule() {
-    let Some(pool) = try_pool().await else { return };
-    let user = account(&pool, "consent-support-user").await;
-    let support_owner = account(&pool, "consent-support-owner").await;
-    let support = store::create_conversation_with_trusted_peer(
-        &pool,
-        &user,
-        direct(
-            &support_owner,
-            format!("session:direct-system-agent:{user}:support-agent"),
-        ),
-        Some(&support_owner),
-    )
-    .await
-    .expect("support chats need no contact");
-    store::send_message(&pool, &user, support.value.id, text("help"))
-        .await
-        .expect("users can write to support");
-    store::send_message(&pool, &support_owner, support.value.id, text("hi"))
-        .await
-        .expect("support can answer");
-
-    let owner = account(&pool, "consent-agent-owner").await;
-    let agent_session = format!("session:direct-agent:{owner}:cloud-agent:{owner}");
-    assert!(requires_contact(
-        store::create_conversation(&pool, &user, direct(&owner, agent_session.clone())).await
-    ));
-    connect_accounts(&pool, &user, &owner).await;
-    let agent_chat = store::create_conversation(&pool, &user, direct(&owner, agent_session))
-        .await
-        .expect("contacts can open each other's agent chat")
-        .value;
-    store::send_message(&pool, &user, agent_chat.id, text("question"))
-        .await
-        .unwrap();
-    remove_contact(&pool, &user, &owner).await;
-    assert!(requires_contact(
-        store::send_message(&pool, &user, agent_chat.id, text("another")).await
-    ));
-}
-
-fn shared_ai(members: Vec<String>) -> CreateConversationRequest {
+pub(crate) fn shared_ai(members: Vec<String>) -> CreateConversationRequest {
     CreateConversationRequest {
         client_operation_id: Uuid::now_v7(),
         kind: ConversationKind::Ai,
@@ -339,7 +297,7 @@ fn shared_ai(members: Vec<String>) -> CreateConversationRequest {
     }
 }
 
-fn title(expected_version: i32, value: &str) -> UpdateConversationTitleRequest {
+pub(crate) fn title(expected_version: i32, value: &str) -> UpdateConversationTitleRequest {
     UpdateConversationTitleRequest {
         client_operation_id: Uuid::now_v7(),
         expected_version,

@@ -15,42 +15,27 @@ pub const DIRECT_REQUIRES_CONTACT: &str = "You can send messages here only while
 pub const GROUP_ADD_REQUIRES_CONTACT: &str =
     "You can add only your contacts to a group. To invite someone else, share an invite link.";
 
-/// Kordi Support conversations are exempt: they are with a service account.
-const SYSTEM_AGENT_SESSION_PATTERN: &str = "session:direct-system-agent:%";
-
 /// Requires every other active person in a conversation that is not a group
 /// (`direct` or `ai`) to be a contact of `account_id`. Nobody can leave such a
 /// conversation, so removing or blocking a contact must stop writing there.
-/// Groups, Kordi Support conversations, and server-managed members pass
-/// unchanged. Call it after `require_active_member`.
+/// Groups pass unchanged, and so do Kordi service accounts (Kordi Support and
+/// PiP) on either side, identified by membership rather than the session id.
+/// Call it after `require_active_member`.
 pub(crate) async fn require_direct_relationship(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: Uuid,
     account_id: &str,
 ) -> Result<(), StoreError> {
-    let blocked: (bool,) = query_as(
-        "SELECT EXISTS ( \
-           SELECT 1 FROM cloud_chat_conversations conversation \
-           JOIN cloud_chat_conversation_members other \
-             ON other.conversation_id = conversation.conversation_id \
-           WHERE conversation.conversation_id = $1 \
-             AND conversation.kind IN ('direct', 'ai') \
-             AND COALESCE(conversation.legacy_session_id, '') NOT LIKE $3 \
-             AND other.account_id <> $2 \
-             AND NOT (other.account_id = ANY($4)) \
-             AND other.membership_state = 'active' \
-             AND NOT cloud_accounts_are_contacts($2, other.account_id))",
+    if crate::relationships::may_write_outside_groups(
+        &mut **transaction,
+        conversation_id,
+        account_id,
     )
-    .bind(conversation_id)
-    .bind(account_id)
-    .bind(SYSTEM_AGENT_SESSION_PATTERN)
-    .bind(super::service_members::service_member_ids())
-    .fetch_one(&mut **transaction)
-    .await?;
-    if blocked.0 {
-        return Err(StoreError::RelationshipRequired(DIRECT_REQUIRES_CONTACT));
+    .await?
+    {
+        return Ok(());
     }
-    Ok(())
+    Err(StoreError::RelationshipRequired(DIRECT_REQUIRES_CONTACT))
 }
 
 /// Requires each peer of a new conversation to be a contact of `account_id`,

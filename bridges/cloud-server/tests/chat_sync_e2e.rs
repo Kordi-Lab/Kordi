@@ -33,6 +33,8 @@ mod membership;
 mod message_mutations;
 #[path = "chat_sync_e2e/reactions.rs"]
 mod reactions;
+#[path = "chat_sync_e2e/service_exemption.rs"]
+mod service_exemption;
 #[path = "chat_sync_e2e/session_pins.rs"]
 mod session_pins;
 #[path = "chat_sync_e2e/session_visibility.rs"]

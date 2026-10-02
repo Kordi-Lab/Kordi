@@ -14,6 +14,7 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::Postgres;
+use uuid::Uuid;
 
 use crate::server::ServerState;
 
@@ -79,6 +80,43 @@ pub async fn blocks_between<'e>(
     .bind(b)
     .fetch_one(executor)
     .await
+}
+
+/// Whether consent lets `account_id` write in `conversation_id`. Only
+/// conversations that are not groups (`direct` and `ai`) need it: nobody can
+/// leave them, so every other active person there must be a contact of
+/// `account_id`. Kordi service accounts (PiP and Kordi Support, which own
+/// system-managed agents) need no contact on either side. The exemption
+/// follows membership, never the client-chosen session id. Groups and unknown
+/// conversations pass; membership itself is checked elsewhere.
+pub async fn may_write_outside_groups<'e>(
+    executor: impl Executor<'e, Database = Postgres>,
+    conversation_id: Uuid,
+    account_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    let service_ids: Vec<String> = crate::pip::service_account_id()
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+    query_as::<_, (bool,)>(
+        "SELECT cloud_account_is_service($2) OR NOT EXISTS ( \
+           SELECT 1 FROM cloud_chat_conversations conversation \
+           JOIN cloud_chat_conversation_members other \
+             ON other.conversation_id = conversation.conversation_id \
+           WHERE conversation.conversation_id = $1 \
+             AND conversation.kind IN ('direct', 'ai') \
+             AND other.account_id <> $2 \
+             AND other.membership_state = 'active' \
+             AND NOT (other.account_id = ANY($3)) \
+             AND NOT cloud_account_is_service(other.account_id) \
+             AND NOT cloud_accounts_are_contacts($2, other.account_id))",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .bind(service_ids)
+    .fetch_one(executor)
+    .await
+    .map(|(value,)| value)
 }
 
 /// Serializes every relationship decision about one unordered pair until the

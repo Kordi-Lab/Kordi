@@ -27,6 +27,22 @@ fn fork_session_kind_allowed(is_registered_fork: bool, kind: ConversationKind) -
     !is_registered_fork || kind == ConversationKind::Ai
 }
 
+/// Direct session ids name a chat between two parties, and Kordi Support
+/// chats use one of them. A shared conversation of another kind must not
+/// borrow that identity. A conversation of one's own may, because installed
+/// clients open a chat with themselves under these ids.
+fn shared_session_id_allowed(kind: ConversationKind, members: &[String], session_id: &str) -> bool {
+    kind == ConversationKind::Direct
+        || members.len() < 2
+        || ![
+            DIRECT_PERSON_SESSION_PREFIX,
+            DIRECT_AGENT_SESSION_PREFIX,
+            DIRECT_SYSTEM_AGENT_SESSION_PREFIX,
+        ]
+        .iter()
+        .any(|prefix| session_id.starts_with(prefix))
+}
+
 fn normalized_direct_session_id(
     session_id: String,
     members: &[String],
@@ -113,6 +129,11 @@ async fn create_conversation_in_transaction_with_trusted_peer(
             ));
         }
         _ => {}
+    }
+    if !shared_session_id_allowed(request.kind, &members, &client_session_id) {
+        return Err(StoreError::InvalidInput(
+            "only direct conversations can use a direct session id",
+        ));
     }
     if request.kind == ConversationKind::Direct {
         client_session_id =
@@ -312,6 +333,32 @@ mod tests {
             Some("acct_b"),
         )
         .is_ok());
+    }
+
+    #[test]
+    fn shared_conversations_of_other_kinds_cannot_borrow_direct_session_ids() {
+        let pair = vec!["acct_a".to_string(), "acct_b".to_string()];
+        let alone = vec!["acct_a".to_string()];
+        for session in [
+            "session:direct-system-agent:acct_a:support",
+            "session:direct-person:acct_a:acct_b",
+            "session:direct-agent:acct_b:agent",
+        ] {
+            use ConversationKind::{Ai, Direct, Group};
+            for (kind, members, allowed) in [
+                (Ai, &pair, false),
+                (Group, &pair, false),
+                (Direct, &pair, true),
+                (Ai, &alone, true),
+            ] {
+                assert_eq!(shared_session_id_allowed(kind, members, session), allowed);
+            }
+        }
+        assert!(shared_session_id_allowed(
+            ConversationKind::Ai,
+            &pair,
+            "session:self-agent:shared"
+        ));
     }
 
     #[test]
