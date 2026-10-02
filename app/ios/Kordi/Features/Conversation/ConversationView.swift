@@ -257,6 +257,7 @@ struct ConversationView: View {
     @State private var completedForwardDestination: ConversationSummary?
     @State private var didPresentForwardPreview = false
     @State private var detailsMessage: ChatMessage?
+    @State private var presentedReplyDisclosure: AgentReplyDisclosureTarget?
     @State private var pinTarget: ChatMessage?
     @State private var unpinTarget: PinnedMessageItem?
     @State private var editTarget: ChatMessage?
@@ -771,6 +772,9 @@ struct ConversationView: View {
 
                 if selectedMessageIDs.isEmpty {
                     if !isWaitingForLinkedBackgroundSession {
+                        if showsPendingAgentActions {
+                            PendingAgentActionsBanner(sessionId: conversation.sessionId)
+                        }
                         ComposerView(
                             text: $draft,
                             attachments: $attachments,
@@ -1132,6 +1136,11 @@ struct ConversationView: View {
         .task(id: mentionTargetRefreshID) {
             await model.refreshMentionTargets(for: conversation)
         }
+        .modifier(ConversationAgentTrustModifier(
+            conversation: conversation,
+            showsPendingActions: showsPendingAgentActions,
+            presentedDisclosure: $presentedReplyDisclosure
+        ))
         .task {
             _ = await MessageDeleteParticleResources.prepared.value
         }
@@ -1603,7 +1612,10 @@ struct ConversationView: View {
                     },
                     isPinConfirmationPresented: pinTarget?.id == message.id,
                     onDismissPinConfirmation: { if pinTarget?.id == message.id { pinTarget = nil } },
-                    onConfirmPin: { shared in pinMessage(message, shared: shared) }
+                    onConfirmPin: { shared in pinMessage(message, shared: shared) },
+                    onOpenReplyDisclosure: replyDisclosureTarget(for: message).map { target in
+                        { presentedReplyDisclosure = target }
+                    }
                 )
                 .equatable()
                 .background(alignment: .bottomTrailing) {
@@ -1825,6 +1837,12 @@ struct ConversationView: View {
                 onSelect: {
                     toggleSelection(message.id)
                     dismissMessageActions()
+                },
+                onAboutReply: replyDisclosureTarget(for: message).map { target in
+                    {
+                        dismissMessageActions()
+                        presentedReplyDisclosure = target
+                    }
                 }
             )
         }
@@ -2531,6 +2549,24 @@ struct ConversationView: View {
                 highlightedMessageID = nil
             }
         }
+    }
+
+    /// What is waiting for this person shows in the main view of chats
+    /// synced through Kordi Cloud, not inside discussions or task threads.
+    private var showsPendingAgentActions: Bool {
+        conversation.subsessionId == nil
+            && scopedThreadRootMessageID == nil
+            && AIAccessCopy.supportsAIAccess(sessionId: conversation.sessionId)
+    }
+
+    /// "About this reply" for finished agent replies and PiP in chats synced
+    /// through Kordi Cloud.
+    private func replyDisclosureTarget(for message: ChatMessage) -> AgentReplyDisclosureTarget? {
+        guard conversation.subsessionId == nil,
+              AIAccessCopy.supportsAIAccess(sessionId: conversation.sessionId) else { return nil }
+        let isPip = AgentMessageLabels.isPip(message, avatarSeed: avatarIdentity(for: message).seed)
+        guard AgentReplyDisclosurePresentation.offersDisclosure(for: message, isPip: isPip) else { return nil }
+        return AgentReplyDisclosureTarget(message: message, isPip: isPip)
     }
 
     private func avatarIdentity(for message: ChatMessage) -> ConversationAvatarIdentity {

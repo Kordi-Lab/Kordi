@@ -158,6 +158,8 @@ struct MessageBubble: View, Equatable {
     var isPinConfirmationPresented = false
     var onDismissPinConfirmation: () -> Void = {}
     var onConfirmPin: (Bool) -> Void = { _ in }
+    /// Opens "About this reply" from the AI chip on agent and PiP messages.
+    var onOpenReplyDisclosure: (() -> Void)? = nil
     @State private var isRetrying = false
     @State private var actionFrame = CGRect.zero
     @State private var didAutomaticallyPresentActions = false
@@ -264,6 +266,7 @@ struct MessageBubble: View, Equatable {
                         Text(message.authorName)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(KordiTheme.agentViolet)
+                        AgentAIChip(action: onOpenReplyDisclosure)
                         if let ownerName = message.senderOwnerName?.nonEmpty {
                             Text("Owner · \(ownerName)")
                                 .font(.caption2.weight(.medium))
@@ -271,7 +274,7 @@ struct MessageBubble: View, Equatable {
                         }
                     }
                     .padding(.horizontal, 4)
-                    .accessibilityElement(children: .combine)
+                    .accessibilityElement(children: .contain)
                 }
 
                 messageSurface
@@ -678,13 +681,8 @@ struct MessageBubble: View, Equatable {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(chatTheme.accent)
                 .lineLimit(1)
-            if KordiPipIdentity.matches(name: message.authorName, seed: authorAvatarSeed) {
-                Text(KordiPipIdentity.tag)
-                    .font(.caption2.weight(.medium))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(red: 0.941, green: 0.706, blue: 0.161).opacity(0.18), in: Capsule())
-                    .foregroundStyle(Color(red: 0.353, green: 0.239, blue: 0.0))
+            if isPipMessage {
+                PipIdentityTag(action: onOpenReplyDisclosure)
             }
         }
     }
@@ -712,7 +710,7 @@ struct MessageBubble: View, Equatable {
                 HStack(spacing: 5) {
                     Image(systemName: "arrowshape.turn.up.right.fill")
                         .font(.caption2.weight(.semibold))
-                    Text("Forwarded from \(source.senderLabel)")
+                    Text(AgentMessageLabels.forwardedFrom(source))
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                 }
@@ -1136,7 +1134,11 @@ struct MessageBubble: View, Equatable {
     /// One quiet line under the bubble that names the quoted message and jumps back to it.
     private func quoteLine(_ source: MessageActionSource) -> some View {
         let isOwn = message.author == .me
-        let senderLabel = MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: selfDisplayName)
+        let senderLabel = AgentMessageLabels.quotedSender(
+            MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: selfDisplayName),
+            source: source,
+            resolvedSource: replySourceMessage
+        )
         let previewText = MessageQuotePresentation.previewText(source.textPreview, attachmentCount: source.attachmentCount)
         let accessibilityText = ComposerMentionTargetCatalog.accessibilityText(
             in: previewText,
@@ -1244,7 +1246,12 @@ struct MessageBubble: View, Equatable {
         )
         // A voice transcript update sets editedAt, but the message itself did not change.
         let editedLabel = message.isEdited && message.voiceMessage == nil ? ", edited" : ""
-        return "\(message.authorName), \(messageText)\(attachmentLabel)\(editedLabel), \(receipt)"
+        let author = AgentMessageLabels.accessibilityAuthor(for: message, isPip: isPipMessage)
+        return "\(author), \(messageText)\(attachmentLabel)\(editedLabel), \(receipt)"
+    }
+
+    private var isPipMessage: Bool {
+        AgentMessageLabels.isPip(message, avatarSeed: authorAvatarSeed)
     }
 
     private func attachmentCountText(_ count: Int) -> String {

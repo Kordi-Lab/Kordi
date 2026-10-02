@@ -1101,6 +1101,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     static let groupTitleUpdateMessageKind = "group-title-update"
     static let channelTitleUpdateMessageKind = "channel-title-update"
     static let channelCreatedMessageKind = "channel-created"
+    /// Posted only by Kordi when someone changes AI access. Clients recognize a
+    /// notice by this server-set kind, never by anything in the message body.
+    static let aiAccessNoticeMessageKind = "ai-access-notice"
     private static let agentModelChangePrefix = "Switched model to "
     private static let agentRuntimeRouteNoticePrefix = "Model: "
     private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
@@ -1173,6 +1176,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var mentions: [MessageMention]
     var reactions: [MessageReaction]
     var attachmentReactions: [String: [MessageReaction]]
+    /// The account whose agent wrote this reply, from the verified sender.
+    /// Used to ask Kordi about the reply; `nil` for other messages.
+    var agentOwnerAccountId: String? = nil
 
     var callActivity: ChatCallActivity? {
         ChatCallActivity(messageKind: messageKind)
@@ -1192,8 +1198,13 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             || messageKind == Self.channelCreatedMessageKind
     }
 
+    var isAIAccessNotice: Bool {
+        messageKind == Self.aiAccessNoticeMessageKind
+    }
+
     var isSystemNotice: Bool {
         messageKind == "session_pin_activity" || isAgentModelChangeNotice
+            || isAIAccessNotice
             || isGroupMemberJoinNotice
             || isTitleUpdateNotice
             || callActivity != nil
@@ -1256,7 +1267,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         agentExecution: AgentExecutionSnapshot? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
         reactions: [MessageReaction] = [],
-        attachmentReactions: [String: [MessageReaction]] = [:]
+        attachmentReactions: [String: [MessageReaction]] = [:],
+        agentOwnerAccountId: String? = nil
     ) {
         self.id = id
         self.clientMessageId = clientMessageId
@@ -1288,6 +1300,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.mentions = mentions
         self.reactions = reactions
         self.attachmentReactions = attachmentReactions
+        self.agentOwnerAccountId = agentOwnerAccountId
     }
 
     var actionSource: MessageActionSource {
@@ -1354,6 +1367,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case backgroundAgentSessions
         case mentions
         case reactions, attachmentReactions
+        case agentOwnerAccountId
     }
 
     init(from decoder: Decoder) throws {
@@ -1396,6 +1410,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
         attachmentReactions = try container.decodeIfPresent([String: [MessageReaction]].self, forKey: .attachmentReactions) ?? [:]
+        agentOwnerAccountId = try? container.decodeIfPresent(String.self, forKey: .agentOwnerAccountId)
     }
 }
 

@@ -209,6 +209,7 @@ final class AppModel: ObservableObject {
         didSet {
             if oldValue?.accountId != account?.accountId {
                 resetDigestReads()
+                resetAgentTrustState()
                 voiceTranscriptions.activate(accountId: account?.accountId)
             }
         }
@@ -235,6 +236,13 @@ final class AppModel: ObservableObject {
 
     @Published private(set) var threadReadCursors: [String: [String: Int64]] = [:]
     @Published private(set) var pinnedGroupSpaceIds = Set<String>()
+    /// What is waiting for this person, by session. Maintained by
+    /// `AppModel+AgentTrust.swift`.
+    @Published var pendingAgentActionsBySession: [String: [CloudPendingAgentAction]] = [:]
+    /// Whether PiP is available on this server; `nil` until loaded.
+    @Published var aiFeatures: CloudAIFeatures?
+    var agentReplyDisclosureCache: [String: CloudAgentReplyDisclosure] = [:]
+    var previewAIAccessBySession: [String: CloudAIAccess] = [:]
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var subsessions: [String: CloudAgentSubsession] = [:]
     @Published private(set) var stoppingSubsessionIDs: Set<String> = []
@@ -842,6 +850,7 @@ final class AppModel: ObservableObject {
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage
         ))
+        await refreshPendingAgentActions()
     }
 
     func updateProfile(
@@ -2963,7 +2972,8 @@ final class AppModel: ObservableObject {
                     agentExecution: message.agentExecution,
                     backgroundAgentSessions: message.backgroundAgentSessions,
                     reactions: message.reactions,
-                    attachmentReactions: message.attachmentReactions
+                    attachmentReactions: message.attachmentReactions,
+                    agentOwnerAccountId: message.agentOwnerAccountId
                 )
             }
             messagesByConversation[conversation.id] = mergePartialProjection(
@@ -4249,6 +4259,8 @@ final class AppModel: ObservableObject {
                 token: token, account: account, channelCreated: true
             )
             cloudConnectionState = .connected
+            // Best effort and off the creation path: the channel is ready now.
+            Task { await inheritPip(from: source.sessionId, to: sessionID) }
             await rebuildConversationCatalog()
             return conversations.first(where: { $0.sessionId == sessionID }) ?? created
         } catch {
@@ -4258,7 +4270,13 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func createGroup(with selectedContacts: [CloudContact], title: String?) async -> ConversationSummary? {
+    /// Creates a group. With `pipEnabled`, PiP is turned on right after; if
+    /// that fails the group stays and `pipFailed` tells the caller to say so.
+    func createGroup(
+        with selectedContacts: [CloudContact],
+        title: String?,
+        pipEnabled: Bool = false
+    ) async -> CreatedGroup? {
         guard let token, let account else { return nil }
 
         var contactsByAccountID: [String: CloudContact] = [:]
@@ -4326,8 +4344,12 @@ final class AppModel: ObservableObject {
                 account: account
             )
             cloudConnectionState = .connected
+            let pipFailed = pipEnabled ? !(await enablePipInNewGroup(sessionId: sessionID)) : false
             await rebuildConversationCatalog()
-            return conversations.first(where: { $0.sessionId == sessionID }) ?? provisional
+            return CreatedGroup(
+                conversation: conversations.first(where: { $0.sessionId == sessionID }) ?? provisional,
+                pipFailed: pipFailed
+            )
         } catch {
             recordCloudConnectionFailure(error)
             errorMessage = userFacing(error, fallback: "Could not start this group.")
@@ -6009,7 +6031,8 @@ final class AppModel: ObservableObject {
             ),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions,
-            attachmentReactions: message.attachmentReactions
+            attachmentReactions: message.attachmentReactions,
+            agentOwnerAccountId: isAgentResponse ? message.fromAccountId.nonEmpty : nil
         )
     }
 
@@ -6183,7 +6206,10 @@ final class AppModel: ObservableObject {
                 reactionTargetMessageId: wire.messageId,
                 messageAction: payload.messageAction,
                 mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),
-                messageKind: payload.messageKind,
+                messageKind: CloudGroupMessageCodec.projectedMessageKind(
+                    wireKind: wire.messageKind,
+                    envelopeKind: payload.messageKind
+                ),
                 voiceMessage: payload.voiceMessage ?? wire.voiceMessage,
                 planCard: wire.planCard,
                 agentExecution: author == .agent ? CloudMessageCodec.agentWaitingExecution(
@@ -6194,7 +6220,8 @@ final class AppModel: ObservableObject {
                     payload.structuredContent?.tools ?? []
                 ),
                 reactions: Self.mergedReactions(rows.map { $0.0.reactions }),
-                attachmentReactions: wire.attachmentReactions
+                attachmentReactions: wire.attachmentReactions,
+                agentOwnerAccountId: author == .agent ? wire.fromAccountId.nonEmpty : nil
             )
         }
         let readAgentRequestIds = CloudGroupAgentLifecycleProjector.readRequestIds(
@@ -6304,11 +6331,13 @@ final class AppModel: ObservableObject {
                         }
                         guard self.token == token, !Task.isCancelled else { return }
                         applyCloudSyncEvents(pendingEvents)
+                        refreshPendingAgentActions(after: pendingEvents)
                         let hasDirectoryChanges = pendingEvents.contains {
                             $0.eventType != "message.upsert"
                                 && $0.eventType != "session.pin.updated"
                                 && $0.eventType != "message.read"
                                 && $0.eventType != "provider-auth.updated"
+                                && $0.eventType != CloudAPIClient.agentActionUpdatedEventType
                         }
                         if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
                         // Conversation snapshots are independently canonical.

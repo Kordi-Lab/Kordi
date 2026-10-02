@@ -175,7 +175,8 @@ enum CloudDirectMessageProjector {
             ),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions,
-            attachmentReactions: message.attachmentReactions
+            attachmentReactions: message.attachmentReactions,
+            agentOwnerAccountId: author == .agent ? message.fromAccountId.nonEmpty : nil
         )
     }
 }
