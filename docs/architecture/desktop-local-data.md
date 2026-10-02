@@ -115,7 +115,11 @@ that resolved addresses are public still runs before the request. Kordi does
 not bypass configured proxies, because that would break managed networks.
 
 Which messages may load previews at all is controlled by the per-device
-**Link previews** setting in Account settings, Privacy.
+**Link previews** setting in Account settings, Privacy. Under the default
+**From contacts** option, a contact is an account in the latest contacts list
+the server returns for the signed-in account (`GET /v1/cloud/contacts`).
+Realtime contact events and optimistic updates change what the Contacts screen
+shows, but they never let a sender's links load previews.
 
 ## Why Kordi does not encrypt local copies yet
 

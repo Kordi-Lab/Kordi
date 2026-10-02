@@ -45,6 +45,20 @@ export function applyCloudContactsRefreshSnapshot(
   };
 }
 
+/**
+ * The contacts list exactly as the latest `GET /v1/cloud/contacts` response
+ * returned it. Unlike `contacts`, it is replaced on every refresh and never
+ * takes realtime hints or optimistic updates, so rows another account adds
+ * through an event, and rows the server no longer returns, never appear here.
+ * Use it for privacy decisions such as link previews.
+ */
+export function nextServerContactRows(
+  previous: readonly CloudContactSummary[],
+  refreshed: readonly CloudContactSummary[],
+): readonly CloudContactSummary[] {
+  return cloudContactSummaryArraysEqual(previous, refreshed) ? previous : [...refreshed];
+}
+
 function cloudContactSummariesEqual(left: CloudContactSummary, right: CloudContactSummary): boolean {
   return left.contactId === right.contactId
     && left.contactKind === right.contactKind

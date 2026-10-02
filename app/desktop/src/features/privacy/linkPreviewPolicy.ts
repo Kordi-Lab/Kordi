@@ -5,7 +5,8 @@ import {
   resolvePreferenceStorage,
   writePreferenceStorageItem,
 } from '@/features/cloud/preferenceStorage';
-import type { Contact, Message } from '@/kordi-app/types';
+import type { CloudContactSummary } from '@/features/cloud/cloudContactTypes';
+import type { Message } from '@/kordi-app/types';
 
 /**
  * Per-device setting for link network fetches: preview metadata, preview
@@ -86,30 +87,31 @@ export function resetLinkPreviewPreferenceForTests(): void {
   notifyLinkPreviewPreferenceListeners();
 }
 
-type TrustedLinkPreviewContact = Pick<Contact, 'sourceHumanId' | 'contactStatus' | 'systemContact' | 'entityType'>;
+type TrustedLinkPreviewContactRow = Pick<CloudContactSummary, 'accountId' | 'contactKind' | 'targetCloudAgentId'>;
 
 /**
  * Account ids whose links may load previews under the default setting: the
- * signed-in account and accepted human contacts. Pending requests, group
- * member placeholders, system contacts, and agents never qualify.
+ * signed-in account and the human rows of the server's contacts list for that
+ * account. Pass only rows from the contacts response (`serverContacts`), never
+ * the merged display list, which also holds realtime hints and optimistic
+ * rows. System agents and agent targets never qualify.
  */
 export function trustedLinkPreviewHumanIds({
   selfAccountId,
-  contacts,
+  serverContacts,
 }: {
   selfAccountId?: string | null;
-  contacts: readonly TrustedLinkPreviewContact[];
+  serverContacts: readonly TrustedLinkPreviewContactRow[];
 }): ReadonlySet<string> {
   const trusted = new Set<string>();
   const self = selfAccountId?.trim();
   if (self) trusted.add(self);
-  for (const contact of contacts) {
-    const humanId = contact.sourceHumanId?.trim();
-    if (!humanId) continue;
-    if (contact.contactStatus !== 'accepted' && contact.contactStatus !== 'contact') continue;
-    if (contact.systemContact) continue;
-    if (contact.entityType.trim().toLowerCase().includes('agent')) continue;
-    trusted.add(humanId);
+  for (const row of serverContacts) {
+    const accountId = row.accountId?.trim();
+    if (!accountId) continue;
+    if (row.contactKind?.trim() === 'system_agent') continue;
+    if (row.targetCloudAgentId?.trim()) continue;
+    trusted.add(accountId);
   }
   return trusted;
 }

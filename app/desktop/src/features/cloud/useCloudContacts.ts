@@ -14,14 +14,10 @@ import {
   type CloudPublicProfile,
 } from './authClient';
 import { cloudContactSummaryKey } from './cloudContactTypes';
-import {
-  CLOUD_HOST_SENTINEL,
-  cloudContactInitials,
-  cloudContactToContact,
-} from './cloudContactMapping';
-import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
+import { cloudContactToContact, cloudRequestToContactRequest } from './cloudContactMapping';
 import {
   applyCloudContactsRefreshSnapshot,
+  nextServerContactRows,
   type CloudContactsSnapshot,
 } from './cloudContactsSnapshot';
 import { loadSession } from './session';
@@ -32,14 +28,20 @@ import {
   type CloudSupportTicketInput,
   type CloudSupportTicketResult,
 } from './supportClient';
-import { formatKordiHandle } from './kordiId';
 
 export { applyCloudContactsRefreshSnapshot } from './cloudContactsSnapshot';
-export { CLOUD_HOST_SENTINEL, cloudContactToContact, isCloudContact } from './cloudContactMapping';
+export {
+  CLOUD_HOST_SENTINEL,
+  cloudContactToContact,
+  cloudRequestToContactRequest,
+  isCloudContact,
+} from './cloudContactMapping';
 export type { CloudContactsSnapshot } from './cloudContactsSnapshot';
 
 export type UseCloudContactsResult = {
   contacts: Contact[];
+  /** Rows from the latest contacts response only; see `nextServerContactRows`. */
+  serverContacts: readonly CloudContactSummary[];
   requests: ContactRequest[];
   loading: boolean;
   error: string | null;
@@ -57,6 +59,7 @@ const REFRESH_INTERVAL_MS = 15_000;
 export const CLOUD_CONTACT_ACCEPTED_SYNC_EVENT = 'kordi.cloud.contact.accepted-sync';
 
 export type CloudContactsStoreSnapshot = CloudContactsSnapshot & {
+  serverContacts: readonly CloudContactSummary[];
   loading: boolean;
   error: string | null;
   initialLoadSettled: boolean;
@@ -81,6 +84,7 @@ type CloudContactsStore = {
 
 const EMPTY_CLOUD_CONTACTS_SNAPSHOT: CloudContactsStoreSnapshot = {
   contacts: [],
+  serverContacts: [],
   requests: [],
   loading: false,
   error: null,
@@ -221,6 +225,7 @@ function publishCloudContactsStore(store: CloudContactsStore, patch: Partial<Clo
   const next = { ...store.snapshot, ...patch };
   if (
     next.contacts === store.snapshot.contacts
+    && next.serverContacts === store.snapshot.serverContacts
     && next.requests === store.snapshot.requests
     && next.loading === store.snapshot.loading
     && next.error === store.snapshot.error
@@ -262,7 +267,8 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
         { contacts, requests },
         { startedMutationRevision, currentMutationRevision: store.mutationRevision },
       );
-      publishCloudContactsStore(store, { ...next, loading: false, error: null, initialLoadSettled: true });
+      const serverContacts = nextServerContactRows(store.snapshot.serverContacts, contacts);
+      publishCloudContactsStore(store, { ...next, serverContacts, loading: false, error: null, initialLoadSettled: true });
     } catch (err) {
       publishCloudContactsStore(store, {
         loading: false,
@@ -415,6 +421,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
         const result = await client.acceptContactRequest(session.token, requestId);
         applyCloudContactsSnapshot(store, (current) => applyAcceptedCloudContactRequest(current, result.request));
         dispatchCloudContactAcceptedSync(result.request, store.accountId, result.helloMessage);
+        void refreshCloudContactsStore(store, client);
       } catch (error) {
         void refreshCloudContactsStore(store, client);
         throw error;
@@ -475,6 +482,7 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
 
   return {
     contacts: mappedContacts,
+    serverContacts: snapshot.serverContacts,
     requests: mappedRequests,
     loading: snapshot.loading,
     error: snapshot.error,
@@ -491,30 +499,4 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
 
 export function isPendingIncomingCloudContactRequest(request: Pick<ContactRequest, 'direction' | 'status'>): boolean {
   return request.direction === 'incoming' && request.status === 'pending';
-}
-
-export function cloudRequestToContactRequest(row: CloudContactRequest): ContactRequest {
-  const counterpartKordiHandle = formatKordiHandle(row.counterpart?.kordiId);
-  const counterpartName = row.counterpart?.displayName?.trim() || counterpartKordiHandle || 'Kordi user';
-  const counterpartId = row.direction === 'incoming' ? row.fromAccountId : row.toAccountId;
-  const title = row.direction === 'incoming'
-    ? `${counterpartName} wants to connect`
-    : `Request sent to ${counterpartName}`;
-  return {
-    id: `cloud:${row.requestId}`,
-    initials: cloudContactInitials(counterpartName),
-    title,
-    detail: row.message?.trim() || counterpartKordiHandle || 'Kordi ID unavailable',
-    time: row.createdAt,
-    profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
-    avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),
-    avatarName: counterpartName,
-    source: 'collaboration',
-    sourceHostId: CLOUD_HOST_SENTINEL,
-    sourceRequestId: row.requestId,
-    requesterNodeId: row.fromAccountId,
-    targetNodeId: row.toAccountId,
-    status: row.status,
-    direction: row.direction,
-  };
 }

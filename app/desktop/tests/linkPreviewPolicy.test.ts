@@ -98,22 +98,20 @@ test('sender human ids resolve only cloud account forms', () => {
   assert.equal(messageSenderHumanId({}), null);
 });
 
-test('trusted senders include self and accepted human contacts only', () => {
+test('trusted senders include self and human rows of the server contacts list only', () => {
   const ids = trustedLinkPreviewHumanIds({
     selfAccountId: ' acct_self ',
-    contacts: [
-      { sourceHumanId: 'acct_accepted', contactStatus: 'accepted', systemContact: false, entityType: 'user' },
-      { sourceHumanId: 'acct_contact', contactStatus: 'contact', entityType: 'human' },
-      { sourceHumanId: 'acct_pending', contactStatus: 'pending', entityType: 'user' },
-      { sourceHumanId: 'acct_member', contactStatus: 'group-member', entityType: 'user' },
-      { sourceHumanId: 'acct_support', contactStatus: 'accepted', systemContact: true, entityType: 'user' },
-      { sourceHumanId: 'acct_agent', contactStatus: 'accepted', entityType: 'agent' },
-      { sourceHumanId: 'acct_my_agent', contactStatus: 'accepted', entityType: 'My agent' },
-      { sourceHumanId: null, contactStatus: 'accepted', entityType: 'user' },
+    serverContacts: [
+      { accountId: 'acct_contact' },
+      { accountId: ' acct_spaced ', contactKind: null, targetCloudAgentId: null },
+      { accountId: 'acct_support', contactKind: 'system_agent', targetCloudAgentId: 'agent_support' },
+      { accountId: 'acct_system_without_target', contactKind: 'system_agent' },
+      { accountId: 'acct_agent_target', targetCloudAgentId: 'agent_x' },
+      { accountId: '  ' },
     ],
   });
-  assert.deepEqual([...ids].sort(), ['acct_accepted', 'acct_contact', 'acct_self']);
-  assert.deepEqual([...trustedLinkPreviewHumanIds({ selfAccountId: null, contacts: [] })], []);
+  assert.deepEqual([...ids].sort(), ['acct_contact', 'acct_self', 'acct_spaced']);
+  assert.deepEqual([...trustedLinkPreviewHumanIds({ selfAccountId: null, serverContacts: [] })], []);
 });
 
 test('invalid preference values read as the default', () => {
