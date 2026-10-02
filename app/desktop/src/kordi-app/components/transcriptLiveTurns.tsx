@@ -1,3 +1,5 @@
+import { useMessageLayout } from '@/app/messageLayoutPreference';
+import { LiveTurnMessageFrame } from './LiveTurnMessageFrame';
 import { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 export { liveTurnSnapshotKey } from '@/features/chat/liveTurnSnapshotKey';
 import { agentTurnHasStarted, canDisplayAgentTurn, shouldShowAgentWaitingAnimation } from '@/features/chat/agentProcessingVisibility';
@@ -25,7 +27,6 @@ import {
 import { changedFileRowsFromTurn } from '@/features/chat/artifacts';
 import { desktopTurnWorkDurationLabel } from '@/features/chat/desktopLiveTurns';
 import { useVisibleLiveTurn } from '@/features/chat/useVisibleLiveTurn';
-import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cn } from '@/lib/utils';
 import { AgentWaitingWave } from './AgentWaitingWave';
@@ -544,6 +545,7 @@ function CollaborationAgentStopButton({
 function LiveChatTurnCardView({
   turn,
   historical = false,
+  hideSourceQuote = false,
   showReasoning = false,
   plainAgentResponse = false,
   onStopCollaborationAgentRequest,
@@ -554,6 +556,7 @@ function LiveChatTurnCardView({
 }: {
   turn: DesktopChatTurnSnapshot;
   historical?: boolean;
+  hideSourceQuote?: boolean;
   showReasoning?: boolean;
   plainAgentResponse?: boolean;
   onStopCollaborationAgentRequest?: StopCollaborationAgentRequestHandler;
@@ -732,7 +735,7 @@ function LiveChatTurnCardView({
           />
         </div>
       ) : null}
-      {shouldShowSourceQuote ? <SourceMessageQuoteRow sourceMessage={visibleTurn.sourceMessage} side="agent" onNavigateToMessage={onNavigateToMessage} className={showResponsePanel ? 'mt-1' : undefined} /> : null}
+      {shouldShowSourceQuote && !hideSourceQuote ? <SourceMessageQuoteRow sourceMessage={visibleTurn.sourceMessage} side="agent" onNavigateToMessage={onNavigateToMessage} className={showResponsePanel ? 'mt-1' : undefined} /> : null}
     </div>
   );
 }
@@ -741,6 +744,7 @@ function LiveChatTurnCardView({
 export const LiveChatTurnCard = memo(
   LiveChatTurnCardView,
   (previous, next) => previous.historical === next.historical
+    && previous.hideSourceQuote === next.hideSourceQuote
     && previous.showReasoning === next.showReasoning
     && previous.plainAgentResponse === next.plainAgentResponse
     && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
@@ -770,27 +774,22 @@ function LiveChatTurnMessageView({
   onOpenArtifact?: (artifactId: string) => void;
   onOpenAuthSettings?: () => void;
 }) {
-  return (
-    <div
-      id={turn.id ? transcriptMessageDomId(turn.id) : undefined}
-      data-transcript-message-root="true"
-      className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-0.5"
-    >
-      <div className="app-message-meta">{sender}</div>
-      <LiveChatTurnCard
-        turn={turn}
-        showReasoning
-        plainAgentResponse={plainAgentResponse}
-        onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
-        onStopActiveTurn={onStopActiveTurn}
-        onNavigateToMessage={onNavigateToMessage}
-        onOpenArtifact={onOpenArtifact}
-        onOpenAuthSettings={onOpenAuthSettings}
-      />
-    </div>
+  const threadLayout = useMessageLayout() === 'threads';
+  const card = (
+    <LiveChatTurnCard
+      turn={turn}
+      hideSourceQuote={threadLayout}
+      showReasoning
+      plainAgentResponse={plainAgentResponse}
+      onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
+      onStopActiveTurn={onStopActiveTurn}
+      onNavigateToMessage={onNavigateToMessage}
+      onOpenArtifact={onOpenArtifact}
+      onOpenAuthSettings={onOpenAuthSettings}
+    />
   );
+  return <LiveTurnMessageFrame turn={turn} sender={sender} showSourceQuote={!plainAgentResponse} onNavigateToMessage={onNavigateToMessage}>{card}</LiveTurnMessageFrame>;
 }
-
 export const LiveChatTurnMessage = memo(
   LiveChatTurnMessageView,
   (previous, next) => previous.sender === next.sender

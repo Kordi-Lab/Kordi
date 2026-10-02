@@ -56,4 +56,5 @@
 @import "./features/projects/agentProjectSidebar.css";
 @import "./features/projects/projectImport.css";
 
+@import './styles/message-layout.css';
 @import './styles/theme-palette.css';

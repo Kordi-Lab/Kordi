@@ -1,0 +1,99 @@
+.app-message-layout-options {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--app-divider);
+  border-radius: 9px;
+}
+.app-message-layout-options button { min-height: 32px; padding: 4px 12px; border-radius: 6px; }
+.app-message-layout-options [aria-pressed="true"] { background: var(--app-control-bg); color: var(--utility-foreground); }
+
+.kordi-app .app-thread-message-row {
+  align-items: stretch;
+  max-width: 100%;
+  gap: 3px;
+  padding-block: 5px;
+}
+.kordi-app .app-thread-message-main {
+  width: 100%;
+  max-width: 100%;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+.kordi-app .app-thread-message-row .app-thread-message-surface,
+.kordi-app .app-thread-message-row [data-message-caption-bubble="true"] {
+  --app-message-bubble-fill: transparent;
+  --app-message-bubble-stroke: transparent;
+  --app-message-bubble-shadow: none;
+  --app-message-meta: var(--utility-muted-text);
+  --app-markdown-link: var(--app-chat-accent);
+  --app-markdown-link-hover: var(--app-chat-accent);
+  --app-chat-mention-agent: var(--app-chat-mention-peer);
+  --app-chat-mention-person: var(--app-chat-mention-peer);
+  --app-message-mention: var(--app-chat-mention-peer);
+  flex: 1;
+  width: 100%;
+  max-width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--utility-foreground);
+  align-items: flex-start;
+}
+.app-thread-message-header { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 2px; line-height: 20px; }
+.app-thread-message-author { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; font-weight: 600; }
+.app-thread-message-time { flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--utility-muted-text); }
+.kordi-app .app-thread-message-row .app-message-hover-time { display: none; }
+.kordi-app .app-thread-message-row .app-message-footer { color: var(--utility-muted-text); }
+.kordi-app .app-thread-message-row .app-message-reaction-chips,
+.kordi-app .app-thread-message-row .app-thread-discussion-line {
+  align-self: flex-start;
+  margin: 0;
+  justify-content: flex-start;
+  padding-right: 0;
+  padding-left: 40px;
+}
+.kordi-app .app-thread-turn > .app-thread-message-main > .app-message-hover-time-trigger { flex: 1; width: 100%; max-width: 100%; }
+.kordi-app .app-thread-turn > div:last-child:not(.app-thread-message-main):not(.app-thread-quote-row) { padding-left: 40px; }
+
+.kordi-app .app-thread-quote-row { position: relative; padding-left: 40px; }
+.app-thread-quote-row::before {
+  content: "";
+  position: absolute;
+  left: 15px;
+  top: 13px;
+  width: 19px;
+  height: 19px;
+  border-top: 1.5px solid var(--utility-muted-text);
+  border-left: 1.5px solid var(--utility-muted-text);
+  border-top-left-radius: 6px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+.kordi-app .app-thread-quote-row .app-source-message-quote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 0;
+  border: 0;
+  color: var(--utility-muted-text);
+  font-size: 12px;
+  text-align: left;
+}
+.app-thread-quote-row .app-source-message-quote-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.app-thread-quote-row .app-source-message-quote-label { font-weight: 500; }
+.app-thread-quote-avatar { opacity: 0.8; }
+@media (max-width: 480px) {
+  .app-thread-message-header { flex-wrap: wrap; gap: 0 7px; }
+  .app-thread-message-author { max-width: calc(100% - 62px); }
+}
+
+.kordi-app .app-thread-turn .app-live-turn-card,
+.kordi-app .app-thread-turn .app-live-turn-response-panel { max-width: 100%; }
+.kordi-app .app-thread-turn .app-live-assistant-answer-surface { padding: 0; border-radius: 0; background: transparent; }
