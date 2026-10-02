@@ -210,9 +210,13 @@ final class AppModel: ObservableObject {
             if oldValue?.accountId != account?.accountId {
                 resetDigestReads()
                 voiceTranscriptions.activate(accountId: account?.accountId)
+                serverContentRemovalVersion = 0
             }
         }
     }
+    /// The server's `content_removal_version`; 1 or higher means it deletes
+    /// stored copies of deleted content. Delete copy names storage only then.
+    @Published private(set) var serverContentRemovalVersion = 0
     @Published var rollingDigestSnapshot: RollingDigestResponse?
     @Published var digestCalendarSnapshot: DigestCalendarResponse?
     @Published var digestMutationState = DigestMutationState()
@@ -6281,6 +6285,9 @@ final class AppModel: ObservableObject {
                 do {
                     let response = try await api.sync(token: token, cursor: nextCursor)
                     guard self.token == token, !Task.isCancelled else { return }
+                    // An absent field means an older server that keeps stored copies.
+                    let removalVersion = response.contentRemovalVersion ?? 0
+                    if serverContentRemovalVersion != removalVersion { serverContentRemovalVersion = removalVersion }
                     if cloudConnectionState != .connected {
                         cloudConnectionState = .connected
                         if errorMessage == Self.cloudUnavailableMessage {
