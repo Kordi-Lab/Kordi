@@ -30,9 +30,7 @@ struct AgentReplyDisclosureSheet: View {
                 Section {
                     content
                 } footer: {
-                    if !target.isPip {
-                        Text(AgentReplyDisclosurePresentation.footnote)
-                    }
+                    Text(AgentReplyDisclosurePresentation.footnote)
                 }
             }
             .navigationTitle(AgentReplyDisclosurePresentation.title)
@@ -59,7 +57,12 @@ struct AgentReplyDisclosureSheet: View {
     @ViewBuilder
     private var content: some View {
         if target.isPip {
-            row(AgentReplyDisclosurePresentation.pipText(providerLabel: model.aiFeatures?.pipProviderLabel))
+            ForEach(
+                AgentReplyDisclosurePresentation.pipRows(providerLabel: model.aiFeatures?.pipProviderLabel),
+                id: \.self
+            ) { line in
+                row(line)
+            }
         } else {
             switch load {
             case nil:

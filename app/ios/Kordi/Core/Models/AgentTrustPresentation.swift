@@ -286,6 +286,12 @@ enum AgentReplyDisclosurePresentation {
         return rows
     }
 
+    /// PiP's rows: who it is and whose account it runs on. PiP answers no
+    /// one's request, so there is no "Requested by".
+    static func pipRows(providerLabel: String?) -> [String] {
+        ["Agent: \(KordiPipIdentity.displayName)", "Runs for: Kordi", pipText(providerLabel: providerLabel)]
+    }
+
     static func pipText(providerLabel: String?) -> String {
         if let providerLabel = providerLabel?.nonEmpty {
             return "PiP is Kordi's built-in plan helper. It runs on \(providerLabel) through Kordi's account."

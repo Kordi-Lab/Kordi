@@ -73,6 +73,17 @@ final class AgentReplyDisclosurePresentationTests: XCTestCase {
             AgentReplyDisclosurePresentation.pipText(providerLabel: " "),
             "PiP is Kordi's built-in plan helper. It runs through Kordi's account."
         )
+        XCTAssertEqual(
+            AgentReplyDisclosurePresentation.pipRows(providerLabel: "OpenAI"),
+            [
+                "Agent: PiP",
+                "Runs for: Kordi",
+                "PiP is Kordi's built-in plan helper. It runs on OpenAI through Kordi's account.",
+            ]
+        )
+        XCTAssertFalse(
+            AgentReplyDisclosurePresentation.pipRows(providerLabel: nil).contains { $0.hasPrefix("Requested by") }
+        )
         XCTAssertEqual(AgentReplyDisclosurePresentation.title, "About this reply")
         XCTAssertEqual(AgentReplyDisclosurePresentation.heading, "Written by AI")
         XCTAssertEqual(AgentReplyDisclosurePresentation.loading, "Checking…")
