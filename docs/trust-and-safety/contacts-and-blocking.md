@@ -30,7 +30,8 @@ These need both people to be contacts (and neither to have blocked the other):
 
 - appearing in each other's contact list and seeing each other's online status;
 - starting a direct chat, a group, or an AI chat with the other person
-  (chats with Kordi Support are exempt);
+  (chats with Kordi Support are exempt, because their other member is a Kordi
+  service account; no other chat can claim that exemption);
 - adding the other person to a group, except that the owner of a group space
   may add someone who is already an active member of the space to one of its
   channels (never while either of them blocked the other). Other members of
@@ -63,9 +64,13 @@ once; the other person's contact list refreshes but they get no other notice.
 
 - Your direct chat history stays readable for both of you.
 - New messages, edits, reactions, voice transcript updates, shared title
-  changes, and calls in that direct chat (or an AI chat you share) are
-  refused. Removing your own reaction and deleting your own message still
-  work. A ringing or active direct call between you ends.
+  changes, posts in its agent task threads, and calls in that direct chat (or
+  an AI chat you share) are refused. Removing your own reaction and deleting
+  your own message still work. A ringing or active direct call between you
+  ends.
+- Agent work that would answer in that chat stops instead of posting: a run
+  either of you started there is cancelled, and a scheduled task that answers
+  there fails with a note that you are no longer contacts.
 - Online status stops in both directions, and neither can use the other's
   default agent.
 - Groups you share are not affected.
@@ -93,7 +98,9 @@ When you block someone:
 - in groups you share, nobody is removed. You still see their messages
   (including their agents' messages), but you get no push notifications or
   desktop alerts for them, and their calls do not ring your devices. You can
-  leave those groups.
+  leave those groups;
+- task and file activity they record in a chat no longer reaches your
+  devices.
 
 Blocking does not send anything to Kordi. To tell us about a problem, use
 Report.
