@@ -643,11 +643,11 @@ struct MessageThreadProjection: Equatable {
         threadsByRootID[Self.resolveMessageID(rootID, aliases: primaryIDByAlias)]?.replies.count ?? 0
     }
 
-    static func rootSource(for message: ChatMessage, sessionID: String) -> MessageActionSource {
+    static func rootSource(for message: ChatMessage, sessionID: String, isPip: Bool = false) -> MessageActionSource {
         if let action = message.messageAction, action.kind == "thread" {
             return action.source
         }
-        return message.actionSource(sessionId: sessionID)
+        return message.actionSource(sessionId: sessionID, isPip: isPip)
     }
 }
 
@@ -1328,7 +1328,11 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         )
     }
 
-    func actionSource(sessionId: String) -> MessageActionSource {
+    /// The source other messages name when they quote, thread under, or
+    /// forward this one. PiP posts as a person, so callers that know a message
+    /// is PiP's say so, and PiP's messages are declared AI-written as agent
+    /// replies are.
+    func actionSource(sessionId: String, isPip: Bool = false) -> MessageActionSource {
         let normalized = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         let preview = normalized.count <= 220
             ? normalized
@@ -1339,7 +1343,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         return MessageActionSource(
             sourceSessionId: sessionId,
             sourceMessageId: id,
-            sourceMessageKind: author == .agent ? "agent-turn" : "text",
+            sourceMessageKind: author == .agent || isPip ? "agent-turn" : "text",
             senderLabel: author == .me ? "You" : authorName,
             textPreview: actionPreview,
             mentions: previewMentions.isEmpty ? nil : previewMentions,
@@ -1351,11 +1355,11 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     /// Re-forwarding a forwarded message keeps the original attribution instead
     /// of turning the current sender into the source of the forwarded content.
-    func forwardSource(sessionId: String) -> MessageActionSource {
+    func forwardSource(sessionId: String, isPip: Bool = false) -> MessageActionSource {
         if let action = messageAction, action.kind == "forward" {
             return action.source
         }
-        return actionSource(sessionId: sessionId)
+        return actionSource(sessionId: sessionId, isPip: isPip)
     }
 
     enum CodingKeys: String, CodingKey {

@@ -334,6 +334,19 @@ enum AgentMessageLabels {
         message.author == .person && KordiPipIdentity.matches(name: message.authorName, seed: avatarSeed)
     }
 
+    /// The same rule where only the conversation is at hand: in a group, a
+    /// message named PiP from someone who is not one of the group's people
+    /// is PiP's, as its avatar shows it.
+    static func isPip(_ message: ChatMessage, in conversation: ConversationSummary) -> Bool {
+        guard message.author == .person, conversation.kind == .group else { return false }
+        if let participant = conversation.groupParticipants.first(where: {
+            $0.displayName.localizedCaseInsensitiveCompare(message.authorName) == .orderedSame
+        }) {
+            return KordiPipIdentity.isPip(accountId: participant.accountId)
+        }
+        return KordiPipIdentity.isPipName(message.authorName)
+    }
+
     static func withAILabel(_ label: String, agentAuthored: Bool) -> String {
         agentAuthored ? "\(label) (AI)" : label
     }
@@ -349,9 +362,10 @@ enum AgentMessageLabels {
     static func quotedSender(
         _ label: String,
         source: MessageActionSource,
-        resolvedSource: ChatMessage?
+        resolvedSource: ChatMessage?,
+        resolvedSourceIsPip: Bool = false
     ) -> String {
-        let agentAuthored = resolvedSource.map { $0.author == .agent }
+        let agentAuthored = resolvedSource.map { $0.author == .agent || resolvedSourceIsPip }
             ?? (source.sourceMessageKind == "agent-turn")
         return withAILabel(label, agentAuthored: agentAuthored)
     }

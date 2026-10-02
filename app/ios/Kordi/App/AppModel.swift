@@ -2269,7 +2269,10 @@ final class AppModel: ObservableObject {
             guard self.account?.accountId == accountID else { return false }
             let message = sourceMessages[index]
             let localID = "ios_forward_\(operationID)"
-            let source = message.forwardSource(sessionId: sourceConversation.sessionId)
+            let source = message.forwardSource(
+                sessionId: sourceConversation.sessionId,
+                isPip: AgentMessageLabels.isPip(message, in: sourceConversation)
+            )
             var delivered = false
             if let voiceMessage = message.voiceMessage {
                 let voice: PendingVoiceMessage?

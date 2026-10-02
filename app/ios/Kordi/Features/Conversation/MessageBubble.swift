@@ -100,6 +100,8 @@ struct MessageBubble: View, Equatable {
     let showAuthor: Bool
     let showAvatar: Bool
     let replySourceMessage: ChatMessage?
+    /// Whether `replySourceMessage` is PiP's, so its quote reads "PiP (AI)".
+    var replySourceIsPip = false
     let isHighlighted: Bool
     let isActionPresented: Bool
     var pendingSendEntrance = false
@@ -187,6 +189,7 @@ struct MessageBubble: View, Equatable {
             && lhs.showAuthor == rhs.showAuthor
             && lhs.showAvatar == rhs.showAvatar
             && lhs.replySourceMessage == rhs.replySourceMessage
+            && lhs.replySourceIsPip == rhs.replySourceIsPip
             && lhs.isHighlighted == rhs.isHighlighted
             && lhs.isActionPresented == rhs.isActionPresented
             && lhs.deletingAttachmentID == rhs.deletingAttachmentID
@@ -1088,7 +1091,7 @@ struct MessageBubble: View, Equatable {
         if let action = message.messageAction, action.kind == "quote" {
             return action.source
         }
-        return replySourceMessage?.actionSource
+        return replySourceMessage.map { $0.actionSource(sessionId: $0.conversationId, isPip: replySourceIsPip) }
     }
 
     private var visibleForwardSource: MessageActionSource? {
@@ -1137,7 +1140,8 @@ struct MessageBubble: View, Equatable {
         let senderLabel = AgentMessageLabels.quotedSender(
             MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: selfDisplayName),
             source: source,
-            resolvedSource: replySourceMessage
+            resolvedSource: replySourceMessage,
+            resolvedSourceIsPip: replySourceIsPip
         )
         let previewText = MessageQuotePresentation.previewText(source.textPreview, attachmentCount: source.attachmentCount)
         let accessibilityText = ComposerMentionTargetCatalog.accessibilityText(
