@@ -6,7 +6,12 @@ use serde_json::{json, Value};
 use super::DesktopChatMessageRoute;
 
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
+const MAX_CHALLENGE_BYTES: usize = 4 * 1024;
 const UNAVAILABLE: &str = "Hosted provider credentials are unavailable for this desktop turn";
+const DEVICE_KEY_REQUIRED: &str = "This Mac has no registered device key for hosted provider accounts. Sign out of Kordi and sign in again on this Mac, then retry.";
+const DEVICE_PROOF_FAILED: &str = "Kordi could not verify this Mac's device key for hosted provider accounts. Sign out of Kordi and sign in again on this Mac, then retry.";
+const PROOF_ALGORITHM: &str = "ecdsa-p256-sha256";
+const PROOF_PURPOSE: &str = "desktop-provider-auth";
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +25,14 @@ struct HostedProviderAuthMaterial {
 #[serde(rename_all = "camelCase")]
 struct HostedProviderAuthEnvelope {
     provider_auth: HostedProviderAuthMaterial,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceChallenge {
+    nonce: String,
+    algorithm: String,
+    purpose: String,
 }
 
 pub(super) struct HostedTurnAuth {
@@ -134,6 +147,135 @@ fn credential_from_material(
     })
 }
 
+/// The text this Mac signs with its device key to receive hosted provider
+/// material. The server builds the same text from the challenge it issued.
+fn provider_auth_proof_message(
+    account_id: &str,
+    run_id: &str,
+    claim_id: &str,
+    nonce: &str,
+) -> Result<String, String> {
+    let claim_id = uuid::Uuid::parse_str(claim_id.trim()).map_err(|_| UNAVAILABLE)?;
+    if [account_id, run_id, nonce]
+        .iter()
+        .any(|value| value.is_empty() || value.contains(['\n', '\r']))
+    {
+        return Err(UNAVAILABLE.into());
+    }
+    Ok(format!(
+        "kordi-device-proof-v1\npurpose:{PROOF_PURPOSE}\naccount:{account_id}\n\
+         run:{run_id}\nclaim:{claim_id}\nnonce:{nonce}"
+    ))
+}
+
+/// The message for a refused request, telling the user how to recover when
+/// the refusal concerns this Mac's device key.
+fn refusal_message(body: &[u8]) -> String {
+    let code = serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("errorCode")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        });
+    match code.as_deref() {
+        Some("device_key_required") => DEVICE_KEY_REQUIRED.into(),
+        Some("device_proof_required" | "device_proof_invalid") => DEVICE_PROOF_FAILED.into(),
+        _ => UNAVAILABLE.into(),
+    }
+}
+
+async fn read_limited(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, String> {
+    if response
+        .content_length()
+        .is_some_and(|size| size > limit as u64)
+    {
+        return Err(UNAVAILABLE.into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|_| UNAVAILABLE)? {
+        if bytes.len() + chunk.len() > limit {
+            return Err(UNAVAILABLE.into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+fn provider_auth_endpoint(
+    base_url: &str,
+    lease: &DesktopCloudExecutionLease,
+    challenge: bool,
+) -> Result<reqwest::Url, String> {
+    let mut endpoint = reqwest::Url::parse(base_url).map_err(|_| UNAVAILABLE)?;
+    {
+        let mut segments = endpoint.path_segments_mut().map_err(|_| UNAVAILABLE)?;
+        segments.extend([
+            "v1",
+            "cloud",
+            "agent-runs",
+            &lease.run_id,
+            "desktop",
+            "provider-auth",
+        ]);
+        if challenge {
+            segments.push("challenge");
+        }
+    }
+    Ok(endpoint)
+}
+
+/// Requests the single-use challenge for this lease. `None` means the server
+/// predates device proofs and accepts the request without one.
+async fn request_challenge(
+    client: &reqwest::Client,
+    base_url: &str,
+    token: &str,
+    lease: &DesktopCloudExecutionLease,
+) -> Result<Option<String>, String> {
+    let response = client
+        .post(provider_auth_endpoint(base_url, lease, true)?)
+        .bearer_auth(token)
+        .json(&json!({ "claimId": lease.claim_id }))
+        .send()
+        .await
+        .map_err(|_| UNAVAILABLE)?;
+    let status = response.status();
+    if matches!(
+        status,
+        reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::METHOD_NOT_ALLOWED
+    ) {
+        return Ok(None);
+    }
+    let body = read_limited(response, MAX_CHALLENGE_BYTES).await?;
+    if !status.is_success() {
+        return Err(refusal_message(&body));
+    }
+    let challenge: DeviceChallenge = serde_json::from_slice(&body).map_err(|_| UNAVAILABLE)?;
+    if challenge.algorithm != PROOF_ALGORITHM || challenge.purpose != PROOF_PURPOSE {
+        return Err(UNAVAILABLE.into());
+    }
+    Ok(Some(challenge.nonce))
+}
+
+/// Signs the challenge in native code with the installation key. The private
+/// key never reaches the webview.
+async fn device_proof(
+    account_id: &str,
+    lease: &DesktopCloudExecutionLease,
+    nonce: String,
+) -> Result<Value, String> {
+    let message = provider_auth_proof_message(account_id, &lease.run_id, &lease.claim_id, &nonce)?;
+    let signature = tokio::task::spawn_blocking(move || {
+        crate::cloud_session::sign_with_device_key(message.as_bytes())
+    })
+    .await
+    .map_err(|_| UNAVAILABLE)?
+    .map_err(|_| DEVICE_PROOF_FAILED)?;
+    Ok(json!({ "nonce": nonce, "signature": signature }))
+}
+
 pub(super) async fn resolve_for_turn(
     route: &DesktopChatMessageRoute,
     context_messages: &[DesktopChatContextMessage],
@@ -149,44 +291,29 @@ pub(super) async fn resolve_for_turn(
         return Err(UNAVAILABLE.into());
     }
     let base_url = crate::cloud_api_base_url_from_env()?;
-    let mut endpoint = reqwest::Url::parse(&base_url).map_err(|_| UNAVAILABLE)?;
-    endpoint
-        .path_segments_mut()
-        .map_err(|_| UNAVAILABLE)?
-        .extend([
-            "v1",
-            "cloud",
-            "agent-runs",
-            &lease.run_id,
-            "desktop",
-            "provider-auth",
-        ]);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| UNAVAILABLE)?;
-    let mut response = client
-        .post(endpoint)
+    let mut body = json!({ "claimId": lease.claim_id });
+    if let Some(nonce) = request_challenge(&client, &base_url, &session.token, lease).await? {
+        body["deviceProof"] = device_proof(&session.account_id, lease, nonce).await?;
+    }
+    let response = client
+        .post(provider_auth_endpoint(&base_url, lease, false)?)
         .bearer_auth(session.token)
-        .json(&json!({ "claimId": lease.claim_id }))
+        .json(&body)
         .send()
         .await
         .map_err(|_| UNAVAILABLE)?;
-    if !response.status().is_success()
-        || response
-            .content_length()
-            .is_some_and(|size| size > MAX_RESPONSE_BYTES as u64)
-    {
-        return Err(UNAVAILABLE.into());
+    if !response.status().is_success() {
+        let body = read_limited(response, MAX_CHALLENGE_BYTES)
+            .await
+            .unwrap_or_default();
+        return Err(refusal_message(&body));
     }
-    let mut bytes = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| UNAVAILABLE)? {
-        if bytes.len() + chunk.len() > MAX_RESPONSE_BYTES {
-            return Err(UNAVAILABLE.into());
-        }
-        bytes.extend_from_slice(&chunk);
-    }
+    let bytes = read_limited(response, MAX_RESPONSE_BYTES).await?;
     let envelope: HostedProviderAuthEnvelope =
         serde_json::from_slice(&bytes).map_err(|_| UNAVAILABLE)?;
     credential_from_material(route, envelope.provider_auth)
@@ -262,5 +389,40 @@ mod tests {
     fn hosted_route_requires_a_real_execution_lease() {
         assert!(route_uses_hosted_auth(Some(&route())));
         assert!(lease_from_context(&[]).is_err());
+    }
+
+    #[test]
+    fn proof_message_matches_the_server_contract() {
+        assert_eq!(
+            provider_auth_proof_message(
+                "acct_a",
+                "car_b",
+                "6F9619FF-8B86-D011-B42D-00C04FC964FF",
+                "nonce-c"
+            )
+            .unwrap(),
+            "kordi-device-proof-v1\npurpose:desktop-provider-auth\naccount:acct_a\n\
+             run:car_b\nclaim:6f9619ff-8b86-d011-b42d-00c04fc964ff\nnonce:nonce-c"
+        );
+    }
+
+    #[test]
+    fn proof_message_refuses_fields_that_could_add_lines() {
+        let claim = "6f9619ff-8b86-d011-b42d-00c04fc964ff";
+        assert!(provider_auth_proof_message("acct\nrun:x", "car_b", claim, "n").is_err());
+        assert!(provider_auth_proof_message("acct_a", "car_b\r", claim, "n").is_err());
+        assert!(provider_auth_proof_message("acct_a", "car_b", claim, "").is_err());
+        assert!(provider_auth_proof_message("acct_a", "car_b", "not-a-claim", "n").is_err());
+    }
+
+    #[test]
+    fn device_key_refusals_tell_the_user_how_to_recover() {
+        let refusal =
+            |code: &str| refusal_message(json!({ "errorCode": code }).to_string().as_bytes());
+        assert_eq!(refusal("device_key_required"), DEVICE_KEY_REQUIRED);
+        assert_eq!(refusal("device_proof_required"), DEVICE_PROOF_FAILED);
+        assert_eq!(refusal("device_proof_invalid"), DEVICE_PROOF_FAILED);
+        assert_eq!(refusal("execution_lease_lost"), UNAVAILABLE);
+        assert_eq!(refusal_message(b"not json"), UNAVAILABLE);
     }
 }

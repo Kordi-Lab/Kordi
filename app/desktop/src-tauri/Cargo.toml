@@ -33,6 +33,8 @@ base64 = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 sha2 = { workspace = true }
+p256 = { workspace = true }
+rand = { workspace = true }
 futures-util = "0.3"
 bytes = "1"
 hex = "0.4"

@@ -22,6 +22,12 @@ type StoredDeviceIdentity = {
   keyAlgorithm: 'p256';
 };
 
+type NativePublicIdentity = {
+  publicKeySpki: string;
+  keyAlgorithm: string;
+};
+
+// Browser previews have no native key store; they keep a per-page identity.
 let memoryIdentity: StoredDeviceIdentity | null = null;
 let identityPromise: Promise<CloudDeviceRegistration> | null = null;
 
@@ -98,19 +104,24 @@ async function isValidIdentity(identity: StoredDeviceIdentity): Promise<boolean>
   }
 }
 
-async function loadStoredIdentity(): Promise<StoredDeviceIdentity | null> {
-  if (!isTauriRuntime()) return memoryIdentity;
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<StoredDeviceIdentity | null>('cloud_device_identity_load');
-}
-
-async function storeIdentity(identity: StoredDeviceIdentity): Promise<void> {
-  if (!isTauriRuntime()) {
-    memoryIdentity = identity;
-    return;
+/**
+ * The installation public key that sign-in registers. In the desktop app the
+ * native runtime creates and stores the keypair and signs device proofs with
+ * it, so the private key never reaches the webview.
+ */
+async function installationPublicKey(): Promise<string> {
+  if (isTauriRuntime()) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const identity = await invoke<NativePublicIdentity | null>('cloud_device_identity_public');
+    if (identity?.keyAlgorithm !== 'p256' || !identity.publicKeySpki) {
+      throw new Error('Secure installation identity is unavailable on this device.');
+    }
+    return identity.publicKeySpki;
   }
-  const { invoke } = await import('@tauri-apps/api/core');
-  await invoke('cloud_device_identity_store', { identity });
+  if (!memoryIdentity || !(await isValidIdentity(memoryIdentity))) {
+    memoryIdentity = await generateIdentity();
+  }
+  return memoryIdentity.publicKeySpki;
 }
 
 function browserDesktopPlatform(): { displayName: string; platform: string; osVersion: string } {
@@ -182,16 +193,12 @@ async function desktopAppVersion(): Promise<string> {
 }
 
 async function resolveDeviceRegistration(): Promise<CloudDeviceRegistration> {
-  let identity = await loadStoredIdentity();
-  if (!identity || !(await isValidIdentity(identity))) {
-    identity = await generateIdentity();
-    await storeIdentity(identity);
-  }
+  const publicKey = await installationPublicKey();
   const metadata = await desktopMetadata();
   return {
     ...metadata,
     appVersion: await desktopAppVersion(),
-    publicKey: identity.publicKeySpki,
+    publicKey,
     keyAlgorithm: 'p256',
   };
 }
