@@ -74,9 +74,17 @@ pub(super) async fn mark_active(pool: &PgPool, run: &str, backend: &str) -> RunR
 }
 
 pub(crate) async fn revalidate(pool: &PgPool, run: &str) -> RunResult<bool> {
-    let valid: Option<(bool,)> = query_as("SELECT EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.owner_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.requester_account_id AND m.membership_state='active') AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=r.requester_account_id))) AND cloud_requester_may_use_agent(r.requester_account_id,s.owner_account_id,s.agent_id) FROM cloud_agent_fallback_runs r JOIN cloud_agent_subsessions s ON s.subsession_id=r.subsession_id WHERE r.run_id=$1")
+    let valid: Option<(bool, Uuid, String)> = query_as("SELECT EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.owner_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.requester_account_id AND m.membership_state='active') AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=r.requester_account_id))) AND cloud_requester_may_use_agent(r.requester_account_id,s.owner_account_id,s.agent_id),s.parent_conversation_id,s.owner_account_id FROM cloud_agent_fallback_runs r JOIN cloud_agent_subsessions s ON s.subsession_id=r.subsession_id WHERE r.run_id=$1")
         .bind(run).fetch_optional(pool).await?;
-    if valid.is_some_and(|value| !value.0) {
+    // The answer is written inside the parent chat, so the owner must still
+    // be allowed to write there (a direct chat needs a contact).
+    let valid = match valid {
+        Some((true, parent, owner)) => {
+            Some(crate::relationships::may_write_outside_groups(pool, parent, &owner).await?)
+        }
+        other => other.map(|(value, _, _)| value),
+    };
+    if valid.is_some_and(|value| !value) {
         let mut tx = pool.begin().await?;
         query("SELECT pg_advisory_xact_lock(81208411)")
             .execute(&mut *tx)

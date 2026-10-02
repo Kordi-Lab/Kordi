@@ -95,6 +95,29 @@ async fn task_threads_in_a_direct_chat_stop_with_the_contact() {
     assert_eq!(status, StatusCode::OK, "{created}");
     let (status, _) = send(&router, post(&peer, "Context while contacts")).await;
     assert_eq!(status, StatusCode::OK);
+    // The owner asks their own agent to continue the thread while they are
+    // contacts; the run waits in the queue.
+    let mention = json!([{"label": "Kordi", "targetKind": "agent",
+                          "agentId": format!("cloud-agent:{}", owner.account_id),
+                          "startUtf16": 0, "lengthUtf16": 6}]);
+    let (status, body) = send(
+        &router,
+        post_json_with_token(
+            &messages,
+            &owner.token,
+            json!({"clientMessageId": uuid::Uuid::new_v4(), "text": "@Kordi continue",
+                   "mentions": mention}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (follow_up,): (String,) = sqlx_core::query_as::query_as(
+        "SELECT run_id FROM cloud_agent_fallback_runs WHERE subsession_id = $1",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
 
     for blocker in [None, Some(&peer), Some(&owner)] {
         set_contacts(&pool, &owner, &peer, blocker.is_some()).await;
@@ -165,4 +188,27 @@ async fn task_threads_in_a_direct_chat_stop_with_the_contact() {
     .await;
     assert_eq!(status, StatusCode::OK, "{finished}");
     assert_eq!(finished["status"], "done");
+
+    // The owner's queued run would answer inside the chat, so it is cancelled
+    // when a runner leases it.
+    std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
+    let (status, lease) = send(
+        &router,
+        post_json_with_runner_token(
+            "/v1/cloud/agent-runs/lease",
+            "runner-test-token",
+            json!({"runnerId": "consent-thread-runner", "canaryRunId": follow_up}),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{lease}");
+    assert_eq!(lease["run"]["status"], "cancelled", "{lease}");
+    let (state,): (String,) = sqlx_core::query_as::query_as(
+        "SELECT status FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(&follow_up)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, "cancelled");
 }

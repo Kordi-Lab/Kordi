@@ -116,7 +116,7 @@ pub async fn complete_run(
         crate::pip::store::complete(pool, run_id, runner_id, response_text).await?;
         return digest_run_response(pool, run_id).await;
     }
-    if !super::revocation::requester_still_allowed(pool, run_id).await? {
+    if !super::revocation::run_still_allowed(pool, run_id).await? {
         super::revocation::cancel_revoked_run(pool, run_id).await?;
         return digest_run_response(pool, run_id).await;
     }
@@ -288,7 +288,7 @@ pub async fn fail_run(
         crate::pip::store::fail(pool, run_id, Some(runner_id), error_code).await?;
         return digest_run_response(pool, run_id).await;
     }
-    if !super::revocation::requester_still_allowed(pool, run_id).await? {
+    if !super::revocation::run_still_allowed(pool, run_id).await? {
         super::revocation::cancel_revoked_run(pool, run_id).await?;
         return digest_run_response(pool, run_id).await;
     }

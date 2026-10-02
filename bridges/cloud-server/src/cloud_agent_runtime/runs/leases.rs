@@ -249,7 +249,7 @@ pub(super) async fn runner_response_from_row(
         row.2.clear();
     }
     if matches!(row.1.as_str(), "leased" | "running")
-        && !super::revocation::requester_still_allowed(pool, &row.0).await?
+        && !super::revocation::run_still_allowed(pool, &row.0).await?
     {
         super::revocation::cancel_revoked_run(pool, &row.0).await?;
         row.1 = "cancelled".into();
