@@ -1,6 +1,51 @@
 use super::*;
 
 #[test]
+fn late_outbox_snapshots_cannot_downgrade_confirmed_delivery() {
+    for (confirmed, content_delivery) in [
+        ("delivered", Some("delivered")),
+        ("delivered", None), // Authoritative sync projections need no outbox metadata.
+        ("read", Some("read")),
+    ] {
+        for stale in ["sending", "failed", "delivered"] {
+            let mut conn = test_conn();
+            seed_identity(&conn);
+            conn.execute("INSERT INTO sessions (id, kind, title, status, created_by_identity_id, created_at_ms, updated_at_ms) VALUES ('chat', 'group', 'Chat', 'active', 'human:me', 1, 1)", []).unwrap();
+            conn.execute("INSERT INTO session_messages (id, session_id, sender_identity_id, sender_role, message_kind, content_text, content_json, status, sequence_num, created_at_ms, updated_at_ms) VALUES ('message', 'chat', 'human:me', 'user', 'text', 'fixture', ?1, ?2, 1, 1, 2)", params![serde_json::json!({"deliveryState":content_delivery,"deliveredRecipientIds":["peer"],"keep":true}).to_string(), confirmed]).unwrap();
+            let delta = update_canonical_message_delivery_in_db(
+                &mut conn,
+                UpdateCanonicalMessageDeliveryRequest {
+                    message_id: "message".into(),
+                    session_id: "chat".into(),
+                    status: stale.into(),
+                    delivery_state: stale.into(),
+                    delivered_recipient_ids: vec![],
+                    pending_recipient_ids: vec!["peer".into()],
+                    exhausted_recipient_ids: vec![],
+                },
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(delta.status, confirmed, "late {stale} snapshot");
+            assert_eq!(delta.delivery_state, confirmed);
+            assert_eq!(delta.delivered_recipient_ids, vec!["peer"]);
+            assert!(delta.pending_recipient_ids.is_empty());
+            let (status, content): (String, String) = conn
+                .query_row(
+                    "SELECT status, content_json FROM session_messages WHERE id='message'",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert_eq!(status, confirmed);
+            let content: serde_json::Value = serde_json::from_str(&content).unwrap();
+            assert_eq!(content["keep"], true);
+            assert_eq!(content["deliveryState"], confirmed);
+        }
+    }
+}
+
+#[test]
 fn legacy_group_title_classification_batch_is_bounded() {
     let mut conn = test_conn();
     let request = ClassifyLegacyCloudGroupTitleNoticeRequest {
