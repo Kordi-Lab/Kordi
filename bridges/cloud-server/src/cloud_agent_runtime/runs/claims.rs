@@ -135,6 +135,43 @@ pub async fn lookup_run_for_request(
     })
 }
 
+/// The run already admitted for this request and agent, if any.
+async fn existing_run(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    agent_id: &str,
+) -> Result<Option<CloudAgentRunResponse>, sqlx_core::Error> {
+    let row: Option<(String, String, Option<String>, String, String, String)> = query_as(
+        "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
+         FROM cloud_agent_fallback_runs WHERE owner_account_id = $1 AND execution_agent_id = $2 AND request_message_id = $3 AND NOT legacy_duplicate",
+    )
+    .bind(&input.owner_account_id)
+    .bind(agent_id)
+    .bind(&input.request_message_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| CloudAgentRunResponse {
+        run_id: row.0,
+        status: row.1,
+        sandbox_id: row.2,
+        created_at: row.3,
+        updated_at: row.4,
+        execution_backend: row.5,
+    }))
+}
+
+/// The run Cloud already admitted for this request, if the cloud runner owns
+/// it. A desktop-owned run is not returned.
+pub async fn existing_cloud_run(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> RunResult<Option<CloudAgentRunResponse>> {
+    let agent_id = super::execution_agent_id(pool, input).await?;
+    Ok(existing_run(pool, input, &agent_id)
+        .await?
+        .filter(|run| run.execution_backend == "cloud"))
+}
+
 pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<CloudAgentRunResponse> {
     claim_run_with_executor(pool, input, None).await
 }
@@ -162,24 +199,8 @@ async fn claim_run_with_executor(
         }
     }
     let agent_id = super::execution_agent_id(pool, input).await?;
-    let existing: Option<(String, String, Option<String>, String, String, String)> = query_as(
-        "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
-         FROM cloud_agent_fallback_runs WHERE owner_account_id = $1 AND execution_agent_id = $2 AND request_message_id = $3 AND NOT legacy_duplicate",
-    )
-    .bind(&input.owner_account_id)
-    .bind(&agent_id)
-    .bind(&input.request_message_id)
-    .fetch_optional(pool)
-    .await?;
-    if let Some(row) = existing {
-        return Ok(CloudAgentRunResponse {
-            run_id: row.0,
-            status: row.1,
-            sandbox_id: row.2,
-            created_at: row.3,
-            updated_at: row.4,
-            execution_backend: row.5,
-        });
+    if let Some(run) = existing_run(pool, input, &agent_id).await? {
+        return Ok(run);
     }
 
     let now = Utc::now().to_rfc3339();

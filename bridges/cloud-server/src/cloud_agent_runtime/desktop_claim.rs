@@ -1,11 +1,20 @@
 //! Admission of a run by its authenticated owning desktop.
 use super::*;
-use crate::cloud_agent_runtime::{runs, subsession_execution};
-use runs::{claim_run_for_desktop, validate_shared_cloud_agent_claim};
+use crate::auth::rate_limit::CloudRateLimiter;
+use crate::cloud_agent_runtime::{claim_route::agent_run_rate_limited, runs, subsession_execution};
+use runs::{claim_run, claim_run_for_desktop, validate_shared_cloud_agent_claim};
+
+enum Admission {
+    Decided(Value),
+    /// The run's route selects a hosted provider account that this Mac
+    /// cannot use.
+    NeedsDeviceProof,
+}
 
 pub(in crate::cloud_agent_runtime) async fn claim(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    rate_limiter: Option<Extension<Arc<CloudRateLimiter>>>,
     Json(mut input): Json<DesktopClaimInput>,
 ) -> Response {
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
@@ -58,25 +67,71 @@ pub(in crate::cloud_agent_runtime) async fn claim(
         // A project session has no cloud fallback, so its Mac claims the run
         // and reports a missing device proof when it requests provider material.
         if !project_session && !hosted_execution_permitted(state.db_pool(), &session, &input.run, &agent).await? {
-            return Ok(Some(json!({"acquired":false})));
+            return Ok(Some(Admission::NeedsDeviceProof));
         }
         let owner = executor(&session, input.claim_id);
         let run = claim_run_for_desktop(state.db_pool(), &input.run, &owner).await?;
         let acquired: (bool,) = query_as("SELECT execution_backend='desktop' AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FROM cloud_agent_fallback_runs WHERE run_id=$1")
             .bind(&run.run_id).bind(owner).fetch_one(state.db_pool()).await?;
         let identity = if acquired.0 { Some(runs::identity::identity_for_run(state.db_pool(), &run.run_id).await?) } else { None };
-        Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity})))
+        Ok(Some(Admission::Decided(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity}))))
     }.await;
     match result {
-        Ok(Some(value)) => context_scope_response(state.db_pool(), value).await,
+        Ok(Some(Admission::Decided(value))) => context_scope_response(state.db_pool(), value).await,
+        Ok(Some(Admission::NeedsDeviceProof)) => {
+            hand_off_hosted_run(state.db_pool(), &session, rate_limiter, &input.run).await
+        }
         Ok(None) => denied(),
         Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
     }
 }
 
+/// Hands a run this Mac cannot execute to a runtime that can. The owner's
+/// route here comes from this Mac's settings for the session, so it can
+/// select a hosted account where the route in the caller's admission request
+/// does not, and that admission then waits for this Mac. Unless another ready
+/// Mac that proves its device key will claim the run, Cloud queues it on this
+/// route under the same request, and admission returns that run.
+async fn hand_off_hosted_run(
+    pool: &PgPool,
+    session: &CloudSession,
+    rate_limiter: Option<Extension<Arc<CloudRateLimiter>>>,
+    run: &ClaimRunRequest,
+) -> Response {
+    let not_acquired = || Json(json!({"acquired":false})).into_response();
+    // Another requester's run uses the agent's stored route in both claims,
+    // so that requester's admission already sends it to Cloud.
+    if run.requester_account_id != session.account_id {
+        return not_acquired();
+    }
+    match prefer_ready_desktop(pool, run).await {
+        Ok(true) => return not_acquired(),
+        Ok(false) => {}
+        Err(error) => {
+            return run_error_response("desktop claim", "Could not claim agent execution.", error)
+        }
+    }
+    if let Some(response) = agent_run_rate_limited(rate_limiter, &session.account_id).await {
+        return response;
+    }
+    match claim_run(pool, run).await {
+        Ok(queued) => Json(json!({
+            "runId": queued.run_id,
+            "acquired": false,
+            "executionBackend": queued.execution_backend,
+        }))
+        .into_response(),
+        Err(error) => run_error_response(
+            "desktop hand-off",
+            "Could not hand the request to Cloud.",
+            error,
+        ),
+    }
+}
+
 /// Runs on hosted provider accounts need a desktop that published readiness
-/// with device proofs and has a registered device key. The cloud runner
-/// executes them for any other desktop.
+/// with device proofs and has a registered device key. Any other desktop
+/// hands them off.
 async fn hosted_execution_permitted(
     pool: &PgPool,
     session: &CloudSession,
