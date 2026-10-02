@@ -8,7 +8,7 @@ use chrono::{DateTime, FixedOffset};
 use super::models::{PlanCardOption, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp};
 use super::store::parse_pg_timestamp;
 
-fn same_instant(left: Option<&str>, right: Option<&str>) -> bool {
+pub(super) fn same_instant(left: Option<&str>, right: Option<&str>) -> bool {
     let instant = |value: &str| -> Option<DateTime<FixedOffset>> { parse_pg_timestamp(value) };
     match (left, right) {
         (None, None) => true,
@@ -20,7 +20,7 @@ fn same_instant(left: Option<&str>, right: Option<&str>) -> bool {
     }
 }
 
-fn same_place(left: Option<&str>, right: Option<&str>) -> bool {
+pub(super) fn same_place(left: Option<&str>, right: Option<&str>) -> bool {
     let place = |value: Option<&str>| {
         value
             .map(str::trim)

@@ -162,7 +162,7 @@ creates a pending action instead:
 
 | PiP calls | Pending action | Who decides |
 | --- | --- | --- |
-| `rsvp` or `vote` for a member | `plan_rsvp` or `plan_vote` | that member; only for members who wrote in the run's new messages, and never for a member who keeps their messages from AI |
+| `rsvp` or `vote` for a member | `plan_rsvp` or `plan_vote`, naming the plan's title, time, and place, or the option | that member; only for members who wrote in the run's new messages, and never for a member who keeps their messages from AI |
 | `confirm`, `cancel`, `reopen` | `plan_confirm`, `plan_cancel`, `plan_reopen`, carrying the card revision PiP saw | any organizer of the plan or chat owner or admin |
 | `propose` | none; the card changes. The organizer starts pending like everyone else and gets a `plan_rsvp` yes suggestion | the organizer |
 
@@ -170,8 +170,13 @@ Suggestions expire after 24 hours, and a newer one for the same thing
 replaces the older one. People see them through `GET /v1/cloud/agent-actions`
 and decide with `POST /v1/cloud/agent-actions/:action_id/decision`. Approving
 applies the change as the person who decided, through the same checks as a
-card button, with the stored revision: a plan that changed since answers
-`409 plan_changed` and the suggestion is retired. Declining changes nothing.
+card button. A decision uses the stored revision, and an answer or vote
+applies only while the card still shows the title, time, and place (or the
+option) the suggestion named; a plan that changed since answers
+`409 plan_changed` and the suggestion is retired. When PiP revises a card,
+answers and votes suggested for the earlier version are retired right away,
+and the organizer gets a new suggestion for the revised plan. Declining
+changes nothing.
 A member who answers or votes on the card directly, or a manager who decides
 the plan directly, settles PiP's matching suggestions. Every change sends
 `agent_action.updated` to the people who may decide it; older apps ignore it,

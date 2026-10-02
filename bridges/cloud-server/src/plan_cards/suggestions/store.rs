@@ -6,6 +6,8 @@ use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
+use super::super::models::PlanCardRow;
+use super::super::shown::ShownPlan;
 use crate::cloud_agent_runtime::agent_actions::{self, MANAGER_KINDS};
 
 /// How long a PiP suggestion waits for a person.
@@ -123,6 +125,49 @@ pub(super) async fn insert(
     agent_actions::publish(&mut tx, action_id).await?;
     tx.commit().await?;
     Ok(action_id)
+}
+
+/// Retires waiting answer and vote suggestions that no longer describe the
+/// card (a new time, place, title, or option), and tells the people they
+/// waited for. Runs after a revision commits, never inside it, so it never
+/// holds the card while a decision on one of these rows applies.
+pub(super) async fn retire_stale(
+    pool: &PgPool,
+    card: &PlanCardRow,
+) -> Result<(), sqlx_core::Error> {
+    let mut tx = pool.begin().await?;
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("plan_card_suggestion:{}", card.event_id))
+        .execute(&mut *tx)
+        .await?;
+    let waiting: Vec<(Uuid, String, Value)> = query_as(
+        "SELECT action_id, kind, subject FROM cloud_agent_pending_actions
+         WHERE event_id = $1 AND status = 'pending' AND kind IN ('plan_rsvp', 'plan_vote')",
+    )
+    .bind(&card.event_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let stale: Vec<Uuid> = waiting
+        .into_iter()
+        .filter(|(_, kind, subject)| {
+            !ShownPlan::from_subject(kind, subject).is_some_and(|shown| shown.matches(card))
+        })
+        .map(|(action_id, _, _)| action_id)
+        .collect();
+    if stale.is_empty() {
+        return tx.commit().await;
+    }
+    let retired: Vec<(Uuid,)> = query_as(
+        "UPDATE cloud_agent_pending_actions
+         SET status = CASE WHEN expires_at <= now() THEN 'expired' ELSE 'superseded' END
+         WHERE action_id = ANY($1) AND status = 'pending'
+         RETURNING action_id",
+    )
+    .bind(&stale)
+    .fetch_all(&mut *tx)
+    .await?;
+    agent_actions::publish_all(&mut tx, &retired).await?;
+    tx.commit().await
 }
 
 #[cfg(test)]

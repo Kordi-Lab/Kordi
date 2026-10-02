@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use super::super::models::PlanCardRow;
 use super::super::routes::{dispatch_row, Actor};
+use super::super::shown::ShownPlan;
 use super::super::wire::Request;
 use crate::cloud_agent_runtime::agent_actions::{self, ActionRow, MANAGER_KINDS};
 
@@ -33,18 +34,21 @@ pub(crate) fn approval_request(kind: &str, subject: &Value, decider: &str) -> Op
     let event_id = text(subject, "eventId")?;
     let revision = || subject["revision"].as_i64();
     Some(match kind {
+        // An answer or vote applies only to the plan the suggestion showed.
         "plan_rsvp" => Request::Rsvp {
             event_id,
             revision: None,
             participant_id: decider.to_string(),
             rsvp: text(subject, "rsvp")?,
             note: text(subject, "note"),
+            shown: Some(ShownPlan::from_subject(kind, subject)?),
         },
         "plan_vote" => Request::Vote {
             event_id,
             revision: None,
             participant_id: decider.to_string(),
             option_id: text(subject, "optionId")?,
+            shown: Some(ShownPlan::from_subject(kind, subject)?),
         },
         "plan_confirm" => Request::Confirm {
             event_id,

@@ -31,6 +31,7 @@ pub(crate) mod projection;
 mod revise;
 mod routes;
 mod runner;
+mod shown;
 pub mod store;
 pub(crate) mod suggestions;
 mod transitions;

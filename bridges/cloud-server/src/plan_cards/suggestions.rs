@@ -6,7 +6,10 @@
 //! organizer or chat owner or admin for a plan decision. A suggestion lasts 24
 //! hours, and a newer one for the same thing replaces it. Approving applies the
 //! change as the person who approved it; a plan decision uses the revision
-//! PiP saw, so a plan that changed since is not decided by accident.
+//! PiP saw, and an answer or vote applies only while the card still shows the
+//! plan the suggestion showed, so a plan that changed since is not decided or
+//! answered by accident. A revision that changes the plan retires the answers
+//! and votes suggested for the old one.
 
 use axum::http::StatusCode;
 use serde_json::{json, Value};
@@ -23,7 +26,7 @@ mod store;
 
 pub(super) use approvals::supersede_after_member_action;
 pub(crate) use approvals::{apply_approval, supersede_after_apply, ApplyError};
-use store::{insert, strip_nulls, NewSuggestion};
+use store::{insert, retire_stale, strip_nulls, NewSuggestion};
 
 /// The outcome of a plan-card request.
 pub(crate) enum Dispatched {
@@ -243,8 +246,9 @@ pub(super) async fn suggest(
     })
 }
 
-/// After PiP proposes or revises a card, the organizer gets a suggestion to
-/// say yes instead of being marked in automatically.
+/// After PiP proposes or revises a card, answers and votes suggested for an
+/// earlier version of the plan are retired, and the organizer gets a
+/// suggestion to say yes instead of being marked in automatically.
 pub(super) async fn after_pip_propose(
     pool: &PgPool,
     actor: &Actor,
@@ -253,6 +257,7 @@ pub(super) async fn after_pip_propose(
     let Some(conversation_id) = actor.on_behalf_of_conversation else {
         return Ok(());
     };
+    retire_stale(pool, card).await?;
     for organizer in card
         .participants
         .iter()

@@ -262,20 +262,28 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
             event_id,
             participant_id,
             option_id,
+            shown,
             ..
         } => {
             if !may_act_for(actor, &participant_id) {
                 return Err(forbidden("You can only cast your own vote."));
             }
-            store::vote(pool, &event_id, &participant_id, option_id.trim())
-                .await
-                .map_err(store_error)
+            super::transitions::vote_as_shown(
+                pool,
+                &event_id,
+                &participant_id,
+                option_id.trim(),
+                shown.as_ref(),
+            )
+            .await
+            .map_err(store_error)
         }
         Request::Rsvp {
             event_id,
             participant_id,
             rsvp,
             note,
+            shown,
             ..
         } => {
             let rsvp = PlanCardRsvp::from_db_str(&rsvp)
@@ -292,9 +300,16 @@ async fn apply(pool: &PgPool, actor: &Actor, request: Request) -> Result<PlanCar
                 return Err(forbidden("You can only record your own RSVP."));
             }
             let note = blank_to_none(note);
-            store::rsvp(pool, &event_id, &participant_id, rsvp, note.as_deref())
-                .await
-                .map_err(store_error)
+            super::transitions::rsvp_as_shown(
+                pool,
+                &event_id,
+                &participant_id,
+                rsvp,
+                note.as_deref(),
+                shown.as_ref(),
+            )
+            .await
+            .map_err(store_error)
         }
         Request::Confirm {
             event_id,

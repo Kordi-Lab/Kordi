@@ -198,3 +198,210 @@ async fn pip_suggestions_wait_for_their_approvers() {
         .iter()
         .all(|action| !action["kind"].as_str().unwrap().starts_with("plan_")));
 }
+
+/// (recipient, status) of every `agent_action.updated` sent for an action.
+async fn updates(group: &Group, action_id: &str) -> Vec<(String, String)> {
+    query_as(
+        "SELECT account_id, payload->'agentAction'->>'status' FROM cloud_chat_user_sync_events
+         WHERE event_type = 'agent_action.updated' AND payload->'agentAction'->>'actionId' = $1
+         ORDER BY stream_seq",
+    )
+    .bind(action_id)
+    .fetch_all(&group.pool)
+    .await
+    .unwrap()
+}
+
+fn dinner(group: &Group, start: &str, location: &str, existing: Option<(&str, &Value)>) -> Value {
+    let mut body = json!({"action": "propose", "conversationId": group.conversation,
+    "title": "Dinner", "startAt": start, "location": location, "state": "awaitingConfirmation",
+    "participants": [
+        {"participantId": group.owner.account_id, "displayName": "Olive", "organizer": true},
+        {"participantId": group.requester.account_id, "displayName": "Riley"},
+    ]});
+    if let Some((event_id, revision)) = existing {
+        body["existingEventId"] = json!(event_id);
+        body["existingRevision"] = revision.clone();
+    }
+    body
+}
+
+async fn suggest_yes(group: &Group, run: &(String, String), event_id: &str) -> String {
+    let (status, suggested) = plan_card(
+        group,
+        run,
+        json!({"action": "rsvp", "eventId": event_id,
+            "participantId": group.requester.account_id, "rsvp": "yes"}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{suggested}");
+    suggested["pendingActionId"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn a_revised_plan_retires_answers_suggested_for_the_old_one() {
+    let Some(group) = Group::new("pip-revised", true).await else {
+        return;
+    };
+    let (status, body) = group
+        .set_ai_access(&group.owner, json!({"pip_enabled": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let run = pip_run(&group, &[&group.requester]).await;
+    let first = (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339();
+    let (status, card) = plan_card(&group, &run, dinner(&group, &first, "Cafe A", None)).await;
+    assert_eq!(status, StatusCode::OK, "{card}");
+    let event_id = card["eventId"].as_str().unwrap().to_string();
+    let answer = suggest_yes(&group, &run, &event_id).await;
+    let organizer_first = group.actions(&group.owner).await[0]["actionId"].clone();
+
+    // PiP moves the plan to another day and place.
+    let second = (chrono::Utc::now() + chrono::Duration::days(9)).to_rfc3339();
+    let (status, revised) = plan_card(
+        &group,
+        &run,
+        dinner(
+            &group,
+            &second,
+            "Somewhere else",
+            Some((&event_id, &card["revision"])),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{revised}");
+
+    // The answer suggested for the first plan is gone from the banner, the
+    // member's apps hear so, and it can no longer be confirmed.
+    assert!(group.actions(&group.requester).await.is_empty());
+    assert!(updates(&group, &answer)
+        .await
+        .contains(&(group.requester.account_id.clone(), "superseded".to_string())));
+    let (status, closed) = group.decide(&group.requester, &answer, "approve").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{closed}");
+    assert_eq!(closed["errorCode"], "agent_action_closed");
+    // The organizer is asked again about the revised plan.
+    let organizer = group.actions(&group.owner).await;
+    assert_eq!(organizer.len(), 1);
+    assert_ne!(organizer[0]["actionId"], organizer_first);
+    assert_eq!(organizer[0]["subject"]["location"], "Somewhere else");
+
+    // Positive control: an answer suggested for the revised plan applies.
+    let fresh = suggest_yes(&group, &run, &event_id).await;
+    let (status, applied) = group.decide(&group.requester, &fresh, "approve").await;
+    assert_eq!(status, StatusCode::OK, "{applied}");
+    assert_eq!(rsvp_of(&applied["planCard"], &group.requester), "yes");
+    assert_eq!(applied["planCard"]["location"], "Somewhere else");
+}
+
+#[tokio::test]
+async fn an_answer_or_vote_never_applies_to_a_plan_that_changed_since() {
+    let Some(group) = Group::new("pip-changed", true).await else {
+        return;
+    };
+    let (status, _) = group
+        .set_ai_access(&group.owner, json!({"pip_enabled": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let run = pip_run(&group, &[&group.requester]).await;
+    let start = (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339();
+    let (_, card) = plan_card(&group, &run, dinner(&group, &start, "Cafe A", None)).await;
+    let event_id = card["eventId"].as_str().unwrap().to_string();
+    let answer = suggest_yes(&group, &run, &event_id).await;
+    // The plan changes while the approval is on its way.
+    query("UPDATE cloud_plan_cards SET location = 'Somewhere else' WHERE event_id = $1")
+        .bind(&event_id)
+        .execute(&group.pool)
+        .await
+        .unwrap();
+    let (status, changed) = group.decide(&group.requester, &answer, "approve").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{changed}");
+    assert_eq!(changed["errorCode"], "plan_changed");
+    let (_, current) = call(
+        &group.router,
+        request(
+            "GET",
+            &format!("/v1/cloud/plan_cards/{event_id}"),
+            Some(&group.requester.token),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(rsvp_of(&current, &group.requester), "pending");
+
+    // A vote suggested for an option whose label changed does not apply.
+    let (status, poll) = plan_card(
+        &group,
+        &run,
+        json!({"action": "propose", "conversationId": group.conversation, "title": "Brunch",
+        "state": "polling", "options": [{"id": "opt_sat", "label": "Saturday"},
+                                         {"id": "opt_sun", "label": "Sunday"}],
+        "participants": [
+            {"participantId": group.owner.account_id, "displayName": "Olive", "organizer": true},
+            {"participantId": group.requester.account_id, "displayName": "Riley"},
+        ]}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{poll}");
+    let poll_id = poll["eventId"].as_str().unwrap().to_string();
+    let vote_for = |option: &str| {
+        json!({"action": "vote", "eventId": poll_id,
+            "participantId": group.requester.account_id, "optionId": option})
+    };
+    let (_, vote) = plan_card(&group, &run, vote_for("opt_sat")).await;
+    let vote = vote["pendingActionId"].as_str().unwrap().to_string();
+    query(
+        "UPDATE cloud_plan_cards SET options = jsonb_set(options, '{0,label}', '\"Saturday evening\"')
+         WHERE event_id = $1",
+    )
+    .bind(&poll_id)
+    .execute(&group.pool)
+    .await
+    .unwrap();
+    let (status, changed) = group.decide(&group.requester, &vote, "approve").await;
+    assert_eq!(status, StatusCode::CONFLICT, "{changed}");
+    assert_eq!(changed["errorCode"], "plan_changed");
+    // Positive control: a vote for an unchanged option applies.
+    let (_, vote) = plan_card(&group, &run, vote_for("opt_sun")).await;
+    let vote = vote["pendingActionId"].as_str().unwrap().to_string();
+    let (status, voted) = group.decide(&group.requester, &vote, "approve").await;
+    assert_eq!(status, StatusCode::OK, "{voted}");
+}
+
+#[tokio::test]
+async fn turning_pip_off_tells_approvers_their_suggestions_were_withdrawn() {
+    let Some(group) = Group::new("pip-withdrawn", true).await else {
+        return;
+    };
+    let (status, _) = group
+        .set_ai_access(&group.owner, json!({"pip_enabled": true}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let run = pip_run(&group, &[&group.requester]).await;
+    let start = (chrono::Utc::now() + chrono::Duration::days(2)).to_rfc3339();
+    let (_, card) = plan_card(&group, &run, dinner(&group, &start, "Cafe A", None)).await;
+    let event_id = card["eventId"].as_str().unwrap().to_string();
+    let answer = suggest_yes(&group, &run, &event_id).await;
+    let organizer = group.actions(&group.owner).await[0]["actionId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let (status, _) = group
+        .set_ai_access(&group.owner, json!({"pip_enabled": false}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    for (action, approver) in [(&answer, &group.requester), (&organizer, &group.owner)] {
+        assert!(
+            updates(&group, action)
+                .await
+                .contains(&(approver.account_id.clone(), "superseded".to_string())),
+            "the approver's apps drop the withdrawn suggestion"
+        );
+        // Skippable for older apps (checked inside `notified`).
+        assert_eq!(
+            group.notified(action).await,
+            vec![approver.account_id.clone()]
+        );
+    }
+    assert!(group.actions(&group.requester).await.is_empty());
+}

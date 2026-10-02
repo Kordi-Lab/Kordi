@@ -309,15 +309,18 @@ async fn side_effects(
                 )
                 .await?;
             }
-            // PiP's open suggestions are withdrawn with it.
-            query(
+            // PiP's open suggestions are withdrawn with it, and the people
+            // they waited for hear so their apps drop them.
+            let withdrawn: Vec<(Uuid,)> = query_as(
                 "UPDATE cloud_agent_pending_actions SET status = 'superseded'
                  WHERE conversation_id = $1 AND status = 'pending'
-                   AND kind IN ('plan_rsvp', 'plan_vote', 'plan_confirm', 'plan_cancel', 'plan_reopen')",
+                   AND kind IN ('plan_rsvp', 'plan_vote', 'plan_confirm', 'plan_cancel', 'plan_reopen')
+                 RETURNING action_id",
             )
             .bind(conversation_id)
-            .execute(&mut **transaction)
+            .fetch_all(&mut **transaction)
             .await?;
+            crate::cloud_agent_runtime::agent_actions::publish_all(transaction, &withdrawn).await?;
         }
         _ => {}
     }

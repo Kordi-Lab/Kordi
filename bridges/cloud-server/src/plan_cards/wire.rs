@@ -14,6 +14,7 @@ use super::models::{
     PlanCardOption, PlanCardParticipantInput, PlanCardProposeArgs, PlanCardState,
     PlanCardStoreError,
 };
+use super::shown::ShownPlan;
 
 /// An error response. Boxed so the `Result` carrying it stays small.
 pub(crate) type Rejection = Box<Response>;
@@ -127,6 +128,10 @@ pub(crate) enum Request {
         rsvp: String,
         #[serde(default)]
         note: Option<String>,
+        /// Set only when a person approves PiP's suggestion: the plan the
+        /// suggestion showed them. Never read from a request body.
+        #[serde(skip)]
+        shown: Option<ShownPlan>,
     },
     Vote {
         #[serde(rename = "eventId")]
@@ -138,6 +143,9 @@ pub(crate) enum Request {
         participant_id: String,
         #[serde(rename = "optionId")]
         option_id: String,
+        /// As for `Rsvp`: the option a suggestion showed.
+        #[serde(skip)]
+        shown: Option<ShownPlan>,
     },
     Confirm {
         #[serde(rename = "eventId")]
