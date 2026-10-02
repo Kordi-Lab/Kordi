@@ -103,10 +103,26 @@ async fn pip_stays_when_the_last_person_leaves_and_never_becomes_owner() {
         .iter()
         .filter(|row| row.0 != pip)
         .all(|row| row.1 == "left"));
-    // Nothing for PiP's membership backfill to re-add.
+    // Nothing for PiP's membership backfill (`join_all_groups`) to re-add.
+    // Calling it here would join PiP to every group other tests create, so
+    // this checks its selection and its per-conversation join for this group.
+    assert!(!crate::pip::membership::conversations_without(&pool, pip)
+        .await
+        .unwrap()
+        .contains(&group));
     assert!(
         !crate::pip::membership::join_conversation(&pool, pip, group)
             .await
             .unwrap()
     );
+    let (state,): (String,) = query_as(
+        "SELECT membership_state FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND account_id = $2",
+    )
+    .bind(group)
+    .bind(&member)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(state, "left");
 }

@@ -69,7 +69,7 @@ pub async fn leave_group(
         return Err(StoreError::Forbidden);
     }
     if kind != "group" {
-        return Err(StoreError::InvalidInput("only groups can be left"));
+        return Err(StoreError::InvalidInput("Only groups can be left."));
     }
     let space = GroupSpace::new(legacy_session_id.as_deref(), group_space_id.as_deref());
     query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")

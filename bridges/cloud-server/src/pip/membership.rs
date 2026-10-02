@@ -48,7 +48,23 @@ pub async fn join_conversation(
 
 /// Backfills PiP into every existing conversation of a supported kind.
 pub async fn join_all_groups(pool: &PgPool, pip_account_id: &str) -> Result<u64, sqlx_core::Error> {
-    let missing: Vec<(Uuid,)> = query_as(
+    let missing = conversations_without(pool, pip_account_id).await?;
+    let mut joined = 0;
+    for conversation_id in missing {
+        if join_conversation(pool, pip_account_id, conversation_id).await? {
+            joined += 1;
+        }
+    }
+    Ok(joined)
+}
+
+/// The conversations of a supported kind where PiP is not an active member:
+/// what [`join_all_groups`] joins.
+pub(crate) async fn conversations_without(
+    pool: &PgPool,
+    pip_account_id: &str,
+) -> Result<Vec<Uuid>, sqlx_core::Error> {
+    let rows: Vec<(Uuid,)> = query_as(
         "SELECT conversation.conversation_id
          FROM cloud_chat_conversations conversation
          WHERE conversation.kind = ANY($2)
@@ -62,11 +78,5 @@ pub async fn join_all_groups(pool: &PgPool, pip_account_id: &str) -> Result<u64,
     .bind(PIP_CONVERSATION_KINDS)
     .fetch_all(pool)
     .await?;
-    let mut joined = 0;
-    for (conversation_id,) in missing {
-        if join_conversation(pool, pip_account_id, conversation_id).await? {
-            joined += 1;
-        }
-    }
-    Ok(joined)
+    Ok(rows.into_iter().map(|(id,)| id).collect())
 }

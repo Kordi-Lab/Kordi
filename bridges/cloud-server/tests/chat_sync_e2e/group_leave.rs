@@ -284,7 +284,7 @@ async fn leave_requests_are_idempotent_and_limited_to_groups() {
     .value;
     assert!(matches!(
         store::leave_group(&pool, &owner, direct.id, leave_request(None)).await,
-        Err(StoreError::InvalidInput("only groups can be left"))
+        Err(StoreError::InvalidInput("Only groups can be left."))
     ));
 }
 

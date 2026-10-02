@@ -53,8 +53,11 @@ mod tests {
     async fn leaving_something_other_than_a_group_is_a_bad_request() {
         let response = store_error(
             "leave conversation",
-            StoreError::InvalidInput("only groups can be left"),
+            StoreError::InvalidInput("Only groups can be left."),
         );
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["message"], "Only groups can be left.");
     }
 }
