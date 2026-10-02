@@ -42,10 +42,15 @@ async fn untouched_rows(pool: &PgPool) -> Value {
     snapshot
 }
 
+/// The agent trust migration's version.
+const AGENT_TRUST_VERSION: i64 = 112;
+
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_109_backfills_group_ai_policies() {
-    let pool = fixture(109).await;
+async fn upgrade_to_agent_trust_backfills_group_ai_policies() {
+    // Every migration before agent trust, however the versions below it are
+    // numbered.
+    let pool = fixture(AGENT_TRUST_VERSION - 1).await;
     let group = add_conversation(&pool, "group", "session:group:agent-trust-fixture").await;
     let second_group =
         add_conversation(&pool, "group", "session:group:agent-trust-fixture-2").await;
@@ -118,7 +123,7 @@ async fn upgrade_from_109_backfills_group_ai_policies() {
         .unwrap();
     let migration = EMBEDDED_MIGRATIONS
         .iter()
-        .find(|migration| migration.version == 112)
+        .find(|migration| migration.version == AGENT_TRUST_VERSION)
         .unwrap();
     sqlx_core::raw_sql::raw_sql(migration.sql)
         .execute(&pool)
