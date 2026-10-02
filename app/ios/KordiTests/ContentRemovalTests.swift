@@ -2,7 +2,8 @@ import XCTest
 @testable import Kordi
 
 /// Client side of the server's content removal contract: the capability
-/// version, content-free removal events, and deleted quote sources.
+/// version, content-free removal events, deleted quote sources, and local
+/// cache eviction. The delete choices are in MessageDeletePresentationTests.
 final class ContentRemovalTests: XCTestCase {
     // MARK: Capability version
 
@@ -173,6 +174,85 @@ final class ContentRemovalTests: XCTestCase {
         XCTAssertTrue(body.contains(".accessibilityElement(children: .combine)"))
         XCTAssertTrue(body.contains(".accessibilityLabel(\"Quoted message from \\(senderLabel): \\(previewText)\")"))
     }
+
+    // MARK: Local cache eviction
+
+    func testReleasedIdsSkipAttachmentsAndLivePhotoCompanionsStillUsed() {
+        let live = LivePhotoAttachment(
+            video: LivePhotoResource(attachmentId: "live-video", name: "Live.mov", mimeType: "video/quicktime", sizeBytes: 1),
+            playback: LivePhotoResource(attachmentId: "live-playback", name: "Live.mp4", mimeType: "video/mp4", sizeBytes: 1)
+        )
+        let removed = ContentRemovalFixtures.message("removed", attachments: [
+            ContentRemovalFixtures.attachment("shared"),
+            ContentRemovalFixtures.attachment("only-removed", livePhoto: live),
+        ])
+        let remaining = ContentRemovalFixtures.message("remaining", attachments: [ContentRemovalFixtures.attachment("shared")])
+        let candidates = MessageAttachmentReferences.ids(in: removed)
+
+        XCTAssertEqual(candidates, ["shared", "only-removed", "live-video", "live-playback"])
+        XCTAssertEqual(
+            MessageAttachmentReferences.released(candidates, keptBy: [CloudMessageDTO](), rendered: [remaining]),
+            ["only-removed", "live-video", "live-playback"]
+        )
+        XCTAssertEqual(
+            MessageAttachmentReferences.released([], keptBy: [CloudMessageDTO](), rendered: [remaining]),
+            []
+        )
+    }
+
+    func testSyncedMessagesAndVoiceAudioKeepTheirCachedFiles() throws {
+        let voice = VoiceMessage(mediaId: "voice-audio", mimeType: "audio/mp4", durationMs: 1_000,
+                                 waveformSamples: [], transcript: "")
+        let synced = CloudMessageDTO(
+            messageId: "synced", fromAccountId: "acct_me", toAccountId: "acct_peer", body: "Hi",
+            createdAt: "2026-10-01T00:00:00Z", deliveredAt: nil, readAt: nil, direction: "outgoing",
+            sessionId: "session:direct", voiceMessage: voice
+        )
+        XCTAssertEqual(MessageAttachmentReferences.ids(in: synced), ["voice-audio"])
+        XCTAssertEqual(
+            MessageAttachmentReferences.released(["voice-audio", "gone"], keptBy: [synced], rendered: [ChatMessage]()),
+            ["gone"]
+        )
+
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let model = try String(contentsOf: root.appendingPathComponent("Kordi/App/AppModel.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(model.range(of: "private func removeCloudMessages("))
+        let body = model[start.lowerBound...].prefix(2_400)
+        XCTAssertTrue(body.contains("removedAttachmentIDs.formUnion(MessageAttachmentReferences.ids(in: $0))"))
+        XCTAssertTrue(body.contains("defer { evictReleasedAttachmentFiles(removedAttachmentIDs) }"))
+        XCTAssertTrue(body.contains("MessageAttachmentReferences.released(candidates,"))
+        XCTAssertTrue(body.contains("Task { await store.evict(attachmentIds: released, accountId: accountId) }"))
+    }
+
+    func testEvictRemovesBothVariantsOfOneAttachmentOnly() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("content-removal-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = AttachmentFileStore(directory: directory)
+        let removed = ContentRemovalFixtures.attachment("att_1")
+        let similar = ContentRemovalFixtures.attachment("att_10")
+        let other = ContentRemovalFixtures.attachment("att_2")
+        let removedPreview = try await store.store(Data("p".utf8), attachment: removed, accountId: "acct", variant: .preview)
+        let removedOriginal = try await store.store(Data("o".utf8), attachment: removed, accountId: "acct", variant: .original)
+        let similarOriginal = try await store.store(Data("s".utf8), attachment: similar, accountId: "acct")
+        let otherOriginal = try await store.store(Data("x".utf8), attachment: other, accountId: "acct")
+        let otherAccount = try await store.store(Data("a".utf8), attachment: removed, accountId: "acct_other")
+
+        let count = await store.evict(attachmentIds: ["att_1"], accountId: "acct")
+
+        XCTAssertEqual(count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: removedPreview.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: removedOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: similarOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: otherOriginal.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: otherAccount.path))
+        let evictedLookup = await store.cachedURL(for: removed, accountId: "acct", variant: .preview)
+        let keptLookup = await store.cachedURL(for: other, accountId: "acct")
+        XCTAssertNil(evictedLookup)
+        XCTAssertEqual(keptLookup, otherOriginal)
+        let emptyCount = await store.evict(attachmentIds: [""], accountId: "acct")
+        XCTAssertEqual(emptyCount, 0)
+    }
 }
 
 private enum ContentRemovalFixtures {
@@ -206,6 +286,17 @@ private enum ContentRemovalFixtures {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    static func attachment(_ id: String, livePhoto: LivePhotoAttachment? = nil) -> ChatAttachment {
+        ChatAttachment(attachmentId: id, livePhoto: livePhoto, name: "photo.png", kind: .image,
+                       mimeType: "image/png", sizeBytes: 1, previewURL: nil)
+    }
+
+    static func message(_ id: String, attachments: [ChatAttachment]) -> ChatMessage {
+        ChatMessage(id: id, conversationId: "conversation", author: .me, authorName: "Me", text: "",
+                    createdAt: Date(), deliveryState: .sent, errorMessage: nil, requestMessageId: nil,
+                    attachments: attachments)
     }
 }
 

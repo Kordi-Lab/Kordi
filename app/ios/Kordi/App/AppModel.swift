@@ -6964,24 +6964,42 @@ final class AppModel: ObservableObject {
 
     private func removeCloudMessages(_ messageIds: Set<String>, updateRenderedMessages: Bool = true) {
         guard !messageIds.isEmpty else { return }
+        var removedAttachmentIDs = Set<String>()
         cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
-            messages.filter { !messageIds.contains($0.messageId) }
+            messages.filter {
+                guard messageIds.contains($0.messageId) else { return true }
+                removedAttachmentIDs.formUnion(MessageAttachmentReferences.ids(in: $0))
+                return false
+            }
         }
         rebuildCloudMessageIndices()
         if let accountId = account?.accountId {
             cache?.deleteMessages(messageIds, accountId: accountId)
         }
+        defer { evictReleasedAttachmentFiles(removedAttachmentIDs) }
         guard updateRenderedMessages else { return }
         for conversationId in Array(messagesByConversation.keys) {
             guard let messages = messagesByConversation[conversationId] else { continue }
             let filtered = messages.filter {
-                !messageIds.contains($0.id)
-                    && !messageIds.contains($0.reactionTargetMessageId ?? "")
+                guard messageIds.contains($0.id) || messageIds.contains($0.reactionTargetMessageId ?? "") else { return true }
+                removedAttachmentIDs.formUnion(MessageAttachmentReferences.ids(in: $0))
+                return false
             }
             guard filtered.count != messages.count else { continue }
             messagesByConversation[conversationId] = filtered
             cacheCurrentMessages(conversationId)
         }
+    }
+
+    /// Cached files of removed messages are dropped unless a message still on
+    /// this device uses them. Eviction is best effort and never blocks removal.
+    private func evictReleasedAttachmentFiles(_ candidates: Set<String>) {
+        guard !candidates.isEmpty, let accountId = account?.accountId else { return }
+        let released = MessageAttachmentReferences.released(candidates,
+            keptBy: cloudMessagesByPeer.values.joined(), rendered: messagesByConversation.values.joined())
+        guard !released.isEmpty else { return }
+        let store = attachmentFileStore
+        Task { await store.evict(attachmentIds: released, accountId: accountId) }
     }
 
     private func removeCloudMessage(_ messageId: String) {
