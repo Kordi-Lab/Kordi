@@ -33,9 +33,7 @@ export function NativeTitlebar({
   return (
     <header
       className="app-native-titlebar"
-      style={{ gridTemplateColumns: `${leftWorkspaceWidth}px minmax(0, 1fr)`,
-        '--app-native-navigation-overhang': `${Math.max(0, 120 - leftWorkspaceWidth)}px`,
-      } as CSSProperties}
+      style={{ '--app-native-sidebar-width': `${leftWorkspaceWidth}px` } as CSSProperties}
       data-tauri-drag-region="true"
     >
       <div className="app-native-titlebar-navigation" data-tauri-drag-region="true">
@@ -46,7 +44,11 @@ export function NativeTitlebar({
             titlebar separator without a full-height folded-sidebar border. */}
         {onToggleSessionPanel && (
           <button type="button" onClick={onToggleSessionPanel} aria-label={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} title={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} aria-expanded={!collapseChatSessions}>
-            <PanelLeft aria-hidden="true" />
+            <PanelLeft aria-hidden="true">
+              {collapseChatSessions
+                ? <path d="m14 9 3 3-3 3" />
+                : <path d="M5 3h4v18H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" fill="currentColor" fillOpacity={0.18} stroke="none" />}
+            </PanelLeft>
           </button>
         )}
       </div>

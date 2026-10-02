@@ -81,6 +81,40 @@ test('Digest and Calendar use the same title row and top-right close control', a
 
 test.describe('native split motion', () => {
   test.use({ reducedMotion: 'no-preference' });
+  test('the sidebar button keeps its bounds while its icon and expanded state change', async ({ page }) => {
+    await page.goto('/tests/visual/chatProjectWorkspace.html');
+    await page.evaluate(() => document.documentElement.classList.add('kordi-native-shell'));
+    const button = page.locator('.app-native-titlebar-navigation > button');
+    const initialBounds = (await button.boundingBox())!;
+    const expandedIcon = await button.locator('svg').innerHTML();
+    for (const collapsed of [true, false]) {
+      const samples = await page.evaluate(async () => {
+        const button = document.querySelector<HTMLButtonElement>('.app-native-titlebar-navigation > button')!;
+        const measure = () => {
+          const { x, y, width, height } = button.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        const bounds = [measure()];
+        button.click();
+        const start = performance.now();
+        while (performance.now() - start < 360) {
+          await new Promise(requestAnimationFrame);
+          bounds.push(measure());
+        }
+        return bounds;
+      });
+      for (const sample of samples) {
+        for (const key of ['x', 'y', 'width', 'height'] as const) {
+          expect(Math.abs(sample[key] - initialBounds[key])).toBeLessThan(0.1);
+        }
+      }
+      await expect(button).toHaveAttribute('aria-expanded', String(!collapsed));
+      const icon = await button.locator('svg').innerHTML();
+      if (collapsed) expect(icon).not.toEqual(expandedIcon);
+      else expect(icon).toEqual(expandedIcon);
+      await expectAlignedHeaders(page);
+    }
+  });
   test('the main title and actions follow the conversation throughout panel motion', async ({ page }) => {
     await page.goto('/tests/visual/chatProjectWorkspace.html?theme=dark');
     for (const open of [true, false]) {
