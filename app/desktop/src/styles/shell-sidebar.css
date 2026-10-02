@@ -1,5 +1,5 @@
 .kordi-app.theme-light .app-workspace-sidebar {
-  --app-sidebar-selected-bg: #DCDCDC;
+  --app-sidebar-selected-bg: var(--app-palette-selected);
 }
 
 .app-workspace-sidebar .app-workspace-nav-button {
