@@ -10,6 +10,16 @@ struct CloudAPIError: LocalizedError, Equatable {
     var reason: String? = nil
 
     var errorDescription: String? { message }
+
+    /// An empty 404: the server has no such route yet. Known routes answer a
+    /// missing record with an error code, so those are never read this way.
+    var isMissingRoute: Bool { statusCode == 404 && code == "server_error" }
+
+    /// The request never reached a server answer, or the server failed in a
+    /// way a retry can fix.
+    var isRetryableDelivery: Bool {
+        statusCode == 0 || statusCode == 429 || statusCode >= 500
+    }
 }
 
 enum CloudTransportErrorPolicy {
@@ -434,6 +444,21 @@ actor CloudAPIClient {
         return result
     }
 
+    /// Accounts whose canonical group membership is known and not active
+    /// (left or removed), by conversation id and legacy session id.
+    func cachedInactiveChatMemberIdsBySessionId() -> [String: Set<String>] {
+        var result: [String: Set<String>] = [:]
+        for conversation in chatConversationsById.values where conversation.kind == "group" {
+            let inactive = Set(conversation.members.filter { $0.membershipState != "active" }.map(\.accountId))
+            guard !inactive.isEmpty else { continue }
+            result[conversation.id] = inactive
+            if let sessionId = conversation.legacySessionId?.nonEmpty {
+                result[sessionId] = inactive
+            }
+        }
+        return result
+    }
+
     func cachedChatSessionForksById() -> [String: CloudSessionForkSummary] {
         var result: [String: CloudSessionForkSummary] = [:]
         for conversation in chatConversationsById.values {
@@ -452,6 +477,13 @@ actor CloudAPIClient {
 
     func cachedChatConversations() -> [CloudChatConversation] {
         Array(chatConversationsById.values)
+    }
+
+    /// The canonical conversations, bootstrapping chat first when this client
+    /// has not loaded them yet.
+    func loadedChatConversations(token: String) async throws -> [CloudChatConversation] {
+        _ = try await bootstrapChat(token: token)
+        return cachedChatConversations()
     }
 
     /// Makes the canonical conversation directory available to the app model
@@ -520,6 +552,149 @@ actor CloudAPIClient {
             token: token,
             fallback: "Could not decline contact request."
         )
+    }
+
+    // MARK: Contact removal, blocks, reports, and leaving groups
+
+    /// Ends an accepted contact relationship for both people. Chat history
+    /// stays readable.
+    func removeContact(token: String, peerAccountId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v1/cloud/contacts/\(escapedPath(peerAccountId))",
+            method: "DELETE",
+            token: token,
+            fallback: "Couldn't remove this contact. Try again."
+        )
+    }
+
+    /// Withdraws a pending contact request the signed-in person sent.
+    func withdrawContactRequest(token: String, requestId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v1/cloud/contacts/requests/\(escapedPath(requestId))/withdraw",
+            method: "POST",
+            token: token,
+            fallback: "Couldn't withdraw the request. Try again."
+        )
+    }
+
+    /// The signed-in person's blocks, newest first. A server without blocks
+    /// answers with an empty 404; see `CloudAPIError.isMissingRoute`.
+    func listBlockedAccounts(token: String) async throws -> [CloudBlockedAccount] {
+        let response: BlockListResponse = try await send(
+            path: "/v1/cloud/blocks",
+            method: "GET",
+            token: token,
+            fallback: "Couldn't load blocked accounts."
+        )
+        return response.blocks
+    }
+
+    func blockAccount(token: String, accountId: String) async throws -> CloudBlockResult {
+        try await send(
+            path: "/v1/cloud/blocks/\(escapedPath(accountId))",
+            method: "PUT",
+            token: token,
+            fallback: "Couldn't block this account. Check your connection and try again."
+        )
+    }
+
+    func unblockAccount(token: String, accountId: String) async throws {
+        try await sendWithoutResponse(
+            path: "/v1/cloud/blocks/\(escapedPath(accountId))",
+            method: "DELETE",
+            token: token,
+            fallback: "Couldn't unblock this account. Try again."
+        )
+    }
+
+    /// Sends a report. A message report names one message by its cloud id;
+    /// the server copies the evidence itself and finds who sent it. Reusing
+    /// `clientReportId` for the same report makes a retry safe.
+    func createReport(
+        token: String,
+        sessionId: String?,
+        messageId: String?,
+        reportedAccountId: String?,
+        reason: CloudReportReason,
+        details: String?,
+        contactRequestId: String?,
+        clientReportId: String
+    ) async throws -> CloudReportReceipt {
+        var conversationId: String?
+        if messageId != nil {
+            _ = try await bootstrapChat(token: token)
+            guard let sessionId = sessionId?.nonEmpty,
+                  let conversation = chatConversationsBySessionId[sessionId]
+                    ?? chatConversationsById[sessionId] else {
+                throw CloudAPIError(
+                    code: "chat_conversation_missing",
+                    message: "Some selected messages can't be included. Refresh the chat and try again.",
+                    statusCode: 404
+                )
+            }
+            conversationId = conversation.id
+        }
+        let request = CloudReportRequest(
+            clientReportId: clientReportId,
+            reason: reason,
+            details: details?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
+            reportedAccountId: reportedAccountId?.nonEmpty,
+            conversationId: conversationId,
+            messageIds: messageId.map { [$0] } ?? [],
+            contactRequestId: contactRequestId?.nonEmpty
+        )
+        let response: ReportResponse = try await send(
+            path: "/v1/cloud/reports",
+            method: "POST",
+            token: token,
+            body: request,
+            fallback: "Couldn't send your report. Your selections are kept. Try again."
+        )
+        return response.report
+    }
+
+    /// Leaves a group conversation. Leaving a group's main conversation
+    /// leaves every channel of it. Each call uses a fresh operation id, so a
+    /// later leave after rejoining never replays this one.
+    func leaveConversation(
+        token: String,
+        sessionId: String,
+        successorAccountId: String?
+    ) async throws -> CloudLeaveConversationResponse {
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId]
+            ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(
+                code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.",
+                statusCode: 404
+            )
+        }
+        let response: CloudLeaveConversationResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/leave",
+            method: "POST",
+            token: token,
+            body: ChatLeaveConversationRequest(
+                clientOperationId: UUID().uuidString.lowercased(),
+                successorAccountId: successorAccountId?.nonEmpty
+            ),
+            fallback: "Couldn't leave the group. Check your connection and try again."
+        )
+        forgetChatConversations(Set(response.leftConversationIds).union([conversation.id]))
+        return response
+    }
+
+    /// Drops conversations this account no longer belongs to from the cache,
+    /// as a `membership.removed` event would.
+    private func forgetChatConversations(_ conversationIds: Set<String>) {
+        for conversationId in conversationIds {
+            guard let conversation = chatConversationsById.removeValue(forKey: conversationId) else { continue }
+            chatConversationsBySessionId.removeValue(forKey: conversationId)
+            if let sessionId = conversation.legacySessionId?.nonEmpty,
+               chatConversationsBySessionId[sessionId]?.id == conversationId {
+                chatConversationsBySessionId.removeValue(forKey: sessionId)
+            }
+        }
     }
 
     func listAgents(token: String) async throws -> [CloudAgent] {
@@ -3088,6 +3263,24 @@ private struct SaveExpressiveMediaRequest: Encodable {
 }
 private struct ContactsResponse: Decodable { let contacts: [CloudContact] }
 private struct ContactPresenceResponse: Decodable { let accounts: [CloudPresenceAccount] }
+private struct BlockListResponse: Decodable { let blocks: [CloudBlockedAccount] }
+private struct ReportResponse: Decodable { let report: CloudReportReceipt }
+private struct ChatLeaveConversationRequest: Encodable {
+    let clientOperationId: String
+    let successorAccountId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case clientOperationId = "client_operation_id"
+        case successorAccountId = "successor_account_id"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(clientOperationId, forKey: .clientOperationId)
+        // The server reads an explicit null as "no suggestion".
+        try container.encode(successorAccountId, forKey: .successorAccountId)
+    }
+}
 private struct ContactRequestsResponse: Decodable { let requests: [CloudContactRequest] }
 private struct ContactRequestResponse: Decodable { let request: CloudContactRequest }
 private struct SendContactRequest: Encodable { let peerAccountId: String; let message: String? }

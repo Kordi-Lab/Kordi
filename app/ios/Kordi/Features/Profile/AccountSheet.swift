@@ -8,6 +8,7 @@ private enum AccountSettingsRoute: Hashable {
     case authentication
     case notifications
     case appearance
+    case blockedAccounts
 }
 
 struct AccountSheet: View {
@@ -96,6 +97,12 @@ struct AccountSheet: View {
                 NavigationLink(value: AccountSettingsRoute.appearance) {
                     SettingsNavigationLabel(title: "Appearance", systemImage: "paintpalette")
                 }
+
+                if model.safetyFeaturesAvailable {
+                    NavigationLink(value: AccountSettingsRoute.blockedAccounts) {
+                        SettingsNavigationLabel(title: SafetyCopy.blockedAccountsTitle, systemImage: "hand.raised")
+                    }
+                }
             }
         }
         .listStyle(.insetGrouped)
@@ -113,6 +120,8 @@ struct AccountSheet: View {
                 NotificationSettingsView()
             case .appearance:
                 AppearanceSettingsView()
+            case .blockedAccounts:
+                BlockedAccountsView()
             }
         }
         .toolbar {

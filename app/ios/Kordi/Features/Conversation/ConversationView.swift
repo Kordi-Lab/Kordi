@@ -257,6 +257,7 @@ struct ConversationView: View {
     @State private var completedForwardDestination: ConversationSummary?
     @State private var didPresentForwardPreview = false
     @State private var detailsMessage: ChatMessage?
+    @State private var reportTarget: ReportTarget?
     @State private var pinTarget: ChatMessage?
     @State private var unpinTarget: PinnedMessageItem?
     @State private var editTarget: ChatMessage?
@@ -1343,15 +1344,11 @@ struct ConversationView: View {
                 completedForwardDestination = destination
             }
         }
-        .sheet(item: $detailsMessage) { message in
-            MessageDetailsSheet(
-                message: message,
-                readers: MessageReadReceiptPresentation.readers(
-                    for: message,
-                    in: conversation
-                )
-            )
-        }
+        .modifier(ConversationMessageSheets(
+            detailsMessage: $detailsMessage,
+            reportTarget: $reportTarget,
+            conversation: conversation
+        ))
         .alert(
             "Message action failed",
             isPresented: messageMutationErrorPresented
@@ -1825,6 +1822,12 @@ struct ConversationView: View {
                 onSelect: {
                     toggleSelection(message.id)
                     dismissMessageActions()
+                },
+                onReport: messageReportTarget(for: message).map { target in
+                    {
+                        dismissMessageActions()
+                        reportTarget = target
+                    }
                 }
             )
         }
@@ -1887,6 +1890,13 @@ struct ConversationView: View {
             messageActionMessage = message
         }
         messageActionFeedback += 1
+    }
+
+    /// A report for someone else's sent message when the server accepts
+    /// reports; nil hides Report.
+    private func messageReportTarget(for message: ChatMessage) -> ReportTarget? {
+        guard model.safetyFeaturesAvailable else { return nil }
+        return ReportTarget.message(message, in: conversation, selfAccountId: model.account?.accountId)
     }
 
     private func dismissMessageActions() {
@@ -4240,5 +4250,29 @@ private struct NavigationMinimalBackButtonBridge: UIViewControllerRepresentable 
                 candidate = controller.parent
             }
         }
+    }
+}
+
+/// Message details and message reports, kept together so the conversation
+/// body's modifier chain stays small enough to type-check quickly.
+private struct ConversationMessageSheets: ViewModifier {
+    @Binding var detailsMessage: ChatMessage?
+    @Binding var reportTarget: ReportTarget?
+    let conversation: ConversationSummary
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $reportTarget) { target in
+                ReportSheet(target: target)
+            }
+            .sheet(item: $detailsMessage) { message in
+                MessageDetailsSheet(
+                    message: message,
+                    readers: MessageReadReceiptPresentation.readers(
+                        for: message,
+                        in: conversation
+                    )
+                )
+            }
     }
 }

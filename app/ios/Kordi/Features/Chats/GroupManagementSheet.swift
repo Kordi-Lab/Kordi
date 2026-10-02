@@ -14,6 +14,8 @@ struct GroupManagementSheet: View {
     @State private var titleDraft: String
     @State private var selectedContactIDs = Set<String>()
     @State private var isSaving = false
+    @State private var safetyAction: SafetyAction?
+    @State private var reportTarget: ReportTarget?
 
     private let inviteSectionID = "group-invite-section"
 
@@ -149,6 +151,21 @@ struct GroupManagementSheet: View {
                         }
                     }
                     .id(inviteSectionID)
+
+                    if model.safetyFeaturesAvailable {
+                        Section {
+                            Button(role: .destructive) {
+                                safetyAction = .leaveGroup(presentation.space)
+                            } label: {
+                                Label("Leave group", systemImage: "rectangle.portrait.and.arrow.right")
+                                    .foregroundStyle(.red)
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }
+                            .accessibilityLabel("Leave \(presentation.space.displayName)")
+                        } footer: {
+                            Text("To come back, you'll need an invite link from someone in the group.")
+                        }
+                    }
                 }
                 .onAppear {
                     guard presentation.startsInInviteMode else { return }
@@ -160,6 +177,7 @@ struct GroupManagementSheet: View {
                     }
                 }
             }
+            .safetyActions($safetyAction, report: $reportTarget, onLeftGroup: { dismiss() })
             .navigationTitle("Group management")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

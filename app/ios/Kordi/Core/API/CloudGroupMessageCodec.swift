@@ -140,6 +140,51 @@ struct CloudGroupMemberJoin: Codable, Hashable {
     let createdAtMs: Double
 }
 
+/// A member leaving a group, posted by the leaver in a `group-update`.
+/// `createdAtMs` is whole milliseconds; a fractional value from another
+/// client is truncated when read.
+struct CloudGroupMemberLeave: Codable, Hashable {
+    let eventId: String
+    let accountId: String
+    let createdAtMs: Int64
+
+    init(eventId: String, accountId: String, createdAtMs: Int64) {
+        self.eventId = eventId
+        self.accountId = accountId
+        self.createdAtMs = createdAtMs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        eventId = try container.decode(String.self, forKey: .eventId)
+        accountId = try container.decode(String.self, forKey: .accountId)
+        if let whole = try? container.decode(Int64.self, forKey: .createdAtMs) {
+            createdAtMs = whole
+        } else {
+            let value = try container.decode(Double.self, forKey: .createdAtMs)
+            guard value.isFinite, abs(value) < 9.0e15 else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: .createdAtMs, in: container, debugDescription: "Out of range"
+                )
+            }
+            createdAtMs = Int64(value.rounded(.towardZero))
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case eventId, accountId, createdAtMs
+    }
+}
+
+/// Decodes one list element without failing the surrounding list.
+private struct LenientElement<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
+    }
+}
+
 struct CloudGroupSessionTitleSnapshot: Codable, Hashable {
     let title: String
     let titleSource: String
@@ -161,7 +206,13 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let sessionTitleSyncOnly: Bool?
     let channelCreated: Bool?
     let memberJoins: [CloudGroupMemberJoin]?
+    let memberLeaves: [CloudGroupMemberLeave]?
     let message: CloudGroupMessagePayload?
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, groupId, groupSpaceId, groupTitle, createdByAccountId, actor, participants
+        case sessionTitle, sessionTitleSyncOnly, channelCreated, memberJoins, memberLeaves, message
+    }
 
     init(
         kind: String,
@@ -175,6 +226,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         sessionTitleSyncOnly: Bool? = nil,
         channelCreated: Bool? = nil,
         memberJoins: [CloudGroupMemberJoin]? = nil,
+        memberLeaves: [CloudGroupMemberLeave]? = nil,
         message: CloudGroupMessagePayload?
     ) {
         self.kind = kind
@@ -188,7 +240,30 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         self.sessionTitleSyncOnly = sessionTitleSyncOnly
         self.channelCreated = channelCreated
         self.memberJoins = memberJoins
+        self.memberLeaves = memberLeaves
         self.message = message
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(String.self, forKey: .kind)
+        groupId = try container.decode(String.self, forKey: .groupId)
+        groupSpaceId = try container.decodeIfPresent(String.self, forKey: .groupSpaceId)
+        groupTitle = try container.decodeIfPresent(String.self, forKey: .groupTitle)
+        createdByAccountId = try container.decode(String.self, forKey: .createdByAccountId)
+        actor = try container.decode(CloudGroupParticipant.self, forKey: .actor)
+        participants = try container.decode([CloudGroupParticipant].self, forKey: .participants)
+        sessionTitle = try container.decodeIfPresent(CloudGroupSessionTitleSnapshot.self, forKey: .sessionTitle)
+        sessionTitleSyncOnly = try container.decodeIfPresent(Bool.self, forKey: .sessionTitleSyncOnly)
+        channelCreated = try container.decodeIfPresent(Bool.self, forKey: .channelCreated)
+        memberJoins = try container.decodeIfPresent([CloudGroupMemberJoin].self, forKey: .memberJoins)
+        // Leaves are informational here. A malformed entry from another
+        // client never hides the rest of the envelope.
+        let leaves = (try? container.decodeIfPresent(
+            [LenientElement<CloudGroupMemberLeave>].self, forKey: .memberLeaves
+        ))?.compactMap(\.value)
+        memberLeaves = leaves?.isEmpty == false ? leaves : nil
+        message = try container.decodeIfPresent(CloudGroupMessagePayload.self, forKey: .message)
     }
 }
 
@@ -259,6 +334,7 @@ enum CloudGroupMessageCodec {
             sessionTitleSyncOnly: envelope.sessionTitleSyncOnly,
             channelCreated: envelope.channelCreated,
             memberJoins: envelope.memberJoins,
+            memberLeaves: envelope.memberLeaves,
             message: message
         )
         return prefix + base64URL(try JSONEncoder().encode(normalized))
