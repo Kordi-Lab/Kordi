@@ -424,6 +424,8 @@ mod chat;
 use chat::*;
 #[path = "cloud_agent_runtime_e2e/consent_admission.rs"]
 mod consent_admission;
+#[path = "cloud_agent_runtime_e2e/consent_subsessions.rs"]
+mod consent_subsessions;
 #[path = "cloud_agent_runtime_e2e/context_media.rs"]
 mod context_media;
 #[path = "cloud_agent_runtime_e2e/conversation_admission.rs"]

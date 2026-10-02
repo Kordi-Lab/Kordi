@@ -178,10 +178,11 @@ async fn store_message(
         .execute(&mut *tx)
         .await
         .map_err(db_error)?;
-    let member:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id WHERE s.subsession_id=$1 AND m.account_id=$2 AND m.membership_state='active')").bind(id).bind(&session.account_id).fetch_one(&mut *tx).await.map_err(db_error)?;
-    if !member.0 {
+    let parent:Option<(Uuid,)>=query_as("SELECT s.parent_conversation_id FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id WHERE s.subsession_id=$1 AND m.account_id=$2 AND m.membership_state='active'").bind(id).bind(&session.account_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
+    let Some((parent,)) = parent else {
         return Err(error(StatusCode::NOT_FOUND, "subsession_not_found"));
-    }
+    };
+    super::require_parent_relationship(&mut *tx, parent, &session.account_id).await?;
     let previous:Option<(Uuid,String,String,Value)>=query_as("SELECT subsession_id,sender_account_id,text,mentions FROM cloud_agent_subsession_chat WHERE message_id=$1")
         .bind(input.client_message_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
     if let Some((stored, actor, text, mentions)) = previous {

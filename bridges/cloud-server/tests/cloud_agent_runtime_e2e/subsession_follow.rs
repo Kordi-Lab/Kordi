@@ -356,7 +356,8 @@ pub(super) async fn verify(
 }
 
 /// People who are no longer contacts cannot ask each other's default agent
-/// to continue a subsession; they may still write in it.
+/// to continue a subsession. They may still write in it inside a group, while
+/// a direct chat between them becomes read-only.
 async fn default_agent_follow_ups_need_contacts(
     router: &axum::Router,
     pool: &sqlx_postgres::PgPool,
@@ -387,7 +388,18 @@ async fn default_agent_follow_ups_need_contacts(
         read_json(refused).await["error"]["code"],
         "subsession_agent_unavailable"
     );
+    let id = uuid::Uuid::parse_str(uri.rsplit('/').next().unwrap()).unwrap();
+    let (kind,): (String,) = sqlx_core::query_as::query_as("SELECT c.kind FROM cloud_agent_subsessions s JOIN cloud_chat_conversations c ON c.conversation_id=s.parent_conversation_id WHERE s.subsession_id=$1")
+        .bind(id).fetch_one(pool).await.unwrap();
     let plain = post("Thanks for the summary", None).await.unwrap();
-    assert_eq!(plain.status(), StatusCode::OK);
+    if kind == "group" {
+        assert_eq!(plain.status(), StatusCode::OK);
+    } else {
+        assert_eq!(plain.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            read_json(plain).await["error"]["code"],
+            "CHAT_RELATIONSHIP_REQUIRED"
+        );
+    }
     contacts("INSERT INTO cloud_contacts(account_id,peer_account_id,created_at) VALUES($1,$2,$3),($2,$1,$3)").await.unwrap();
 }
