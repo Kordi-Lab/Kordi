@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import { __setSessionBackendForTests } from '../../src/features/cloud/session';
 import { setMessageLayout } from '../../src/app/messageLayoutPreference';
+import { INTERFACE_ZOOM_EVENT } from '../../src/app/interfaceZoom';
 import { mockNativeHttpInvoke } from '../helpers/nativeHttp';
 import type { CanonicalSessionState, CanonicalSessionMessage } from '../../src/kordi-app/types';
 import '../../src/index.css';
@@ -102,6 +103,7 @@ const chatState = () => ({ cwd: '', activeSessionId: sessionId, sessions: [{ ...
 const native = (window as unknown as { __TAURI_INTERNALS__?: { invoke: (command: string, args: Record<string, unknown>) => Promise<unknown> } }).__TAURI_INTERNALS__;
 const originalInvoke = native?.invoke.bind(native);
 async function previewInvoke(command: string, args: Record<string, unknown> = {}): Promise<unknown> {
+  if (command === 'desktop_set_window_backdrop') Object.assign(window, { syntheticBackdrop: args });
   if (originalInvoke && (command.startsWith('plugin:window|') || command.startsWith('plugin:event|') || command.startsWith('plugin:deep-link|') || ['desktop_set_auth_window_surface', 'desktop_set_window_backdrop', 'desktop_set_menu_bar_unread_count'].includes(command))) return originalInvoke(command, args);
   calls.push(command);
   if (command === 'desktop_canonical_session_catalog') {
@@ -152,10 +154,26 @@ if (!native) {
 const { default: App } = await import('../../src/App.jsx');
 createRoot(document.getElementById('root')!).render(<App />);
 if (native) {
+  const report = () => {
+    const bounds = (selector: string) => {
+      const rect = document.querySelector(selector)?.getBoundingClientRect();
+      return rect ? { width: rect.width, height: rect.height, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null;
+    };
+    void originalFetch('/__synthetic-preview-ready', { method: 'POST', body: JSON.stringify({ native: true, layout: localStorage.getItem('kordi.messageLayout.v1'), messages: document.querySelectorAll('.app-thread-message-row').length, composer: Boolean(document.querySelector('[contenteditable="true"]')), quotedReply: document.body.textContent?.includes(sourceText) ?? false, zoom: document.documentElement.dataset.kordiInterfaceZoom, viewport: { width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio }, workspaceTracks: getComputedStyle(document.querySelector('.app-shell-layout-grid')!).gridTemplateColumns, inlineTracks: (document.querySelector('.app-shell-layout-grid') as HTMLElement).style.gridTemplateColumns, canvas: bounds('.app-native-viewport'), shell: bounds('.app-shell'), titlebar: bounds('.app-native-titlebar'), headerPane: bounds('.app-native-titlebar-workspace'), toggle: bounds('.app-native-titlebar-navigation button'), title: bounds('.app-native-titlebar-title'), sidebar: bounds('.app-workspace-sidebar'), tabs: bounds('.app-chat-destination-tabs'), editor: bounds('[contenteditable="true"]'), backdrop: (window as unknown as { syntheticBackdrop?: unknown }).syntheticBackdrop }) });
+  };
+  window.addEventListener(INTERFACE_ZOOM_EVENT, () => { window.setTimeout(report, 250); window.setTimeout(report, 1500); });
+  import.meta.hot?.on('synthetic-preview-zoom', ({ key }: { key: string }) => {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, metaKey: true, bubbles: true, cancelable: true }));
+  });
+  import.meta.hot?.on('synthetic-preview-sidebar', ({ collapsed }: { collapsed: boolean }) => {
+    const toggle = document.querySelector<HTMLButtonElement>('.app-native-titlebar-navigation button');
+    if (toggle?.getAttribute('aria-expanded') === String(collapsed)) toggle.click();
+    window.setTimeout(report, 500);
+  });
   window.setTimeout(async () => {
     await originalInvoke?.('plugin:window|show', { label: 'main' });
     await originalInvoke?.('plugin:window|unminimize', { label: 'main' });
     await originalInvoke?.('plugin:window|set_focus', { label: 'main' });
-    void originalFetch('/__synthetic-preview-ready', { method: 'POST', body: JSON.stringify({ native: true, layout: localStorage.getItem('kordi.messageLayout.v1'), messages: document.querySelectorAll('.app-thread-message-row').length, composer: Boolean(document.querySelector('[contenteditable="true"]')), quotedReply: document.body.textContent?.includes(sourceText) ?? false, zoom: document.documentElement.dataset.kordiInterfaceZoom }) });
+    report();
   }, 3000);
 }

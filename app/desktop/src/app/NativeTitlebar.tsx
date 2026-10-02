@@ -33,15 +33,15 @@ export function NativeTitlebar({
   return (
     <header
       className="app-native-titlebar"
-      style={{ '--app-native-sidebar-width': `${leftWorkspaceWidth}px` } as CSSProperties}
+      style={{ '--app-native-sidebar-width': leftWorkspaceWidth } as CSSProperties}
       data-tauri-drag-region="true"
     >
       <div className="app-native-titlebar-navigation" data-tauri-drag-region="true">
         {/* TODO: Add Back/Forward history controls before the sidebar toggle.
             Reserve space after the native traffic lights and increase the
             navigation track's minimum width so controls cannot overlap the
-            title. Disable unavailable history directions and keep the short
-            titlebar separator without a full-height folded-sidebar border. */}
+            title. Disable unavailable history directions and keep the folded
+            sidebar free of a titlebar separator. */}
         {onToggleSessionPanel && (
           <button type="button" onClick={onToggleSessionPanel} aria-label={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} title={collapseChatSessions ? 'Show sidebar' : 'Hide sidebar'} aria-expanded={!collapseChatSessions}>
             <PanelLeft aria-hidden="true">
