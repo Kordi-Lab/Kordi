@@ -1,6 +1,7 @@
+import { useMessageLayout } from '@/app/messageLayoutPreference';
+import { ThreadMessageHeader } from './ThreadMessageHeader';
 import { ContactRequestFailureNotice } from './contactRequestFailureNotice';
 import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
-import { Button } from '@/components/ui/button';
 import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
 import { messageDeliveryVisual,shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
@@ -14,18 +15,14 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   ChevronUp,
   Clock3,
-  LoaderCircle,
   Split,
   SquareArrowOutUpRight,
   Undo2
 } from 'lucide-react';
 import { memo,useLayoutEffect,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
 import type {
-  Contact,
-  ContactRequest,
   EditFilePreview,
   Message,MessageAttachment,
   MessageSourceReference
@@ -51,7 +48,7 @@ import { LiveChatTurnCard,LiveChatTurnMessage,type StopActiveTurnHandler,type St
 import type { MessageForkSummary } from './transcriptMessageForks';
 import { transcriptMessageIsOwnHuman,transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { TranscriptMessageSurface } from './transcriptMessageSurface';
-import { ContactRequestTime,MessageEditedLabel,MessageHoverTime } from './transcriptMessageTime';
+import { MessageEditedLabel,MessageHoverTime } from './transcriptMessageTime';
 import { MessageDeliveryStatusSlot,TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
 import { RequestReplyLine,SourceMessageQuoteRow,ThreadReplyLine } from './transcriptReplyAttribution';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
@@ -266,6 +263,7 @@ function MessageBubbleView({
     finishChatPerformanceSpan(renderSpan, { rowCount: 1 });
   }, [renderSpan]);
   const [isEditExpanded, setIsEditExpanded] = useState(true);
+  const threadLayout = useMessageLayout() === 'threads';
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
@@ -623,23 +621,24 @@ function MessageBubbleView({
         msg={msg}
         {...menuActionHandlers}
         id={msg.id || msg.turn.id ? transcriptMessageDomId(msg.id ?? msg.turn.id) : undefined}
-        className="flex w-full max-w-[min(100%,61rem)] flex-col items-start py-0.5"
+        className={cn("flex w-full max-w-[min(100%,61rem)] flex-col items-start py-0.5", threadLayout && "app-thread-message-row app-thread-turn")}
       >
         {msg.id && msg.turn.id && msg.id !== msg.turn.id ? (
           <span id={transcriptMessageDomId(msg.turn.id)} data-transcript-message-anchor="true" className="sr-only" aria-hidden="true" />
         ) : null}
-        <div className="flex w-fit max-w-full items-end gap-2">
+        {threadLayout && !plainAgentResponse && (msg.sourceMessage ?? msg.turn.sourceMessage) ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage ?? msg.turn.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
+        <div className={cn("flex w-fit max-w-full items-end gap-2", threadLayout && "app-thread-message-main")}>
+          {threadLayout ? <IdentityAvatar kind="agent" seed={msg.senderAvatarSeed || currentLocalAgentAvatarSeed} name={msg.sender} imageUrl={msg.senderProfileImageUrl} className="h-8 w-8 shrink-0" /> : null}
           <div className="app-message-hover-time-trigger min-w-0 w-fit max-w-[58rem]">
             <div className="flex w-full items-center gap-1.5">
-              <div className="app-message-meta">
-                {msg.sender}
-              </div>
-              <AgentOwnerTag name={agentOwnerName} />
+              {threadLayout ? <ThreadMessageHeader msg={msg} name={msg.sender || "Agent"} ownerName={agentOwnerName} /> : null}
+              {!threadLayout ? <><div className="app-message-meta">{msg.sender}</div><AgentOwnerTag name={agentOwnerName} /></> : null}
               {forkButton}
               {forkChip}
             </div>
             <LiveChatTurnCard
               turn={msg.turn}
+              hideSourceQuote={threadLayout}
               historical={msg.turn.completed} showReasoning={msg.role === 'owned-agent'}
               plainAgentResponse={plainAgentResponse}
               onStopCollaborationAgentRequest={onStopCollaborationAgentRequest}
@@ -674,7 +673,7 @@ function MessageBubbleView({
   const isPeerHumanMessage = transcriptMessageIsPeerHuman(msg, isOwnHumanMessage);
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
   const compactDensity = densityMode !== 'default' && !isAgentMessage ? densityMode : undefined;
-  const useHumanCompactDensity = Boolean(compactDensity);
+  const useHumanCompactDensity = !threadLayout && Boolean(compactDensity);
   const hideHumanSenderForCompactDensity = useHumanCompactDensity && compactDensity !== 'group-compact';
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
   const bubble = isOwnHumanMessage
@@ -697,18 +696,19 @@ function MessageBubbleView({
     : msg.role === 'owned-agent'
       ? currentLocalAgentAvatarSeed
       : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
-  const showInlineHumanSender = Boolean(!hideHumanSenderForCompactDensity && !isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
+  const showInlineHumanSender = Boolean(!threadLayout && !hideHumanSenderForCompactDensity && !isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
   const showContactRequestAction = Boolean(
     isOwnHumanMessage
       && deliveryVisual?.tone === 'red'
       && onRequestCollaborationContact
       && contactRequestFailureCanBeRetried(msg.detail),
   );
-  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = !isAgentMessage; const showAvatar = showAvatarSlot && !isGroupedWithNext;
+  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = threadLayout || !isAgentMessage; const showAvatar = showAvatarSlot && (threadLayout ? !isGroupedWithPrevious || Boolean(msg.sourceMessage) : !isGroupedWithNext);
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
   const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const messageSurfaceContent = (
     <>
+      {threadLayout && (!isGroupedWithPrevious || msg.sourceMessage) ? <ThreadMessageHeader msg={msg} name={avatarName} ownerName={agentOwnerName} /> : null}
       {showInlineHumanSender ? (
         <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4" data-transcript-leading-decoration="true">{msg.sender}<PipSenderTag avatarUrl={msg.senderProfileImageUrl} /></div>
       ) : null}
@@ -795,6 +795,7 @@ function MessageBubbleView({
       onPointerCancel={handleRowSelectionDragEnd}
       className={cn(
         'flex w-full flex-col gap-1',
+        threadLayout && 'app-thread-message-row',
         'pt-0.5',
         isGroupedWithNext ? 'pb-0' : 'pb-0.5',
         useHumanCompactDensity ? 'app-message-row-contact-compact' : '',
@@ -804,10 +805,13 @@ function MessageBubbleView({
         isSelectedForAction ? 'app-message-selection-selected' : '',
       )}
       data-transcript-density={compactDensity}
+      data-message-layout={threadLayout ? 'threads' : undefined}
     >
-      {showHeaderMeta ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
+      {threadLayout && msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} onNavigateToMessage={onNavigateToMessage} className="app-thread-quote-row" /> : null}
+      {showHeaderMeta && !threadLayout ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
+        threadLayout && 'app-thread-message-main',
         hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',
         isAgentMessage ? 'w-fit max-w-full gap-2' : showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
@@ -905,7 +909,7 @@ function MessageBubbleView({
         {forkButton}
         {forkChip}
       </div>
-      {msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} onNavigateToMessage={onNavigateToMessage} className={isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start'} /> : null}
+      {!threadLayout && msg.sourceMessage && !isForwardedMessage ? <SourceMessageQuoteRow sourceMessage={msg.sourceMessage} side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'} onNavigateToMessage={onNavigateToMessage} className={isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start'} /> : null}
       <MessageReactionChips
         msg={msg}
         onReactMessage={onReactMessage}
@@ -914,6 +918,7 @@ function MessageBubbleView({
       {msg.threadSummary?.replyCount ? (
         <div className={cn(
           'flex items-center',
+          threadLayout && 'app-thread-discussion-line',
           isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start',
         )}>
           <ThreadReplyLine
@@ -935,108 +940,4 @@ function MessageBubbleView({
 
 export type MessageBubbleProps = Parameters<typeof MessageBubbleView>[0];
 export const MessageBubble = memo(MessageBubbleView, messageBubblePropsEqual);
-function contactAvatarKind(contact: Contact): IdentityAvatarKind {
-  return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
-}
-
-function requestAvatarKind(request: ContactRequest): IdentityAvatarKind {
-  return /agent/i.test(request.title) ? 'agent' : 'human';
-}
-
-export function ContactRow({ contact, active, onSelect }: { contact: Contact; active: boolean; onSelect: () => void }) {
-  return (
-    <button
-      onClick={onSelect}
-      aria-current={active ? 'true' : undefined}
-      className="app-contact-row app-list-item flex w-full items-center gap-3 rounded-[15px] px-3 py-2 text-left text-white transition-none"
-    >
-      <IdentityAvatar
-        kind={contactAvatarKind(contact)}
-        seed={contact.avatarSeed ?? contact.sourceParticipantId ?? contact.id}
-        name={contact.name}
-        imageUrl={contact.profileImageUrl}
-        className="h-10 w-10 border border-white/10"
-        presenceStatus={contact.presenceStatus}
-        presenceLabel={contact.presenceStatus ? `${contact.name} is ${contact.presenceStatus === 'online' ? 'online' : 'offline'}` : null}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[13px] font-medium leading-5">{contact.name}</span>
-          <span className="text-[10.5px] leading-4 text-slate-300">{contact.entityType}</span>
-        </div>
-        <div className="truncate text-[11.5px] leading-4 text-slate-300">{contact.subtitle}</div>
-      </div>
-      <ChevronRight className="h-4 w-4 text-slate-500" />
-    </button>
-  );
-}
-
-export function ContactRequestRow({
-  request,
-  active,
-  onAccept,
-  onReject,
-  actionState = null,
-}: {
-  request: ContactRequest;
-  active: boolean;
-  onAccept?: () => void;
-  onReject?: () => void;
-  actionState?: 'accepting' | 'rejecting' | null;
-}) {
-  const isBusy = Boolean(actionState);
-  const statusText = actionState === 'accepting'
-    ? 'Accepting and sending greeting…'
-    : actionState === 'rejecting'
-      ? 'Rejecting request…'
-      : '';
-
-  return (
-    <div
-      className={cn(
-        'app-contact-request-item px-3 py-3 text-white transition-none',
-        active && 'app-contact-request-item-active',
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <IdentityAvatar
-          kind={requestAvatarKind(request)}
-          seed={request.avatarSeed ?? request.id}
-          name={request.title}
-          imageUrl={request.profileImageUrl}
-          className="h-10 w-10 border border-white/10"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center justify-between gap-3">
-            <div className="truncate text-sm font-medium">{request.title}</div>
-            <ContactRequestTime value={request.time} />
-          </div>
-          <div className={`mt-1 text-xs ${active ? 'text-slate-100' : 'text-slate-300'}`}>{request.detail}</div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button className="h-8 rounded-xl px-3 text-[11px]" onClick={onAccept} disabled={!onAccept || isBusy}>
-              {actionState === 'accepting' ? (
-                <>
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  Accepting…
-                </>
-              ) : 'Accept'}
-            </Button>
-            <Button variant="secondary" className="h-8 rounded-xl px-3 text-[11px]" onClick={onReject} disabled={!onReject || isBusy}>
-              {actionState === 'rejecting' ? (
-                <>
-                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                  Rejecting…
-                </>
-              ) : 'Reject'}
-            </Button>
-          </div>
-          {statusText ? (
-            <div className="mt-2 text-[11px] leading-4 text-slate-400" aria-live="polite">
-              {statusText}
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
+export { ContactRow, ContactRequestRow } from './transcriptContacts';

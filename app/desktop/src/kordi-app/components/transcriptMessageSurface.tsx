@@ -1,3 +1,4 @@
+import { useMessageLayout } from '@/app/messageLayoutPreference';
 import type { ComponentPropsWithoutRef, ReactNode } from 'react';
 
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
@@ -29,7 +30,8 @@ export function TranscriptMessageSurface({
   tail,
   ...props
 }: TranscriptMessageSurfaceProps) {
-  const backdrop = side === 'agent'
+  const threadLayout = useMessageLayout() === 'threads';
+  const backdrop = threadLayout || side === 'agent'
     ? null
     : <MessageBubbleShapeBackdrop side={side} tail={tail} groupedWithPrevious={groupedWithPrevious} />;
   const captionClassName = cn(
@@ -48,7 +50,7 @@ export function TranscriptMessageSurface({
   );
 
   return (
-    <div {...props} className={className}>
+    <div {...props} className={cn(className, threadLayout && 'app-thread-message-surface')}>
       {detachedImageGroup ? (
         <>
           {attachmentPreview}

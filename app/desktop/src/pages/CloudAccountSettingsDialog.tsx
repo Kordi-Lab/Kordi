@@ -1,3 +1,4 @@
+import { MessageLayoutSetting } from '@/kordi-app/components/MessageLayoutSetting';
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
@@ -165,7 +166,7 @@ export function CloudAccountSettingsDialog({
       items: [
         { id: 'auth', label: 'Authentication', icon: KeyRound, keywords: ['providers', 'accounts', 'api key', 'omp'] },
         { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['alerts', 'sound', 'badge'] },
-        { id: 'appearance', label: 'Appearance', icon: Palette, keywords: ['theme', 'dark', 'light'] },
+        { id: 'appearance', label: 'Appearance', icon: Palette, keywords: ['theme', 'dark', 'light', 'chat', 'threads', 'message layout'] },
       ],
     },
   ];
@@ -342,6 +343,7 @@ export function CloudAccountSettingsDialog({
   const appearancePanel = (
     <div className="app-cloud-account-settings-section app-cloud-account-theme app-settings-option-list max-w-[680px]">
       <SettingsSection title="Appearance">
+        <MessageLayoutSetting />
         {(appearanceSection?.items ?? []).map((item) => (
           <SettingsRow
             key={item.label}

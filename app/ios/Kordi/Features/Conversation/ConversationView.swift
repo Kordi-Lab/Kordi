@@ -182,6 +182,9 @@ enum ConversationIdentityResolver {
 }
 
 struct ConversationView: View {
+    @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
+
+    private var messageLayout: MessageLayout { MessageLayout.resolve(messageLayoutRawValue) }
     @EnvironmentObject private var model: AppModel
     @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -1446,6 +1449,7 @@ struct ConversationView: View {
             } else {
                 MessageBubble(
                     message: message,
+                    layout: messageLayout,
                     mentionTargets: mentionTargets,
                     showAuthor: message.author == .agent
                         || (conversation.kind == .group
@@ -1601,7 +1605,7 @@ struct ConversationView: View {
                 )
                 .equatable()
                 .background(alignment: .bottomTrailing) {
-                    if presentation.showsAvatar, let groupID = presentation.outgoingAvatarGroupID {
+                    if messageLayout == .chat, presentation.showsAvatar, let groupID = presentation.outgoingAvatarGroupID {
                         ConversationOutgoingAvatarAnchorView(
                             groupID: groupID, name: avatar.name, source: avatar.source,
                             seed: avatar.seed ?? avatar.name,
