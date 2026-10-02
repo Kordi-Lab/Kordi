@@ -97,7 +97,14 @@ async function sendFirstMessage(existingSession = false, blankNativeSession = fa
   try {
     await act(async () => root.render(<SendHarness />));
     await act(async () => { await actions.handleSendChatMessage(); });
-    await act(async () => { root.render(<ForwardHarness />); await new Promise(resolve => setTimeout(resolve, 50)); });
+    await act(async () => { root.render(<ForwardHarness />); });
+    // Commit the forwarding effect before waiting for its asynchronous IPC.
+    // CI may still be loading modules after a fixed-duration delay expires.
+    const deadline = Date.now() + 5_000;
+    while (!sent.some(body => cloudDirectMessageDisplayText(body) === 'Which model are you using?')
+      && errors.length === 0 && Date.now() < deadline) {
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+    }
     return { canonical, sent, errors, commands };
   } finally {
     await act(async () => root.unmount());
