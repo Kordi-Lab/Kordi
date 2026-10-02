@@ -271,6 +271,120 @@ async fn admins_can_add_members_of_the_space_to_its_channels() {
 }
 
 #[tokio::test]
+async fn a_block_ends_the_channel_exemption_between_two_people() {
+    let Some(pool) = try_pool().await else { return };
+    let admin = account(&pool, "channel-block-admin").await;
+    let friend = account(&pool, "channel-block-friend").await;
+    let member = account(&pool, "channel-block-member").await;
+    connect_accounts(&pool, &admin, &friend).await;
+    let (_root, root_session) = create_group(&pool, &admin, &[&friend]).await;
+    join_by_invitation(&pool, &admin, &root_session, &member).await;
+    let (first, _) = create_channel(&pool, &admin, &root_session, &[&friend]).await;
+    let (second, _) = create_channel(&pool, &admin, &root_session, &[&friend]).await;
+    let set_block = |blocker: String, blocked: String| {
+        let pool = pool.clone();
+        async move {
+            query("DELETE FROM cloud_account_blocks WHERE blocker_account_id = ANY($1)")
+                .bind(vec![blocker.clone(), blocked.clone()])
+                .execute(&pool)
+                .await
+                .unwrap();
+            query(
+                "INSERT INTO cloud_account_blocks (blocker_account_id, blocked_account_id) \
+                 VALUES ($1, $2)",
+            )
+            .bind(&blocker)
+            .bind(&blocked)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+    };
+    let state_in = |conversation_id: Uuid| {
+        let pool = pool.clone();
+        let member = member.clone();
+        async move {
+            query_as::<_, (String,)>(
+                "SELECT membership_state FROM cloud_chat_conversation_members \
+                 WHERE conversation_id = $1 AND account_id = $2",
+            )
+            .bind(conversation_id)
+            .bind(&member)
+            .fetch_optional(&pool)
+            .await
+            .unwrap()
+            .map(|(state,)| state)
+        }
+    };
+
+    // Without a block the admin adds the invite-joined member to a channel.
+    store::add_conversation_members(&pool, &admin, first, members_request(&[&member], false))
+        .await
+        .expect("space members can be added to its channels");
+    store::leave_group(&pool, &member, first, leave_request(None))
+        .await
+        .expect("leave the channel");
+
+    for (blocker, blocked) in [(&member, &admin), (&admin, &member)] {
+        set_block(blocker.clone(), blocked.clone()).await;
+        // A first add is refused in either direction of the block.
+        assert!(add_requires_contact(
+            store::add_conversation_members(
+                &pool,
+                &admin,
+                second,
+                members_request(&[&member], false)
+            )
+            .await
+        ));
+        assert_eq!(state_in(second).await, None);
+        // Adding them back after they left changes nothing, and a stale list
+        // that still names them never stops the admin from writing.
+        let version = conversation_version(&pool, first).await;
+        for (members, replace) in [
+            (vec![&member], false),
+            (vec![&admin, &friend, &member], true),
+        ] {
+            let snapshot = store::add_conversation_members(
+                &pool,
+                &admin,
+                first,
+                members_request(&members, replace),
+            )
+            .await
+            .expect("a list that names a blocked leaver changes nothing");
+            assert_eq!(snapshot.version, version);
+        }
+        assert_eq!(state_in(first).await.as_deref(), Some("left"));
+        store::send_message(
+            &pool,
+            &admin,
+            first,
+            SendMessageRequest {
+                client_message_id: Uuid::now_v7(),
+                kind: "text".to_string(),
+                content: content("still writing"),
+                reply_to_message_id: None,
+                attachment_ids: Vec::new(),
+            },
+        )
+        .await
+        .expect("the admin keeps writing in the channel");
+    }
+
+    // Without the block the exemption applies again.
+    query("DELETE FROM cloud_account_blocks WHERE blocker_account_id = ANY($1)")
+        .bind(vec![admin.clone(), member.clone()])
+        .execute(&pool)
+        .await
+        .unwrap();
+    store::add_conversation_members(&pool, &admin, first, members_request(&[&member], false))
+        .await
+        .expect("an admin without a block can add them back");
+    assert_eq!(state_in(first).await.as_deref(), Some("active"));
+}
+
+#[tokio::test]
 async fn a_conversation_joins_only_a_space_its_sender_belongs_to() {
     let Some(pool) = try_pool().await else { return };
     let owner = account(&pool, "space-owner").await;

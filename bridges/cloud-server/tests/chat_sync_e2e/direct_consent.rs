@@ -328,3 +328,143 @@ async fn support_chats_are_exempt_and_agent_chats_follow_the_contact_rule() {
         store::send_message(&pool, &user, agent_chat.id, text("another")).await
     ));
 }
+
+fn shared_ai(members: Vec<String>) -> CreateConversationRequest {
+    CreateConversationRequest {
+        client_operation_id: Uuid::now_v7(),
+        kind: ConversationKind::Ai,
+        shared_title: None,
+        client_session_id: format!("session:self-agent:{}", Uuid::now_v7()),
+        member_account_ids: members,
+    }
+}
+
+fn title(expected_version: i32, value: &str) -> UpdateConversationTitleRequest {
+    UpdateConversationTitleRequest {
+        client_operation_id: Uuid::now_v7(),
+        expected_version,
+        shared_title: Some(value.to_string()),
+    }
+}
+
+async fn sync_events(pool: &PgPool, account_id: &str, conversation_id: Uuid) -> i64 {
+    query_as::<_, (i64,)>(
+        "SELECT COUNT(*) FROM cloud_chat_user_sync_events \
+         WHERE account_id = $1 AND conversation_id = $2",
+    )
+    .bind(account_id)
+    .bind(conversation_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+    .0
+}
+
+#[tokio::test]
+async fn ai_conversations_with_another_person_follow_the_contact_rule() {
+    let Some(pool) = try_pool().await else { return };
+    let owner = account(&pool, "consent-ai-owner").await;
+    let peer = account(&pool, "consent-ai-peer").await;
+    connect_accounts(&pool, &owner, &peer).await;
+    let shared = store::create_conversation(&pool, &owner, shared_ai(vec![peer.clone()]))
+        .await
+        .expect("contacts can share an AI conversation")
+        .value;
+    let own = store::create_conversation(&pool, &owner, shared_ai(Vec::new()))
+        .await
+        .expect("an AI conversation of one's own")
+        .value;
+    let sent = store::send_message(&pool, &owner, shared.id, text("hello"))
+        .await
+        .expect("contacts can write")
+        .value;
+
+    // Nobody can leave an AI conversation, so removal must stop writing.
+    remove_contact(&pool, &owner, &peer).await;
+    for account_id in [&owner, &peer] {
+        assert!(requires_contact(
+            store::send_message(&pool, account_id, shared.id, text("after removal")).await
+        ));
+    }
+    assert!(requires_contact(
+        store::edit_message(
+            &pool,
+            &owner,
+            shared.id,
+            sent.id,
+            UpdateMessageRequest {
+                expected_version: sent.version,
+                text: "edited".to_string(),
+            },
+        )
+        .await
+    ));
+    assert!(requires_contact(
+        store::set_reaction(&pool, &peer, shared.id, sent.id, "👍", true).await
+    ));
+    assert!(requires_contact(
+        store::update_shared_title(&pool, &owner, shared.id, title(shared.version, "Plans")).await
+    ));
+    for account_id in [&owner, &peer] {
+        let history = store::history(&pool, account_id, shared.id, None, None)
+            .await
+            .expect("history stays readable");
+        assert_eq!(history.messages.len(), 1);
+    }
+    store::send_message(&pool, &owner, own.id, text("note to self"))
+        .await
+        .expect("an AI conversation of one's own needs nobody's consent");
+
+    // Contacts again: writing works until a block in either direction.
+    connect_accounts(&pool, &owner, &peer).await;
+    store::send_message(&pool, &peer, shared.id, text("welcome back"))
+        .await
+        .expect("contacts can write again");
+    block(&pool, &peer, &owner).await;
+    for account_id in [&owner, &peer] {
+        assert!(requires_contact(
+            store::send_message(&pool, account_id, shared.id, text("after block")).await
+        ));
+    }
+    store::send_message(&pool, &owner, own.id, text("still mine"))
+        .await
+        .expect("a block leaves one's own AI conversations alone");
+}
+
+#[tokio::test]
+async fn shared_titles_outside_groups_follow_the_contact_rule() {
+    let Some(pool) = try_pool().await else { return };
+    let owner = account(&pool, "consent-title-owner").await;
+    let peer = account(&pool, "consent-title-peer").await;
+    connect_accounts(&pool, &owner, &peer).await;
+    let chat = store::create_conversation(
+        &pool,
+        &owner,
+        direct(&peer, direct_person_session_id(&owner, &peer)),
+    )
+    .await
+    .unwrap()
+    .value;
+    let (group, _) = super::group_consent::create_group(&pool, &owner, &[&peer]).await;
+    let renamed = store::update_shared_title(&pool, &owner, chat.id, title(chat.version, "Plans"))
+        .await
+        .expect("contacts can name their chat");
+
+    block(&pool, &peer, &owner).await;
+    let before = sync_events(&pool, &peer, chat.id).await;
+    assert!(requires_contact(
+        store::update_shared_title(&pool, &owner, chat.id, title(renamed.version, "Again")).await
+    ));
+    assert_eq!(sync_events(&pool, &peer, chat.id).await, before);
+
+    // Groups keep their own rules: the owner can still rename a shared group.
+    let (group_version,): (i32,) =
+        query_as("SELECT version FROM cloud_chat_conversations WHERE conversation_id = $1")
+            .bind(group)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    store::update_shared_title(&pool, &owner, group, title(group_version, "Team"))
+        .await
+        .expect("group titles do not need contacts");
+}

@@ -22,18 +22,28 @@ done
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 body_file="$work_dir/body.json"
+headers_file="$work_dir/headers.txt"
 status=""
 step=0
 
 uuid() { uuidgen | tr '[:upper:]' '[:lower:]'; }
 
 # call METHOD PATH [TOKEN] [JSON]: sets $status and writes the body to $body_file.
+# Sign-ups and invite links share a per-address budget that refills within a
+# minute, so a 429 that names a short Retry-After is retried after waiting.
 call() {
-  local method="$1" path="$2" token="${3:-}" json="${4:-}"
-  local args=(--silent --show-error --max-time 20 -o "$body_file" -w '%{http_code}' -X "$method")
+  local method="$1" path="$2" token="${3:-}" json="${4:-}" attempt wait
+  local args=(--silent --show-error --max-time 20 -o "$body_file" -D "$headers_file" -w '%{http_code}' -X "$method")
   [[ -n "$token" ]] && args+=(-H "authorization: Bearer $token")
   [[ -n "$json" ]] && args+=(-H 'content-type: application/json' --data "$json")
-  status="$(curl "${args[@]}" "$origin$path")"
+  for attempt in 1 2 3 4 5; do
+    status="$(curl "${args[@]}" "$origin$path")"
+    [[ "$status" == 429 ]] || return 0
+    wait="$(awk 'tolower($1) == "retry-after:" { print $2 + 0 }' "$headers_file")"
+    [[ "$wait" =~ ^[0-9]+$ ]] && (( wait <= 60 )) || return 0
+    echo "INFO waiting ${wait}s for the per-address budget (attempt $attempt)"
+    sleep $((wait + 1))
+  done
 }
 
 body() { jq -r "$1" "$body_file"; }
@@ -144,12 +154,25 @@ send_text a "$chat_id" "Hello B"
 expect "A sends a message" 201
 message_id="$(body .message.id)"
 assert "A sees B online" presence_includes a b
+call POST /v2/chat/conversations "$(tok a)" "$(jq -n --arg op "$(uuid)" --arg session "session:self-agent:$(uuid)" \
+  --arg peer "$(acct b)" \
+  '{client_operation_id: $op, kind: "ai", shared_title: null, client_session_id: $session, member_account_ids: [$peer]}')"
+expect_success "A shares an AI chat with B"
+ai_chat_id="$(body .conversation.id)"
+send_text a "$ai_chat_id" "Shared AI hello"
+expect "A writes in the shared AI chat" 201
 
 # 5. A block closes every channel between them.
 call PUT "/v1/cloud/blocks/$(acct a)" "$(tok b)" '{}'
 expect "B blocks A" 200
 send_text a "$chat_id" "Are you there?"
 expect "A can no longer send" 403 CHAT_RELATIONSHIP_REQUIRED
+send_text a "$ai_chat_id" "Still there?"
+expect "A can no longer write in the shared AI chat" 403 CHAT_RELATIONSHIP_REQUIRED
+# B owns the direct chat (accepting created it); its shared title is closed too.
+call PATCH "/v2/chat/conversations/$chat_id" "$(tok b)" "$(jq -n --arg op "$(uuid)" \
+  '{client_operation_id: $op, expected_version: 1, shared_title: "Renamed"}')"
+expect "the direct chat's shared title can no longer change" 403 CHAT_RELATIONSHIP_REQUIRED
 request_contact a b
 expect "A cannot send B a request" 403 contact_request_unavailable
 request_contact b a

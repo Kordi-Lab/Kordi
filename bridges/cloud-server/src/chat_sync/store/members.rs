@@ -67,7 +67,14 @@ pub async fn add_conversation_members(
         .filter(|member| !current.contains(member))
         .cloned()
         .collect::<Vec<_>>();
-    drop_members_who_left(&mut transaction, conversation_id, &space, &mut missing).await?;
+    drop_members_who_left(
+        &mut transaction,
+        conversation_id,
+        account_id,
+        &space,
+        &mut missing,
+    )
+    .await?;
     let removed = if request.replace {
         current
             .iter()
@@ -191,34 +198,44 @@ pub async fn add_conversation_members(
 }
 
 /// Removes from `missing` everyone who left this conversation and is not an
-/// active member of the space's main conversation. People who leave come back
-/// only through an invite link; until then a member list naming them changes
-/// nothing for them.
+/// active member of the space's main conversation, and everyone who left it
+/// while they and `actor_account_id` have a block between them. People who
+/// leave come back only through an invite link (or, in a channel, through an
+/// admin they have no block with); until then a member list naming them
+/// changes nothing for them.
 async fn drop_members_who_left(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: Uuid,
+    actor_account_id: &str,
     space: &GroupSpace,
     missing: &mut Vec<String>,
 ) -> Result<(), StoreError> {
     if missing.is_empty() {
         return Ok(());
     }
-    let left: Vec<String> = query_as::<_, (String,)>(
-        "SELECT account_id FROM cloud_chat_conversation_members
+    let left: Vec<(String, bool)> = query_as(
+        "SELECT account_id, cloud_accounts_blocked_either_way($3, account_id)
+         FROM cloud_chat_conversation_members
          WHERE conversation_id = $1 AND account_id = ANY($2) AND membership_state = 'left'",
     )
     .bind(conversation_id)
     .bind(&*missing)
+    .bind(actor_account_id)
     .fetch_all(&mut **transaction)
-    .await?
-    .into_iter()
-    .map(|(account_id,)| account_id)
-    .collect();
+    .await?;
     if left.is_empty() {
         return Ok(());
     }
-    let returned = active_in_root(transaction, &space.root, &left).await?;
-    missing.retain(|member| !left.contains(member) || returned.contains(member));
+    let left_ids = left
+        .iter()
+        .map(|(account_id, _)| account_id.clone())
+        .collect::<Vec<_>>();
+    let returned = active_in_root(transaction, &space.root, &left_ids).await?;
+    missing.retain(|member| {
+        left.iter()
+            .find(|(account_id, _)| account_id == member)
+            .is_none_or(|(_, blocked)| !blocked && returned.contains(member))
+    });
     Ok(())
 }
 

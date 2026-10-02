@@ -1,9 +1,9 @@
 //! Consent gates for conversations between people.
 //!
 //! Two accounts are contacts only while both accepted each other and neither
-//! blocked the other (`cloud_accounts_are_contacts`). Direct conversations and
-//! adding people to groups need that relationship; messaging inside a group
-//! one already belongs to does not.
+//! blocked the other (`cloud_accounts_are_contacts`). Direct and AI
+//! conversations with other people, and adding people to groups, need that
+//! relationship; messaging inside a group one already belongs to does not.
 
 use super::*;
 
@@ -18,9 +18,11 @@ pub const GROUP_ADD_REQUIRES_CONTACT: &str =
 /// Kordi Support conversations are exempt: they are with a service account.
 const SYSTEM_AGENT_SESSION_PATTERN: &str = "session:direct-system-agent:%";
 
-/// Requires every other active member of a direct conversation to be a
-/// contact of `account_id`. Other conversation kinds and Kordi Support
-/// conversations pass unchanged. Call it after `require_active_member`.
+/// Requires every other active person in a conversation that is not a group
+/// (`direct` or `ai`) to be a contact of `account_id`. Nobody can leave such a
+/// conversation, so removing or blocking a contact must stop writing there.
+/// Groups, Kordi Support conversations, and server-managed members pass
+/// unchanged. Call it after `require_active_member`.
 pub(crate) async fn require_direct_relationship(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: Uuid,
@@ -32,15 +34,17 @@ pub(crate) async fn require_direct_relationship(
            JOIN cloud_chat_conversation_members other \
              ON other.conversation_id = conversation.conversation_id \
            WHERE conversation.conversation_id = $1 \
-             AND conversation.kind = 'direct' \
+             AND conversation.kind IN ('direct', 'ai') \
              AND COALESCE(conversation.legacy_session_id, '') NOT LIKE $3 \
              AND other.account_id <> $2 \
+             AND NOT (other.account_id = ANY($4)) \
              AND other.membership_state = 'active' \
              AND NOT cloud_accounts_are_contacts($2, other.account_id))",
     )
     .bind(conversation_id)
     .bind(account_id)
     .bind(SYSTEM_AGENT_SESSION_PATTERN)
+    .bind(super::service_members::service_member_ids())
     .fetch_one(&mut **transaction)
     .await?;
     if blocked.0 {
@@ -129,6 +133,7 @@ pub(super) async fn active_in_root(
 /// Requires each account an admin adds to a group to be the admin's contact,
 /// unless this is a channel of a space and both are active in its main
 /// conversation (for example, someone who joined through an invite link).
+/// That exception never applies while either of the two blocked the other.
 pub(super) async fn require_contacts_for_group_add(
     transaction: &mut Transaction<'_, Postgres>,
     actor_account_id: &str,
@@ -138,24 +143,32 @@ pub(super) async fn require_contacts_for_group_add(
     if added.is_empty() {
         return Ok(());
     }
-    let rows: Vec<(String,)> = query_as(
-        "SELECT peer.account_id FROM unnest($2::TEXT[]) AS peer(account_id) \
+    let rows: Vec<(String, bool)> = query_as(
+        "SELECT peer.account_id, cloud_accounts_blocked_either_way($1, peer.account_id) \
+         FROM unnest($2::TEXT[]) AS peer(account_id) \
          WHERE NOT cloud_accounts_are_contacts($1, peer.account_id)",
     )
     .bind(actor_account_id)
     .bind(added)
     .fetch_all(&mut **transaction)
     .await?;
-    let mut strangers = rows.into_iter().map(|(id,)| id).collect::<Vec<_>>();
-    if strangers.is_empty() {
+    if rows.is_empty() {
         return Ok(());
     }
+    let mut strangers = rows
+        .iter()
+        .map(|(account_id, _)| account_id.clone())
+        .collect::<Vec<_>>();
     if !space.is_root {
         let mut candidates = strangers.clone();
         candidates.push(actor_account_id.to_string());
         let active = active_in_root(transaction, &space.root, &candidates).await?;
         if active.contains(actor_account_id) {
-            strangers.retain(|account_id| !active.contains(account_id));
+            strangers = rows
+                .into_iter()
+                .filter(|(account_id, blocked)| *blocked || !active.contains(account_id))
+                .map(|(account_id, _)| account_id)
+                .collect();
         }
     }
     if strangers.is_empty() {

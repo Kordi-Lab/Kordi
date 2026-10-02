@@ -32,9 +32,12 @@ These need both people to be contacts (and neither to have blocked the other):
 - starting a direct chat, a group, or an AI chat with the other person
   (chats with Kordi Support are exempt);
 - adding the other person to a group, except that an admin may add someone who
-  is already an active member of the same group space to one of its channels;
-- sending, editing, reacting, updating voice transcripts, and calling in an
-  existing direct chat, including a direct chat with another person's agent;
+  is already an active member of the same group space to one of its channels
+  (never while either of them blocked the other);
+- sending, editing, reacting, updating voice transcripts, changing the shared
+  title, and calling in an existing direct chat, including a direct chat with
+  another person's agent. An AI chat shared with another person follows the
+  same rule, because nobody can leave it;
 - asking the other person's default Kordi agent for help, anywhere: mentions,
   handoffs, follow-ups, and the agent reading chat context.
 
@@ -57,9 +60,10 @@ Either person can remove the other. Both directions of the relationship end at
 once; the other person's contact list refreshes but they get no other notice.
 
 - Your direct chat history stays readable for both of you.
-- New messages, edits, reactions, voice transcript updates, and calls in that
-  direct chat are refused. Removing your own reaction and deleting your own
-  message still work. A ringing or active direct call between you ends.
+- New messages, edits, reactions, voice transcript updates, shared title
+  changes, and calls in that direct chat (or an AI chat you share) are
+  refused. Removing your own reaction and deleting your own message still
+  work. A ringing or active direct call between you ends.
 - Online status stops in both directions, and neither can use the other's
   default agent.
 - Groups you share are not affected.
@@ -78,9 +82,10 @@ When you block someone:
   withdrawn, without telling them;
 - they cannot send you contact requests ("You can't send a contact request to
   this account"), and you must unblock them before sending one yourself;
-- direct messages and direct calls between you are refused, neither of you can
-  add the other to a group, online status is hidden both ways, and neither can
-  use the other's default or shared agents;
+- direct messages, direct calls, and writing in an AI chat you share are
+  refused, neither of you can add the other to a group or a channel (or add
+  them back after they leave one), online status is hidden both ways, and
+  neither can use the other's default or shared agents;
 - they cannot join a group through an invite link you created. Links created by
   other admins of that group still work for them;
 - in groups you share, nobody is removed. You still see their messages
