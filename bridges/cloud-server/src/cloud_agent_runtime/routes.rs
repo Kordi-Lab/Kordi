@@ -419,8 +419,7 @@ mod runner_token_tests;
 mod test_route;
 
 use runner_auth::runner_authorized;
-pub use runner_auth::runner_authorized_for_scheduled_tasks;
-pub(crate) use runner_auth::runner_run_authorized;
+pub(crate) use runner_auth::{require_runner_token, runner_run_authorized};
 
 #[derive(serde::Deserialize)]
 struct RunnerPlanCardRequest {

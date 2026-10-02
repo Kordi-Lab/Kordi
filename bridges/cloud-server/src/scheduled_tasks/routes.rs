@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use axum::extract::{Path, State};
 use axum::http::header::RETRY_AFTER;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Extension, Json, Router};
@@ -13,7 +13,7 @@ use serde_json::json;
 
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
-use crate::cloud_agent_runtime::routes::runner_authorized_for_scheduled_tasks;
+use crate::cloud_agent_runtime::routes::require_runner_token;
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
     ScheduledTaskTargetRuntime,
@@ -82,8 +82,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         ))
         .with_state(state.clone());
 
+    // The shared runner token is checked before the body is read or parsed.
     let runner_routes = Router::new()
         .route("/v1/cloud/scheduled-task-runs/claim", post(claim_runs))
+        .route_layer(axum::middleware::from_fn(require_runner_token))
         .with_state(state);
 
     user_routes.merge(runner_routes)
@@ -301,16 +303,8 @@ async fn list_task_runs(
 
 async fn claim_runs(
     State(state): State<Arc<ServerState>>,
-    headers: HeaderMap,
     Json(input): Json<ClaimRunsRequest>,
 ) -> Response {
-    if !runner_authorized_for_scheduled_tasks(&headers) {
-        return error_response(
-            "invalid_runner_token",
-            "Missing or invalid Cloud runner token.",
-            StatusCode::UNAUTHORIZED,
-        );
-    }
     if input.runner_id.trim().is_empty() {
         return error_response(
             "invalid_runner_request",
@@ -331,3 +325,7 @@ async fn claim_runs(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "routes_tests.rs"]
+mod tests;
