@@ -1,19 +1,26 @@
 @property --app-native-sidebar-width {
-  syntax: '<length>';
+  /* WebKit page zoom pre-scales registered lengths. Animate a number so the
+     titlebar track stays in the same coordinates as the workspace grid. */
+  syntax: '<number>';
   inherits: true;
-  initial-value: 0px;
+  initial-value: 0;
+}
+@property --app-shell-panel-width {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
 }
 
 .app-native-titlebar {
   /* Derive traffic-light clearance from the animated width, not its target. */
-  --app-native-navigation-overhang: max(0px, calc(120px - var(--app-native-sidebar-width)));
+  --app-native-navigation-overhang: max(0px, calc(max(120px, calc(120px / var(--app-interface-zoom, 1))) - var(--app-native-sidebar-width) * 1px));
   position: relative;
   z-index: 70;
   display: grid;
-  grid-template-columns: var(--app-native-sidebar-width) minmax(0, 1fr);
+  grid-template-columns: calc(var(--app-native-sidebar-width) * 1px) minmax(0, 1fr);
   align-items: center;
   min-width: 0;
-  height: var(--app-native-titlebar-height);
+  height: var(--app-native-titlebar-layout-height, var(--app-native-titlebar-height));
   background: var(--app-native-session-bg);
   color: var(--utility-foreground);
   user-select: none;
@@ -27,7 +34,8 @@
   align-items: center;
   gap: 4px;
   height: 100%;
-  padding-left: 80px;
+  /* AppKit's traffic lights keep their native size when page content zooms. */
+  padding-left: max(80px, calc(80px / var(--app-interface-zoom, 1)));
 }
 
 .app-native-titlebar-title {
@@ -204,7 +212,7 @@ html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(
 /* Panel tracks and their titlebar separator move together. Manual resizing
    still disables these transitions through the shell's resize state. */
 .app-native-viewport .app-shell-layout-grid {
-  transition: grid-template-columns 260ms cubic-bezier(0.32, 0.72, 0, 1);
+  transition: --app-shell-panel-width 260ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 .app-native-titlebar {
   transition: --app-native-sidebar-width 260ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -221,18 +229,24 @@ html.kordi-native-shell .kordi-app .app-shell-content {
 }
 
 
-/* A folded sidebar leaves the icon rail beside the workspace. Keep its edge
-   quiet; the short titlebar separator provides the visual division. */
+/* A folded sidebar leaves the icon rail beside the workspace. Hide the
+   titlebar divider instead of floating it past the conversation's edge. */
 html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-shell-layout-grid > .app-shell-content {
   border-left-width: 0;
 }
 html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-native-titlebar > .app-native-titlebar-workspace {
   padding-inline-start: 0;
 }
+html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-native-titlebar > .app-native-titlebar-workspace::before {
+  content: none;
+}
 
+.app-native-viewport {
+  --app-native-titlebar-layout-height: max(var(--app-native-titlebar-height), calc(var(--app-native-titlebar-height) / var(--app-interface-zoom, 1)));
+}
 .app-native-viewport > .app-shell {
   display: grid;
-  grid-template-rows: var(--app-native-titlebar-height) minmax(0, 1fr);
+  grid-template-rows: var(--app-native-titlebar-layout-height) minmax(0, 1fr);
   position: relative;
   width: 100%;
   max-width: none;

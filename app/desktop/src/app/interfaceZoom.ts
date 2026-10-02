@@ -2,8 +2,15 @@ import { useEffect } from 'react';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 
 export const INTERFACE_ZOOM_STORAGE_KEY = 'kordi.interfaceZoom.v1';
+export const INTERFACE_ZOOM_EVENT = 'kordi:interface-zoom-changed';
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 1.6;
+
+/** The applied page zoom, independent of the display's native pixel density. */
+export function readAppliedInterfaceZoom(): number {
+  const value = Number(document.documentElement.dataset.kordiInterfaceZoom);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
 
 export function readStoredInterfaceZoom(storage?: Pick<Storage, 'getItem'>): number {
   try {
@@ -29,6 +36,8 @@ export function useInterfaceZoom(isNativeShell: boolean) {
       zoom = next;
       void getCurrentWebview().setZoom(next).then(() => {
         document.documentElement.dataset.kordiInterfaceZoom = String(next);
+        document.documentElement.style.setProperty('--app-interface-zoom', String(next));
+        window.dispatchEvent(new window.Event(INTERFACE_ZOOM_EVENT));
       }).catch(() => undefined);
     };
     apply(zoom);
