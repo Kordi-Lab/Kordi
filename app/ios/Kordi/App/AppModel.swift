@@ -2675,7 +2675,7 @@ final class AppModel: ObservableObject {
             } catch {
                 guard self.token == token, account?.accountId == deletingAccountID,
                       !CloudTransportErrorPolicy.isCancellation(error) else { return false }
-                errorMessage = userFacing(error, fallback: "Could not delete this message.")
+                errorMessage = userFacing(error, fallback: "Could not delete the message. Try again.")
                 return false
             }
         }

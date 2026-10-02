@@ -11,8 +11,12 @@ final class MessageDeletionUITests: XCTestCase {
         let target = message("m5", in: app)
         capture("Text before deletion", app: app)
         app.buttons["Delete"].tap()
-        let confirm = app.buttons["Delete for me"]
+        // Someone else's message offers only removal from this account's view.
+        let confirm = app.buttons["message-delete-for-me"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertEqual(confirm.label, "Remove from my view")
+        XCTAssertFalse(app.buttons["message-delete-for-everyone"].exists)
+        capture("Remove from my view choice", app: app)
         confirm.tap()
         assertRenderedParticles("m5:message", in: app)
         for frame in 1...3 {
@@ -37,8 +41,12 @@ final class MessageDeletionUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Delete photo"].waitForExistence(timeout: 15))
         capture("Photos before deletion", app: app)
         app.buttons["Delete photo"].tap()
-        let confirm = app.buttons["Delete photo for me and Maya Chen"]
+        let confirm = app.buttons["photo-delete-for-everyone"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertEqual(confirm.label, "Delete photo for everyone")
+        XCTAssertEqual(app.buttons["photo-delete-for-me"].label, "Remove photo from my view")
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "message-delete-footnote").firstMatch.exists)
+        capture("Photo delete choices with helper text and footnote", app: app)
         confirm.tap()
         for frame in 1...3 {
             capture("Particle transition frame \(frame)", app: app)
@@ -64,10 +72,10 @@ final class MessageDeletionUITests: XCTestCase {
         measure(metrics: [XCTHitchMetric(application: app)], options: options) {
             openTextMenu(in: app)
             app.buttons["Delete"].tap()
-            XCTAssertTrue(app.buttons["Delete for me"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons["message-delete-for-me"].waitForExistence(timeout: 5))
             startMeasuring()
-            app.buttons["Delete for me"].tap()
-            XCTAssertTrue(app.buttons["Delete for me"].waitForNonExistence(timeout: 5))
+            app.buttons["message-delete-for-me"].tap()
+            XCTAssertTrue(app.buttons["message-delete-for-me"].waitForNonExistence(timeout: 5))
             XCTAssertTrue(message("m5", in: app).waitForNonExistence(timeout: 5))
             stopMeasuring()
             XCTAssertTrue(revealMessage("m4-voice", in: app))
@@ -379,8 +387,9 @@ final class MessageDeletionUITests: XCTestCase {
         pressCenter(of: second, in: app)
         XCTAssertTrue(app.buttons["Delete photo"].waitForExistence(timeout: 5))
         app.buttons["Delete photo"].tap()
-        XCTAssertTrue(app.buttons["Delete photo for me"].waitForExistence(timeout: 5))
-        app.buttons["Delete photo for me"].tap()
+        XCTAssertTrue(app.buttons["photo-delete-for-me"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["photo-delete-for-everyone"].label, "Delete photo for everyone")
+        app.buttons["photo-delete-for-me"].tap()
         assertRenderedParticles("image-caption:att_preview_image_bars", in: app)
         XCTAssertTrue(second.waitForNonExistence(timeout: 5))
         XCTAssertTrue(first.exists)
@@ -530,7 +539,8 @@ final class MessageDeletionUITests: XCTestCase {
         pressCenter(of: second, in: app)
         XCTAssertTrue(app.buttons["Delete photo"].waitForExistence(timeout: 5))
         app.buttons["Delete photo"].tap()
-        app.buttons["Delete photo for me"].tap()
+        XCTAssertTrue(app.buttons["photo-delete-for-me"].waitForExistence(timeout: 5))
+        app.buttons["photo-delete-for-me"].tap()
         XCTAssertTrue(second.waitForNonExistence(timeout: 8))
         XCTAssertTrue(first.exists)
         XCTAssertTrue(app.staticTexts["A caption with bold text stays independent of the image."].exists)
