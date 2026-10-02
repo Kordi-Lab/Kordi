@@ -23,6 +23,9 @@ use super::routes::{dispatch, Actor};
 use super::suggestions::Dispatched;
 use super::wire::Request;
 
+/// Members PiP may suggest an answer or vote for: those who wrote one of the
+/// run's new messages themselves. A reply a member's agent wrote is not that
+/// member's word.
 fn represented_accounts(prompt: &str) -> BTreeSet<String> {
     let Ok(input) = serde_json::from_str::<Value>(prompt) else {
         return BTreeSet::new();
@@ -31,10 +34,12 @@ fn represented_accounts(prompt: &str) -> BTreeSet<String> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|message| message["isNew"] == true)
+        .filter(|message| message["isNew"] == true && message["fromAgent"] != true)
         .filter(|message| {
-            message["id"]
+            // The run input names messages `messageId`; `id` is the older name.
+            message["messageId"]
                 .as_str()
+                .or_else(|| message["id"].as_str())
                 .is_some_and(|message_id| !message_id.is_empty())
         })
         .filter_map(|message| message["senderId"].as_str().map(str::to_string))
@@ -192,6 +197,35 @@ mod tests {
         assert_eq!(
             represented_accounts(&prompt),
             std::collections::BTreeSet::from(["new-member".to_string()])
+        );
+    }
+
+    #[test]
+    fn represented_accounts_read_the_run_input_and_skip_agent_replies() {
+        let messages = crate::pip::context::budget_messages(
+            ["writer", "agent-owner"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, sender)| crate::pip::context::ContextMessage {
+                    id: format!("m{index}"),
+                    sequence: 10 + index as i64,
+                    sender_id: sender.to_string(),
+                    sender_name: sender.to_string(),
+                    kind: "text".to_string(),
+                    text: "Saturday works".to_string(),
+                    created_at: String::new(),
+                    from_agent: sender == "agent-owner",
+                })
+                .rev()
+                .collect(),
+            0,
+            5,
+            "acct_pip",
+        );
+        let prompt = json!({ "messages": messages }).to_string();
+        assert_eq!(
+            represented_accounts(&prompt),
+            std::collections::BTreeSet::from(["writer".to_string()])
         );
     }
 }

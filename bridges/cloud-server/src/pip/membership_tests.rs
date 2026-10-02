@@ -385,6 +385,23 @@ async fn pip_input_leaves_out_opted_out_members() {
         .unwrap();
     send_text(&pool, &open, chat, "Count me in for Saturday").await;
     send_text(&pool, &quiet, chat, "I can't make Saturday").await;
+    // A reply the quiet member's agent wrote is not covered by the setting.
+    let envelope = json!({"kind": "group-message", "message": {
+        "id": format!("agent-{suffix}"), "senderAccountId": quiet, "senderKind": "agent",
+        "senderAgentId": format!("cloud-agent:{quiet}"), "text": "Agent note: Saturday is open"}});
+    send_text(
+        &pool,
+        &quiet,
+        chat,
+        &format!(
+            "kordi-cloud-group:{}",
+            base64::Engine::encode(
+                &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                envelope.to_string()
+            )
+        ),
+    )
+    .await;
     let (start, latest): (i64, i64) = query_as(
         "SELECT state.context_start_sequence, conversation.latest_message_sequence
          FROM cloud_pip_conversation_state state
@@ -424,10 +441,17 @@ async fn pip_input_leaves_out_opted_out_members() {
         .iter()
         .map(|message| message["text"].as_str().unwrap().to_string())
         .collect::<Vec<_>>();
-    assert_eq!(texts, vec!["Count me in for Saturday".to_string()]);
-    assert!(input["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|message| message["senderId"] != json!(quiet)));
+    assert_eq!(
+        texts,
+        vec![
+            "Count me in for Saturday".to_string(),
+            "Agent note: Saturday is open".to_string()
+        ]
+    );
+    for message in input["messages"].as_array().unwrap() {
+        // The quiet member appears only through their agent's reply, which
+        // never lets PiP suggest an answer for them.
+        let from_quiet = message["senderId"] == json!(quiet);
+        assert_eq!(message["fromAgent"], json!(from_quiet), "{message}");
+    }
 }

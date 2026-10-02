@@ -94,7 +94,7 @@ confirm, and writing calendars never use the model.
 
 | Part | Limit |
 | --- | --- |
-| Messages | The newest 30, each cut to 400 characters, 6,000 characters in total; card-only messages are left out; `isNew` marks unseen ones |
+| Messages | The newest 30, each cut to 400 characters, 6,000 characters in total; card-only messages, AI access notices, and messages written by a member who keeps their messages from AI are left out (replies their agents wrote stay); `isNew` marks unseen ones and `fromAgent` marks agent replies |
 | Members | Everyone up to 40; in a larger group the people speaking and on the card first, plus `memberCount` |
 | Open card | Counts for going, declined, pending, and voted; each option's `voteCount`; above 30 participants only the organizer and people who have not answered are named |
 | Tool results | The same compact card, never the full voter list |
@@ -162,7 +162,7 @@ creates a pending action instead:
 
 | PiP calls | Pending action | Who decides |
 | --- | --- | --- |
-| `rsvp` or `vote` for a member | `plan_rsvp` or `plan_vote`, naming the plan's title, time, and place, or the option | that member; only for members who wrote in the run's new messages, and never for a member who keeps their messages from AI |
+| `rsvp` or `vote` for a member | `plan_rsvp` or `plan_vote`, naming the plan's title, time, and place, or the option | that member; only for members who wrote one of the run's new messages themselves (a reply their agent wrote does not count), and never for a member who keeps their messages from AI |
 | `confirm`, `cancel`, `reopen` | `plan_confirm`, `plan_cancel`, `plan_reopen`, carrying the card revision PiP saw | any organizer of the plan or chat owner or admin |
 | `propose` | none; the card changes. The organizer starts pending like everyone else and gets a `plan_rsvp` yes suggestion | the organizer |
 
