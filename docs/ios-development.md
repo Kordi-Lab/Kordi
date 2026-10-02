@@ -131,6 +131,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-media-separated` | The same selected images sent as separate messages |
 | `--preview-photo-send` | One-page photo picker with grouped-message control |
 | `--preview-group-chat` | Group conversation |
+| `--preview-agent-actions` | Sample calendar-sharing and PiP requests in the group's "Waiting for you" banner; combine with `--preview-data --preview-group-chat` |
 | `--preview-group-only` | Contact timeline containing only group spaces |
 | `--preview-channel-create` | Centered channel-name dialog for the sample group; combine with `--preview-data` |
 | `--preview-expanded-groups` | Group rows with their session list expanded |

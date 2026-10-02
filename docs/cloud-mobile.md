@@ -51,6 +51,21 @@ Outgoing messages appear optimistically and retain their original client message
 
 The iPhone currently uses ordered HTTP cursor recovery while foregrounded instead of opening the desktop presence WebSocket. It must not make the service believe the owner's Mac execution runtime is online.
 
+## AI access and actions that need a person
+
+The iPhone reads and changes per-conversation AI access, decides requests that wait for a person, and asks who wrote an agent reply:
+
+```http
+GET  /v2/chat/ai-features
+GET  /v2/chat/conversations/:sessionId/ai-access
+PUT  /v2/chat/conversations/:sessionId/ai-access
+GET  /v1/cloud/agent-actions?sessionId=...
+POST /v1/cloud/agent-actions/:actionId/decision
+POST /v1/cloud/agent-runs/disclosures
+```
+
+The session id is percent-encoded as one path segment. `CloudChatConversation` does not declare `ai_access`, so a missing or reshaped value never fails sync; the AI access screen reads it through the dedicated route. `agent_action.updated` is a non-critical sync event that only tells the app to reload what is waiting for the person, so older apps skip it. AI access notices are recognized only by the stored message kind `ai-access-notice`, never by anything in the message body.
+
 ## Attachments and agent execution
 
 Attachment upload and download stay on the authenticated resource API, while attachment relationships are stored on canonical chat messages. Agent requests claim execution through the Cloud agent-run APIs. Owner-online claims execute on the connected macOS runtime; otherwise the hosted fallback runner can execute. Every result is persisted as a canonical assistant message before it is considered delivered.
