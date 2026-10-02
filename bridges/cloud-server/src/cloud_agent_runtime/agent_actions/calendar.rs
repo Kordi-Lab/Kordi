@@ -100,8 +100,11 @@ pub(crate) async fn calendar_gate(
     }
 
     let mut tx = pool.begin().await?;
+    // The shared title, or the group's title for a channel without one.
     let (conversation_id, title): (Uuid, Option<String>) = query_as(
-        "SELECT conversation_id, shared_title FROM cloud_chat_conversations
+        "SELECT conversation_id,
+                COALESCE(NULLIF(trim(shared_title), ''), NULLIF(trim(group_title), ''))
+         FROM cloud_chat_conversations
          WHERE legacy_session_id = $1",
     )
     .bind(session_id)

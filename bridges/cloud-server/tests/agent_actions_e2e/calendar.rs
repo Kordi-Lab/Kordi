@@ -137,12 +137,25 @@ async fn a_decline_binds_one_request_and_waiting_requests_expire() {
         return;
     };
     save_event(&group).await;
+    // A channel named only by its group still names the chat.
+    query(
+        "UPDATE cloud_chat_conversations SET shared_title = NULL, group_title = 'Book club'
+         WHERE conversation_id = $1",
+    )
+    .bind(group.conversation)
+    .execute(&group.pool)
+    .await
+    .unwrap();
     let first = format!("dec-1-{}", group.tag);
     group
         .ask(&group.owner, &first, "share my calendar here")
         .await;
     let (_, waiting) = read_shared(&group, &first, (START, END)).await;
     let action_id = waiting["pendingActionId"].as_str().unwrap().to_string();
+    assert_eq!(
+        group.actions(&group.owner).await[0]["subject"]["conversationTitle"],
+        "Book club"
+    );
     let (status, declined) = group.decide(&group.owner, &action_id, "decline").await;
     assert_eq!(status, StatusCode::OK, "{declined}");
     assert_eq!(declined["action"]["status"], "declined");
