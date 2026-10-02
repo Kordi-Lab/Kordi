@@ -84,12 +84,13 @@ pub async fn update_ai_access(
         resolve_conversation(&mut transaction, account_id, conversation_ref).await?;
     let request_fingerprint = fingerprint(&change.intent(conversation_id))?;
     // Turning PiP on repairs a missing membership even when the stored
-    // setting already said "on", and a retried request repairs it again.
+    // setting already said "on". The join after commit rechecks the setting,
+    // so it never brings PiP back to a group that turned it off since.
     let join_pip = (change == Change::PipEnabled(true))
         .then(|| pip_account.map(|pip| (conversation_id, pip.to_string())))
         .flatten();
     advisory_operation_lock(&mut transaction, account_id, request.client_operation_id).await?;
-    if let Some(existing) = existing_operation::<ConversationSnapshot>(
+    if existing_operation::<ConversationSnapshot>(
         &mut transaction,
         account_id,
         request.client_operation_id,
@@ -97,10 +98,21 @@ pub async fn update_ai_access(
         &request_fingerprint,
     )
     .await?
+    .is_some()
     {
+        // A retry changes nothing. It answers with the conversation as it is
+        // now, and may repair PiP's membership only for someone who still
+        // manages the group.
+        let join_pip = match join_pip {
+            Some(join) if manages_group(&mut transaction, conversation_id, account_id).await? => {
+                Some(join)
+            }
+            _ => None,
+        };
+        let conversation = load_conversation(&mut transaction, conversation_id, account_id).await?;
         transaction.commit().await?;
         return Ok(UpdatedAiAccess {
-            conversation: existing,
+            conversation,
             join_pip,
         });
     }
@@ -196,6 +208,28 @@ pub async fn update_ai_access(
         conversation,
         join_pip,
     })
+}
+
+/// Whether the account is an active owner or admin of this group now.
+async fn manages_group(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+    account_id: &str,
+) -> Result<bool, StoreError> {
+    let (manages,): (bool,) = query_as(
+        "SELECT EXISTS (
+             SELECT 1 FROM cloud_chat_conversations conversation
+             JOIN cloud_chat_conversation_members member
+               ON member.conversation_id = conversation.conversation_id
+             WHERE conversation.conversation_id = $1 AND conversation.kind = 'group'
+               AND member.account_id = $2 AND member.membership_state = 'active'
+               AND member.role IN ('owner', 'admin'))",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    Ok(manages)
 }
 
 /// Stores the change. Returns whether the stored value changed.

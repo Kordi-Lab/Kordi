@@ -12,7 +12,9 @@ use uuid::Uuid;
 /// deliberately excluded until both clients render a third member there.
 pub const PIP_CONVERSATION_KINDS: &[&str] = &["group"];
 
-/// Adds PiP to one conversation. Returns whether a new membership was created.
+/// Adds PiP to one conversation whose AI access setting turns PiP on; with
+/// the setting off (or no setting row) nothing changes. Returns whether a new
+/// membership was created.
 /// Members' devices hear about it through `membership.updated`, and PiP starts
 /// reading at the conversation's newest message on every join, so neither
 /// history from before PiP joined nor messages from while it was off are ever

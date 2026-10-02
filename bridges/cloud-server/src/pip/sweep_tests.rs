@@ -29,6 +29,18 @@ async fn say(pool: &PgPool, sender: &str, conversation_id: Uuid, text: &str) {
         .unwrap();
 }
 
+async fn set_pip_setting(pool: &PgPool, conversation_id: Uuid, enabled: bool) {
+    query(
+        "INSERT INTO cloud_chat_ai_policies (conversation_id, pip_enabled) VALUES ($1, $2)
+         ON CONFLICT (conversation_id) DO UPDATE SET pip_enabled = EXCLUDED.pip_enabled",
+    )
+    .bind(conversation_id)
+    .bind(enabled)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 async fn selected(pool: &PgPool, pip: &str, conversation_id: Uuid) -> bool {
     query("UPDATE cloud_pip_conversation_state SET checked_at = now() - interval '1 hour'")
         .execute(pool)
@@ -46,6 +58,7 @@ async fn selected(pool: &PgPool, pip: &str, conversation_id: Uuid) -> bool {
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
 async fn sweep_wakes_for_members_and_unseen_cards_only() {
+    let _settings = super::GROUP_SETTING_TESTS.read().await;
     let url =
         std::env::var("KORDI_DIGEST_TEST_DATABASE_URL").expect("isolated test database required");
     let pool = sqlx_postgres::PgPoolOptions::new()
@@ -72,7 +85,18 @@ async fn sweep_wakes_for_members_and_unseen_cards_only() {
     say(&pool, &pip, chat, "Vote card is up.").await;
     assert!(!selected(&pool, &pip, chat).await, "PiP's own message");
     say(&pool, &jordan, chat, "Dinner Friday at 7?").await;
+    assert!(
+        !selected(&pool, &pip, chat).await,
+        "a member in a group without the PiP setting is not read"
+    );
+    set_pip_setting(&pool, chat, true).await;
     assert!(selected(&pool, &pip, chat).await, "a member's message");
+    set_pip_setting(&pool, chat, false).await;
+    assert!(
+        !selected(&pool, &pip, chat).await,
+        "a group that turned PiP off is not read, even before PiP leaves"
+    );
+    set_pip_setting(&pool, chat, true).await;
 
     query("UPDATE cloud_pip_conversation_state SET seen_sequence = 100 WHERE conversation_id = $1")
         .bind(chat)

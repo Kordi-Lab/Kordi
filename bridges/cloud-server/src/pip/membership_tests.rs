@@ -13,6 +13,7 @@ use crate::plan_cards::tests::{seed_account, seed_conversation};
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
 async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
+    let _settings = super::GROUP_SETTING_TESTS.read().await;
     let url =
         std::env::var("KORDI_DIGEST_TEST_DATABASE_URL").expect("isolated test database required");
     let pool = sqlx_postgres::PgPoolOptions::new()
@@ -57,6 +58,13 @@ async fn pip_joins_at_the_newest_message_and_client_member_lists_keep_it() {
             .expect("send message");
     }
 
+    assert!(
+        !super::membership::join_conversation(&pool, pip, chat)
+            .await
+            .unwrap(),
+        "PiP never joins a group whose setting does not turn it on"
+    );
+    set_pip_setting(&pool, chat, true).await;
     assert!(super::membership::join_conversation(&pool, pip, chat)
         .await
         .unwrap());
@@ -176,6 +184,9 @@ async fn set_pip_setting(pool: &sqlx_postgres::PgPool, chat: Uuid, enabled: bool
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
 async fn startup_reconciles_pip_membership_with_each_group_setting() {
+    // Reconciliation reads every group, so no other test may change one
+    // of its group settings meanwhile.
+    let _settings = super::GROUP_SETTING_TESTS.write().await;
     let pool = isolated_pool().await;
     let suffix = Uuid::new_v4().simple().to_string();
     // A PiP account of this test's own, so other tests' groups are unaffected.
@@ -237,6 +248,7 @@ async fn startup_reconciles_pip_membership_with_each_group_setting() {
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
 async fn rejoining_pip_starts_reading_at_the_newest_message() {
+    let _settings = super::GROUP_SETTING_TESTS.read().await;
     let pool = isolated_pool().await;
     let suffix = Uuid::new_v4().simple().to_string();
     let pip = format!("pip-rejoin-{suffix}");
@@ -247,16 +259,25 @@ async fn rejoining_pip_starts_reading_at_the_newest_message() {
     let chat = Uuid::new_v4();
     seed_conversation(&pool, chat, &member, &[&member]).await;
     send_text(&pool, &member, chat, "Before PiP").await;
+    set_pip_setting(&pool, chat, true).await;
     assert!(super::membership::join_conversation(&pool, &pip, chat)
         .await
         .unwrap());
+    set_pip_setting(&pool, chat, false).await;
     assert!(
         crate::chat_sync::store::leave_service_member_now(&pool, chat, &pip)
             .await
             .unwrap()
     );
     send_text(&pool, &member, chat, "While PiP was off").await;
+    // A join that arrives after the group turned PiP off (a retried or late
+    // request) changes nothing.
+    assert!(!super::membership::join_conversation(&pool, &pip, chat)
+        .await
+        .unwrap());
+    assert!(!pip_active(&pool, chat, &pip).await);
     send_text(&pool, &member, chat, "Still off").await;
+    set_pip_setting(&pool, chat, true).await;
     assert!(super::membership::join_conversation(&pool, &pip, chat)
         .await
         .unwrap());
@@ -342,6 +363,7 @@ async fn cards_refresh_in_place_but_post_nothing_new_while_pip_is_off() {
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
 async fn pip_input_leaves_out_opted_out_members() {
+    let _settings = super::GROUP_SETTING_TESTS.read().await;
     let pool = isolated_pool().await;
     let suffix = Uuid::new_v4().simple().to_string();
     let pip = format!("pip-input-{suffix}");
@@ -351,6 +373,7 @@ async fn pip_input_leaves_out_opted_out_members() {
     }
     let chat = Uuid::new_v4();
     seed_conversation(&pool, chat, &open, &[&open, &quiet]).await;
+    set_pip_setting(&pool, chat, true).await;
     assert!(super::membership::join_conversation(&pool, &pip, chat)
         .await
         .unwrap());

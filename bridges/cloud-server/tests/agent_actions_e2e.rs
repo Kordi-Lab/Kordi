@@ -407,5 +407,7 @@ mod calendar;
 mod disclosure;
 #[path = "agent_actions_e2e/notices.rs"]
 mod notices;
+#[path = "agent_actions_e2e/pip_setting.rs"]
+mod pip_setting;
 #[path = "agent_actions_e2e/plan_suggestions.rs"]
 mod plan_suggestions;

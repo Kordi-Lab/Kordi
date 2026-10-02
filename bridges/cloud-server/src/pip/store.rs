@@ -40,6 +40,10 @@ pub(super) const SWEEP_SQL: &str = concat!(
      JOIN cloud_chat_conversation_members member
        ON member.conversation_id = c.conversation_id
       AND member.account_id = $1 AND member.membership_state = 'active'
+     -- PiP reads a group only while the group's setting turns it on, even
+     -- if its membership has not caught up yet.
+     JOIN cloud_chat_ai_policies policy
+       ON policy.conversation_id = c.conversation_id AND policy.pip_enabled
      LEFT JOIN LATERAL (
          SELECT card.event_id, card.revision, card.start_at, card.updated_at
          FROM cloud_plan_cards card

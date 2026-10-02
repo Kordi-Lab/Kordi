@@ -72,6 +72,13 @@ pub(crate) fn test_service_account() -> &'static str {
     SERVICE_ACCOUNT_ID.get_or_init(|| "acct_kordi_pip".to_string())
 }
 
+/// Startup reconciliation reads and changes every group in the database, so
+/// its test holds this for writing, and tests that turn PiP on in their own
+/// groups hold it for reading. Without it a parallel run lets one test's
+/// reconcile join its PiP account to another test's group mid-test.
+#[cfg(test)]
+pub(crate) static GROUP_SETTING_TESTS: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
 #[cfg(test)]
 mod card_update_tests;
 #[cfg(test)]

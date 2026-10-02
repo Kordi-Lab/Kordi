@@ -21,8 +21,11 @@ access). Groups that existed before the setting keep PiP. New groups start
 without PiP unless the creator turns it on; current apps do this right after
 creating the group, and a new channel inherits the setting of the channel it
 was created from. Turning PiP off removes it from the conversation and
-retires its waiting suggestions; every change posts a notice. At startup the
-server reconciles membership with the setting. Direct and AI sessions are
+retires its waiting suggestions; every change posts a notice. PiP joins only
+while the setting is on, checked when it joins, so a retried or late request
+to turn it on never brings it back after someone turned it off, and the sweep
+reads only groups whose setting is on. At startup the server reconciles
+membership with the setting. Direct and AI sessions are
 excluded until both clients render a third member there.
 
 ## Configuration

@@ -25,6 +25,13 @@ pub(super) fn without_service_members(mut account_ids: Vec<String>) -> Vec<Strin
 /// Adds a server-managed member to a conversation of one of `kinds` and tells
 /// every member's devices, as an accepted invitation does. Returns whether a
 /// new active membership was created.
+///
+/// The member joins only while the conversation's AI access setting turns it
+/// on (`cloud_chat_ai_policies.pip_enabled`; a missing row means off). The
+/// setting is read after the conversation row is locked, and every change to
+/// it locks that row first, so a change that turns it off either commits
+/// before this read, and nothing joins, or waits for this join and then
+/// removes the member.
 pub async fn join_service_member(
     pool: &PgPool,
     conversation_id: Uuid,
@@ -41,6 +48,16 @@ pub async fn join_service_member(
         return Ok(false);
     };
     if !kinds.contains(&kind.as_str()) {
+        return Ok(false);
+    }
+    let (turned_on,): (bool,) = query_as(
+        "SELECT EXISTS (SELECT 1 FROM cloud_chat_ai_policies
+                        WHERE conversation_id = $1 AND pip_enabled)",
+    )
+    .bind(conversation_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    if !turned_on {
         return Ok(false);
     }
     let inserted = query(
