@@ -1,7 +1,16 @@
+@property --app-native-sidebar-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
 .app-native-titlebar {
+  /* Derive traffic-light clearance from the animated width, not its target. */
+  --app-native-navigation-overhang: max(0px, calc(120px - var(--app-native-sidebar-width)));
   position: relative;
   z-index: 70;
   display: grid;
+  grid-template-columns: var(--app-native-sidebar-width) minmax(0, 1fr);
   align-items: center;
   min-width: 0;
   height: var(--app-native-titlebar-height);
@@ -34,14 +43,27 @@
 }
 
 .app-native-titlebar-workspace {
+  position: relative;
   display: grid;
   container-type: inline-size;
   min-width: 0;
   height: 100%;
   margin-right: var(--app-native-detail-width, 0px);
-  border-left: 1px solid var(--app-nav-rail-glass-border);
+  /* Match the conversation inset without restoring a full-height divider. */
+  padding-inline-start: 1px;
   transition-property: grid-template-columns;
   transition-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+.app-native-titlebar-workspace::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  inset-inline-start: var(--app-native-navigation-overhang, 0px);
+  width: 1px;
+  height: 18px;
+  background: var(--app-nav-rail-glass-border);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
 .app-native-titlebar-main { display: flex; align-items: center; min-width: 0; grid-column: 1; grid-row: 1; }
 .app-native-titlebar-workspace[data-companion-side="left"] > .app-native-titlebar-main { grid-column: 3; }
@@ -93,6 +115,7 @@ html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(
 .app-native-titlebar-navigation > button,
 .app-native-titlebar-actions > button {
   display: grid;
+  flex: 0 0 28px;
   width: 28px;
   height: 28px;
   padding: 0;
@@ -178,9 +201,11 @@ html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(
 
 /* Panel tracks and their titlebar separator move together. Manual resizing
    still disables these transitions through the shell's resize state. */
-.app-native-viewport .app-shell-layout-grid,
-.app-native-titlebar {
+.app-native-viewport .app-shell-layout-grid {
   transition: grid-template-columns 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.app-native-titlebar {
+  transition: --app-native-sidebar-width 260ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 @media (prefers-reduced-motion: reduce) {
   .app-native-viewport .app-shell-layout-grid,
@@ -193,6 +218,15 @@ html.kordi-native-shell .kordi-app .app-shell-content {
   border-radius: 0 12px 12px 0;
 }
 
+
+/* A folded sidebar leaves the icon rail beside the workspace. Keep its edge
+   quiet; the short titlebar separator provides the visual division. */
+html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-shell-layout-grid > .app-shell-content {
+  border-left-width: 0;
+}
+html.kordi-native-shell .app-shell[data-sidebar-collapsed='true'] > .app-native-titlebar > .app-native-titlebar-workspace {
+  padding-inline-start: 0;
+}
 
 .app-native-viewport > .app-shell {
   display: grid;

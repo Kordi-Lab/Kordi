@@ -271,6 +271,10 @@ pub struct CloudSessionPinSummary {
     pub shared_message_id: Option<String>,
     #[serde(rename = "privateMessageId")]
     pub private_message_id: Option<String>,
+    #[serde(rename = "sharedMessageIds")]
+    pub shared_message_ids: Vec<String>,
+    #[serde(rename = "privateMessageIds")]
+    pub private_message_ids: Vec<String>,
     #[serde(rename = "effectiveMessageId")]
     pub effective_message_id: Option<String>,
     #[serde(rename = "updatedAt")]

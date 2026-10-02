@@ -948,15 +948,16 @@ actor CloudAPIClient {
         token: String,
         sessionId: String,
         messageId: String?,
-        scope: String
+        scope: String,
+        action: String? = nil
     ) async throws -> CloudSessionPin {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
         let response: SessionPinResponse = try await send(
             path: "/v1/cloud/sessions/\(escaped)/pin",
             method: "PUT",
             token: token,
-            body: UpdateSessionPinRequest(messageId: messageId, scope: scope),
-            fallback: messageId == nil ? "Could not unpin the message." : "Could not pin the message."
+            body: UpdateSessionPinRequest(messageId: messageId, scope: scope, action: action),
+            fallback: action == "unpin" || messageId == nil ? "Could not unpin the message." : "Could not pin the message."
         )
         var pin = response.pin
         pin.history = try? await sessionPinHistory(token: token, sessionId: sessionId)
@@ -2466,26 +2467,7 @@ actor CloudAPIClient {
                 occurredAt: message.createdAt
             )
         }
-        let pinEvents = (bootstrap.sessionPins ?? []).flatMap { pin in
-            [("shared", pin.sharedMessageId), ("private", pin.privateMessageId)].map { entry in
-                let (scope, messageId) = entry
-                let updatedAt = pin.updatedAt ?? bootstrap.serverTime
-                return CloudSyncEvent(
-                    eventId: "bootstrap:session-pin:\(pin.sessionId):\(scope)",
-                    eventType: "session.pin.updated",
-                    peerAccountId: nil,
-                    messageId: messageId,
-                    payload: CloudSyncEventPayload(
-                        message: nil, messageIds: nil, messageId: messageId, readAt: nil,
-                        sessionId: pin.sessionId, scope: scope, updatedAt: updatedAt,
-                        forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
-                        createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
-                        deviceId: nil, call: nil
-                    ),
-                    occurredAt: updatedAt
-                )
-            }
-        }
+        let pinEvents = (bootstrap.sessionPins ?? []).flatMap { $0.bootstrapEvents(serverTime: bootstrap.serverTime) }
         let visibilityEvents = bootstrap.sessionVisibility.map { [CloudSyncEvent(
             eventId: "bootstrap:visibility:\(bootstrap.lastStreamSequence)", eventType: "session.visibility.snapshot",
             peerAccountId: nil, messageId: nil, payload: nil, occurredAt: bootstrap.serverTime, visibility: $0
@@ -2619,8 +2601,9 @@ actor CloudAPIClient {
                 peerAccountId: nil,
                 messageId: event.payload.messageId,
                 payload: CloudSyncEventPayload(
+                    kind: event.payload.kind, targetMessageId: event.payload.targetMessageId,
                     pinHistoryEvent: event.payload.pinHistoryEvent,
-                        message: nil, messageIds: nil, messageId: event.payload.messageId,
+                        message: nil, messageIds: event.payload.messageIds, messageId: event.payload.messageId,
                         readAt: nil, sessionId: event.payload.sessionId,
                         scope: event.payload.scope, updatedAt: event.payload.updatedAt,
                         updatedByAccountId: event.payload.updatedByAccountId,
@@ -3171,7 +3154,7 @@ private struct TestProviderRouteRequest: Encodable {
 private struct AgentRunLookupResponse: Decodable { let run: CloudAgentRun? }
 private struct SessionForksResponse: Decodable { let forks: [CloudSessionForkSummary] }
 private struct SessionPinResponse: Decodable { let pin: CloudSessionPin }
-private struct UpdateSessionPinRequest: Encodable { let messageId: String?; let scope: String }
+private struct UpdateSessionPinRequest: Encodable { let messageId: String?; let scope: String; let action: String? }
 private struct ServerError: Decodable {
     let errorCode: String?
     let message: String?

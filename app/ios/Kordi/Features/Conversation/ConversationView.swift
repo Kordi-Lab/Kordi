@@ -455,14 +455,7 @@ struct ConversationView: View {
             participants: conversation.groupParticipants
         )
         let sessionPin = model.sessionPinsByID[conversation.sessionId]
-        let pinnedMessages = [
-            (sessionPin?.privateMessageId, "private"),
-            (sessionPin?.sharedMessageId, "shared"),
-        ].compactMap { entry -> PinnedMessageItem? in
-            let (messageID, scope) = entry
-            guard let messageID, let message = messagesById[messageID] else { return nil }
-            return PinnedMessageItem(message: message, scope: scope)
-        }
+        let pinnedMessages = PinnedMessageItem.make(pin: sessionPin, conversationID: conversation.id, messagesByID: messagesById)
         let pinnedMessageIDs = Set(pinnedMessages.map(\.message.id))
         let activeConversationCall = model.activeCall(for: conversation)
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
@@ -509,6 +502,7 @@ struct ConversationView: View {
                             },
                             onUnpin: { item in unpinTarget = item }
                         )
+                        .id(conversation.sessionId)
                         .transition(PinPresentationMotion.shelfTransition(reduceMotion: reduceMotion))
                     }
                 }
@@ -1784,7 +1778,7 @@ struct ConversationView: View {
                 },
                 onPin: {
                     if pinnedMessageIDs.contains(message.id) {
-                        let scope = model.sessionPinsByID[conversation.sessionId]?.privateMessageId == message.id ? "private" : "shared"
+                        let scope = model.sessionPinsByID[conversation.sessionId]?.messageIDs(scope: "shared").contains(message.id) == true ? "shared" : "private"
                         unpinTarget = PinnedMessageItem(message: message, scope: scope)
                     } else {
                         pinTarget = message

@@ -1,3 +1,4 @@
+import { sessionPinMessageIds } from './cloudSessionPinTypes';
 import type { CloudSessionPin } from './cloudSessionPinTypes';
 export type CloudPinHistoryEvent = {
   id: string;
@@ -41,8 +42,8 @@ export function mergePinSyncSnapshot(current: Record<string, CloudSessionPin>, i
     // Legacy empty-pin reads also return a null timestamp. Neither constitutes
     // a competing edit that should suppress a live update from another device.
     const before = baseline[id];
-    const changedDuringRequest = (existing?.sharedMessageId ?? null) !== (before?.sharedMessageId ?? null)
-      || (existing?.privateMessageId ?? null) !== (before?.privateMessageId ?? null);
+    const changedDuringRequest = (['shared', 'private'] as const).some(scope =>
+      JSON.stringify(sessionPinMessageIds(existing, scope)) !== JSON.stringify(sessionPinMessageIds(before, scope)));
     const newer = Date.parse(pin.updatedAt ?? '') > Date.parse(existing?.updatedAt ?? '');
     const state = changedDuringRequest && existing && !newer ? existing : pin;
     merged[id] = { ...state, history: mergePinHistory(existing?.history, pin.history) };

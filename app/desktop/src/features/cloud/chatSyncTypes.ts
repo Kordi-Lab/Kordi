@@ -96,6 +96,8 @@ export type ChatSyncBootstrapResponse = {
   latest_messages: ChatSyncMessage[];
   session_pins?: Array<{
     sessionId: string;
+    sharedMessageIds?: string[];
+    privateMessageIds?: string[];
     sharedMessageId: string | null;
     privateMessageId: string | null;
     effectiveMessageId: string | null;
