@@ -15,6 +15,8 @@ use serde_json::json;
 use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
+#[path = "chat_sync_e2e/channel_consent.rs"]
+mod channel_consent;
 #[path = "chat_sync_e2e/default_self_agent.rs"]
 mod default_self_agent;
 #[path = "chat_sync_e2e/direct_consent.rs"]

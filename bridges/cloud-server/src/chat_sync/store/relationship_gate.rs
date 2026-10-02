@@ -115,10 +115,38 @@ pub(super) async fn active_in_root(
     Ok(rows.into_iter().map(|(account_id,)| account_id).collect())
 }
 
+/// Whether `account_id` is an active owner or admin of the space's main group
+/// conversation.
+async fn manages_root(
+    transaction: &mut Transaction<'_, Postgres>,
+    root: &str,
+    account_id: &str,
+) -> Result<bool, StoreError> {
+    let manages: (bool,) = query_as(
+        "SELECT EXISTS ( \
+           SELECT 1 FROM cloud_chat_conversations conversation \
+           JOIN cloud_chat_conversation_members member \
+             ON member.conversation_id = conversation.conversation_id \
+           WHERE conversation.legacy_session_id = $1 \
+             AND conversation.kind = 'group' \
+             AND member.account_id = $2 \
+             AND member.membership_state = 'active' \
+             AND member.role IN ('owner', 'admin'))",
+    )
+    .bind(root)
+    .bind(account_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    Ok(manages.0)
+}
+
 /// Requires each account an admin adds to a group to be the admin's contact,
-/// unless this is a channel of a space and both are active in its main
-/// conversation (for example, someone who joined through an invite link).
-/// That exception never applies while either of the two blocked the other.
+/// unless this is a channel of a space, the admin is an owner or admin of the
+/// space's main conversation, and the added account is active there (for
+/// example, someone who joined through an invite link). Any member can attach
+/// a group of their own to a space they belong to, so being a member of the
+/// space is not enough. The exception never applies while either of the two
+/// blocked the other.
 pub(super) async fn require_contacts_for_group_add(
     transaction: &mut Transaction<'_, Postgres>,
     actor_account_id: &str,
@@ -144,17 +172,13 @@ pub(super) async fn require_contacts_for_group_add(
         .iter()
         .map(|(account_id, _)| account_id.clone())
         .collect::<Vec<_>>();
-    if !space.is_root {
-        let mut candidates = strangers.clone();
-        candidates.push(actor_account_id.to_string());
-        let active = active_in_root(transaction, &space.root, &candidates).await?;
-        if active.contains(actor_account_id) {
-            strangers = rows
-                .into_iter()
-                .filter(|(account_id, blocked)| *blocked || !active.contains(account_id))
-                .map(|(account_id, _)| account_id)
-                .collect();
-        }
+    if !space.is_root && manages_root(transaction, &space.root, actor_account_id).await? {
+        let active = active_in_root(transaction, &space.root, &strangers).await?;
+        strangers = rows
+            .into_iter()
+            .filter(|(account_id, blocked)| *blocked || !active.contains(account_id))
+            .map(|(account_id, _)| account_id)
+            .collect();
     }
     if strangers.is_empty() {
         Ok(())

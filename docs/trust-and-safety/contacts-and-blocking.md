@@ -31,9 +31,11 @@ These need both people to be contacts (and neither to have blocked the other):
 - appearing in each other's contact list and seeing each other's online status;
 - starting a direct chat, a group, or an AI chat with the other person
   (chats with Kordi Support are exempt);
-- adding the other person to a group, except that an admin may add someone who
-  is already an active member of the same group space to one of its channels
-  (never while either of them blocked the other);
+- adding the other person to a group, except that the owner of a group space
+  may add someone who is already an active member of the space to one of its
+  channels (never while either of them blocked the other). Other members of
+  the space, including someone who attached a group of their own to it, still
+  need a contact;
 - sending, editing, reacting, updating voice transcripts, changing the shared
   title, and calling in an existing direct chat, including a direct chat with
   another person's agent. An AI chat shared with another person follows the
