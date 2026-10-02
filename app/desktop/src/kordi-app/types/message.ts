@@ -264,6 +264,8 @@ export type Message = {
   senderOwnerName?: string | null;
   /** Canonical human/agent identity for profile actions in shared transcripts. */
   senderIdentityId?: string | null;
+  /** For agent messages, the canonical identity of the agent's human owner. */
+  senderOwnerIdentityId?: string | null;
   sourceSenderLabel?: string | null;
   senderType?: 'human' | 'agent';
   senderProfileImageUrl?: string | null;

@@ -8,13 +8,14 @@ import {
   newMessageAttentionEvents,
 } from '../src/features/notifications/messageAttentionPolicy';
 import { useDesktopMessageAttention } from '../src/features/notifications/useDesktopMessageAttention';
+import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import {
   __resetCloudBlocksForTests,
   currentBlockedIdentityIds,
   rememberBlockedAccount,
   useCloudBlocks,
 } from '../src/features/safety/useCloudBlocks';
-import type { Conversation, Message } from '../src/kordi-app/types';
+import type { CanonicalIdentity, Conversation, Message } from '../src/kordi-app/types';
 import { mountInDom, stubCloudNetwork } from './helpers/safetyDom';
 
 const BLOCKED = 'human:acct_blocked';
@@ -63,6 +64,49 @@ test('messages from a suppressed sender do not notify, and other senders still d
       .map((event) => event.messageId),
     ['m3'],
   );
+});
+
+test('agents of a suppressed account do not notify either', () => {
+  const first = group([message('m1', 'human:acct_ana', 'Hi')], 1);
+  const previous = messageAttentionSnapshot([first]);
+  const agent = (id: string, senderIdentityId: string, senderOwnerIdentityId?: string): Message => ({
+    id, role: 'external-agent', sender: 'Helper', senderIdentityId, senderOwnerIdentityId, text: 'Buy now', time: '',
+  });
+  for (const agentMessage of [
+    agent('m2', 'agent:cloud-agent:cloud_agent_helper', BLOCKED),
+    // A default agent names its owner even before the owner's identity loads.
+    agent('m3', 'agent:cloud-agent:cloud-agent:acct_blocked'),
+  ]) {
+    const next = group([...first.messages, agentMessage], 2);
+    assert.deepEqual(
+      newMessageAttentionEvents({ previous, conversations: [next], suppressedSenderIdentityIds: new Set([BLOCKED]) }),
+      [],
+    );
+    assert.equal(newMessageAttentionEvents({ previous, conversations: [next] })[0]?.messageId, agentMessage.id);
+  }
+  const fromOtherAgent = group([...first.messages, agent('m4', 'agent:cloud-agent:cloud_agent_other', 'human:acct_ana')], 2);
+  assert.equal(
+    newMessageAttentionEvents({ previous, conversations: [fromOtherAgent], suppressedSenderIdentityIds: new Set([BLOCKED]) })[0]?.messageId,
+    'm4',
+  );
+});
+
+test('agent messages carry their owner identity for notification rules', () => {
+  const identity = (id: string, kind: string, ownerIdentityId?: string): CanonicalIdentity => ({
+    id, kind, displayName: id, ownerIdentityId, source: 'cloud', avatarKey: id, createdAtMs: 1, updatedAtMs: 1,
+  });
+  const identities = new Map([
+    [BLOCKED, identity(BLOCKED, 'human')],
+    ['agent:cloud-agent:cloud_agent_helper', identity('agent:cloud-agent:cloud_agent_helper', 'agent', BLOCKED)],
+  ]);
+  const canonical = (id: string, senderIdentityId: string, senderRole: string) => ({
+    id, sessionId: 'session:group:team', senderIdentityId, senderRole, messageKind: 'text', contentText: 'Hello',
+    status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1,
+  });
+  const fromAgent = mapCanonicalMessage(canonical('a1', 'agent:cloud-agent:cloud_agent_helper', 'external-agent'), identities, 'human:acct_me');
+  assert.equal(fromAgent?.senderOwnerIdentityId, BLOCKED);
+  const fromPerson = mapCanonicalMessage(canonical('p1', BLOCKED, 'person'), identities, 'human:acct_me');
+  assert.equal(fromPerson?.senderOwnerIdentityId, undefined);
 });
 
 test('the blocked identity list uses canonical human identities', () => {
