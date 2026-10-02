@@ -11,19 +11,24 @@
 .chat-project-trigger:disabled { opacity: .5; cursor: default; }
 .chat-project-trigger:focus-visible, .chat-project-option:focus-visible { outline: 2px solid var(--utility-muted-text); outline-offset: -2px; }
 .chat-project-menu {
+  --utility-foreground: var(--app-transient-text);
+  --utility-muted-text: var(--app-transient-muted-text);
+  --app-divider: var(--app-transient-divider);
+  --app-control-bg: var(--app-transient-raised-bg);
   --app-control-active-bg: var(--app-transient-hover-bg);
   position: fixed; z-index: var(--app-z-project-popover); width: min(240px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow-y: auto;
-  border: 1px solid var(--app-divider); border-radius: 16px; padding: 5px;
-  background: var(--app-modal-bg); color: var(--utility-foreground);
-  box-shadow: var(--app-shadow-float); font-size: 12px;
+  border: 1px solid var(--app-transient-border); border-radius: 16px; padding: 5px;
+  background: var(--app-transient-surface-bg); color: var(--utility-foreground);
+  box-shadow: var(--app-transient-shadow); font-size: 12px;
 }
+.chat-project-menu .chat-project-option:focus-visible { outline-color: var(--app-transient-focus-ring); }
 .chat-project-search { display: flex; align-items: center; gap: 6px; padding: 7px 9px; color: var(--utility-muted-text); }
 .chat-project-search input { min-width: 0; width: 100%; background: transparent; border: 0; outline: none; color: var(--utility-foreground); }
 .chat-project-search input::placeholder { color: var(--utility-muted-text); }
 .chat-project-options { max-height: 216px; overflow-y: auto; }
 .chat-project-option { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 28px; border-radius: 8px; padding: 5px 9px; text-align: left; }
 .chat-project-option span { flex: 1; }
-.chat-project-option[aria-pressed="true"] { background: var(--app-control-bg); }
+.chat-project-option[aria-pressed="true"] { background: var(--app-transient-selected-bg); }
 .chat-project-menu-footer { border-top: 1px solid var(--app-divider); margin-top: 4px; padding-top: 3px; }
 .chat-project-empty { padding: 8px 9px; color: var(--utility-muted-text); }
 .chat-project-error { padding: 8px; color: var(--app-error-text, #d04848); font-size: 11px; }
