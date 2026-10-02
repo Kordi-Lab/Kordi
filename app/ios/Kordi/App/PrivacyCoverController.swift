@@ -13,7 +13,9 @@ enum PrivacyCoverEvent: Equatable {
 /// The cover is a separate window above alerts that is shown and hidden
 /// synchronously inside the scene notification, and it never becomes the key
 /// window. `suspend()` and `resume()` exist only for a flow that must keep the
-/// scene inactive while it needs input; no flow uses them today.
+/// scene inactive while it needs input; no flow uses them today. The system
+/// keyboard stays above the cover while the scene is inactive; see "App
+/// switcher privacy cover" in docs/ios-development.md.
 @MainActor
 final class PrivacyCoverController {
     static let shared = PrivacyCoverController()

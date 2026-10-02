@@ -258,6 +258,18 @@ DEBUG builds log the legacy store path on every launch and log once after the le
 
 **No default data-protection entitlement.** Neither scheme nor the share extension sets `com.apple.developer.default-data-protection`. The only value that would change behavior is `NSFileProtectionComplete`, which breaks the background paths above, and the entitlement also requires the Data Protection capability on every App ID.
 
+### App switcher privacy cover
+
+**Hide conversations in app switcher** (Settings, Privacy; `kordi.privacy.hideInAppSwitcher`, on by default) is implemented by `PrivacyCoverController`:
+
+- It shows a separate window at `.alert + 1` with the Kordi mark on the system background on `UIScene.willDeactivateNotification` and `didEnterBackgroundNotification`, and hides it only on `didActivateNotification`. The window never becomes key, is hidden from accessibility, and is dropped when its scene disconnects.
+- The cover also appears while the scene is inactive for Control Center, Notification Center, system permission alerts (camera, microphone), the sign-in consent alert, and a full-screen CallKit call. That system UI is drawn above Kordi's windows, so the cover never blocks it, and the cover hides as soon as the scene is active again.
+- After the consent alert, the Google and GitHub sign-in sheet (`ASWebAuthenticationSession`) runs with the scene active, and so does the photo picker, so the cover is hidden while they are used. `suspend()` and `resume()` exist for any future flow that keeps the scene inactive while it needs input inside Kordi; no current flow uses them.
+
+**Residual: the system keyboard.** The keyboard window sits above every app window, and Kordi does not raise the cover above it. While Kordi is inactive with the keyboard open, for example in the app switcher card during the swipe or behind Control Center, the keyboard and its QuickType bar stay visible above the cover. The QuickType bar can show the word being typed and word predictions; the rest of the draft and the conversation stay covered. The snapshot iOS keeps after Kordi moves to the background shows only the cover. Kordi does not end editing when the scene deactivates, because that would also close the keyboard for every Control Center, Notification Center, or permission prompt interruption.
+
+**Manual check after changing the cover.** With the setting on, verify on the Simulator: Google and GitHub sign-in against a backend with those providers configured (consent alert, then the sheet is usable and Cancel returns to the login screen), the photo picker, camera and microphone prompts, Notification Center, and the app switcher with and without the keyboard open. Check an incoming CallKit call on a device; the Simulator does not present the call screen.
+
 ## TestFlight
 
 For a coordinated desktop and iOS release, use the
