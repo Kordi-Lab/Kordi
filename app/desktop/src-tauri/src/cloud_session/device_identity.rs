@@ -15,6 +15,9 @@ use std::sync::Mutex;
 use super::{cloud_device_identity_load, cloud_device_identity_store, CloudDeviceIdentityEntry};
 
 const KEY_ALGORITHM: &str = "p256";
+/// The version of the text this installation signs with its device key. It
+/// names the server and the device a signature is for.
+pub(crate) const DEVICE_PROOF_VERSION: u32 = 2;
 
 /// Serializes creating an identity, so concurrent callers share one keypair.
 static IDENTITY_LOCK: Mutex<()> = Mutex::new(());
@@ -86,6 +89,37 @@ pub fn cloud_device_identity_public() -> Result<CloudDevicePublicIdentity, Strin
     })
 }
 
+/// The exact text a device proof signs, as the server rebuilds it: the
+/// version and purpose, the server's origin, account, and device, then one
+/// `name:value` field per line, ending with the server's nonce. Every value
+/// must be a non-empty single line, so no value can add a field.
+pub(crate) fn device_proof_message(
+    purpose: &str,
+    audience: &str,
+    account_id: &str,
+    device_id: &str,
+    fields: &[(&str, &str)],
+    nonce: &str,
+) -> Result<String, String> {
+    let values = [purpose, audience, account_id, device_id, nonce];
+    if values
+        .iter()
+        .chain(fields.iter().map(|(_, value)| value))
+        .any(|value| value.is_empty() || value.contains(['\n', '\r']))
+    {
+        return Err("device_proof_field_invalid".to_string());
+    }
+    let mut message = format!(
+        "kordi-device-proof-v{DEVICE_PROOF_VERSION}\npurpose:{purpose}\naudience:{audience}\n\
+         account:{account_id}\ndevice:{device_id}\n"
+    );
+    for (name, value) in fields {
+        message.push_str(&format!("{name}:{value}\n"));
+    }
+    message.push_str(&format!("nonce:{nonce}"));
+    Ok(message)
+}
+
 /// Signs `message` with the stored installation key and returns the
 /// base64url fixed-size (r || s) ECDSA P-256 SHA-256 signature. It never
 /// creates a key: a proof is only useful with the key sign-in registered.
@@ -126,6 +160,29 @@ mod tests {
             assert!(key.verify(message, &signature).is_ok());
             assert!(key.verify(b"another message", &signature).is_err());
         });
+    }
+
+    #[test]
+    fn proof_text_names_the_server_and_device_and_keeps_each_field_on_one_line() {
+        assert_eq!(
+            device_proof_message(
+                "purpose-a",
+                "https://kordi.ai",
+                "acct_b",
+                "dev_c",
+                &[("key", "key-d")],
+                "nonce-e"
+            )
+            .unwrap(),
+            "kordi-device-proof-v2\npurpose:purpose-a\naudience:https://kordi.ai\n\
+             account:acct_b\ndevice:dev_c\nkey:key-d\nnonce:nonce-e"
+        );
+        let message = |audience: &str, field: &str| {
+            device_proof_message("p", audience, "acct", "dev", &[("key", field)], "nonce")
+        };
+        assert!(message("https://kordi.ai", "key\nnonce:other").is_err());
+        assert!(message("https://kordi.ai", "").is_err());
+        assert!(message("https://kordi.ai\r", "key").is_err());
     }
 
     #[test]

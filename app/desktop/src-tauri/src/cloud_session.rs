@@ -9,7 +9,9 @@ use std::{fs, process::Command};
 pub(crate) mod device_identity;
 mod secret_store;
 
-pub(crate) use device_identity::sign_with_device_key;
+pub(crate) use device_identity::{
+    device_proof_message, sign_with_device_key, DEVICE_PROOF_VERSION,
+};
 pub(crate) use secret_store::configure_keychain_scope;
 use secret_store::{secret_delete, secret_load, secret_store};
 

@@ -27,7 +27,8 @@ async fn owner_with_ready_mac(router: &axum::Router, prefix: &str) -> TestAccoun
             &owner.token,
             json!({
                 "agentIds": [format!("cloud-agent:{}", owner.account_id)],
-                "deviceProof": true
+                "deviceProof": true,
+                "deviceProofVersion": 2
             }),
         ))
         .await

@@ -42,3 +42,20 @@ pub(super) async fn sign_in_with_device_key(
         token: body["session"]["token"].as_str().unwrap().to_string(),
     }
 }
+
+/// The device that registered `key` as its installation key for `account`.
+pub(super) async fn device_id_for_key(
+    pool: &sqlx_postgres::PgPool,
+    account: &TestAccount,
+    key: &SigningKey,
+) -> String {
+    let (device_id,): (String,) = sqlx_core::query_as::query_as(
+        "SELECT device_id FROM cloud_devices WHERE account_id=$1 AND device_public_key=$2",
+    )
+    .bind(&account.account_id)
+    .bind(spki(key))
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    device_id
+}

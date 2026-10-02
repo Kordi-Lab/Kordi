@@ -2,12 +2,13 @@
 //!
 //! Hosted provider material is returned to a desktop only with a signature,
 //! made with the P-256 installation key registered for the session's device,
-//! over a single-use challenge bound to the account, device, run, and
-//! execution claim. A session token alone cannot obtain the material.
+//! over a single-use challenge bound to this server, the account, device,
+//! run, and execution claim. A session token alone cannot obtain the
+//! material.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Utc};
-use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+use p256::ecdsa::VerifyingKey;
 use rand::RngCore;
 use serde::Deserialize;
 use sqlx_core::{query::query, query_as::query_as};
@@ -15,14 +16,14 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use super::runs::AgentRuntimeRoute;
+use crate::auth::device_signatures::{
+    audience_matches, proof_message, server_audience, signature_matches, PROOF_VERSION,
+};
 
 /// Seconds a challenge stays usable after it is issued.
 pub(super) const CHALLENGE_SECONDS: i32 = 60;
-/// ECDSA over P-256 with SHA-256, as WebCrypto and CryptoKit produce it.
-pub(super) const PROOF_ALGORITHM: &str = "ecdsa-p256-sha256";
 pub(super) const PROVIDER_AUTH_PURPOSE: &str = "desktop-provider-auth";
 const MAX_NONCE_CHARS: usize = 64;
-const MAX_SIGNATURE_CHARS: usize = 256;
 
 /// Auth choices whose credentials the server stores and hands to the
 /// executing runtime, as the desktop classifies them.
@@ -38,18 +39,38 @@ const HOSTED_AUTH_CHOICE_PREFIXES: [&str; 4] = [
 pub(super) struct DeviceProof {
     pub nonce: String,
     pub signature: String,
+    /// The version of the signed text. Desktops that sign an earlier
+    /// version send none.
+    #[serde(default)]
+    pub version: Option<u32>,
+    /// The server origin the desktop signed for.
+    #[serde(default)]
+    pub audience: Option<String>,
+}
+
+impl DeviceProof {
+    /// Whether the proof uses the signed text this server accepts.
+    pub(super) fn is_current_version(&self) -> bool {
+        self.version == Some(PROOF_VERSION) && self.audience.is_some()
+    }
 }
 
 /// The exact text a desktop signs to receive hosted provider material.
 pub(super) fn provider_auth_message(
+    audience: &str,
     account_id: &str,
+    device_id: &str,
     run_id: &str,
     claim_id: Uuid,
     nonce: &str,
 ) -> String {
-    format!(
-        "kordi-device-proof-v1\npurpose:{PROVIDER_AUTH_PURPOSE}\naccount:{account_id}\n\
-         run:{run_id}\nclaim:{claim_id}\nnonce:{nonce}"
+    proof_message(
+        PROVIDER_AUTH_PURPOSE,
+        audience,
+        account_id,
+        device_id,
+        &[("run", run_id), ("claim", &claim_id.to_string())],
+        nonce,
     )
 }
 
@@ -129,7 +150,7 @@ pub(super) async fn issue_challenge(
 /// Consumes the challenge named by the proof and checks its signature with
 /// the device's registered key. A challenge is used at most once, whatever
 /// the outcome, and only for the account, device, run, and claim it was
-/// issued to.
+/// issued to. The signed text must name this server and the device.
 pub(super) async fn verify_provider_auth_proof(
     pool: &PgPool,
     account_id: &str,
@@ -139,10 +160,7 @@ pub(super) async fn verify_provider_auth_proof(
     proof: &DeviceProof,
 ) -> Result<bool, sqlx_core::Error> {
     let nonce = proof.nonce.trim();
-    if nonce.is_empty()
-        || nonce.len() > MAX_NONCE_CHARS
-        || proof.signature.len() > MAX_SIGNATURE_CHARS
-    {
+    if nonce.is_empty() || nonce.len() > MAX_NONCE_CHARS {
         return Ok(false);
     }
     let consumed: Option<(bool,)> = query_as(
@@ -160,10 +178,20 @@ pub(super) async fn verify_provider_auth_proof(
     if consumed != Some((true,)) {
         return Ok(false);
     }
+    let Some(audience) = proof
+        .audience
+        .as_deref()
+        .filter(|_| proof.is_current_version())
+    else {
+        return Ok(false);
+    };
+    if !audience_matches(audience, &server_audience()) {
+        return Ok(false);
+    }
     let Some(key) = device_key(pool, account_id, device_id).await? else {
         return Ok(false);
     };
-    let message = provider_auth_message(account_id, run_id, claim_id, nonce);
+    let message = provider_auth_message(audience, account_id, device_id, run_id, claim_id, nonce);
     Ok(signature_matches(
         &key,
         message.as_bytes(),
@@ -171,54 +199,41 @@ pub(super) async fn verify_provider_auth_proof(
     ))
 }
 
-/// Accepts a base64url signature in the fixed 64-byte form or in DER.
-fn signature_matches(key: &VerifyingKey, message: &[u8], encoded: &str) -> bool {
-    let Ok(bytes) = URL_SAFE_NO_PAD.decode(encoded.trim()) else {
-        return false;
-    };
-    Signature::from_slice(&bytes)
-        .or_else(|_| Signature::from_der(&bytes))
-        .is_ok_and(|signature| key.verify(message, &signature).is_ok())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p256::ecdsa::{signature::Signer, SigningKey};
-
-    fn signing_key(seed: u8) -> SigningKey {
-        SigningKey::from_slice(&[seed; 32]).unwrap()
-    }
 
     #[test]
-    fn message_binds_every_field_on_its_own_line() {
+    fn message_binds_the_server_device_run_and_claim_on_their_own_lines() {
         let claim = Uuid::nil();
         assert_eq!(
-            provider_auth_message("acct_a", "car_b", claim, "nonce-c"),
-            "kordi-device-proof-v1\npurpose:desktop-provider-auth\naccount:acct_a\n\
-             run:car_b\nclaim:00000000-0000-0000-0000-000000000000\nnonce:nonce-c"
+            provider_auth_message(
+                "https://kordi.ai",
+                "acct_a",
+                "dev_b",
+                "car_c",
+                claim,
+                "nonce-d"
+            ),
+            "kordi-device-proof-v2\npurpose:desktop-provider-auth\naudience:https://kordi.ai\n\
+             account:acct_a\ndevice:dev_b\nrun:car_c\n\
+             claim:00000000-0000-0000-0000-000000000000\nnonce:nonce-d"
         );
     }
 
     #[test]
-    fn signatures_verify_only_for_the_signed_message_and_key() {
-        let key = signing_key(7);
-        let message = b"signed message";
-        let signature: Signature = key.sign(message);
-        let fixed = URL_SAFE_NO_PAD.encode(signature.to_bytes());
-        let der = URL_SAFE_NO_PAD.encode(signature.to_der().as_bytes());
-        let verifying = VerifyingKey::from(&key);
-
-        assert!(signature_matches(&verifying, message, &fixed));
-        assert!(signature_matches(&verifying, message, &der));
-        assert!(!signature_matches(&verifying, b"other message", &fixed));
-        assert!(!signature_matches(
-            &VerifyingKey::from(&signing_key(8)),
-            message,
-            &fixed
-        ));
-        assert!(!signature_matches(&verifying, message, "not base64!"));
-        assert!(!signature_matches(&verifying, message, ""));
+    fn only_proofs_of_the_current_version_with_an_audience_are_current() {
+        let proof = |version: Option<u32>, audience: Option<&str>| DeviceProof {
+            nonce: "nonce".into(),
+            signature: "signature".into(),
+            version,
+            audience: audience.map(str::to_owned),
+        };
+        assert!(proof(Some(2), Some("https://kordi.ai")).is_current_version());
+        assert!(!proof(None, None).is_current_version());
+        assert!(!proof(None, Some("https://kordi.ai")).is_current_version());
+        assert!(!proof(Some(2), None).is_current_version());
+        assert!(!proof(Some(1), Some("https://kordi.ai")).is_current_version());
     }
 
     #[test]

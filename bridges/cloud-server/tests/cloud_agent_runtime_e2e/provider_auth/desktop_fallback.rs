@@ -200,6 +200,11 @@ async fn a_mac_that_cannot_prove_hands_its_hosted_route_to_the_cloud() {
     ready(&router, &mac.account, None).await;
     assert_mac_hands_off_its_hosted_route(&router, &pool, &mac.account).await;
 
+    // A desktop that signs only the earlier proof text, which names neither
+    // the server nor the device, is treated as one that cannot prove.
+    publish_ready(&router, &mac.account, json!({"deviceProof":true})).await;
+    assert_mac_hands_off_its_hosted_route(&router, &pool, &mac.account).await;
+
     // A current release on a device that registered no key at sign-in.
     let keyless = signup(&router, "desktop-hand-off-keyless", "Keyless").await;
     sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")
