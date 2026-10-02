@@ -70,7 +70,18 @@ Invariants: messages, conversations, and memberships are never touched; no
 push or realtime event is sent; the function is idempotent and serialized by
 an advisory lock. Every change is recorded in `cloud_contact_consent_backfill`
 (original row, outcome, created or accepted request ids), so it can be
-reverted. Nothing in this release deletes archive rows.
+reverted. Nothing deletes archive rows automatically. After at least 90 days
+an operator may remove old rows with an explicit purge that only counts by
+default:
+
+```sql
+-- Dry run: how many rows were recorded more than 90 days ago.
+SELECT cloud_purge_contact_consent_backfill(interval '90 days');
+-- Delete them. Purged rows can no longer be reverted.
+SELECT cloud_purge_contact_consent_backfill(interval '90 days', true);
+```
+
+Shorter intervals are refused.
 
 Post-deploy check (older replicas can still write one-way rows during a
 rolling deploy; such rows grant nothing):

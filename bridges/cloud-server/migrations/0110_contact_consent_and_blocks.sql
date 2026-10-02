@@ -312,4 +312,32 @@ BEGIN
     RETURN reverted;
 END $$;
 
+-- Operator-only cleanup of the archive. Nothing runs it automatically: the
+-- archive is the only way to revert the conversion, so it is kept until an
+-- operator decides otherwise. By default it only counts the rows recorded
+-- more than `p_older_than` ago (at least 90 days); `p_apply => true` deletes
+-- them, after which those rows can no longer be reverted.
+CREATE OR REPLACE FUNCTION cloud_purge_contact_consent_backfill(
+    p_older_than INTERVAL,
+    p_apply BOOLEAN DEFAULT FALSE
+) RETURNS BIGINT
+LANGUAGE plpgsql AS $$
+DECLARE
+    affected BIGINT;
+BEGIN
+    IF p_older_than IS NULL OR p_older_than < INTERVAL '90 days' THEN
+        RAISE EXCEPTION 'contact conversion archive rows are kept for at least 90 days';
+    END IF;
+    PERFORM pg_advisory_xact_lock(hashtextextended('kordi-contact-consent-backfill', 0));
+    IF p_apply THEN
+        DELETE FROM cloud_contact_consent_backfill
+        WHERE recorded_at < now() - p_older_than;
+        GET DIAGNOSTICS affected = ROW_COUNT;
+    ELSE
+        SELECT count(*) INTO affected FROM cloud_contact_consent_backfill
+        WHERE recorded_at < now() - p_older_than;
+    END IF;
+    RETURN affected;
+END $$;
+
 SELECT cloud_convert_one_way_contacts();

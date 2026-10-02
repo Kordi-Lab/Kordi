@@ -152,7 +152,11 @@ each one-way entry is converted once:
 
 Affected direct chats stay readable but become read-only until a request is
 accepted. Every change is archived so it can be reverted (see the
-[migration notes](../../bridges/cloud-server/migrations/README.md)).
+[migration notes](../../bridges/cloud-server/migrations/README.md)). The
+archive holds account ids, times, outcomes, and request ids, never messages.
+Nothing deletes it automatically, because it is the only way to undo the
+conversion; an operator may delete rows older than 90 days with an explicit
+command that only counts them unless told to delete.
 
 ## Known limitations
 

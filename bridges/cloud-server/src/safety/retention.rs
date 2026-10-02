@@ -2,8 +2,10 @@
 //! closed reports are deleted 90 days after closing, with their access log.
 //!
 //! Only reports are swept here. The contact conversion archive from
-//! migration 110 is kept until an operator decides otherwise, so that
-//! conversion can always be reverted.
+//! migration 110 is the only way to revert that conversion, so nothing
+//! deletes it automatically; an operator can remove rows older than 90 days
+//! with `cloud_purge_contact_consent_backfill` (a dry run unless told to
+//! delete).
 
 use std::time::Duration;
 

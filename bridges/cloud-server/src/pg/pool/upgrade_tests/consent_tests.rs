@@ -348,4 +348,37 @@ async fn upgrade_from_109_converts_one_way_contacts_only_with_peer_consent() {
         .unwrap();
     assert_eq!(again, 0);
     assert_eq!(chat_counts(&pool).await, counts);
+
+    // Nothing deletes archive rows on its own. An operator's purge counts
+    // first by default, refuses to cut the 90 days short, and then deletes.
+    let archived = || async {
+        query_as::<_, (i64,)>("SELECT count(*) FROM cloud_contact_consent_backfill")
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .0
+    };
+    let total = archived().await;
+    execute(&pool, "UPDATE cloud_contact_consent_backfill SET recorded_at = now() - interval '91 days' WHERE account_id = 'self'").await;
+    let purge = |sql: &'static str| {
+        let pool = pool.clone();
+        async move {
+            query_as::<_, (i64,)>(sql)
+                .fetch_one(&pool)
+                .await
+                .map(|row| row.0)
+        }
+    };
+    let dry_run = "SELECT cloud_purge_contact_consent_backfill(interval '90 days')";
+    assert_eq!(purge(dry_run).await.unwrap(), 1);
+    assert_eq!(archived().await, total);
+    assert!(
+        purge("SELECT cloud_purge_contact_consent_backfill(interval '30 days', true)")
+            .await
+            .is_err()
+    );
+    let apply = "SELECT cloud_purge_contact_consent_backfill(interval '90 days', true)";
+    assert_eq!(purge(apply).await.unwrap(), 1);
+    assert_eq!(archived().await, total - 1);
+    assert_eq!(purge(apply).await.unwrap(), 0);
 }

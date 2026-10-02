@@ -70,8 +70,9 @@ and server logs never contain report content.
 - The server's report retention worker applies both rules every six hours.
   There is no way to extend retention from the product.
 - The worker only touches reports. It does not delete the archive of the
-  contact conversion from migration 110, which operators keep so that
-  conversion can be reverted.
+  contact conversion from migration 110: that archive is the only way to
+  revert the conversion, so it is kept until an operator runs the explicit
+  purge described in the migration notes.
 
 ## Operator access
 
