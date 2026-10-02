@@ -51,6 +51,7 @@
   --app-chat-pane-header-height: 5.75rem;
   --app-chat-pane-header-inline: 1rem;
   --app-chat-pane-tab-height: 2.125rem;
+  --app-chat-pane-tab-inline: 10px;
   --app-chat-pane-transcript-inline: 1rem;
   --app-chat-pane-transcript-block: 1.25rem;
   --app-chat-pane-detail-top: 0.75rem;
@@ -91,7 +92,7 @@
   position: absolute;
   right: var(--app-chat-pane-header-inline);
   bottom: 0;
-  left: var(--app-chat-pane-header-inline);
+  left: calc(var(--app-chat-pane-header-inline) - var(--app-chat-pane-tab-inline));
   height: var(--app-chat-pane-tab-height);
   min-width: 0;
   overflow: hidden;
@@ -121,7 +122,7 @@
   justify-content: center;
   gap: 6px;
   border-radius: 8px 8px 0 0;
-  padding: 0 10px;
+  padding: 0 var(--app-chat-pane-tab-inline);
   color: var(--utility-muted-text);
   font-size: 12px;
   font-weight: 550;

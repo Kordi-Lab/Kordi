@@ -182,6 +182,8 @@ html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(
 .app-native-chat-actions-host { -webkit-app-region: no-drag; }
 
 .app-chat-pane-header.app-chat-native-metadata-header {
+  /* Match the titlebar title inset; tabs include their own button padding. */
+  --app-chat-pane-header-inline: 14px;
   height: auto;
   min-height: 0;
   padding: 4px var(--app-chat-pane-header-inline);
