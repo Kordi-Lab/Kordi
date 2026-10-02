@@ -15,7 +15,10 @@ import { flushReactUpdates, installDom } from './helpers/transcriptAttachmentDom
 
 type Call = { sessionId: string; change?: AiAccessChange; read?: boolean };
 
-function fakeApi({ available = true, sourceAccess = null as ChatSyncAiAccess | null, failUpdate = false } = {}) {
+function fakeApi({
+  available = true, sourceAccess = null as ChatSyncAiAccess | null, failUpdate = false,
+  returned = undefined as ChatSyncAiAccess | undefined,
+} = {}) {
   const calls: Call[] = [];
   const agentTrust = {
     aiFeatures: async () => ({ pip: { available, providerLabel: available ? 'OpenAI' : null } }),
@@ -23,7 +26,7 @@ function fakeApi({ available = true, sourceAccess = null as ChatSyncAiAccess | n
     updateAiAccess: async (_token: string, sessionId: string, change: AiAccessChange) => {
       calls.push({ sessionId, change });
       if (failUpdate) throw new Error('offline');
-      return { id: 'c', legacy_session_id: sessionId } as unknown as ChatSyncConversation;
+      return { id: 'c', legacy_session_id: sessionId, ai_access: returned } as unknown as ChatSyncConversation;
     },
   } as unknown as AgentTrustCalls;
   const api: AgentTrustApi = { session: async () => ({ token: `token-${available}`, accountId: 'acct_me' }), calls: agentTrust };
@@ -119,6 +122,28 @@ test('after creation PiP is turned on with one change, and a failure keeps the g
   const failing = fakeApi({ failUpdate: true });
   assert.equal(await enablePipForNewGroup('session:group:new', (message) => errors.push(message), failing.api), false);
   assert.deepEqual(errors, ['The group was created, but PiP couldn\'t be turned on. You can turn it on in AI access.']);
+});
+
+test('the setting saved but PiP could not join: the creator is told, and a channel reports it', async () => {
+  const pipOff: ChatSyncAiAccess = {
+    history_scope: 'mentions', pip: { available: true, enabled: false, provider_label: 'OpenAI' },
+    excluded_member_ids: [], viewer_excluded: false, viewer_can_manage: true,
+  };
+  const notJoined = fakeApi({ returned: pipOff });
+  const errors: string[] = [];
+  assert.equal(await enablePipForNewGroup('session:group:new', (message) => errors.push(message), notJoined.api), false);
+  assert.deepEqual(errors, ['The group was created, but PiP couldn\'t be turned on. You can turn it on in AI access.']);
+  // Positive control: a snapshot that shows PiP on is a success.
+  const joined = fakeApi({ returned: { ...pipOff, pip: { available: true, enabled: true, provider_label: 'OpenAI' } } });
+  assert.equal(await enablePipForNewGroup('session:group:new', (message) => errors.push(message), joined.api), true);
+  assert.equal(errors.length, 1);
+  const failures: unknown[] = [];
+  const channel = fakeApi({ returned: pipOff, sourceAccess: { ...pipOff, pip: { available: true, enabled: true, provider_label: null } } });
+  assert.equal(
+    await inheritPipForChannel('session:group:root', 'session:group:channel', channel.api, (error) => failures.push(error)),
+    false,
+  );
+  assert.equal(failures.length, 1);
 });
 
 test('new channels inherit PiP only from a channel that has it', async () => {
