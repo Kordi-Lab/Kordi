@@ -6,6 +6,8 @@ type PinSummaryRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<Vec<String>>,
+    Option<Vec<String>>,
 );
 
 pub(super) async fn cloud_session_pin_summary(
@@ -13,12 +15,12 @@ pub(super) async fn cloud_session_pin_summary(
     account_id: &str,
     session_id: &str,
 ) -> Result<CloudSessionPinSummary, sqlx_core::error::Error> {
-    let (shared_message_id, shared_updated_at, private_message_id, private_updated_at, history_updated_at) = query_as::<_, PinSummaryRow>(
+    let (shared_message_id, shared_updated_at, private_message_id, private_updated_at, history_updated_at, shared_message_ids, private_message_ids) = query_as::<_, PinSummaryRow>(
         "SELECT shared.message_id, shared.updated_at, private.message_id, private.updated_at, \
           (SELECT history.payload->>'updatedAt' FROM cloud_session_pin_history history \
            JOIN cloud_chat_conversations conversation ON conversation.conversation_id = history.conversation_id \
            WHERE (conversation.legacy_session_id = $2 OR conversation.conversation_id::text = $2) \
-             AND (history.scope = 'shared' OR history.actor_account_id = $1) ORDER BY history.occurred_at DESC, history.sequence DESC LIMIT 1) \
+             AND (history.scope = 'shared' OR history.actor_account_id = $1) ORDER BY history.occurred_at DESC, history.sequence DESC LIMIT 1), shared.message_ids, private.message_ids \
          FROM (SELECT 1) seed \
          LEFT JOIN cloud_session_shared_pins shared ON shared.session_id = $2 \
          LEFT JOIN cloud_account_session_pins private ON private.account_id = $1 AND private.session_id = $2",
@@ -28,6 +30,8 @@ pub(super) async fn cloud_session_pin_summary(
         session_id: session_id.to_string(),
         shared_message_id: shared_message_id.clone(),
         private_message_id: private_message_id.clone(),
+        shared_message_ids: shared_message_ids.unwrap_or_default(),
+        private_message_ids: private_message_ids.unwrap_or_default(),
         effective_message_id: private_message_id.or(shared_message_id),
         updated_at: history_updated_at
             .or(private_updated_at)
@@ -208,6 +212,16 @@ pub(super) async fn update_cloud_session_pin(
         Ok(value) => value,
         Err(response) => return *response,
     };
+    let action = req.action.as_deref();
+    if action.is_some_and(|action| !matches!(action, "pin" | "unpin"))
+        || (action.is_some() && message_id.is_none())
+    {
+        return err(
+            "invalid_pin_action",
+            "A pin or unpin action requires messageId.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
     let pool = state.db_pool();
     let mut transaction = match pool.begin().await {
         Ok(transaction) => transaction,
@@ -271,55 +285,114 @@ pub(super) async fn update_cloud_session_pin(
         );
     }
 
-    let updated_at = Utc::now().to_rfc3339();
-    let write_result = if scope == "shared" {
-        if let Some(message_id) = message_id.as_deref() {
-            query(
-                "INSERT INTO cloud_session_shared_pins (session_id, message_id, updated_by_account_id, updated_at) \
-                 VALUES ($1, $2, $3, $4) \
-                 ON CONFLICT (session_id) DO UPDATE SET \
-                   message_id = EXCLUDED.message_id, \
-                   updated_by_account_id = EXCLUDED.updated_by_account_id, \
-                   updated_at = EXCLUDED.updated_at \
-                 WHERE cloud_session_shared_pins.message_id IS DISTINCT FROM EXCLUDED.message_id",
+    let shared_ids: Vec<String> = match query_as::<_, (Vec<String>,)>(
+        "SELECT message_ids FROM cloud_session_shared_pins WHERE session_id=$1",
+    )
+    .bind(&session_id)
+    .fetch_optional(&mut *transaction)
+    .await
+    {
+        Ok(row) => row.map(|row| row.0).unwrap_or_default(),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not load pins.",
+                StatusCode::INTERNAL_SERVER_ERROR,
             )
-            .bind(&session_id)
-            .bind(message_id)
-            .bind(&session.account_id)
-            .bind(&updated_at)
-            .execute(&mut *transaction)
-            .await
+        }
+    };
+    let private_rows: Vec<(String, Vec<String>)> = match query_as(
+        "SELECT account_id, message_ids FROM cloud_account_session_pins WHERE session_id=$1 AND account_id=ANY($2)")
+        .bind(&session_id).bind(&participants).fetch_all(&mut *transaction).await {
+        Ok(rows) => rows,
+        Err(_) => return err("server_error", "Could not load pins.", StatusCode::INTERNAL_SERVER_ERROR),
+    };
+    let private_ids = private_rows
+        .iter()
+        .find(|row| row.0 == session.account_id)
+        .map(|row| row.1.clone())
+        .unwrap_or_default();
+    let previous_ids = if scope == "shared" {
+        &shared_ids
+    } else {
+        &private_ids
+    };
+    let mut next_ids = previous_ids.clone();
+    match action {
+        Some("pin") => {
+            let id = message_id.as_ref().unwrap();
+            if !next_ids.contains(id) {
+                next_ids.push(id.clone());
+            }
+        }
+        Some("unpin") => next_ids.retain(|id| Some(id) != message_id.as_ref()),
+        // Older clients still replace or clear their single-pin projection.
+        _ => next_ids = message_id.iter().cloned().collect(),
+    }
+    let visible_count = |shared: &[String], private: &[String]| {
+        shared
+            .iter()
+            .chain(private)
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+    };
+    let exceeds_limit = next_ids.len() > 5
+        || if scope == "shared" {
+            participants.iter().any(|account_id| {
+                let private = private_rows
+                    .iter()
+                    .find(|row| &row.0 == account_id)
+                    .map(|row| row.1.as_slice())
+                    .unwrap_or_default();
+                visible_count(&next_ids, private) > 5
+            })
         } else {
-            query("DELETE FROM cloud_session_shared_pins WHERE session_id = $1")
+            visible_count(&shared_ids, &next_ids) > 5
+        };
+    // Removing pins remains possible if membership changes exposed older personal pins.
+    let adds_target = next_ids.iter().any(|id| !previous_ids.contains(id));
+    if exceeds_limit && adds_target {
+        return err(
+            "pin_limit_reached",
+            "At most five messages can be pinned. Unpin a message before adding another.",
+            StatusCode::CONFLICT,
+        );
+    }
+    let updated_at = Utc::now().to_rfc3339();
+    let write_result = if next_ids == *previous_ids {
+        Ok(false)
+    } else {
+        let result = if scope == "shared" {
+            if let Some(latest_id) = next_ids.last() {
+                query("INSERT INTO cloud_session_shared_pins (session_id, message_id, message_ids, updated_by_account_id, updated_at) \
+                    VALUES ($1,$2,$3,$4,$5) ON CONFLICT (session_id) DO UPDATE SET message_id=EXCLUDED.message_id, \
+                    message_ids=EXCLUDED.message_ids, updated_by_account_id=EXCLUDED.updated_by_account_id, updated_at=EXCLUDED.updated_at")
+                    .bind(&session_id).bind(latest_id).bind(&next_ids).bind(&session.account_id).bind(&updated_at)
+                    .execute(&mut *transaction).await
+            } else {
+                query("DELETE FROM cloud_session_shared_pins WHERE session_id=$1")
+                    .bind(&session_id)
+                    .execute(&mut *transaction)
+                    .await
+            }
+        } else if let Some(latest_id) = next_ids.last() {
+            query("INSERT INTO cloud_account_session_pins (account_id, session_id, message_id, message_ids, updated_at) \
+                VALUES ($1,$2,$3,$4,$5) ON CONFLICT (account_id,session_id) DO UPDATE SET message_id=EXCLUDED.message_id, \
+                message_ids=EXCLUDED.message_ids, updated_at=EXCLUDED.updated_at")
+                .bind(&session.account_id).bind(&session_id).bind(latest_id).bind(&next_ids).bind(&updated_at)
+                .execute(&mut *transaction).await
+        } else {
+            query("DELETE FROM cloud_account_session_pins WHERE account_id=$1 AND session_id=$2")
+                .bind(&session.account_id)
                 .bind(&session_id)
                 .execute(&mut *transaction)
                 .await
-        }
-    } else if let Some(message_id) = message_id.as_deref() {
-        query(
-            "INSERT INTO cloud_account_session_pins (account_id, session_id, message_id, updated_at) \
-             VALUES ($1, $2, $3, $4) \
-             ON CONFLICT (account_id, session_id) DO UPDATE SET \
-               message_id = EXCLUDED.message_id, \
-               updated_at = EXCLUDED.updated_at \
-             WHERE cloud_account_session_pins.message_id IS DISTINCT FROM EXCLUDED.message_id",
-        )
-        .bind(&session.account_id)
-        .bind(&session_id)
-        .bind(message_id)
-        .bind(&updated_at)
-        .execute(&mut *transaction)
-        .await
-    } else {
-        query("DELETE FROM cloud_account_session_pins WHERE account_id = $1 AND session_id = $2")
-            .bind(&session.account_id)
-            .bind(&session_id)
-            .execute(&mut *transaction)
-            .await
+        };
+        result.map(|result| result.rows_affected() > 0)
     };
 
     let changed = match write_result {
-        Ok(result) => result.rows_affected() > 0,
+        Ok(changed) => changed,
         Err(_) => {
             return err(
                 "server_error",
@@ -349,7 +422,10 @@ pub(super) async fn update_cloud_session_pin(
     let event_payload = serde_json::json!({
         "pinHistoryId": uuid::Uuid::now_v7().to_string(),
         "sessionId": &session_id,
-        "messageId": &message_id,
+        "messageId": next_ids.last(),
+        "messageIds": &next_ids,
+        "targetMessageId": &message_id,
+        "kind": if action == Some("unpin") || message_id.is_none() { "unpinned" } else { "pinned" },
         "scope": &scope,
         "updatedByAccountId": &session.account_id,
         "updatedAt": &updated_at,

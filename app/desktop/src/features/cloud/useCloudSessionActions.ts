@@ -270,6 +270,7 @@ export function useCloudSessionActions({
   const updatePin = useCallback(async (input: {
     sessionId: string;
     messageId: string | null;
+    action?: 'pin' | 'unpin';
     scope: 'private' | 'shared';
   }) => {
     if (!account) {
@@ -287,6 +288,7 @@ export function useCloudSessionActions({
       {
         messageId: input.messageId?.trim() || null,
         scope: input.scope,
+        action: input.action,
       },
     );
     if (pinAccountRef.current !== account.accountId) throw new Error('Cloud account changed.');

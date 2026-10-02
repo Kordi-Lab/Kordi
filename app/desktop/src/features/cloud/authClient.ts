@@ -814,7 +814,7 @@ export class CloudAuthClient {
   getCloudPinHistory(token: string, sessionId: string, signal?: AbortSignal) { return this.pins.getCloudPinHistory(token, sessionId, signal); }
   getCloudSessionPinState(token: string, sessionId: string, signal?: AbortSignal) { return this.pins.getState(token, sessionId, signal); }
   getCloudSessionPin(token: string, sessionId: string, signal?: AbortSignal) { return this.pins.getCloudSessionPin(token, sessionId, signal); }
-  updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; scope: 'private' | 'shared' }) { return this.pins.updateCloudSessionPin(token, sessionId, input); }
+  updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; action?: 'pin' | 'unpin'; scope: 'private' | 'shared' }) { return this.pins.updateCloudSessionPin(token, sessionId, input); }
 
   async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> { return this.chat.updateTitle(token, sessionId, input); }
 

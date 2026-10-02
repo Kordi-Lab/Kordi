@@ -75,6 +75,7 @@ export type ChatsPageSession = {
   onUpdateCloudSessionPin?: (input: {
     sessionId: string;
     messageId: string | null;
+    action?: 'pin' | 'unpin';
     scope: 'private' | 'shared';
   }) => Promise<CloudSessionPin>;
   onUpdateCollaborationAgentModelRouting: (

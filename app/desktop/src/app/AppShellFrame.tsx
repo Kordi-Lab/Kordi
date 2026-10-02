@@ -128,6 +128,7 @@ export function AppShellFrame({
             : 'app-shell-preview mx-auto rounded-[26px] border',
         )}
         data-layout-resizing={isLayoutResizing ? 'true' : undefined}
+        data-sidebar-collapsed={collapseChatSessions ? 'true' : undefined}
         onMouseDownCapture={isNativeShell ? handleNativeWindowDragMouseDown : undefined}
         style={
           isNativeShell

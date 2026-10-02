@@ -489,4 +489,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "account-scoped desktop projects",
         sql: include_str!("../../../migrations/0107_chat_projects.sql"),
     },
+    EmbeddedMigration {
+        version: 108,
+        description: "session pin stacks",
+        sql: include_str!("../../../migrations/0108_session_pin_stacks.sql"),
+    },
 ];

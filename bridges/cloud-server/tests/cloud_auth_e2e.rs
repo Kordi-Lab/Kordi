@@ -214,3 +214,5 @@ mod session_list_actions;
 mod session_list_fixtures;
 #[path = "cloud_auth_e2e/session_pin_history.rs"]
 mod session_pin_history;
+#[path = "cloud_auth_e2e/session_pin_stacks.rs"]
+mod session_pin_stacks;
