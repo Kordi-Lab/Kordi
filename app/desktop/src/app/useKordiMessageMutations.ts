@@ -9,6 +9,7 @@ import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessa
 import { useServerContentRemovalVersion } from '@/features/cloud/contentRemovalCapability';
 import type { CanonicalSessionState, ComposerQuoteState, Conversation, Message, MessageEditState } from '@/kordi-app/types';
 import { MessageDeleteDialog } from '@/pages/MessageDeleteDialog';
+import { MESSAGE_DELETE_ERROR } from '@/pages/messageDeleteCopy';
 
 type MessageMutationTransport = Pick<
   UseCloudCollaborationStateResult,
@@ -152,7 +153,7 @@ export function useKordiMessageMutations({
               ...current,
               messages: current.messages.filter((message) => !deletedCanonicalIds.has(message.id)),
             }));
-          } catch (error) {
+          } catch {
             deletionAnimation?.cancel();
             setCanonicalState((current) => {
               if (!current || removedCanonicalMessages.length === 0) return current;
@@ -167,7 +168,9 @@ export function useKordiMessageMutations({
                     )),
                   };
             });
-            setDesktopChatError(error instanceof Error ? error.message : 'Could not delete the message. Try again.');
+            // The dialog already closed so the removal could animate. People
+            // see the retry text, never the transport error.
+            setDesktopChatError(MESSAGE_DELETE_ERROR);
             return;
           }
           await animation;

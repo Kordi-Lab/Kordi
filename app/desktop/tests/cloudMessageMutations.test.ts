@@ -22,6 +22,7 @@ import {
   patchCanonicalCloudMessages,
 } from '../src/features/cloud/cloudMessageIndex';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
+import { MESSAGE_DELETE_ERROR } from '../src/pages/messageDeleteCopy';
 
 const message = (overrides: Partial<CloudMessage>): CloudMessage => ({
   messageId: 'message-1',
@@ -152,6 +153,13 @@ test('message edits and deletes apply immediately, preserve envelopes, and roll 
 test('successful message deletion durably removes the native projection', () => {
   const source = readFileSync(new URL('../src/app/useKordiMessageMutations.ts', import.meta.url), 'utf8');
   assert.match(source, /await deletion;[\s\S]*deleteCanonicalCloudMessage\(messageId\)/);
+});
+
+test('a failed deletion shows the retry text instead of the transport message', () => {
+  const source = readFileSync(new URL('../src/app/useKordiMessageMutations.ts', import.meta.url), 'utf8');
+  assert.equal(MESSAGE_DELETE_ERROR, 'Could not delete the message. Try again.');
+  assert.match(source, /catch \{\s*deletionAnimation\?\.cancel\(\);[\s\S]*setDesktopChatError\(MESSAGE_DELETE_ERROR\);\s*return;/);
+  assert.doesNotMatch(source, /setDesktopChatError\([^)]*error\.message/);
 });
 
 test('group agent terminal text and reactions never use the retained waiting-slot wire row', () => {

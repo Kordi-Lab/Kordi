@@ -10,13 +10,13 @@ import {
 import type { Message } from '@/kordi-app/types';
 import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 import { cn } from '@/lib/utils';
+import { MESSAGE_DELETE_ERROR } from '@/pages/messageDeleteCopy';
 
 type DeleteChoice = 'me' | 'everyone';
 
 const REMOVE_FROM_VIEW_HELPER = 'Hides it on your devices. Others in the chat still see it.';
 const DELETE_FOOTNOTE = 'People who already saw it may have saved a copy or taken a screenshot. '
   + "If an agent already read it, the agent's reply and what it received stay.";
-const DELETE_ERROR = 'Could not delete the message. Try again.';
 
 // Mention storage only when the server reports that it removes stored copies.
 function deleteForEveryoneHelper(group: boolean, peerName: string, serverDeletesStoredCopies: boolean) {
@@ -103,7 +103,7 @@ export function MessageDeleteDialog({
       await onDelete(isOwnMessage && choice === 'everyone');
       onCancel();
     } catch {
-      setError(DELETE_ERROR);
+      setError(MESSAGE_DELETE_ERROR);
       setPending(null);
     }
   };
