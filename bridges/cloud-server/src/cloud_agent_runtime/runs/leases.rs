@@ -161,6 +161,15 @@ async fn lease_run(
         return Ok(None);
     };
     let mut response = runner_response_from_row(pool, row).await?;
+    // The runner sends the prompt it leases with. If the conversation's AI
+    // access changed since the claim, it gets one built under the change.
+    if response.status == "leased" {
+        if let Some(prompt) =
+            super::prompt_history::prompt_for_lease(pool, &response.run_id).await?
+        {
+            response.prompt = prompt;
+        }
+    }
     response.run_token = Some(run_token);
     Ok(Some(response))
 }

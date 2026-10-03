@@ -192,6 +192,12 @@ async fn context(pool: &PgPool, run_id: &str, input: ContextInput) -> RunResult<
     if subsession && !super::super::subsession_execution::revalidate(pool, run_id).await? {
         return Err(RunError::NotFound);
     }
+    // When the conversation's AI access changed after the claim, the input is
+    // rebuilt under the current settings, as the leased prompt is.
+    let frozen = match super::prompt_history::omp_input_for_lease(pool, run_id).await? {
+        Some(rebuilt) => Some(rebuilt),
+        None => frozen,
+    };
     let mut frozen = if let Some(frozen) = frozen {
         frozen
     } else if subsession {
@@ -284,7 +290,9 @@ async fn context(pool: &PgPool, run_id: &str, input: ContextInput) -> RunResult<
 /// The newest replayable saved state anchored in the frozen history. The
 /// candidate query reads no state document and applies its LIMIT before the
 /// join, so at most one state document (up to MAX_STATE_BYTES) is read,
-/// whatever order the planner evaluates the filters in.
+/// whatever order the planner evaluates the filters in. A state saved before
+/// the conversation's AI access last changed (an opt-out or a group setting)
+/// is never replayed, since it may hold messages the run may no longer use.
 const ANCHORED_STATE_SQL: &str = "WITH candidate AS MATERIALIZED (\
     SELECT s.run_id FROM cloud_agent_omp_state s JOIN cloud_agent_fallback_runs r ON r.run_id=s.run_id \
     WHERE s.owner_account_id=$1 AND s.session_id=$2 AND s.execution_agent_id=$3 AND s.route_json=$4 \
@@ -295,6 +303,9 @@ const ANCHORED_STATE_SQL: &str = "WITH candidate AS MATERIALIZED (\
         OR (m.edited_at>s.created_at AND m.created_at<=s.created_at) \
         OR EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)) \
         OR EXISTS(SELECT 1 FROM cloud_chat_attachment_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)))) \
+    AND NOT EXISTS(SELECT 1 FROM cloud_chat_conversations c WHERE c.legacy_session_id=s.session_id \
+        AND (EXISTS(SELECT 1 FROM cloud_chat_ai_opt_outs o WHERE o.conversation_id=c.conversation_id AND o.created_at>=s.created_at) \
+        OR EXISTS(SELECT 1 FROM cloud_chat_ai_policies p WHERE p.conversation_id=c.conversation_id AND p.updated_at>=s.created_at))) \
     ORDER BY s.created_at DESC LIMIT 1) \
     SELECT s.response_message_id,s.state_json FROM candidate JOIN cloud_agent_omp_state s ON s.run_id=candidate.run_id";
 

@@ -31,7 +31,9 @@ pub(crate) mod projection;
 mod revise;
 mod routes;
 mod runner;
+mod shown;
 pub mod store;
+pub(crate) mod suggestions;
 mod transitions;
 mod wire;
 
@@ -43,6 +45,8 @@ pub use routes::routes;
 mod confirmation_tests;
 #[cfg(test)]
 mod http_tests;
+#[cfg(test)]
+mod pip_suggestion_tests;
 #[cfg(test)]
 mod projection_tests;
 #[cfg(test)]

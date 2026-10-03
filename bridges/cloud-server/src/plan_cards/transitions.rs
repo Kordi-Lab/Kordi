@@ -7,6 +7,7 @@ use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use super::models::{PlanCardRow, PlanCardRsvp, PlanCardStoreError};
+use super::shown::ShownPlan;
 use super::store::{options_from_json, options_to_json, require_active_member, require_row};
 
 pub(super) async fn lock_event(
@@ -20,6 +21,23 @@ pub(super) async fn lock_event(
     Ok(())
 }
 
+/// Under the card's lock: refuses a change made from a PiP suggestion when
+/// the card no longer shows the plan the suggestion showed.
+async fn require_shown(
+    tx: &mut sqlx_core::transaction::Transaction<'_, Postgres>,
+    event_id: &str,
+    shown: Option<&ShownPlan>,
+) -> Result<(), PlanCardStoreError> {
+    let Some(shown) = shown else {
+        return Ok(());
+    };
+    if shown.matches(&require_row(tx, event_id).await?) {
+        Ok(())
+    } else {
+        Err(PlanCardStoreError::RevisionConflict)
+    }
+}
+
 /// Records one participant's answer. An answer is that person's own state,
 /// so it applies at any revision: a member pressing a button on an older
 /// snapshot must never be told to refresh first.
@@ -30,8 +48,21 @@ pub async fn rsvp(
     response: PlanCardRsvp,
     note: Option<&str>,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
+    rsvp_as_shown(pool, event_id, account_id, response, note, None).await
+}
+
+/// `rsvp`, applied only while the card shows `shown` (see `ShownPlan`).
+pub(super) async fn rsvp_as_shown(
+    pool: &PgPool,
+    event_id: &str,
+    account_id: &str,
+    response: PlanCardRsvp,
+    note: Option<&str>,
+    shown: Option<&ShownPlan>,
+) -> Result<PlanCardRow, PlanCardStoreError> {
     let mut tx = pool.begin().await?;
     lock_event(&mut tx, event_id).await?;
+    require_shown(&mut tx, event_id, shown).await?;
 
     let current: Option<(Uuid, String)> =
         query_as("SELECT conversation_id, state FROM cloud_plan_cards WHERE event_id = $1")
@@ -80,8 +111,20 @@ pub async fn vote(
     account_id: &str,
     option_id: &str,
 ) -> Result<PlanCardRow, PlanCardStoreError> {
+    vote_as_shown(pool, event_id, account_id, option_id, None).await
+}
+
+/// `vote`, applied only while the card shows `shown` (see `ShownPlan`).
+pub(super) async fn vote_as_shown(
+    pool: &PgPool,
+    event_id: &str,
+    account_id: &str,
+    option_id: &str,
+    shown: Option<&ShownPlan>,
+) -> Result<PlanCardRow, PlanCardStoreError> {
     let mut tx = pool.begin().await?;
     lock_event(&mut tx, event_id).await?;
+    require_shown(&mut tx, event_id, shown).await?;
 
     let current: Option<(Uuid, String, serde_json::Value)> = query_as(
         "SELECT conversation_id, state, options FROM cloud_plan_cards WHERE event_id = $1",

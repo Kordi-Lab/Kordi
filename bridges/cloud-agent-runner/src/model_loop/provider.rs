@@ -41,6 +41,18 @@ pub struct OpenAiProviderConfig {
     pub account_id: Option<String>,
 }
 
+/// The model a run with this material and route calls, as the model loop
+/// resolves it, for "About this reply". `None` when the loop would refuse to
+/// run.
+pub fn effective_model(
+    material: &ProviderAuthMaterial,
+    route: &AgentRuntimeRoute,
+) -> Option<String> {
+    let mut config = OpenAiProviderConfig::from_material(material).ok()?;
+    config.apply_runtime_route(route, &material.provider).ok()?;
+    Some(config.model).filter(|model| !model.trim().is_empty())
+}
+
 impl OpenAiProviderConfig {
     pub fn from_material(material: &ProviderAuthMaterial) -> Result<Self, ModelLoopError> {
         let payload = &material.payload;

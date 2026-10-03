@@ -61,6 +61,12 @@ async fn pip_stays_when_the_last_person_leaves_and_never_becomes_owner() {
     .unwrap()
     .value
     .id;
+    // PiP joins only while the group's AI access setting turns it on.
+    query("UPDATE cloud_chat_ai_policies SET pip_enabled = true WHERE conversation_id = $1")
+        .bind(group)
+        .execute(&pool)
+        .await
+        .unwrap();
     assert!(crate::pip::membership::join_conversation(&pool, pip, group)
         .await
         .unwrap());
@@ -103,13 +109,15 @@ async fn pip_stays_when_the_last_person_leaves_and_never_becomes_owner() {
         .iter()
         .filter(|row| row.0 != pip)
         .all(|row| row.1 == "left"));
-    // Nothing for PiP's membership backfill (`join_all_groups`) to re-add.
-    // Calling it here would join PiP to every group other tests create, so
-    // this checks its selection and its per-conversation join for this group.
-    assert!(!crate::pip::membership::conversations_without(&pool, pip)
+    // Nothing for PiP's membership reconciliation (`reconcile_groups`) to
+    // change. Calling it here would change PiP's membership in groups other
+    // tests create, so this checks its selection and its per-conversation
+    // join for this group.
+    assert!(!crate::pip::membership::mismatched_groups(&pool, pip)
         .await
         .unwrap()
-        .contains(&group));
+        .iter()
+        .any(|(conversation_id, _)| *conversation_id == group));
     assert!(
         !crate::pip::membership::join_conversation(&pool, pip, group)
             .await

@@ -60,6 +60,7 @@ function desktopMessageActionSource(message: DesktopChatMessage) {
   return {
     messageId: source.sourceMessageId,
     senderLabel: source.senderLabel,
+    sourceMessageKind: source.sourceMessageKind ?? null,
     text: source.textPreview,
     mentions: source.mentions,
     attachmentCount: source.attachmentCount,

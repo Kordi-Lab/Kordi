@@ -153,15 +153,11 @@ again changes nothing.
 
 Every migration has its own version. From version 106 on, the runner refuses a
 database that recorded a version under a different description, so two changes
-must never be given the same number. Schema changes still in review hold these
-versions, and other changes must not take them:
-
-- 112: agent trust
-
-Unit tests keep these versions free and this list equal to the one they check;
-a change that lands one of them removes it from both. Gaps in the sequence are
-allowed. Contact consent and blocks (110) and abuse reports (111) landed with
-the versions they held.
+must never be given the same number, and a released description never
+changes. A unit test lists every version and description from version 100 on.
+Gaps in the sequence are allowed. Contact consent and blocks (110), abuse
+reports (111), and agent trust (112) landed with the versions they held while
+in review; no other change holds a version now.
 
 Versions from 106 on were renumbered before release, when chat projects took
 version 107 and session pin stacks took version 108. Session-bound realtime
@@ -183,15 +179,13 @@ UPDATE cloud_schema_versions SET version = 120
 COMMIT;
 ```
 
-These statements cover every earlier number of those three migrations,
-including the numbers that the change still in review records. A development
-database from the contact consent change or the content removal change before
-it merged recorded them at versions 107 to 109; the statements move those
-records too, and its own versions (110 and 111, or 116 and 117) already match
-this build. The build then applies every version it embeds that is still
-missing, such as versions 106 to 108 after versions 110 and 111, and keeps every
-other recorded version, including the version the change still in review
-holds. A database that recorded another migration under a number this build
-uses, such as an unreleased number of chat projects or session pin stacks,
-cannot be renumbered this way. Recreate it. Upgrade tests run these statements
-as written here.
+These statements cover every earlier number of those three migrations. A
+development database from the contact consent, agent trust, or content removal
+change before it merged recorded them at versions 107 to 109; the statements
+move those records too, and its own versions (110 and 111, 112, or 116 and 117)
+already match this build. The build then applies every version it embeds that
+is still missing, such as versions 106 to 108 after the versions that change
+recorded, and keeps every other recorded version. A database that recorded
+another migration under a number this build uses, such as an unreleased number
+of chat projects or session pin stacks, cannot be renumbered this way. Recreate
+it. Upgrade tests run these statements as written here.

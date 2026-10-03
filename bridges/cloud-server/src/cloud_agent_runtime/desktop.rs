@@ -15,6 +15,7 @@ use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
+mod contract;
 
 #[path = "desktop_claim.rs"]
 mod claim;
@@ -34,6 +35,8 @@ pub(super) struct ReadyInput {
     /// earlier version send none, and are not offered hosted runs.
     #[serde(default)]
     device_proof_version: Option<u32>,
+    #[serde(default = "contract::legacy")]
+    context_contract: u8,
 }
 
 impl ReadyInput {
@@ -61,8 +64,8 @@ pub(super) async fn ready(
             let own: Option<(String,)> = query_as("SELECT agent_id FROM cloud_agent_definitions WHERE agent_id=$1 AND owner_account_id=$2 AND status='active'")
                 .bind(agent).bind(&session.account_id).fetch_optional(&mut *tx).await?;
             if agent != &format!("cloud-agent:{}", session.account_id) && own.is_none() { return Ok(false); }
-            query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id,device_proof) VALUES($1,$2,$3) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now(),device_proof=EXCLUDED.device_proof")
-                .bind(&session.device_id).bind(agent).bind(input.signs_current_device_proofs()).execute(&mut *tx).await?;
+            query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id,device_proof,context_contract) VALUES($1,$2,$3,$4) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now(),device_proof=EXCLUDED.device_proof,context_contract=EXCLUDED.context_contract")
+                .bind(&session.device_id).bind(agent).bind(input.signs_current_device_proofs()).bind(i16::from(input.context_contract)).execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok(true)
@@ -90,10 +93,13 @@ pub(super) async fn prefer_ready_desktop(
     let hosted = super::device_proof::route_uses_hosted_auth(
         &super::runs::runtime_route_for_claim(pool, input).await?,
     );
+    // A legacy executor that would refuse another member's request must not
+    // delay cloud fallback (`contract::min_ready_contract`).
+    let contract = contract::min_ready_contract(pool, input).await?;
     // Fresh capability and presence are the admission boundary. If the Mac
     // stops heartbeating, Cloud may claim the same request after they expire.
-    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds' AND (NOT $3 OR (r.device_proof AND d.device_key_algorithm='p256')))")
-        .bind(&input.owner_account_id).bind(agent).bind(hosted).fetch_one(pool).await?;
+    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.context_contract>=$4 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds' AND (NOT $3 OR (r.device_proof AND d.device_key_algorithm='p256')))")
+        .bind(&input.owner_account_id).bind(agent).bind(hosted).bind(contract).fetch_one(pool).await?;
     Ok(row.0)
 }
 
@@ -103,6 +109,8 @@ pub(super) struct DesktopClaimInput {
     #[serde(flatten)]
     run: ClaimRunRequest,
     claim_id: Uuid,
+    #[serde(default = "contract::legacy")]
+    context_contract: u8,
 }
 
 fn executor(session: &CloudSession, claim_id: Uuid) -> String {

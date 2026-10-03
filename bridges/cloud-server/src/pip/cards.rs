@@ -201,6 +201,20 @@ pub(crate) async fn sync_card_messages(
     if shows_wanted || (row.state == PlanCardState::Canceled && has_carrier) {
         return Ok(None);
     }
+    // With PiP turned off, existing cards still refresh in place as members
+    // answer, but PiP posts nothing new.
+    let (active,): (bool,) = query_as(
+        "SELECT EXISTS (SELECT 1 FROM cloud_chat_conversation_members
+                        WHERE conversation_id = $1 AND account_id = $2
+                          AND membership_state = 'active')",
+    )
+    .bind(conversation_id)
+    .bind(pip_account_id)
+    .fetch_one(pool)
+    .await?;
+    if !active {
+        return Ok(None);
+    }
     let request = SendMessageRequest {
         client_message_id: Uuid::new_v5(
             &Uuid::NAMESPACE_OID,

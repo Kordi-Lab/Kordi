@@ -78,6 +78,34 @@ fn message_text(content: &Value) -> String {
     out
 }
 
+/// The first text block as stored, where group envelopes and agent responses
+/// carry their markers.
+fn stored_body(content: &Value) -> &str {
+    content
+        .get("blocks")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .find(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+        .and_then(|block| block.get("text").and_then(Value::as_str))
+        .unwrap_or_default()
+}
+
+/// Whether a message may reach PiP. Notices are never input. Nothing a member
+/// who turned on "Don't let AI use my messages" wrote here reaches PiP;
+/// replies their agents wrote are not their words and still do, as in every
+/// other agent context. Agent replies never let PiP suggest an answer for
+/// anyone (see `fromAgent`), so PiP never suggests one for that member.
+fn admits_message(
+    opted_out: &BTreeSet<String>,
+    sender: &str,
+    kind: &str,
+    agent_authored: bool,
+) -> bool {
+    kind != crate::cloud_agent_runtime::runs::context_policy::AI_ACCESS_NOTICE_KIND
+        && (agent_authored || !opted_out.contains(sender))
+}
+
 /// Reminder hook for a card starting soon, unless it already went out.
 fn reminder_hook(candidate: &Candidate, event_id: &str, start_at: Option<&str>) -> Option<Value> {
     let start = start_at.and_then(parse_pg_timestamp)?;
@@ -139,19 +167,33 @@ pub(super) async fn build_input(
     .bind(context::CONTEXT_MESSAGE_FETCH)
     .fetch_all(pool)
     .await?;
+    let opted_out: Vec<(String,)> =
+        query_as("SELECT account_id FROM cloud_chat_ai_opt_outs WHERE conversation_id = $1")
+            .bind(candidate.conversation_id)
+            .fetch_all(pool)
+            .await?;
+    let opted_out: BTreeSet<String> = opted_out.into_iter().map(|(account,)| account).collect();
     let messages = context::budget_messages(
         rows.into_iter()
-            .map(
+            .filter_map(
                 |(id, sequence, sender, display_name, kind, content, created_at)| {
-                    context::ContextMessage {
-                        id,
-                        sequence,
-                        sender_id: sender,
-                        sender_name: display_name.unwrap_or_else(|| "Member".to_string()),
-                        kind,
-                        text: message_text(&content),
-                        created_at,
-                    }
+                    let from_agent =
+                        crate::cloud_agent_runtime::runs::context_policy::is_agent_authored(
+                            &sender,
+                            stored_body(&content),
+                        );
+                    admits_message(&opted_out, &sender, &kind, from_agent).then(|| {
+                        context::ContextMessage {
+                            id,
+                            sequence,
+                            sender_id: sender,
+                            sender_name: display_name.unwrap_or_else(|| "Member".to_string()),
+                            kind,
+                            text: message_text(&content),
+                            created_at,
+                            from_agent,
+                        }
+                    })
                 },
             )
             .collect(),
@@ -276,6 +318,36 @@ mod tests {
             context_start_sequence: 0,
             hooks_fired,
         }
+    }
+
+    #[test]
+    fn notices_and_opted_out_members_never_reach_pip() {
+        let opted_out = BTreeSet::from(["acct_quiet".to_string()]);
+        assert!(admits_message(&opted_out, "acct_open", "text", false));
+        assert!(admits_message(&opted_out, "acct_open", "voice", false));
+        assert!(!admits_message(&opted_out, "acct_quiet", "text", false));
+        assert!(!admits_message(
+            &opted_out,
+            "acct_open",
+            "ai-access-notice",
+            false
+        ));
+        // Replies a member's agent wrote are not covered by the setting.
+        assert!(admits_message(&opted_out, "acct_quiet", "text", true));
+        assert!(!admits_message(
+            &opted_out,
+            "acct_quiet",
+            "ai-access-notice",
+            true
+        ));
+    }
+
+    #[test]
+    fn the_stored_body_is_the_first_text_block() {
+        let content = json!({"blocks": [{"type": "voice"}, {"type": "text", "text": "kordi-cloud-group:abc"},
+            {"type": "text", "text": "second"}]});
+        assert_eq!(stored_body(&content), "kordi-cloud-group:abc");
+        assert_eq!(stored_body(&json!({"blocks": []})), "");
     }
 
     #[test]

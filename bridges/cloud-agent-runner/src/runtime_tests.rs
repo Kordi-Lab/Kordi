@@ -164,6 +164,8 @@ fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
     }
 }
 
+#[path = "runtime_model_report_tests.rs"]
+mod model_report;
 #[path = "runtime_sandbox_mode_tests.rs"]
 mod sandbox_mode;
 

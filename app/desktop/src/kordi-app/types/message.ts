@@ -113,6 +113,8 @@ export type MessageMention = {
 export type MessageSourceReference = {
   messageId: string;
   senderLabel?: string | null;
+  /** 'agent-turn' when the quoted message was written by an agent. */
+  sourceMessageKind?: string | null;
   text: string;
   mentions?: MessageMention[];
   attachmentCount?: number;
@@ -265,6 +267,8 @@ export type Message = {
   sender?: string;
   /** Human owner shown as secondary attribution for agent messages. */
   senderOwnerName?: string | null;
+  /** The owner and request of the run an agent reply answers ("About this reply"). */
+  agentRunRef?: import('@/features/agentTrust/replyDisclosureTarget').AgentRunRef | null;
   /** Canonical human/agent identity for profile actions in shared transcripts. */
   senderIdentityId?: string | null;
   /** Human or account id of a human sender; used for privacy decisions. */

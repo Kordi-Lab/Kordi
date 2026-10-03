@@ -66,6 +66,8 @@ pub(super) fn references(
 pub(super) fn read(
     conn: &Connection,
     request: ReadSessionRequest,
+    viewer: Option<&str>,
+    hidden: &std::collections::HashSet<String>,
 ) -> Result<ReadSessionResponse, String> {
     let ids = request
         .message_ids
@@ -73,6 +75,9 @@ pub(super) fn read(
         .filter(|ids| ids.len() == 1)
         .ok_or_else(unavailable)?;
     let id = &ids[0];
+    if hidden.contains(id.trim()) {
+        return Err(unavailable());
+    }
     let index = request
         .attachment_id
         .as_deref()
@@ -105,12 +110,13 @@ pub(super) fn read(
     if metadata(conn, &request.session_id, id)?.0 != raw {
         return Err(unavailable());
     }
-    let response = super::read_session_for_observation_in_db(
+    let response = super::read_session_as(
         conn,
         ReadSessionRequest {
             mode: Some("messages".into()),
             ..request
         },
+        viewer,
     )?;
     Ok(ReadSessionResponse {
         media: vec![image],

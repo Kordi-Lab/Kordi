@@ -648,11 +648,11 @@ struct MessageThreadProjection: Equatable {
         threadsByRootID[Self.resolveMessageID(rootID, aliases: primaryIDByAlias)]?.replies.count ?? 0
     }
 
-    static func rootSource(for message: ChatMessage, sessionID: String) -> MessageActionSource {
+    static func rootSource(for message: ChatMessage, sessionID: String, isPip: Bool = false) -> MessageActionSource {
         if let action = message.messageAction, action.kind == "thread" {
             return action.source
         }
-        return message.actionSource(sessionId: sessionID)
+        return message.actionSource(sessionId: sessionID, isPip: isPip)
     }
 }
 
@@ -1106,6 +1106,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     static let groupTitleUpdateMessageKind = "group-title-update"
     static let channelTitleUpdateMessageKind = "channel-title-update"
     static let channelCreatedMessageKind = "channel-created"
+    /// Posted only by Kordi when someone changes AI access. Clients recognize a
+    /// notice by this server-set kind, never by anything in the message body.
+    static let aiAccessNoticeMessageKind = "ai-access-notice"
     private static let agentModelChangePrefix = "Switched model to "
     private static let agentRuntimeRouteNoticePrefix = "Model: "
     private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
@@ -1181,6 +1184,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var mentions: [MessageMention]
     var reactions: [MessageReaction]
     var attachmentReactions: [String: [MessageReaction]]
+    /// The account whose agent wrote this reply, from the verified sender.
+    /// Used to ask Kordi about the reply; `nil` for other messages.
+    var agentOwnerAccountId: String? = nil
 
     var callActivity: ChatCallActivity? {
         ChatCallActivity(messageKind: messageKind)
@@ -1200,8 +1206,13 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             || messageKind == Self.channelCreatedMessageKind
     }
 
+    var isAIAccessNotice: Bool {
+        messageKind == Self.aiAccessNoticeMessageKind
+    }
+
     var isSystemNotice: Bool {
         messageKind == "session_pin_activity" || isAgentModelChangeNotice
+            || isAIAccessNotice
             || isGroupMemberJoinNotice
             || isTitleUpdateNotice
             || callActivity != nil
@@ -1265,7 +1276,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         agentExecution: AgentExecutionSnapshot? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
         reactions: [MessageReaction] = [],
-        attachmentReactions: [String: [MessageReaction]] = [:]
+        attachmentReactions: [String: [MessageReaction]] = [:],
+        agentOwnerAccountId: String? = nil
     ) {
         self.id = id
         self.clientMessageId = clientMessageId
@@ -1298,6 +1310,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.mentions = mentions
         self.reactions = reactions
         self.attachmentReactions = attachmentReactions
+        self.agentOwnerAccountId = agentOwnerAccountId
     }
 
     var actionSource: MessageActionSource {
@@ -1326,7 +1339,11 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         )
     }
 
-    func actionSource(sessionId: String) -> MessageActionSource {
+    /// The source other messages name when they quote, thread under, or
+    /// forward this one. PiP posts as a person, so callers that know a message
+    /// is PiP's say so, and PiP's messages are declared AI-written as agent
+    /// replies are.
+    func actionSource(sessionId: String, isPip: Bool = false) -> MessageActionSource {
         let normalized = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         let preview = normalized.count <= 220
             ? normalized
@@ -1337,7 +1354,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         return MessageActionSource(
             sourceSessionId: sessionId,
             sourceMessageId: id,
-            sourceMessageKind: author == .agent ? "agent-turn" : "text",
+            sourceMessageKind: author == .agent || isPip ? "agent-turn" : "text",
             senderLabel: author == .me ? "You" : authorName,
             textPreview: actionPreview,
             mentions: previewMentions.isEmpty ? nil : previewMentions,
@@ -1349,11 +1366,11 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     /// Re-forwarding a forwarded message keeps the original attribution instead
     /// of turning the current sender into the source of the forwarded content.
-    func forwardSource(sessionId: String) -> MessageActionSource {
+    func forwardSource(sessionId: String, isPip: Bool = false) -> MessageActionSource {
         if let action = messageAction, action.kind == "forward" {
             return action.source
         }
-        return actionSource(sessionId: sessionId)
+        return actionSource(sessionId: sessionId, isPip: isPip)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1366,6 +1383,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case backgroundAgentSessions
         case mentions
         case reactions, attachmentReactions
+        case agentOwnerAccountId
     }
 
     init(from decoder: Decoder) throws {
@@ -1409,6 +1427,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
         attachmentReactions = try container.decodeIfPresent([String: [MessageReaction]].self, forKey: .attachmentReactions) ?? [:]
+        agentOwnerAccountId = try? container.decodeIfPresent(String.self, forKey: .agentOwnerAccountId)
     }
 }
 

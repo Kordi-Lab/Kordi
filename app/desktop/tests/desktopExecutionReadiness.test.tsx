@@ -115,13 +115,20 @@ test('execution waits for capability acknowledgement and ignores stale account r
     await view.render(<Probe accountId="acct_other" runtimeReady={false} />);
     assert.equal(ready, false);
     await waitFor(() => requests.length === 3);
-    // The native shell signs device proofs for hosted provider accounts.
+    // The native shell signs device proofs for hosted provider accounts, and
+    // every readiness names the context contract the executor implements.
     assert.deepEqual(requests[0].input, {
       agentIds: ['cloud-agent:acct_test'],
+      contextContract: 2,
       deviceProof: true,
       deviceProofVersion: 2,
     });
-    assert.deepEqual(requests[2].input, { agentIds: [], deviceProof: true, deviceProofVersion: 2 });
+    assert.deepEqual(requests[2].input, {
+      agentIds: [],
+      contextContract: 2,
+      deviceProof: true,
+      deviceProofVersion: 2,
+    });
     // Restoring the same capability list must obtain a fresh acknowledgement,
     // even while its withdrawal is still in flight.
     await view.render(<Probe accountId="acct_other" />);

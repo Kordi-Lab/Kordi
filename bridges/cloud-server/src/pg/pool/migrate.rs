@@ -181,39 +181,6 @@ mod tests {
         }
     }
 
-    /// Versions held by schema changes still in review, as listed in the
-    /// migrations README. Taking one here would record it twice once those
-    /// changes merge.
-    const VERSIONS_HELD_IN_REVIEW: [i64; 1] = [112];
-
-    #[test]
-    fn the_readme_lists_the_versions_held_in_review() {
-        let readme = include_str!("../../../migrations/README.md");
-        let section = readme
-            .split("## Version numbers")
-            .nth(1)
-            .expect("the README documents version numbers");
-        // The first list in the section.
-        let listed = section
-            .lines()
-            .skip_while(|line| !line.starts_with("- "))
-            .map_while(|line| line.strip_prefix("- ")?.split_once(':'))
-            .map(|(version, _)| version.parse::<i64>().unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(listed, VERSIONS_HELD_IN_REVIEW);
-    }
-
-    #[test]
-    fn versions_held_by_changes_in_review_stay_free() {
-        for migration in EMBEDDED_MIGRATIONS {
-            assert!(
-                !VERSIONS_HELD_IN_REVIEW.contains(&migration.version),
-                "migration version {} is held by a change in review",
-                migration.version
-            );
-        }
-    }
-
     #[test]
     fn embedded_versions_match_their_file_names() {
         // Every quoted `.sql` literal in the table is a migration file name.

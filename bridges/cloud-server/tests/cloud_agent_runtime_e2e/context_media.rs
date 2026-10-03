@@ -90,6 +90,9 @@ impl Fixture {
             vec![peer.account_id.clone()],
         )
         .await;
+        // These checks read the whole conversation, so the group lets agents
+        // read recent messages.
+        allow_recent_history(&pool, conversation).await;
         let first = insert_test_message(&pool, &peer.account_id, conversation, "First image").await;
         let second = insert_test_message(
             &pool,
@@ -107,7 +110,7 @@ impl Fixture {
             .oneshot(post_json_with_token(
                 "/v1/cloud/agent-runs/desktop/ready",
                 &owner.token,
-                json!({"agentIds":[agent]}),
+                json!({"agentIds":[agent],"contextContract":2}),
             ))
             .await
             .unwrap();
@@ -124,7 +127,7 @@ impl Fixture {
         )
         .await;
         let claim = uuid::Uuid::new_v4();
-        let claimed=router.clone().oneshot(post_json_with_token("/v1/cloud/agent-runs/desktop/claim",&owner.token,json!({"claimId":claim,"requestMessageId":wire,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":peer.account_id,"prompt":"@Kordi","idempotencyKey":format!("context:{claim}")}))).await.unwrap();
+        let claimed=router.clone().oneshot(post_json_with_token("/v1/cloud/agent-runs/desktop/claim",&owner.token,json!({"claimId":claim,"requestMessageId":wire,"sessionId":session,"ownerAccountId":owner.account_id,"requesterAccountId":peer.account_id,"prompt":"@Kordi","idempotencyKey":format!("context:{claim}"),"contextContract":2}))).await.unwrap();
         assert_eq!(claimed.status(), StatusCode::OK);
         let claimed = read_json(claimed).await;
         assert_eq!(claimed["acquired"], true);

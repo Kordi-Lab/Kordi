@@ -1,4 +1,5 @@
 import type { Conversation, Message } from '@/kordi-app/types';
+import { isAgentAuthoredMessage, withAiLabel } from '@/features/agentTrust/agentAuthorship';
 import { blobEmojiPlainText } from '@/features/emoji/blobEmoji';
 
 export type MessageAttentionSnapshot = Record<string, {
@@ -118,7 +119,7 @@ export function newMessageAttentionEvents({
       eventId: message.id,
       sessionId,
       messageId: message.id,
-      title: message.sender?.trim() || conversation.name || 'Kordi',
+      title: withAiLabel(message.sender?.trim() || conversation.name || 'Kordi', isAgentAuthoredMessage(message)),
       previewText: messagePreview(message),
       ...(message.messageAction?.kind==='thread'?{threadRootId:message.messageAction.source.sourceMessageId}:{}),
       unreadCount,

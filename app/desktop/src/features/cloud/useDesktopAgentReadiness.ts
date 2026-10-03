@@ -7,6 +7,7 @@ import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import { defaultCloudAgentId } from './cloudAgentIdentity';
+import { DESKTOP_CONTEXT_CONTRACT } from './cloudDesktopExecutionLease';
 import { loadSession } from './session';
 
 export type CloudSelfAgentExecutionInput = {
@@ -61,6 +62,7 @@ export function useDesktopAgentReadiness({
           // hosted provider accounts.
           await client.desktopAgentExecution(session.token, 'ready', {
             agentIds: JSON.parse(agentIdsKey) as string[],
+            contextContract: DESKTOP_CONTEXT_CONTRACT,
             ...(isNativeDesktopShell() ? { deviceProof: true, deviceProofVersion: 2 } : {}),
           });
           if (!cancelled) setAcknowledged(registration);

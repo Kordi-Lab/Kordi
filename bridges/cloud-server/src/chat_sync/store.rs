@@ -220,6 +220,11 @@ type SyncEventRow = (
     Value,
 );
 
+mod ai_access;
+pub use ai_access::{
+    ai_access_for, conversation_snapshot, update_ai_access, AiAccessError, AiAccessView,
+    UpdatedAiAccess,
+};
 mod attachment_actions;
 pub use attachment_actions::{delete_attachment, message_for_viewer, set_attachment_reaction};
 mod conversation;
@@ -268,12 +273,12 @@ pub use message::{
 pub(crate) use message::{replace_server_message_in_transaction, send_message_in_transaction};
 use reaction::reactions_by_message;
 pub use reaction::set_reaction;
-pub use service_members::join_service_member;
+pub use service_members::{join_service_member, leave_service_member, leave_service_member_now};
 pub(crate) use support::advisory_session_lock;
 pub use support::{
     append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
 };
-pub use sync_events::append_account_hint;
+pub use sync_events::{append_account_hint, append_conversation_hints_in_transaction};
 use sync_events::{insert_noncritical_sync_event, insert_sync_event, insert_sync_event_fanout};
 pub use titles::{update_personal_title, update_shared_title};
 

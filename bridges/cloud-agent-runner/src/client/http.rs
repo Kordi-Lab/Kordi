@@ -186,11 +186,26 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
         run_id: &str,
         response_text: &str,
     ) -> Result<(), RunnerClientError> {
+        self.complete_run_with_model(run_id, response_text, None)
+            .await
+    }
+
+    async fn complete_run_with_model(
+        &self,
+        run_id: &str,
+        response_text: &str,
+        model: Option<&str>,
+    ) -> Result<(), RunnerClientError> {
+        let mut body =
+            serde_json::json!({ "runnerId": self.runner_id, "responseText": response_text });
+        if let Some(model) = model {
+            body["model"] = serde_json::json!(model);
+        }
         let envelope: RunEnvelope = self
             .post_run_json(
                 run_id,
                 &format!("/v1/cloud/agent-runs/{run_id}/complete"),
-                serde_json::json!({ "runnerId": self.runner_id, "responseText": response_text }),
+                body,
             )
             .await?;
         let _ = envelope.run;
@@ -203,10 +218,12 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
         response_text: &str,
         state: OmpState,
     ) -> Result<(), RunnerClientError> {
+        // The state names the model the worker called, for "About this reply".
+        let model = state.model.clone();
         let envelope: RunEnvelope = self.post_run_json(
             run_id,
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
-            serde_json::json!({ "runnerId": self.runner_id, "responseText": response_text, "ompState": state }),
+            serde_json::json!({ "runnerId": self.runner_id, "responseText": response_text, "ompState": state, "model": model }),
         ).await?;
         let _ = envelope.run;
         Ok(())

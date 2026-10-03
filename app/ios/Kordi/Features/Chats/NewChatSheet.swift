@@ -45,6 +45,11 @@ struct NewChatView: View {
     @State private var groupName = ""
     @State private var selectedGroupContactIDs = Set<String>()
     @State private var isCreatingGroup = false
+    /// "Add PiP, the plan helper" starts off; PiP joins only when chosen.
+    @State private var addsPip = false
+    /// A group that was created while PiP could not be turned on; opened
+    /// after the person reads why.
+    @State private var groupWithoutPip: ConversationSummary?
     @State private var showsProviderAuthentication = false
 
     private let mode: NewChatMode
@@ -109,6 +114,17 @@ struct NewChatView: View {
         }
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
+        }
+        .alert(
+            "PiP isn't on",
+            isPresented: Binding(
+                get: { groupWithoutPip != nil },
+                set: { if !$0, let group = groupWithoutPip { groupWithoutPip = nil; select(group) } }
+            )
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(AIAccessCopy.createPipFailure)
         }
     }
 
@@ -179,6 +195,16 @@ struct NewChatView: View {
                     .textInputAutocapitalization(.words)
             }
 
+            if let features = model.aiFeatures, features.pipAvailable {
+                Section {
+                    Toggle(AIAccessCopy.createPipLabel, isOn: $addsPip)
+                        .frame(minHeight: 44)
+                        .accessibilityHint(AIAccessCopy.createPipHelp(provider: features.pipProviderLabel))
+                } footer: {
+                    Text(AIAccessCopy.createPipHelp(provider: features.pipProviderLabel))
+                }
+            }
+
             if groupContacts.isEmpty {
                 ContentUnavailableView(
                     searchText.isEmpty ? "No contacts available" : "No contacts found",
@@ -233,6 +259,7 @@ struct NewChatView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "Contacts"
         )
+        .task { await model.loadAIFeatures() }
     }
 
     private func startAgentSession(from template: ConversationSummary) {
@@ -257,8 +284,14 @@ struct NewChatView: View {
         guard selected.count >= 2 else { return }
         isCreatingGroup = true
         Task {
-            if let conversation = await model.createGroup(with: selected, title: groupName) {
-                select(conversation)
+            let pipEnabled = addsPip && model.aiFeatures?.pipAvailable == true
+            if let created = await model.createGroup(with: selected, title: groupName, pipEnabled: pipEnabled) {
+                if created.pipFailed {
+                    // The group exists; say why PiP is off before opening it.
+                    groupWithoutPip = created.conversation
+                } else {
+                    select(created.conversation)
+                }
             }
             isCreatingGroup = false
         }

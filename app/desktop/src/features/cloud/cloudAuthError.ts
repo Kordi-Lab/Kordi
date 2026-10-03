@@ -49,6 +49,9 @@ export type CloudAuthErrorCode =
   | 'CHAT_RELATIONSHIP_REQUIRED'
   | 'CHAT_ENTITY_NOT_FOUND'
   | 'CHAT_FORBIDDEN'
+  // AI access settings (v2 chat) and actions that need a person.
+  | 'PIP_UNAVAILABLE'
+  | 'plan_changed' | 'agent_action_closed' | 'agent_action_not_found' | 'plan_card_forbidden'
   | 'unknown';
 
 export class CloudAuthError extends Error {
@@ -96,6 +99,9 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'invalid_report', 'invalid_report_evidence', 'self_report', 'report_conflict',
   'report_too_large', 'request_decided', 'already_contact', 'not_found',
   'CHAT_RELATIONSHIP_REQUIRED', 'CHAT_ENTITY_NOT_FOUND', 'CHAT_FORBIDDEN',
+  // AI access settings (v2 chat) and actions that need a person.
+  'PIP_UNAVAILABLE',
+  'plan_changed', 'agent_action_closed', 'agent_action_not_found', 'plan_card_forbidden',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {

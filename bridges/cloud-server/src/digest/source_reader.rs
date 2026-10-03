@@ -23,6 +23,8 @@ type Row = (
     Option<String>,
 );
 // Keep authorization identical for aggregation, cached reads, evidence and conversion.
+// Members who turned on "Don't let AI use my messages" are left out of other
+// members' digests; their agents' replies (`source_run`) are not their words.
 const SOURCE_FROM: &str = " FROM cloud_chat_messages m
  JOIN cloud_chat_conversations c ON c.conversation_id=m.conversation_id
  JOIN cloud_chat_conversation_members member ON member.conversation_id=c.conversation_id AND member.account_id=$1 AND member.membership_state='active'
@@ -31,7 +33,9 @@ const SOURCE_FROM: &str = " FROM cloud_chat_messages m
  LEFT JOIN cloud_agent_fallback_runs source_run ON source_run.response_message_id=m.message_id::text AND source_run.owner_account_id=m.sender_account_id
  WHERE m.deleted_at IS NULL
  AND NOT EXISTS (SELECT 1 FROM cloud_chat_message_visibility v WHERE v.account_id=$1 AND v.message_id=m.message_id)
- AND NOT EXISTS (SELECT 1 FROM cloud_account_session_visibility v WHERE v.account_id=$1 AND v.session_id=COALESCE(c.legacy_session_id,c.conversation_id::text) AND (v.hidden_at IS NOT NULL OR v.deleted_at IS NOT NULL))";
+ AND NOT EXISTS (SELECT 1 FROM cloud_account_session_visibility v WHERE v.account_id=$1 AND v.session_id=COALESCE(c.legacy_session_id,c.conversation_id::text) AND (v.hidden_at IS NOT NULL OR v.deleted_at IS NOT NULL))
+ AND m.message_kind <> 'ai-access-notice'
+ AND (source_run.run_id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM cloud_chat_ai_opt_outs o WHERE o.conversation_id=m.conversation_id AND o.account_id=m.sender_account_id AND o.account_id<>$1))";
 
 pub fn visible_text(content: &Value) -> Option<String> {
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};

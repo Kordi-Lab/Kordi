@@ -394,7 +394,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 row.12,
             )));
     }
-    let conversations = conversation_rows
+    let mut conversations = conversation_rows
         .into_iter()
         .map(|row| {
             Ok(ConversationSnapshot {
@@ -418,9 +418,11 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                     personal_title: row.13,
                     version: row.14,
                 },
+                ai_access: None,
             })
         })
         .collect::<Result<Vec<_>, StoreError>>()?;
+    super::ai_access::attach_for_viewer(&mut transaction, account_id, &mut conversations).await?;
 
     let latest_rows: Vec<MessageRow> = query_as(
         "SELECT message.message_id, message.client_message_id, message.conversation_id, \

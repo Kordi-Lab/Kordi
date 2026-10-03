@@ -4,6 +4,7 @@ use kordi_omp_runtime::{
     RunLimits, RunRequest, RuntimeEvent, ToolCall, ToolDefinition, ToolResult, WorkerCommand,
 };
 use serde_json::{json, Value};
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio_util::sync::CancellationToken;
 
 use crate::client::{CloudAgentRun, CloudAgentRunClient, OmpState, ProviderAuthMaterial};
@@ -12,8 +13,8 @@ use crate::tools::CloudToolExecutor;
 
 use super::provider::OpenAiApiMode;
 use super::{
-    cloud_sandbox_system_prompt, execute_model_tool, tool_catalog, ModelLoopError, ModelToolCall,
-    OpenAiProviderConfig, MAX_MODEL_CALLS, MAX_TOOL_CALLS,
+    cloud_sandbox_system_prompt, execute_model_tool, tool_catalog, CalendarApprovalWait,
+    ModelLoopError, ModelToolCall, OpenAiProviderConfig, MAX_MODEL_CALLS, MAX_TOOL_CALLS,
 };
 
 /// Whether the OMP worker may serve this provider account. The worker opens
@@ -158,6 +159,8 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         executor,
         sandbox,
         run,
+        calendar_wait: CalendarApprovalWait::default(),
+        calendar_disclosed: AtomicBool::new(false),
     };
     let result = worker
         .run_turn(
@@ -330,6 +333,11 @@ struct CloudOmpTools<'a, C> {
     executor: CloudToolExecutor,
     sandbox: &'a SandboxBackendHandle,
     run: &'a CloudAgentRun,
+    calendar_wait: CalendarApprovalWait,
+    /// Set once this run read the owner's calendar for sharing; from then on
+    /// only conversation reads and the calendar itself may run, as in the
+    /// Rust model loop.
+    calendar_disclosed: AtomicBool,
 }
 
 #[async_trait]
@@ -375,14 +383,20 @@ impl<C: CloudAgentRunClient + Sync> HostTool for CloudOmpTools<'_, C> {
                 details: None,
             };
         }
+        let mut calendar_disclosed = self.calendar_disclosed.load(Ordering::SeqCst);
         let output = execute_model_tool(
             self.client,
             &self.executor,
             self.sandbox,
             self.run,
             &model_call,
+            self.calendar_wait,
+            &mut calendar_disclosed,
         )
         .await;
+        if calendar_disclosed {
+            self.calendar_disclosed.store(true, Ordering::SeqCst);
+        }
         let content = match output {
             Value::Array(blocks) => blocks,
             Value::String(text) => vec![json!({"type":"text","text":text})],

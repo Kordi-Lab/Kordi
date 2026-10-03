@@ -9,6 +9,7 @@ import {
   chatSessionIdForParticipantSpaceContinuation,
   existingBlankSessionIdForParticipantSpace,
 } from '@/features/chat/chatCreateFlows';
+import { inheritPipForChannel } from '@/features/agentTrust/groupPip';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupControl.types';
 import { createGroupChannel } from './createGroupChannel';
@@ -80,6 +81,8 @@ export function useKordiParticipantSpaceContinuation({
         sendCloudGroupControl, setCanonicalState, selectNewSession,
       });
       pendingCreateRef.current.delete(key);
+      const sourceChannel = space.sessions[0];
+      void inheritPipForChannel(sourceChannel?.canonicalSessionId ?? sourceChannel?.id, sessionId);
       return;
     }
 

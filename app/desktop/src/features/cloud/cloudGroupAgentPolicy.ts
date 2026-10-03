@@ -18,6 +18,7 @@ import {
   cloudGroupMentionInstruction,
 } from './cloudGroupMentions';
 import { cloudAgentId } from './cloudAgentIdentity';
+import { AI_ACCESS_NOTICE_MESSAGE_KIND } from '@/features/canonical/readModel/messageRole';
 import type {
   CloudGroupControlEnvelope,
   CloudGroupParticipant,
@@ -80,7 +81,9 @@ export function cloudGroupNativeContextMessages({
 }): DesktopChatContextMessage[] {
   const contextIds = cloudGroupAgentContextMessageIds(groupRows, groupId, requestMessageId, respondingAccountId);
   const history = compactCloudAgentNativeContextMessages(
-    groupRows.flatMap(({ envelope }) => {
+    groupRows.flatMap(({ envelope, wire }) => {
+      // An AI access notice is a conversation record, never agent context.
+      if (wire.messageKind === AI_ACCESS_NOTICE_MESSAGE_KIND) return [];
       if (
         envelope?.kind !== 'group-message'
         || envelope.groupId !== groupId
@@ -180,6 +183,20 @@ export function cloudGroupNativeContextMessages({
       createdAtMs: requestCreatedAtMs,
     }] : []),
   ]);
+}
+
+/** Splits native context into conversation history and run instructions (the
+ * persona and the mention directory). A contract-2 lease replaces only the
+ * history with the server-built history, which applies AI access settings. */
+export function splitCloudAgentNativeContext(messages: readonly DesktopChatContextMessage[]): {
+  history: DesktopChatContextMessage[];
+  instructions: DesktopChatContextMessage[];
+} {
+  const isHistory = (message: DesktopChatContextMessage) => !message.contextRole || message.contextRole === 'history';
+  return {
+    history: messages.filter(isHistory),
+    instructions: messages.filter((message) => !isHistory(message)),
+  };
 }
 
 function cloudContextFingerprint(value: string): string {

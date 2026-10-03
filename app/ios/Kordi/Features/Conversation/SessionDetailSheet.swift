@@ -65,6 +65,7 @@ struct SessionDetailView: View {
     @State private var selectedAgentThread: CloudAgentSubsessionTask?
     @State private var safetyAction: SafetyAction?
     @State private var reportTarget: ReportTarget?
+    @State private var isAIAccessPresented = false
 
     init(
         conversation: ConversationSummary,
@@ -315,6 +316,9 @@ struct SessionDetailView: View {
         .navigationDestination(item: $selectedAgentThread) { task in
             AgentSubsessionView(sessionId: task.sessionId)
         }
+        .navigationDestination(isPresented: $isAIAccessPresented) {
+            AIAccessView(conversation: currentConversation)
+        }
         .fullScreenCover(item: $mediaPreview) { presentation in
             MediaPreviewView(presentation: presentation)
         }
@@ -375,6 +379,19 @@ struct SessionDetailView: View {
                 .padding(.horizontal, 16)
             }
         }
+        if showsAIAccess {
+            SessionAIAccessButton { isAIAccessPresented = true }
+                .padding(.horizontal, 16)
+        }
+    }
+
+    /// Groups and direct chats synced through Kordi Cloud have AI access
+    /// settings; private agent chats and member profiles do not.
+    private var showsAIAccess: Bool {
+        presentationContext == .conversation
+            && currentConversation.subsessionId == nil
+            && currentConversation.kind != .agent
+            && AIAccessCopy.supportsAIAccess(sessionId: currentConversation.sessionId)
     }
 
     @ViewBuilder
@@ -1057,6 +1074,46 @@ private struct SessionSafetyActionsSection: View {
                 if index < actions.count - 1 { Divider() }
             }
         }
+    }
+}
+
+private struct SessionAIAccessButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.headline)
+                    .foregroundStyle(KordiTheme.agentViolet)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        KordiTheme.agentViolet.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    )
+                    .accessibilityHidden(true)
+
+                Text(AIAccessCopy.rowTitle)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 62)
+            .background(
+                Color(uiColor: .secondarySystemGroupedBackground),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens what agents can see here and your AI settings")
     }
 }
 

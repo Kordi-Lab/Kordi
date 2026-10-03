@@ -389,6 +389,8 @@ struct MessageActionOverlay: View {
     /// Reports this message. Nil hides Report (your own messages, unsent
     /// messages, or a server without reports).
     var onReport: (() -> Void)? = nil
+    /// "About This Reply" for agent replies and PiP; `nil` hides the action.
+    var onAboutReply: (() -> Void)? = nil
 
     private var targetReactions: [MessageReaction] {
         if let mediaAttachment { return message.attachmentReactions[mediaAttachment.id] ?? [] }
@@ -410,6 +412,11 @@ struct MessageActionOverlay: View {
             + mediaActionCount
             + (stickerAttachment == nil ? 0 : 1)
             + (readReceiptLabel == nil ? 0 : 1)
+            + (aboutReplyAction == nil ? 0 : 1)
+    }
+
+    private var aboutReplyAction: (() -> Void)? {
+        mediaAttachment == nil ? onAboutReply : nil
     }
 
     /// The delete confirmation wraps helper text, so its menu follows the
@@ -853,6 +860,13 @@ struct MessageActionOverlay: View {
                         disabled: message.deliveryState == .sending || message.deliveryState == .failed,
                         action: onPin
                     )
+                    if let aboutReplyAction {
+                        actionButton(
+                            AgentReplyDisclosurePresentation.menuTitle,
+                            systemImage: "info.circle",
+                            action: aboutReplyAction
+                        )
+                    }
                     Divider().padding(.horizontal, 14)
                     actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
                     if let onReport {

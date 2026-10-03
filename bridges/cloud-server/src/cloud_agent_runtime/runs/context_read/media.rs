@@ -12,6 +12,8 @@ pub(in crate::cloud_agent_runtime::runs) async fn references(
     if ids.is_empty() {
         return Ok(vec![]);
     }
+    // The owner and the requester see their own attachments; other members'
+    // opt-outs keep theirs away from this run.
     let viewers = vec![owner.to_string(), requester.to_string()];
     let rows:Vec<(String,String,i64,String,i64)>=query_as(
         "SELECT m.message_id::text,a.attachment_id,m.version::bigint,COALESCE(a.detected_content_type,a.content_type,'application/octet-stream'),COALESCE(a.size_bytes,-1)
@@ -22,6 +24,7 @@ pub(in crate::cloud_agent_runtime::runs) async fn references(
          AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members member WHERE member.conversation_id=c.conversation_id AND member.account_id=$4 AND member.membership_state='active')
          AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id=ANY($5))
          AND NOT EXISTS(SELECT 1 FROM cloud_chat_attachment_visibility v WHERE v.message_id=m.message_id AND v.attachment_id=a.attachment_id AND v.account_id=ANY($5))
+         AND NOT EXISTS(SELECT 1 FROM cloud_chat_ai_opt_outs o WHERE o.conversation_id=c.conversation_id AND o.account_id=m.sender_account_id AND o.account_id<>ALL($5))
          ORDER BY m.conversation_sequence,link.position,a.attachment_id"
     ).bind(session).bind(ids).bind(owner).bind(requester).bind(viewers).fetch_all(pool).await?;
     Ok(rows

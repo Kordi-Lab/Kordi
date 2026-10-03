@@ -15,6 +15,7 @@ import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { cloudDirectMessageAction, cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
+import { AI_ACCESS_NOTICE_MESSAGE_KIND } from '@/features/canonical/readModel/messageRole';
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
 const CLOUD_AGENT_CANCEL_PREFIX = 'kordi-cloud-agent-cancel:';
 const CLOUD_AGENT_NATIVE_CONTEXT_MESSAGE_LIMIT = 40;
@@ -335,7 +336,8 @@ function cloudMessageCreatedAtMs(message: CloudMessage): number {
 }
 
 function cloudContextMessageText(message: CloudMessage): string | null {
-  if (message.messageKind === 'agent-model-change') return null;
+  // Model changes and AI access notices are conversation records, never agent context.
+  if (message.messageKind === 'agent-model-change' || message.messageKind === AI_ACCESS_NOTICE_MESSAGE_KIND) return null;
   if (parseCloudAgentCancel(message.body) || isCloudGroupControlMessage(message.body)) return null;
   if (message.voiceMessage) return voiceAgentText(message.voiceMessage);
   const response = parseCloudAgentResponse(message.body);

@@ -15,6 +15,8 @@ use crate::{Tool, ToolContext, ToolResult, ToolScheduling};
 const MAX_TOOL_RESULT_TEXT_BYTES: usize = 50 * 1024;
 
 #[cfg(test)]
+mod disclosure_tests;
+#[cfg(test)]
 mod shared_tests;
 
 /// Per-file mutation queue to prevent parallel write conflicts while still
@@ -127,7 +129,23 @@ pub fn ensure_tool_allowed(tool: &(dyn Tool + Send + Sync), ctx: &ToolContext) -
             tool.name()
         )));
     }
+    // After this turn read the owner's calendar for sharing, only
+    // conversation reads and the calendar stay available. This is the one
+    // gate for built-in, MCP, and extension tools.
+    if calendar_disclosed(ctx) && !crate::calendar::CALENDAR_DISCLOSURE_TOOLS.contains(&tool.name())
+    {
+        return Err(KordiError::Tool(
+            crate::calendar::CALENDAR_EGRESS_CLOSED.to_string(),
+        ));
+    }
     Ok(())
+}
+
+fn calendar_disclosed(ctx: &ToolContext) -> bool {
+    ctx.session_observation
+        .as_ref()
+        .and_then(|observation| observation.calendar.as_ref())
+        .is_some_and(|calendar| calendar.disclosed.load(std::sync::atomic::Ordering::SeqCst))
 }
 
 fn cap_tool_result(mut result: ToolResult) -> ToolResult {

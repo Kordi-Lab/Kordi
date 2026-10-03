@@ -1,3 +1,4 @@
+import { sourceMessageKindForMessage } from '@/features/agentTrust/agentAuthorship';
 import { messageMentionsForText } from './messageMentions';
 import { attachmentOnlyMessagePreview } from './participantConversationState';
 import type { Message, MessageAttachment, MessageMention, MessageVoice } from '../../kordi-app/types/message';
@@ -68,7 +69,7 @@ export function messageActionSourceFromMessage(
   return {
     sourceSessionId: sessionId,
     sourceMessageId,
-    sourceMessageKind: message.turn ? 'agent-turn' : 'text',
+    sourceMessageKind: sourceMessageKindForMessage(message),
     senderLabel,
     textPreview,
     ...(mentions ? { mentions } : {}),

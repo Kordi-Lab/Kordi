@@ -1,3 +1,4 @@
+import { agentRunRefFromContent } from '@/features/agentTrust/replyDisclosureTarget';
 import { cancelledTurnContent } from '@/features/chat/cancellation';
 import { canonicalMessageRole } from './messageRole';
 export { canonicalMessageRole } from './messageRole';
@@ -49,13 +50,7 @@ function canonicalMessageActionWithRealSourceLabel(
   if (!action) return null;
   const senderLabel = realSourceLabelForRelativeLabel(action.source.senderLabel, humanSourceLabel, agentSourceLabel);
   if (senderLabel === action.source.senderLabel) return action;
-  return {
-    ...action,
-    source: {
-      ...action.source,
-      senderLabel,
-    },
-  };
+  return { ...action, source: { ...action.source, senderLabel } };
 }
 
 export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
@@ -446,6 +441,7 @@ export function mapCanonicalMessage(
     role,
     sender,
     senderOwnerName: agentPresentation.senderOwnerName,
+    agentRunRef: isAgentTurn ? agentRunRefFromContent(content) : null,
     senderIdentityId: message.senderIdentityId,
     senderHumanId: identity?.kind === 'human' ? identity.humanId?.trim() || null : null,
     ...(identity?.kind === 'agent' && identity.ownerIdentityId ? { senderOwnerIdentityId: identity.ownerIdentityId } : {}),
