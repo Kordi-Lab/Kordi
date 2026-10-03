@@ -30,6 +30,19 @@ export function createTranscriptScrollOrigin() {
       instance.scrollToOffset(top, { align: 'start', behavior: 'instant' });
     },
     wheel(instance: TranscriptVirtualizer) {
+      if (!active) {
+        // Replace unfinished item navigation before an older-page prepend can
+        // move its target. Updating the target must not issue a DOM scroll that
+        // would interrupt the browser's native wheel or momentum gesture.
+        const scrollTo = instance.options.scrollToFn;
+        instance.options.scrollToFn = () => undefined;
+        try {
+          instance.scrollToOffset(instance.scrollElement?.scrollTop ?? instance.scrollOffset ?? 0,
+            { align: 'start', behavior: 'instant' });
+        } finally {
+          instance.options.scrollToFn = scrollTo;
+        }
+      }
       current = instance;
       active = true;
       clearTimeout(timer);
