@@ -63,6 +63,7 @@ export class ChatSyncSyncClient {
       }
       throw error;
     }
+    this.state.recordContentRemovalVersion(response.content_removal_version ?? 0, accountId);
     const events = response.events.flatMap((event) => this.cloudEventsFromChatEvent(event));
     const conversations = response.events.flatMap((event) => {
       const conversation = event.payload.conversation;
@@ -188,6 +189,7 @@ export class ChatSyncSyncClient {
       throw new Error('Unsupported reliable chat protocol version.');
     }
     response.conversations.forEach((conversation) => this.state.rememberConversation(conversation));
+    this.state.recordContentRemovalVersion(response.content_removal_version ?? 0);
     await this.state.deletions.ready(this.state.activeAccountId);
     response.latest_messages = this.state.retainMessages(response.latest_messages);
     return response;

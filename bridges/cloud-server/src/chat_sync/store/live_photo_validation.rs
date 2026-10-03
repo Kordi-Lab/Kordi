@@ -95,7 +95,8 @@ pub(super) async fn validate_live_photo_resources(
     let ids: Vec<&str> = resources.iter().map(|r| r.id.as_str()).collect();
     let rows: Vec<LiveResourceRow> = query_as(
         "SELECT attachment_id, content_type, detected_content_type, size_bytes FROM cloud_attachments \
-         WHERE attachment_id = ANY($1) AND owner_account_id = $2 AND finalized_at IS NOT NULL",
+         WHERE attachment_id = ANY($1) AND owner_account_id = $2 AND finalized_at IS NOT NULL \
+           AND purge_requested_at IS NULL",
     ).bind(ids).bind(account_id).fetch_all(&mut **transaction).await?;
     for resource in resources {
         let valid = rows.iter().any(|(id, declared, detected, size)| {

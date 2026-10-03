@@ -23,6 +23,7 @@ fn delete_message_rows(
             )
             .map_err(|error| error.to_string())?;
     }
+    let invalidated_at_ms = super::super::now_ms();
     for session_id in rows
         .iter()
         .map(|(_, session_id)| session_id)
@@ -36,6 +37,19 @@ fn delete_message_rows(
                  )
                  WHERE id = ?1",
                 rusqlite::params![session_id],
+            )
+            .map_err(|error| error.to_string())?;
+        // Saved context summaries may quote the removed message, so drop their
+        // text (also from already invalidated ones) and rebuild context later.
+        transaction
+            .execute(
+                "UPDATE context_snapshots
+                 SET invalidated_at_ms = COALESCE(invalidated_at_ms, ?2),
+                     summary_text = NULL, summary_json = NULL
+                 WHERE session_id = ?1 AND (
+                   invalidated_at_ms IS NULL OR summary_text IS NOT NULL OR summary_json IS NOT NULL
+                 )",
+                rusqlite::params![session_id, invalidated_at_ms],
             )
             .map_err(|error| error.to_string())?;
     }
@@ -165,6 +179,7 @@ pub(super) fn delete_cloud_message_in_db(
     };
     let deleted = delete_message_rows(&transaction, &rows)?;
     transaction.commit().map_err(|error| error.to_string())?;
+    super::super::chat_sync::evict_unused_cached_files(conn, account_id);
     Ok(deleted)
 }
 
@@ -292,4 +307,84 @@ pub(crate) fn delete_session(session_id: &str) -> Result<(), String> {
     )
     .map_err(|err| err.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::{params, Connection};
+
+    fn connection() -> Connection {
+        let conn = Connection::open_in_memory().expect("open canonical db");
+        super::super::super::schema::initialize_schema(&conn).expect("initialize schema");
+        conn.execute(
+            "INSERT INTO identities (
+                id, kind, display_name, source, avatar_key, created_at_ms, updated_at_ms
+             ) VALUES ('human:me', 'human', 'Me', 'local', 'human:me', 1, 1)",
+            [],
+        )
+        .expect("seed identity");
+        for session_id in ["session:removed", "session:other"] {
+            conn.execute(
+                "INSERT INTO sessions (
+                    id, kind, title, status, created_by_identity_id,
+                    created_at_ms, updated_at_ms, last_message_at_ms
+                 ) VALUES (?1, 'group', 'Chat', 'active', 'human:me', 1, 1, 1)",
+                params![session_id],
+            )
+            .expect("seed session");
+        }
+        conn.execute(
+            "INSERT INTO session_messages (
+                id, session_id, sender_identity_id, sender_role, message_kind,
+                content_text, status, sequence_num, created_at_ms, updated_at_ms,
+                source_transport, source_event_id
+             ) VALUES ('removed', 'session:removed', 'human:me', 'user', 'text',
+                'Synthetic text', 'sent', 1, 1, 1, 'cloud-group', 'cloud-group:wire-removed')",
+            [],
+        )
+        .expect("seed message");
+        for (id, session_id, invalidated_at_ms) in [
+            ("current", "session:removed", None),
+            ("older", "session:removed", Some(5_i64)),
+            ("other", "session:other", None),
+        ] {
+            conn.execute(
+                "INSERT INTO context_snapshots (
+                    id, profile_id, session_id, agent_identity_id, provider, model, prompt_hash,
+                    participant_hash, message_range_hash, summary_text, summary_json,
+                    created_at_ms, invalidated_at_ms
+                 ) VALUES (?1, 'profile', ?2, 'agent', 'provider', 'model', 'prompt',
+                    'participants', 'range', 'Synthetic summary', '{}', 1, ?3)",
+                params![id, session_id, invalidated_at_ms],
+            )
+            .expect("seed context snapshot");
+        }
+        conn
+    }
+
+    fn snapshot(conn: &Connection, id: &str) -> (Option<i64>, Option<String>, Option<String>) {
+        conn.query_row(
+            "SELECT invalidated_at_ms, summary_text, summary_json FROM context_snapshots WHERE id = ?1",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("read context snapshot")
+    }
+
+    #[test]
+    fn deleting_a_message_clears_context_summaries_of_its_session_only() {
+        let mut conn = connection();
+        let deleted = super::delete_cloud_message_in_db(&mut conn, "wire-removed", "acct_me")
+            .expect("delete cloud message");
+        assert_eq!(deleted, vec!["removed"]);
+
+        let (invalidated, text, json) = snapshot(&conn, "current");
+        assert!(invalidated.is_some_and(|value| value > 5));
+        assert_eq!((text, json), (None, None));
+        assert_eq!(snapshot(&conn, "older"), (Some(5), None, None));
+        assert_eq!(
+            snapshot(&conn, "other"),
+            (None, Some("Synthetic summary".into()), Some("{}".into()))
+        );
+    }
 }

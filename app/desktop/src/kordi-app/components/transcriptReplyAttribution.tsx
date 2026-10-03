@@ -10,6 +10,8 @@ import { MessageInlineContent } from './messageInlineContent';
 
 export type SourceMessageQuoteSide = 'own' | 'peer' | 'agent';
 
+export const DELETED_SOURCE_MESSAGE_TEXT = 'Original message was deleted';
+
 function sourceQuoteText(sourceMessage: MessageSourceReference) {
   const text = sourceMessage.text.replace(/\s+/g, ' ').trim();
   if (text) return text;
@@ -31,6 +33,22 @@ export function SourceMessageQuote({
   const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
   if (!sourceMessage) return null;
   const senderLabel = quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName);
+  if (sourceMessage.deleted) {
+    // There is nothing to jump to, so this is plain text rather than a button.
+    return (
+      <span
+        className="app-source-message-quote"
+        data-quote-side={side}
+        data-quote-deleted="true"
+        title={`${senderLabel}: ${DELETED_SOURCE_MESSAGE_TEXT}`}
+      >
+        <span className="app-source-message-quote-text">
+          <span className="app-source-message-quote-label">{senderLabel}: </span>
+          <span className="app-source-message-quote-deleted">{DELETED_SOURCE_MESSAGE_TEXT}</span>
+        </span>
+      </span>
+    );
+  }
   const text = sourceQuoteText(sourceMessage);
   const navigate = () => {
     if (onNavigateToMessage) {

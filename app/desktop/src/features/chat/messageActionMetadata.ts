@@ -14,6 +14,8 @@ export type MessageActionSource = {
   attachmentCount: number;
   createdAtMs?: number | null;
   timeLabel?: string | null;
+  /** Set by the server when the quoted or threaded message was deleted for everyone. */
+  sourceDeleted?: boolean;
 };
 
 /**
@@ -104,6 +106,7 @@ export function persistedMessageActionSource(source: MessageActionSource): Messa
     attachmentCount: source.attachmentCount,
     createdAtMs: source.createdAtMs,
     timeLabel: source.timeLabel,
+    ...(source.sourceDeleted === true ? { sourceDeleted: true } : {}),
   };
 }
 

@@ -187,7 +187,21 @@ pub(super) async fn save_expressive_media(
 
     let now = Utc::now().to_rfc3339();
     let item_id = format!("media_{}", uuid::Uuid::new_v4().simple());
-    let row: Option<ExpressiveMediaRow> = match query_as(
+    let saved = async {
+        let mut transaction = state.db_pool().begin().await?;
+        // The share lock keeps a file from being queued for deletion while it
+        // is saved; a file already queued is not found.
+        let available: Option<(i32,)> = query_as(
+            "SELECT 1 FROM cloud_attachments \
+             WHERE attachment_id = $1 AND purge_requested_at IS NULL FOR SHARE",
+        )
+        .bind(attachment_id)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        if available.is_none() {
+            return Ok(None);
+        }
+        let row: Option<ExpressiveMediaRow> = query_as(
             "INSERT INTO cloud_expressive_media_items \
              (item_id, account_id, attachment_id, kind, name, mime_type, size_bytes, created_at, updated_at) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) \
@@ -205,18 +219,23 @@ pub(super) async fn save_expressive_media(
         .bind(content_type.trim().to_ascii_lowercase())
         .bind(size_bytes)
         .bind(&now)
-        .fetch_optional(state.db_pool())
-        .await
-        {
-            Ok(row) => row,
-            Err(_) => {
-                return err(
-                    "server_error",
-                    "Could not save this media to your library.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )
-            }
-        };
+        .fetch_optional(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok::<_, sqlx_core::Error>(Some(row))
+    }
+    .await;
+    let row = match saved {
+        Ok(Some(row)) => row,
+        Ok(None) => return err("not_found", "Attachment not found.", StatusCode::NOT_FOUND),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not save this media to your library.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
     let Some(row) = row else {
         return err(
             "media_deleted",
@@ -246,23 +265,61 @@ pub(super) async fn delete_expressive_media(
     }
 
     let now = Utc::now().to_rfc3339();
-    match query(
-        "UPDATE cloud_expressive_media_items SET deleted_at = $1, updated_at = $1 \
-         WHERE account_id = $2 AND (item_id = $3 OR attachment_id = $3) AND deleted_at IS NULL",
-    )
-    .bind(&now)
-    .bind(&session.account_id)
-    .bind(media_id)
-    .execute(state.db_pool())
-    .await
-    {
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+    match delete_saved_media(state.db_pool(), &session.account_id, media_id, &now).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(_) => err(
             "server_error",
             "Could not delete this saved media.",
             StatusCode::INTERNAL_SERVER_ERROR,
         ),
     }
+}
+
+/// Deletes a saved sticker or GIF. A file it kept from being deleted with its
+/// message is queued to be checked again at once.
+async fn delete_saved_media(
+    pool: &PgPool,
+    account_id: &str,
+    media_id: &str,
+    now: &str,
+) -> Result<(), crate::chat_sync::store::StoreError> {
+    use crate::chat_sync::store::{enqueue_removal_job, NewRemovalJob, RemovalReason};
+    let mut transaction = pool.begin().await?;
+    let deleted: Vec<(String,)> = query_as(
+        "UPDATE cloud_expressive_media_items SET deleted_at = $1, updated_at = $1 \
+         WHERE account_id = $2 AND (item_id = $3 OR attachment_id = $3) AND deleted_at IS NULL \
+         RETURNING attachment_id",
+    )
+    .bind(now)
+    .bind(account_id)
+    .bind(media_id)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let attachment_ids = deleted.into_iter().map(|(id,)| id).collect::<Vec<_>>();
+    let released: Vec<(String,)> = query_as(
+        "SELECT attachment_id FROM cloud_attachments \
+         WHERE attachment_id = ANY($1) AND purge_candidate_at IS NOT NULL \
+           AND purge_requested_at IS NULL ORDER BY attachment_id",
+    )
+    .bind(&attachment_ids)
+    .fetch_all(&mut *transaction)
+    .await?;
+    for (attachment_id,) in released {
+        enqueue_removal_job(
+            &mut transaction,
+            NewRemovalJob {
+                reason: RemovalReason::AttachmentReleased,
+                account_id: None,
+                conversation_id: None,
+                message_id: None,
+                source_identifiers: &[],
+                attachment_ids: &[attachment_id],
+            },
+        )
+        .await?;
+    }
+    transaction.commit().await?;
+    Ok(())
 }
 
 #[cfg(test)]

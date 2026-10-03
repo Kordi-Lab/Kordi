@@ -1683,6 +1683,9 @@ struct CloudChatSyncResponse: Codable, Hashable {
     let lastStreamSequence: Int64
     let hasMore: Bool
     let serverTime: String
+    /// 1 when the server removes stored copies of deleted content; absent on
+    /// older servers, which clients treat as 0.
+    var contentRemovalVersion: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case protocolVersion = "protocol_version"
@@ -1691,6 +1694,7 @@ struct CloudChatSyncResponse: Codable, Hashable {
         case lastStreamSequence = "last_stream_seq"
         case hasMore = "has_more"
         case serverTime = "server_time"
+        case contentRemovalVersion = "content_removal_version"
     }
 }
 
@@ -1720,6 +1724,7 @@ struct CloudChatBootstrapResponse: Codable, Hashable {
     let nextCursor: String
     let lastStreamSequence: Int64
     let serverTime: String
+    var contentRemovalVersion: Int? = nil
 
     enum CodingKeys: String, CodingKey {
         case sessionVisibility = "session_visibility"
@@ -1730,6 +1735,7 @@ struct CloudChatBootstrapResponse: Codable, Hashable {
         case nextCursor = "next_cursor"
         case lastStreamSequence = "last_stream_seq"
         case serverTime = "server_time"
+        case contentRemovalVersion = "content_removal_version"
     }
 }
 
@@ -1752,6 +1758,7 @@ struct CloudSyncResponse: Codable, Hashable {
     let lastStreamSequence: Int64
     let hasMore: Bool
     let events: [CloudSyncEvent]
+    var contentRemovalVersion: Int? = nil
 }
 
 struct CloudSessionVisibility: Codable, Hashable {

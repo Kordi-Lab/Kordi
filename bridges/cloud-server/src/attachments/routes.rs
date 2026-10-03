@@ -240,7 +240,7 @@ pub async fn update_preview(
     let result = match query(
         "UPDATE cloud_attachments \
          SET preview_url = $1 \
-         WHERE attachment_id = $2 AND owner_account_id = $3 \
+         WHERE attachment_id = $2 AND owner_account_id = $3 AND purge_requested_at IS NULL \
            AND (preview_url IS NULL OR preview_url = '')",
     )
     .bind(&preview_url)

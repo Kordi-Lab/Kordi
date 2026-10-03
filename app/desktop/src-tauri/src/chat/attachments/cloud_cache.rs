@@ -9,30 +9,77 @@ use super::{attachment_storage_dir, safe_attachment_name};
 
 const MAX_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
-fn path(attachment_id: &str, name: &str) -> Result<PathBuf, String> {
-    let attachment_id = attachment_id.trim();
-    if attachment_id.is_empty() || attachment_id.len() > 256 {
-        return Err("Cloud attachment id is invalid".to_string());
-    }
-    let encoded_id = attachment_id
+fn hex(value: &str) -> String {
+    value
         .as_bytes()
         .iter()
         .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
+        .collect::<String>()
+}
+
+fn valid_attachment_id(attachment_id: &str) -> Option<&str> {
+    let attachment_id = attachment_id.trim();
+    (!attachment_id.is_empty() && attachment_id.len() <= 256).then_some(attachment_id)
+}
+
+fn account_directory() -> Result<PathBuf, String> {
     let storage_root = std::env::var_os("KORDI_STORAGE_ROOT")
         .ok_or_else(|| "Cloud account storage is unavailable".to_string())?;
     let account_scope = Path::new(&storage_root)
         .file_name()
         .and_then(|value| value.to_str())
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "Cloud account storage is unavailable".to_string())?
-        .as_bytes()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let directory = attachment_storage_dir()?.join("cloud").join(account_scope);
+        .ok_or_else(|| "Cloud account storage is unavailable".to_string())?;
+    Ok(attachment_storage_dir()?
+        .join("cloud")
+        .join(hex(account_scope)))
+}
+
+fn path(attachment_id: &str, name: &str) -> Result<PathBuf, String> {
+    let attachment_id =
+        valid_attachment_id(attachment_id).ok_or("Cloud attachment id is invalid")?;
+    let directory = account_directory()?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    Ok(directory.join(format!("{encoded_id}-{}", safe_attachment_name(name))))
+    Ok(directory.join(format!(
+        "{}-{}",
+        hex(attachment_id),
+        safe_attachment_name(name)
+    )))
+}
+
+/// Removes every cached copy of these attachments for the active account.
+/// Files still being written (`.tmp`) are left to their writer.
+pub(super) fn evict(attachment_ids: &[String]) -> Result<usize, String> {
+    // Hex never contains '-', so "<hex id>-" cannot match a longer id.
+    let prefixes = attachment_ids
+        .iter()
+        .filter_map(|id| valid_attachment_id(id))
+        .map(|id| format!("{}-", hex(id)))
+        .collect::<Vec<_>>();
+    if prefixes.is_empty() {
+        return Ok(0);
+    }
+    let entries = match std::fs::read_dir(account_directory()?) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut removed = 0;
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let matches = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|name| prefixes.iter().any(|prefix| name.starts_with(prefix)));
+        let temporary = path.extension().is_some_and(|value| value == "tmp");
+        if !matches || temporary || !entry.file_type().is_ok_and(|kind| kind.is_file()) {
+            continue;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    Ok(removed)
 }
 
 fn prune(directory: &Path, protected: &Path) -> Result<(), String> {
@@ -228,6 +275,67 @@ mod tests {
         assert_eq!(std::fs::read(&second_path).unwrap(), b"second");
         std::fs::remove_file(first_path).ok();
         std::fs::remove_file(second_path).ok();
+    }
+
+    #[test]
+    fn eviction_removes_only_matching_ids_and_skips_partial_writes() {
+        let _storage = crate::test_support::ScopedKordiStorageRoot::new("attachment-eviction");
+        let original = path("att_gone", "photo.jpg").unwrap();
+        let preview = path("att_gone", "preview.png").unwrap();
+        let longer_id = path("att_gone_too", "photo.jpg").unwrap();
+        let kept = path("att_kept", "photo.jpg").unwrap();
+        let partial = original.with_extension("0b1c.tmp");
+        for file in [&original, &preview, &longer_id, &kept, &partial] {
+            std::fs::write(file, b"bytes").unwrap();
+        }
+
+        let removed = evict(&["att_gone".to_string(), " ".to_string()]).unwrap();
+
+        assert_eq!(removed, 2);
+        assert!(!original.exists());
+        assert!(!preview.exists());
+        assert!(longer_id.exists());
+        assert!(kept.exists());
+        assert!(partial.exists());
+        assert_eq!(evict(&["att_missing".to_string()]).unwrap(), 0);
+        std::fs::remove_dir_all(kept.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn eviction_acts_only_for_the_active_account_storage() {
+        let _storage = crate::test_support::ScopedKordiStorageRoot::new("attachment-eviction-gate");
+        let cached = path("att_gate", "photo.jpg").unwrap();
+        std::fs::write(&cached, b"bytes").unwrap();
+        let ids = ["att_gate".to_string()];
+
+        assert_eq!(
+            super::super::evict_cloud_attachment_cache_for(None, "acct_a", &ids),
+            0
+        );
+        assert_eq!(
+            super::super::evict_cloud_attachment_cache_for(Some("acct_b"), "acct_a", &ids),
+            0
+        );
+        assert!(cached.exists());
+        assert_eq!(
+            super::super::evict_cloud_attachment_cache_for(Some("acct_a"), " acct_a ", &ids),
+            1
+        );
+        assert!(!cached.exists());
+        std::fs::remove_dir_all(cached.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn eviction_without_a_cache_directory_is_a_no_op() {
+        let storage = crate::test_support::ScopedKordiStorageRoot::new("attachment-eviction-empty");
+        let previous_app_data = std::env::var_os("APP_DATA_DIR");
+        std::env::set_var("APP_DATA_DIR", storage.root());
+        let result = evict(&["att_any".to_string()]);
+        match previous_app_data {
+            Some(value) => std::env::set_var("APP_DATA_DIR", value),
+            None => std::env::remove_var("APP_DATA_DIR"),
+        }
+        assert_eq!(result.unwrap(), 0);
     }
 
     #[test]

@@ -169,6 +169,30 @@ actor AttachmentFileStore {
         }
     }
 
+    /// Removes the cached preview and original files of attachments that no
+    /// message on this device uses any more. Best effort: a file that cannot
+    /// be removed stays until the size limit prunes it.
+    @discardableResult
+    func evict(attachmentIds: Set<String>, accountId: String) -> Int {
+        let ids = attachmentIds.filter { !$0.isEmpty }
+        guard !ids.isEmpty, let directory = accountDirectory(accountId) else { return 0 }
+        let variants: [AttachmentCacheVariant] = [.preview, .original]
+        let keys = Set(ids.flatMap { id in variants.map { "\(accountId):\(id):\($0.rawValue)" } })
+        keys.forEach { cachedURLs[$0] = nil }
+        recentCacheKeys.removeAll { keys.contains($0) }
+        let prefixes = ids.flatMap { id in
+            variants.map { "\(sanitized(id, fallback: "attachment"))-\($0.rawValue)-" }
+        }
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        var removed = 0
+        for name in names where prefixes.contains(where: { name.hasPrefix($0) }) {
+            if (try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))) != nil {
+                removed += 1
+            }
+        }
+        return removed
+    }
+
     private func remember(_ url: URL, for key: String) {
         recentCacheKeys.removeAll { $0 == key }
         recentCacheKeys.append(key)

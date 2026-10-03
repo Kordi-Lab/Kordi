@@ -89,7 +89,12 @@ pub async fn set_reaction(
     };
     let message = load_message(&mut transaction, message_id).await?;
     if changed {
+        // Accounts that removed the message from their view get no reactions.
+        let hidden = redaction::hidden_recipients(&mut transaction, message_id).await?;
         for recipient in active_member_ids(&mut transaction, conversation_id).await? {
+            if hidden.contains(&recipient) {
+                continue;
+            }
             let conversation =
                 load_conversation(&mut transaction, conversation_id, &recipient).await?;
             insert_noncritical_sync_event(

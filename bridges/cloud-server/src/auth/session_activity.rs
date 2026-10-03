@@ -17,6 +17,12 @@ use crate::server::ServerState;
 
 const CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 
+mod removal;
+pub(crate) use removal::{
+    archive_artifacts_for_attachment, archive_artifacts_for_message,
+    clear_task_summaries_for_message,
+};
+
 pub fn routes() -> Router<Arc<ServerState>> {
     Router::new()
         .route(
@@ -566,7 +572,8 @@ async fn upsert_cloud_artifact_activity(
            summary = EXCLUDED.summary, source_message_id = EXCLUDED.source_message_id, \
            attachment_id = EXCLUDED.attachment_id, content_type = EXCLUDED.content_type, \
            size_bytes = EXCLUDED.size_bytes, updated_at = EXCLUDED.updated_at, archived_at = NULL \
-         WHERE cloud_session_artifacts.updated_at <= EXCLUDED.updated_at",
+         WHERE cloud_session_artifacts.updated_at <= EXCLUDED.updated_at \
+           AND cloud_session_artifacts.removed_at IS NULL",
     )
     .bind(&artifact_activity_id)
     .bind(&session_id)
@@ -655,7 +662,10 @@ async fn list_cloud_session_activity(
         "SELECT artifact_activity_id, session_id, artifact_id, name, path, kind, category, \
                 summary, created_by_account_id, source_message_id, attachment_id, content_type, \
                 size_bytes, created_at, updated_at, archived_at \
-         FROM cloud_session_artifacts WHERE session_id = $1 AND archived_at IS NULL \
+         FROM cloud_session_artifacts artifact WHERE session_id = $1 AND archived_at IS NULL \
+           AND NOT EXISTS (SELECT 1 FROM cloud_attachments attachment \
+                           WHERE attachment.attachment_id = artifact.attachment_id \
+                             AND attachment.purge_requested_at IS NOT NULL) \
          ORDER BY updated_at ASC, artifact_id ASC",
     )
     .bind(&session_id)
@@ -767,78 +777,4 @@ pub async fn copy_cloud_session_activity_to_fork(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn task_activity_sync_payload_keeps_session_and_task_identity() {
-        let task = CloudTaskActivitySummary {
-            task_activity_id: "taskact_1".to_string(),
-            session_id: "session:group:one".to_string(),
-            task_id: "task_1".to_string(),
-            title: "Review launch plan".to_string(),
-            summary: Some("Check risks".to_string()),
-            status: "active".to_string(),
-            created_by_account_id: "acct_a".to_string(),
-            target_account_id: Some("acct_b".to_string()),
-            participants: vec![serde_json::json!({"accountId":"acct_a","displayName":"Alice"})],
-            artifact_ids: vec!["docs/plan.md".to_string()],
-            response_message_id: Some("msg_response".to_string()),
-            created_at: "2026-05-15T10:00:00Z".to_string(),
-            updated_at: "2026-05-15T10:01:00Z".to_string(),
-            archived_at: None,
-        };
-
-        let payload = task_activity_sync_payload(&task);
-
-        assert_eq!(payload["task"]["sessionId"], "session:group:one");
-        assert_eq!(payload["task"]["taskId"], "task_1");
-        assert_eq!(payload["task"]["artifactIds"][0], "docs/plan.md");
-    }
-
-    #[test]
-    fn artifact_activity_sync_payload_keeps_attachment_reference() {
-        let artifact = CloudArtifactActivitySummary {
-            artifact_activity_id: "artifactact_1".to_string(),
-            session_id: "session:group:one".to_string(),
-            artifact_id: "docs/plan.md".to_string(),
-            name: "plan.md".to_string(),
-            path: "docs/plan.md".to_string(),
-            kind: "document".to_string(),
-            category: "artifact".to_string(),
-            summary: Some("Generated plan".to_string()),
-            created_by_account_id: "acct_a".to_string(),
-            source_message_id: Some("msg_response".to_string()),
-            attachment_id: Some("att_1".to_string()),
-            content_type: Some("text/markdown".to_string()),
-            size_bytes: Some(42),
-            created_at: "2026-05-15T10:00:00Z".to_string(),
-            updated_at: "2026-05-15T10:01:00Z".to_string(),
-            archived_at: None,
-        };
-
-        let payload = artifact_activity_sync_payload(&artifact);
-
-        assert_eq!(payload["artifact"]["sessionId"], "session:group:one");
-        assert_eq!(payload["artifact"]["artifactId"], "docs/plan.md");
-        assert_eq!(payload["artifact"]["attachmentId"], "att_1");
-    }
-
-    #[test]
-    fn cloud_activity_recipient_ids_exclude_duplicates_and_empty_values() {
-        let recipients = cloud_activity_recipient_ids(
-            "acct_owner",
-            &[
-                "acct_b".to_string(),
-                "acct_owner".to_string(),
-                " ".to_string(),
-                "acct_b".to_string(),
-            ],
-        );
-
-        assert_eq!(
-            recipients,
-            vec!["acct_b".to_string(), "acct_owner".to_string()]
-        );
-    }
-}
+mod tests;

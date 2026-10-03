@@ -34,7 +34,7 @@ const menuActions = {
   onDelete: () => {},
 };
 
-test('SessionContextMenu exposes unread, pin, mute, archive, and reversible delete actions', () => {
+test('SessionContextMenu exposes unread, pin, mute, archive, and reversible chat removal actions', () => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: { innerWidth: 1024, innerHeight: 768 },
@@ -51,7 +51,7 @@ test('SessionContextMenu exposes unread, pin, mute, archive, and reversible dele
   assert.match(markup, />Mute notifications</);
   assert.match(markup, />Mark as unread</);
   assert.match(markup, />Archive</);
-  assert.match(markup, /Delete chat…/);
+  assert.match(markup, /Remove chat…/);
   assert.equal((markup.match(/items-center gap-2\.5 whitespace-nowrap/g) ?? []).length, 5);
 });
 
@@ -124,7 +124,7 @@ test('SessionContextMenu keeps available actions flat and omits the removed proj
 
   assert.match(markup, /app-transient-flat-action[^>]*>Rename…</);
   assert.match(markup, /app-transient-row app-transient-row-danger/);
-  assert.match(markup, /Delete chat…/);
+  assert.match(markup, /Remove chat…/);
   assert.doesNotMatch(markup, /Move to project/);
   assert.doesNotMatch(markup, /app-transient-row[^>]*>Rename…</);
 });
@@ -147,7 +147,7 @@ test('SessionContextMenu hides rename for a non-admin group member', () => {
   }));
 
   assert.doesNotMatch(markup, /Rename…/);
-  assert.match(markup, /Delete chat…/);
+  assert.match(markup, /Remove chat…/);
 });
 
 test('SessionContextMenu restores archived chats without offering pin', () => {
@@ -225,7 +225,7 @@ test('DeleteSessionDialog explains account-scoped soft deletion', () => {
     onConfirm: () => {},
   }));
 
-  assert.match(removeMarkup, /Delete this chat from your list\?/);
+  assert.match(removeMarkup, /Remove this chat from your list\?/);
   assert.match(removeMarkup, /role="dialog"/);
   assert.match(removeMarkup, /aria-modal="true"/);
   assert.match(removeMarkup, /data-dialog-presentation="popover"/);
@@ -238,9 +238,10 @@ test('DeleteSessionDialog explains account-scoped soft deletion', () => {
   assert.match(removeMarkup, /app-button-primary[^\"]*h-9[^\"]*rounded-\[12px\][^\"]*px-3/);
   assert.doesNotMatch(removeMarkup, /app-button-muted|app-button-destructive/);
   assert.match(removeMarkup, />Cancel</);
-  assert.match(removeMarkup, />Delete chat</);
-  assert.match(removeMarkup, /does not delete it for other participants/);
-  assert.match(removeMarkup, /return only when a new visible message arrives/);
+  assert.match(removeMarkup, />Remove chat</);
+  assert.match(removeMarkup, /This doesn&#x27;t delete its messages for anyone\. The chat comes back when a new message arrives\./);
+  assert.match(removeMarkup, /aria-describedby="remove-chat-dialog-description"/);
+  assert.doesNotMatch(removeMarkup, /Delete chat|Delete this chat/);
   assert.doesNotMatch(removeMarkup, /permanently removed/);
   assert.doesNotMatch(removeMarkup, /cannot be recovered/);
   assert.doesNotMatch(removeMarkup, /Trip planning/);

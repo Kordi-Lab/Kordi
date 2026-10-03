@@ -27,6 +27,27 @@ Protocol rules:
 - Unknown critical events stop sync. Unknown non-critical events may be
   ignored while advancing the cursor.
 
+Deleted, hidden, and edited content:
+
+- `message.deleted` (a message deleted for everyone) and `message.hidden` (a
+  message the account removed from its own view) identify the message by the
+  event's `entity_id`. Their payload is content-free:
+  `{ "message_id": "<uuid>", "conversation": { ... } }`, where `conversation`
+  is optional. Clients must not expect a `message` object in either event.
+  Both are terminal for the message on that account.
+- When a message is deleted, hidden, or edited, the server rewrites retained
+  replay rows that carried an earlier snapshot. A deleted message's rows become
+  `message.deleted`; the hiding account's rows become `message.hidden`; rows
+  holding an earlier version of an edited message become `message.superseded`.
+- `message.superseded` is always non-critical, carries the same content-free
+  payload, and must be ignored. The newest `message.created` or
+  `message.updated` row of the message carries its current state.
+- After a hide, later changes to that message reach the hiding account only as
+  a content-free `message.hidden`, and reactions to it are not sent there.
+- Sync and bootstrap responses include `content_removal_version`. At 1 the
+  server also deletes stored copies and files of deleted content; at 0, or when
+  the field is missing, clients must not claim that stored copies are deleted.
+
 The `/v2/chat` surface is the canonical product chat transport.
 `KORDI_CHAT_SYNC_CURSOR_SECRET` must contain at least 32 bytes so sync cursors
 remain signed and bound to the authenticated account.

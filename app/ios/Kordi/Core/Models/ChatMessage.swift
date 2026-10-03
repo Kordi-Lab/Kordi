@@ -449,6 +449,9 @@ struct MessageActionSource: Codable, Hashable, Identifiable {
     let attachmentCount: Int
     let createdAtMs: Double?
     let timeLabel: String?
+    /// Set by the server when the quoted message was deleted for everyone and
+    /// its preview was cleared. Absent on older messages.
+    let sourceDeleted: Bool?
 
     var id: String { "\(sourceSessionId):\(sourceMessageId)" }
 
@@ -461,7 +464,8 @@ struct MessageActionSource: Codable, Hashable, Identifiable {
         mentions: [MessageMention]? = nil,
         attachmentCount: Int,
         createdAtMs: Double? = nil,
-        timeLabel: String? = nil
+        timeLabel: String? = nil,
+        sourceDeleted: Bool? = nil
     ) {
         self.sourceSessionId = sourceSessionId
         self.sourceMessageId = sourceMessageId
@@ -472,6 +476,7 @@ struct MessageActionSource: Codable, Hashable, Identifiable {
         self.attachmentCount = attachmentCount
         self.createdAtMs = createdAtMs
         self.timeLabel = timeLabel
+        self.sourceDeleted = sourceDeleted
     }
 }
 

@@ -2769,7 +2769,8 @@ actor CloudAPIClient {
                 cursor: bootstrap.nextCursor,
                 lastStreamSequence: bootstrap.lastStreamSequence,
                 hasMore: false,
-                events: bootstrapEvents(bootstrap)
+                events: bootstrapEvents(bootstrap),
+                contentRemovalVersion: bootstrap.contentRemovalVersion
             )
         }
         let response: CloudChatSyncResponse
@@ -2796,7 +2797,8 @@ actor CloudAPIClient {
             cursor: response.nextCursor,
             lastStreamSequence: response.lastStreamSequence,
             hasMore: response.hasMore,
-            events: events
+            events: events,
+            contentRemovalVersion: response.contentRemovalVersion
         )
     }
 

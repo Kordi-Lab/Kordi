@@ -45,6 +45,51 @@ server before updating the macOS/iOS clients. The history API is membership-gate
 paged, and filters private actions to the actor account; existing pin-state APIs
 and older clients remain compatible.
 
+Version 116 adds the content removal schema: indexes that find the replay rows
+of one message, purge columns on `cloud_attachments`, the identifier-only
+`cloud_content_removal_jobs` queue, and the `cloud_content_removal_state` row.
+It rewrites and deletes nothing. From this version on, "Delete for everyone",
+"Remove from my view", and edits rewrite the affected replay rows in the same
+transaction, and replay checks deletion and hide state when it reads. Content
+changed before the upgrade stays as it is: automatic repair of changes written
+by an older replica during a rolling upgrade reaches back only to the time
+version 116 was applied (`automatic_since`).
+
+Removing earlier copies is an explicit operator step. It reports counts and
+changes nothing unless `--apply` is given:
+
+```sh
+kordi-cloud-server backfill-content-removal          # dry run
+kordi-cloud-server backfill-content-removal --apply  # write
+```
+
+Applying it queues file removal for photos already removed from live messages,
+makes the hiding account's replay rows of hidden messages content-free, marks
+replay rows of earlier versions of edited messages `message.superseded`, clears
+the prompts of finished digest runs, and queues one job that redacts messages
+deleted in the last 91 days and removes their files when nothing else uses
+them. Owners then lose access to those files. These changes remove copies and
+cannot be reverted from the database, so rehearse on an isolated copy, take a
+verified backup, and record the version 116 index build timings for the sync
+event, message, and agent run tables before an authorized production run.
+
+The removal worker started by `serve` works through `cloud_content_removal_jobs`
+every 10 seconds: it removes stored digest copies, replaces quote previews of
+deleted messages, clears agent run prompts and task summaries, archives
+files-panel entries, and deletes attachment bytes that nothing else uses. It
+only acts on jobs queued by a delete, hide, or edit made after version 116, by
+the reconcile of such changes from an older replica, or by the operator
+backfill above. Sync responses report `content_removal_version` 1 only after an
+operator sets `KORDI_ATTACHMENT_BUCKET_UNVERSIONED=1` for a bucket without
+versioning and a startup deletion probe succeeds. See
+[`docs/data-deletion.md`](../../../docs/data-deletion.md).
+
+Version 117 adds a nullable `removed_at` column to `cloud_session_artifacts`
+and changes no existing row. The removal worker sets it with `archived_at` when
+it archives a files-panel entry created from a message deleted for everyone,
+or one whose file it deleted. A later publish of the same entry from a client
+then leaves it archived and unlisted.
+
 ## Version numbers
 
 Every migration has its own version. From version 106 on, the runner refuses a
@@ -55,8 +100,6 @@ versions, and other changes must not take them:
 - 110: contact consent and blocks
 - 111: abuse reports
 - 112: agent trust
-- 116: content removal jobs and deletion indexes
-- 117: keep removed files-panel entries archived
 
 Unit tests keep these versions free and this list equal to the one they check;
 a change that lands one of them removes it from both. Gaps in the sequence are
@@ -65,10 +108,10 @@ allowed.
 Versions from 106 on were renumbered before release, when chat projects took
 version 107 and session pin stacks took version 108. Session-bound realtime
 tickets moved to version 109, the runner run token hash to version 113, and
-account email verification to version 120, because content removal holds
-version 117. Production databases never recorded the earlier numbers. A
-development database that did is refused at startup. Such databases are
-disposable, so recreate them. To keep one, renumber its records in one
+account email verification to version 120, because content removal took
+versions 116 and 117. Production databases never recorded the earlier
+numbers. A development database that did is refused at startup. Such databases
+are disposable, so recreate them. To keep one, renumber its records in one
 transaction before starting this build:
 
 ```sql
@@ -83,9 +126,12 @@ COMMIT;
 ```
 
 These statements cover every earlier number of those three migrations,
-including the numbers that the changes still in review record. The build then
-applies every version it embeds that is still missing and keeps every other
-recorded version, including the versions those changes hold. A database that
-recorded another migration under a number this build uses, such as an
-unreleased number of chat projects or session pin stacks, cannot be renumbered
-this way. Recreate it. An upgrade test runs these statements as written here.
+including the numbers that the changes still in review record. A development
+database from the content removal change before it merged recorded them at
+versions 107 to 109; the statements move those records too, and its versions
+116 and 117 already match this build. The build then applies every version it
+embeds that is still missing and keeps every other recorded version, including
+the versions those changes hold. A database that recorded another migration
+under a number this build uses, such as an unreleased number of chat projects
+or session pin stacks, cannot be renumbered this way. Recreate it. An upgrade
+test runs these statements as written here.

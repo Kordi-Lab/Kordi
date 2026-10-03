@@ -256,6 +256,8 @@ pub struct HistoryResponse {
 #[derive(Debug, Serialize)]
 pub struct SyncResponse {
     pub protocol_version: i32,
+    /// See `crate::chat_sync::content_removal_version`.
+    pub content_removal_version: i32,
     pub events: Vec<SyncEventSnapshot>,
     pub next_cursor: String,
     pub last_stream_seq: i64,
@@ -285,6 +287,8 @@ pub struct CloudSessionPinSummary {
 pub struct BootstrapResponse {
     pub session_visibility: super::visibility::SessionVisibilitySnapshot,
     pub protocol_version: i32,
+    /// See `crate::chat_sync::content_removal_version`.
+    pub content_removal_version: i32,
     pub conversations: Vec<ConversationSnapshot>,
     pub latest_messages: Vec<MessageSnapshot>,
     pub session_pins: Vec<CloudSessionPinSummary>,
@@ -298,4 +302,41 @@ pub struct RealtimeTicketResponse {
     pub ticket: String,
     pub device_id: String,
     pub expires_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_and_bootstrap_responses_report_content_removal_version() {
+        let sync = SyncResponse {
+            protocol_version: 2,
+            content_removal_version: 1,
+            events: Vec::new(),
+            next_cursor: "cursor".to_string(),
+            last_stream_seq: 0,
+            has_more: false,
+            server_time: Utc::now(),
+        };
+        assert_eq!(
+            serde_json::to_value(&sync).unwrap()["content_removal_version"],
+            1
+        );
+        let bootstrap = BootstrapResponse {
+            session_visibility: Default::default(),
+            protocol_version: 2,
+            content_removal_version: 0,
+            conversations: Vec::new(),
+            latest_messages: Vec::new(),
+            session_pins: Vec::new(),
+            next_cursor: "cursor".to_string(),
+            last_stream_seq: 0,
+            server_time: Utc::now(),
+        };
+        assert_eq!(
+            serde_json::to_value(&bootstrap).unwrap()["content_removal_version"],
+            0
+        );
+    }
 }

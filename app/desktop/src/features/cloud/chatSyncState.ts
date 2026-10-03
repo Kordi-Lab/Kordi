@@ -1,4 +1,5 @@
 import { cloudMessageDeletions, type CloudMessageDeletions } from './cloudMessageDeletions';
+import { noteContentRemovalAccount, setServerContentRemovalVersion } from './contentRemovalCapability';
 import type {
   ChatSyncBootstrapResponse,
   ChatSyncConversation,
@@ -31,11 +32,27 @@ export class ChatSyncState {
   ) {}
 
   get activeAccountId(): string | null {
-    return this.getAccountId();
+    const accountId = this.getAccountId();
+    // The account can change outside this state (sign-in), so the first chat
+    // operation for a new account forgets the previous server capability.
+    if (accountId) noteContentRemovalAccount(accountId);
+    return accountId;
   }
 
   set activeAccountId(value: string | null) {
-    if (value) this.setAccountId(value);
+    if (value) this.adoptAccount(value);
+  }
+
+  private adoptAccount(accountId: string): void {
+    noteContentRemovalAccount(accountId);
+    this.setAccountId(accountId);
+  }
+
+  /** Records the server's content removal version for the account that asked. */
+  recordContentRemovalVersion(value: unknown, accountId = this.activeAccountId): void {
+    const activeAccountId = this.activeAccountId;
+    if (accountId && activeAccountId && accountId !== activeAccountId) return;
+    setServerContentRemovalVersion(value ?? 0, activeAccountId ?? accountId);
   }
 
   rememberConversation(conversation: ChatSyncConversation): void {
@@ -48,7 +65,7 @@ export class ChatSyncState {
     this.conversationById.set(conversation.id, conversation);
     if (sessionId) this.conversationBySessionId.set(sessionId, conversation);
     const viewerAccountId = conversation.preferences.account_id?.trim();
-    if (viewerAccountId) this.setAccountId(viewerAccountId);
+    if (viewerAccountId) this.adoptAccount(viewerAccountId);
   }
 
   forgetSession(sessionId: string): void {

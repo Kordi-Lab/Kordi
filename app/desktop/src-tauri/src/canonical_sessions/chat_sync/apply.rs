@@ -326,6 +326,9 @@ pub(super) fn apply_on_connection(
         .map_err(|error| error.to_string())?;
     }
     tx.commit().map_err(|error| error.to_string())?;
+    // Outside the write transaction: one pass decides which cached files of
+    // removed messages are no longer used.
+    super::deletions::evict_unused_cached_files(conn, account_id);
     let cursor = load_cursor_state(conn, account_id)?;
     Ok(ChatSyncApplyResult {
         account_id: account_id.to_string(),

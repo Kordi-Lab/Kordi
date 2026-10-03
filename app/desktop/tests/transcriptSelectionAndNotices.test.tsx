@@ -272,29 +272,29 @@ test('message edit and delete actions are limited to durable human cloud message
   assert.doesNotMatch(agentMarkup, /data-message-context-menu-action="(?:edit|delete)"/);
 });
 
-test('delete confirmation offers Telegram-style revoke copy only for own messages', () => {
-  const own: Message = {
-    role: 'user', sender: 'Me', senderType: 'human',
-    text: 'Delete me', time: '10:42',
-  };
-  const ownMarkup = renderToStaticMarkup(createElement(MessageDeleteDialog, {
-    message: own,
-    peerName: 'Alice',
-    group: false,
-    onCancel: () => undefined,
-    onDelete: async () => undefined,
-  }));
-  const peerMarkup = renderToStaticMarkup(createElement(MessageDeleteDialog, {
-    message: { ...own, role: 'person', sender: 'Alice', isOwnMessage: false },
-    peerName: 'Alice',
-    group: false,
-    onCancel: () => undefined,
-    onDelete: async () => undefined,
-  }));
+test('delete confirmation offers explicit choices for own messages and remove-only for others', () => {
+  const own: Message = { role: 'user', sender: 'Me', senderType: 'human', text: 'Delete me', time: '10:42' };
+  const render = (message: Message, group: boolean, serverDeletesStoredCopies?: boolean) => renderToStaticMarkup(
+    createElement(MessageDeleteDialog, { message, peerName: 'Alice', group, serverDeletesStoredCopies,
+      onCancel: () => undefined, onDelete: async () => undefined }));
+  const ownMarkup = render(own, false, true);
   assert.match(ownMarkup, /Delete this message\?/);
-  assert.match(ownMarkup, /Also delete for Alice/);
-  assert.match(ownMarkup, /type="checkbox"[^>]*checked=""/);
-  assert.doesNotMatch(peerMarkup, /Also delete for/);
+  assert.match(ownMarkup, />Remove from my view</);
+  assert.match(ownMarkup, />Delete for everyone</);
+  assert.match(ownMarkup, /Hides it on your devices\. Others in the chat still see it\./);
+  assert.match(ownMarkup, /Removes it for you and Alice, and Kordi deletes its text and files from chat storage\./);
+  assert.match(ownMarkup, /People who already saw it may have saved a copy or taken a screenshot\. If an agent already read it, the agent&#x27;s reply and what it received stay\./);
+  assert.doesNotMatch(ownMarkup, /type="checkbox"|This cannot be undone|permanently/);
+  assert.match(render(own, true, true), /Removes it for everyone in this chat, and Kordi deletes its text and files from chat storage\./);
+  for (const conservative of [render(own, false), render(own, true, false)]) {
+    assert.match(conservative, /Removes it for everyone in this chat\. Copies may remain on the server\./);
+    assert.doesNotMatch(conservative, /chat storage/);
+  }
+  const peerMarkup = render({ ...own, role: 'person', sender: 'Alice', isOwnMessage: false }, false, true);
+  assert.match(peerMarkup, /Remove this message from your view\?/);
+  assert.match(peerMarkup, /Others in the chat still see it\./);
+  assert.match(peerMarkup, />Remove from my view</);
+  assert.doesNotMatch(peerMarkup, /Delete for everyone|chat storage|People who already saw it/);
 });
 
 test('agent turn messages also expose the Telegram-style message context menu target', () => {

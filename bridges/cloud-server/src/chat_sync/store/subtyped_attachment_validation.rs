@@ -87,7 +87,8 @@ pub(super) async fn validate_subtyped_attachment_bytes(
     let ids = images.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
     let rows: Vec<(String, Option<String>, Option<String>)> = query_as(
         "SELECT attachment_id, content_type, detected_content_type FROM cloud_attachments \
-         WHERE attachment_id = ANY($1) AND owner_account_id = $2 AND finalized_at IS NOT NULL",
+         WHERE attachment_id = ANY($1) AND owner_account_id = $2 AND finalized_at IS NOT NULL \
+           AND purge_requested_at IS NULL",
     )
     .bind(&ids)
     .bind(account_id)

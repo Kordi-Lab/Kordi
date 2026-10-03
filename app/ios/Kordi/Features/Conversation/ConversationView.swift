@@ -1724,9 +1724,9 @@ struct ConversationView: View {
                         && !message.isSystemNotice
                         && message.deliveryState != .sending
                         && message.reactionTargetMessageId?.nonEmpty != nil),
-                deleteForEveryoneLabel: messageActionAttachment != nil
-                    ? (conversation.kind == .group ? "Delete photo for everyone" : "Delete photo for me and \(conversation.displayName)")
-                    : (conversation.kind == .group ? "Delete for everyone" : "Delete for me and \(conversation.displayName)"),
+                deletePresentation: .make(isOwnMessage: message.author == .me, isLocalFailedSend: message.isLocalFailedSend,
+                    isPhoto: messageActionAttachment != nil, isGroup: conversation.kind == .group, peerName: conversation.displayName,
+                    serverDeletesStoredCopies: model.serverContentRemovalVersion >= 1),
                 isPinned: pinnedMessageIDs.contains(message.id),
                 mediaAttachment: messageActionAttachment,
                 readReceiptLabel: MessageReadReceiptPresentation.label(
@@ -2125,7 +2125,7 @@ struct ConversationView: View {
             } else {
                 deleteCaptureFrames.cancelPendingCapture()
                 pendingMessageDeletion = nil
-                messageMutationError = model.errorMessage ?? "Could not delete this message."
+                messageMutationError = model.errorMessage ?? MessageDeletePresentation.deleteFailedText
             }
         }
     }
