@@ -67,8 +67,20 @@ pub(super) async fn run_still_allowed(pool: &PgPool, run_id: &str) -> RunResult<
 /// Rechecks a run its executor still holds, for the owner's desktop as for
 /// the cloud runner. A subsession turn follows
 /// `subsession_execution::revalidate`; any other run that lost access is
-/// cancelled. Returns whether the run may continue.
+/// cancelled. Returns whether the run may continue. A run that already
+/// finished has nothing left to stop, so this leaves it to the caller, which
+/// still answers a retry of its final update with the answer already posted.
 pub(crate) async fn recheck_held_run(pool: &PgPool, run_id: &str) -> RunResult<bool> {
+    let unfinished: Option<(bool,)> = query_as(
+        "SELECT status IN ('queued', 'leased', 'running') \
+         FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_optional(pool)
+    .await?;
+    if !matches!(unfinished, Some((true,))) {
+        return Ok(true);
+    }
     if !crate::cloud_agent_runtime::subsession_execution::revalidate(pool, run_id).await? {
         return Ok(false);
     }
