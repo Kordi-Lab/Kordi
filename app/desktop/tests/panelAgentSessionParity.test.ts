@@ -231,7 +231,8 @@ test('split-pane Agent bottom controls stay compact without changing composer he
   assert.match(side, /<ComposerModelControls[\s\S]*compact=\{true\}/, 'side-panel model controls should use compact button widths');
   assert.match(main, /className=\{cn\([\s\S]*display\.showCompanionPane \? 'shrink gap-2' : 'shrink-0 gap-3'/, 'main split-pane composer controls should be allowed to shrink when a companion pane is open');
   assert.match(main, /<ComposerModelControls[\s\S]*compact=\{display\.showCompanionPane\}/, 'main split-pane model controls should also use compact widths');
-  assert.match(composerSource, /compact \? 'w-\[5\.75rem\]' : 'w-\[8\.75rem\]'/, 'compact provider button width should be narrow enough for split panes');
+  // Equal widths, narrow-pane bounds and stable positions across selections
+  // are measured with the real controls in composerModelControls.spec.ts.
 });
 
 test('split-pane Agent model selection menu escapes the right panel clipping boundary', () => {

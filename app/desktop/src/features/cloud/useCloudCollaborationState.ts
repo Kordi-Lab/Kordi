@@ -526,7 +526,7 @@ export function useCloudCollaborationState({
     messageIndex: cloudMessageIndex,
     forksBySessionId: cloudSessionForksById,
     titlesBySessionId: cloudSessionTitlesById,
-    initialMessagesSettled: recoveryMessagesReady,
+    headMessagesReady: recoveryMessagesReady, authoritativeMessagesReady,
     onSettled: messageStore.onSelfAgentRecoverySettled,
     reportWarning: reportCloudAgentExecutionWarning,
   });

@@ -54,7 +54,7 @@ test('split chat panes share one header, tab, and content geometry contract', ()
 
   const tabGeometry = cssBlock(css, '.app-chat-destination-tabs');
   assert.match(tabGeometry, /right:\s*var\(--app-chat-pane-header-inline\)/);
-  assert.match(tabGeometry, /left:\s*var\(--app-chat-pane-header-inline\)/);
+  assert.match(tabGeometry, /left:\s*calc\(var\(--app-chat-pane-header-inline\) - var\(--app-chat-pane-tab-inline\)\)/);
   assert.match(tabGeometry, /height:\s*var\(--app-chat-pane-tab-height\)/);
 
   for (const workspace of [mainWorkspace, companionWorkspace]) {

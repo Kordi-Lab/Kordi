@@ -51,20 +51,23 @@
   --app-chat-pane-header-height: 5.75rem;
   --app-chat-pane-header-inline: 1rem;
   --app-chat-pane-tab-height: 2.125rem;
+  --app-chat-pane-tab-inline: 10px;
   --app-chat-pane-transcript-inline: 1rem;
   --app-chat-pane-transcript-block: 1.25rem;
   --app-chat-pane-detail-top: 0.75rem;
   --app-chat-pane-detail-inline: clamp(1.25rem, 4vw, 2.75rem);
 }
 
-.app-chat-pane-header {
+.app-page-header.app-chat-pane-header {
+  --app-chat-header-bg: color-mix(in oklab, var(--app-chat-bubble-peer-bg) 50%, var(--app-chat-bubble-peer-border));
   box-sizing: border-box;
   width: 100%;
   height: var(--app-chat-pane-header-height);
   min-height: var(--app-chat-pane-header-height);
   padding: 0.625rem var(--app-chat-pane-header-inline) var(--app-chat-pane-tab-height);
-  border-bottom: 1px solid var(--app-divider);
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--app-text) 8%, transparent);
+  border-bottom: 1px solid var(--app-chat-bubble-peer-border);
+  background: var(--app-chat-header-bg);
+  box-shadow: none;
 }
 
 .app-chat-pane-title-row {
@@ -89,7 +92,7 @@
   position: absolute;
   right: var(--app-chat-pane-header-inline);
   bottom: 0;
-  left: var(--app-chat-pane-header-inline);
+  left: calc(var(--app-chat-pane-header-inline) - var(--app-chat-pane-tab-inline));
   height: var(--app-chat-pane-tab-height);
   min-width: 0;
   overflow: hidden;
@@ -119,7 +122,7 @@
   justify-content: center;
   gap: 6px;
   border-radius: 8px 8px 0 0;
-  padding: 0 10px;
+  padding: 0 var(--app-chat-pane-tab-inline);
   color: var(--utility-muted-text);
   font-size: 12px;
   font-weight: 550;
@@ -145,16 +148,17 @@
 }
 
 .app-chat-destination-tab:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--app-focus) 72%, transparent);
+  outline: 2px solid color-mix(in oklab, var(--app-chat-accent) 72%, transparent);
   outline-offset: -3px;
 }
 
-.app-chat-destination-tab-active {
-  color: var(--utility-foreground);
+.app-chat-destination-tab-active,
+.app-chat-destination-tab-active:hover {
+  color: color-mix(in oklab, var(--app-chat-accent) 80%, var(--app-chat-bubble-peer-text));
 }
 
 .app-chat-destination-tab-active::after {
-  background: var(--app-sidebar-accent);
+  background: var(--app-chat-accent);
 }
 
 .app-right-detail-rail {

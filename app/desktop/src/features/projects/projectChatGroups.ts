@@ -50,7 +50,7 @@ export function projectChatGroups(
   }
   if (groups.size || includeEmptyProjects) appendSection('projects');
   const limitedProjectIds = new Set<string>();
-  for (const [key, group] of groups) {
+  for (const [key, group] of collapsed.has('section:projects') ? [] : groups) {
     groupedRows.push({ kind: 'space', key: `project-group:${key}`, spaceId: key, depth: 0 });
     if (!collapsed.has(key)) {
       const limit = options.previewLimit ?? Infinity;

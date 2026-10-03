@@ -274,7 +274,7 @@ test('imported desktop no-provider agent messages render as failed red replies',
 test('cloud self-agent sends with no configured auth skip local runtime to avoid no-provider flicker', () => {
   const source = readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
   const shortcutIndex = source.indexOf('shouldUseNoProviderSelfAgentShortcut({');
-  const runtimeCreateIndex = source.indexOf('materializedState = await createDesktopChatSession()');
+  const runtimeCreateIndex = source.indexOf('materializedState = await materializeLocalChatSession(setCanonicalSessionState)');
   assert.ok(shortcutIndex >= 0 && runtimeCreateIndex > shortcutIndex, 'no-provider shortcut must run before desktop runtime session creation');
   assert.match(source.slice(shortcutIndex, runtimeCreateIndex), /window\.setTimeout\(\(\) => \{/);
 

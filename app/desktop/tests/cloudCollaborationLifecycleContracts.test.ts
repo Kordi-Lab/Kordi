@@ -95,8 +95,8 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   );
   assert.match(
     source,
-    /useCloudSelfAgentCanonicalSync\(\{[\s\S]*initialMessagesSettled: recoveryMessagesReady/,
-    'agent shells may use the compact cache before native history recovery',
+    /useCloudSelfAgentCanonicalSync\(\{[\s\S]*headMessagesReady: recoveryMessagesReady,\s*authoritativeMessagesReady,/,
+    'cached agent shells and authoritative history recovery use separate readiness contracts',
   );
   const recoveredReplay = recoveredReplaySource();
   assert.match(recoveredReplay, /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled/);
