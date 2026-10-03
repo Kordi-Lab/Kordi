@@ -37,10 +37,11 @@ These need both people to be contacts (and neither to have blocked the other):
   channels (never while either of them blocked the other). Other members of
   the space, including someone who attached a group of their own to it, still
   need a contact;
-- sending, editing, reacting, updating voice transcripts, changing the shared
-  title, and calling in an existing direct chat, including a direct chat with
-  another person's agent. An AI chat shared with another person follows the
-  same rule, because nobody can leave it;
+- sending, editing, reacting, updating voice transcripts, recording task and
+  file activity (including a task made from a digest item), changing the
+  shared title, and calling in an existing direct chat, including a direct
+  chat with another person's agent. An AI chat shared with another person
+  follows the same rule, because nobody can leave it;
 - asking the other person's default Kordi agent for help, anywhere: mentions,
   handoffs, follow-ups, and the agent reading chat context.
 
@@ -63,16 +64,19 @@ Either person can remove the other. Both directions of the relationship end at
 once; the other person's contact list refreshes but they get no other notice.
 
 - Your direct chat history stays readable for both of you.
-- New messages, edits, reactions, voice transcript updates, shared title
-  changes, posts in its agent task threads, and calls in that direct chat (or
-  an AI chat you share) are refused. Removing your own reaction and deleting
-  your own message still work. A ringing or active direct call between you
-  ends.
+- New messages, edits, reactions, voice transcript updates, task and file
+  activity, shared title changes, posts in its agent task threads, and calls in
+  that direct chat (or an AI chat you share) are refused. Removing your own
+  reaction and deleting your own message still work. A ringing or active
+  direct call between you ends.
 - Agent work that would answer in that chat stops instead of posting: a run
   either of you started there is cancelled, and a scheduled task that answers
   there fails with a note that you are no longer contacts.
 - Online status stops in both directions, and neither can use the other's
-  default agent.
+  default agent. Work either of you already asked the other's default agent
+  to do, in any chat, stops when it next checks in, whether it runs in the
+  cloud or on the owner's desktop, and queued follow-ups for it in agent task
+  threads are cancelled.
 - Groups you share are not affected.
 
 To talk again, one of you sends a new contact request and the other accepts.
@@ -100,7 +104,8 @@ When you block someone:
   desktop alerts for them, and their calls do not ring your devices. You can
   leave those groups;
 - task and file activity they record in a chat no longer reaches your
-  devices.
+  devices, and neither of you sees the other's activity when a chat's task and
+  file list loads.
 
 Blocking does not send anything to Kordi. To tell us about a problem, use
 Report.
@@ -115,8 +120,9 @@ and requests do not go through.
 
 Any member, including the owner, can leave a group. Leaving the group's main
 conversation leaves all of its channels. You stop getting its messages, it is
-removed from your devices, and you can no longer read its history. Your open
-invite links for the group are revoked.
+removed from your devices, and you can no longer read its history or record or
+read its task and file activity. Your open invite links for the group are
+revoked.
 
 If the owner leaves, another member becomes the owner: the one the owner's app
 suggests, otherwise an existing admin, otherwise the earliest member who
@@ -175,8 +181,10 @@ command that only counts them unless told to delete.
 - After an owner leaves, apps show the original creator from the group's
   creation record, and admin controls for the new owner depend on the app
   applying the role from the leave update. Messaging keeps working either way.
-- A member of two group spaces can still attach a conversation to the other
-  space; leaving that space's main conversation then also leaves that
-  conversation.
+- A member of two group spaces can still attach a group that does not belong
+  to a space yet to the other space; leaving that space's main conversation
+  then also leaves that group. Once a group or channel belongs to a space, only
+  an owner or admin of the space's main conversation can move it, so leaving
+  the main conversation always leaves every channel still in the space.
 - Kordi service accounts cannot be blocked; contact requests to them have no
   effect.
