@@ -165,20 +165,6 @@ pub(crate) fn has_legacy_identity() -> Result<bool, String> {
     Ok(cloud_device_identity_load()?.is_some_and(|identity| !identity.native_only))
 }
 
-/// Replaces an identity an earlier release created with a new native key
-/// without registering it, for an installation with no session that could.
-/// Returns whether it replaced one.
-pub(crate) fn replace_legacy_identity_locally() -> Result<bool, String> {
-    let _guard = identity_lock()?;
-    match cloud_device_identity_load()? {
-        Some(identity) if !identity.native_only => {
-            cloud_device_identity_store(generate_identity()?)?;
-            Ok(true)
-        }
-        _ => Ok(false),
-    }
-}
-
 /// The registered key and the native key that replaces it.
 pub(crate) struct PreparedRotation {
     pub old: SigningKey,

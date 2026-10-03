@@ -23,8 +23,8 @@ async fn save_state(pool: &PgPool, run_id: &str, state: Value) {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_117_flags_only_replayable_omp_states() {
-    let pool = fixture(117).await;
+async fn upgrade_from_114_flags_only_replayable_omp_states() {
+    let pool = fixture(114).await;
     save_state(
         &pool,
         "old-run",

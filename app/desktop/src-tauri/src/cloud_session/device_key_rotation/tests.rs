@@ -323,12 +323,34 @@ fn refusals_keep_or_replace_the_old_key_as_the_server_answers() {
 }
 
 #[test]
-fn without_a_session_the_earlier_key_is_replaced_without_a_request() {
+fn without_a_session_the_earlier_key_stays_until_a_sign_in_rotates_it() {
     with_isolated_app_data_dir(|_| {
         let old = store_legacy_identity(10);
+        // A launch while signed out keeps the key, without a request.
+        start();
         let (outcome, _, requests) = rotate_with(vec![]);
-        assert_eq!(outcome, Outcome::ReplacedLocally);
+        assert_eq!(outcome, Outcome::AwaitingSignIn);
         assert!(requests.is_empty());
+        assert!(device_identity::has_legacy_identity().unwrap());
+        assert!(signs_as(&spki(&old)));
+        // Sign-in registers the key the server knows this Mac by, so it
+        // reaches the Mac's existing device instead of a new one.
+        assert_eq!(
+            device_identity::cloud_device_identity_public()
+                .unwrap()
+                .public_key_spki,
+            spki(&old)
+        );
+
+        // Storing the signed-in session rotates the key for that device.
+        store_session(Some("dev_fixture"));
+        let (outcome, _, requests) = rotate_with(vec![
+            challenge("dev_fixture"),
+            (200, json!({"deviceId":"dev_fixture"})),
+        ]);
+        assert_eq!(outcome, Outcome::Rotated);
+        let new_key = requests[1].1["publicKey"].as_str().unwrap();
+        assert_eq!(identity().public_key_spki, new_key);
         assert!(identity().native_only);
         assert!(!signs_as(&spki(&old)));
         assert_eq!(rotate_with(vec![]).0, Outcome::NotNeeded);

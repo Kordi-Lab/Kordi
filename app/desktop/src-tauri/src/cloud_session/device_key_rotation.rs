@@ -4,8 +4,11 @@
 //! script could read its private half. This release replaces such a key once:
 //! it generates a new key in native code, registers it for the signed-in
 //! device with a request signed by the old key and the new one, and only then
-//! discards the old key. Without a stored session nothing can register a key,
-//! so the key is replaced locally and the next sign-in registers the new one.
+//! discards the old key. Without a stored session the old key stays until the
+//! next sign-in: the server finds a device by its registered key, so signing
+//! in with a new key would register this Mac again as a new device that
+//! waits for review, leaving its confirmed device behind. Sign-in with the
+//! old key reaches that device, and storing the session starts the rotation.
 //! When the server cannot rotate keys yet, the old key stays in use and a
 //! later launch or sign-in tries again.
 
@@ -28,6 +31,8 @@ pub(crate) static DEVICE_KEY_USE: tokio::sync::RwLock<()> = tokio::sync::RwLock:
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Outcome {
     NotNeeded,
+    /// Signed out: the old key stays until a sign-in can register the new one.
+    AwaitingSignIn,
     ReplacedLocally,
     Rotated,
     Deferred(&'static str),
@@ -58,16 +63,12 @@ struct Challenge {
     device_id: Option<String>,
 }
 
-/// At launch: without a session a legacy key is replaced at once, before
-/// the webview can register it; with one it is rotated in the background.
+/// At launch: with a session a legacy key is rotated in the background.
+/// Without one it is kept, and the next sign-in rotates it.
 pub(crate) fn start() {
     match cloud_session_load() {
         Ok(Some(session)) if !session.token.trim().is_empty() => spawn(),
-        Ok(_) => {
-            if let Err(error) = device_identity::replace_legacy_identity_locally() {
-                eprintln!("[kordi] Unable to replace the device key: {error}");
-            }
-        }
+        Ok(_) => {}
         Err(error) => {
             eprintln!("[kordi] Unable to load the session to rotate the device key: {error}")
         }
@@ -107,11 +108,7 @@ pub(crate) async fn rotate_legacy_key() -> Outcome {
         Err(_) => return Outcome::Deferred("session_unavailable"),
     };
     let Some(session) = session else {
-        return match blocking(device_identity::replace_legacy_identity_locally).await {
-            Ok(true) => Outcome::ReplacedLocally,
-            Ok(false) => Outcome::NotNeeded,
-            Err(_) => Outcome::Deferred("device_identity_unavailable"),
-        };
+        return Outcome::AwaitingSignIn;
     };
     let prepared = match blocking(device_identity::prepare_rotation).await {
         Ok(Some(prepared)) => prepared,
