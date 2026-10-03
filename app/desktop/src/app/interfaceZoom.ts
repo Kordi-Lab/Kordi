@@ -31,10 +31,14 @@ export function interfaceZoomForShortcut(current: number, key: string): number |
 export function useInterfaceZoom(isNativeShell: boolean) {
   useEffect(() => {
     if (!isNativeShell) return;
+    let disposed = false;
+    let requestId = 0;
     let zoom = readStoredInterfaceZoom();
     const apply = (next: number) => {
       zoom = next;
+      const currentRequestId = ++requestId;
       void getCurrentWebview().setZoom(next).then(() => {
+        if (disposed || currentRequestId !== requestId) return;
         document.documentElement.dataset.kordiInterfaceZoom = String(next);
         document.documentElement.style.setProperty('--app-interface-zoom', String(next));
         window.dispatchEvent(new window.Event(INTERFACE_ZOOM_EVENT));
@@ -55,6 +59,7 @@ export function useInterfaceZoom(isNativeShell: boolean) {
     document.addEventListener('keydown', handleKey);
     window.addEventListener('storage', handleStorage);
     return () => {
+      disposed = true;
       document.removeEventListener('keydown', handleKey);
       window.removeEventListener('storage', handleStorage);
     };
