@@ -7,7 +7,7 @@ export function MessageLayoutSetting() {
     <SettingsRow
       className="app-settings-option-row"
       title="Message layout"
-      description="Chat uses bubbles. Threads uses a compact, continuous list. Quote and discussion actions work in both."
+      description="Chat uses bubbles. Threads uses a compact, continuous list."
       control={(
         <div className="app-message-layout-options" role="group" aria-label="Message layout">
           {(['chat', 'threads'] as const).map((value: MessageLayout) => (
