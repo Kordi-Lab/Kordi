@@ -10,10 +10,12 @@ use crate::calls::models::{CallKind, CallParticipantSnapshot, CallSnapshot, Call
 use crate::chat_sync::store;
 mod active_calls;
 mod activity;
+mod relationship;
 mod start;
 mod tokens;
 pub use active_calls::active_for_account;
 use activity::{record_call_activity, CallActivityEvent};
+pub use relationship::end_direct_calls_between;
 pub use start::start;
 pub use tokens::{
     register_notification_push_token, register_voip_push_token, NotificationPushTokenRegistration,

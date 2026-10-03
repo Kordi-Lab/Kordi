@@ -22,11 +22,14 @@ export function VoiceComposerControls({
   hasSendableDraft,
   activeLiveTurnIsRunning,
   onSend,
+  describedBy,
 }: {
   voice: VoiceComposerController;
   hasSendableDraft: boolean;
   activeLiveTurnIsRunning: boolean;
   onSend: () => void;
+  /** Explains why sending is unavailable, for example a contact notice. */
+  describedBy?: string;
 }) {
   const recorder = voice.recorder;
   if (voice.surfaceActive) {
@@ -58,6 +61,7 @@ export function VoiceComposerControls({
         data-composer-send={hasSendableDraft ? 'true' : undefined}
         title={activeLiveTurnIsRunning ? 'Queue message for this session' : 'Send message'}
         aria-label="Send message"
+        aria-describedby={describedBy}
       >
         <Send className="h-[15px] w-[15px]" />
       </Button>

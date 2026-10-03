@@ -4,6 +4,7 @@ import type { MutableRefObject } from 'react';
 
 import { documentHasActivePresentation } from '@/features/cloud/activeConversationReadPolicy';
 import { transcriptIsAtLatest } from '@/features/cloud/activeConversationReadPolicy';
+import { currentBlockedIdentityIds } from '@/features/safety/useCloudBlocks';
 import type { Conversation } from '@/kordi-app/types';
 import {
   messageAttentionSnapshot,
@@ -144,6 +145,7 @@ export function useDesktopMessageAttention({
     const events = newMessageAttentionEvents({
       previous: previousSnapshotRef.current,
       conversations,
+      suppressedSenderIdentityIds: currentBlockedIdentityIds(),
     });
     previousSnapshotRef.current = currentSnapshot;
     if (events.length === 0 || !preferences.messages) return;

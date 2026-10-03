@@ -4,6 +4,7 @@ use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+mod consent_tests;
 mod content_removal_tests;
 mod email_verification_tests;
 mod omp_state_tests;
@@ -150,6 +151,8 @@ async fn upgrade_from_75_preserves_history_and_new_identity_guards() {
     };
     assert_eq!(claim_run(&pool, &request).await.unwrap().run_id, "new-run");
     assert_eq!(historical_runs(&pool).await, before);
+    // Since contact consent (110), writing in a direct chat needs a mutual contact.
+    execute(&pool, "INSERT INTO cloud_contacts(account_id,peer_account_id,created_at) VALUES('fixture-owner','fixture-peer','2026-01-01T00:00:00Z'),('fixture-peer','fixture-owner','2026-01-01T00:00:00Z')").await;
     execute(&pool,"UPDATE cloud_chat_conversations SET shared_title='Renamed',kind=kind,legacy_session_id=legacy_session_id WHERE legacy_session_id='old-direct-fixture'").await;
     let sent = store::send_message(
         &pool,

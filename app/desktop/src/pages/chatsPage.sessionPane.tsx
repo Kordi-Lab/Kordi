@@ -16,6 +16,7 @@ import {
 import { buildReplyAttribution } from '@/features/chat/replyAttribution';
 import { buildDesktopLiveTurnTranscriptMessage } from '@/features/chat/desktopLiveTurns';
 import { isTranscriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
+import { ReportSelectedMessagesButton } from '@/features/safety/ReportSelectedMessagesButton';
 import {
   transcriptWindowMessageIdentity,
 } from '@/features/chat/transcriptWindowing';
@@ -307,6 +308,7 @@ export function ChatSessionPane({
               >
                 Cancel
               </button>
+              <ReportSelectedMessagesButton />
               <button
                 type="button"
                 className="app-button-quiet inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold"

@@ -4,6 +4,8 @@ struct ContactsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var showAddContact = false
+    @State private var safetyAction: SafetyAction?
+    @State private var reportTarget: ReportTarget?
     var onOpenConversation: ((ConversationSummary) -> Void)? = nil
 
     private var contacts: [CloudContact] {
@@ -36,10 +38,18 @@ struct ContactsView: View {
                 if !incomingRequests.isEmpty || !outgoingRequests.isEmpty {
                     Section("Requests") {
                         ForEach(incomingRequests) { request in
-                            ContactRequestRow(request: request)
+                            ContactRequestRow(
+                                request: request,
+                                onSafetyAction: { safetyAction = $0 },
+                                onReport: { reportTarget = $0 }
+                            )
                         }
                         ForEach(outgoingRequests) { request in
-                            ContactRequestRow(request: request)
+                            ContactRequestRow(
+                                request: request,
+                                onSafetyAction: { safetyAction = $0 },
+                                onReport: { reportTarget = $0 }
+                            )
                         }
                     }
                 }
@@ -60,14 +70,26 @@ struct ContactsView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .kordiListRow()
+                                .contactSafetyActions(for: contact, action: $safetyAction, report: $reportTarget)
                             } else {
                                 NavigationLink(value: conversation) {
                                     ContactIdentityRow(contact: contact)
                                 }
                                 .kordiListRow()
+                                .contactSafetyActions(for: contact, action: $safetyAction, report: $reportTarget)
                             }
                         }
                     }
+                }
+
+                if model.safetyFeaturesAvailable && searchText.isEmpty {
+                    NavigationLink {
+                        BlockedAccountsView()
+                    } label: {
+                        Label(SafetyCopy.blockedAccountsTitle, systemImage: "hand.raised")
+                            .frame(minHeight: 44)
+                    }
+                    .kordiListRow()
                 }
             }
             .listStyle(.plain)
@@ -94,6 +116,7 @@ struct ContactsView: View {
         }
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
         .task { await model.refreshContactRequests() }
+        .safetyActions($safetyAction, report: $reportTarget)
     }
 
     private var addContactButton: some View {
@@ -132,11 +155,91 @@ private struct ContactIdentityRow: View {
     }
 }
 
+private extension View {
+    /// Remove, block, and report for a contact row, each confirmed. Hidden
+    /// for Kordi service accounts and on servers without these actions.
+    func contactSafetyActions(
+        for contact: CloudContact,
+        action: Binding<SafetyAction?>,
+        report: Binding<ReportTarget?>
+    ) -> some View {
+        modifier(ContactSafetyActions(contact: contact, action: action, report: report))
+    }
+}
+
+private struct ContactSafetyActions: ViewModifier {
+    @EnvironmentObject private var model: AppModel
+    let contact: CloudContact
+    @Binding var action: SafetyAction?
+    @Binding var report: ReportTarget?
+
+    private var account: SafetyAccount {
+        SafetyAccount(accountId: contact.accountId, name: contact.preferredName)
+    }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if model.safetyActionsAllowed(for: contact.accountId) {
+            content
+                .contextMenu {
+                    Button(role: .destructive) { action = .removeContact(account) } label: {
+                        Label("Remove contact", systemImage: "person.badge.minus")
+                    }
+                    Button(role: .destructive) { action = .block(account) } label: {
+                        Label("Block…", systemImage: "hand.raised")
+                    }
+                    .accessibilityLabel("Block \(contact.preferredName)")
+                    Button { report = .account(accountId: contact.accountId, name: contact.preferredName) } label: {
+                        Label("Report…", systemImage: "flag")
+                    }
+                    .accessibilityLabel("Report \(contact.preferredName)")
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    // Not a destructive role: the row stays until the removal
+                    // is confirmed.
+                    Button { action = .removeContact(account) } label: {
+                        Label("Remove contact", systemImage: "person.badge.minus")
+                    }
+                    .tint(.red)
+                    Button { action = .block(account) } label: {
+                        Label("Block…", systemImage: "hand.raised")
+                    }
+                    .tint(.orange)
+                    Button { report = .account(accountId: contact.accountId, name: contact.preferredName) } label: {
+                        Label("Report…", systemImage: "flag")
+                    }
+                    .tint(.gray)
+                }
+                .accessibilityAction(named: "Remove contact") { action = .removeContact(account) }
+                .accessibilityAction(named: "Block \(contact.preferredName)") { action = .block(account) }
+                .accessibilityAction(named: "Report \(contact.preferredName)") {
+                    report = .account(accountId: contact.accountId, name: contact.preferredName)
+                }
+        } else {
+            content
+        }
+    }
+}
+
 private struct ContactRequestRow: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let request: CloudContactRequest
+    var onSafetyAction: (SafetyAction) -> Void = { _ in }
+    var onReport: (ReportTarget) -> Void = { _ in }
     @State private var isWorking = false
+
+    private var counterpartName: String {
+        request.counterpart?.preferredName ?? "Kordi user"
+    }
+
+    private var counterpartAccountId: String {
+        request.isIncoming ? request.fromAccountId : request.toAccountId
+    }
+
+    private var canUseSafetyActions: Bool {
+        model.safetyActionsAllowed(for: counterpartAccountId)
+    }
 
     var body: some View {
         let actionLayout = dynamicTypeSize.isAccessibilitySize
@@ -164,11 +267,27 @@ private struct ContactRequestRow: View {
                 }
                 requestMessage.lineLimit(2)
                 if request.isIncoming {
+                    Text(SafetyCopy.requestDisclosure(counterpartName))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                     requestActions(using: actionLayout)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .padding(.top, 5)
-                } else if !request.isIncoming && dynamicTypeSize.isAccessibilitySize {
-                    pendingLabel
+                } else {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        pendingLabel
+                    }
+                    if canUseSafetyActions {
+                        Button("Withdraw") {
+                            onSafetyAction(.withdraw(request))
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(dynamicTypeSize.isAccessibilitySize ? .large : .small)
+                        .frame(minHeight: 44)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .accessibilityLabel("Withdraw request to \(counterpartName)")
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -184,6 +303,31 @@ private struct ContactRequestRow: View {
 
     private func requestActions(using layout: AnyLayout) -> some View {
         layout {
+            if canUseSafetyActions {
+                Menu {
+                    Button(role: .destructive) {
+                        onSafetyAction(.block(SafetyAccount(accountId: counterpartAccountId, name: counterpartName)))
+                    } label: {
+                        Label("Block…", systemImage: "hand.raised")
+                    }
+                    .accessibilityLabel("Block \(counterpartName)")
+                    Button {
+                        onReport(.account(
+                            accountId: counterpartAccountId,
+                            name: counterpartName,
+                            contactRequestId: request.requestId
+                        ))
+                    } label: {
+                        Label("Report…", systemImage: "flag")
+                    }
+                    .accessibilityLabel("Report \(counterpartName)")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("More actions for \(counterpartName)")
+            }
             Button(role: .destructive, action: decline) {
                 Text("Decline")
             }
@@ -370,7 +514,13 @@ struct AddContactSearchView: View {
                 Spacer(minLength: 0)
             }
 
-            if !profile.isSelf && !profile.isContact {
+            if profile.isBlocked == true && !profile.isSelf {
+                Divider()
+                Label("You blocked this account. Unblock it before sending a contact request.", systemImage: "hand.raised")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if !profile.isSelf && !profile.isContact {
                 Divider()
                 TextField("", text: $message, axis: .vertical)
                     .lineLimit(1...2)

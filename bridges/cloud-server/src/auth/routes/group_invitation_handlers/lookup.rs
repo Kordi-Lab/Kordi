@@ -187,7 +187,7 @@ pub(super) async fn lookup_group_invitation(
     }
     let row: Option<GroupInvitationRow> = query_as(
         "SELECT invite.invitation_id, invite.inviter_account_id, account.display_name, \
-                account.public_account_number, account.avatar_url, invite.group_snapshot, invite.expires_at \
+                account.avatar_url, invite.group_snapshot, invite.expires_at \
          FROM cloud_group_invitations invite \
          JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id \
          WHERE invite.token_hash = $1 AND invite.revoked_at IS NULL",
@@ -200,7 +200,6 @@ pub(super) async fn lookup_group_invitation(
         invitation_id,
         inviter_account_id,
         inviter_display_name,
-        inviter_public_account_number,
         inviter_avatar_url,
         snapshot,
         expires_at,
@@ -222,7 +221,6 @@ pub(super) async fn lookup_group_invitation(
             invitation_id,
             inviter_account_id,
             inviter_display_name,
-            inviter_public_account_number,
             inviter_avatar_url,
             snapshot,
             expires_at,
@@ -234,14 +232,16 @@ pub(super) fn group_invitation_preview(
     record: &GroupInvitationRecord,
 ) -> GroupInvitationPreviewResponse {
     GroupInvitationPreviewResponse {
-        inviter: AppInvitationInviterResponse {
+        inviter: GroupInvitationPreviewInviterResponse {
             display_name: record.inviter_display_name.clone(),
-            kordi_id: record.inviter_public_account_number.to_string(),
-            avatar_url: record.inviter_avatar_url.clone(),
+            avatar_url: public_avatar_url(
+                record.inviter_avatar_url.as_deref(),
+                &record.inviter_account_id,
+            ),
         },
         group: GroupInvitationGroupResponse {
             name: record.snapshot.group_title.clone(),
-            member_count: record.snapshot.participants.len(),
+            member_count: display_member_count(&record.snapshot),
         },
         expires_at: record.expires_at.clone(),
     }

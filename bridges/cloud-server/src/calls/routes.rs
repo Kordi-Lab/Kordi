@@ -122,8 +122,10 @@ async fn start_call(
                         let pool = state.db_pool().clone();
                         let call = started.call.clone();
                         let caller_name = started.display_name.clone();
+                        let caller = session.account_id.clone();
                         tokio::spawn(async move {
-                            push.send_incoming_call(&pool, &call, &caller_name).await;
+                            push.send_incoming_call(&pool, &call, &caller_name, &caller)
+                                .await;
                         });
                     }
                 }
@@ -224,8 +226,10 @@ async fn invite_call(
                 let pool = state.db_pool().clone();
                 let call = invitable.call.clone();
                 let inviter_name = invitable.display_name;
+                let inviter = session.account_id.clone();
                 tokio::spawn(async move {
-                    push.send_incoming_call(&pool, &call, &inviter_name).await;
+                    push.send_incoming_call(&pool, &call, &inviter_name, &inviter)
+                        .await;
                 });
             }
             Json(CallResponse {

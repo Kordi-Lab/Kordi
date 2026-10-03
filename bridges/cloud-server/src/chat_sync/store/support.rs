@@ -83,7 +83,7 @@ pub(super) async fn advisory_operation_lock(
     Ok(())
 }
 
-pub(super) async fn advisory_session_lock(
+pub(crate) async fn advisory_session_lock(
     transaction: &mut Transaction<'_, Postgres>,
     client_session_id: &str,
 ) -> Result<(), StoreError> {
@@ -138,6 +138,7 @@ pub(super) async fn load_conversation(
          FROM cloud_chat_conversations conversation \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
+          AND fork.created_by_account_id = conversation.created_by_account_id \
          WHERE conversation.conversation_id = $1",
     )
     .bind(conversation_id)
@@ -193,6 +194,7 @@ pub(super) async fn load_active_conversation_projections(
          FROM cloud_chat_conversations conversation \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
+          AND fork.created_by_account_id = conversation.created_by_account_id \
          WHERE conversation.conversation_id = $1",
     )
     .bind(conversation_id)
@@ -313,8 +315,8 @@ pub async fn identity_sync_recipient_ids(
     let rows: Vec<(String,)> = query_as(
         "SELECT DISTINCT account_id FROM (
              SELECT $1::TEXT AS account_id
-             UNION SELECT account_id FROM cloud_contacts WHERE peer_account_id = $1
-             UNION SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1
+             UNION SELECT peer_account_id FROM cloud_contacts
+                    WHERE account_id = $1 AND cloud_accounts_are_contacts($1, peer_account_id)
              UNION SELECT viewer.account_id
                FROM cloud_chat_conversation_members owner
                JOIN cloud_chat_conversation_members viewer

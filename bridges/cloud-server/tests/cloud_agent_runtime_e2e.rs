@@ -422,6 +422,16 @@ async fn lease_claimed_run_for_export(
 #[path = "cloud_agent_runtime_e2e/chat.rs"]
 mod chat;
 use chat::*;
+#[path = "cloud_agent_runtime_e2e/consent_admission.rs"]
+mod consent_admission;
+#[path = "cloud_agent_runtime_e2e/consent_desktop_runs.rs"]
+mod consent_desktop_runs;
+#[path = "cloud_agent_runtime_e2e/consent_destination.rs"]
+mod consent_destination;
+#[path = "cloud_agent_runtime_e2e/consent_run_recheck.rs"]
+mod consent_run_recheck;
+#[path = "cloud_agent_runtime_e2e/consent_subsessions.rs"]
+mod consent_subsessions;
 #[path = "cloud_agent_runtime_e2e/context_media.rs"]
 mod context_media;
 #[path = "cloud_agent_runtime_e2e/device_keys.rs"]

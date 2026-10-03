@@ -101,7 +101,7 @@ pub(crate) async fn execute_tool(
         runtime_route: None,
         idempotency_key: String::new(),
     };
-    if !super::validate_shared_cloud_agent_claim(pool, &claim).await? {
+    if !super::requester_may_invoke(pool, &claim).await? {
         return Err(RunError::NotFound);
     }
     let conversation: Option<(Uuid,)> = query_as(

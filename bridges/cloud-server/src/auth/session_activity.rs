@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
@@ -14,6 +13,12 @@ use sqlx_postgres::PgPool;
 
 use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
+use recipients::publish_chat_event;
+
+pub(crate) mod access;
+mod fork_copy;
+mod recipients;
+pub use fork_copy::copy_cloud_session_activity_to_fork;
 
 const CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;
 
@@ -157,54 +162,12 @@ fn err(code: &'static str, message: impl Into<String>, status: StatusCode) -> Re
     (status, Json(body)).into_response()
 }
 
-async fn publish_chat_event(
-    pool: &PgPool,
-    account_ids: &[String],
-    conversation_account_id: &str,
-    session_id: &str,
-    event_type: &str,
-    payload: serde_json::Value,
-) -> Result<(), crate::chat_sync::store::StoreError> {
-    let conversation_id = crate::chat_sync::store::conversation_id_for_session(
-        pool,
-        conversation_account_id,
-        session_id,
-    )
-    .await?;
-    crate::chat_sync::store::publish_user_sync_events(
-        pool,
-        account_ids,
-        event_type,
-        conversation_id,
-        payload,
-    )
-    .await
-}
-
 fn task_activity_sync_payload(task: &CloudTaskActivitySummary) -> serde_json::Value {
     serde_json::json!({ "task": task })
 }
 
 fn artifact_activity_sync_payload(artifact: &CloudArtifactActivitySummary) -> serde_json::Value {
     serde_json::json!({ "artifact": artifact })
-}
-
-fn cloud_activity_recipient_ids(
-    owner_account_id: &str,
-    participant_account_ids: &[String],
-) -> Vec<String> {
-    let mut ids = BTreeSet::new();
-    for value in participant_account_ids {
-        let trimmed = value.trim();
-        if !trimmed.is_empty() {
-            ids.insert(trimmed.to_string());
-        }
-    }
-    let owner = owner_account_id.trim();
-    if !owner.is_empty() {
-        ids.insert(owner.to_string());
-    }
-    ids.into_iter().collect()
 }
 
 fn clean_optional_activity_text(value: Option<&str>) -> Option<String> {
@@ -443,6 +406,10 @@ async fn upsert_cloud_task_activity(
         );
     };
 
+    let pool = state.db_pool();
+    if let Err(refused) = access::require_writer(pool, &session.account_id, &session_id).await {
+        return refused;
+    }
     let updated_at =
         cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
     let task_activity_id = format!("taskact_{}", uuid::Uuid::new_v4().simple());
@@ -453,7 +420,6 @@ async fn upsert_cloud_task_activity(
             .map(|value| serde_json::Value::String(value.trim().to_string()))
             .collect(),
     );
-    let pool = state.db_pool();
     if query(
         "INSERT INTO cloud_session_tasks \
          (task_activity_id, session_id, task_id, title, summary, status, created_by_account_id, \
@@ -464,7 +430,8 @@ async fn upsert_cloud_task_activity(
            target_account_id = EXCLUDED.target_account_id, participants_json = EXCLUDED.participants_json, \
            artifact_ids_json = EXCLUDED.artifact_ids_json, response_message_id = EXCLUDED.response_message_id, \
            updated_at = EXCLUDED.updated_at, archived_at = NULL \
-         WHERE cloud_session_tasks.updated_at <= EXCLUDED.updated_at",
+         WHERE cloud_session_tasks.updated_at <= EXCLUDED.updated_at \
+           AND cloud_session_tasks.created_by_account_id = EXCLUDED.created_by_account_id",
     )
     .bind(&task_activity_id)
     .bind(&session_id)
@@ -486,7 +453,8 @@ async fn upsert_cloud_task_activity(
     }
 
     let task = match fetch_cloud_task_activity(pool, &session_id, &task_id).await {
-        Ok(Some(task)) => task,
+        Ok(Some(task)) if task.created_by_account_id == session.account_id => task,
+        Ok(Some(_)) => return access::recorded_by_someone_else(),
         _ => {
             return err(
                 "server_error",
@@ -495,11 +463,9 @@ async fn upsert_cloud_task_activity(
             )
         }
     };
-    let recipients =
-        cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
     let _ = publish_chat_event(
         pool,
-        &recipients,
+        &req.participant_account_ids,
         &session.account_id,
         &session_id,
         "task.upsert",
@@ -558,10 +524,13 @@ async fn upsert_cloud_artifact_activity(
         );
     };
 
+    let pool = state.db_pool();
+    if let Err(refused) = access::require_writer(pool, &session.account_id, &session_id).await {
+        return refused;
+    }
     let updated_at =
         cloud_activity_effective_updated_at(req.client_updated_at.as_deref(), Utc::now());
     let artifact_activity_id = format!("artifactact_{}", uuid::Uuid::new_v4().simple());
-    let pool = state.db_pool();
     if query(
         "INSERT INTO cloud_session_artifacts \
          (artifact_activity_id, session_id, artifact_id, name, path, kind, category, summary, \
@@ -573,7 +542,8 @@ async fn upsert_cloud_artifact_activity(
            attachment_id = EXCLUDED.attachment_id, content_type = EXCLUDED.content_type, \
            size_bytes = EXCLUDED.size_bytes, updated_at = EXCLUDED.updated_at, archived_at = NULL \
          WHERE cloud_session_artifacts.updated_at <= EXCLUDED.updated_at \
-           AND cloud_session_artifacts.removed_at IS NULL",
+           AND cloud_session_artifacts.removed_at IS NULL \
+           AND cloud_session_artifacts.created_by_account_id = EXCLUDED.created_by_account_id",
     )
     .bind(&artifact_activity_id)
     .bind(&session_id)
@@ -597,7 +567,8 @@ async fn upsert_cloud_artifact_activity(
     }
 
     let artifact = match fetch_cloud_artifact_activity(pool, &session_id, &artifact_id).await {
-        Ok(Some(artifact)) => artifact,
+        Ok(Some(artifact)) if artifact.created_by_account_id == session.account_id => artifact,
+        Ok(Some(_)) => return access::recorded_by_someone_else(),
         _ => {
             return err(
                 "server_error",
@@ -606,11 +577,9 @@ async fn upsert_cloud_artifact_activity(
             )
         }
     };
-    let recipients =
-        cloud_activity_recipient_ids(&session.account_id, &req.participant_account_ids);
     let _ = publish_chat_event(
         pool,
-        &recipients,
+        &req.participant_account_ids,
         &session.account_id,
         &session_id,
         "artifact.upsert",
@@ -627,7 +596,7 @@ async fn upsert_cloud_artifact_activity(
 
 async fn list_cloud_session_activity(
     State(state): State<Arc<ServerState>>,
-    Extension(_session): Extension<CloudSession>,
+    Extension(session): Extension<CloudSession>,
     Query(q): Query<ListCloudSessionActivityQuery>,
 ) -> Response {
     let Some(session_id) = clean_required_activity_text(&q.session_id, 256) else {
@@ -637,51 +606,11 @@ async fn list_cloud_session_activity(
             StatusCode::BAD_REQUEST,
         );
     };
-    let pool = state.db_pool();
-    let task_rows: Vec<TaskRow> = match query_as(
-        "SELECT task_activity_id, session_id, task_id, title, summary, status, \
-                created_by_account_id, target_account_id, participants_json, artifact_ids_json, \
-                response_message_id, created_at, updated_at, archived_at \
-         FROM cloud_session_tasks WHERE session_id = $1 AND archived_at IS NULL \
-         ORDER BY updated_at ASC, task_id ASC",
-    )
-    .bind(&session_id)
-    .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not list task activity.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-    let artifact_rows: Vec<ArtifactRow> = match query_as(
-        "SELECT artifact_activity_id, session_id, artifact_id, name, path, kind, category, \
-                summary, created_by_account_id, source_message_id, attachment_id, content_type, \
-                size_bytes, created_at, updated_at, archived_at \
-         FROM cloud_session_artifacts artifact WHERE session_id = $1 AND archived_at IS NULL \
-           AND NOT EXISTS (SELECT 1 FROM cloud_attachments attachment \
-                           WHERE attachment.attachment_id = artifact.attachment_id \
-                             AND attachment.purge_requested_at IS NOT NULL) \
-         ORDER BY updated_at ASC, artifact_id ASC",
-    )
-    .bind(&session_id)
-    .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not list artifact activity.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-
+    let (task_rows, artifact_rows) =
+        match access::visible_rows(state.db_pool(), &session.account_id, &session_id).await {
+            Ok(rows) => rows,
+            Err(refused) => return refused,
+        };
     Json(CloudSessionActivityResponse {
         tasks: task_rows.into_iter().map(task_summary_from_row).collect(),
         artifacts: artifact_rows
@@ -690,90 +619,6 @@ async fn list_cloud_session_activity(
             .collect(),
     })
     .into_response()
-}
-
-pub async fn copy_cloud_session_activity_to_fork(
-    pool: &PgPool,
-    parent_session_id: &str,
-    fork_session_id: &str,
-    updated_at: &str,
-) -> Result<(), sqlx_core::error::Error> {
-    let task_rows: Vec<CloudTaskActivitySummary> = query_as::<_, TaskRow>(
-        "SELECT task_activity_id, session_id, task_id, title, summary, status, \
-                created_by_account_id, target_account_id, participants_json, artifact_ids_json, \
-                response_message_id, created_at, updated_at, archived_at \
-         FROM cloud_session_tasks WHERE session_id = $1 AND archived_at IS NULL",
-    )
-    .bind(parent_session_id)
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(task_summary_from_row)
-    .collect();
-    for task in task_rows {
-        query(
-            "INSERT INTO cloud_session_tasks \
-             (task_activity_id, session_id, task_id, title, summary, status, created_by_account_id, \
-              target_account_id, participants_json, artifact_ids_json, response_message_id, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) \
-             ON CONFLICT (session_id, task_id) DO NOTHING",
-        )
-        .bind(format!("taskact_{}", uuid::Uuid::new_v4().simple()))
-        .bind(fork_session_id)
-        .bind(&task.task_id)
-        .bind(&task.title)
-        .bind(&task.summary)
-        .bind(&task.status)
-        .bind(&task.created_by_account_id)
-        .bind(&task.target_account_id)
-        .bind(serde_json::Value::Array(task.participants.clone()))
-        .bind(serde_json::Value::Array(task.artifact_ids.iter().cloned().map(serde_json::Value::String).collect()))
-        .bind(&task.response_message_id)
-        .bind(&task.created_at)
-        .bind(updated_at)
-        .execute(pool)
-        .await?;
-    }
-
-    let artifact_rows: Vec<CloudArtifactActivitySummary> = query_as::<_, ArtifactRow>(
-        "SELECT artifact_activity_id, session_id, artifact_id, name, path, kind, category, \
-                summary, created_by_account_id, source_message_id, attachment_id, content_type, \
-                size_bytes, created_at, updated_at, archived_at \
-         FROM cloud_session_artifacts WHERE session_id = $1 AND archived_at IS NULL",
-    )
-    .bind(parent_session_id)
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(artifact_summary_from_row)
-    .collect();
-    for artifact in artifact_rows {
-        query(
-            "INSERT INTO cloud_session_artifacts \
-             (artifact_activity_id, session_id, artifact_id, name, path, kind, category, summary, \
-              created_by_account_id, source_message_id, attachment_id, content_type, size_bytes, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) \
-             ON CONFLICT (session_id, artifact_id) DO NOTHING",
-        )
-        .bind(format!("artifactact_{}", uuid::Uuid::new_v4().simple()))
-        .bind(fork_session_id)
-        .bind(&artifact.artifact_id)
-        .bind(&artifact.name)
-        .bind(&artifact.path)
-        .bind(&artifact.kind)
-        .bind(&artifact.category)
-        .bind(&artifact.summary)
-        .bind(&artifact.created_by_account_id)
-        .bind(&artifact.source_message_id)
-        .bind(&artifact.attachment_id)
-        .bind(&artifact.content_type)
-        .bind(artifact.size_bytes)
-        .bind(&artifact.created_at)
-        .bind(updated_at)
-        .execute(pool)
-        .await?;
-    }
-    Ok(())
 }
 
 #[cfg(test)]

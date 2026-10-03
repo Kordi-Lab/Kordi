@@ -51,6 +51,7 @@ import {
   type ViewportSize,
 } from '@/pages/groupManagementGeometry';
 import { MemberContactProfileContent } from '@/pages/MemberContactProfilePopover';
+import { leaveGroupPrompt, memberCanBeRemoved, useSafetyActions } from '@/features/safety/groupLeave';
 
 export type { GroupManagementPopoverAnchor } from '@/pages/groupManagementGeometry';
 
@@ -256,6 +257,7 @@ export function GroupDetailsDialog({
   const canManageAdmins = currentMemberIsCreator;
   const canManageMembers = currentMemberIsAdmin;
   const canManageGroup = canManageMembers;
+  const { safetyFeaturesAvailable } = useSafetyActions();
   const canInvitePeople = Boolean(currentMember);
   const canShareInvitation = currentMemberIsAdmin && Boolean(onCreateGroupInvitation);
   const adminMembers = members.filter((member) => memberIsAdmin(member, adminIds, currentAccountId));
@@ -654,9 +656,7 @@ export function GroupDetailsDialog({
               const isCreator = memberMatchesIdentity(selectedMember, space.groupCreatorIdentityId, currentAccountId);
               const isSelf = isSelfMember(selectedMember);
               const canChangeAdminRole = canManageAdmins && !isCreator;
-              const canRemoveMember = !isCreator && (
-                isSelf || (canManageMembers && !admin)
-              );
+              const canRemoveMember = memberCanBeRemoved({ isSelf, isCreator, admin, canManageMembers, safetyFeaturesAvailable });
               const isPending = pendingAction === `admin:${selectedMember.id}`
                 || pendingAction === `remove:${selectedMember.id}`;
               return (
@@ -703,7 +703,7 @@ export function GroupDetailsDialog({
                     confirmingRemovalId === selectedMember.id ? (
                       <div className="app-group-management-confirm mt-1 rounded-[10px] px-2 py-2">
                         <p className="text-[10.5px] leading-4">
-                          {isSelf ? 'Leave this group?' : `Remove ${selectedMember.name} from this group?`}
+                          {isSelf ? leaveGroupPrompt(space.title, isCreator) : `Remove ${selectedMember.name} from this group?`}
                         </p>
                         <div className="mt-2 flex justify-end gap-1.5">
                           <button

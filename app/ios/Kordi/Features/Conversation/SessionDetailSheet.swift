@@ -63,6 +63,8 @@ struct SessionDetailView: View {
     @State private var agentThreads: [CloudAgentSubsessionTask] = []
     @State private var agentThreadError = false
     @State private var selectedAgentThread: CloudAgentSubsessionTask?
+    @State private var safetyAction: SafetyAction?
+    @State private var reportTarget: ReportTarget?
 
     init(
         conversation: ConversationSummary,
@@ -238,7 +240,8 @@ struct SessionDetailView: View {
                         onMute: toggleNotificationsMuted,
                         onSearch: { showFeatureNotice(.search) },
                         moreActions: moreActionItems,
-                        onMoreAction: handleMoreAction
+                        onMoreAction: handleMoreAction,
+                        accessibilitySubject: profileDisplayName
                     )
                 }
 
@@ -339,6 +342,7 @@ struct SessionDetailView: View {
             callStartTask = nil
             callCoordinator.cancelUnadmittedStart()
         }
+        .safetyActions($safetyAction, report: $reportTarget, onLeftGroup: closeDetails)
         .alert(
             featureNotice?.title ?? "Feature unavailable",
             isPresented: Binding(
@@ -357,9 +361,19 @@ struct SessionDetailView: View {
         if currentConversation.kind == .group {
             SessionGroupSettingsButton(action: openGroupSettings)
                 .padding(.horizontal, 16)
-        } else if !facts.isEmpty {
-            SessionFactsSection(facts: facts)
+        } else {
+            if !facts.isEmpty {
+                SessionFactsSection(facts: facts)
+                    .padding(.horizontal, 16)
+            }
+            if !personSafetyActions.isEmpty {
+                SessionSafetyActionsSection(
+                    actions: personSafetyActions,
+                    subject: profileDisplayName,
+                    onAction: handleMoreAction
+                )
                 .padding(.horizontal, 16)
+            }
         }
     }
 
@@ -513,14 +527,38 @@ struct SessionDetailView: View {
     private var moreActionItems: [SessionMoreAction] {
         switch currentConversation.kind {
         case .group:
-            [.addMembers, .groupSettings, .copyGroupName]
+            return [.addMembers, .groupSettings, .copyGroupName]
+                + (model.safetyFeaturesAvailable && groupSpace != nil ? [.leaveGroup] : [])
         case .person:
-            contact?.kordiId?.nonEmpty == nil
+            return contact?.kordiId?.nonEmpty == nil
                 ? [.backToChat]
                 : [.copyKordiID, .backToChat]
         case .agent:
-            [.backToChat]
+            return [.backToChat]
         }
+    }
+
+    /// Remove, block or unblock, and report for another person. The person
+    /// hero keeps its four actions, so these appear in their own card.
+    private var personSafetyActions: [SessionMoreAction] {
+        guard personSafetyActionsAllowed else { return [] }
+        var items: [SessionMoreAction] = contact != nil ? [.removeContact] : []
+        items.append(model.isBlocked(currentConversation.peerAccountId) ? .unblock : .block)
+        items.append(.report)
+        return items
+    }
+
+    private var personSafetyActionsAllowed: Bool {
+        currentConversation.kind == .person
+            && !currentConversation.representsKordiSupport
+            && model.safetyActionsAllowed(for: currentConversation.peerAccountId)
+    }
+
+    private var personSafetyAccount: SafetyAccount {
+        SafetyAccount(
+            accountId: currentConversation.peerAccountId,
+            name: contact?.preferredName ?? currentConversation.displayName
+        )
     }
 
     private func handleMoreAction(_ action: SessionMoreAction) {
@@ -535,6 +573,16 @@ struct SessionDetailView: View {
             UIPasteboard.general.string = contact?.kordiId?.nonEmpty
         case .backToChat:
             closeDetails()
+        case .removeContact:
+            safetyAction = .removeContact(personSafetyAccount)
+        case .block:
+            safetyAction = .block(personSafetyAccount)
+        case .unblock:
+            safetyAction = .unblock(personSafetyAccount)
+        case .report:
+            reportTarget = .account(accountId: personSafetyAccount.accountId, name: personSafetyAccount.name)
+        case .leaveGroup:
+            if let groupSpace { safetyAction = .leaveGroup(groupSpace) }
         }
     }
 
@@ -726,6 +774,8 @@ private struct SessionHeroActions: View {
     let onSearch: () -> Void
     let moreActions: [SessionMoreAction]
     let onMoreAction: (SessionMoreAction) -> Void
+    /// The person or group the actions are about, for VoiceOver labels.
+    var accessibilitySubject = ""
 
     var body: some View {
         Group {
@@ -750,11 +800,12 @@ private struct SessionHeroActions: View {
             if item == .more {
                 Menu {
                     ForEach(moreActions) { action in
-                        Button {
+                        Button(role: action.isDestructive ? .destructive : nil) {
                             onMoreAction(action)
                         } label: {
                             Label(action.title, systemImage: action.symbol)
                         }
+                        .accessibilityLabel(action.accessibilityLabel(subject: accessibilitySubject))
                     }
                 } label: {
                     SessionProfileActionLabel(
@@ -839,6 +890,11 @@ private enum SessionMoreAction: String, Identifiable {
     case copyGroupName
     case copyKordiID
     case backToChat
+    case removeContact
+    case block
+    case unblock
+    case report
+    case leaveGroup
 
     var id: Self { self }
 
@@ -849,6 +905,11 @@ private enum SessionMoreAction: String, Identifiable {
         case .copyGroupName: "Copy group name"
         case .copyKordiID: "Copy Kordi ID"
         case .backToChat: "Back to chat"
+        case .removeContact: "Remove contact"
+        case .block: "Block…"
+        case .unblock: "Unblock…"
+        case .report: "Report…"
+        case .leaveGroup: "Leave group"
         }
     }
 
@@ -858,6 +919,24 @@ private enum SessionMoreAction: String, Identifiable {
         case .groupSettings: "slider.horizontal.3"
         case .copyGroupName, .copyKordiID: "doc.on.doc"
         case .backToChat: "bubble.left"
+        case .removeContact: "person.badge.minus"
+        case .block, .unblock: "hand.raised"
+        case .report: "flag"
+        case .leaveGroup: "rectangle.portrait.and.arrow.right"
+        }
+    }
+
+    var isDestructive: Bool {
+        [.removeContact, .block, .leaveGroup].contains(self)
+    }
+
+    func accessibilityLabel(subject: String) -> String {
+        switch self {
+        case .block: "Block \(subject)"
+        case .unblock: "Unblock \(subject)"
+        case .report: "Report \(subject)"
+        case .leaveGroup: "Leave \(subject)"
+        default: title
         }
     }
 }
@@ -952,6 +1031,32 @@ private struct SessionGroupSettingsButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Opens group name and membership settings")
+    }
+}
+
+private struct SessionSafetyActionsSection: View {
+    let actions: [SessionMoreAction]
+    let subject: String
+    let onAction: (SessionMoreAction) -> Void
+
+    var body: some View {
+        SessionDetailCard(title: "Privacy and safety") {
+            ForEach(Array(actions.enumerated()), id: \.element) { index, action in
+                Button(role: action.isDestructive ? .destructive : nil) {
+                    onAction(action)
+                } label: {
+                    Label(action.title, systemImage: action.symbol)
+                        .font(.body)
+                        .foregroundStyle(action.isDestructive ? Color.red : Color.primary)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(action.accessibilityLabel(subject: subject))
+
+                if index < actions.count - 1 { Divider() }
+            }
+        }
     }
 }
 

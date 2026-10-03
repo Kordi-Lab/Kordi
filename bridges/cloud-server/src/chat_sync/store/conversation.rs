@@ -27,6 +27,22 @@ fn fork_session_kind_allowed(is_registered_fork: bool, kind: ConversationKind) -
     !is_registered_fork || kind == ConversationKind::Ai
 }
 
+/// Direct session ids name a chat between two parties, and Kordi Support
+/// chats use one of them. A shared conversation of another kind must not
+/// borrow that identity. A conversation of one's own may, because installed
+/// clients open a chat with themselves under these ids.
+fn shared_session_id_allowed(kind: ConversationKind, members: &[String], session_id: &str) -> bool {
+    kind == ConversationKind::Direct
+        || members.len() < 2
+        || ![
+            DIRECT_PERSON_SESSION_PREFIX,
+            DIRECT_AGENT_SESSION_PREFIX,
+            DIRECT_SYSTEM_AGENT_SESSION_PREFIX,
+        ]
+        .iter()
+        .any(|prefix| session_id.starts_with(prefix))
+}
+
 fn normalized_direct_session_id(
     session_id: String,
     members: &[String],
@@ -114,6 +130,11 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         }
         _ => {}
     }
+    if !shared_session_id_allowed(request.kind, &members, &client_session_id) {
+        return Err(StoreError::InvalidInput(
+            "only direct conversations can use a direct session id",
+        ));
+    }
     if request.kind == ConversationKind::Direct {
         client_session_id =
             normalized_direct_session_id(client_session_id, &members, trusted_peer_account_id)?;
@@ -127,11 +148,17 @@ async fn create_conversation_in_transaction_with_trusted_peer(
 
     advisory_operation_lock(transaction, account_id, request.client_operation_id).await?;
     advisory_session_lock(transaction, &client_session_id).await?;
-    let registered_fork: (bool,) =
-        query_as("SELECT EXISTS(SELECT 1 FROM cloud_session_forks WHERE fork_session_id = $1)")
-            .bind(&client_session_id)
-            .fetch_one(&mut **transaction)
-            .await?;
+    // Only this account's own fork of the id counts. Another account could
+    // not claim the id as a fork (`auth/routes/session_forks/target.rs`), so
+    // an older row of theirs must not decide what this conversation can be.
+    let registered_fork: (bool,) = query_as(
+        "SELECT EXISTS(SELECT 1 FROM cloud_session_forks \
+         WHERE fork_session_id = $1 AND created_by_account_id = $2)",
+    )
+    .bind(&client_session_id)
+    .bind(account_id)
+    .fetch_one(&mut **transaction)
+    .await?;
     if !fork_session_kind_allowed(registered_fork.0, request.kind) {
         return Err(StoreError::InvalidInput(
             "fork sessions must be Agent conversations",
@@ -202,23 +229,14 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         .filter(|member| member.as_str() != account_id)
         .cloned()
         .collect::<Vec<_>>();
-    if !peers.is_empty() {
-        let authorized_count: (i64,) = query_as(
-            "SELECT COUNT(*) FROM unnest($2::TEXT[]) AS peer(account_id) \
-             WHERE peer.account_id = $3 OR EXISTS ( \
-               SELECT 1 FROM cloud_contacts contact \
-               WHERE contact.account_id = $1 AND contact.peer_account_id = peer.account_id \
-             )",
-        )
-        .bind(account_id)
-        .bind(&peers)
-        .bind(trusted_peer_account_id)
-        .fetch_one(&mut **transaction)
-        .await?;
-        if authorized_count.0 != peers.len() as i64 {
-            return Err(StoreError::Forbidden);
-        }
-    }
+    super::relationship_gate::require_contacts_for_new_conversation(
+        transaction,
+        account_id,
+        request.kind,
+        &peers,
+        trusted_peer_account_id,
+    )
+    .await?;
 
     let conversation_id = Uuid::now_v7();
     query(
@@ -321,6 +339,32 @@ mod tests {
             Some("acct_b"),
         )
         .is_ok());
+    }
+
+    #[test]
+    fn shared_conversations_of_other_kinds_cannot_borrow_direct_session_ids() {
+        let pair = vec!["acct_a".to_string(), "acct_b".to_string()];
+        let alone = vec!["acct_a".to_string()];
+        for session in [
+            "session:direct-system-agent:acct_a:support",
+            "session:direct-person:acct_a:acct_b",
+            "session:direct-agent:acct_b:agent",
+        ] {
+            use ConversationKind::{Ai, Direct, Group};
+            for (kind, members, allowed) in [
+                (Ai, &pair, false),
+                (Group, &pair, false),
+                (Direct, &pair, true),
+                (Ai, &alone, true),
+            ] {
+                assert_eq!(shared_session_id_allowed(kind, members, session), allowed);
+            }
+        }
+        assert!(shared_session_id_allowed(
+            ConversationKind::Ai,
+            &pair,
+            "session:self-agent:shared"
+        ));
     }
 
     #[test]

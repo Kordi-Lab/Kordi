@@ -193,7 +193,7 @@ pub(super) fn normalize_public_kordi_id(value: &str) -> Option<i64> {
     digits.parse::<i64>().ok()
 }
 
-pub(super) async fn write_audit(
+pub(crate) async fn write_audit(
     pool: &PgPool,
     account_id: Option<&str>,
     device_id: Option<&str>,

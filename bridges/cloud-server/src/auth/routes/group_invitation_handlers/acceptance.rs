@@ -86,30 +86,55 @@ pub(crate) async fn accept_group_invitation(
         }
     };
 
-    let already_accepted: Option<(i32,)> = match query_as(
-        "SELECT 1 FROM cloud_group_invitation_acceptances WHERE invitation_id = $1 AND account_id = $2",
+    // Someone the inviter blocked cannot use the inviter's links. Links
+    // created by other admins still work, and the invitee's own blocks do
+    // not stop them.
+    match crate::relationships::has_blocked(
+        &mut *tx,
+        &record.inviter_account_id,
+        &session.account_id,
     )
-    .bind(&record.invitation_id)
-    .bind(&session.account_id)
-    .fetch_optional(&mut *tx)
     .await
     {
-        Ok(value) => value,
+        Ok(false) => {}
+        Ok(true) => {
+            return err(
+                "invalid_group_invitation",
+                "This group invitation is invalid or was revoked.",
+                StatusCode::NOT_FOUND,
+            );
+        }
         Err(_) => {
             return err(
                 "server_error",
-                "Could not check invitation status.",
+                "Could not verify the group invitation.",
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
+    }
+
+    // Active members are already in. A member an admin removed stays out of
+    // a link they already used; a member who left may come back.
+    let is_active_member = record
+        .snapshot
+        .participants
+        .iter()
+        .any(|participant| participant.account_id == session.account_id);
+    let removed_after_accepting = if is_active_member {
+        false
+    } else {
+        match removed_after_accepting_invitation(&mut tx, &record, &session.account_id).await {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Could not check invitation status.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        }
     };
-    if already_accepted.is_some()
-        || record
-            .snapshot
-            .participants
-            .iter()
-            .any(|participant| participant.account_id == session.account_id)
-    {
+    if is_active_member || removed_after_accepting {
         return Json(GroupInvitationAcceptanceResponse {
             status: "already_joined",
             group_id: record.snapshot.group_id,
@@ -228,4 +253,30 @@ pub(crate) async fn revoke_group_invitation(
             StatusCode::INTERNAL_SERVER_ERROR,
         ),
     }
+}
+
+/// Whether the caller accepted this invitation before and an admin has since
+/// removed them from the group root.
+async fn removed_after_accepting_invitation(
+    tx: &mut sqlx_core::transaction::Transaction<'_, sqlx_postgres::Postgres>,
+    record: &GroupInvitationRecord,
+    account_id: &str,
+) -> Result<bool, sqlx_core::Error> {
+    query_as::<_, (bool,)>(
+        "SELECT EXISTS (SELECT 1 FROM cloud_group_invitation_acceptances \
+                        WHERE invitation_id = $1 AND account_id = $2) \
+            AND EXISTS (SELECT 1 FROM cloud_chat_conversation_members member \
+                        JOIN cloud_chat_conversations conversation \
+                          ON conversation.conversation_id = member.conversation_id \
+                        WHERE conversation.legacy_session_id = $3 \
+                          AND conversation.kind = 'group' \
+                          AND member.account_id = $2 \
+                          AND member.membership_state = 'removed')",
+    )
+    .bind(&record.invitation_id)
+    .bind(account_id)
+    .bind(&record.snapshot.group_id)
+    .fetch_one(&mut **tx)
+    .await
+    .map(|(value,)| value)
 }

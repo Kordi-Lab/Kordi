@@ -237,6 +237,17 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
+    /// Accounts this person blocked. Set by `refreshBlockedAccounts()` and
+    /// the block actions in `AppModel+Safety.swift`.
+    @Published var blockedAccounts: [CloudBlockedAccount] = []
+    /// False once `GET /v1/cloud/blocks` answers with an empty 404, meaning
+    /// the server has no blocks, reports, removal, withdrawal, or leaving
+    /// yet. Every new safety action is hidden then.
+    @Published var safetyFeaturesAvailable = true
+    /// Bumped after this person leaves a group on this device, so open
+    /// screens for its conversations can close (`leftGroupSessionIds`).
+    @Published private(set) var leftGroupRevision = 0
+    private(set) var leftGroupSessionIds = Set<String>()
     @Published private(set) var conversations: [ConversationSummary] = []
     @Published var projectDevices: [ChatProjectDevice] = []
     @Published var projectError: String?
@@ -646,6 +657,9 @@ final class AppModel: ObservableObject {
         deviceOperationIds = [:]
         deviceErrorMessage = nil
         deviceReviewRequired = false
+        blockedAccounts = []
+        safetyFeaturesAvailable = true
+        leftGroupSessionIds = []
         cloudMessagesByPeer = [:]
         cloudMessageIndicesByPeer = [:]
         sessionForksById = [:]
@@ -719,6 +733,9 @@ final class AppModel: ObservableObject {
         isRefreshing = true
         if showSyncActivity { messageSyncState = .syncing }
         defer { if self.token == token { isRefreshing = false } }
+        // Best effort and independent of the rest of the refresh, so an older
+        // server without blocks never fails the workspace refresh.
+        Task { await self.refreshBlockedAccounts() }
         do {
             async let refreshedAccount = api.me(token: token)
             async let fetchedContacts = api.listContacts(token: token)
@@ -4070,6 +4087,7 @@ final class AppModel: ObservableObject {
             await refreshWorkspace()
         } catch {
             errorMessage = userFacing(error, fallback: "Could not accept contact request.")
+            await refreshDecidedContactRequest(after: error)
         }
     }
 
@@ -4084,7 +4102,15 @@ final class AppModel: ObservableObject {
             contactRequests.removeAll { $0.requestId == request.requestId }
         } catch {
             errorMessage = userFacing(error, fallback: "Could not decline contact request.")
+            await refreshDecidedContactRequest(after: error)
         }
+    }
+
+    /// A request withdrawn or answered elsewhere is refused with
+    /// `request_decided`; reload so the stale row goes away.
+    private func refreshDecidedContactRequest(after error: Error) async {
+        guard (error as? CloudAPIError)?.code == "request_decided" else { return }
+        await refreshContactRequests()
     }
 
     func renameConversation(_ conversation: ConversationSummary, to title: String) async -> Bool {
@@ -5957,9 +5983,14 @@ final class AppModel: ObservableObject {
         token: String,
         account: CloudAccount,
         memberJoins: [CloudGroupMemberJoin] = [],
+        memberLeaves: [CloudGroupMemberLeave] = [],
+        actor actorOverride: CloudGroupParticipant? = nil,
         channelCreated: Bool = false
     ) async throws {
-        guard let actor = participants.first(where: { $0.accountId == account.accountId }) else { return }
+        // A leave lists everyone but the leaver, so the leaver is passed as
+        // the actor instead of being found among the participants.
+        guard let actor = actorOverride
+            ?? participants.first(where: { $0.accountId == account.accountId }) else { return }
         let canonical = await api.cachedChatConversations().first {
             $0.id == conversation.sessionId || $0.legacySessionId == conversation.sessionId
         }
@@ -5986,6 +6017,7 @@ final class AppModel: ObservableObject {
             },
             channelCreated: channelCreated ? true : nil,
             memberJoins: memberJoins.isEmpty ? nil : memberJoins,
+            memberLeaves: memberLeaves.isEmpty ? nil : memberLeaves,
             message: nil
         )
         let body = try CloudGroupMessageCodec.encode(envelope)
@@ -6361,6 +6393,14 @@ final class AppModel: ObservableObject {
                                 && $0.eventType != "message.read"
                                 && $0.eventType != "provider-auth.updated"
                         }
+                        if isRefreshing,
+                           pendingEvents.contains(where: { $0.eventType == "account.directory.changed" }) {
+                            // Blocks and unblocks from another device. The
+                            // workspace refresh below refreshes the block
+                            // list too, but returns early while another
+                            // refresh is still running.
+                            Task { await self.refreshBlockedAccounts() }
+                        }
                         if hasDirectoryChanges { await refreshWorkspace(showSyncActivity: false) }
                         // Conversation snapshots are independently canonical.
                         // Always project them even when a best-effort directory
@@ -6617,6 +6657,7 @@ final class AppModel: ObservableObject {
             }
         }
         let canonicalParticipantsBySessionId = await api.cachedChatParticipantsBySessionId()
+        let canonicalInactiveMemberIdsBySessionId = await api.cachedInactiveChatMemberIdsBySessionId()
         let canonicalForksBySessionId = await api.cachedChatSessionForksById()
         guard self.account?.accountId == account.accountId, token == expectedToken, visibilityRevision == sessionVisibilityMutationRevision else { return }
         for (sessionId, fork) in canonicalForksBySessionId {
@@ -6639,6 +6680,7 @@ final class AppModel: ObservableObject {
                 messagesByPeer: wireSnapshot,
                 canonicalConversations: canonicalConversations,
                 canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
+                canonicalInactiveMemberIdsBySessionId: canonicalInactiveMemberIdsBySessionId,
                 sessionForksById: forkSnapshot
             )
         }.value
@@ -7814,5 +7856,184 @@ extension AppModel {
     func digestContext() throws -> (CloudAPIClient, String, String) {
         guard let token, let account else { throw CancellationError() }
         return (api, token, account.accountId)
+    }
+
+    /// The client, token, and account for contact removal, blocks, reports,
+    /// and leaving groups (`AppModel+Safety.swift`).
+    func safetyContext() throws -> (CloudAPIClient, String, CloudAccount) {
+        guard let token, let account else { throw CancellationError() }
+        return (api, token, account)
+    }
+
+    /// Error copy for the safety actions. Network failures use the action's
+    /// own message, so it can say what to try again.
+    func safetyUserFacing(_ error: Error, fallback: String) -> String {
+        guard let error = error as? CloudAPIError else {
+            return userFacing(error, fallback: fallback)
+        }
+        if error.isMissingRoute {
+            return "This isn't available yet. Try again after Kordi updates."
+        }
+        switch error.code {
+        case "CHAT_RELATIONSHIP_REQUIRED":
+            return error.message.nonEmpty
+                ?? "You can send messages here only while you're contacts. Send a contact request, and you can chat once it's accepted."
+        case "contact_request_unavailable": return "You can't send a contact request to this account."
+        case "blocked_account": return "You blocked this account. Unblock it before sending a contact request."
+        case "self_block": return "You can't block yourself."
+        case "cannot_block_service": return "Kordi service accounts can't be blocked."
+        case "self_report": return "You can't report yourself."
+        case "rate_limited": return "You've sent a lot of reports recently. Try again later."
+        case "invalid_report_evidence":
+            return error.message.nonEmpty ?? "Some selected messages can't be included. Refresh the chat and try again."
+        case "request_decided": return "This request was already answered or withdrawn."
+        case "account_missing" where error.statusCode == 404: return "This account isn't available."
+        case "network_error", "proxy_unreachable", "server_error": return fallback
+        default: return userFacing(error, fallback: fallback)
+        }
+    }
+
+    /// Drops an account from the local contact, request, and presence lists
+    /// after a removal or block. The next workspace refresh confirms it.
+    func forgetContactRelationship(with accountId: String) {
+        contacts.removeAll { $0.accountId == accountId }
+        contactRequests.removeAll { $0.fromAccountId == accountId || $0.toAccountId == accountId }
+        contactPresenceByAccountID.removeValue(forKey: accountId)
+    }
+
+    func forgetContactRequest(_ requestId: String) {
+        contactRequests.removeAll { $0.requestId == requestId }
+    }
+
+    /// Whether the leaver owns the group and who would take over, for the
+    /// confirmation and the leave itself.
+    func groupLeaveSummary(
+        _ space: GroupSpaceSummary,
+        canonical: [CloudChatConversation]? = nil
+    ) async -> (isOwner: Bool, successor: CloudGroupParticipant?) {
+        guard let account else { return (false, nil) }
+        var conversations = canonical ?? []
+        if canonical == nil { conversations = await api.cachedChatConversations() }
+        let root = GroupLeavePlan.rootConversation(spaceRootId: space.preferenceId, canonical: conversations)
+        let isOwner = GroupLeavePlan.leaverIsOwner(
+            rootMembers: root?.members,
+            participants: space.participants,
+            leaverAccountId: account.accountId
+        )
+        guard isOwner else { return (false, nil) }
+        let successor = GroupLeavePlan.successor(
+            among: GroupLeavePlan.candidates(rootMembers: root?.members, participants: space.participants),
+            leaverAccountId: account.accountId
+        )
+        return (true, successor)
+    }
+
+    /// Leaves a group and all of its channels: tells the other members with
+    /// a `group-update` per channel (naming a successor when the owner
+    /// leaves), leaves on the server once on the main conversation, then
+    /// removes the group from this device. A connection problem stops it
+    /// before anything changes here. A server without the leave route is
+    /// detected before any envelope is sent.
+    func leaveGroup(_ space: GroupSpaceSummary) async -> SafetyActionResult {
+        if previewMode { return .failed("Leaving groups isn't available with preview data.") }
+        guard let token, let account else { return .failed(GroupLeavePlan.errorMessage) }
+        // The server conversations decide the owner, the successor, and where
+        // the server leave runs, so they must be loaded before anything is sent.
+        let canonical: [CloudChatConversation]
+        do {
+            _ = try await api.listBlockedAccounts(token: token)
+            canonical = try await api.loadedChatConversations(token: token)
+        } catch let error as CloudAPIError where error.isMissingRoute {
+            safetyFeaturesAvailable = false
+            return .failed(GroupLeavePlan.unavailableMessage)
+        } catch {
+            recordCloudConnectionFailure(error)
+            return .failed(GroupLeavePlan.errorMessage)
+        }
+        guard self.token == token, self.account?.accountId == account.accountId else {
+            return .failed(GroupLeavePlan.errorMessage)
+        }
+        let summary = await groupLeaveSummary(space, canonical: canonical)
+        let successorAccountId = summary.successor?.accountId
+        let leave = CloudGroupMemberLeave(
+            eventId: UUID().uuidString.lowercased(),
+            accountId: account.accountId,
+            createdAtMs: Int64((Date().timeIntervalSince1970 * 1_000).rounded(.towardZero))
+        )
+        for conversation in space.membershipSessions {
+            let everyone = groupParticipantsIncludingSelf(conversation, account: account)
+            guard let actor = everyone.first(where: { $0.accountId == account.accountId }) else { continue }
+            let others = GroupLeavePlan.envelopeParticipants(
+                everyone,
+                leaverAccountId: account.accountId,
+                successorAccountId: successorAccountId
+            )
+            guard !others.isEmpty else { continue }
+            do {
+                try await sendGroupControl(
+                    kind: "group-update",
+                    conversation: conversation,
+                    participants: others,
+                    groupTitle: conversation.ownerDisplayName,
+                    targetAccountIds: Set(others.map(\.accountId)),
+                    token: token,
+                    account: account,
+                    memberLeaves: [leave],
+                    actor: actor
+                )
+            } catch {
+                if GroupLeavePlan.envelopeFailureStopsLeave(error) {
+                    recordCloudConnectionFailure(error)
+                    return .failed(GroupLeavePlan.errorMessage)
+                }
+            }
+        }
+        // Read the cache again: a leave envelope can open a server
+        // conversation for a channel that only existed in envelopes.
+        let leaveSessionIds = GroupLeavePlan.leaveSessionIds(
+            spaceRootId: space.preferenceId,
+            membershipSessionIds: space.membershipSessions.map(\.sessionId),
+            canonical: await api.cachedChatConversations()
+        )
+        for sessionId in leaveSessionIds {
+            do {
+                _ = try await api.leaveConversation(
+                    token: token,
+                    sessionId: sessionId,
+                    successorAccountId: successorAccountId
+                )
+            } catch let error as CloudAPIError where error.isMissingRoute {
+                return .failed(GroupLeavePlan.unavailableMessage)
+            } catch {
+                if GroupLeavePlan.isAlreadyGone(error) { continue }
+                recordCloudConnectionFailure(error)
+                return .failed(GroupLeavePlan.errorMessage)
+            }
+        }
+        guard self.token == token, self.account?.accountId == account.accountId else { return .done }
+        // The server also sends `membership.removed` for each channel; this
+        // applies the same removal now.
+        let occurredAt = ISO8601DateFormatter().string(from: Date())
+        applyCloudSyncEvents(space.membershipSessions.map { conversation in
+            CloudSyncEvent(
+                eventId: "group-leave:\(leave.eventId):\(conversation.sessionId)",
+                eventType: "session.deleted",
+                peerAccountId: nil,
+                messageId: nil,
+                payload: CloudSyncEventPayload(
+                    message: nil, messageIds: nil, messageId: nil, readAt: nil,
+                    sessionId: conversation.sessionId, scope: nil, updatedAt: nil,
+                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: nil, call: nil
+                ),
+                occurredAt: occurredAt
+            )
+        })
+        await rebuildConversationCatalog()
+        await persistCloudSnapshot(accountId: account.accountId)
+        leftGroupSessionIds = Set(space.membershipSessions.map(\.sessionId))
+        leftGroupRevision &+= 1
+        return .done
     }
 }

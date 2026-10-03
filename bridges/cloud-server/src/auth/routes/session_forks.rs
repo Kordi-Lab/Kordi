@@ -1,6 +1,8 @@
 use super::*;
 use sqlx_core::query_scalar::query_scalar;
 
+mod target;
+
 // ============================================================================
 // Cloud session forks
 // ----------------------------------------------------------------------------
@@ -10,7 +12,8 @@ use sqlx_core::query_scalar::query_scalar;
 // lineage in `cloud_session_forks` and emits a `session-forked` event into
 // every participant's durable sync stream.
 // Forker's own messages under the new fork session stay private to them; other
-// participants only learn lineage, not content.
+// participants only learn lineage, not content. The fork id must be the
+// forker's own (see `target`), because the parent's activity is copied there.
 // ============================================================================
 
 #[derive(Debug, Deserialize)]
@@ -124,6 +127,13 @@ pub(super) async fn create_cloud_session_fork(
             StatusCode::BAD_REQUEST,
         );
     }
+    if target::reserved(&fork_session_id) {
+        return err(
+            "invalid_fork",
+            "forkSessionId cannot be the id of a chat with people, a group, or an account's own chat.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
 
     let pool = state.db_pool();
     let participants = match cloud_session_participants(pool, &parent_session_id).await {
@@ -163,8 +173,32 @@ pub(super) async fn create_cloud_session_fork(
             StatusCode::BAD_REQUEST,
         );
     }
-    let existing_child_kind = match cloud_session_kind(pool, &fork_session_id).await {
-        Ok(kind) => kind,
+    let created_at = Utc::now().to_rfc3339();
+    match target::register(
+        pool,
+        &session.account_id,
+        &fork_session_id,
+        &parent_session_id,
+        parent_message_id.as_deref(),
+        &created_at,
+    )
+    .await
+    {
+        Ok(target::Registration::Registered) => {}
+        Ok(target::Registration::Exists) => {
+            return err(
+                "fork_exists",
+                "A fork with that id already exists.",
+                StatusCode::CONFLICT,
+            );
+        }
+        Ok(target::Registration::NotOwned) => {
+            return err(
+                "fork_target_in_use",
+                "forkSessionId already names a conversation or activity that is not yours.",
+                StatusCode::CONFLICT,
+            );
+        }
         Err(_) => {
             return err(
                 "server_error",
@@ -172,38 +206,6 @@ pub(super) async fn create_cloud_session_fork(
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
-    };
-    if existing_child_kind
-        .as_deref()
-        .is_some_and(|kind| !session_kind_allows_fork(Some(kind)))
-    {
-        return err(
-            "fork_not_supported",
-            "Agent forks cannot target a non-Agent conversation.",
-            StatusCode::BAD_REQUEST,
-        );
-    }
-
-    let created_at = Utc::now().to_rfc3339();
-    if query(
-        "INSERT INTO cloud_session_forks \
-         (fork_session_id, parent_session_id, parent_message_id, created_by_account_id, created_at) \
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(&fork_session_id)
-    .bind(&parent_session_id)
-    .bind(&parent_message_id)
-    .bind(&session.account_id)
-    .bind(&created_at)
-    .execute(pool)
-    .await
-    .is_err()
-    {
-        return err(
-            "fork_exists",
-            "A fork with that id already exists.",
-            StatusCode::CONFLICT,
-        );
     }
 
     let fork = CloudSessionForkSummary {

@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, LoaderCircle, Plus, Search, Trash2, UserPlus, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Plus, Search, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { BlockedAccountsSection } from '@/features/safety/BlockedAccountsSection';
 import { cn } from '@/lib/utils';
-import { ContactRequestRow, ContactRequestTime, ContactRow } from './components';
-import { IdentityAvatar } from './components/IdentityAvatar';
-import { contactCanBeRemoved, contactDetailBodyText, contactPresenceStatus, sentInviteDisplayName } from './contactPresentation';
+import { ContactRequestRow, ContactRow } from './components';
+import { ContactOverlays, type ContactRequestActionKind, type ContactRequestActionState } from './contacts/ContactOverlays';
+import { SentInvitesSection } from './contacts/SentInvitesSection';
 import type { AddContactLookupResult } from '@/pages/ChatCreateDialog';
 import type { Contact, ContactClass, ContactRequest } from './types';
 import { getContactSortLetter } from './utils';
@@ -20,6 +21,7 @@ type ContactsPageProps = {
   activeContactRequestId: string;
   onAcceptRequest?: (request: ContactRequest) => Promise<void> | void;
   onRejectRequest?: (request: ContactRequest) => Promise<void> | void;
+  onWithdrawRequest?: (request: ContactRequest) => Promise<void> | void;
   onAddContactByNodeId?: (nodeId: string) => Promise<void> | void;
   onLookupContact?: (idOrEmail: string) => Promise<AddContactLookupResult | null>;
   contactSearch: string;
@@ -46,6 +48,7 @@ export function ContactsPage({
   activeContactRequestId,
   onAcceptRequest,
   onRejectRequest,
+  onWithdrawRequest,
   onAddContactByNodeId,
   onLookupContact,
   contactSearch,
@@ -70,16 +73,8 @@ export function ContactsPage({
   const [lookupResult, setLookupResult] = useState<AddContactLookupResult | null>(null);
   const [requestingContactNodeId, setRequestingContactNodeId] = useState<string | null>(null);
   const [requestedContactNodeIds, setRequestedContactNodeIds] = useState<string[]>([]);
-  const [removeContactState, setRemoveContactState] = useState<'idle' | 'saving' | 'error'>('idle');
-  const [removeContactError, setRemoveContactError] = useState('');
-  const [contactRequestAction, setContactRequestAction] = useState<{ requestId: string; kind: 'accept' | 'reject' } | null>(null);
+  const [contactRequestAction, setContactRequestAction] = useState<{ requestId: string; kind: ContactRequestActionKind } | null>(null);
   const [contactRequestActionError, setContactRequestActionError] = useState('');
-  const [isSentInvitesOpen, setIsSentInvitesOpen] = useState(false);
-
-  useEffect(() => {
-    setRemoveContactState('idle');
-    setRemoveContactError('');
-  }, [activeContact.id, contactOverlayMode]);
 
   const performContactLookup = async () => {
     if (!onLookupContact) return;
@@ -177,36 +172,14 @@ export function ContactsPage({
   const pendingRequestCount = incomingContactRequests.length;
   const sentInviteCount = outgoingContactRequests.length;
   const requestInboxSummary = `Review ${pendingRequestCount} pending ${pendingRequestCount === 1 ? 'request' : 'requests'}.`;
-  const sentInvitesSummary = `${sentInviteCount} awaiting approval`;
   const lookupRequestPending = Boolean(lookupResult && (lookupResult.isRequestPending || requestedContactNodeIds.includes(lookupResult.accountId)));
-  const activeContactDetailBody = contactDetailBodyText(activeContact);
-  const activeContactPresenceStatus = contactPresenceStatus(activeContact);
 
-  const canRemoveActiveContact = Boolean(
-    onRemoveContact
-      && contactCanBeRemoved(activeContact),
-  );
-
-  const submitRemoveContact = async () => {
-    if (!canRemoveActiveContact || removeContactState === 'saving') return;
-    setRemoveContactState('saving');
-    setRemoveContactError('');
-    try {
-      const contactToRemove = activeContact;
-      onCloseOverlay();
-      await onRemoveContact?.(contactToRemove);
-    } catch (error) {
-      setRemoveContactState('error');
-      setRemoveContactError(error instanceof Error ? error.message : 'Unable to delete contact');
-    }
-  };
-
-  const contactRequestActionState = (request: ContactRequest) => {
+  const contactRequestActionState = (request: ContactRequest): ContactRequestActionState => {
     if (contactRequestAction?.requestId !== request.id) return null;
     return contactRequestAction.kind === 'accept' ? 'accepting' : 'rejecting';
   };
 
-  const submitContactRequestAction = async (request: ContactRequest, kind: 'accept' | 'reject') => {
+  const submitContactRequestAction = async (request: ContactRequest, kind: ContactRequestActionKind) => {
     const handler = kind === 'accept' ? onAcceptRequest : onRejectRequest;
     if (!handler || contactRequestAction) return;
     setContactRequestAction({ requestId: request.id, kind });
@@ -272,51 +245,7 @@ export function ContactsPage({
                   </section>
                 )}
 
-                {sentInviteCount > 0 && (
-                  <section className="app-contacts-sent-invites-row" aria-label="Sent contact invites">
-                    <button
-                      type="button"
-                      onClick={() => setIsSentInvitesOpen((open) => !open)}
-                      className="app-contacts-section-button flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-none"
-                      aria-expanded={isSentInvitesOpen}
-                    >
-                      <div className="flex min-w-0 items-center gap-3">
-                        {isSentInvitesOpen ? (
-                          <ChevronDown className="h-4 w-4 shrink-0 text-slate-300" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-                        )}
-                        <div className="truncate text-[12px] font-medium leading-5 text-white">Sent invites</div>
-                      </div>
-                      <div className="shrink-0 text-[11px] leading-4 text-slate-400">{sentInvitesSummary}</div>
-                    </button>
-                    {isSentInvitesOpen && (
-                      <div className="grid gap-1">
-                        {outgoingContactRequests.map((request) => (
-                          <div key={request.id} className="app-contacts-sent-invite-item w-full px-3 py-2.5 text-white">
-                            <div className="flex items-center gap-3">
-                              <IdentityAvatar
-                                kind="human"
-                                seed={request.avatarSeed ?? request.targetNodeId ?? request.id}
-                                name={sentInviteDisplayName(request)}
-                                imageUrl={request.profileImageUrl}
-                                className="h-9 w-9 border border-white/10"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-[13px] font-medium leading-5">{sentInviteDisplayName(request)}</div>
-                                <div className="flex items-center gap-1.5 truncate text-[11.5px] leading-4 text-slate-400">
-                                  <span>Awaiting approval</span>
-                                  <span aria-hidden="true">·</span>
-                                  <ContactRequestTime value={request.time} />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-                )}
+                {sentInviteCount > 0 && <SentInvitesSection requests={outgoingContactRequests} onWithdrawRequest={onWithdrawRequest} />}
               </div>
             )}
 
@@ -459,122 +388,28 @@ export function ContactsPage({
                       )}
                     </div>
                   ))}
+                  <BlockedAccountsSection />
                 </div>
               </ScrollArea>
             </div>
           </div>
 
           {contactOverlayMode && (
-            <div className="app-transient-overlay app-overlay absolute inset-0 z-10 flex items-center justify-center px-4 py-8 backdrop-blur-[2px]">
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-label={contactOverlayMode === 'contact' ? `${activeContact.name} contact details` : 'Contact request review'}
-                className="app-transient-surface app-modal-panel app-contact-detail-dialog w-full max-w-[420px] rounded-[18px] border p-4"
-              >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div>
-                    {contactOverlayMode === 'request' ? (
-                      <div className="app-transient-muted text-[11px] uppercase tracking-[0.24em]">
-                        Request review
-                      </div>
-                    ) : null}
-                    <div className={cn('text-lg font-semibold', contactOverlayMode === 'request' ? 'mt-1' : '')}>
-                      {contactOverlayMode === 'contact' ? activeContact.name : activeContactRequest?.title}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onCloseOverlay}
-                    aria-label="Close"
-                    className="app-button-quiet app-transient-flat-action inline-flex h-8 w-8 items-center justify-center rounded-[10px] p-0"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                {contactOverlayMode === 'contact' ? (
-                  <div>
-                    <div className="mb-4 flex items-center gap-3">
-                      <IdentityAvatar
-                        kind={activeContact.classType === 'my-agents' || activeContact.classType === 'other-users-agents' ? 'agent' : 'human'}
-                        seed={activeContact.avatarSeed ?? activeContact.sourceParticipantId ?? activeContact.id}
-                        name={activeContact.name}
-                        imageUrl={activeContact.profileImageUrl}
-                        presenceStatus={activeContactPresenceStatus}
-                        presenceLabel={activeContactPresenceStatus ? `${activeContact.name} is ${activeContactPresenceStatus}` : undefined}
-                        className="h-12 w-12 border border-[color:var(--app-transient-border)]"
-                      />
-                      <div>
-                        <div className="app-transient-muted text-sm">
-                          {activeContact.entityType} • {activeContact.subtitle}
-                        </div>
-                      </div>
-                    </div>
-                    {activeContactDetailBody ? <div className="app-transient-muted mb-5 text-sm">{activeContactDetailBody}</div> : null}
-                    <div className="grid gap-1">
-                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => onMessageContact?.(activeContact)} disabled={!onMessageContact || !activeContact.sourceHostId || !activeContact.sourceParticipantId}>
-                        Message
-                      </Button>
-                      {canRemoveActiveContact ? (
-                        <Button
-                          variant="secondary"
-                          className="app-transient-flat-action app-transient-flat-action-danger rounded-[10px] shadow-none"
-                          onClick={() => { void submitRemoveContact(); }}
-                          disabled={removeContactState === 'saving'}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          {removeContactState === 'saving' ? 'Deleting…' : 'Delete contact'}
-                        </Button>
-                      ) : null}
-                    </div>
-                    {canRemoveActiveContact ? (
-                      <div className={cn('app-error-text mt-3 text-[11px] leading-4', removeContactState === 'error' ? 'text-rose-200' : 'app-transient-muted')} aria-live="polite">
-                        {removeContactState === 'error'
-                          ? removeContactError || 'Unable to delete contact.'
-                          : 'Deleting removes both contact directions. They will need approval before messages can reach you again.'}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : activeContactRequest ? (
-                  <div>
-                    <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="app-badge-neutral px-2.5 py-1 text-[10px] font-medium">{activeContactRequest.time}</div>
-                    </div>
-                    <div className="app-transient-muted mb-5 text-sm">{activeContactRequest.detail}</div>
-                    <div className="grid gap-1">
-                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={() => { void submitContactRequestAction(activeContactRequest, 'accept'); }} disabled={!onAcceptRequest || Boolean(contactRequestAction)}>
-                        {contactRequestActionState(activeContactRequest) === 'accepting' ? (
-                          <>
-                            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                            Accepting…
-                          </>
-                        ) : 'Accept'}
-                      </Button>
-                      <Button variant="secondary" className="app-transient-flat-action app-transient-flat-action-danger rounded-[10px]" onClick={() => { void submitContactRequestAction(activeContactRequest, 'reject'); }} disabled={!onRejectRequest || Boolean(contactRequestAction)}>
-                        {contactRequestActionState(activeContactRequest) === 'rejecting' ? (
-                          <>
-                            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                            Rejecting…
-                          </>
-                        ) : 'Reject'}
-                      </Button>
-                      <Button variant="secondary" className="app-transient-flat-action rounded-[10px]" onClick={onCloseOverlay} disabled={Boolean(contactRequestAction)}>
-                        Close review
-                      </Button>
-                    </div>
-                    {contactRequestActionState(activeContactRequest) === 'accepting' ? (
-                      <div className="app-transient-muted mt-3 text-[11px] leading-4" aria-live="polite">Accepting and sending greeting…</div>
-                    ) : contactRequestActionState(activeContactRequest) === 'rejecting' ? (
-                      <div className="app-transient-muted mt-3 text-[11px] leading-4" aria-live="polite">Rejecting request…</div>
-                    ) : contactRequestActionError ? (
-                      <div className="app-error-text mt-3 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-[12px] leading-5 text-rose-100" aria-live="polite">
-                        {contactRequestActionError}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
-            </div>
+            <ContactOverlays
+              key={`${contactOverlayMode}:${activeContact.id}`}
+              mode={contactOverlayMode}
+              activeContact={activeContact}
+              activeContactRequest={activeContactRequest}
+              onCloseOverlay={onCloseOverlay}
+              onMessageContact={onMessageContact}
+              onRemoveContact={onRemoveContact}
+              canAcceptRequest={Boolean(onAcceptRequest)}
+              canRejectRequest={Boolean(onRejectRequest)}
+              requestActionBusy={Boolean(contactRequestAction)}
+              requestActionError={contactRequestActionError}
+              requestActionState={contactRequestActionState}
+              onSubmitRequestAction={(request, kind) => { void submitContactRequestAction(request, kind); }}
+            />
           )}
         </div>
       </div>

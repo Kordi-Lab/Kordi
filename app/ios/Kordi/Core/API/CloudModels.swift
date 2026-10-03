@@ -391,8 +391,98 @@ struct CloudPublicProfile: Codable, Hashable {
     let nodeId: String?
     let isContact: Bool
     let isSelf: Bool
+    /// Whether the viewer blocked this account. Older servers omit it.
+    var isBlocked: Bool? = nil
 
     var preferredName: String { displayName?.nonEmpty ?? kordiId }
+}
+
+/// An account the signed-in person blocked. The list is private to them.
+struct CloudBlockedAccount: Codable, Hashable, Identifiable {
+    let accountId: String
+    let kordiId: String?
+    let displayName: String?
+    let avatarUrl: String?
+    let blockedAt: String?
+
+    var id: String { accountId }
+    var preferredName: String { displayName?.nonEmpty ?? kordiId?.nonEmpty ?? "Kordi user" }
+}
+
+struct CloudBlockResult: Codable, Hashable {
+    let block: CloudBlockedAccount
+    /// Whether the block ended an accepted contact relationship.
+    let removedContact: Bool
+}
+
+enum CloudReportReason: String, Codable, CaseIterable, Identifiable {
+    case spam
+    case harassment
+    case scam
+    case impersonation
+    case inappropriate
+    case other
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .spam: "Spam"
+        case .harassment: "Harassment or bullying"
+        case .scam: "Scam or fraud"
+        case .impersonation: "Pretending to be someone else"
+        case .inappropriate: "Inappropriate or harmful content"
+        case .other: "Something else"
+        }
+    }
+}
+
+/// `POST /v1/cloud/reports`. Absent values are left out of the JSON body.
+struct CloudReportRequest: Encodable, Equatable {
+    static let maxDetailsLength = 1_000
+
+    let clientReportId: String
+    let reason: CloudReportReason
+    let details: String?
+    let reportedAccountId: String?
+    let conversationId: String?
+    let messageIds: [String]
+    let contactRequestId: String?
+}
+
+/// The receipt for a report the server received. Evidence and outcomes are
+/// never returned to the reporter.
+struct CloudReportReceipt: Codable, Hashable {
+    let reportId: String
+    let reference: String
+    let status: String
+    let reason: String
+    let targetKind: String
+    let evidenceMessageCount: Int
+    let reportedDisplayName: String?
+    let createdAt: String
+    let closedAt: String?
+}
+
+struct CloudLeaveConversationResponse: Codable, Hashable {
+    let leftConversationIds: [String]
+    let successorAccountId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case leftConversationIds = "left_conversation_ids"
+        case successorAccountId = "successor_account_id"
+    }
+
+    init(leftConversationIds: [String], successorAccountId: String?) {
+        self.leftConversationIds = leftConversationIds
+        self.successorAccountId = successorAccountId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        leftConversationIds = try container.decodeIfPresent([String].self, forKey: .leftConversationIds) ?? []
+        successorAccountId = try container.decodeIfPresent(String.self, forKey: .successorAccountId)
+    }
 }
 
 struct CloudContactRequest: Codable, Hashable, Identifiable {

@@ -90,6 +90,65 @@ it archives a files-panel entry created from a message deleted for everyone,
 or one whose file it deleted. A later publish of the same entry from a client
 then leaves it archived and unlisted.
 
+## Contact consent (110)
+
+Version 110 makes contacts mutual. A `cloud_contacts(A, B)` row means "A
+accepted B"; A and B are contacts only when both rows exist and neither has
+blocked the other (`cloud_accounts_are_contacts`). Rows are written only in
+pairs, when a contact request is accepted, and deleted only in pairs. The
+migration also adds `cloud_account_blocks`, allows the `withdrawn` request
+status, and adds the SQL predicates the server uses for consent checks.
+
+Existing one-way rows are converted once by `cloud_convert_one_way_contacts()`
+(see [contacts and blocking](../../../docs/trust-and-safety/contacts-and-blocking.md)
+for the user-visible result):
+
+- self rows and one-way rows involving a Kordi service account are removed;
+- a row is completed to a pair only when the peer consented: an accepted
+  request between them, a pending request from the peer (now accepted), or a
+  message the peer wrote themselves in their person-to-person chat;
+- every other row becomes a pending request from its owner, unless one is
+  already pending, the owner's latest request was declined or withdrawn, or
+  either account blocked the other.
+
+Invariants: messages, conversations, and memberships are never touched; no
+push or realtime event is sent; the function is idempotent and serialized by
+an advisory lock. Every change is recorded in `cloud_contact_consent_backfill`
+(original row, outcome, created or accepted request ids), so it can be
+reverted. Nothing deletes archive rows automatically. After at least 90 days
+an operator may remove old rows with an explicit purge that only counts by
+default:
+
+```sql
+-- Dry run: how many rows were recorded more than 90 days ago.
+SELECT cloud_purge_contact_consent_backfill(interval '90 days');
+-- Delete them. Purged rows can no longer be reverted.
+SELECT cloud_purge_contact_consent_backfill(interval '90 days', true);
+```
+
+Shorter intervals are refused.
+
+Post-deploy check (older replicas can still write one-way rows during a
+rolling deploy; such rows grant nothing):
+
+```sql
+SELECT count(*) FROM cloud_contacts c
+WHERE NOT EXISTS (SELECT 1 FROM cloud_contacts r
+                  WHERE r.account_id = c.peer_account_id AND r.peer_account_id = c.account_id);
+-- If it is not 0:
+SELECT cloud_convert_one_way_contacts();
+```
+
+Rollback: an older image ignores blocks and the `withdrawn` status (it never
+lists withdrawn requests). Converted requests stay pending and completed pairs
+stay mutual, which an older image also understands. If a product rollback of
+the conversion itself is ordered, an operator runs
+`SELECT cloud_revert_contact_consent_backfill();` after a verified backup. It
+restores each removed row with its original time, removes the reverse rows and
+pending requests the conversion created (unless they changed since), reopens
+the requests it accepted, and marks each archive row reverted, so running it
+again changes nothing.
+
 ## Version numbers
 
 Every migration has its own version. From version 106 on, the runner refuses a
@@ -97,13 +156,12 @@ database that recorded a version under a different description, so two changes
 must never be given the same number. Schema changes still in review hold these
 versions, and other changes must not take them:
 
-- 110: contact consent and blocks
-- 111: abuse reports
 - 112: agent trust
 
 Unit tests keep these versions free and this list equal to the one they check;
 a change that lands one of them removes it from both. Gaps in the sequence are
-allowed.
+allowed. Contact consent and blocks (110) and abuse reports (111) landed with
+the versions they held.
 
 Versions from 106 on were renumbered before release, when chat projects took
 version 107 and session pin stacks took version 108. Session-bound realtime
@@ -126,12 +184,14 @@ COMMIT;
 ```
 
 These statements cover every earlier number of those three migrations,
-including the numbers that the changes still in review record. A development
-database from the content removal change before it merged recorded them at
-versions 107 to 109; the statements move those records too, and its versions
-116 and 117 already match this build. The build then applies every version it
-embeds that is still missing and keeps every other recorded version, including
-the versions those changes hold. A database that recorded another migration
-under a number this build uses, such as an unreleased number of chat projects
-or session pin stacks, cannot be renumbered this way. Recreate it. An upgrade
-test runs these statements as written here.
+including the numbers that the change still in review records. A development
+database from the contact consent change or the content removal change before
+it merged recorded them at versions 107 to 109; the statements move those
+records too, and its own versions (110 and 111, or 116 and 117) already match
+this build. The build then applies every version it embeds that is still
+missing, such as versions 106 to 108 after versions 110 and 111, and keeps every
+other recorded version, including the version the change still in review
+holds. A database that recorded another migration under a number this build
+uses, such as an unreleased number of chat projects or session pin stacks,
+cannot be renumbered this way. Recreate it. Upgrade tests run these statements
+as written here.

@@ -26,6 +26,8 @@ struct ChatHomeView: View {
     @State private var channelCreationSpace: GroupSpaceSummary?
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     @State private var activeSwipeRowID: String?
+    @State private var safetyAction: SafetyAction?
+    @State private var reportTarget: ReportTarget?
     private let onOpenConversation: ((ConversationSummary) -> Void)?
     private let onOpenNewChat: ((NewChatMode) -> Void)?
     private let onOpenArchivedChats: (() -> Void)?
@@ -220,6 +222,7 @@ struct ChatHomeView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
+        .safetyActions($safetyAction, report: $reportTarget)
         .fullScreenCover(item: $channelCreationSpace) { space in
             ChannelCreateSheet(space: space) { created in
                 expandedGroupSpaceIds.insert(space.id)
@@ -434,6 +437,15 @@ struct ChatHomeView: View {
                     Task { _ = await model.archiveGroupSpace(space) }
                 } label: {
                     Label("Archive group", systemImage: "archivebox")
+                }
+                if model.safetyFeaturesAvailable {
+                    Divider()
+                    Button(role: .destructive) {
+                        safetyAction = .leaveGroup(space)
+                    } label: {
+                        Label("Leave group", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                    .accessibilityLabel("Leave \(space.displayName)")
                 }
             }
             .circularChatSwipeActions(

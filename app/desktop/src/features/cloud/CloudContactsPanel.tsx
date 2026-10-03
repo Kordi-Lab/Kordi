@@ -37,6 +37,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
   const [lookupQuery, setLookupQuery] = useState('');
   const [lookup, setLookup] = useState<LookupState>({ kind: 'idle' });
   const [adding, setAdding] = useState(false);
+  const [requestedAccountIds, setRequestedAccountIds] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const ownKordiHandle = formatKordiHandle(account.kordiId);
 
@@ -103,14 +104,14 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
       }
       setAdding(true);
       try {
-        await authClient.addContact(session.token, peerAccountId);
-        setLookup({ kind: 'idle' });
-        setLookupQuery('');
+        // Contacts need both people's consent, so adding someone sends a request.
+        await authClient.sendContactRequest(session.token, peerAccountId);
+        setRequestedAccountIds((current) => (current.includes(peerAccountId) ? current : [...current, peerAccountId]));
         await fetchContacts();
       } catch (caught) {
         setLookup({
           kind: 'error',
-          message: caught instanceof Error ? caught.message : 'Could not add contact.',
+          message: caught instanceof Error ? caught.message : 'Could not send the contact request.',
         });
       } finally {
         setAdding(false);
@@ -240,6 +241,10 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                 <span className="rounded-full bg-emerald-400/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200">
                   Already a contact
                 </span>
+              ) : requestedAccountIds.includes(lookup.profile.accountId) ? (
+                <span role="status" className="rounded-full bg-emerald-400/20 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-200">
+                  Request sent
+                </span>
               ) : (
                 <button
                   type="button"
@@ -247,7 +252,7 @@ export function CloudContactsPanel({ account, client, onClose }: Props) {
                   onClick={() => handleAdd(lookup.profile.accountId)}
                   className="rounded-full bg-emerald-400 px-3 py-1 text-[12px] font-semibold text-emerald-950 transition disabled:opacity-60"
                 >
-                  {adding ? 'Adding…' : 'Add contact'}
+                  {adding ? 'Sending…' : 'Send request'}
                 </button>
               )}
             </div>

@@ -386,6 +386,9 @@ struct MessageActionOverlay: View {
     let onDelete: (Bool) -> Void
     let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
+    /// Reports this message. Nil hides Report (your own messages, unsent
+    /// messages, or a server without reports).
+    var onReport: (() -> Void)? = nil
 
     private var targetReactions: [MessageReaction] {
         if let mediaAttachment { return message.attachmentReactions[mediaAttachment.id] ?? [] }
@@ -403,6 +406,7 @@ struct MessageActionOverlay: View {
             + 3
             + (allowsEdit ? 1 : 0)
             + (allowsDelete ? 1 : 0)
+            + (onReport == nil ? 0 : 1)
             + mediaActionCount
             + (stickerAttachment == nil ? 0 : 1)
             + (readReceiptLabel == nil ? 0 : 1)
@@ -851,6 +855,10 @@ struct MessageActionOverlay: View {
                     )
                     Divider().padding(.horizontal, 14)
                     actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
+                    if let onReport {
+                        actionButton("Report…", systemImage: "flag", action: onReport)
+                            .accessibilityLabel("Report message from \(message.authorName)")
+                    }
                     if allowsDelete {
                         actionButton(
                             message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete" : "Delete photo",

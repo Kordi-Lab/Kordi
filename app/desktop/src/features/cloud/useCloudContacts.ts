@@ -14,9 +14,11 @@ import {
   type CloudPublicProfile,
 } from './authClient';
 import { cloudContactSummaryKey } from './cloudContactTypes';
-import { cloudContactToContact, cloudRequestToContactRequest } from './cloudContactMapping';
+import { cloudContactToContact } from './cloudContactMapping';
+import { cloudRequestToContactRequest } from './cloudContactRequestMapping';
 import {
   applyCloudContactsRefreshSnapshot,
+  forgetCloudContactSnapshot,
   nextServerContactRows,
   type CloudContactsSnapshot,
 } from './cloudContactsSnapshot';
@@ -30,12 +32,8 @@ import {
 } from './supportClient';
 
 export { applyCloudContactsRefreshSnapshot } from './cloudContactsSnapshot';
-export {
-  CLOUD_HOST_SENTINEL,
-  cloudContactToContact,
-  cloudRequestToContactRequest,
-  isCloudContact,
-} from './cloudContactMapping';
+export { CLOUD_HOST_SENTINEL, cloudContactToContact, isCloudContact } from './cloudContactMapping';
+export { cloudRequestToContactRequest, isPendingIncomingCloudContactRequest } from './cloudContactRequestMapping';
 export type { CloudContactsSnapshot } from './cloudContactsSnapshot';
 
 export type UseCloudContactsResult = {
@@ -77,6 +75,8 @@ type CloudContactsStore = {
   refreshPromise: Promise<void> | null;
   refreshAgain: boolean;
   mutationRevision: number;
+  /** Contacts the latest successful refresh listed. */
+  confirmedContactKeys: Set<string>;
   pollTimer: ReturnType<typeof window.setInterval> | null;
   ws: WebSocket | null;
   wsOpening: boolean;
@@ -209,6 +209,7 @@ function cloudContactsStoreFor(accountId: string): CloudContactsStore {
     refreshPromise: null,
     refreshAgain: false,
     mutationRevision: 0,
+    confirmedContactKeys: new Set(),
     pollTimer: null,
     ws: null,
     wsOpening: false,
@@ -266,8 +267,10 @@ async function refreshCloudContactsStore(store: CloudContactsStore, client: Clou
         { contacts: store.snapshot.contacts, requests: store.snapshot.requests },
         { contacts, requests },
         { startedMutationRevision, currentMutationRevision: store.mutationRevision },
+        store.confirmedContactKeys,
       );
       const serverContacts = nextServerContactRows(store.snapshot.serverContacts, contacts, store.accountId, session.accountId);
+      store.confirmedContactKeys = new Set(contacts.map(cloudContactSummaryKey));
       publishCloudContactsStore(store, { ...next, serverContacts, loading: false, error: null, initialLoadSettled: true });
     } catch (err) {
       publishCloudContactsStore(store, {
@@ -333,6 +336,23 @@ function ensureCloudContactsWebSocket(store: CloudContactsStore, client: CloudAu
     .finally(() => {
       store.wsOpening = false;
     });
+}
+
+/** Drops a removed or blocked person from the account's contacts at once. */
+export function forgetCloudContact(accountId: string, peerAccountId: string): void {
+  const store = cloudContactStores.get(accountId);
+  if (!store) return;
+  store.confirmedContactKeys.delete(cloudContactSummaryKey({ accountId: peerAccountId }));
+  applyCloudContactsSnapshot(store, (current) => forgetCloudContactSnapshot(current, peerAccountId));
+  // Privacy decisions such as link previews stop trusting the person at once
+  // as well; the next contacts response replaces these rows again.
+  const serverContacts = forgetCloudContactSnapshot(
+    { contacts: [...store.snapshot.serverContacts], requests: [] },
+    peerAccountId,
+  ).contacts;
+  if (serverContacts.length !== store.snapshot.serverContacts.length) {
+    publishCloudContactsStore(store, { serverContacts });
+  }
 }
 
 function startCloudContactsStore(store: CloudContactsStore, client: CloudAuthClient) {
@@ -495,8 +515,4 @@ export function useCloudContacts(account: CloudAccount | null): UseCloudContacts
     submitSupportRequest,
     getSupportRequest,
   };
-}
-
-export function isPendingIncomingCloudContactRequest(request: Pick<ContactRequest, 'direction' | 'status'>): boolean {
-  return request.direction === 'incoming' && request.status === 'pending';
 }

@@ -28,6 +28,14 @@ pub const CONTACT_ADD_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60 * 60),
 };
 
+/// Abuse reports one account can send. Replaying a report that was already
+/// received does not count.
+pub const REPORT_SUBMIT_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "report-submit",
+    limit: 20,
+    window: Duration::from_secs(24 * 60 * 60),
+};
+
 /// Agent runs a requester starts. Every user-triggered path that queues an
 /// agent run, now or on a schedule, charges this budget through
 /// [`CloudRateLimiter::observe_agent_run`]: run claims, subsession messages
@@ -194,6 +202,11 @@ mod tests {
         assert_ne!(MESSAGE_SEND_LIMIT.action, CONTACT_ADD_LIMIT.action);
         assert_ne!(CONTACT_ADD_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
         assert_ne!(MESSAGE_SEND_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
+        assert_eq!(REPORT_SUBMIT_LIMIT.limit, 20);
+        assert_eq!(REPORT_SUBMIT_LIMIT.window, Duration::from_secs(86_400));
+        for limit in [MESSAGE_SEND_LIMIT, CONTACT_ADD_LIMIT, AGENT_RUN_CLAIM_LIMIT] {
+            assert_ne!(REPORT_SUBMIT_LIMIT.action, limit.action);
+        }
     }
 
     #[tokio::test]

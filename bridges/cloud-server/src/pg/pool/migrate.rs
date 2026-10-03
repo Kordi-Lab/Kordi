@@ -184,7 +184,7 @@ mod tests {
     /// Versions held by schema changes still in review, as listed in the
     /// migrations README. Taking one here would record it twice once those
     /// changes merge.
-    const VERSIONS_HELD_IN_REVIEW: [i64; 3] = [110, 111, 112];
+    const VERSIONS_HELD_IN_REVIEW: [i64; 1] = [112];
 
     #[test]
     fn the_readme_lists_the_versions_held_in_review() {

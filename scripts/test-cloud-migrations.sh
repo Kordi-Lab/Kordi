@@ -48,10 +48,12 @@ tests=(
   title_tests::upgrade_from_75_preserves_shared_and_private_group_names
   title_tests::upgrade_from_89_repairs_only_proven_defaults_and_authenticated_titles
   email_verification_tests::upgrade_from_108_marks_only_provider_verified_primary_emails
+  consent_tests::upgrade_from_109_converts_one_way_contacts_only_with_peer_consent
   omp_state_tests::upgrade_from_114_flags_only_replayable_omp_states
   content_removal_tests::upgrade_from_114_keeps_rows_until_the_operator_backfill_applies
   renumbering_tests::readme_renumbering_resolves_every_earlier_numbering
   renumbering_tests::a_database_from_the_deletion_change_upgrades_after_renumbering
+  renumbering_tests::a_database_from_the_consent_change_upgrades_after_renumbering
 )
 index=0
 for test_name in "${tests[@]}"; do
@@ -71,4 +73,4 @@ migration_create_database kordi_migration_test_service
 # limits, account linking, session checks, and scheduled task budgets.
 DATABASE_URL="$(migration_database_url kordi_migration_test_service)" \
   cargo test -p kordi-cloud-server --lib --test cloud_auth_e2e --test cloud_agent_definitions_e2e \
-    --test scheduled_task_tool_e2e -- --test-threads=1
+    --test scheduled_task_tool_e2e --test safety_reports_e2e -- --test-threads=1

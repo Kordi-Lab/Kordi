@@ -1,7 +1,6 @@
-import type { Contact, ContactRequest } from '@/kordi-app/types';
+import type { Contact } from '@/kordi-app/types';
 import { KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 
-import type { CloudContactRequest } from './authClient';
 import type { CloudContactSummary } from './cloudContactTypes';
 import { cloudAvatarImageUrl, cloudAvatarSeedForAccount } from './avatar';
 import { formatKordiHandle } from './kordiId';
@@ -69,30 +68,4 @@ export function cloudContactInitials(name: string): string {
   const parts = trimmed.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return trimmed.slice(0, 2).toUpperCase();
-}
-
-export function cloudRequestToContactRequest(row: CloudContactRequest): ContactRequest {
-  const counterpartKordiHandle = formatKordiHandle(row.counterpart?.kordiId);
-  const counterpartName = row.counterpart?.displayName?.trim() || counterpartKordiHandle || 'Kordi user';
-  const counterpartId = row.direction === 'incoming' ? row.fromAccountId : row.toAccountId;
-  const title = row.direction === 'incoming'
-    ? `${counterpartName} wants to connect`
-    : `Request sent to ${counterpartName}`;
-  return {
-    id: `cloud:${row.requestId}`,
-    initials: cloudContactInitials(counterpartName),
-    title,
-    detail: row.message?.trim() || counterpartKordiHandle || 'Kordi ID unavailable',
-    time: row.createdAt,
-    profileImageUrl: cloudAvatarImageUrl(row.counterpart?.avatarUrl),
-    avatarSeed: cloudAvatarSeedForAccount(counterpartId, row.counterpart?.avatarUrl),
-    avatarName: counterpartName,
-    source: 'collaboration',
-    sourceHostId: CLOUD_HOST_SENTINEL,
-    sourceRequestId: row.requestId,
-    requesterNodeId: row.fromAccountId,
-    targetNodeId: row.toAccountId,
-    status: row.status,
-    direction: row.direction,
-  };
 }

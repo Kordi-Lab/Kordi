@@ -23,6 +23,7 @@ import {
 } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
 import { isRouteAccountUnavailable } from '@/kordi-app/components/composerModelSelection';
+import { useDirectConversationConsent } from '@/features/safety/useDirectConversationConsent';
 import { attachDesktopReferencedPath } from '@/lib/desktopLocalAttachments';
 import { cn } from '@/lib/utils';
 import { ComposerDropSurface } from './chatsPage.composerDropSurface';
@@ -144,8 +145,9 @@ export function MainComposer({
   const routeAccountUnavailable = canConfigureModelRoute
     && (localRouting.paneKind === 'agent' || collaborationRouting.enabled)
     && isRouteAccountUnavailable(routeSelection, composerProviderOptions);
+  const consent = useDirectConversationConsent(conversation, cloudAccountId);
   const onSend: MainComposerProps['onSend'] = (draftOverride, attachmentOverride) => (
-    routeAccountUnavailable ? undefined : sendMessage(draftOverride, attachmentOverride)
+    routeAccountUnavailable || consent.blocksSend ? undefined : sendMessage(draftOverride, attachmentOverride)
   );
   const voice = useVoiceComposer({
     conversation,
@@ -175,6 +177,7 @@ export function MainComposer({
 
   return (
     <div className="shrink-0 px-5 pb-4 pt-3">
+      {consent.notice}
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <MessageSelectionBar
           count={selectedMessageCount}
@@ -478,7 +481,7 @@ export function MainComposer({
               </Button>
             ) : <VoiceComposerControls
               voice={voice}
-              hasSendableDraft={hasSendableDraft && !routeAccountUnavailable}
+              hasSendableDraft={hasSendableDraft && !routeAccountUnavailable && !consent.blocksSend} describedBy={consent.noticeId}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
             />}
