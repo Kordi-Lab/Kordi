@@ -10,6 +10,8 @@ export function useNativeViewport() {
     let disposed = false;
     const unlisten: (() => void)[] = [];
     let nativeScale = window.devicePixelRatio || 1;
+    let hasScaleEvent = false;
+    let latestPhysicalSize: { width: number; height: number } | undefined;
     let clientWidth = window.innerWidth * readAppliedInterfaceZoom();
     let clientHeight = window.innerHeight * readAppliedInterfaceZoom();
     const paint = () => {
@@ -21,6 +23,7 @@ export function useNativeViewport() {
       style.setProperty('--app-native-height', `${height}px`);
     };
     const applyPhysicalSize = (size: { width: number; height: number }) => {
+      latestPhysicalSize = size;
       clientWidth = size.width / nativeScale;
       clientHeight = size.height / nativeScale;
       paint();
@@ -34,6 +37,7 @@ export function useNativeViewport() {
       for (const subscribe of [
         () => nativeWindow.onResized(({ payload }) => applyPhysicalSize(payload)),
         () => nativeWindow.onScaleChanged(({ payload }) => {
+          hasScaleEvent = true;
           nativeScale = payload.scaleFactor;
           applyPhysicalSize(payload.size);
         }),
@@ -44,8 +48,9 @@ export function useNativeViewport() {
       }
       const [scale, size] = await Promise.all([nativeWindow.scaleFactor(), nativeWindow.innerSize()]);
       if (!disposed) {
-        nativeScale = scale;
-        applyPhysicalSize(size);
+        // Resize and monitor changes may arrive while the initial query is pending.
+        if (!hasScaleEvent) nativeScale = scale;
+        applyPhysicalSize(latestPhysicalSize ?? size);
       }
     }).catch(() => undefined);
     return () => {

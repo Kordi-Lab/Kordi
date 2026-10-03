@@ -69,6 +69,8 @@ test('message layout persists, synchronizes across windows, and fits narrow and 
     for (const width of [390, 768, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
       await expect(page.locator('.app-thread-message-row')).toHaveCount(8);
+      const authorColors = await page.locator('.app-thread-message-author').evaluateAll(elements => elements.map(element => getComputedStyle(element).color));
+      expect(new Set(authorColors).size).toBe(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       const surface = page.locator(`${quote} .app-thread-message-surface`);
       expect(await surface.evaluate(element => getComputedStyle(element).borderRadius)).toBe('0px');

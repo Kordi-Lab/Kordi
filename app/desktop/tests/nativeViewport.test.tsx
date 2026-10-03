@@ -100,3 +100,34 @@ test('zoom and native resize keep the canvas filling the window at both zoom lim
     }
   }
 });
+
+test('a delayed initial measurement preserves newer native resize and display-scale events', async () => {
+  const dom = new JSDOM('<div id="root"></div>');
+  const values = { window: dom.window, document: dom.window.document, __TAURI_INTERNALS__: {}, IS_REACT_ACT_ENVIRONMENT: true };
+  const previous = new Map(Object.keys(values).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  for (const [key, value] of Object.entries(values)) Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+  mockWindows('main');
+  let resolveSize: ((size: { width: number; height: number }) => void) | undefined;
+  const initialSize = new Promise<{ width: number; height: number }>(resolve => { resolveSize = resolve; });
+  mockIPC(command => command === 'plugin:window|scale_factor' ? 2
+    : command === 'plugin:window|inner_size' ? initialSize : undefined, { shouldMockEvents: true });
+  const root = createRoot(document.getElementById('root')!);
+  function Probe() { useNativeViewport(); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 80)); });
+    await act(async () => emit('tauri://resize', { width: 4000, height: 2400 }));
+    await act(async () => emit('tauri://scale-change', { scaleFactor: 1, size: { width: 2200, height: 1300 } }));
+    await act(async () => emit('tauri://resize', { width: 2400, height: 1400 }));
+    await act(async () => resolveSize?.({ width: 2960, height: 1960 }));
+    assert.equal(document.documentElement.style.getPropertyValue('--app-native-width'), '2400px');
+    assert.equal(document.documentElement.style.getPropertyValue('--app-native-height'), '1400px');
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+});
