@@ -7,7 +7,10 @@
 //! too, and leaves out rows recorded by anyone in a block with the reader.
 //! A session without a conversation (a fork before its first message, for
 //! example) shows the reader only the rows they recorded, plus the rows
-//! copied into a fork they made.
+//! copied into a fork they made. A fork row counts only for the account that
+//! created the conversation: when another account registered the chat's id as
+//! a fork (the fork route no longer allows it), members see only the rows
+//! that members recorded, never the rows that fork copied in.
 
 use axum::http::StatusCode;
 use axum::response::Response;
@@ -118,8 +121,29 @@ pub(super) async fn visible_rows(
         .await
         .map_err(|_| server_error())?
         .0;
+    let members_only = match member_of {
+        Some(conversation_id) => {
+            query_as::<_, (bool,)>(
+                "SELECT EXISTS (SELECT 1 FROM cloud_session_forks fork \
+                                JOIN cloud_chat_conversations conversation \
+                                  ON conversation.conversation_id = $2 \
+                                WHERE fork.fork_session_id = $1 \
+                                  AND fork.created_by_account_id <> conversation.created_by_account_id)",
+            )
+            .bind(session_id)
+            .bind(conversation_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|_| server_error())?
+            .0
+        }
+        None => false,
+    };
     let visible = "session_id = $1 AND archived_at IS NULL \
                    AND ($3 OR created_by_account_id = $2) \
+                   AND (NOT $4 OR created_by_account_id IN ( \
+                        SELECT member.account_id FROM cloud_chat_conversation_members member \
+                        WHERE member.conversation_id = $5)) \
                    AND NOT cloud_accounts_blocked_either_way($2, created_by_account_id)";
     let tasks: Vec<TaskRow> = query_as(&format!(
         "SELECT task_activity_id, session_id, task_id, title, summary, status, \
@@ -130,6 +154,8 @@ pub(super) async fn visible_rows(
     .bind(session_id)
     .bind(reader)
     .bind(every_row)
+    .bind(members_only)
+    .bind(member_of)
     .fetch_all(pool)
     .await
     .map_err(|_| server_error())?;
@@ -142,6 +168,8 @@ pub(super) async fn visible_rows(
     .bind(session_id)
     .bind(reader)
     .bind(every_row)
+    .bind(members_only)
+    .bind(member_of)
     .fetch_all(pool)
     .await
     .map_err(|_| server_error())?;

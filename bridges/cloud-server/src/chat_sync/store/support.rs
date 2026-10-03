@@ -138,6 +138,7 @@ pub(super) async fn load_conversation(
          FROM cloud_chat_conversations conversation \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
+          AND fork.created_by_account_id = conversation.created_by_account_id \
          WHERE conversation.conversation_id = $1",
     )
     .bind(conversation_id)
@@ -193,6 +194,7 @@ pub(super) async fn load_active_conversation_projections(
          FROM cloud_chat_conversations conversation \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
+          AND fork.created_by_account_id = conversation.created_by_account_id \
          WHERE conversation.conversation_id = $1",
     )
     .bind(conversation_id)

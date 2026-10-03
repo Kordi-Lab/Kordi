@@ -148,11 +148,17 @@ async fn create_conversation_in_transaction_with_trusted_peer(
 
     advisory_operation_lock(transaction, account_id, request.client_operation_id).await?;
     advisory_session_lock(transaction, &client_session_id).await?;
-    let registered_fork: (bool,) =
-        query_as("SELECT EXISTS(SELECT 1 FROM cloud_session_forks WHERE fork_session_id = $1)")
-            .bind(&client_session_id)
-            .fetch_one(&mut **transaction)
-            .await?;
+    // Only this account's own fork of the id counts. Another account could
+    // not claim the id as a fork (`auth/routes/session_forks/target.rs`), so
+    // an older row of theirs must not decide what this conversation can be.
+    let registered_fork: (bool,) = query_as(
+        "SELECT EXISTS(SELECT 1 FROM cloud_session_forks \
+         WHERE fork_session_id = $1 AND created_by_account_id = $2)",
+    )
+    .bind(&client_session_id)
+    .bind(account_id)
+    .fetch_one(&mut **transaction)
+    .await?;
     if !fork_session_kind_allowed(registered_fork.0, request.kind) {
         return Err(StoreError::InvalidInput(
             "fork sessions must be Agent conversations",

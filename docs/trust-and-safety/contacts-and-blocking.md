@@ -138,7 +138,10 @@ Forking an Agent chat copies its task and file activity into the fork, so a
 fork is always a chat of your own. The server refuses to fork into a chat
 that someone else created or that has other members, into an id that holds
 someone else's activity, and into the ids of direct chats, groups, and
-accounts' own chats (those ids can be worked out from account ids).
+accounts' own chats (those ids can be worked out from account ids). A fork
+record that another account made under one of your chat ids before this rule
+neither marks your chat as a fork nor shows you the activity it copied, and
+it cannot stop a direct chat between two people from opening.
 
 ## Reports
 

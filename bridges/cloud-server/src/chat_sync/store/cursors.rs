@@ -350,6 +350,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
            ON conversation.conversation_id = viewer.conversation_id \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
+          AND fork.created_by_account_id = conversation.created_by_account_id \
          WHERE viewer.account_id = $1 AND viewer.membership_state = 'active' \
          ORDER BY conversation.conversation_id ASC",
     )

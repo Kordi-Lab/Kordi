@@ -1,7 +1,8 @@
 //! A fork copies the parent's task and artifact activity into the fork id, so
 //! a fork may claim only an id that is the forker's own: a new id, or an
 //! Agent conversation the forker created and is alone in. Ids worked out from
-//! account ids are never fork ids.
+//! account ids are never fork ids, and a fork row another account registered
+//! earlier changes nothing in someone else's chat.
 
 use super::contact_consent::connect;
 use super::session_activity_access::{listed, member, record, refused, task, Member};
@@ -187,4 +188,69 @@ async fn a_fork_copies_activity_only_into_an_id_the_forker_owns() {
         listed(&router, &stranger, &busy).await,
         mine(&["Already here"])
     );
+}
+
+/// Fork rows that another account registered before forks needed an id of
+/// one's own: they neither show their copied rows to the chat's members nor
+/// mark the chat as a fork, and they cannot stop a direct chat from opening.
+#[tokio::test]
+async fn an_earlier_fork_row_on_someone_elses_id_changes_nothing() {
+    let Some(pool) = try_pool().await else { return };
+    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let victim = member(&router, "fork-earlier-victim").await;
+    let other = member(&router, "fork-earlier-other").await;
+    let stranger = member(&router, "fork-earlier-stranger").await;
+    let parent = chat_with_task(&router, &pool, &stranger, "Parent").await;
+    let mut ids = [victim.id.clone(), other.id.clone()];
+    ids.sort();
+    let direct = format!("session:direct-person:{}:{}", ids[0], ids[1]);
+    refused(
+        fork(&router, &stranger, &parent, &direct).await,
+        StatusCode::BAD_REQUEST,
+        "invalid_fork",
+    );
+
+    agent_chat(&pool, &victim, "session:self-agent:default", &[]).await;
+    let my_kordi = format!("session:self-agent:{}:default", victim.id);
+    for target in [&my_kordi, &direct] {
+        query(
+            "INSERT INTO cloud_session_forks (fork_session_id, parent_session_id, \
+               created_by_account_id, created_at) VALUES ($1, $2, $3, now()::text)",
+        )
+        .bind(target)
+        .bind(&parent)
+        .bind(&stranger.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        query(
+            "INSERT INTO cloud_session_tasks (task_activity_id, session_id, task_id, title, \
+               status, created_by_account_id, participants_json, created_at, updated_at) \
+             VALUES ($1, $2, 'copied', 'Copied in', 'active', $3, '[]', now()::text, now()::text)",
+        )
+        .bind(format!("taskact_{}", uuid::Uuid::new_v4().simple()))
+        .bind(target)
+        .bind(&stranger.id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let (status, _) = record(&router, &victim, "tasks", task(&my_kordi, "own", "Own")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(listed(&router, &victim, &my_kordi).await, mine(&["Own"]));
+
+    // The two can still become contacts, which opens their direct chat.
+    connect(&router, &other.token, &victim.token, &victim.id).await;
+    for reader in [&victim, &other] {
+        assert_eq!(listed(&router, reader, &direct).await, mine(&[]));
+    }
+    let bootstrap = store::bootstrap(&pool, &victim.id).await.unwrap();
+    for session in [&my_kordi, &direct] {
+        let conversation = bootstrap
+            .conversations
+            .iter()
+            .find(|item| item.legacy_session_id.as_deref() == Some(session.as_str()))
+            .expect("the victim's chat");
+        assert_eq!(conversation.forked_from_session_id, None, "{session}");
+    }
 }
