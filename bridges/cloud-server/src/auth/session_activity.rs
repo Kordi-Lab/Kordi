@@ -15,7 +15,7 @@ use crate::auth::routes::CloudSession;
 use crate::server::ServerState;
 use recipients::publish_chat_event;
 
-mod access;
+pub(crate) mod access;
 mod recipients;
 
 const CLOUD_ACTIVITY_CLIENT_UPDATED_AT_FUTURE_SKEW_SECONDS: i64 = 300;

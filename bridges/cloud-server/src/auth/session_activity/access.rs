@@ -61,8 +61,9 @@ fn not_participant() -> Response {
 
 /// Refuses a writer who is not an active member of the session's
 /// conversation, or who may no longer write in it (a direct or AI chat with
-/// someone who is not, or is no longer, their contact).
-pub(super) async fn require_writer(
+/// someone who is not, or is no longer, their contact). Every route that adds
+/// rows to a session's activity applies it, the digest's task creation too.
+pub(crate) async fn require_writer(
     pool: &PgPool,
     account_id: &str,
     session_id: &str,

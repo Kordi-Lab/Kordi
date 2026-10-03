@@ -215,10 +215,10 @@ mod group_invitations;
 mod public_identity;
 #[path = "cloud_auth_e2e/realtime_sign_out.rs"]
 mod realtime_sign_out;
-#[path = "cloud_auth_e2e/session_and_presence.rs"]
-mod session_and_presence;
 #[path = "cloud_auth_e2e/session_activity_access.rs"]
 mod session_activity_access;
+#[path = "cloud_auth_e2e/session_and_presence.rs"]
+mod session_and_presence;
 #[path = "cloud_auth_e2e/session_list_actions.rs"]
 mod session_list_actions;
 #[path = "cloud_auth_e2e/session_list_fixtures.rs"]

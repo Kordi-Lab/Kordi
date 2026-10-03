@@ -304,3 +304,98 @@ async fn a_session_without_a_conversation_shows_only_the_readers_rows() {
         (StatusCode::OK, vec!["theirs".to_string()])
     );
 }
+
+/// Turning a digest commitment into a task adds it to the source chat's task
+/// list, so a direct chat needs a contact for that too.
+#[tokio::test]
+async fn a_digest_task_joins_a_direct_chat_only_between_contacts() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state.clone()).merge(kordi_cloud_server::digest::routes(state));
+    let viewer = member(&router, "activity-digest-viewer").await;
+    let peer = member(&router, "activity-digest-peer").await;
+    connect(&router, &viewer.token, &peer.token, &peer.id).await;
+    let mut ids = [viewer.id.clone(), peer.id.clone()];
+    ids.sort();
+    let direct = format!("session:direct-person:{}:{}", ids[0], ids[1]);
+    let (conversation_id,): (uuid::Uuid,) = sqlx_core::query_as::query_as(
+        "SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id = $1",
+    )
+    .bind(&direct)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let message = store::send_message(
+        &pool,
+        &peer.id,
+        conversation_id,
+        kordi_cloud_server::chat_sync::models::SendMessageRequest {
+            client_message_id: uuid::Uuid::now_v7(),
+            kind: "text".to_string(),
+            content: json!({"schema": 1, "blocks": [{"type": "text", "text": "I will send the draft and the notes."}]}),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        },
+    )
+    .await
+    .unwrap()
+    .value;
+    let source = message.id.to_string();
+    let commitment = |id: &str, title: &str| json!({"id": id, "title": title, "sourceIds": [source], "kind": "open"});
+    let snapshot = json!({"claims": [], "suggestions": [], "calendarCandidates": [],
+                          "commitments": [commitment("draft", "Send the draft"),
+                                          commitment("notes", "Send the notes")]});
+    let input = json!({
+        "sources": [{"id": source, "conversationId": conversation_id.to_string(),
+                     "sessionId": direct, "sessionTitle": "Direct", "senderAccountId": peer.id,
+                     "senderName": "Peer", "text": "I will send the draft and the notes.",
+                     "createdAt": message.created_at, "version": message.version}],
+        "calendarEvents": [], "existingTasks": [], "previous": null, "locale": "en",
+        "timezone": "UTC", "partial": false, "asOf": chrono::Utc::now().to_rfc3339(),
+        "viewerAccountId": viewer.id,
+    });
+    query(
+        "INSERT INTO cloud_account_digests (account_id, snapshot_json, snapshot_input_json) \
+         VALUES ($1, $2, $3)",
+    )
+    .bind(&viewer.id)
+    .bind(snapshot)
+    .bind(input)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let create_task = |item: &str, title: &str| {
+        router.clone().oneshot(post_json_with_token(
+            &format!("/v1/cloud/digest/items/{item}/task"),
+            &viewer.token,
+            json!({"title": title, "ownerAccountId": peer.id}),
+        ))
+    };
+    let created = create_task("draft", "Send the draft").await.unwrap();
+    assert_eq!(created.status(), StatusCode::OK);
+    assert_eq!(
+        listed(&router, &peer, &direct).await,
+        (StatusCode::OK, vec!["Send the draft".to_string()])
+    );
+
+    query(
+        "DELETE FROM cloud_contacts WHERE (account_id = $1 AND peer_account_id = $2) \
+         OR (account_id = $2 AND peer_account_id = $1)",
+    )
+    .bind(&viewer.id)
+    .bind(&peer.id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let refused_task = create_task("notes", "Send the notes").await.unwrap();
+    let status = refused_task.status();
+    refused(
+        (status, read_json(refused_task).await),
+        StatusCode::FORBIDDEN,
+        "CHAT_RELATIONSHIP_REQUIRED",
+    );
+    assert_eq!(
+        listed(&router, &peer, &direct).await,
+        (StatusCode::OK, vec!["Send the draft".to_string()])
+    );
+}
