@@ -132,6 +132,14 @@ To come back you need an invite link from someone in the group. A member who
 left can use any valid link, including the one they joined with. A member an
 admin removed cannot reuse a link they already accepted.
 
+## Forks of Agent chats
+
+Forking an Agent chat copies its task and file activity into the fork, so a
+fork is always a chat of your own. The server refuses to fork into a chat
+that someone else created or that has other members, into an id that holds
+someone else's activity, and into the ids of direct chats, groups, and
+accounts' own chats (those ids can be worked out from account ids).
+
 ## Reports
 
 You can report a person, a contact request, or specific messages. Only the

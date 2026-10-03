@@ -9,21 +9,21 @@ use kordi_cloud_server::chat_sync::models::{ConversationKind, CreateConversation
 use kordi_cloud_server::chat_sync::store;
 use sqlx_core::query::query;
 
-struct Member {
-    token: String,
-    id: String,
+pub(super) struct Member {
+    pub(super) token: String,
+    pub(super) id: String,
 }
 
-async fn member(router: &axum::Router, prefix: &str) -> Member {
+pub(super) async fn member(router: &axum::Router, prefix: &str) -> Member {
     let (token, id) = signup_account(router, prefix).await;
     Member { token, id }
 }
 
-fn task(session_id: &str, task_id: &str, title: &str) -> serde_json::Value {
+pub(super) fn task(session_id: &str, task_id: &str, title: &str) -> serde_json::Value {
     json!({"sessionId": session_id, "taskId": task_id, "title": title, "status": "active"})
 }
 
-async fn record(
+pub(super) async fn record(
     router: &axum::Router,
     writer: &Member,
     kind: &str,
@@ -42,7 +42,7 @@ async fn record(
     (status, read_json(response).await)
 }
 
-async fn listed(
+pub(super) async fn listed(
     router: &axum::Router,
     reader: &Member,
     session_id: &str,
@@ -75,7 +75,7 @@ async fn listed(
     (status, titles)
 }
 
-fn refused(result: (StatusCode, serde_json::Value), status: StatusCode, code: &str) {
+pub(super) fn refused(result: (StatusCode, serde_json::Value), status: StatusCode, code: &str) {
     assert_eq!(result.0, status, "{}", result.1);
     assert_eq!(result.1["errorCode"], code, "{}", result.1);
 }

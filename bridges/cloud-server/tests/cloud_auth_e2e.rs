@@ -219,6 +219,8 @@ mod realtime_sign_out;
 mod session_activity_access;
 #[path = "cloud_auth_e2e/session_and_presence.rs"]
 mod session_and_presence;
+#[path = "cloud_auth_e2e/session_fork_targets.rs"]
+mod session_fork_targets;
 #[path = "cloud_auth_e2e/session_list_actions.rs"]
 mod session_list_actions;
 #[path = "cloud_auth_e2e/session_list_fixtures.rs"]

@@ -83,7 +83,7 @@ pub(super) async fn advisory_operation_lock(
     Ok(())
 }
 
-pub(super) async fn advisory_session_lock(
+pub(crate) async fn advisory_session_lock(
     transaction: &mut Transaction<'_, Postgres>,
     client_session_id: &str,
 ) -> Result<(), StoreError> {
