@@ -85,7 +85,7 @@ function Bubble({ variant, msg }: { variant: 'own' | 'peer' | 'agent'; msg: Mess
   return (
     <div style={{ display: 'flex', justifyContent: own ? 'flex-end' : 'flex-start' }}>
       <div
-        className={`app-chat-bubble-${variant}`}
+        className={`app-chat-bubble-${own ? 'user' : variant}`}
         style={{
           position: 'relative',
           maxWidth: 380,

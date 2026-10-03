@@ -1,21 +1,11 @@
-/* Neutral, translucent selections sit on the native sidebar material without
- * covering its color. Keep secondary text readable over changing desktops. */
+/* Theme selections retain the native material and share the workspace palette. */
 html.kordi-native-shell .kordi-app .app-workspace-sidebar {
-  --app-sidebar-selected-bg: rgb(255 255 255 / 0.075);
-  --app-nav-rail-active-bg: rgb(255 255 255 / 0.10);
-  --app-nav-rail-active-hover-bg: rgb(255 255 255 / 0.14);
-  --app-nav-rail-active-pressed-bg: rgb(255 255 255 / 0.08);
-  --app-sidebar-preview-text: rgb(184 193 207);
-  --app-sidebar-time-text: rgb(157 169 187);
-}
-
-html.kordi-native-shell .kordi-app.theme-light .app-workspace-sidebar {
-  --app-sidebar-selected-bg: rgb(15 23 42 / 0.08);
-  --app-nav-rail-active-bg: rgb(15 23 42 / 0.08);
-  --app-nav-rail-active-hover-bg: rgb(15 23 42 / 0.12);
-  --app-nav-rail-active-pressed-bg: rgb(15 23 42 / 0.06);
-  --app-sidebar-preview-text: rgb(75 85 99);
-  --app-sidebar-time-text: rgb(91 101 115);
+  --app-sidebar-selected-bg: var(--app-palette-selected);
+  --app-nav-rail-active-bg: var(--app-palette-selected);
+  --app-nav-rail-active-hover-bg: var(--app-palette-hover);
+  --app-nav-rail-active-pressed-bg: var(--app-palette-selected);
+  --app-sidebar-preview-text: var(--app-palette-muted);
+  --app-sidebar-time-text: var(--app-palette-meta);
 }
 
 html.kordi-native-shell .kordi-app .app-workspace-sidebar :is(

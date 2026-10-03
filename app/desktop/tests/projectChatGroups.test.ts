@@ -15,6 +15,17 @@ test('project collapse preserves session identity and keeps active chats discove
   assert.deepEqual(projectChatGroups(rows, projects, new Set(['app'])).rows.map((row) => row.key), ['agent-section:projects', 'project-group:app', 'agent-section:recents', 'recent:session:one', 'recent:session:two', 'recent:session:three']);
 });
 
+test('collapsing the Projects section hides folders while preserving pinned chats and Recents', () => {
+  const collapsed = new Set(['section:projects', 'app']);
+  const grouped = projectChatGroups(rows, projects, collapsed, true, { pinnedSessionIds: new Set(['one']) });
+  assert.deepEqual(grouped.rows.map((row) => row.key), [
+    'agent-section:pinned', 'pinned:session:one', 'agent-section:projects',
+    'agent-section:recents', 'recent:session:two', 'recent:session:three',
+  ]);
+  assert.equal(grouped.groups.get('app')?.rows.length, 2);
+  assert(collapsed.has('app'));
+});
+
 test('moving or removing membership keeps every chat discoverable in Recents after projects', () => {
   const moved = [{ id: 'other', name: 'Other', sessions: [{ id: 'two' }] }];
   const grouped = projectChatGroups(rows, moved, new Set());

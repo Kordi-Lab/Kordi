@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
+import { LEFT_RAIL_WIDTH } from '../../src/kordi-app/layout';
 import { buildParticipantSpaces, filterParticipantSpaces } from '../../src/features/chat/participantSpaces';
 import { ChatProjectsContext, type ChatProject, projectForChat } from '../../src/features/projects/chatProjects';
 import type { ChatWorkspaceSelection, GitWorkspace } from '../../src/features/projects/gitWorkspace';
@@ -198,7 +199,7 @@ function ProjectWorkspacePreview() {
     <ChatProjectsContext value={{ enabled: true, projects, assign, gitWorkspace, openImporter: (sessionId) => setImportSessionId(sessionId || activeId), create: async (_sessionId, name, folder) => importProject({ name, root: folder || `/preview/${name}`, source: 'local' }) }}>
       <AppShellFrame rootThemeClass={`theme-${appearance}`} isNativeShell isLayoutResizing={false}
         windowTitle={active.name} onToggleSessionPanel={() => setSidebarVisible((current) => !current)}
-        windowSize={{ width: viewport.width, height: viewport.height }} leftWorkspaceWidth={sidebarVisible ? 338 : 48}
+        windowSize={{ width: viewport.width, height: viewport.height }} leftWorkspaceWidth={LEFT_RAIL_WIDTH + (sidebarVisible ? sidebar.layout.sessionRailWidth : 0)}
         isSingleWorkspacePage={false} showSessionRail={sidebarVisible} collapseChatSessions={!sidebarVisible}
         showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={300}
         onSessionResizeMouseDown={() => undefined} onDetailResizeMouseDown={() => undefined}

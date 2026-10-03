@@ -17,6 +17,26 @@ async function accessibilityMedia(page: Page, contrast = 'no-preference', transp
 }
 test.beforeEach(async ({ page }) => { await accessibilityMedia(page); });
 
+async function workspaceColors(page: Page) {
+  return page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d')!;
+    const rgba = (color: string) => {
+      context.clearRect(0, 0, 1, 1);
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return Array.from(context.getImageData(0, 0, 1, 1).data);
+    };
+    const root = getComputedStyle(document.querySelector('.app-native-viewport')!);
+    return {
+      canvas: rgba(getComputedStyle(document.querySelector('.app-chat-theme-surface')!).backgroundColor),
+      sessionTint: rgba(root.getPropertyValue('--app-native-session-bg').trim()),
+      webSession: rgba(getComputedStyle(document.querySelector('.app-session-panel')!).backgroundColor),
+    };
+  });
+}
+
 for (const theme of ['light', 'dark']) {
   test(`native backing follows sidebar width and the ${theme} workspace palette`, async ({ page }) => {
     await page.goto(`/tests/visual/workspaceResize.html?backdrop=1&theme=${theme}`);
@@ -26,15 +46,20 @@ for (const theme of ['light', 'dark']) {
     expect(request.navigationWidth).toBe(48);
     expect(request.titlebarHeight).toBe(40);
     await expect(page.locator('.app-native-viewport')).toHaveAttribute('data-native-backdrop', 'ready');
-    await expect(page.locator('.app-session-panel')).toHaveCSS('background-color', theme === 'dark' ? 'rgba(15, 15, 15, 0.42)' : 'rgba(255, 255, 255, 0.22)');
+    // AppKit provides the glass and tint below the transparent web surface.
+    await expect(page.locator('.app-session-panel')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const colors = await workspaceColors(page);
+    expect(colors.canvas[3]).toBe(255);
+    expect(request.background).toEqual(colors.canvas.slice(0, 3));
+    expect(request.sessionBackground).toEqual(colors.sessionTint);
     // Native tint must preserve wallpaper color through the AppKit material.
     expect(request.sessionBackground[3]).toBeGreaterThan(0);
     expect(request.sessionBackground[3]).toBeLessThan(255);
-    if (theme === 'dark') expect(request.background).toEqual([15, 17, 21]);
-    else expect(request.background).toEqual([244, 245, 247]);
     if (theme === 'light') {
       await page.evaluate(() => { document.body.dataset.kordiChatTheme = 'ocean'; });
-      await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests: { background: number[] }[] }).backdropRequests.at(-1)?.background)).toEqual([232, 240, 239]);
+      const oceanBackground = (await workspaceColors(page)).canvas.slice(0, 3);
+      expect(oceanBackground).not.toEqual(request.background);
+      await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests: { background: number[] }[] }).backdropRequests.at(-1)?.background)).toEqual(oceanBackground);
     }
 
     // Preference changes must update both AppKit and the ready web surface.
@@ -43,7 +68,7 @@ for (const theme of ['light', 'dark']) {
     await expect(page.locator('.app-session-panel')).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await accessibilityMedia(page);
     await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests: { sessionBackground: number[] }[] }).backdropRequests.at(-1)?.sessionBackground[3])).toBeLessThan(255);
-    await expect(page.locator('.app-session-panel')).toHaveCSS('background-color', theme === 'dark' ? 'rgba(15, 15, 15, 0.42)' : 'rgba(255, 255, 255, 0.22)');
+    await expect(page.locator('.app-session-panel')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   });
 }
 
@@ -51,7 +76,10 @@ test('session list keeps its web tint if native backing initialization fails', a
   await page.goto('/tests/visual/workspaceResize.html?backdrop=1&backdropFail=1&theme=dark');
   await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests?: unknown[] }).backdropRequests?.length)).toBe(1);
   await expect(page.locator('.app-native-viewport')).not.toHaveAttribute('data-native-backdrop', 'ready');
-  await expect(page.locator('.app-session-panel')).toHaveCSS('background-color', 'rgba(24, 24, 24, 0.76)');
+  const colors = await workspaceColors(page);
+  expect(colors.webSession).toEqual(colors.sessionTint);
+  expect(colors.webSession[3]).toBeGreaterThan(0);
+  expect(colors.webSession[3]).toBeLessThan(255);
 });
 
 test('workspace reflows its columns and transcript without scaling text, icons, or the composer', async ({ page }) => {

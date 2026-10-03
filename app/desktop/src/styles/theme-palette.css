@@ -1,0 +1,270 @@
+/* One restrained palette coordinates the entire workspace. Surfaces retain
+ * translucency; AppKit continues to supply the native sidebar material. */
+:where(body, .app-chat-theme-preview) {
+  --app-palette-hue: 250;
+  --app-palette-accent-light: #365F98;
+  --app-palette-accent-dark: #AEC4E3;
+}
+body[data-kordi-chat-theme='ocean'],
+.app-chat-theme-preview[data-kordi-chat-theme='ocean'] {
+  --app-palette-hue: 190;
+  --app-palette-accent-light: #246775;
+  --app-palette-accent-dark: #A1CBD1;
+}
+body[data-kordi-chat-theme='midnight'],
+.app-chat-theme-preview[data-kordi-chat-theme='midnight'] {
+  --app-palette-hue: 295;
+  --app-palette-accent-light: #6B5686;
+  --app-palette-accent-dark: #C7B5DD;
+}
+body[data-kordi-chat-theme='sand'],
+.app-chat-theme-preview[data-kordi-chat-theme='sand'] {
+  --app-palette-hue: 70;
+  --app-palette-accent-light: #875837;
+  --app-palette-accent-dark: #D9B999;
+}
+
+:where(body, .kordi-app, .app-chat-theme-preview) {
+  --app-palette-accent: var(--app-palette-accent-dark);
+  --app-palette-ink: oklch(92% 0.016 var(--app-palette-hue));
+  --app-palette-muted: oklch(73% 0.023 var(--app-palette-hue));
+  --app-palette-meta: oklch(71% 0.018 var(--app-palette-hue));
+  --app-palette-canvas: oklch(21.5% 0.018 var(--app-palette-hue));
+  --app-palette-surface: oklch(26% 0.022 var(--app-palette-hue));
+  --app-palette-sidebar-glass: oklch(21% 0.022 var(--app-palette-hue) / 0.56);
+  --app-palette-title-glass: oklch(22% 0.023 var(--app-palette-hue) / 0.60);
+  --app-palette-composer-glass: oklch(29% 0.025 var(--app-palette-hue) / 0.70);
+  --app-palette-popup-glass: oklch(27% 0.023 var(--app-palette-hue) / 0.95);
+  --app-palette-control: oklch(34% 0.025 var(--app-palette-hue) / 0.50);
+  --app-palette-hover: oklch(38% 0.03 var(--app-palette-hue) / 0.66);
+  --app-palette-selected: oklch(35% 0.041 var(--app-palette-hue) / 0.86);
+  --app-palette-border: oklch(85% 0.018 var(--app-palette-hue) / 0.16);
+  --app-palette-divider: oklch(85% 0.018 var(--app-palette-hue) / 0.10);
+  --app-palette-highlight: oklch(97% 0.008 var(--app-palette-hue) / 0.09);
+  --app-palette-shadow: 0 10px 28px oklch(12% 0.02 var(--app-palette-hue) / 0.24);
+  --app-palette-popup-shadow: 0 12px 32px oklch(10% 0.018 var(--app-palette-hue) / 0.40);
+  --app-palette-accent-ink: oklch(22% 0.025 var(--app-palette-hue));
+  --app-palette-message-fill: oklch(36% 0.052 var(--app-palette-hue));
+  --app-palette-message-ink: var(--app-palette-ink);
+}
+
+:where(body.theme-light, .kordi-app.theme-light, .app-transient-theme-light,
+  .app-compact-model-menu-light, .app-composer-mention-menu-light,
+  .kordi-app.theme-light .app-chat-theme-preview) {
+  --app-palette-accent: var(--app-palette-accent-light);
+  --app-palette-ink: oklch(26% 0.025 var(--app-palette-hue));
+  --app-palette-muted: oklch(46% 0.025 var(--app-palette-hue));
+  --app-palette-meta: oklch(49% 0.018 var(--app-palette-hue));
+  --app-palette-canvas: oklch(95.5% 0.012 var(--app-palette-hue));
+  --app-palette-surface: oklch(97% 0.013 var(--app-palette-hue));
+  --app-palette-sidebar-glass: oklch(95% 0.016 var(--app-palette-hue) / 0.60);
+  --app-palette-title-glass: oklch(94% 0.017 var(--app-palette-hue) / 0.65);
+  --app-palette-composer-glass: oklch(98% 0.012 var(--app-palette-hue) / 0.65);
+  --app-palette-popup-glass: oklch(97% 0.015 var(--app-palette-hue) / 0.94);
+  --app-palette-control: oklch(93% 0.019 var(--app-palette-hue) / 0.56);
+  --app-palette-hover: oklch(89% 0.027 var(--app-palette-hue) / 0.62);
+  --app-palette-selected: oklch(89% 0.035 var(--app-palette-hue) / 0.84);
+  --app-palette-border: oklch(36% 0.025 var(--app-palette-hue) / 0.15);
+  --app-palette-divider: oklch(36% 0.025 var(--app-palette-hue) / 0.10);
+  --app-palette-highlight: oklch(99% 0.004 var(--app-palette-hue) / 0.70);
+  --app-palette-shadow: 0 10px 28px oklch(28% 0.025 var(--app-palette-hue) / 0.075);
+  --app-palette-popup-shadow: 0 12px 32px oklch(28% 0.025 var(--app-palette-hue) / 0.16);
+  --app-palette-accent-ink: oklch(98% 0.005 var(--app-palette-hue));
+  --app-palette-message-fill: var(--app-palette-accent);
+  --app-palette-message-ink: var(--app-palette-accent-ink);
+}
+
+body,
+.kordi-app:is(.theme-light, .theme-dark),
+body[data-kordi-chat-theme] .kordi-app:is(.theme-light, .theme-dark),
+.app-transient-theme-light,
+.app-compact-model-menu-light,
+.app-composer-mention-menu-light,
+.kordi-app:is(.theme-light, .theme-dark) .app-chat-theme-preview[data-kordi-chat-theme] {
+  --utility-background: var(--app-palette-canvas);
+  --utility-foreground: var(--app-palette-ink);
+  --utility-muted-text: var(--app-palette-muted);
+  --utility-meta-text: var(--app-palette-meta);
+  --utility-muted: var(--app-palette-control);
+  --utility-card: var(--app-palette-control);
+  --app-accent: var(--app-palette-accent);
+  --app-accent-ring: color-mix(in oklab, var(--app-palette-accent) 45%, transparent);
+  --app-page-bg: var(--app-palette-canvas);
+  --app-shell-bg: var(--app-palette-title-glass);
+  --app-shell-border: var(--app-palette-border);
+  --app-paper-grain: transparent;
+  --app-main-bg: var(--app-palette-canvas);
+  --app-main-raised-bg: var(--app-palette-surface);
+  --app-main-muted-bg: var(--app-palette-control);
+  --app-side-bg: transparent;
+  --app-session-bg: var(--app-palette-sidebar-glass);
+  --app-native-session-bg: var(--app-palette-title-glass);
+  --app-native-session-surface: transparent;
+  --app-native-session-fallback: var(--app-palette-surface);
+  --app-native-main-bg: var(--app-palette-canvas);
+  --app-card-bg: var(--app-palette-control);
+  --app-modal-bg: var(--app-palette-popup-glass);
+  --app-divider: var(--app-palette-divider);
+  --app-control-bg: var(--app-palette-control);
+  --app-control-hover: var(--app-palette-hover);
+  --app-control-active: var(--app-palette-selected);
+  --app-control-border: var(--app-palette-border);
+  --app-glass-highlight: var(--app-palette-highlight);
+  --app-sidebar-title-text: var(--app-palette-ink);
+  --app-sidebar-preview-text: var(--app-palette-muted);
+  --app-sidebar-time-text: var(--app-palette-meta);
+  --app-sidebar-accent: var(--app-palette-accent);
+  --app-sidebar-accent-text: var(--app-palette-accent-ink);
+  --app-sidebar-selected-bg: var(--app-palette-selected);
+  --app-nav-rail-text: var(--app-palette-muted);
+  --app-nav-rail-hover-bg: var(--app-palette-hover);
+  --app-nav-rail-hover-text: var(--app-palette-ink);
+  --app-nav-rail-pressed-bg: var(--app-palette-selected);
+  --app-nav-rail-active-bg: var(--app-palette-selected);
+  --app-nav-rail-active-hover-bg: var(--app-palette-hover);
+  --app-nav-rail-active-pressed-bg: var(--app-palette-selected);
+  --app-nav-rail-active-text: var(--app-palette-accent);
+  --app-nav-rail-focus-ring: var(--app-palette-accent);
+  --app-nav-rail-glass-bg: var(--app-palette-title-glass);
+  --app-nav-rail-glass-fallback: var(--app-palette-title-glass);
+  --app-nav-rail-glass-border: var(--app-palette-border);
+  --app-nav-rail-glass-highlight: var(--app-palette-highlight);
+  --app-nav-rail-avatar-ring: var(--app-palette-border);
+  --app-nav-rail-unread-ring: var(--app-palette-surface);
+  --app-quiet-control-text: var(--app-palette-muted);
+  --app-quiet-control-hover-text: var(--app-palette-ink);
+  --app-quiet-control-hover-bg: var(--app-palette-hover);
+  --app-quiet-control-selected-bg: var(--app-palette-selected);
+  --app-quiet-control-pressed-bg: var(--app-palette-selected);
+  --app-quiet-control-focus-ring: var(--app-palette-accent);
+  --app-button-primary-bg: var(--app-palette-accent);
+  --app-button-primary-text: var(--app-palette-accent-ink);
+  --app-button-primary-hover: color-mix(in oklab, var(--app-palette-accent) 90%, var(--app-palette-ink));
+  --app-shadow-soft: var(--app-palette-shadow);
+  --app-shadow-float: var(--app-palette-popup-shadow);
+  --app-transient-surface-bg: var(--app-palette-popup-glass);
+  --app-transient-surface-fallback: var(--app-palette-surface);
+  --app-transient-raised-bg: var(--app-palette-control);
+  --app-transient-hover-bg: var(--app-palette-hover);
+  --app-transient-selected-bg: var(--app-palette-selected);
+  --app-transient-selected-border: var(--app-palette-border);
+  --app-transient-border: var(--app-palette-border);
+  --app-transient-divider: var(--app-palette-divider);
+  --app-transient-text: var(--app-palette-ink);
+  --app-transient-muted-text: var(--app-palette-muted);
+  --app-transient-subtle-text: var(--app-palette-meta);
+  --app-transient-icon-bg: var(--app-palette-control);
+  --app-transient-focus-ring: var(--app-palette-accent);
+  --app-transient-shadow: var(--app-palette-popup-shadow);
+  --app-chat-accent: var(--app-palette-accent);
+  --app-chat-accent-text: var(--app-palette-accent-ink);
+  --app-chat-wallpaper: var(--app-palette-canvas);
+  --app-chat-wallpaper-size: auto;
+  --app-chat-bubble-peer-bg: var(--app-palette-composer-glass);
+  --app-chat-bubble-peer-text: var(--app-palette-ink);
+  --app-chat-bubble-peer-border: var(--app-palette-border);
+  --app-chat-bubble-user-bg: var(--app-palette-message-fill);
+  --app-chat-bubble-user-text: var(--app-palette-message-ink);
+  --app-chat-bubble-user-border: transparent;
+  --app-chat-bubble-agent-bg: var(--app-palette-control);
+  --app-chat-bubble-agent-text: var(--app-palette-ink);
+  --app-chat-bubble-agent-border: var(--app-palette-border);
+  --app-chat-meta-peer: var(--app-palette-meta);
+  --app-chat-meta-own: var(--app-palette-message-ink);
+  --app-chat-mention-own: var(--app-palette-message-ink);
+  --app-chat-mention-peer: var(--app-palette-accent);
+  --app-markdown-link: var(--app-palette-accent);
+  --app-markdown-link-hover: var(--app-palette-ink);
+  --app-quiet-control-disabled-text: var(--app-palette-meta);
+  --app-chip-active-bg: var(--app-palette-accent);
+  --app-chip-active-border: var(--app-palette-border);
+  --app-chip-active-text: var(--app-palette-accent-ink);
+  --app-mode-tab-bg: var(--app-palette-control);
+  --app-mode-tab-border: var(--app-palette-border);
+  --app-mode-tab-text: var(--app-palette-muted);
+  --app-mode-tab-hover: var(--app-palette-hover);
+  --app-mode-tab-active-bg: var(--app-palette-accent);
+  --app-mode-tab-active-border: var(--app-palette-border);
+  --app-mode-tab-active-text: var(--app-palette-accent-ink);
+  --app-badge-primary-bg: var(--app-palette-accent);
+  --app-badge-primary-text: var(--app-palette-accent-ink);
+  --app-copy-selection-bg: color-mix(in oklab, var(--app-palette-accent) 32%, transparent);
+  --app-copy-selection-surface-bg: color-mix(in oklab, var(--app-palette-accent) 18%, transparent);
+  --app-copy-selection-text: var(--app-palette-ink);
+}
+
+.kordi-app .app-page-header.app-chat-pane-header {
+  --app-chat-header-bg: color-mix(in oklab, var(--app-palette-canvas) 95%, var(--app-palette-accent));
+  border-color: var(--app-palette-divider);
+}
+.kordi-app .app-native-titlebar {
+  box-shadow: inset 0 1px 0 var(--app-palette-highlight);
+}
+.kordi-app:not([data-native-backdrop='ready']) .app-native-titlebar {
+  backdrop-filter: blur(28px) saturate(1.12);
+  -webkit-backdrop-filter: blur(28px) saturate(1.12);
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-composer-shell,
+.kordi-app:is(.theme-light, .theme-dark) .app-composer-shell:focus-within {
+  border-color: var(--app-palette-border);
+  background: var(--app-palette-composer-glass);
+  backdrop-filter: blur(24px) saturate(1.12);
+  -webkit-backdrop-filter: blur(24px) saturate(1.12);
+  box-shadow: var(--app-palette-shadow), inset 0 1px 0 var(--app-palette-highlight);
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-composer-shell:focus-within {
+  border-color: var(--app-palette-accent);
+  outline: 2px solid var(--app-palette-accent);
+  outline-offset: 2px;
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-composer-send { box-shadow: none; }
+.kordi-app:is(.theme-light, .theme-dark) .app-input-shell:not(.app-flat-input) {
+  color: var(--utility-foreground) !important;
+  background: var(--app-palette-composer-glass);
+  border-color: var(--app-palette-border);
+  box-shadow: inset 0 1px 0 var(--app-palette-highlight);
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-input-shell:not(.app-flat-input):hover {
+  background: var(--app-main-raised-bg);
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-input-shell:not(.app-flat-input):focus-within {
+  border-color: var(--app-palette-accent);
+  outline: 2px solid var(--app-palette-accent);
+  outline-offset: 2px;
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-input-shell input,
+.kordi-app:is(.theme-light, .theme-dark) .app-input-shell textarea,
+.kordi-app:is(.theme-light, .theme-dark) .app-composer-input {
+  color: var(--utility-foreground) !important;
+}
+.kordi-app:is(.theme-light, .theme-dark) input::placeholder,
+.kordi-app:is(.theme-light, .theme-dark) textarea::placeholder,
+.kordi-app:is(.theme-light, .theme-dark) .app-composer-input::placeholder {
+  color: var(--utility-muted-text) !important;
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-control-chip {
+  color: var(--utility-foreground);
+  background: var(--app-control-bg);
+  border-color: var(--app-control-border);
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-control-chip:hover {
+  color: var(--utility-foreground);
+  background: var(--app-control-hover);
+  border-color: var(--app-control-border);
+}
+.kordi-app:is(.theme-light, .theme-dark) .app-control-chip-active {
+  background: var(--app-control-active);
+}
+.chat-project-menu {
+  backdrop-filter: blur(24px) saturate(1.12);
+  -webkit-backdrop-filter: blur(24px) saturate(1.12);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  :where(body, .kordi-app, .app-chat-theme-preview, .app-transient-theme-light,
+    .app-compact-model-menu-light, .app-composer-mention-menu-light) {
+    --app-palette-sidebar-glass: var(--app-palette-surface);
+    --app-palette-title-glass: var(--app-palette-surface);
+    --app-palette-composer-glass: var(--app-palette-surface);
+    --app-palette-popup-glass: var(--app-palette-surface);
+  }
+}
