@@ -27,8 +27,9 @@ the deletion:
 3. Every retained replay row that still carried a snapshot of the message, in
    every account's stream, becomes a content-free `message.deleted`.
 4. Agent runs for the message that have not started are cancelled with an
-   empty prompt. A run is matched when it names the message's canonical id, or
-   when the sender requested it under one of the message's other ids.
+   empty prompt and no stored runtime input. A run is matched when it names
+   the message's canonical id, or when the sender requested it under one of
+   the message's other ids.
 5. A removal job is queued with the message's identifiers and attachment ids.
 
 Replay also checks deletion state when it reads, so a row written by an older
@@ -39,10 +40,10 @@ The removal job runs within seconds and retries until it finishes:
 - Stored digests drop the message and every item that cites it.
 - Replies that quoted it or opened a thread on it show "Original message was
   deleted".
-- Prompts of agent runs requested by it are cleared, and queued runs, or runs
-  whose lease expired, are cancelled. A run already working on it under a live
-  lease keeps its prompt until it ends; the job checks again every minute and
-  clears it then.
+- Prompts and stored runtime input of agent runs requested by it are cleared,
+  and queued runs, or runs whose lease expired, are cancelled. A run already
+  working on it under a live lease keeps both until it ends; the job checks
+  again every minute and clears them then.
 - Task summaries recorded from it are cleared, and files-panel entries created
   from it are archived.
 - Each attachment it used has its bytes deleted from object storage unless
@@ -108,11 +109,11 @@ forever", any backup claim, or a score.
 | Files | Kept while a message that is not deleted, a saved sticker or GIF, or an agent run artifact of a message that is not deleted uses them. Otherwise deleted from object storage, usually within a minute. Reads are denied for everyone, the owner included, before the bytes are deleted. Files kept for another use are checked again at least daily, and at once when the saved sticker or GIF that kept them is removed. The attachment row keeps its id, owner, object key, content type, size, and timestamps; its hash and preview are cleared. |
 | Digests | When a message is deleted for everyone, edited, or removed from a person's view, the digest stops showing anything that cites it at once (existing read check). Within one removal-job cycle, stored digest items that cite it and stored copies of its text are removed, and any digest run in progress that included it is stopped. The digest regenerates at its next refresh. This does not depend on the model provider being available. Finished digest runs keep no prompt. |
 | Quote and thread previews | Replaced for deletions: the preview text, mentions, and attachment count are emptied and the source is marked deleted. After an edit, replies keep the wording they quoted. Forwards are separate messages and are not changed. |
-| Agent runs | Requests are cleared, queued runs and runs whose lease expired are cancelled, and new runs for a deleted request are refused. A run another member requested is matched only through the deleted message's canonical id. |
+| Agent runs | Requests are cleared, both the prompt and the stored runtime input, queued runs and runs whose lease expired are cancelled, and new runs for a deleted request are refused. A run another member requested is matched only through the deleted message's canonical id. |
 | Tasks | Task summaries from a deleted reply are cleared. Earlier journal copies expire with the journal. |
 | Files panel | Entries created from a deleted message, or pointing at a deleted file, are archived and marked removed. They are no longer listed, and a client that publishes them again changes nothing. |
 | Kept records | The one-way request fingerprint, which stops a retried send from recreating a deleted message, and removal job records, which hold identifiers only and are not trimmed yet. |
-| Not covered | Copies on devices, downloads, and screenshots. Saved stickers and GIFs, which keep their file. Forwards and forked chats. What an agent already received, and its reply. Prompts of other runs that included the message as history. Agent workspace files, which are **kept indefinitely** today: sandbox expiry does not delete them. Delivered notifications. Uploads that were never sent. Older `task.upsert` journal copies of a cleared task summary, which expire with the journal. Server backups and model providers' own retention. Content deleted, hidden, or edited before this release until an operator applies the history backfill below; messages deleted more than 91 days before it get no file deletion or quote repair, because their identifiers are gone. A reply an agent is still writing when a quoted message is deleted may restore the preview until it finishes. A reply preview, task summary, or files-panel entry that names a deleted message only through a client-chosen id that another message of the conversation still uses, which the Kordi apps never do, stays as it is, because it may belong to that other message; agent runs of the deleted request are still stopped. |
+| Not covered | Copies on devices, downloads, and screenshots. Saved stickers and GIFs, which keep their file. Forwards and forked chats. What an agent already received, and its reply, including the runtime state saved with a finished run, which is no longer replayed once a message of its chat is deleted. Prompts and runtime input of other runs that included the message as history. Agent workspace files, which are **kept indefinitely** today: sandbox expiry does not delete them. Delivered notifications. Uploads that were never sent. Older `task.upsert` journal copies of a cleared task summary, which expire with the journal. Server backups and model providers' own retention. Content deleted, hidden, or edited before this release until an operator applies the history backfill below; messages deleted more than 91 days before it get no file deletion or quote repair, because their identifiers are gone. A reply an agent is still writing when a quoted message is deleted may restore the preview until it finishes. A reply preview, task summary, or files-panel entry that names a deleted message only through a client-chosen id that another message of the conversation still uses, which the Kordi apps never do, stays as it is, because it may belong to that other message; agent runs of the deleted request are still stopped. |
 
 ## Operations
 

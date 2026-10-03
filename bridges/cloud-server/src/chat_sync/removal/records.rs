@@ -45,10 +45,12 @@ async fn deleted_message_records(pool: &PgPool, job: &mut Job) -> Result<StepOut
     // A run claimed while the message was being deleted is cancelled here.
     store::cancel_queued_runs_for_deleted_request(&mut transaction, &request).await?;
     // A run whose lease expired is picked up again by a runner, so it is
-    // cancelled like a queued one.
+    // cancelled like a queued one. Its structured runtime input carries the
+    // same request, so it is cleared with the prompt.
     query(concat!(
         "UPDATE cloud_agent_fallback_runs \
-         SET status = 'cancelled', prompt = '', error_code = 'request_deleted', \
+         SET status = 'cancelled', prompt = '', omp_input_json = NULL, \
+             error_code = 'request_deleted', \
              error_message = 'The request was deleted before the agent finished.', \
              completed_at = $5, updated_at = $5 \
          WHERE status IN ('leased', 'running') AND subsession_id IS NULL \
@@ -62,14 +64,15 @@ async fn deleted_message_records(pool: &PgPool, job: &mut Job) -> Result<StepOut
     .bind(Utc::now().to_rfc3339())
     .execute(&mut *transaction)
     .await?;
-    // Finished runs keep no copy of the request, and neither do runs left
-    // active without a lease, which no runner reclaims. `updated_at` is
-    // unchanged so run history keeps its order.
+    // Finished runs keep no copy of the request, neither as the prompt nor as
+    // structured runtime input, and neither do runs left active without a
+    // lease, which no runner reclaims. `updated_at` is unchanged so run
+    // history keeps its order.
     query(concat!(
-        "UPDATE cloud_agent_fallback_runs SET prompt = '' \
+        "UPDATE cloud_agent_fallback_runs SET prompt = '', omp_input_json = NULL \
          WHERE (status IN ('completed', 'failed', 'cancelled') \
                 OR (status IN ('leased', 'running') AND lease_expires_at IS NULL)) \
-           AND prompt <> '' AND ",
+           AND (prompt <> '' OR omp_input_json IS NOT NULL) AND ",
         store::deleted_request_runs_sql!()
     ))
     .bind(&sessions)
@@ -78,8 +81,9 @@ async fn deleted_message_records(pool: &PgPool, job: &mut Job) -> Result<StepOut
     .bind(request.sender_account_id)
     .execute(&mut *transaction)
     .await?;
-    // A run working on the request under a live lease keeps its prompt until
-    // it ends; the step waits and clears the prompt once it finishes.
+    // A run working on the request under a live lease keeps its prompt and
+    // runtime input until it ends; the step waits and clears both once it
+    // finishes.
     let (running,): (bool,) = query_as(concat!(
         "SELECT EXISTS (SELECT 1 FROM cloud_agent_fallback_runs \
                         WHERE status IN ('leased', 'running') \

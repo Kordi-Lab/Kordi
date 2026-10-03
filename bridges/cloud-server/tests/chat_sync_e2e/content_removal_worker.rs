@@ -296,19 +296,24 @@ async fn insert_run(
 ) -> String {
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let now = chrono::Utc::now();
-    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,lease_expires_at) VALUES($1,$1,$2,$3,$4,$4,$5,'Summarize the request',$6,$6,$7)")
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,lease_expires_at,omp_input_json) VALUES($1,$1,$2,$3,$4,$4,$5,'Summarize the request',$6,$6,$7,'{\"prompt\":\"Summarize the request\",\"history\":[]}'::jsonb)")
         .bind(&run_id).bind(request_id).bind(&chat.session_id).bind(owner).bind(status)
         .bind(now.to_rfc3339()).bind((now + chrono::Duration::minutes(5)).to_rfc3339())
         .execute(pool).await.unwrap();
     run_id
 }
 
-async fn run_state(pool: &PgPool, run_id: &str) -> (String, String) {
-    query_as("SELECT status, prompt FROM cloud_agent_fallback_runs WHERE run_id = $1")
-        .bind(run_id)
-        .fetch_one(pool)
-        .await
-        .unwrap()
+/// The run's status, prompt, and whether it still stores structured runtime
+/// input.
+async fn run_state(pool: &PgPool, run_id: &str) -> (String, String, bool) {
+    query_as(
+        "SELECT status, prompt, omp_input_json IS NOT NULL \
+         FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
 }
 
 async fn events_of_type(pool: &PgPool, account_id: &str, event_type: &str) -> Vec<Value> {
@@ -354,13 +359,16 @@ async fn records_of_a_deleted_request_are_cleared() {
     assert_eq!(run_jobs(&pool, Some(&objects), &ids).await.unwrap(), 1);
     assert_eq!(
         run_state(&pool, &finished).await,
-        ("completed".into(), String::new())
+        ("completed".into(), String::new(), false)
     );
     assert_eq!(
         run_state(&pool, &raced).await,
-        ("cancelled".into(), String::new())
+        ("cancelled".into(), String::new(), false)
     );
-    assert_eq!(run_state(&pool, &running).await.0, "running");
+    assert_eq!(
+        run_state(&pool, &running).await,
+        ("running".into(), "Summarize the request".into(), true)
+    );
     let (completed, _, _, steps) = job_state(&pool, ids[0]).await;
     assert!(
         !completed && !steps[1],
@@ -401,7 +409,8 @@ async fn records_of_a_deleted_request_are_cleared() {
             ));
     }
 
-    // When the run in progress ends, its prompt is cleared at the next check.
+    // When the run in progress ends, its prompt and runtime input are cleared
+    // at the next check.
     query("UPDATE cloud_agent_fallback_runs SET status = 'completed' WHERE run_id = $1")
         .bind(&running)
         .execute(&pool)
@@ -415,7 +424,7 @@ async fn records_of_a_deleted_request_are_cleared() {
     settle(&pool, &objects, &ids).await;
     assert_eq!(
         run_state(&pool, &running).await,
-        ("completed".into(), String::new())
+        ("completed".into(), String::new(), false)
     );
     assert!(job_state(&pool, ids[0]).await.0);
 }

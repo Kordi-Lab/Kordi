@@ -18,7 +18,7 @@ async fn insert_run(
 ) -> String {
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let now = chrono::Utc::now().to_rfc3339();
-    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,lease_expires_at,execution_agent_id) VALUES($1,$1,$2,$3,$4,$4,$5,'Summarize the request',$6,$6,$7,$1)")
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,lease_expires_at,execution_agent_id,omp_input_json) VALUES($1,$1,$2,$3,$4,$4,$5,'Summarize the request',$6,$6,$7,$1,'{\"prompt\":\"Summarize the request\",\"history\":[]}'::jsonb)")
         .bind(&run_id).bind(request_id).bind(&chat.session_id).bind(&chat.owner).bind(status)
         .bind(&now).bind(lease_expires_at.map(|at| at.to_rfc3339()))
         .execute(pool).await.expect("insert run");
@@ -31,6 +31,18 @@ async fn run_state(pool: &PgPool, run_id: &str) -> (String, String, Option<Strin
         .fetch_one(pool)
         .await
         .unwrap()
+}
+
+/// Whether the run still stores its structured runtime input.
+async fn keeps_runtime_input(pool: &PgPool, run_id: &str) -> bool {
+    let (kept,): (bool,) = query_as(
+        "SELECT omp_input_json IS NOT NULL FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    kept
 }
 
 #[tokio::test]
@@ -75,6 +87,8 @@ async fn runs_without_a_live_lease_never_hold_a_deleted_request_open() {
             Some("request_deleted".into())
         )
     );
+    assert!(!keeps_runtime_input(&pool, &unleased).await);
+    assert!(!keeps_runtime_input(&pool, &expired).await);
 
     // Positive control: a run under a live lease keeps the job waiting.
     let live_request = send_text(&pool, &chat, "@Kordi summarize again").await;
@@ -104,6 +118,7 @@ async fn runs_without_a_live_lease_never_hold_a_deleted_request_open() {
         run_state(&pool, &working).await,
         ("running".into(), "Summarize the request".into(), None)
     );
+    assert!(keeps_runtime_input(&pool, &working).await);
     // Not due again until the wait passes.
     assert_eq!(
         run_jobs(&pool, Some(&FakeObjects::default()), &ids)

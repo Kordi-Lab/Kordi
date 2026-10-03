@@ -257,8 +257,9 @@ macro_rules! deleted_request_runs_sql {
 pub(crate) use deleted_request_runs_sql;
 
 /// Agent runs that have not started for a deleted request are cancelled with
-/// an empty prompt. Only `queued` rows match, so this never waits on a run in
-/// progress. Digest runs and sub-session runs are never touched.
+/// an empty prompt and no structured runtime input. Only `queued` rows match,
+/// so this never waits on a run in progress. Digest runs and sub-session runs
+/// are never touched.
 pub(crate) async fn cancel_queued_runs_for_deleted_request(
     transaction: &mut Transaction<'_, Postgres>,
     request: &DeletedRequest<'_>,
@@ -269,7 +270,8 @@ pub(crate) async fn cancel_queued_runs_for_deleted_request(
     let sessions = conversation_session_ids(transaction, request.conversation_id).await?;
     let result = query(concat!(
         "UPDATE cloud_agent_fallback_runs \
-         SET status = 'cancelled', prompt = '', error_code = 'request_deleted', \
+         SET status = 'cancelled', prompt = '', omp_input_json = NULL, \
+             error_code = 'request_deleted', \
              error_message = 'The request was deleted before the agent started.', \
              completed_at = $5, updated_at = $5 \
          WHERE status = 'queued' AND subsession_id IS NULL AND ",

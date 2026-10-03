@@ -18,10 +18,22 @@ async fn insert_run(
 ) -> String {
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let now = chrono::Utc::now().to_rfc3339();
-    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,execution_agent_id) VALUES($1,$1,$2,$3,$4,$4,$5,'Summarize the request',$6,$6,$7)")
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,execution_agent_id,omp_input_json) VALUES($1,$1,$2,$3,$4,$4,$5,'Summarize the request',$6,$6,$7,'{\"prompt\":\"Summarize the request\",\"history\":[]}'::jsonb)")
         .bind(&run_id).bind(request_id).bind(session_id).bind(owner).bind(status).bind(&now).bind(agent)
         .execute(pool).await.expect("insert run");
     run_id
+}
+
+/// Whether the run still stores its structured runtime input.
+async fn keeps_runtime_input(pool: &PgPool, run_id: &str) -> bool {
+    let (kept,): (bool,) = query_as(
+        "SELECT omp_input_json IS NOT NULL FROM cloud_agent_fallback_runs WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .expect("load run input");
+    kept
 }
 
 async fn run_state(pool: &PgPool, run_id: &str) -> (String, String, Option<String>) {
@@ -120,10 +132,13 @@ async fn deleted_requests_cancel_queued_runs_and_refuse_new_ones() {
                 Some("request_deleted".to_string())
             )
         );
+        assert!(!keeps_runtime_input(&pool, run_id).await);
     }
     assert_eq!(run_state(&pool, &running).await.0, "running");
     assert_eq!(run_state(&pool, &running).await.1, "Summarize the request");
+    assert!(keeps_runtime_input(&pool, &running).await);
     assert_eq!(run_state(&pool, &unrelated).await.0, "queued");
+    assert!(keeps_runtime_input(&pool, &unrelated).await);
 
     assert!(
         store::request_was_deleted(&pool, &group.session_id, &logical_id, &group.owner)
