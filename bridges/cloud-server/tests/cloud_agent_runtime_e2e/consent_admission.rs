@@ -12,7 +12,11 @@ fn direct_session(left: &TestAccount, right: &TestAccount) -> String {
     format!("session:direct-person:{}:{}", ids[0], ids[1])
 }
 
-async fn claim(router: &axum::Router, caller: &TestAccount, body: Value) -> (StatusCode, Value) {
+pub(super) async fn claim(
+    router: &axum::Router,
+    caller: &TestAccount,
+    body: Value,
+) -> (StatusCode, Value) {
     let response = router
         .clone()
         .oneshot(post_json_with_token(
@@ -149,7 +153,7 @@ async fn default_agents_answer_only_mutual_contacts() {
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
 }
 
-async fn shared_agent(pool: &sqlx_postgres::PgPool, owner: &TestAccount) -> String {
+pub(super) async fn shared_agent(pool: &sqlx_postgres::PgPool, owner: &TestAccount) -> String {
     let agent_id = format!("cloud_agent_{}", uuid::Uuid::new_v4().simple());
     sqlx_core::query::query(
         "INSERT INTO cloud_agent_definitions(agent_id, owner_account_id, access_scope, status, \

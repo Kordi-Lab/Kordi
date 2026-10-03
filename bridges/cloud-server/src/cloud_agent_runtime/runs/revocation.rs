@@ -25,19 +25,27 @@ const REVOKED_MESSAGE: &str =
 /// PiP runs always may. Subsession turns follow their own rules
 /// (`subsession_execution::revalidate`), and so do runs the owner asked for,
 /// apart from where they answer.
+///
+/// Leases, renewals, and progress call this often, so it reads only the run
+/// row and indexed records: the agent the run executes was resolved from the
+/// request when the run was claimed, and the chat's history is never read
+/// again. A requester other than the owner still needs the agent (a contact
+/// for the owner's default agent, an active shared agent otherwise, and no
+/// block either way) and, with the owner, active membership of the chat.
 pub(super) async fn run_still_allowed(pool: &PgPool, run_id: &str) -> RunResult<bool> {
     if run_id.starts_with(crate::digest::RUN_PREFIX) || run_id.starts_with(crate::pip::RUN_PREFIX) {
         return Ok(true);
     }
-    let row: Option<(String, String, String, String, bool)> = query_as(
-        "SELECT session_id, request_message_id, owner_account_id, requester_account_id, \
-                subsession_id IS NOT NULL \
+    let row: Option<(String, String, String, bool, bool)> = query_as(
+        "SELECT session_id, owner_account_id, requester_account_id, subsession_id IS NOT NULL, \
+                cloud_requester_may_use_agent(requester_account_id, owner_account_id, \
+                                              execution_agent_id) \
          FROM cloud_agent_fallback_runs WHERE run_id = $1",
     )
     .bind(run_id)
     .fetch_optional(pool)
     .await?;
-    let Some((session_id, request_message_id, owner, requester, subsession)) = row else {
+    let Some((session_id, owner, requester, subsession, may_use_agent)) = row else {
         return Ok(true);
     };
     if subsession {
@@ -49,11 +57,14 @@ pub(super) async fn run_still_allowed(pool: &PgPool, run_id: &str) -> RunResult<
     if requester == owner {
         return Ok(true);
     }
-    super::requester_may_invoke(
+    if !may_use_agent || super::authorization::is_pip_owner(&owner) {
+        return Ok(false);
+    }
+    super::claim_conversation_admits_run(
         pool,
         &ClaimRunRequest {
             session_id,
-            request_message_id,
+            request_message_id: String::new(),
             owner_account_id: owner,
             requester_account_id: requester,
             prompt: String::new(),
@@ -64,18 +75,24 @@ pub(super) async fn run_still_allowed(pool: &PgPool, run_id: &str) -> RunResult<
     .await
 }
 
-/// Rechecks a run its executor still holds, for the owner's desktop as for
-/// the cloud runner. A subsession turn follows
-/// `subsession_execution::revalidate`; any other run that lost access is
-/// cancelled. Returns whether the run may continue. A run that already
-/// finished has nothing left to stop, so this leaves it to the caller, which
-/// still answers a retry of its final update with the answer already posted.
-pub(crate) async fn recheck_held_run(pool: &PgPool, run_id: &str) -> RunResult<bool> {
+/// Rechecks a run for the owner's desktop that holds it. A subsession turn
+/// follows `subsession_execution::revalidate`; any other run that lost access
+/// is cancelled. Returns whether the run may continue. A caller that does not
+/// hold the run triggers no check here (the route's own ownership check
+/// refuses it). A run that already finished has nothing left to stop, so
+/// this leaves it to the caller, which still answers a retry of its final
+/// update with the answer already posted.
+pub(crate) async fn recheck_held_run(
+    pool: &PgPool,
+    run_id: &str,
+    claimed_by: &str,
+) -> RunResult<bool> {
     let unfinished: Option<(bool,)> = query_as(
         "SELECT status IN ('queued', 'leased', 'running') \
-         FROM cloud_agent_fallback_runs WHERE run_id = $1",
+         FROM cloud_agent_fallback_runs WHERE run_id = $1 AND claimed_by = $2",
     )
     .bind(run_id)
+    .bind(claimed_by)
     .fetch_optional(pool)
     .await?;
     if !matches!(unfinished, Some((true,))) {

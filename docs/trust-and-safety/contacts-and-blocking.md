@@ -122,7 +122,8 @@ Any member, including the owner, can leave a group. Leaving the group's main
 conversation leaves all of its channels. You stop getting its messages, it is
 removed from your devices, and you can no longer read its history or record or
 read its task and file activity. Your open invite links for the group are
-revoked.
+revoked. Work you asked another member's agent to do there, and work another
+member asked your agent to do there, stops when it next checks in.
 
 If the owner leaves, another member becomes the owner: the one the owner's app
 suggests, otherwise an existing admin, otherwise the earliest member who

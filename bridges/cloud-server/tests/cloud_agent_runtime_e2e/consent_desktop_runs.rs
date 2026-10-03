@@ -5,7 +5,7 @@
 use super::consent_admission::{group_request, remove_contact, run_state};
 use super::*;
 
-async fn desktop_call(
+pub(super) async fn desktop_call(
     router: &axum::Router,
     owner: &TestAccount,
     path: String,

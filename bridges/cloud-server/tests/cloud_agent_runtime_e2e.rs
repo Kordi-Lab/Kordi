@@ -428,6 +428,8 @@ mod consent_admission;
 mod consent_desktop_runs;
 #[path = "cloud_agent_runtime_e2e/consent_destination.rs"]
 mod consent_destination;
+#[path = "cloud_agent_runtime_e2e/consent_run_recheck.rs"]
+mod consent_run_recheck;
 #[path = "cloud_agent_runtime_e2e/consent_subsessions.rs"]
 mod consent_subsessions;
 #[path = "cloud_agent_runtime_e2e/context_media.rs"]

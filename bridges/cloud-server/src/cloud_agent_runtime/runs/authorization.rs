@@ -220,7 +220,7 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
 
 /// PiP lives in every group and runs on a Kordi-operated key, so members may
 /// never start an agent run on PiP's account; PiP's sweep queues its own runs.
-fn is_pip_owner(owner_account_id: &str) -> bool {
+pub(super) fn is_pip_owner(owner_account_id: &str) -> bool {
     crate::pip::service_account_id() == Some(owner_account_id)
 }
 

@@ -119,6 +119,16 @@ fn executor(session: &CloudSession, claim_id: Uuid) -> String {
     format!("desktop:{}:{claim_id}", session.device_id)
 }
 
+/// Rechecks a run that this caller's claim holds (`runs::recheck_held_run`).
+async fn recheck(
+    pool: &PgPool,
+    session: &CloudSession,
+    run_id: &str,
+    claim_id: Uuid,
+) -> super::runs::RunResult<bool> {
+    super::runs::recheck_held_run(pool, run_id, &executor(session, claim_id)).await
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct DesktopContextInput {
@@ -233,7 +243,7 @@ pub(super) async fn admit(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
-    match super::runs::recheck_held_run(state.db_pool(), &run_id).await {
+    match recheck(state.db_pool(), &session, &run_id, input.claim_id).await {
         Ok(true) => {}
         Ok(false) => return expired(),
         Err(e) => return run_error_response("desktop recheck", "Could not check the run.", e),
@@ -270,7 +280,7 @@ pub(super) async fn renew(
 ) -> Response {
     // A run whose requester lost access to the agent, or whose chat no longer
     // accepts the owner's answer, is cancelled instead (runs::revocation).
-    match super::runs::recheck_held_run(state.db_pool(), &run_id).await {
+    match recheck(state.db_pool(), &session, &run_id, input.claim_id).await {
         Ok(true) => {}
         Ok(false) => return expired(),
         Err(e) => return run_error_response("desktop recheck", "Could not check the run.", e),
@@ -368,7 +378,7 @@ pub(super) async fn progress(
             )
         }
     }
-    match super::runs::recheck_held_run(state.db_pool(), &run_id).await {
+    match recheck(state.db_pool(), &session, &run_id, input.claim_id).await {
         Ok(true) => {}
         Ok(false) => return rejected(),
         Err(e) => return run_error_response("desktop recheck", "Could not check the run.", e),
