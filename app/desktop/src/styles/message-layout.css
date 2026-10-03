@@ -1,11 +1,18 @@
 .app-message-layout-options {
   display: flex;
-  gap: 3px;
-  padding: 3px;
+  gap: 2px;
+  padding: 2px;
   border: 1px solid var(--app-divider);
-  border-radius: 9px;
+  border-radius: 7px;
 }
-.app-message-layout-options button { min-height: 32px; padding: 4px 12px; border-radius: 6px; }
+.app-message-layout-options button {
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
 .app-message-layout-options [aria-pressed="true"] { background: var(--app-control-bg); color: var(--utility-foreground); }
 
 .kordi-app .app-thread-message-row {

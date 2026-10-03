@@ -827,7 +827,7 @@ private struct AppearanceSettingsView: View {
                     }
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("message-layout-picker")
-                    Text("Chat uses bubbles. Threads uses a compact, continuous list. Quote and discussion actions work in both.")
+                    Text("Chat uses bubbles. Threads uses a compact, continuous list.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
