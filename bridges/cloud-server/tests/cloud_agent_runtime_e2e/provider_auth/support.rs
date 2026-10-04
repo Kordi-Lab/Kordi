@@ -136,13 +136,16 @@ async fn support_runs_use_the_dedicated_service_api_key_without_an_owner_snapsho
         .await
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
-    assert_eq!(read_json(lease).await["run"]["providerAuthAvailable"], true);
+    let leased = read_json(lease).await;
+    assert_eq!(leased["run"]["providerAuthAvailable"], true);
+    let run_token = lease_run_token(&leased);
 
     let provider_auth = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-support-service" }),
         ))
         .await

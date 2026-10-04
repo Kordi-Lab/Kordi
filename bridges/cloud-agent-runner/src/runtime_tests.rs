@@ -164,11 +164,8 @@ fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
     }
 }
 
-#[test]
-fn sandbox_backend_selection_defaults_to_local() {
-    std::env::remove_var("KORDI_CLOUD_SANDBOX_BACKEND");
-    assert_eq!(sandbox_backend_mode_from_env(), SandboxBackendMode::Local);
-}
+#[path = "runtime_sandbox_mode_tests.rs"]
+mod sandbox_mode;
 
 #[tokio::test]
 async fn k8s_backend_requires_sandbox_id() {
@@ -326,6 +323,10 @@ async fn marks_failed_when_provider_auth_is_missing() {
 }
 
 fn temp_sandbox() -> std::path::PathBuf {
+    // Runs processed through the environment-selected backend use the local
+    // development sandbox in these tests. Only ever enabled, never removed, so
+    // concurrently running tests observe one consistent value.
+    std::env::set_var(LOCAL_SANDBOX_OPT_IN_ENV, "1");
     std::env::temp_dir().join(format!(
         "kordi-runtime-model-loop-test-{}",
         uuid::Uuid::new_v4().simple()

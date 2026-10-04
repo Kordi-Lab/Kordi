@@ -279,6 +279,7 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
         .await
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
+    let run_token = lease_run_token(&read_json(lease).await);
 
     let user_token_response = router
         .clone()
@@ -293,9 +294,10 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
 
     let wrong_runner_response = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-other" }),
         ))
         .await
@@ -306,9 +308,10 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
 
     let provider_auth = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-material" }),
         ))
         .await
@@ -385,12 +388,14 @@ async fn provider_auth_material_missing_snapshot_returns_not_found() {
         .await
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
+    let run_token = lease_run_token(&read_json(lease).await);
 
     let missing_snapshot_response = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/provider-auth"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-material-missing" }),
         ))
         .await

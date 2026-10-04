@@ -5,7 +5,10 @@ mod prompt;
 mod provider;
 
 pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
-pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
+pub use provider::{
+    public_provider_client, OpenAiCompatibleProvider, OpenAiProviderConfig,
+    PRIVATE_PROVIDER_ENDPOINTS_ENV,
+};
 
 use crate::artifacts::export_sandbox_file;
 use crate::client::{CloudAgentRun, CloudAgentRunClient, ProviderAuthMaterial, RunnerClientError};

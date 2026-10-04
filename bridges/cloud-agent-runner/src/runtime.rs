@@ -21,11 +21,39 @@ pub enum SandboxBackendMode {
     K8s,
 }
 
-pub fn sandbox_backend_mode_from_env() -> SandboxBackendMode {
-    match std::env::var("KORDI_CLOUD_SANDBOX_BACKEND") {
-        Ok(value) if value.trim().eq_ignore_ascii_case("k8s") => SandboxBackendMode::K8s,
-        _ => SandboxBackendMode::Local,
+pub const SANDBOX_BACKEND_ENV: &str = "KORDI_CLOUD_SANDBOX_BACKEND";
+
+/// Development-only switch that permits the `local` sandbox backend. The local
+/// backend runs commands as the runner's own user on the runner host, so it is
+/// not an isolation boundary and must never serve hosted runs.
+pub const LOCAL_SANDBOX_OPT_IN_ENV: &str = "KORDI_CLOUD_SANDBOX_ALLOW_LOCAL";
+
+/// Chooses the sandbox backend. `k8s` is always allowed. `local`, which is
+/// also what an unset backend means, requires the explicit development
+/// opt-in; any other value fails closed.
+pub fn sandbox_backend_mode(
+    backend: Option<&str>,
+    local_opt_in: Option<&str>,
+) -> Result<SandboxBackendMode, &'static str> {
+    let backend = backend
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase);
+    match backend.as_deref() {
+        Some("k8s") => Ok(SandboxBackendMode::K8s),
+        None | Some("local") if crate::config::env_flag_enabled(local_opt_in) => {
+            Ok(SandboxBackendMode::Local)
+        }
+        None | Some("local") => Err("local_sandbox_not_enabled"),
+        Some(_) => Err("unsupported_sandbox_backend"),
     }
+}
+
+pub fn sandbox_backend_mode_from_env() -> Result<SandboxBackendMode, &'static str> {
+    sandbox_backend_mode(
+        std::env::var(SANDBOX_BACKEND_ENV).ok().as_deref(),
+        std::env::var(LOCAL_SANDBOX_OPT_IN_ENV).ok().as_deref(),
+    )
 }
 
 fn sentence_case_first(text: &str) -> String {
@@ -82,7 +110,15 @@ pub fn sandbox_backend_for_run(
     run: &CloudAgentRun,
     local_root: PathBuf,
 ) -> Result<SandboxBackendHandle, &'static str> {
-    match sandbox_backend_mode_from_env() {
+    sandbox_backend_for_mode(sandbox_backend_mode_from_env(), run, local_root)
+}
+
+fn sandbox_backend_for_mode(
+    mode: Result<SandboxBackendMode, &'static str>,
+    run: &CloudAgentRun,
+    local_root: PathBuf,
+) -> Result<SandboxBackendHandle, &'static str> {
+    match mode? {
         SandboxBackendMode::Local => {
             let id = run.sandbox_id.as_deref().unwrap_or(&run.run_id);
             if id.is_empty()
@@ -92,9 +128,12 @@ pub fn sandbox_backend_for_run(
             {
                 return Err("invalid_sandbox_id");
             }
-            Ok(std::sync::Arc::new(LocalSandboxBackend::new(
-                local_root.join(id),
-            )))
+            let backend = LocalSandboxBackend::new(local_root.join(id));
+            if backend.identity().is_some() {
+                crate::sandbox_client::restrict_local_sandbox_root(&local_root)
+                    .map_err(|_| "local_sandbox_root_unavailable")?;
+            }
+            Ok(std::sync::Arc::new(backend))
         }
         SandboxBackendMode::K8s => {
             let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;

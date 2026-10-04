@@ -64,24 +64,29 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
     assert_eq!(lease_body["run"]["runId"], run_id);
     assert_eq!(lease_body["run"]["status"], "leased");
     assert_eq!(lease_body["run"]["providerAuthAvailable"], true);
+    let run_token = lease_run_token(&lease_body);
 
     let running = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/running"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-a" }),
         ))
         .await
         .unwrap();
     assert_eq!(running.status(), StatusCode::OK);
-    assert_eq!(read_json(running).await["run"]["status"], "running");
+    let running_body = read_json(running).await;
+    assert_eq!(running_body["run"]["status"], "running");
+    assert!(running_body["run"].get("runToken").is_none());
 
     let complete = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/complete"),
             "runner-test-token",
+            &run_token,
             json!({ "runnerId": "runner-a", "responseText": "runner skeleton complete" }),
         ))
         .await
@@ -318,12 +323,14 @@ async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() 
     let run_id = leased["run"]["runId"].as_str().unwrap().to_string();
     assert_eq!(run_id, expected_run_id);
     assert_eq!(leased["run"]["providerAuthAvailable"], false);
+    let run_token = lease_run_token(&leased);
 
     let failed = router
         .clone()
-        .oneshot(post_json_with_runner_token(
+        .oneshot(post_json_with_run_token(
             &format!("/v1/cloud/agent-runs/{run_id}/fail"),
             "runner-test-token",
+            &run_token,
             json!({
                 "runnerId": "runner-missing-provider",
                 "errorCode": "missing_provider_auth",

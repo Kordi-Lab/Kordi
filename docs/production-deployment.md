@@ -51,16 +51,52 @@ Every mutation runs on the corresponding production machine:
 
 1. Acquire the shared host-wide `flock` in the configured host lock directory.
 2. Verify the bundle and backup receipt before changing running services.
-3. Capture both previous images as immutable digests and preserve their local references.
-4. Import both approved OCI images and verify their digests in the host image store.
-5. Change only the server and runner deployment images, using digest-pinned references.
-6. Wait for both rollouts and validate the canonical `https://kordi.ai/health` endpoint.
-7. Write a durable host record and a safe workflow result before releasing the lock.
+3. Verify that the agent sandbox NetworkPolicy exists and isolates sandbox pods.
+4. Capture both previous images as immutable digests and preserve their local references.
+5. Import both approved OCI images and verify their digests in the host image store.
+6. Change only the server and runner deployment images, using digest-pinned references.
+7. Wait for both rollouts and validate the canonical `https://kordi.ai/health` endpoint.
+8. Write a durable host record and a safe workflow result before releasing the lock.
 
 This path does not rebuild source, reconcile unrelated storage/media manifests, or run
 from a laptop lock. Manual operators must use the same host lock directory. Provision it
 with a shared operator group, setgid ownership, and group-writable lock files so CI and
 operator identities actually contend for the same lock.
+
+## Agent sandbox network boundary
+
+Agent sandbox pods run model-directed commands. The runner labels them
+`app.kubernetes.io/component: agent-sandbox`, and
+`bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml` admits no
+inbound traffic to them and limits their outbound traffic to cluster DNS and public
+addresses. Promotion does not apply manifests, so it checks this policy instead: if
+`networkpolicy/kordi-cloud-agent-sandbox` is missing, selects other pods, admits inbound
+traffic, or lets egress reach private, carrier-grade NAT, link-local, or loopback ranges,
+the promotion stops before any image changes with the stage
+`sandbox network policy verification`.
+
+Apply the policy once per cluster, and again whenever the manifest changes, from a
+checkout of the promoted revision on the production machine:
+
+```bash
+sudo k3s kubectl apply -f bridges/cloud-server/deploy/k3s/manifests/agent-sandbox-network-policy.yaml
+sudo k3s kubectl -n kordi-cloud get networkpolicy kordi-cloud-agent-sandbox
+```
+
+Then run `bridges/cloud-agent-runner/scripts/k8s-sandbox-smoke.sh` on the same machine
+and require `[smoke] ok`. Its egress check proves from an unlabeled control pod that the
+Cloud server, database, and node addresses are reachable, then proves that a sandbox pod
+still resolves DNS and reaches a public address but cannot reach any of them or the
+metadata endpoint.
+
+## Runner credentials during a rollout
+
+Runner leases issued before run-scoped credentials existed have no stored credential
+hash. The server accepts the shared runner token alone for such a lease only while it is
+current, so runs in flight during the first rollout finish. A run that an old runner
+leases from the new server during the rollout overlap cannot report progress and is
+retried after its 120-second lease expires; to avoid that window, scale the runner to
+zero before promotion and back to one afterwards.
 
 If rollout or health fails after images were applied and the schema was declared
 `backward-compatible`, the helper restores and verifies both previous images. For

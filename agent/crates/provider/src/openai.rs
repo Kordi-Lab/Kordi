@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use kordi_core::error::{KordiError, KordiResult};
 use reqwest::Client;
 use serde_json::{Value, json};
-use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::error::{ProviderError, ProviderErrorFormat, unexpected_response_with_sensitive_values};
@@ -34,13 +33,18 @@ impl Default for OpenAiProvider {
 
 impl OpenAiProvider {
     pub fn new() -> Self {
-        Self {
-            client: Client::builder()
-                .connect_timeout(Duration::from_secs(30))
-                .read_timeout(Duration::from_secs(300))
+        Self::with_client(
+            crate::with_provider_timeouts(Client::builder())
                 .build()
                 .unwrap_or_else(|_| Client::new()),
-        }
+        )
+    }
+
+    /// Sends every request through `client`, for callers that need a
+    /// restricted transport. Apply [`crate::with_provider_timeouts`] to its
+    /// builder to keep the provider timeouts.
+    pub fn with_client(client: Client) -> Self {
+        Self { client }
     }
 }
 

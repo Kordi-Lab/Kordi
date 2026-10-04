@@ -1,0 +1,64 @@
+# Network boundary for agent sandbox pods.
+#
+# Sandbox Jobs created by the Cloud Agent Runner run model-directed commands.
+# Their pods carry `app.kubernetes.io/component: agent-sandbox` (set in
+# bridges/cloud-agent-runner/src/k8s_sandbox/job_spec.rs). This policy:
+#
+# - admits no inbound traffic to those pods;
+# - allows DNS only to the cluster DNS pods in kube-system;
+# - allows other outbound traffic only to public internet addresses.
+#
+# Excluded destinations: RFC 1918 private ranges (which contain the default
+# k3s pod CIDR 10.42.0.0/16, service CIDR 10.43.0.0/16, and the VM's internal
+# address), carrier-grade NAT, link-local (including the cloud metadata
+# endpoint 169.254.169.254), loopback, "this network", multicast, and
+# reserved ranges. A cluster configured with a pod or service CIDR outside
+# these ranges must add that CIDR to the `except` list below.
+#
+# k3s enforces NetworkPolicy through its embedded kube-router policy
+# controller. It is enabled by default and stays enabled because
+# install-k3s.sh does not pass `--disable-network-policy`. Verify it with
+# `kubectl -n kordi-cloud get networkpolicy` and the egress check in
+# bridges/cloud-agent-runner/scripts/k8s-sandbox-smoke.sh.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kordi-cloud-agent-sandbox
+  namespace: kordi-cloud
+  labels:
+    app.kubernetes.io/name: kordi-cloud-agent-sandbox-policy
+    app.kubernetes.io/component: agent-sandbox-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: agent-sandbox
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 0.0.0.0/8
+              - 10.0.0.0/8
+              - 100.64.0.0/10
+              - 127.0.0.0/8
+              - 169.254.0.0/16
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 224.0.0.0/4
+              - 240.0.0.0/4

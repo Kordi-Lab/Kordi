@@ -342,7 +342,8 @@ async fn cloud_runner_reads_the_same_authorized_image_contract() {
     };
     // Reassign only the fixture run to simulate the admitted cloud executor.
     query("UPDATE cloud_agent_fallback_runs SET execution_backend='cloud',claimed_by='media-fixture-runner' WHERE run_id=$1").bind(&f.run_id).execute(&f.pool).await.unwrap();
-    let response=f.router.clone().oneshot(post_json_with_runner_token(&format!("/v1/cloud/agent-runs/{}/context",f.run_id),"runner-test-token",json!({"runnerId":"media-fixture-runner","tool":"read_session","arguments":f.args(&f.first,&f.attachment)}))).await.unwrap();
+    let run_token = issue_test_run_token(&f.pool, &f.run_id).await;
+    let response=f.router.clone().oneshot(post_json_with_run_token(&format!("/v1/cloud/agent-runs/{}/context",f.run_id),"runner-test-token",&run_token,json!({"runnerId":"media-fixture-runner","tool":"read_session","arguments":f.args(&f.first,&f.attachment)}))).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     let value = read_json(response).await;
     assert_eq!(

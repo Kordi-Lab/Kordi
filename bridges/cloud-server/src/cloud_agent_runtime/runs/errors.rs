@@ -52,6 +52,14 @@ pub(crate) fn runner_unauthorized() -> Response {
     )
 }
 
+pub(crate) fn run_token_unauthorized() -> Response {
+    error_response(
+        "invalid_run_token",
+        "Missing or invalid run credential for this Cloud agent run.",
+        StatusCode::UNAUTHORIZED,
+    )
+}
+
 pub(crate) fn run_error_response(
     context: &'static str,
     persistence_message: &'static str,

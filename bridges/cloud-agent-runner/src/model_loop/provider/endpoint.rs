@@ -124,33 +124,45 @@ pub(super) fn ensure_plain_api_key(provider: &str, api_key: &str) -> Result<(), 
     Ok(())
 }
 
-pub(super) fn is_owner_local_provider_endpoint(base_url: &str) -> bool {
-    let Ok(url) = reqwest::Url::parse(base_url) else {
-        return true;
+/// Operator switch for self-hosted deployments whose model endpoints are on a
+/// private network. When it is off, which is the default, provider requests
+/// only reach public internet addresses. When it is on, private and loopback
+/// addresses are reachable, but link-local and cloud metadata addresses still
+/// are not.
+pub const PRIVATE_PROVIDER_ENDPOINTS_ENV: &str = "KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS";
+
+pub(crate) fn private_provider_endpoints_allowed() -> bool {
+    crate::config::env_flag_enabled(
+        std::env::var(PRIVATE_PROVIDER_ENDPOINTS_ENV)
+            .ok()
+            .as_deref(),
+    )
+}
+
+pub(super) const OWNER_LOCAL_ENDPOINT_ERROR: &str =
+    "Cloud fallback cannot use owner-local provider endpoints such as localhost or private networks.";
+
+/// Rejects an endpoint the runner must not send an account's credentials to.
+/// Without the operator opt-in it must pass the same public-address policy as
+/// the web tools: HTTP(S), no embedded credentials, and a public literal
+/// address or a multi-label host name. With the opt-in it may also be on a
+/// private network, but never link-local or a cloud metadata service. Host
+/// names are checked again against every DNS answer when the provider client
+/// connects.
+pub(super) fn ensure_provider_endpoint_allowed(
+    base_url: &str,
+    allow_private: bool,
+) -> Result<(), ModelLoopError> {
+    let allowed = match reqwest::Url::parse(base_url) {
+        Ok(url) if allow_private => kordi_tools::validate_private_network_endpoint(&url).is_ok(),
+        Ok(url) => kordi_tools::validate_public_endpoint(&url).is_ok(),
+        Err(_) => false,
     };
-    let Some(host) = url.host_str() else {
-        return true;
-    };
-    let host = host.trim_matches(['[', ']']).to_ascii_lowercase();
-    if host == "localhost" || host.ends_with(".local") || host.ends_with(".localhost") {
-        return true;
+    if allowed {
+        Ok(())
+    } else {
+        Err(ModelLoopError::Provider(
+            OWNER_LOCAL_ENDPOINT_ERROR.to_string(),
+        ))
     }
-    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
-        return match ip {
-            std::net::IpAddr::V4(ip) => {
-                ip.is_loopback()
-                    || ip.is_private()
-                    || ip.is_link_local()
-                    || ip.is_unspecified()
-                    || ip.is_broadcast()
-            }
-            std::net::IpAddr::V6(ip) => {
-                ip.is_loopback()
-                    || ip.is_unspecified()
-                    || ip.is_unique_local()
-                    || ip.is_unicast_link_local()
-            }
-        };
-    }
-    false
 }

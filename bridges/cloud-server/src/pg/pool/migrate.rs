@@ -162,6 +162,41 @@ mod tests {
     }
 
     #[test]
+    fn embedded_versions_are_unique_and_increasing() {
+        for pair in EMBEDDED_MIGRATIONS.windows(2) {
+            assert!(
+                pair[0].version < pair[1].version,
+                "migration version {} must be greater than {}",
+                pair[1].version,
+                pair[0].version
+            );
+        }
+        let mut descriptions = std::collections::HashSet::new();
+        for migration in EMBEDDED_MIGRATIONS {
+            assert!(
+                descriptions.insert(migration.description),
+                "migration description {:?} is used twice",
+                migration.description
+            );
+        }
+    }
+
+    #[test]
+    fn embedded_versions_match_their_file_names() {
+        let names = include_str!("embedded.rs")
+            .lines()
+            .filter_map(|line| line.split("migrations/").nth(1))
+            .filter_map(|rest| rest.split('_').next())
+            .map(|number| number.parse::<i64>().unwrap())
+            .collect::<Vec<_>>();
+        let versions = EMBEDDED_MIGRATIONS
+            .iter()
+            .map(|migration| migration.version)
+            .collect::<Vec<_>>();
+        assert_eq!(names, versions);
+    }
+
+    #[test]
     fn pending_compatibility_guards_are_narrowly_scoped() {
         for migration in EMBEDDED_MIGRATIONS {
             let sql = pending_migration_sql(migration);
