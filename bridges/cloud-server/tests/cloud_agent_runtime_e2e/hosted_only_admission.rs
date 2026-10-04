@@ -1,20 +1,19 @@
-//! A ready owner Mac keeps requests for both local and hosted accounts.
-//! Cloud may claim after the Mac's capability or presence expires.
+//! A ready owner Mac that proves its device key keeps requests for both local
+//! and hosted accounts. Cloud may claim after the Mac's capability or presence
+//! expires.
 
 use super::*;
 
-/// Signs up an owner whose Mac is online and ready for its default agent.
-async fn owner_with_ready_mac(
-    router: &axum::Router,
-    pool: &sqlx_postgres::PgPool,
-    prefix: &str,
-) -> TestAccount {
-    let owner = signup(router, prefix, "Owner").await;
-    sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")
-        .bind(&owner.account_id)
-        .execute(pool)
-        .await
-        .unwrap();
+/// Signs up an owner whose Mac registers a device key and is online and ready,
+/// with device proofs, for its default agent.
+async fn owner_with_ready_mac(router: &axum::Router, prefix: &str) -> TestAccount {
+    let owner = sign_in_with_device_key(
+        router,
+        "/v1/cloud/auth/signup",
+        &unique_email(prefix),
+        &random_device_key(),
+    )
+    .await;
     let online = router
         .clone()
         .oneshot(post_with_token("/v1/cloud/presence/online", &owner.token))
@@ -26,7 +25,10 @@ async fn owner_with_ready_mac(
         .oneshot(post_json_with_token(
             "/v1/cloud/agent-runs/desktop/ready",
             &owner.token,
-            json!({ "agentIds": [format!("cloud-agent:{}", owner.account_id)] }),
+            json!({
+                "agentIds": [format!("cloud-agent:{}", owner.account_id)],
+                "deviceProof": true
+            }),
         ))
         .await
         .unwrap();
@@ -80,7 +82,7 @@ async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
-    let owner = owner_with_ready_mac(&router, &pool, "hosted-only-owner").await;
+    let owner = owner_with_ready_mac(&router, "hosted-only-owner").await;
     let session = format!("session:self-agent:{}", uuid::Uuid::new_v4());
     let conversation = create_test_conversation(
         &pool,
@@ -159,7 +161,7 @@ async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
 async fn a_contacts_hosted_only_route_does_not_skip_the_owner_mac() {
     let Some(pool) = try_pool().await else { return };
     let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
-    let owner = owner_with_ready_mac(&router, &pool, "hosted-only-contact-owner").await;
+    let owner = owner_with_ready_mac(&router, "hosted-only-contact-owner").await;
     let contact = signup(&router, "hosted-only-contact", "Contact").await;
     accept_contacts(&router, &contact, &owner).await;
     let conversation = create_test_conversation(

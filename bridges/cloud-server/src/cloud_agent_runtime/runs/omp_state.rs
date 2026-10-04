@@ -260,19 +260,37 @@ async fn context(pool: &PgPool, run_id: &str, input: ContextInput) -> RunResult<
             ));
         }
     }
+    // Only the newest replayable state anchored in this history is used, so
+    // only that row is loaded. Each saved state is at most MAX_STATE_BYTES.
+    let anchors = history_anchors(&frozen);
     let states: Vec<(String, Value)> = query_as(
         "SELECT s.response_message_id,s.state_json FROM cloud_agent_omp_state s JOIN cloud_agent_fallback_runs r ON r.run_id=s.run_id \
          WHERE s.owner_account_id=$1 AND s.session_id=$2 AND s.execution_agent_id=$3 AND s.route_json=$4 \
          AND s.auth_snapshot_id=$5 AND s.provider=$6 AND s.model=$7 AND r.requester_account_id=$8 AND r.status='completed' \
+         AND s.response_message_id=ANY($9) AND s.state_json->'replayable'='true'::jsonb \
          AND NOT EXISTS(SELECT 1 FROM cloud_chat_messages m JOIN cloud_chat_conversations c ON c.conversation_id=m.conversation_id \
              WHERE c.legacy_session_id=s.session_id AND (m.deleted_at IS NOT NULL \
              OR (m.edited_at>s.created_at AND m.created_at<=s.created_at) \
              OR EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)) \
              OR EXISTS(SELECT 1 FROM cloud_chat_attachment_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)))) \
-         ORDER BY s.created_at DESC LIMIT 32")
+         ORDER BY s.created_at DESC LIMIT 1")
         .bind(owner).bind(session).bind(agent).bind(route).bind(&input.auth_snapshot_id)
-        .bind(&input.provider).bind(&input.model).bind(requester).fetch_all(pool).await?;
+        .bind(&input.provider).bind(&input.model).bind(requester).bind(&anchors).fetch_all(pool).await?;
     Ok(merge_context(&frozen, &states))
+}
+
+/// Canonical message ids of the frozen history, the only anchors a saved
+/// state can replay from.
+fn history_anchors(frozen: &Value) -> Vec<String> {
+    frozen["history"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|row| row["ids"].as_array())
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect()
 }
 
 fn merge_context(frozen: &Value, states: &[(String, Value)]) -> Value {
@@ -335,6 +353,19 @@ mod tests {
         assert_eq!(result["messages"][0]["content"], "allowed");
         assert!(!result.to_string().contains("private"));
     }
+    #[test]
+    fn only_history_message_ids_select_a_saved_state() {
+        let frozen = json!({"prompt":"current","history":[
+            {"ids":["first","first-alias"],"message":{"role":"user","content":"a"}},
+            {"message":{"role":"user","content":"no ids"}},
+            {"ids":["second"],"message":{"role":"user","content":"b"}}]});
+        assert_eq!(
+            history_anchors(&frozen),
+            vec!["first", "first-alias", "second"]
+        );
+        assert!(history_anchors(&json!({"prompt":"legacy"})).is_empty());
+    }
+
     #[test]
     fn state_rejects_system_prompt_injection() {
         let state = OmpState {

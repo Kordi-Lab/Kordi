@@ -6,8 +6,10 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, process::Command};
 
+pub(crate) mod device_identity;
 mod secret_store;
 
+pub(crate) use device_identity::sign_with_device_key;
 pub(crate) use secret_store::configure_keychain_scope;
 use secret_store::{secret_delete, secret_load, secret_store};
 
@@ -183,10 +185,12 @@ pub fn cloud_session_clear() -> Result<(), String> {
 }
 
 /// Persist the installation keypair independently of account sign-out. Only
-/// the public half is sent to the Cloud API; the private half remains in the
-/// OS keychain (or the isolated developer profile's secret directory).
-#[tauri::command]
-pub fn cloud_device_identity_store(identity: CloudDeviceIdentityEntry) -> Result<(), String> {
+/// the public half leaves native code, for the Cloud API; the private half
+/// remains in the OS keychain (or the isolated developer profile's secret
+/// directory) and is used only by `device_identity`.
+pub(crate) fn cloud_device_identity_store(
+    identity: CloudDeviceIdentityEntry,
+) -> Result<(), String> {
     if identity.key_algorithm != "p256"
         || identity.private_key_pkcs8.trim().is_empty()
         || identity.public_key_spki.trim().is_empty()
@@ -197,8 +201,7 @@ pub fn cloud_device_identity_store(identity: CloudDeviceIdentityEntry) -> Result
     secret_store(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME, &json)
 }
 
-#[tauri::command]
-pub fn cloud_device_identity_load() -> Result<Option<CloudDeviceIdentityEntry>, String> {
+pub(crate) fn cloud_device_identity_load() -> Result<Option<CloudDeviceIdentityEntry>, String> {
     match secret_load(DEVICE_IDENTITY_KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)? {
         Some(value) => serde_json::from_str(&value)
             .map(Some)

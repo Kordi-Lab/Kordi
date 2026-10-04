@@ -91,6 +91,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::desktop::provider_auth),
         )
         .route(
+            "/v1/cloud/agent-runs/:run_id/desktop/provider-auth/challenge",
+            post(super::desktop::provider_auth_challenge),
+        )
+        .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
         )
@@ -139,6 +143,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agent-runs/:run_id/artifacts",
             post(export_runner_artifact),
         )
+        .route_layer(axum::middleware::from_fn(runner_auth::require_runner_token))
         .with_state(state.clone());
 
     let public_catalog = Router::new().route(
@@ -409,6 +414,8 @@ mod auth_snapshots;
 mod canary_lease_tests;
 mod provider_auth_routes;
 mod runner_auth;
+#[cfg(test)]
+mod runner_token_tests;
 mod test_route;
 
 use runner_auth::runner_authorized;

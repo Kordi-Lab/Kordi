@@ -133,6 +133,37 @@ async fn omp_state_is_private_route_scoped_and_fenced_with_completion() {
     let replay = read_json(replay).await;
     assert_eq!(replay["messages"], state["messages"]);
     assert_eq!(replay["prompt"], "next");
+    // Newer saved states that are not anchored in this history, or are not
+    // replayable, are neither used nor loaded; the newest anchored one is.
+    for (offset, anchor, replayable, text) in [
+        (1, "unrelated-anchor", true, "unanchored state"),
+        (2, response.as_str(), false, "unreplayable state"),
+    ] {
+        save_copied_state(&pool, &run, offset, anchor, replayable, text).await;
+    }
+    let replay = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{next}/omp-context"),
+            "runner-test-token",
+            context_body.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(read_json(replay).await["messages"], state["messages"]);
+    save_copied_state(&pool, &run, 3, &response, true, "newest state").await;
+    let replay = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{next}/omp-context"),
+            "runner-test-token",
+            context_body.clone(),
+        ))
+        .await
+        .unwrap();
+    let replay = read_json(replay).await;
+    assert_eq!(replay["messages"][0]["content"], "newest state");
+    assert_eq!(replay["messages"].as_array().unwrap().len(), 1);
     // A private hide after admission invalidates both frozen canonical content
     // and structured replay, so saved signatures cannot revive hidden content.
     query("INSERT INTO cloud_chat_message_visibility(account_id,message_id) VALUES($1,$2::uuid)")
@@ -186,4 +217,43 @@ async fn omp_state_is_private_route_scoped_and_fenced_with_completion() {
         .await
         .unwrap();
     assert_eq!(count, 1);
+}
+
+/// Saves a copy of `run`'s completed state under a new completed run, created
+/// `offset` minutes later, with the given anchor, replay flag, and message.
+async fn save_copied_state(
+    pool: &sqlx_postgres::PgPool,
+    run: &str,
+    offset: i32,
+    anchor: &str,
+    replayable: bool,
+    text: &str,
+) {
+    let copy = format!("car_{}", uuid::Uuid::new_v4().simple());
+    query(
+        "INSERT INTO cloud_agent_fallback_runs SELECT (jsonb_populate_record(NULL::cloud_agent_fallback_runs, \
+           to_jsonb(r) || jsonb_build_object('run_id',$2::text,'idempotency_key',$2::text,'request_message_id',$2::text))).* \
+         FROM cloud_agent_fallback_runs r WHERE r.run_id=$1",
+    )
+    .bind(run)
+    .bind(&copy)
+    .execute(pool)
+    .await
+    .unwrap();
+    query(
+        "INSERT INTO cloud_agent_omp_state(run_id,owner_account_id,session_id,execution_agent_id,route_json,auth_snapshot_id,provider,model,response_message_id,state_json,created_at) \
+         SELECT $2,owner_account_id,session_id,execution_agent_id,route_json,auth_snapshot_id,provider,model,$3, \
+           state_json || jsonb_build_object('replayable',$4::boolean,'messages',jsonb_build_array(jsonb_build_object('role','user','content',$5::text))), \
+           created_at + make_interval(mins => $6) \
+         FROM cloud_agent_omp_state WHERE run_id=$1",
+    )
+    .bind(run)
+    .bind(&copy)
+    .bind(anchor)
+    .bind(replayable)
+    .bind(text)
+    .bind(offset)
+    .execute(pool)
+    .await
+    .unwrap();
 }

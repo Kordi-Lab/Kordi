@@ -20,9 +20,10 @@ pub use authorization::{
     request_identity, requester_can_target_owner, validate_group_agent_claim,
     validate_shared_cloud_agent_claim,
 };
+pub(crate) use claims::runtime_route_for_claim;
 pub use claims::{
-    claim_run, claim_run_for_desktop, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
-    CloudAgentRunLookupResponse, CloudAgentRunResponse,
+    claim_run, claim_run_for_desktop, existing_cloud_run, lookup_run_for_request,
+    AgentRuntimeRoute, ClaimRunRequest, CloudAgentRunLookupResponse, CloudAgentRunResponse,
 };
 pub use completion::{
     complete_run, complete_run_with_state, fail_run, CompleteRunRequest, FailRunRequest,

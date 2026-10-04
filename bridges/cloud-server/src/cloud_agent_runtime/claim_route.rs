@@ -6,9 +6,9 @@ use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::CloudSession;
 use crate::cloud_agent_runtime::runs::{
     claim_conversation_admits_run, claim_has_shared_cloud_agent_target, claim_run,
-    cloud_agent_response_is_processing_for_request, error_response, requester_can_target_owner,
-    run_error_response, validate_group_agent_claim, validate_shared_cloud_agent_claim,
-    ClaimRunRequest,
+    cloud_agent_response_is_processing_for_request, error_response, existing_cloud_run,
+    requester_can_target_owner, run_error_response, validate_group_agent_claim,
+    validate_shared_cloud_agent_claim, ClaimRunRequest,
 };
 use crate::server::ServerState;
 use axum::extract::State;
@@ -49,6 +49,29 @@ async fn owner_has_fresh_desktop_execution_claim(
     }))
 }
 
+/// Records one agent run admission for `account_id` and answers with
+/// `rate_limited` when the account's budget is spent.
+pub(super) async fn agent_run_rate_limited(
+    rate_limiter: Option<Extension<Arc<CloudRateLimiter>>>,
+    account_id: &str,
+) -> Option<Response> {
+    let Extension(rate_limiter) = rate_limiter?;
+    let RateLimitDecision::Limited { retry_after } =
+        rate_limiter.observe_agent_run(account_id).await
+    else {
+        return None;
+    };
+    let mut response = error_response(
+        "rate_limited",
+        "Too many agent requests. Try again shortly.",
+        StatusCode::TOO_MANY_REQUESTS,
+    );
+    if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
+        response.headers_mut().insert("Retry-After", value);
+    }
+    Some(response)
+}
+
 pub(super) async fn claim_cloud_agent_run(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -70,20 +93,8 @@ pub(super) async fn claim_cloud_agent_run(
             StatusCode::FORBIDDEN,
         );
     }
-    if let Some(Extension(rate_limiter)) = rate_limiter {
-        if let RateLimitDecision::Limited { retry_after } =
-            rate_limiter.observe_agent_run(&session.account_id).await
-        {
-            let mut response = error_response(
-                "rate_limited",
-                "Too many agent requests. Try again shortly.",
-                StatusCode::TOO_MANY_REQUESTS,
-            );
-            if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
-                response.headers_mut().insert("Retry-After", value);
-            }
-            return response;
-        }
+    if let Some(response) = agent_run_rate_limited(rate_limiter, &session.account_id).await {
+        return response;
     }
 
     match super::runs::request_identity(
@@ -202,6 +213,21 @@ pub(super) async fn claim_cloud_agent_run(
     .await
     {
         return response;
+    }
+    // A request Cloud already admitted keeps its run, including one the
+    // owner Mac handed to Cloud because it cannot use the hosted account its
+    // own route selects. Answering owner_online would leave the caller
+    // waiting on a Mac that does not execute the request.
+    match existing_cloud_run(state.db_pool(), &input).await {
+        Ok(Some(run)) => return Json(run).into_response(),
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response(
+                "check existing run",
+                "Could not determine the agent execution route.",
+                error,
+            );
+        }
     }
     let now = Utc::now();
     let route_timeout = crate::presence::presence_timeout();
