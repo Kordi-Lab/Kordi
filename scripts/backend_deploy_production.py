@@ -34,6 +34,17 @@ DNS_PEER = {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name":
 SANDBOX_POD_LABELS = {"app.kubernetes.io/component": "agent-sandbox",
                       "app.kubernetes.io/name": "kordi-cloud-sandbox-executor"}
 SANDBOX_ID_LABEL = "kordi.ai/sandbox-id"
+# Schema version 112 moves every existing group to mention-only agent context.
+# Until the database records it, the server deployment must state how Macs from
+# before that release are treated, so a promotion never leaves the choice to
+# the server default by omission. See
+# docs/production-deployment.md#agent-trust-rollout.
+AGENT_TRUST_SCHEMA_VERSION = 112
+LEGACY_DESKTOP_SETTING = "KORDI_AGENT_CONTEXT_LEGACY_DESKTOP"
+LEGACY_DESKTOP_VALUES = ("allow_without_opt_outs", "deny")
+LEGACY_DESKTOP_COMMAND = ("sudo k3s kubectl -n kordi-cloud set env deployment/kordi-cloud-server "
+                          f"{LEGACY_DESKTOP_SETTING}=allow_without_opt_outs")
+DATABASE = KUBECTL + ["exec", "statefulset/postgres", "--"]
 
 
 def reference(service, digest):
@@ -128,6 +139,39 @@ def verify_sandbox_network_policy():
         raise ValueError(f"The agent sandbox NetworkPolicy does not isolate sandbox pods: {problem}")
 
 
+def legacy_desktop_setting_problem(deployment):
+    """Describe why the server deployment does not state the legacy Mac policy, or return None."""
+    containers = deployment["spec"]["template"]["spec"]["containers"]
+    container = next((item for item in containers if item["name"] == CONTAINERS["cloud-server"]), {})
+    entries = [item for item in container.get("env") or [] if item.get("name") == LEGACY_DESKTOP_SETTING]
+    if not entries:
+        return "it is not set"
+    if len(entries) > 1:
+        return "it is set more than once"
+    if "valueFrom" in entries[0] or entries[0].get("value") not in LEGACY_DESKTOP_VALUES:
+        return "it is not set to " + " or ".join(LEGACY_DESKTOP_VALUES)
+    return None
+
+
+def agent_trust_schema_recorded():
+    """Whether the production database records the agent trust migration."""
+    count = run(DATABASE + ["sh", "-ec", 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc '
+                            f'"SELECT count(*) FROM cloud_schema_versions WHERE version={AGENT_TRUST_SCHEMA_VERSION}"'])
+    if count not in ("0", "1"):
+        raise ValueError("The production schema version could not be read")
+    return count == "1"
+
+
+def verify_agent_trust_rollout_setting():
+    deployment = json.loads(run(KUBECTL + ["get", "deployment", "kordi-cloud-server", "-o", "json"]))
+    problem = legacy_desktop_setting_problem(deployment)
+    if problem and not agent_trust_schema_recorded():
+        raise ValueError(
+            f"{LEGACY_DESKTOP_SETTING} must be set on deployment/kordi-cloud-server before schema version "
+            f"{AGENT_TRUST_SCHEMA_VERSION} is applied, but {problem}. Run `{LEGACY_DESKTOP_COMMAND}`, "
+            "then promote again. See docs/production-deployment.md#agent-trust-rollout.")
+
+
 def apply_images(images):
     for service in PRODUCTION_SERVICES:
         run(KUBECTL + ["set", "image", "deployment/kordi-" + service, CONTAINERS[service] + "=" + images[service]])
@@ -162,6 +206,8 @@ def deploy(args):
             record.update(verify_backup(args.backup_root, backup_id))
             record["stage"] = "sandbox network policy verification"
             verify_sandbox_network_policy()
+            record["stage"] = "agent trust rollout setting verification"
+            verify_agent_trust_rollout_setting()
             record["stage"] = "capture previous images"
             previous = capture_previous()
             record["previousImages"] = previous
