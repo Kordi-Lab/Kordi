@@ -4,6 +4,8 @@ import {
   type SetStateAction,
 } from 'react';
 
+import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { loadSession } from '@/features/cloud/session';
 import type { CloudAccount } from '@/features/cloud/authClient';
 import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupControl.types';
 import {
@@ -60,6 +62,7 @@ export function useKordiGroupCreation({
   setDesktopError,
 }: UseKordiGroupCreationArgs) {
   return useCallback(async (request: {
+    avatarDataUrl?: string | null;
     name?: string | null;
     contactIds: string[];
   }) => {
@@ -124,6 +127,10 @@ export function useKordiGroupCreation({
     const selectedNames = contacts.map((contact) => contact.name);
     const groupDisplayName =
       request.name?.trim() || groupDefaultName(selectedNames);
+    const login = request.avatarDataUrl ? await loadSession() : null;
+    if (request.avatarDataUrl && (!login?.token || !account)) throw new Error('Sign in before setting a group image.');
+    const groupAvatar = request.avatarDataUrl && login?.token && account
+      ? { imageUrl: await defaultCloudAuthClient().uploadGroupAvatarAsset(login.token, request.avatarDataUrl, account.accountId), updatedAtMs: Date.now() } : null;
     const sessionId = `session:group:${crypto.randomUUID()}`;
     const openResult = await openOrCreateCanonicalSessionFast({
       id: sessionId,
@@ -134,13 +141,13 @@ export function useKordiGroupCreation({
       primaryIdentityId: null,
       relationshipIdentityId: null,
       participantIdentityIds,
-      metadata: buildChatCreateGroupMetadata({
+      metadata: { ...buildChatCreateGroupMetadata({
         creatorIdentityId,
         selectedContactIds: contacts.map((contact) => contact.id),
         selectedNames,
         customName: groupDisplayName,
         groupSpaceId: sessionId,
-      }),
+      }), ...(groupAvatar ? { groupAvatar } : {}) },
     });
     nextCanonicalState = mergeOpenCanonicalSessionResult(
       nextCanonicalState,
@@ -160,6 +167,7 @@ export function useKordiGroupCreation({
           groupId: sessionId,
           groupSpaceId: sessionId,
           groupTitle: groupDisplayName,
+          groupAvatar,
           createdByAccountId: account.accountId,
           participants: cloudGroupParticipantsForContacts(
             account,

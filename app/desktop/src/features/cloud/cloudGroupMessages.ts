@@ -1,3 +1,4 @@
+import { cloudGroupMemberJoins, cloudGroupMemberLeaves } from './cloudGroupMembershipCodec';
 import type {
   Contact,
   Conversation,
@@ -30,9 +31,10 @@ import { cloudAgentCanonicalIdentityId } from './cloudAgentIdentity';
 export { cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState, cloudGroupAgentMentionResponseStateFromRows, cloudGroupAgentMentionResponseStateFromSources } from './cloudGroupAgentResponseState';
 export type { CloudGroupAgentMentionResponseState } from './cloudGroupAgentResponseState';
 import { cloudGroupTransportParticipant, type CloudGroupActor, type CloudGroupParticipant } from './cloudGroupParticipantTypes';
-const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:'; const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
+import { normalizeGroupAvatarSnapshot } from '@/features/chat/groupAvatar';
+const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
-export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update';
+export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update' | 'group-avatar-update';
 
 export type { CloudGroupActor, CloudGroupParticipant } from './cloudGroupParticipantTypes';
 
@@ -65,6 +67,7 @@ export type CloudGroupControlEnvelope = {
   groupId: string;
   groupSpaceId?: string | null;
   groupTitle: string | null;
+  groupAvatar?: import('@/features/chat/groupAvatar').GroupAvatarSnapshot | null;
   createdByAccountId: string;
   actor: CloudGroupActor;
   participants: CloudGroupParticipant[];
@@ -184,50 +187,6 @@ export function cloudGroupManualSessionTitleSnapshot(input: {
         : null,
     ) ?? fallbackCreatorAccountId,
   });
-}
-
-function cloudGroupMemberJoins(value: unknown): CloudGroupMemberJoin[] {
-  if (!Array.isArray(value)) return [];
-  const seenEventIds = new Set<string>();
-  const joins: CloudGroupMemberJoin[] = [];
-  value.forEach((candidate) => {
-    const record = objectRecord(candidate);
-    const eventId = cleanText(typeof record.eventId === 'string' ? record.eventId : null);
-    const accountId = cleanText(typeof record.accountId === 'string' ? record.accountId : null);
-    const displayName = cleanText(typeof record.displayName === 'string' ? record.displayName : null);
-    const createdAtMs = integerMilliseconds(record.createdAtMs);
-    if (!CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN.test(eventId)
-      || !isCloudAccountId(accountId)
-      || createdAtMs === null
-      || seenEventIds.has(eventId)) return;
-    seenEventIds.add(eventId);
-    joins.push({
-      eventId,
-      accountId,
-      displayName: displayName || accountId,
-      createdAtMs,
-    });
-  });
-  return joins;
-}
-
-function cloudGroupMemberLeaves(value: unknown): CloudGroupMemberLeave[] {
-  if (!Array.isArray(value)) return [];
-  const seenEventIds = new Set<string>();
-  const leaves: CloudGroupMemberLeave[] = [];
-  value.forEach((candidate) => {
-    const record = objectRecord(candidate);
-    const eventId = cleanText(typeof record.eventId === 'string' ? record.eventId : null);
-    const accountId = cleanText(typeof record.accountId === 'string' ? record.accountId : null);
-    const createdAtMs = integerMilliseconds(record.createdAtMs);
-    if (!CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN.test(eventId)
-      || !isCloudAccountId(accountId)
-      || createdAtMs === null
-      || seenEventIds.has(eventId)) return;
-    seenEventIds.add(eventId);
-    leaves.push({ eventId, accountId, createdAtMs });
-  });
-  return leaves;
 }
 
 export function isCloudGroupSessionId(value?: string | null): boolean {
@@ -510,7 +469,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
   if (!body.startsWith(CLOUD_GROUP_PREFIX)) return null;
   try {
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
-    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update'].includes(parsed.kind ?? '')) return null;
+    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update', 'group-avatar-update'].includes(parsed.kind ?? '')) return null;
     const kind = parsed.kind as CloudGroupControlKind;
     if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
     if (!isCloudGroupSessionId(parsed.groupId)) return null;
@@ -571,6 +530,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       groupId: parsed.groupId.trim(),
       groupSpaceId: typeof parsed.groupSpaceId === 'string' && parsed.groupSpaceId.trim() ? parsed.groupSpaceId.trim() : null,
       groupTitle: typeof parsed.groupTitle === 'string' && parsed.groupTitle.trim() ? parsed.groupTitle.trim() : null,
+      groupAvatar: normalizeGroupAvatarSnapshot(parsed.groupAvatar),
       createdByAccountId: parsed.createdByAccountId.trim(),
       actor,
       participants,

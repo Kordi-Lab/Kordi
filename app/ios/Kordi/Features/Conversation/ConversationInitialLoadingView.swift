@@ -324,7 +324,7 @@ private struct ConversationInitialPlaceholderRow: View {
             )
             .overlay(alignment: placeholder.kind == .image ? .top : .bottom) {
                 if placeholder.presentation.showsAvatar {
-                    ConversationLoadingSurface(shape: Circle(), phase: phase)
+                    ConversationLoadingSurface(shape: RoundedRectangle(cornerRadius: 28 * 0.17, style: .continuous), phase: phase)
                         .frame(width: 28, height: 28)
                 }
             }
@@ -334,7 +334,7 @@ private struct ConversationInitialPlaceholderRow: View {
     private var ownAvatarSlot: some View {
         Group {
             if placeholder.presentation.showsAvatar {
-                ConversationLoadingSurface(shape: Circle(), phase: phase)
+                ConversationLoadingSurface(shape: RoundedRectangle(cornerRadius: 28 * 0.17, style: .continuous), phase: phase)
                     .frame(width: 28, height: 28)
             } else {
                 Color.clear.frame(width: 28, height: 28)

@@ -43,10 +43,8 @@ import type {
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
 export type AttachmentItem = ComposerAttachmentItem;
-export type CreateChatGroupRequest = {
-  name?: string | null;
-  contactIds: string[];
-};
+import type { CreateChatGroupRequest } from './createChatGroup.types';
+export type { CreateChatGroupRequest } from './createChatGroup.types';
 export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./chatListShellArgs.types').ChatListShellArgs & {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
@@ -109,6 +107,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   handleCreateChatGroup: (request: CreateChatGroupRequest) => Promise<void>;
   handleCreateChatSessionInParticipantSpace: (space: ParticipantSpaceViewModel) => Promise<void>;
   handleRenameChatGroup: (sessionIds: string[], name: string) => Promise<void>;
+  handleUpdateChatGroupAvatar: (sessionIds: string[], dataUrl: string | null) => Promise<void>;
   handleRenameChatSession: (sessionId: string, title: string) => Promise<void>;
   handleAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void>;
   handleRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void>;
@@ -343,6 +342,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleAddCollaborationContact'
   | 'handleCreateChatSessionInParticipantSpace'
   | 'handleRenameChatGroup'
+  | 'handleUpdateChatGroupAvatar'
   | 'handleRenameChatSession'
   | 'handleAddChatGroupMembers'
   | 'handleRemoveChatGroupMember'

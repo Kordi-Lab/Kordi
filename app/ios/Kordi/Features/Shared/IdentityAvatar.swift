@@ -9,6 +9,7 @@ struct IdentityAvatar: View {
     let kind: ConversationKind
     var size: CGFloat = 52
     var seed: String? = nil
+    var cornerRadius: CGFloat? = nil
 
     private var normalizedImageSource: String? {
         if isPip { return nil }
@@ -38,9 +39,9 @@ struct IdentityAvatar: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? size * 0.17, style: .continuous))
         .overlay {
-            Circle().stroke(Color(uiColor: .separator).opacity(0.22), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: cornerRadius ?? size * 0.17, style: .continuous).stroke(Color(uiColor: .separator).opacity(0.22), lineWidth: 0.5)
         }
         .accessibilityHidden(true)
     }
@@ -54,14 +55,14 @@ struct IdentityAvatar: View {
         } else {
             switch kind {
             case .agent:
-                Circle().fill(Color(uiColor: .secondarySystemFill))
+                Rectangle().fill(Color(uiColor: .secondarySystemFill))
             case .group:
-                Circle().fill(KordiTheme.signalBlue.opacity(0.12))
+                Rectangle().fill(KordiTheme.signalBlue.opacity(0.12))
                 Image(systemName: "person.2.fill")
                     .font(.system(size: size * 0.34, weight: .semibold))
                     .foregroundStyle(KordiTheme.signalBlue)
             case .person:
-                Circle().fill(Color(uiColor: .secondarySystemFill))
+                Rectangle().fill(Color(uiColor: .secondarySystemFill))
                 Text(initials)
                     .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -162,7 +163,7 @@ struct PipMarkAvatar: View {
         GeometryReader { proxy in
             let s = proxy.size.width / 64
             ZStack {
-                Circle().fill(Color(red: 1.0, green: 0.957, blue: 0.839))
+                Rectangle().fill(Color(red: 1.0, green: 0.957, blue: 0.839))
                 Circle().fill(Color(red: 0.941, green: 0.706, blue: 0.161))
                     .frame(width: 44 * s, height: 44 * s)
                     .offset(y: 2 * s)
@@ -247,43 +248,37 @@ private struct KordiSupportAvatar: View {
 struct GroupAvatarStack: View {
     let participants: [CloudGroupParticipant]
     var size: CGFloat = 52
+    var imageSource: String? = nil
 
     private var visibleParticipants: [CloudGroupParticipant] {
-        Array(participants.sorted(by: CloudGroupParticipant.canonicalPrecedes).prefix(3))
+        Array(participants.filter { !KordiPipIdentity.isPip(accountId: $0.accountId) }
+            .sorted(by: CloudGroupParticipant.canonicalPrecedes).prefix(9))
     }
 
     var body: some View {
-        if visibleParticipants.isEmpty {
-            IdentityAvatar(name: "Group", imageSource: nil, kind: .group, size: size)
-        } else if visibleParticipants.count == 1, let participant = visibleParticipants.first {
-            participantAvatar(participant, diameter: size)
-        } else {
-            let diameter = size * 0.68
-            let overlap = (size - diameter) / CGFloat(max(visibleParticipants.count - 1, 1))
-
-            ZStack(alignment: .leading) {
-                ForEach(Array(visibleParticipants.enumerated()), id: \.element.id) { index, participant in
-                    participantAvatar(participant, diameter: diameter)
-                        .overlay {
-                            Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 2)
-                        }
-                        .offset(x: CGFloat(index) * overlap)
-                        .zIndex(Double(index))
+        let members = visibleParticipants
+        let columns = members.count <= 1 ? 1 : members.count <= 4 ? 2 : 3
+        let tileSize = (size - 4 - CGFloat(columns - 1)) / CGFloat(columns)
+        ZStack(alignment: .topLeading) {
+            Color(uiColor: .secondarySystemFill)
+            if members.isEmpty {
+                IdentityAvatar(name: "Group", imageSource: nil, kind: .group, size: size)
+            } else {
+                ForEach(members) { participant in
+                    let index = members.firstIndex(where: { $0.id == participant.id }) ?? 0
+                    IdentityAvatar(name: participant.displayName, imageSource: participant.avatarUrl,
+                        kind: .person, size: tileSize, seed: participant.accountId, cornerRadius: 1)
+                        .offset(x: 2 + CGFloat(index % columns) * (tileSize + 1),
+                                y: 2 + CGFloat(index / columns) * (tileSize + 1))
                 }
             }
-            .frame(width: size, height: size, alignment: .leading)
-            .accessibilityHidden(true)
+            if let source = AvatarImageLoader.normalizedSource(imageSource) {
+                AvatarSourceImage(source: source).id(source)
+            }
         }
-    }
-
-    private func participantAvatar(_ participant: CloudGroupParticipant, diameter: CGFloat) -> some View {
-        IdentityAvatar(
-            name: participant.displayName.nonEmpty ?? "Kordi user",
-            imageSource: participant.avatarUrl?.nonEmpty,
-            kind: .person,
-            size: diameter,
-            seed: participant.accountId
-        )
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.17, style: .continuous))
+        .accessibilityHidden(true)
     }
 }
 

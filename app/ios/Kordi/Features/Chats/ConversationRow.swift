@@ -68,7 +68,7 @@ struct ConversationRow: View {
             if conversation.kind == .group {
                 GroupAvatarStack(
                     participants: conversation.groupParticipants,
-                    size: avatarSize
+                    size: avatarSize, imageSource: conversation.avatarSource
                 )
             } else {
                 IdentityAvatar(

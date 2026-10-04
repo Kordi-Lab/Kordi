@@ -1,10 +1,6 @@
 //! Every embedded Postgres migration, in version order.
 
-pub(super) struct EmbeddedMigration {
-    pub(super) version: i64,
-    pub(super) description: &'static str,
-    pub(super) sql: &'static str,
-}
+use super::EmbeddedMigration;
 
 pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     EmbeddedMigration {
@@ -493,5 +489,10 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         version: 108,
         description: "session pin stacks",
         sql: include_str!("../../../migrations/0108_session_pin_stacks.sql"),
+    },
+    EmbeddedMigration {
+        version: 109,
+        description: "group avatars",
+        sql: include_str!("../../../migrations/0109_group_avatars.sql"),
     },
 ];

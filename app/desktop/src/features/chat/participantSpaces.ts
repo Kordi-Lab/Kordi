@@ -1,3 +1,4 @@
+import { sharedGroupAvatar } from './groupAvatar';
 import type {
   ChatChannel,
   Conversation,
@@ -395,7 +396,8 @@ export function participantSpaceCustomGroupTitle(space: ParticipantSpaceViewMode
   return customGroupTitle(space.sessions, normalizeGroupSpaceId(space.id));
 }
 
-export const SELF_PARTICIPANT_SPACE_TITLE = 'Saved Messages';
+import { SELF_PARTICIPANT_SPACE_TITLE } from './selfParticipantSpace';
+export { SELF_PARTICIPANT_SPACE_TITLE, ensureSelfParticipantSpace } from './selfParticipantSpace';
 
 function spaceTitle(
   kind: ParticipantSpaceKind,
@@ -553,6 +555,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
         updatedAtMs: latest?.updatedAtMs ?? 0,
         createdAtMs: groupCreatedAtMs,
         preview: latestPreview?.preview ?? '',
+        groupAvatar: group.kind === 'group' ? sharedGroupAvatar(sessions.map((entry) => metadataRecord(entry.conversation.metadata).groupAvatar)) : null,
         avatarStack: participantSpaceAvatarParticipants(
           group.kind,
           group.participants,
@@ -583,40 +586,6 @@ export function primaryAgentForConversation(conversation: Conversation): AgentId
     avatarSeed: agent.agentId || agent.avatarKey || agent.id || agent.name,
     profileImageUrl: agent.profileImageUrl ?? null,
   };
-}
-
-export function ensureSelfParticipantSpace(
-  spaces: ParticipantSpaceViewModel[],
-  options: { avatarSeed?: string | null; profileImageUrl?: string | null } = {},
-) {
-  if (spaces.some((space) => space.kind === 'self')) return spaces;
-
-  const avatarSeed = cleanOptionalText(options.avatarSeed) || 'me';
-  const selfParticipant: ConversationParticipant = {
-    id: 'human:self',
-    name: 'Me',
-    kind: 'human',
-    role: 'self',
-    source: 'local',
-    avatarKey: avatarSeed,
-    profileImageUrl: cleanOptionalText(options.profileImageUrl) || null,
-  };
-
-  const selfSpace: ParticipantSpaceViewModel = {
-    id: 'self:local',
-    kind: 'self',
-    title: SELF_PARTICIPANT_SPACE_TITLE,
-    participants: [selfParticipant],
-    participantCount: 1,
-    sessionCount: 0,
-    unread: 0,
-    updatedAtMs: 0,
-    preview: '',
-    avatarStack: [{ kind: 'human', seed: avatarSeed, isSelf: true, imageUrl: selfParticipant.profileImageUrl ?? null }],
-    sessions: [],
-  };
-
-  return [...spaces, selfSpace];
 }
 
 export function filterParticipantSpaces(
