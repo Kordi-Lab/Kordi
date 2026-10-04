@@ -80,6 +80,30 @@ struct CloudChatConversation: Codable, Hashable {
     }
 }
 
+extension CloudChatConversation {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kind = try container.decode(String.self, forKey: .kind)
+        sharedTitle = try container.decodeIfPresent(String.self, forKey: .sharedTitle)
+        version = try container.decode(Int.self, forKey: .version)
+        createdByAccountId = try container.decode(String.self, forKey: .createdByAccountId)
+        legacySessionId = try container.decodeIfPresent(String.self, forKey: .legacySessionId)
+        groupSpaceId = try container.decodeIfPresent(String.self, forKey: .groupSpaceId)
+        groupTitle = try container.decodeIfPresent(String.self, forKey: .groupTitle)
+        // An image that is not an uploaded reference is left out, never shown,
+        // and never hides the conversation or the rest of the chat list.
+        groupAvatar = try? container.decodeIfPresent(CloudGroupAvatar.self, forKey: .groupAvatar)
+        forkedFromSessionId = try container.decodeIfPresent(String.self, forKey: .forkedFromSessionId)
+        forkedFromMessageId = try container.decodeIfPresent(String.self, forKey: .forkedFromMessageId)
+        latestMessageSequence = try container.decode(Int64.self, forKey: .latestMessageSequence)
+        createdAt = try container.decode(String.self, forKey: .createdAt)
+        updatedAt = try container.decode(String.self, forKey: .updatedAt)
+        members = try container.decode([CloudChatMember].self, forKey: .members)
+        preferences = try container.decode(CloudChatPreferences.self, forKey: .preferences)
+    }
+}
+
 /// A null image is a persisted removal, so older channels cannot restore it.
 struct CloudGroupAvatar: Codable, Hashable {
     let imageUrl: String?

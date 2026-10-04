@@ -1,7 +1,7 @@
 use super::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 
-fn control(
+pub(super) fn control(
     kind: &str,
     session: &str,
     space: &str,
@@ -33,7 +33,7 @@ fn control(
     }
 }
 
-async fn group(pool: &PgPool, owner: &str, peer: &str, session: &str) -> Uuid {
+pub(super) async fn group(pool: &PgPool, owner: &str, peer: &str, session: &str) -> Uuid {
     store::create_conversation(
         pool,
         owner,
@@ -51,7 +51,7 @@ async fn group(pool: &PgPool, owner: &str, peer: &str, session: &str) -> Uuid {
     .id
 }
 
-async fn avatar_asset(pool: &PgPool, owner: &str) -> String {
+pub(super) async fn avatar_asset(pool: &PgPool, owner: &str) -> String {
     let id = format!("ava_{}", Uuid::new_v4().simple());
     query("INSERT INTO cloud_avatar_assets (asset_id, owner_account_id, entity_type, entity_id, object_prefix, source_content_type, source_size_bytes, source_width, source_height) VALUES ($1, $2, 'human', $2, $1, 'image/png', 100, 16, 16)")
         .bind(&id).bind(owner).execute(pool).await.unwrap();

@@ -8,18 +8,25 @@ use super::super::support::load_active_conversation_projections;
 use super::super::StoreError;
 use super::group_identity::GroupEnvelopeProjection;
 
-pub(super) fn avatar_image(value: &Value) -> Result<Option<&str>, StoreError> {
-    match value.get("imageUrl") {
-        Some(Value::Null) => Ok(None),
-        Some(Value::String(image))
-            if crate::avatars::assets::parse_uploaded_avatar_marker(image).is_some() =>
-        {
-            Ok(Some(image))
-        }
-        _ => Err(StoreError::InvalidInput(
-            "group avatar must be an uploaded image reference",
-        )),
-    }
+/// Reads the group image reference. Only the exact canonical uploaded-image
+/// marker is accepted, so the stored value is the one every client accepts:
+/// surrounding whitespace, a query, a fragment, a port, user information, or
+/// uppercase hex digits are refused rather than stored.
+pub(super) fn avatar_image(value: &Value) -> Result<Option<String>, StoreError> {
+    let image = match value.get("imageUrl") {
+        Some(Value::Null) => return Ok(None),
+        Some(Value::String(image)) => canonical_avatar_marker(image),
+        _ => None,
+    };
+    image.map(Some).ok_or(StoreError::InvalidInput(
+        "group avatar must be an uploaded image reference",
+    ))
+}
+
+fn canonical_avatar_marker(image: &str) -> Option<String> {
+    let parsed = crate::avatars::assets::parse_uploaded_avatar_marker(image)?;
+    let canonical = crate::avatars::assets::uploaded_avatar_marker(&parsed.asset_id)?;
+    (canonical == image && canonical == canonical.to_ascii_lowercase()).then_some(canonical)
 }
 
 /// Refuses a group envelope that names a space other than the one the
@@ -130,7 +137,7 @@ pub(super) async fn prepare_group_avatar(
         return Ok(None);
     }
     let image = avatar_image(avatar)?;
-    if let Some(image) = image {
+    if let Some(image) = image.as_deref() {
         crate::avatars::assets::activate_avatar_asset(
             transaction,
             account_id,
@@ -201,10 +208,40 @@ mod tests {
             assert!(avatar_image(&value).is_err());
         }
         assert_eq!(avatar_image(&json!({"imageUrl":null})).unwrap(), None);
-        assert!(avatar_image(
-            &json!({"imageUrl":"kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef"})
-        )
-        .unwrap()
-        .is_some());
+        assert_eq!(
+            avatar_image(
+                &json!({"imageUrl":"kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef"})
+            )
+            .unwrap()
+            .as_deref(),
+            Some("kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef")
+        );
+    }
+
+    #[test]
+    fn rejects_references_that_only_parse_after_normalization() {
+        let id = "ava_0123456789abcdef0123456789abcdef";
+        for image in [
+            format!(" kordi-avatar://uploaded/{id}"),
+            format!("kordi-avatar://uploaded/{id}\n"),
+            format!("kordi-avatar://uploaded/{id}?x"),
+            format!("kordi-avatar://uploaded/{id}#x"),
+            format!("kordi-avatar://uploaded:80/{id}"),
+            format!("kordi-avatar://user@uploaded/{id}"),
+            format!(
+                "kordi-avatar://uploaded/{}",
+                id.to_ascii_uppercase().replace("AVA_", "ava_")
+            ),
+            format!("KORDI-AVATAR://uploaded/{id}"),
+        ] {
+            assert!(
+                crate::avatars::assets::parse_uploaded_avatar_marker(&image).is_some(),
+                "{image:?} should still be a parseable reference"
+            );
+            assert!(
+                avatar_image(&json!({ "imageUrl": image })).is_err(),
+                "{image:?} must not be stored"
+            );
+        }
     }
 }
