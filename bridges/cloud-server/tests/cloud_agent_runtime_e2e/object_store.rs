@@ -34,6 +34,12 @@ impl TestObjectStore {
         Self::spawn_with_put_status(StatusCode::BAD_GATEWAY).await
     }
 
+    /// An object store whose object writes never complete, for requests that
+    /// are dropped while their bytes are being written.
+    pub(super) async fn spawn_stalling_puts() -> Self {
+        Self::spawn_with_put_status(StatusCode::REQUEST_TIMEOUT).await
+    }
+
     async fn spawn_with_put_status(put_status: StatusCode) -> Self {
         let state = Arc::new(Mutex::new(TestObjectStoreState::default()));
         let app_state = state.clone();
@@ -49,6 +55,9 @@ impl TestObjectStore {
                     .collect::<HashMap<_, _>>();
                     match method {
                         Method::PUT => {
+                            if put_status == StatusCode::REQUEST_TIMEOUT {
+                                std::future::pending::<()>().await;
+                            }
                             if !put_status.is_success() {
                                 return put_status.into_response();
                             }

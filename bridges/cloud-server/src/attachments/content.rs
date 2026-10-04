@@ -7,6 +7,7 @@ use axum::response::Response;
 use axum::Extension;
 
 use super::access::attachment_access_row;
+use super::content_type::{apply_attachment_response_headers, served_media_type};
 use super::response::err;
 use super::{presign_download_url, routes::s3_or_503};
 use crate::auth::routes::CloudSession;
@@ -93,15 +94,14 @@ pub(super) async fn stream_attachment_content(
     let object_status = object_response.status();
 
     let mut headers = HeaderMap::new();
-    if let Some(value) = detected_content_type
-        .as_deref()
-        .or(object_content_type.as_deref())
-        .or(content_type.as_deref())
-    {
-        if let Ok(header_value) = HeaderValue::from_str(value) {
-            headers.insert(header::CONTENT_TYPE, header_value);
-        }
-    }
+    apply_attachment_response_headers(
+        &mut headers,
+        served_media_type([
+            detected_content_type.as_deref(),
+            object_content_type.as_deref(),
+            content_type.as_deref(),
+        ]),
+    );
     let length =
         object_content_length.or_else(|| size_bytes.and_then(|value| u64::try_from(value).ok()));
     if let Some(length) = length {

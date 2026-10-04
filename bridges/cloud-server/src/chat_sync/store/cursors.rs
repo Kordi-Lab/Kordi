@@ -235,6 +235,7 @@ pub async fn history(
             reactions.remove(&message_id).unwrap_or_default(),
         ));
     }
+    message::verify_stored_custom_agent_senders(&mut transaction, &mut messages).await?;
     attachment_actions::hydrate(&mut transaction, Some(account_id), &mut messages).await?;
     let next_before_sequence = if has_more {
         messages.last().map(|message| message.conversation_sequence)
@@ -474,6 +475,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             )
         })
         .collect();
+    message::verify_stored_custom_agent_senders(&mut transaction, &mut latest_messages).await?;
     attachment_actions::hydrate(&mut transaction, Some(account_id), &mut latest_messages).await?;
     let server_time = Utc::now();
     let session_visibility = super::super::visibility::load(&mut transaction, account_id).await?;

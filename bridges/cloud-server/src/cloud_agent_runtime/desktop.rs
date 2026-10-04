@@ -387,6 +387,13 @@ pub(super) async fn progress(
             Json(value).into_response()
         }
         Ok(None) => expired(),
+        // The chat server refused the published content itself. Retrying the
+        // same content cannot succeed, so report it as a permanent rejection.
+        Err(crate::chat_sync::store::StoreError::InvalidInput(_)) => error_response(
+            "execution_progress_rejected",
+            "The chat server rejected this execution progress.",
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
         Err(_) => error_response(
             "server_error",
             "Could not publish execution progress.",
