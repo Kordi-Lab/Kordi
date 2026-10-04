@@ -44,13 +44,13 @@ export class CloudPinClient {
     return history === undefined ? pin : { ...pin, history };
   }
 
-  async updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; scope: 'private' | 'shared' }): Promise<CloudSessionPin> {
+  async updateCloudSessionPin(token: string, sessionId: string, input: { messageId: string | null; action?: 'pin' | 'unpin'; scope: 'private' | 'shared' }): Promise<CloudSessionPin> {
     const response = await this.send<{ pin: CloudSessionPin }>(
       `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pin`,
       {
         method: 'PUT',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ messageId: input.messageId, scope: input.scope }),
+        body: JSON.stringify({ messageId: input.messageId, scope: input.scope, action: input.action }),
       },
       'Could not update pinned message.',
     );

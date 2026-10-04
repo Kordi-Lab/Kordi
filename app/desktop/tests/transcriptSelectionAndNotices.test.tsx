@@ -13,7 +13,7 @@ import {
 import type { Message } from '../src/kordi-app/types';
 import { MessageDeleteDialog } from '../src/pages/MessageDeleteDialog';
 
-test('multi-pin shelf is folded by default and single pins keep their controls visible', () => {
+test('pin shelf shows a compact active preview and keeps all pins in a closed dialog', () => {
   const message: Message = {
     id: 'msg:pinned-bar',
     role: 'person',
@@ -33,20 +33,24 @@ test('multi-pin shelf is folded by default and single pins keep their controls v
 
   assert.match(multiMarkup, /data-pinned-message-bar="true"/);
   assert.match(multiMarkup, /data-pinned-message-count="2"/);
-  assert.match(multiMarkup, /data-pinned-message-expanded="false"/);
-  assert.match(multiMarkup, /aria-expanded="false"/);
-  assert.match(multiMarkup, /2 pinned messages/);
-  assert.doesNotMatch(multiMarkup, /Only you|Everyone|Pinned message body|Shared pinned body/);
+  assert.match(multiMarkup, /data-pinned-message-index="0"/);
+  assert.match(multiMarkup, /aria-label="Next pinned message, 1 of 2"/);
+  assert.match(multiMarkup, /aria-label="View all 2 pinned messages"/);
+  assert.match(multiMarkup, /class="app-pin-stack-preview">Pinned message body</);
+  assert.doesNotMatch(multiMarkup, /class="app-pin-stack-preview">Shared pinned body</);
+  assert.match(multiMarkup, /<dialog aria-label="Pinned messages"/);
+  assert.doesNotMatch(multiMarkup, /<dialog[^>]*\bopen=""/);
+  assert.doesNotMatch(multiMarkup, /of 5 pins/);
 
   const singleMarkup = renderToStaticMarkup(createElement(PinnedMessageBar, {
     items: [{ message, scope: 'private' }],
     onOpenMessage: () => undefined,
     onRequestUnpin: () => undefined,
   }));
-  assert.match(singleMarkup, /data-pinned-message-expanded="true"/);
-  assert.doesNotMatch(singleMarkup, />Only you<|>Everyone</);
-  assert.match(singleMarkup, /Alice: Pinned message body/);
-  assert.match(singleMarkup, /aria-label="Unpin message pinned only for you"/);
+  assert.match(singleMarkup, /aria-label="Open pinned message"/);
+  assert.doesNotMatch(singleMarkup, /app-pin-stack-position/);
+  assert.match(singleMarkup, /class="app-pin-stack-preview">Pinned message body</);
+  assert.match(singleMarkup, /aria-label="Unpin Pinned message body"/);
 });
 
 test('pin activity uses the transcript system-notice treatment', () => {

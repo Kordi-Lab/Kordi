@@ -2,7 +2,7 @@ import type { PinActivity } from '@/pages/chatsPage.pinActivity';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { formatDesktopTranscriptTimeLabel } from '@/lib/time';
 import { revealPinActivity } from '@/pages/pinActivityMotion';
-import { ChevronDown, Pin, X } from 'lucide-react';
+import { List, Pin, X } from 'lucide-react';
 
 import type { Message } from '@/kordi-app/types';
 import type { PinnedMessageItem } from '@/pages/chatsPage.pinModel';
@@ -40,85 +40,66 @@ export function PinnedMessageBar({
   onOpenMessage: (message: Message) => void;
   onRequestUnpin: (item: PinnedMessageItem) => void;
 }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const isCollapsible = items.length > 1;
-  const showsItems = !isCollapsible || isExpanded;
-  const heading = `${items.length} pinned ${items.length === 1 ? 'message' : 'messages'}`;
-  const header = (
-    <>
-      <Pin className="h-3.5 w-3.5" aria-hidden="true" />
-      <span className="flex-1">{heading}</span>
-      {isCollapsible ? (
-        <ChevronDown
-          className={`h-4 w-4 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
-          aria-hidden="true"
-        />
-      ) : null}
-    </>
-  );
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const listRef = useRef<HTMLDialogElement>(null);
+  const itemKey = (item: PinnedMessageItem) => `${item.scope}:${item.message.id}`;
+  const selectedIndex = Math.max(0, items.findIndex((item) => itemKey(item) === selectedKey));
+  const activeItem = items[selectedIndex];
+  if (!activeItem) return null;
+  const cycle = () => {
+    const next = items[(selectedIndex + 1) % items.length];
+    setSelectedKey(itemKey(next));
+    onOpenMessage(next.message);
+  };
   return (
     <div
       data-pinned-message-bar="true"
       data-pinned-message-count={items.length}
-      data-pinned-message-expanded={showsItems}
-      className="app-pinned-message-bar shrink-0 border-b border-[color:var(--app-divider)]"
-      style={{
-        background:
-          'color-mix(in srgb, var(--app-panel-bg) 94%, var(--app-text) 6%)',
-      }}
+      data-pinned-message-index={selectedIndex}
+      className="app-pinned-message-bar app-pin-stack"
     >
-      {items.length > 0 ? (
-        <div className="px-3 py-1.5">
-          {isCollapsible ? (
-            <button
-              type="button"
-              onClick={() => setIsExpanded((current) => !current)}
-              className="app-button-quiet flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[11px] font-semibold text-[color:var(--utility-muted-text)]"
-              aria-expanded={isExpanded}
-              aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${heading}`}
-            >
-              {header}
+      <button type="button" className="app-pin-stack-cycle" onClick={cycle}
+        aria-label={items.length > 1 ? `Next pinned message, ${selectedIndex + 1} of ${items.length}` : 'Open pinned message'}>
+        <span className="app-pin-stack-markers" aria-hidden="true">
+          {items.map((item, index) => <span key={itemKey(item)} data-active={index === selectedIndex} />)}
+        </span>
+        <span className="app-pin-stack-copy" aria-live="polite" aria-atomic="true">
+          <span className="app-pin-stack-heading">Pinned message
+            {items.length > 1 ? <span className="app-pin-stack-position">{selectedIndex + 1} / {items.length}</span> : null}
+          </span>
+          <span className="app-pin-stack-preview" key={itemKey(activeItem)}>{pinnedMessagePreview(activeItem.message)}</span>
+        </span>
+      </button>
+      <button type="button" className="app-pin-stack-list-button" onClick={() => listRef.current?.showModal()}
+        aria-label={`View all ${items.length} pinned messages`} title="View pinned messages">
+        <Pin size={21} aria-hidden="true" /><List size={18} aria-hidden="true" />
+      </button>
+      <dialog ref={listRef} aria-label="Pinned messages" className="app-pin-list-dialog" onClick={(event) => {
+        if (event.target !== event.currentTarget) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) listRef.current?.close();
+      }}>
+        <header className="app-pin-list-header">
+          <h2>Pinned messages</h2>
+          <button type="button" onClick={() => listRef.current?.close()} aria-label="Close pinned messages"><X size={20} /></button>
+        </header>
+        <div className="app-pin-list-items">
+          {items.map((item) => <div className="app-pin-list-row" key={itemKey(item)}>
+            <button type="button" className="app-pin-list-open" onClick={() => {
+              setSelectedKey(itemKey(item));
+              listRef.current?.close();
+              onOpenMessage(item.message);
+            }}>
+              <span className="app-pin-list-sender">{pinnedMessageSenderLabel(item.message) || 'Message'}<span>{item.scope === 'shared' ? 'Everyone' : 'Only you'}</span></span>
+              <span>{pinnedMessagePreview(item.message)}</span>
             </button>
-          ) : (
-            <div className="flex h-6 items-center gap-2 px-1 text-[11px] font-semibold text-[color:var(--utility-muted-text)]">
-              {header}
-            </div>
-          )}
-          {showsItems ? <div className="divide-y divide-[color:var(--app-divider)]">
-            {items.map((item) => {
-              const sender = pinnedMessageSenderLabel(item.message);
-              const preview = pinnedMessagePreview(item.message);
-              const scopeDescription = item.scope === 'shared' ? 'for everyone' : 'only for you';
-              return (
-                <div
-                  key={`${item.scope}:${item.message.id}`}
-                  className="flex min-h-10 items-center gap-2"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onOpenMessage(item.message)}
-                    className="min-w-0 flex-1 rounded-[8px] px-1 py-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
-                    aria-label={`Open message pinned ${scopeDescription}`}
-                  >
-                    <span className="block truncate text-[13px] leading-4 text-[color:var(--app-text)]">
-                      {sender ? `${sender}: ${preview}` : preview}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRequestUnpin(item)}
-                    className="app-button-quiet inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-0"
-                    aria-label={`Unpin message pinned ${scopeDescription}`}
-                    title={`Unpin message pinned ${scopeDescription}`}
-                  >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-              );
-            })}
-          </div> : null}
+            <button type="button" className="app-pin-list-unpin" aria-label={`Unpin ${pinnedMessagePreview(item.message)}`} onClick={() => {
+              listRef.current?.close();
+              onRequestUnpin(item);
+            }}><X size={16} aria-hidden="true" /></button>
+          </div>)}
         </div>
-      ) : null}
+      </dialog>
     </div>
   );
 }
@@ -150,6 +131,7 @@ export function PinMessageDialog({
   mode,
   message: _message,
   pinForEveryone,
+  error,
   onTogglePinForEveryone,
   onCancel,
   onConfirm,
@@ -157,6 +139,7 @@ export function PinMessageDialog({
   mode: 'pin' | 'unpin';
   message: Message;
   pinForEveryone: boolean;
+  error?: string | null;
   onTogglePinForEveryone: (value: boolean) => void;
   onCancel: () => void;
   onConfirm: () => void;
@@ -184,6 +167,7 @@ export function PinMessageDialog({
             <span>Pin for everyone</span>
           </label>
         ) : null}
+        {error ? <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">{error}</p> : null}
         <div className="mt-6 flex justify-end gap-2 text-[14px] font-semibold">
           <button
             type="button"

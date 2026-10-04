@@ -2371,12 +2371,11 @@ final class AppModel: ObservableObject {
         shared: Bool
     ) async -> Bool {
         if previewMode {
-            updatePreviewPin(
+            return updatePreviewPin(
                 messageId: message.id,
                 sessionId: conversation.sessionId,
-                scope: shared ? "shared" : "private"
+                scope: shared ? "shared" : "private", action: "pin"
             )
-            return true
         }
         guard let token else { return false }
         let pendingID = beginPendingPinAction(sessionID: conversation.sessionId, messageID: message.id, scope: shared ? "shared" : "private")
@@ -2385,7 +2384,8 @@ final class AppModel: ObservableObject {
                 token: token,
                 sessionId: conversation.sessionId,
                 messageId: message.id,
-                scope: shared ? "shared" : "private"
+                scope: shared ? "shared" : "private",
+                action: "pin"
             )
             guard self.token == token else { return false }
             let updatedPin = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
@@ -2414,26 +2414,26 @@ final class AppModel: ObservableObject {
     ) async -> Bool {
         let current = sessionPinsByID[conversation.sessionId]
         let scope = requestedScope
-            ?? (current?.privateMessageId == message.id ? "private" : "shared")
+            ?? (current?.messageIDs(scope: "shared").contains(message.id) == true ? "shared" : "private")
         if previewMode {
-            updatePreviewPin(messageId: nil, sessionId: conversation.sessionId, scope: scope)
-            return true
+            return updatePreviewPin(messageId: message.id, sessionId: conversation.sessionId, scope: scope, action: "unpin")
         }
         guard let token else { return false }
-        let pendingID = beginPendingPinAction(sessionID: conversation.sessionId, messageID: nil, scope: scope)
+        let pendingID = beginPendingPinAction(sessionID: conversation.sessionId, messageID: message.id, scope: scope, kind: "unpinned")
         do {
             let pin = try await api.updateSessionPin(
                 token: token,
                 sessionId: conversation.sessionId,
-                messageId: nil,
-                scope: scope
+                messageId: message.id,
+                scope: scope,
+                action: "unpin"
             )
             guard self.token == token else { return false }
             let updatedPin = pin.mergingHistory(from: sessionPinsByID[conversation.sessionId])
             sessionPinsByID[conversation.sessionId] = updatedPin.recording(CloudSessionPinAction(
                 kind: "unpinned",
                 scope: scope,
-                messageId: nil,
+                messageId: message.id,
                 updatedByAccountId: account?.accountId,
                 updatedAt: pin.updatedAt
             ))
@@ -2732,15 +2732,15 @@ final class AppModel: ObservableObject {
             actions: pendingSessionPinActions[sessionID] ?? [])
     }
 
-    private func beginPendingPinAction(sessionID: String, messageID: String?, scope: String) -> String? {
+    private func beginPendingPinAction(sessionID: String, messageID: String?, scope: String, kind: String = "pinned") -> String? {
         guard let account else { return nil }
         let pin = sessionPinsByID[sessionID]
-        let previous = scope == "shared" ? pin?.sharedMessageId : pin?.privateMessageId
-        guard previous != messageID else { return nil }
+        let exists = messageID.map { pin?.messageIDs(scope: scope).contains($0) == true } ?? false
+        guard kind == "pinned" ? !exists : exists else { return nil }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let event = CloudPinHistoryEvent(id: "local-pin:" + UUID().uuidString, sessionId: sessionID,
-            kind: messageID == nil ? "unpinned" : "pinned", scope: scope, messageId: messageID,
+            kind: kind, scope: scope, messageId: messageID,
             updatedByAccountId: account.accountId, updatedAt: formatter.string(from: Date()))
         pendingSessionPinActions[sessionID, default: []].append(PendingSessionPinAction(event: event,
             knownIDs: Set(pin?.history?.map(\.id) ?? [])))
@@ -2754,30 +2754,35 @@ final class AppModel: ObservableObject {
         if next != current { pendingSessionPinActions[sessionID] = next }
     }
 
-    private func updatePreviewPin(messageId: String?, sessionId: String, scope: String) {
+    private func updatePreviewPin(messageId: String, sessionId: String, scope: String, action: String) -> Bool {
         let current = sessionPinsByID[sessionId]
-        let previous = scope == "shared" ? current?.sharedMessageId : current?.privateMessageId
-        guard previous != messageId else { return }
+        let previous = current?.messageIDs(scope: scope) ?? []
+        var next = previous
+        if action == "pin" {
+            if !next.contains(messageId) { next.append(messageId) }
+        } else {
+            next.removeAll { $0 == messageId }
+        }
+        let other = current?.messageIDs(scope: scope == "shared" ? "private" : "shared") ?? []
+        guard Set(next + other).count <= CloudSessionPin.maximumMessageCount else {
+            errorMessage = "At most five messages can be pinned. Unpin a message before adding another."
+            return false
+        }
+        guard previous != next else { return true }
         let event = CloudPinHistoryEvent(id: UUID().uuidString, sequence: (current?.history?.compactMap(\.sequence).max() ?? 0) + 1, sessionId: sessionId,
-            kind: messageId == nil ? "unpinned" : "pinned", scope: scope, messageId: messageId,
+            kind: action == "pin" ? "pinned" : "unpinned", scope: scope, messageId: messageId,
             updatedByAccountId: account?.accountId ?? "preview", updatedAt: Date().ISO8601Format())
-        let sharedMessageId = scope == "shared" ? messageId : current?.sharedMessageId
-        let privateMessageId = scope == "private" ? messageId : current?.privateMessageId
+        let sharedIds = scope == "shared" ? next : current?.messageIDs(scope: "shared") ?? []
+        let privateIds = scope == "private" ? next : current?.messageIDs(scope: "private") ?? []
         sessionPinsByID[sessionId] = CloudSessionPin(
-            sessionId: sessionId,
-            sharedMessageId: sharedMessageId,
-            privateMessageId: privateMessageId,
-            effectiveMessageId: privateMessageId ?? sharedMessageId,
-            updatedAt: Date().ISO8601Format(),
-            lastAction: CloudSessionPinAction(
-                kind: messageId == nil ? "unpinned" : "pinned",
-                scope: scope,
-                messageId: messageId,
-                updatedByAccountId: account?.accountId,
-                updatedAt: event.updatedAt
-            ),
-            history: CloudPinHistoryEvent.merging([current?.history ?? [], [event]])
+            sessionId: sessionId, sharedMessageId: sharedIds.last, privateMessageId: privateIds.last,
+            effectiveMessageId: privateIds.last ?? sharedIds.last, updatedAt: event.updatedAt,
+            lastAction: CloudSessionPinAction(kind: event.kind, scope: scope, messageId: messageId,
+                updatedByAccountId: account?.accountId, updatedAt: event.updatedAt),
+            history: CloudPinHistoryEvent.merging([current?.history ?? [], [event]]),
+            sharedMessageIds: sharedIds, privateMessageIds: privateIds
         )
+        return true
     }
 
     func messages(for conversation: ConversationSummary) -> [ChatMessage] {
@@ -7174,53 +7179,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    static func applyingSessionPinEvents(
-        _ events: [CloudSyncEvent],
-        to current: [String: CloudSessionPin]
-    ) -> [String: CloudSessionPin] {
-        var pins = current
-        for event in events where event.eventType == "session.pin.updated" {
-            guard let payload = event.payload,
-                  let sessionId = payload.sessionId?.nonEmpty,
-                  let scope = payload.scope?.nonEmpty?.lowercased(),
-                  scope == "private" || scope == "shared" else { continue }
-            let legacyEvent: CloudPinHistoryEvent? = event.eventId.hasPrefix("bootstrap:session-pin:") ? nil : CloudPinHistoryEvent(
-                id: "legacy-pin:\(event.eventId)", sessionId: sessionId,
-                kind: payload.messageId?.nonEmpty == nil ? "unpinned" : "pinned", scope: scope,
-                messageId: payload.messageId?.nonEmpty, updatedByAccountId: payload.updatedByAccountId ?? "",
-                updatedAt: payload.updatedAt?.nonEmpty ?? event.occurredAt)
-            let history = CloudPinHistoryEvent.merging([pins[sessionId]?.history ?? [], (payload.pinHistoryEvent ?? legacyEvent).map { [$0] } ?? []])
-            if var existing = pins[sessionId] { existing.history = history; pins[sessionId] = existing }
-            let updatedAt = payload.updatedAt?.nonEmpty ?? event.occurredAt.nonEmpty
-            if !event.eventId.hasPrefix("bootstrap:session-pin:"),
-               let currentUpdatedAt = pins[sessionId]?.updatedAt?.nonEmpty,
-               let updatedAt,
-               updatedAt < currentUpdatedAt {
-                continue
-            }
-            let currentPin = pins[sessionId]
-            let messageId = payload.messageId?.nonEmpty
-            let sharedMessageId = scope == "shared" ? messageId : currentPin?.sharedMessageId
-            let privateMessageId = scope == "private" ? messageId : currentPin?.privateMessageId
-            let isBootstrap = event.eventId.hasPrefix("bootstrap:session-pin:")
-            pins[sessionId] = CloudSessionPin(
-                sessionId: sessionId,
-                sharedMessageId: sharedMessageId,
-                privateMessageId: privateMessageId,
-                effectiveMessageId: privateMessageId ?? sharedMessageId,
-                updatedAt: updatedAt,
-                lastAction: isBootstrap ? nil : CloudSessionPinAction(
-                    kind: messageId == nil ? "unpinned" : "pinned",
-                    scope: scope,
-                    messageId: messageId,
-                    updatedByAccountId: payload.updatedByAccountId?.nonEmpty,
-                    updatedAt: updatedAt
-                ),
-                history: history
-            )
-        }
-        return pins
-    }
 
     private func persistCloudSnapshot(accountId: String) async {
         guard account?.accountId == accountId else { return }

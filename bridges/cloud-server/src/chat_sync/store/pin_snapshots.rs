@@ -7,6 +7,8 @@ struct SessionPinRow {
     session_id: String,
     shared_message_id: Option<String>,
     private_message_id: Option<String>,
+    shared_message_ids: Option<Vec<String>>,
+    private_message_ids: Option<Vec<String>>,
     updated_at: Option<String>,
 }
 
@@ -16,6 +18,8 @@ impl<'row> FromRow<'row, PgRow> for SessionPinRow {
             session_id: row.try_get("session_id")?,
             shared_message_id: row.try_get("shared_message_id")?,
             private_message_id: row.try_get("private_message_id")?,
+            shared_message_ids: row.try_get("shared_message_ids")?,
+            private_message_ids: row.try_get("private_message_ids")?,
             updated_at: row.try_get("updated_at")?,
         })
     }
@@ -30,6 +34,8 @@ pub(super) async fn bootstrap_session_pins(
         "SELECT visible_session.session_id, \
                 shared_pin.message_id AS shared_message_id, \
                 private_pin.message_id AS private_message_id, \
+                shared_pin.message_ids AS shared_message_ids, \
+                private_pin.message_ids AS private_message_ids, \
                 COALESCE((SELECT history.payload->>'updatedAt' FROM cloud_session_pin_history history \
                   JOIN cloud_chat_conversations conversation ON conversation.conversation_id = history.conversation_id \
                   WHERE (conversation.legacy_session_id = visible_session.session_id OR conversation.conversation_id::text = visible_session.session_id) \
@@ -51,6 +57,8 @@ pub(super) async fn bootstrap_session_pins(
             session_id: row.session_id,
             shared_message_id: row.shared_message_id.clone(),
             private_message_id: row.private_message_id.clone(),
+            shared_message_ids: row.shared_message_ids.unwrap_or_default(),
+            private_message_ids: row.private_message_ids.unwrap_or_default(),
             effective_message_id: row.private_message_id.or(row.shared_message_id),
             updated_at: row.updated_at,
         })

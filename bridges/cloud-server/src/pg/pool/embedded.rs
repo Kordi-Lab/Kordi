@@ -165,8 +165,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         "0105_provider_auth_snapshot_readiness.sql"),
     migration!(version: 106, "private OMP runtime replay state", "0106_omp_runtime_state.sql"),
     migration!(version: 107, "account-scoped desktop projects", "0107_chat_projects.sql"),
-    migration!(version: 108, "account email verification", "0108_account_email_verification.sql"),
+    migration!(version: 108, "session pin stacks", "0108_session_pin_stacks.sql"),
     migration!(version: 109, "session-bound realtime tickets", "0109_realtime_ticket_sessions.sql"),
     migration!(version: 113, "runner run token hash", "0113_runner_run_token_hash.sql"),
     migration!(version: 114, "desktop device proofs", "0114_desktop_device_proofs.sql"),
+    migration!(version: 117, "account email verification", "0117_account_email_verification.sql"),
 ];
