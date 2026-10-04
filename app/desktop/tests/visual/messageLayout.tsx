@@ -12,6 +12,7 @@ import '../../src/index.css';
 // Production components with offline sample messages and observable action handlers.
 const params = new URLSearchParams(location.search);
 const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
+const sampleCode = `let layout = MessageLayout.threads${params.get('longCode') === 'true' ? ` // ${'A long code line remains horizontally scrollable. '.repeat(12)}` : ''}`;
 if (params.get('layout') === 'threads') setMessageLayout('threads');
 if (params.get('layout') === 'chat') setMessageLayout('chat');
 document.body.className = `kordi-app theme-${theme}`;
@@ -23,7 +24,7 @@ const messages: Message[] = [
   { id: 'layout-quote', role: 'user', senderType: 'human', sender: 'You', isOwnMessage: true, text: 'Keep the quoted message above the reply. The conversation stays in one place.', time: '09:39', statusChips: ['delivered'], reactionConversationId: 'sample', reactionTargetMessageId: 'layout-quote', cloudMessageVersion: 1,
     sourceMessage: { messageId: 'layout-source', senderLabel: 'Maya Chen', text: messagesSourceText() },
     messageAction: { schemaVersion: 1, kind: 'quote', source: { sourceSessionId: 'sample', sourceMessageId: 'layout-source', senderLabel: 'Maya Chen', textPreview: messagesSourceText(), attachmentCount: 0 } } },
-  { id: 'layout-code', role: 'person', senderType: 'human', sender: 'Alex Rivera', text: 'Formatting still works: **bold**, mentions, and code.\n\n```swift\nlet layout = MessageLayout.threads\n```', time: '09:41', showSenderMeta: true },
+  { id: 'layout-code', role: 'person', senderType: 'human', sender: 'Alex Rivera', text: `Formatting still works: **bold**, mentions, and code.\n\n\`\`\`swift\n${sampleCode}\n\`\`\``, time: '09:41', showSenderMeta: true },
   { id: 'layout-agent', role: 'owned-agent', senderType: 'agent', sender: 'Research assistant', text: 'The same actions remain available in both layouts.\n\n- Quote in the conversation\n- Open a separate discussion\n- Forward, pin, edit, or select a message', time: '09:42' },
   { id: 'layout-live-quote', role: 'owned-agent', senderType: 'agent', sender: 'Research assistant', text: '', time: '09:42', turn: {
     id: 'layout-live-quote', sessionId: 'sample', prompt: '', status: 'done', message: '', assistantText: 'Completed agent replies use the same quoted reference.', thinkingText: '', tools: [], completed: true, succeeded: true,

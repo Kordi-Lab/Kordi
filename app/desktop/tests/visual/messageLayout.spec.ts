@@ -78,3 +78,49 @@ test('message layout persists, synchronizes across windows, and fits narrow and 
     }
   }
 });
+
+test('code copy stays inside the upper right corner without adding a row or covering scrollable code', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  for (const theme of ['light', 'dark']) {
+    for (const layout of ['chat', 'threads']) {
+      await page.goto(`${fixture}?theme=${theme}&layout=${layout}`);
+      const block = page.getByLabel('Code block language: swift');
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 1000 });
+        for (const zoom of [0.7, 1, 1.6]) {
+          await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
+          await block.scrollIntoViewIfNeeded();
+          await block.hover();
+          const bounds = await block.boundingBox();
+          const button = block.getByRole('button', { name: 'Copy code', exact: true });
+          const control = await button.boundingBox();
+          const content = await block.locator('pre').boundingBox();
+          expect(control!.x).toBeGreaterThan(content!.x + content!.width);
+          expect(control!.x + control!.width).toBeLessThan(bounds!.x + bounds!.width);
+          expect(control!.y).toBeGreaterThan(bounds!.y);
+          expect(control!.y + control!.height).toBeLessThan(bounds!.y + bounds!.height);
+          expect(content!.y - bounds!.y).toBeLessThan(2 * zoom);
+          expect(bounds!.height).toBeLessThanOrEqual(45 * zoom);
+        }
+      }
+      await page.evaluate(() => { document.documentElement.style.zoom = '1'; });
+      const copy = block.getByRole('button', { name: 'Copy code', exact: true });
+      await copy.focus();
+      await expect(copy).toHaveCSS('opacity', '1');
+      await copy.press('Enter');
+      await expect(block.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('let layout = MessageLayout.threads');
+
+      await page.goto(`${fixture}?theme=${theme}&layout=${layout}&longCode=true`);
+      await page.setViewportSize({ width: 390, height: 1000 });
+      const scroller = page.getByLabel('Code block language: swift').locator('pre');
+      expect(await scroller.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+      await scroller.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+      expect(await scroller.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
+      const content = await scroller.boundingBox();
+      const control = await page.getByRole('button', { name: 'Copy code', exact: true }).boundingBox();
+      expect(content!.x + content!.width).toBeLessThan(control!.x);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+  }
+});
