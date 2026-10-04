@@ -22,6 +22,43 @@ pub(super) fn avatar_image(value: &Value) -> Result<Option<&str>, StoreError> {
     }
 }
 
+pub(super) async fn authorize_group_space_attachment(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    conversation_id: Uuid,
+    group_space_id: &str,
+) -> Result<(), StoreError> {
+    let (stored_space,): (Option<String>,) = query_as(
+        "SELECT group_space_id FROM cloud_chat_conversations \
+         WHERE conversation_id = $1 FOR UPDATE",
+    )
+    .bind(conversation_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    if let Some(stored_space) = stored_space {
+        return if stored_space.trim_start_matches("group:") == group_space_id {
+            Ok(())
+        } else {
+            Err(StoreError::Forbidden)
+        };
+    }
+    let (exists, member): (bool, bool) = query_as(
+        "SELECT EXISTS (SELECT 1 FROM cloud_chat_conversations WHERE group_space_id = $1), \
+         EXISTS (SELECT 1 FROM cloud_chat_conversations conversation \
+           JOIN cloud_chat_conversation_members member USING (conversation_id) \
+           WHERE conversation.group_space_id = $1 AND member.account_id = $2 \
+             AND member.membership_state = 'active')",
+    )
+    .bind(group_space_id)
+    .bind(account_id)
+    .fetch_one(&mut **transaction)
+    .await?;
+    if exists && !member {
+        return Err(StoreError::Forbidden);
+    }
+    Ok(())
+}
+
 pub(super) async fn prepare_group_avatar(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
@@ -58,6 +95,23 @@ pub(super) async fn prepare_group_avatar(
     if expected_space.trim_start_matches("group:")
         != projection.group_space_id.trim_start_matches("group:")
     {
+        return Err(StoreError::Forbidden);
+    }
+    // Owning a channel with a claimed space ID cannot authorize changes to
+    // another group's channels. The actor must belong to every fanout target.
+    let inaccessible_sibling: Option<(i32,)> = query_as(
+        "SELECT 1 FROM cloud_chat_conversations sibling \
+         WHERE sibling.group_space_id = $1 AND NOT EXISTS ( \
+           SELECT 1 FROM cloud_chat_conversation_members member \
+           WHERE member.conversation_id = sibling.conversation_id \
+             AND member.account_id = $2 AND member.membership_state = 'active' \
+         ) LIMIT 1",
+    )
+    .bind(&projection.group_space_id)
+    .bind(account_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    if inaccessible_sibling.is_some() {
         return Err(StoreError::Forbidden);
     }
     let previous: Option<(Value,)> = query_as(

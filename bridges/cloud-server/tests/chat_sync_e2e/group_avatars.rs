@@ -249,6 +249,86 @@ async fn group_avatar_sync_removal_inheritance_and_permissions() {
 }
 
 #[tokio::test]
+async fn a_channel_owner_cannot_change_another_groups_avatar() {
+    let Some(pool) = try_pool().await else { return };
+    let owner = account(&pool, "avatar-isolation-owner").await;
+    let peer = account(&pool, "avatar-isolation-member").await;
+    let outsider = account(&pool, "avatar-isolation-outsider").await;
+    connect_accounts(&pool, &owner, &peer).await;
+    connect_accounts(&pool, &outsider, &peer).await;
+    let space = format!("session:group:{}", Uuid::now_v7());
+    let root = group(&pool, &owner, &peer, &space).await;
+    let image = avatar_asset(&pool, &owner).await;
+    store::send_message(
+        &pool,
+        &owner,
+        root,
+        control(
+            "group-invite",
+            &space,
+            &space,
+            &owner,
+            &peer,
+            Some(json!({"imageUrl": image, "updatedAtMs": 1})),
+        ),
+    )
+    .await
+    .unwrap();
+
+    // A claimed group-space ID does not grant membership in its other channels.
+    let alias = format!("session:group:{}", Uuid::now_v7());
+    let channel = group(&pool, &outsider, &peer, &alias).await;
+    for kind in ["group-invite", "group-message"] {
+        let attached = store::send_message(
+            &pool,
+            &outsider,
+            channel,
+            control(kind, &alias, &space, &outsider, &peer, None),
+        )
+        .await;
+        assert!(matches!(attached, Err(StoreError::Forbidden)));
+    }
+    // Older clients could persist an untrusted association. It still cannot
+    // authorize an avatar write to channels the actor has never joined.
+    query("UPDATE cloud_chat_conversations SET group_space_id = $2 WHERE conversation_id = $1")
+        .bind(channel)
+        .bind(&space)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let foreign_image = avatar_asset(&pool, &outsider).await;
+    for replacement in [Some(foreign_image), None] {
+        let result = store::send_message(
+            &pool,
+            &outsider,
+            channel,
+            control(
+                "group-avatar-update",
+                &alias,
+                &space,
+                &outsider,
+                &peer,
+                Some(json!({"imageUrl": replacement, "updatedAtMs": 1})),
+            ),
+        )
+        .await;
+        assert!(matches!(result, Err(StoreError::Forbidden)));
+    }
+    let snapshot = store::bootstrap(&pool, &owner).await.unwrap();
+    assert_eq!(
+        snapshot
+            .conversations
+            .iter()
+            .find(|c| c.id == root)
+            .unwrap()
+            .group_avatar
+            .as_ref()
+            .unwrap()["imageUrl"],
+        image
+    );
+}
+
+#[tokio::test]
 async fn concurrent_admin_edits_share_one_monotonic_revision() {
     let Some(pool) = try_pool().await else { return };
     let owner = account(&pool, "avatar-race-owner").await;

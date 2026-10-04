@@ -126,6 +126,13 @@ pub(crate) async fn send_message_in_transaction(
             .bind(format!("group-projection:{}", projection.group_space_id))
             .execute(&mut **transaction)
             .await?;
+        group_avatar::authorize_group_space_attachment(
+            transaction,
+            account_id,
+            conversation_id,
+            &projection.group_space_id,
+        )
+        .await?;
         apply_group_control_title(transaction, account_id, conversation_id, projection).await?;
         let group_avatar = group_avatar::prepare_group_avatar(
             transaction,
