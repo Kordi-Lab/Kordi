@@ -575,7 +575,7 @@ struct MessageBubble: View, Equatable {
     @ViewBuilder
     private var deliveryStatus: some View {
         if message.author == .me, message.voiceMessage == nil, !isCallActivity, !message.isEdited,
-           message.agentQueuePosition == nil {
+           message.agentQueuePosition == nil, !isThreadLayout || message.deliveryState != .read {
             if showsMediaDeliveryStatus {
                 mediaDeliveryStatusOverlay
             } else {
@@ -759,9 +759,9 @@ struct MessageBubble: View, Equatable {
                 VoiceMessageBubbleContent(
                     voiceMessage: voiceMessage,
                     isActionPresented: isActionPresented,
-                    reservesDeliveryStatus: message.author == .me,
+                    reservesDeliveryStatus: message.author == .me && (!isThreadLayout || message.deliveryState != .read),
                     onPrepare: onPrepareVoiceMessage,
-                    deliveryState: message.author == .me && message.agentQueuePosition == nil ? message.deliveryState : nil,
+                    deliveryState: message.author == .me && message.agentQueuePosition == nil && (!isThreadLayout || message.deliveryState != .read) ? message.deliveryState : nil,
                     readByCount: message.readByCount,
                     deliveryTint: bubbleDeliveryColor,
                     transcriptions: voiceTranscriptions,
@@ -857,7 +857,7 @@ struct MessageBubble: View, Equatable {
                             .padding(.trailing, 4)
                     }
                     Text("edited", comment: "Message metadata indicating that its text was changed after sending.")
-                    if message.author == .me {
+                    if message.author == .me, !isThreadLayout || message.deliveryState != .read {
                         MessageDeliveryGlyph(
                             state: message.deliveryState,
                             readByCount: message.readByCount,
