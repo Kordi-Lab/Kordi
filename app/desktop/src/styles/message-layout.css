@@ -15,6 +15,19 @@
 }
 .app-message-layout-options [aria-pressed="true"] { background: var(--app-control-bg); color: var(--utility-foreground); }
 
+.app-thread-date-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px 8px;
+  color: var(--utility-muted-text);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+}
+.app-thread-date-divider > span { height: 1px; min-width: 8px; flex: 1; background: var(--app-divider); }
+
 .kordi-app .app-thread-message-row {
   align-items: stretch;
   max-width: 100%;

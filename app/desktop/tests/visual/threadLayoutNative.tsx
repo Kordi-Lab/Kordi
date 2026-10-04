@@ -33,7 +33,10 @@ const state: CanonicalSessionState = {
 };
 function sample(id: string, sender: string, text: string, content: object = {}): CanonicalSessionMessage {
   const sequenceNum = state.messages.length + 1;
-  const timestamp = now - (9 - sequenceNum) * 60_000;
+  const date = new Date(now);
+  date.setHours(sequenceNum <= 3 ? 10 : 9, sequenceNum, 0, 0);
+  if (sequenceNum <= 3) date.setDate(date.getDate() - 1);
+  const timestamp = date.getTime();
   return { id, sessionId, senderIdentityId: sender, senderRole: sender === selfId ? 'user' : sender === agentId ? 'owned-agent' : 'person', messageKind: 'text', contentText: text, content: { deliveryState: 'sent', ...content }, status: 'sent', sequenceNum, createdAtMs: timestamp, updatedAtMs: timestamp };
 }
 const sourceText = 'What is the cleanest way to keep replies easy to follow?';

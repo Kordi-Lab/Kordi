@@ -114,7 +114,7 @@ enum ConversationInitialPlaceholderCatalog {
             return ConversationInitialPlaceholder(
                 id: "loading-\(index)", author: author, kind: author == .agent ? .agent : .message,
                 lineCount: index.isMultiple(of: 2) ? 2 : 3, width: width,
-                presentation: ConversationMessagePresentation(showsTimestamp: false,
+                presentation: ConversationMessagePresentation(showsTimestamp: false, showsDateDivider: false,
                     groupedWithPrevious: false, groupedWithNext: false, showsAvatar: true, outgoingAvatarGroupID: nil)
             )
         }

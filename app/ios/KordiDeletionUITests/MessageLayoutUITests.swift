@@ -2,6 +2,25 @@ import XCTest
 
 @MainActor
 final class MessageLayoutUITests: ProviderUITestCase {
+    func testThreadsSeparatesDatesAndKeepsMessageTimesCompact() {
+        let app = launch("--preview-contact-chat", "--preview-thread-dates", "-kordi.messageLayout.v1", "threads", "-kordi.appearance", "light")
+        XCTAssertTrue(app.buttons["Add photo, video, or file"].waitForExistence(timeout: 15))
+        let source = element("message-m5", in: app)
+        XCTAssertTrue(reveal(source, in: app))
+        let dividers = app.descendants(matching: .any).matching(identifier: "thread-date-divider")
+        XCTAssertEqual(dividers.count, 2)
+        for divider in dividers.allElementsBoundByIndex {
+            XCTAssertFalse(divider.label.contains(":"))
+            XCTAssertTrue(divider.label.contains(String(Calendar.current.component(.year, from: Date()))))
+        }
+        let time = element("thread-message-time-m5", in: app)
+        XCTAssertTrue(time.exists)
+        XCTAssertTrue(time.label.contains(":"))
+        XCTAssertFalse(time.label.contains(String(Calendar.current.component(.year, from: Date()))))
+        capture("Daily date dividers with time-only message headers", app: app)
+        app.terminate()
+    }
+
     func testDarkThreadsSendsQuotedReplyInTheMainConversation() {
         let app = launch("--preview-contact-chat", "-kordi.messageLayout.v1", "threads", "-kordi.appearance", "dark")
         XCTAssertTrue(app.buttons["Add photo, video, or file"].waitForExistence(timeout: 15))

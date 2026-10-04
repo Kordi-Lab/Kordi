@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMessageLayout } from '@/app/messageLayoutPreference';
 import { resolveTranscriptPlanCards } from '@/features/cloud/planCardSnapshot';
 import { Split } from 'lucide-react';
 
@@ -177,11 +178,17 @@ export function useChatTranscriptViewport({
     return () => observer.disconnect();
   }, [scrollRef]);
   const transcriptColumns = transcriptContentColumns(transcriptViewportWidth);
+  const threadLayout = useMessageLayout() === 'threads';
   const { timeZone, now } = useTranscriptTimeZone();
   const timeSeparatorCache = useMemo(() => createTranscriptTimeSeparatorCache(), []);
-  const timeSeparators = useMemo(
+  const dateSeparatorCache = useMemo(() => createTranscriptTimeSeparatorCache(), []);
+  const groupingSeparators = useMemo(
     () => timeSeparatorCache(transcriptMessages, { timeZone, now }),
     [timeSeparatorCache, transcriptMessages, timeZone, now],
+  );
+  const timeSeparators = useMemo(
+    () => threadLayout ? dateSeparatorCache(transcriptMessages, { timeZone, now, dateOnly: true }) : groupingSeparators,
+    [threadLayout, dateSeparatorCache, transcriptMessages, timeZone, now, groupingSeparators],
   );
   const imageGallery = useMemo(
     () => collectConversationImageAttachments(transcriptMessages),
@@ -224,8 +231,8 @@ export function useChatTranscriptViewport({
         Boolean(timeSeparators[entry.originalIndex]),
         {
           contentColumns: transcriptColumns,
-          isGroupedWithPrevious: isGroupedWithAdjacentHumanMessage(transcriptMessages, entry.originalIndex, -1, timeSeparators),
-          isGroupedWithNext: isGroupedWithAdjacentHumanMessage(transcriptMessages, entry.originalIndex, 1, timeSeparators),
+          isGroupedWithPrevious: isGroupedWithAdjacentHumanMessage(transcriptMessages, entry.originalIndex, -1, groupingSeparators),
+          isGroupedWithNext: isGroupedWithAdjacentHumanMessage(transcriptMessages, entry.originalIndex, 1, groupingSeparators),
         },
       )}
       sessionKey={sessionKey}
@@ -264,7 +271,7 @@ export function useChatTranscriptViewport({
         return (
         <div data-incoming-sequence={!msg.isOwnMessage && msg.role!=='user'?msg.conversationSequence:undefined}>
           {timeSeparators[idx] && validTimestamp ? (
-            <TranscriptTimeSeparator timestampMs={timestampMs} label={timeSeparators[idx]} timeZone={timeZone} />
+            <TranscriptTimeSeparator timestampMs={timestampMs} label={timeSeparators[idx]} timeZone={timeZone} dateOnly={threadLayout} />
           ) : null}
           {presentation.firstUnreadMessageId && transcriptWindowMessageMatchesId(msg,presentation.firstUnreadMessageId,idx)?<div className="my-3 flex items-center gap-3 text-[11px] font-medium text-[color:var(--app-sidebar-accent)]"><span className="h-px flex-1 bg-current opacity-25"/>New replies<span className="h-px flex-1 bg-current opacity-25"/></div>:null}
           {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
@@ -310,8 +317,8 @@ export function useChatTranscriptViewport({
             onSelectionDragEnter={onSelectionDragEnter}
             onSelectionDragEnd={onSelectionDragEnd}
             plainAgentResponse={plainAgentResponse}
-            isGroupedWithPrevious={!pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, timeSeparators)}
-            isGroupedWithNext={!pinBoundaries.before.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, timeSeparators)}
+            isGroupedWithPrevious={!pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators)}
+            isGroupedWithNext={!pinBoundaries.before.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, groupingSeparators)}
           />}
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
@@ -414,6 +421,8 @@ export function useChatTranscriptViewport({
     transcriptMessages,
     timeZone,
     timeSeparators,
+    groupingSeparators,
+    threadLayout,
     transcriptTailKey,
     unreadCount,
     navigationAccessory,
