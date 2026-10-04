@@ -195,7 +195,8 @@ WHERE context_contract < 2 AND updated_at > now() - interval '7 days';
 
 When it returns 0, or the owners still on legacy Macs were told to update, set
 `KORDI_AGENT_CONTEXT_LEGACY_DESKTOP=deny` the same way and change the manifest value
-to match.
+to match. The repository test for the manifest accepts either documented value, so
+the switch back needs no test change.
 
 ## Backup receipt
 

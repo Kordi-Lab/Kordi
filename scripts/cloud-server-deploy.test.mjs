@@ -207,12 +207,19 @@ test('agent trust rollout states the legacy Mac choice in the manifest and the r
     readFile(productionDeploymentGuidePath, 'utf8'),
   ]);
 
-  assert.match(
-    manifest,
-    /- name: KORDI_AGENT_CONTEXT_LEGACY_DESKTOP\n(?:\s*#.*\n)*\s*value: "allow_without_opt_outs"/,
+  // The runbook switches the manifest from the rollout-window value back to
+  // `deny`, so either documented value is accepted here.
+  const documentedValues = ['allow_without_opt_outs', 'deny'];
+  const setting = manifest.match(
+    /- name: KORDI_AGENT_CONTEXT_LEGACY_DESKTOP\n(?:\s*#.*\n)*\s*value: "([^"]*)"/,
   );
+  assert.ok(setting, 'the manifest states KORDI_AGENT_CONTEXT_LEGACY_DESKTOP');
+  assert.ok(documentedValues.includes(setting[1]), `unexpected legacy desktop value ${setting[1]}`);
   const rollout = guide.split(/^## /m).find((section) => section.startsWith('Agent trust rollout'));
   assert.ok(rollout, 'the production guide has an agent trust rollout section');
+  for (const value of documentedValues) {
+    assert.ok(rollout.includes(`KORDI_AGENT_CONTEXT_LEGACY_DESKTOP=${value}`), `the runbook documents ${value}`);
+  }
   assert.match(rollout, /history_scope='mentions'/);
   assert.match(
     rollout,
@@ -221,7 +228,6 @@ test('agent trust rollout states the legacy Mac choice in the manifest and the r
   assert.match(rollout, /Opt-outs are always enforced/);
   assert.match(rollout, /release note/);
   assert.match(rollout, /context_contract < 2/);
-  assert.match(rollout, /KORDI_AGENT_CONTEXT_LEGACY_DESKTOP=deny/);
 });
 
 test('product media uses pinned host networking and secret-backed credentials', async () => {
