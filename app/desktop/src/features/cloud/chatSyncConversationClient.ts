@@ -6,27 +6,19 @@ import {
   cloudMessageFromChatSync,
   cloudOperationUuid,
   directSessionId,
-  groupMemberAccountIdsFromEnvelope,
+  groupMembershipFromEnvelope,
   inferConversationKind,
   chatTextContent,
 } from './chatSyncMapping';
 import { ChatSyncState } from './chatSyncState';
-import type { ChatSyncConversation, ChatSyncMessage, ChatSyncPreferences } from './chatSyncTypes';
+import type { ChatSyncConversation, ChatSyncConversationInput, ChatSyncMessage, ChatSyncPreferences } from './chatSyncTypes';
 import { isRetryableCloudDeliveryError } from './cloudAuthError';
 import { completeChatSyncOutbox, dueChatSyncOutbox, enqueueChatSyncOutbox, failChatSyncOutbox } from '@/lib/desktopChatSync';
 
 export class ChatSyncConversationClient {
   constructor(private readonly state: ChatSyncState) {}
 
-  async ensureChatConversation(token: string, input: {
-    peerAccountId: string;
-    sessionId?: string | null;
-    kind?: ChatSyncConversation['kind'];
-    memberAccountIds?: string[];
-    sharedTitle?: string | null;
-    accountId?: string | null;
-    replaceMembers?: boolean;
-  }): Promise<ChatSyncConversation> {
+  async ensureChatConversation(token: string, input: ChatSyncConversationInput): Promise<ChatSyncConversation> {
     const accountId = input.accountId?.trim() || this.state.activeAccountId?.trim() || '';
     const peerAccountId = input.peerAccountId.trim();
     const fallbackSessionId = accountId && peerAccountId
@@ -46,7 +38,8 @@ export class ChatSyncConversationClient {
     )];
     const cached = this.state.conversationBySessionId.get(sessionId);
     if (cached) {
-      if (cached.kind !== 'group') return cached;
+      // A message's participant snapshot is context, not permission to edit the roster.
+      if (cached.kind !== 'group' || input.syncMembers !== true) return cached;
       const activeMembers = new Set(cached.members
         .filter((member) => member.membership_state === 'active' && !isPipAccountId(member.account_id))
         .map((member) => member.account_id));
@@ -110,10 +103,10 @@ export class ChatSyncConversationClient {
     const sessionId = options.sessionId?.trim() ?? '';
     const conversationKind = options.conversationKind
       ?? (body.startsWith('kordi-cloud-group:') ? 'group' : undefined);
-    const envelopeMemberAccountIds = conversationKind === 'group'
-      ? groupMemberAccountIdsFromEnvelope(body)
+    const envelopeMembership = conversationKind === 'group'
+      ? groupMembershipFromEnvelope(body)
       : null;
-    const conversationMemberAccountIds = envelopeMemberAccountIds ?? options.memberAccountIds;
+    const conversationMemberAccountIds = envelopeMembership?.accountIds ?? options.memberAccountIds;
     const accountId = options.accountId?.trim() || this.state.activeAccountId?.trim() || '';
     const stableGroupSession = sessionId || `${accountId}:${[...(options.memberAccountIds ?? [])].sort().join(':')}`;
     const clientMessageId = cloudOperationUuid(
@@ -159,7 +152,8 @@ export class ChatSyncConversationClient {
         memberAccountIds: conversationMemberAccountIds,
         sharedTitle: options.sharedTitle,
         accountId,
-        replaceMembers: envelopeMemberAccountIds !== null,
+        syncMembers: envelopeMembership?.changesMembership === true,
+        replaceMembers: envelopeMembership?.changesMembership === true,
       });
       const response = await this.state.send<{ message: ChatSyncMessage }>(
         `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/messages`,
