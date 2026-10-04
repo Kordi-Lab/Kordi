@@ -55,28 +55,37 @@ versions, and other changes must not take them:
 - 110: contact consent and blocks
 - 111: abuse reports
 - 112: agent trust
-- 116: content removal
+- 116: content removal jobs and deletion indexes
+- 117: keep removed files-panel entries archived
 
-A unit test keeps these versions free; a change that lands one of them removes
-it from that list. Gaps in the sequence are allowed.
+Unit tests keep these versions free and this list equal to the one they check;
+a change that lands one of them removes it from both. Gaps in the sequence are
+allowed.
 
-Versions 107 to 117 were renumbered before release, when chat projects took
-version 107 and session pin stacks took version 108. Account email
-verification moved to version 117. Production databases never recorded the
-earlier numbers. A development database that did is refused at startup. Such
-databases are disposable, so recreate them. To keep one, renumber its records
-in one transaction before starting this build:
+Versions from 106 on were renumbered before release, when chat projects took
+version 107 and session pin stacks took version 108. Session-bound realtime
+tickets moved to version 109, the runner run token hash to version 113, and
+account email verification to version 120, because content removal holds
+version 117. Production databases never recorded the earlier numbers. A
+development database that did is refused at startup. Such databases are
+disposable, so recreate them. To keep one, renumber its records in one
+transaction before starting this build:
 
 ```sql
 BEGIN;
 UPDATE cloud_schema_versions SET version = 113
- WHERE version IN (109, 110) AND description = 'runner run token hash';
+ WHERE version IN (106, 109, 110) AND description = 'runner run token hash';
 UPDATE cloud_schema_versions SET version = 109
- WHERE version = 108 AND description = 'session-bound realtime tickets';
-UPDATE cloud_schema_versions SET version = 117
- WHERE version IN (107, 108) AND description = 'account email verification';
+ WHERE version IN (107, 108) AND description = 'session-bound realtime tickets';
+UPDATE cloud_schema_versions SET version = 120
+ WHERE version IN (106, 107, 108, 117) AND description = 'account email verification';
 COMMIT;
 ```
 
-The build then applies any of versions 107 and 108 that are missing and keeps
-every other recorded version.
+These statements cover every earlier number of those three migrations,
+including the numbers that the changes still in review record. The build then
+applies every version it embeds that is still missing and keeps every other
+recorded version, including the versions those changes hold. A database that
+recorded another migration under a number this build uses, such as an
+unreleased number of chat projects or session pin stacks, cannot be renumbered
+this way. Recreate it. An upgrade test runs these statements as written here.

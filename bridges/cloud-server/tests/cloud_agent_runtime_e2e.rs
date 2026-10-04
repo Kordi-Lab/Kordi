@@ -447,6 +447,8 @@ mod calendar;
 mod claims;
 #[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
 mod cloud_subsessions;
+#[path = "cloud_agent_runtime_e2e/device_key_rotation.rs"]
+mod device_key_rotation;
 #[path = "cloud_agent_runtime_e2e/execution_ownership.rs"]
 mod execution_ownership;
 #[path = "cloud_agent_runtime_e2e/group_owner_admission.rs"]

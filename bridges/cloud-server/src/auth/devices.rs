@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
-use p256::pkcs8::DecodePublicKey;
+use p256::pkcs8::{DecodePublicKey, EncodePublicKey};
 use p256::PublicKey;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -10,7 +10,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::Postgres;
 
-use crate::chat_sync::store::{append_user_sync_events_in_transaction, StoreError};
+use crate::chat_sync::store::{
+    append_account_hint, append_user_sync_events_in_transaction, StoreError,
+};
 
 const MAX_DEVICE_NAME_CHARS: usize = 80;
 const MAX_PLATFORM_CHARS: usize = 32;
@@ -119,20 +121,30 @@ pub fn normalize_device_metadata(value: DeviceMetadataUpdateRequest) -> Normaliz
     }
 }
 
-pub fn normalize_device_registration(
-    value: DeviceRegistrationRequest,
-) -> Result<NormalizedDeviceRegistration, DeviceInputError> {
-    let key_algorithm = value.key_algorithm.trim().to_ascii_lowercase();
-    if key_algorithm != "p256" {
+/// A registrable installation public key: a P-256 key in the encodings
+/// [`parse_p256_public_key`] accepts, trimmed.
+pub fn normalize_p256_public_key(
+    public_key: &str,
+    key_algorithm: &str,
+) -> Result<String, DeviceInputError> {
+    if !key_algorithm.trim().eq_ignore_ascii_case("p256") {
         return Err(DeviceInputError::UnsupportedKeyAlgorithm);
     }
-    let public_key = value.public_key.trim();
+    let public_key = public_key.trim();
     if public_key.is_empty()
         || public_key.len() > MAX_PUBLIC_KEY_CHARS
         || parse_p256_public_key(public_key).is_none()
     {
         return Err(DeviceInputError::InvalidPublicKey);
     }
+    Ok(public_key.to_string())
+}
+
+pub fn normalize_device_registration(
+    value: DeviceRegistrationRequest,
+) -> Result<NormalizedDeviceRegistration, DeviceInputError> {
+    let public_key = normalize_p256_public_key(&value.public_key, &value.key_algorithm)?;
+    let key_algorithm = "p256".to_string();
 
     Ok(NormalizedDeviceRegistration {
         display_name: clean_optional(value.display_name.as_deref(), MAX_DEVICE_NAME_CHARS),
@@ -144,7 +156,7 @@ pub fn normalize_device_registration(
             value.approximate_location.as_deref(),
             MAX_LOCATION_CHARS,
         ),
-        public_key: public_key.to_string(),
+        public_key,
         key_algorithm,
     })
 }
@@ -156,6 +168,13 @@ pub fn parse_p256_public_key(encoded: &str) -> Option<PublicKey> {
     PublicKey::from_sec1_bytes(&decoded)
         .or_else(|_| PublicKey::from_public_key_der(&decoded))
         .ok()
+}
+
+/// The hex SHA-256 fingerprint of a P-256 key's SubjectPublicKeyInfo
+/// document, the same for either encoding a device registers.
+pub fn p256_key_fingerprint(key: &PublicKey) -> Option<String> {
+    let document = key.to_public_key_der().ok()?;
+    Some(hex::encode(Sha256::digest(document.as_bytes())))
 }
 
 pub fn legacy_device_registration(default_name: &str) -> NormalizedDeviceRegistration {
@@ -264,6 +283,19 @@ pub async fn authorize_device(
     })
 }
 
+fn device_sync_payload(
+    device_id: &str,
+    display_name: Option<&str>,
+    authorization_state: &str,
+) -> Value {
+    json!({
+        "schemaVersion": 1,
+        "deviceId": device_id,
+        "displayName": display_name,
+        "authorizationState": authorization_state,
+    })
+}
+
 pub async fn append_device_sync_event(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
@@ -277,12 +309,27 @@ pub async fn append_device_sync_event(
         &[account_id.to_string()],
         event_type,
         None,
-        &json!({
-            "schemaVersion": 1,
-            "deviceId": device_id,
-            "displayName": display_name,
-            "authorizationState": authorization_state,
-        }),
+        &device_sync_payload(device_id, display_name, authorization_state),
+    )
+    .await
+}
+
+/// Appends a device change that clients released before its event type may
+/// skip, as a non-critical event in the same form as other device events.
+/// An unknown critical event would stop their sync.
+pub async fn append_device_notice(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    event_type: &str,
+    device_id: &str,
+    display_name: Option<&str>,
+    authorization_state: &str,
+) -> Result<(), StoreError> {
+    append_account_hint(
+        transaction,
+        account_id,
+        event_type,
+        &device_sync_payload(device_id, display_name, authorization_state),
     )
     .await
 }
@@ -382,6 +429,25 @@ mod tests {
         assert_eq!(normalized.display_name.as_deref(), Some("Ada's iPhone"));
         assert_eq!(normalized.platform.as_deref(), Some("ios"));
         assert_eq!(normalized.key_algorithm, "p256");
+    }
+
+    #[test]
+    fn fingerprints_match_for_either_registered_encoding() {
+        let secret = p256::SecretKey::from_slice(&[7_u8; 32]).unwrap();
+        let document = secret.public_key().to_public_key_der().unwrap();
+        let spki = URL_SAFE_NO_PAD.encode(document.as_bytes());
+        let sec1 = parse_p256_public_key(&valid_public_key()).unwrap();
+        let der = parse_p256_public_key(&spki).unwrap();
+        let fingerprint = p256_key_fingerprint(&sec1).unwrap();
+        assert_eq!(p256_key_fingerprint(&der).unwrap(), fingerprint);
+        assert_eq!(
+            fingerprint,
+            hex::encode(Sha256::digest(URL_SAFE_NO_PAD.decode(spki).unwrap()))
+        );
+        let other = p256::SecretKey::from_slice(&[8_u8; 32])
+            .unwrap()
+            .public_key();
+        assert_ne!(p256_key_fingerprint(&other).unwrap(), fingerprint);
     }
 
     #[test]

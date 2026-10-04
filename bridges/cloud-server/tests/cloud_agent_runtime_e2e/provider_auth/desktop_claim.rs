@@ -4,16 +4,33 @@ use p256::ecdsa::{signature::Signer, Signature, SigningKey};
 
 #[path = "desktop_fallback.rs"]
 mod fallback;
+#[path = "desktop_proof_refusals.rs"]
+mod refusals;
 
 const HOSTED_ROUTE: &str = "cloud-api-key:work";
+/// The audience a desktop names for a server whose public base URL is not
+/// configured, as in these tests.
+const AUDIENCE: &str = "https://kordi.ai";
 
 struct Desktop {
     account: TestAccount,
     email: String,
     key: SigningKey,
+    device_id: String,
 }
 
+/// Publishes readiness. A desktop that signs device proofs names the
+/// signed-text version it uses.
 async fn ready(router: &axum::Router, account: &TestAccount, device_proof: Option<bool>) {
+    let fields = match device_proof {
+        Some(true) => json!({"deviceProof":true,"deviceProofVersion":2}),
+        Some(false) => json!({"deviceProof":false}),
+        None => json!({}),
+    };
+    publish_ready(router, account, fields).await;
+}
+
+async fn publish_ready(router: &axum::Router, account: &TestAccount, fields: Value) {
     let online = router
         .clone()
         .oneshot(post_with_token("/v1/cloud/presence/online", &account.token))
@@ -21,8 +38,8 @@ async fn ready(router: &axum::Router, account: &TestAccount, device_proof: Optio
         .unwrap();
     assert_eq!(online.status(), StatusCode::OK);
     let mut body = json!({"agentIds":[format!("cloud-agent:{}", account.account_id)]});
-    if let Some(value) = device_proof {
-        body["deviceProof"] = json!(value);
+    for (name, value) in fields.as_object().unwrap() {
+        body[name] = value.clone();
     }
     let ready = router
         .clone()
@@ -130,16 +147,47 @@ async fn nonce(
     let body = read_json(response).await;
     assert_eq!(body["algorithm"], "ecdsa-p256-sha256");
     assert_eq!(body["purpose"], "desktop-provider-auth");
+    assert_eq!(body["version"], 2);
+    assert!(body["deviceId"].as_str().unwrap().starts_with("dev_"));
     body["nonce"].as_str().unwrap().to_string()
 }
 
 /// The signed text is a protocol contract with the desktop.
-fn proof(key: &SigningKey, account: &str, run: &str, claim: uuid::Uuid, nonce: &str) -> Value {
-    let message = format!(
-        "kordi-device-proof-v1\npurpose:desktop-provider-auth\naccount:{account}\nrun:{run}\nclaim:{claim}\nnonce:{nonce}"
-    );
+fn message(
+    audience: &str,
+    account: &str,
+    device: &str,
+    run: &str,
+    claim: uuid::Uuid,
+    nonce: &str,
+) -> String {
+    format!(
+        "kordi-device-proof-v2\npurpose:desktop-provider-auth\naudience:{audience}\naccount:{account}\n\
+         device:{device}\nrun:{run}\nclaim:{claim}\nnonce:{nonce}"
+    )
+}
+
+/// A proof that names `audience` and signs `message` with `key`.
+fn signed(key: &SigningKey, audience: &str, message: &str, nonce: &str) -> Value {
     let signature: Signature = key.sign(message.as_bytes());
-    json!({"nonce":nonce,"signature":URL_SAFE_NO_PAD.encode(signature.to_bytes())})
+    json!({"version":2,"audience":audience,"nonce":nonce,
+        "signature":URL_SAFE_NO_PAD.encode(signature.to_bytes())})
+}
+
+fn proof(
+    key: &SigningKey,
+    account: &str,
+    device: &str,
+    run: &str,
+    claim: uuid::Uuid,
+    nonce: &str,
+) -> Value {
+    signed(
+        key,
+        AUDIENCE,
+        &message(AUDIENCE, account, device, run, claim, nonce),
+        nonce,
+    )
 }
 
 async fn provider_auth(
@@ -176,6 +224,7 @@ async fn setup() -> Option<(sqlx_postgres::PgPool, axum::Router, Desktop)> {
     let key = random_device_key();
     let email = unique_email("desktop-proof");
     let account = sign_in_with_device_key(&router, "/v1/cloud/auth/signup", &email, &key).await;
+    let device_id = device_id_for_key(&pool, &account, &key).await;
     ready(&router, &account, Some(true)).await;
     save_hosted_account(&router, &account).await;
     Some((
@@ -185,6 +234,7 @@ async fn setup() -> Option<(sqlx_postgres::PgPool, axum::Router, Desktop)> {
             account,
             email,
             key,
+            device_id,
         },
     ))
 }
@@ -221,13 +271,26 @@ async fn desktop_provider_auth_requires_the_live_owner_mac_claim_and_device_proo
     );
     assert_eq!(body["errorCode"], "device_proof_required");
 
+    // A desktop that signs the earlier text, which names neither the server
+    // nor the device, is asked to update.
+    let issued = nonce(&router, &mac.account, &run, claim).await;
+    let earlier = format!(
+        "kordi-device-proof-v1\npurpose:desktop-provider-auth\naccount:{owner}\nrun:{run}\nclaim:{claim}\nnonce:{issued}"
+    );
+    let mut earlier = signed(&mac.key, AUDIENCE, &earlier, &issued);
+    earlier.as_object_mut().unwrap().remove("version");
+    earlier.as_object_mut().unwrap().remove("audience");
+    let (status, body) = provider_auth(&router, &mac.account, &run, claim, Some(earlier)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["errorCode"], "device_proof_required");
+
     let issued = nonce(&router, &mac.account, &run, claim).await;
     let (status, body) = provider_auth(
         &router,
         &mac.account,
         &run,
         claim,
-        Some(proof(&mac.key, owner, &run, claim, &issued)),
+        Some(proof(&mac.key, owner, &mac.device_id, &run, claim, &issued)),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -245,7 +308,7 @@ async fn desktop_provider_auth_requires_the_live_owner_mac_claim_and_device_proo
         &mac.account,
         &run,
         claim,
-        Some(proof(&mac.key, owner, &run, claim, &issued)),
+        Some(proof(&mac.key, owner, &mac.device_id, &run, claim, &issued)),
     )
     .await;
     assert_eq!(
@@ -263,123 +326,4 @@ async fn desktop_provider_auth_requires_the_live_owner_mac_claim_and_device_proo
         StatusCode::CONFLICT,
         "an expired lease is refused first"
     );
-}
-
-#[tokio::test]
-async fn device_proofs_from_other_keys_runs_or_times_are_refused() {
-    let Some((pool, router, mac)) = setup().await else {
-        return;
-    };
-    let owner = mac.account.account_id.clone();
-    let (run, claim) = claimed_run(&router, &pool, &mac.account).await;
-    let (other_run, other_claim) = claimed_run(&router, &pool, &mac.account).await;
-    // A second Mac of the same account registers its own key.
-    let second_key = random_device_key();
-    let second =
-        sign_in_with_device_key(&router, "/v1/cloud/auth/login", &mac.email, &second_key).await;
-    assert_eq!(second.account_id, owner);
-
-    let refused = |label: &'static str| {
-        move |(status, body): (StatusCode, Value)| {
-            assert_eq!(status, StatusCode::FORBIDDEN, "{label}");
-            assert_eq!(body["errorCode"], "device_proof_invalid", "{label}");
-        }
-    };
-    let issued = nonce(&router, &mac.account, &run, claim).await;
-    refused("an unregistered key")(
-        provider_auth(
-            &router,
-            &mac.account,
-            &run,
-            claim,
-            Some(proof(&random_device_key(), &owner, &run, claim, &issued)),
-        )
-        .await,
-    );
-    let issued = nonce(&router, &mac.account, &run, claim).await;
-    refused("another registered device's key")(
-        provider_auth(
-            &router,
-            &mac.account,
-            &run,
-            claim,
-            Some(proof(&second_key, &owner, &run, claim, &issued)),
-        )
-        .await,
-    );
-    let issued = nonce(&router, &mac.account, &run, claim).await;
-    refused("a challenge issued for another run")(
-        provider_auth(
-            &router,
-            &mac.account,
-            &other_run,
-            other_claim,
-            Some(proof(&mac.key, &owner, &other_run, other_claim, &issued)),
-        )
-        .await,
-    );
-    refused("a signature over another run")(
-        provider_auth(
-            &router,
-            &mac.account,
-            &run,
-            claim,
-            Some(proof(&mac.key, &owner, &other_run, claim, &issued)),
-        )
-        .await,
-    );
-    let issued = nonce(&router, &mac.account, &run, claim).await;
-    sqlx_core::query::query("UPDATE cloud_device_proof_challenges SET expires_at=now()-interval '1 second' WHERE nonce=$1")
-        .bind(&issued).execute(&pool).await.unwrap();
-    refused("an expired challenge")(
-        provider_auth(
-            &router,
-            &mac.account,
-            &run,
-            claim,
-            Some(proof(&mac.key, &owner, &run, claim, &issued)),
-        )
-        .await,
-    );
-    refused("a signature without a challenge")(
-        provider_auth(
-            &router,
-            &mac.account,
-            &run,
-            claim,
-            Some(proof(&mac.key, &owner, &run, claim, "unissued-nonce")),
-        )
-        .await,
-    );
-    let replaced = nonce(&router, &mac.account, &run, claim).await;
-    let current = nonce(&router, &mac.account, &run, claim).await;
-    refused("a replaced challenge")(
-        provider_auth(
-            &router,
-            &mac.account,
-            &run,
-            claim,
-            Some(proof(&mac.key, &owner, &run, claim, &replaced)),
-        )
-        .await,
-    );
-    // The second Mac's session cannot use the first Mac's challenge or lease.
-    let (status, _) = provider_auth(
-        &router,
-        &second,
-        &run,
-        claim,
-        Some(proof(&second_key, &owner, &run, claim, &current)),
-    )
-    .await;
-    assert_eq!(status, StatusCode::CONFLICT);
-    let (status, body) = provider_auth(
-        &router,
-        &mac.account,
-        &run,
-        claim,
-        Some(proof(&mac.key, &owner, &run, claim, &current)),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{body}");
 }

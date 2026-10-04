@@ -30,6 +30,17 @@ pub(super) struct ReadyInput {
     /// Set by desktops that sign device proofs for hosted provider material.
     #[serde(default)]
     device_proof: bool,
+    /// The signed-text version those proofs use. Desktops that sign an
+    /// earlier version send none, and are not offered hosted runs.
+    #[serde(default)]
+    device_proof_version: Option<u32>,
+}
+
+impl ReadyInput {
+    fn signs_current_device_proofs(&self) -> bool {
+        self.device_proof
+            && self.device_proof_version == Some(crate::auth::device_signatures::PROOF_VERSION)
+    }
 }
 
 pub(super) async fn ready(
@@ -51,7 +62,7 @@ pub(super) async fn ready(
                 .bind(agent).bind(&session.account_id).fetch_optional(&mut *tx).await?;
             if agent != &format!("cloud-agent:{}", session.account_id) && own.is_none() { return Ok(false); }
             query("INSERT INTO cloud_agent_desktop_capabilities(device_id,agent_id,device_proof) VALUES($1,$2,$3) ON CONFLICT(device_id,agent_id) DO UPDATE SET updated_at=now(),device_proof=EXCLUDED.device_proof")
-                .bind(&session.device_id).bind(agent).bind(input.device_proof).execute(&mut *tx).await?;
+                .bind(&session.device_id).bind(agent).bind(input.signs_current_device_proofs()).execute(&mut *tx).await?;
         }
         tx.commit().await?;
         Ok(true)

@@ -3,6 +3,7 @@
 //! `/v1/cloud/contacts`.
 
 pub mod accounts;
+pub(crate) mod device_signatures;
 pub mod devices;
 mod oauth;
 pub mod password;

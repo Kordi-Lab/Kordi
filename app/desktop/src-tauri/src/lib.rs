@@ -180,6 +180,9 @@ pub fn run() {
             cloud_session::configure_keychain_scope(&app.config().identifier);
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
+            // Replaces, once, a device key that an earlier release created in
+            // the webview.
+            cloud_session::device_key_rotation::start();
             private_storage::harden_local_storage_roots();
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");

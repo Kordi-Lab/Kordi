@@ -5,8 +5,10 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 mod email_verification_tests;
+mod omp_state_tests;
 mod pin_stack_tests;
 mod projection_tests;
+mod renumbering_tests;
 mod title_tests;
 
 async fn fixture(version: i64) -> PgPool {

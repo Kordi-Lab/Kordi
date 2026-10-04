@@ -36,15 +36,11 @@ pub(super) fn runner_authorized(headers: &HeaderMap) -> bool {
 /// Refuses a runner route before its body is read or parsed unless the
 /// request carries the shared runner token. Handlers still check the
 /// run-scoped token of the run they act on.
-pub(super) async fn require_runner_token(request: Request, next: Next) -> Response {
+pub(crate) async fn require_runner_token(request: Request, next: Next) -> Response {
     if !runner_authorized(request.headers()) {
         return runner_unauthorized();
     }
     next.run(request).await
-}
-
-pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
-    runner_authorized(headers)
 }
 
 /// Authorizes a run-specific runner request: the shared runner token and the

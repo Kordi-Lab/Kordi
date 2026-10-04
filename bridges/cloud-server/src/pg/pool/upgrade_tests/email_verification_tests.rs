@@ -40,7 +40,7 @@ async fn add_identity(
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
 async fn upgrade_from_108_marks_only_provider_verified_primary_emails() {
     // 108 is the newest released version. The upgrade applies session-bound
-    // realtime tickets (109) through account email verification (117).
+    // realtime tickets (109) through account email verification (120).
     let pool = fixture(108).await;
     add_account(&pool, "linked-verified", Some("Linked@Example.test"), true).await;
     add_identity(

@@ -89,10 +89,11 @@ pub(super) async fn save(
         .execute(&mut *conn)
         .await?;
     let (owner, session, agent, route) = validate_for_run(conn, run_id, runner_id, state).await?;
-    query("INSERT INTO cloud_agent_omp_state(run_id,owner_account_id,session_id,execution_agent_id,route_json,auth_snapshot_id,provider,model,response_message_id,state_json) \
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT(run_id) DO NOTHING")
+    query("INSERT INTO cloud_agent_omp_state(run_id,owner_account_id,session_id,execution_agent_id,route_json,auth_snapshot_id,provider,model,response_message_id,state_json,replayable) \
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(run_id) DO NOTHING")
         .bind(run_id).bind(owner).bind(session).bind(agent).bind(route).bind(&state.auth_snapshot_id)
-        .bind(&state.provider).bind(&state.model).bind(response_id).bind(json!(state)).execute(&mut *conn).await?;
+        .bind(&state.provider).bind(&state.model).bind(response_id).bind(json!(state))
+        .bind(state.replayable).execute(&mut *conn).await?;
     Ok(())
 }
 
@@ -261,23 +262,41 @@ async fn context(pool: &PgPool, run_id: &str, input: ContextInput) -> RunResult<
         }
     }
     // Only the newest replayable state anchored in this history is used, so
-    // only that row is loaded. Each saved state is at most MAX_STATE_BYTES.
+    // only that row's state document is loaded.
     let anchors = history_anchors(&frozen);
-    let states: Vec<(String, Value)> = query_as(
-        "SELECT s.response_message_id,s.state_json FROM cloud_agent_omp_state s JOIN cloud_agent_fallback_runs r ON r.run_id=s.run_id \
-         WHERE s.owner_account_id=$1 AND s.session_id=$2 AND s.execution_agent_id=$3 AND s.route_json=$4 \
-         AND s.auth_snapshot_id=$5 AND s.provider=$6 AND s.model=$7 AND r.requester_account_id=$8 AND r.status='completed' \
-         AND s.response_message_id=ANY($9) AND s.state_json->'replayable'='true'::jsonb \
-         AND NOT EXISTS(SELECT 1 FROM cloud_chat_messages m JOIN cloud_chat_conversations c ON c.conversation_id=m.conversation_id \
-             WHERE c.legacy_session_id=s.session_id AND (m.deleted_at IS NOT NULL \
-             OR (m.edited_at>s.created_at AND m.created_at<=s.created_at) \
-             OR EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)) \
-             OR EXISTS(SELECT 1 FROM cloud_chat_attachment_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)))) \
-         ORDER BY s.created_at DESC LIMIT 1")
-        .bind(owner).bind(session).bind(agent).bind(route).bind(&input.auth_snapshot_id)
-        .bind(&input.provider).bind(&input.model).bind(requester).bind(&anchors).fetch_all(pool).await?;
+    let states: Vec<(String, Value)> = query_as(ANCHORED_STATE_SQL)
+        .bind(owner)
+        .bind(session)
+        .bind(agent)
+        .bind(route)
+        .bind(&input.auth_snapshot_id)
+        .bind(&input.provider)
+        .bind(&input.model)
+        .bind(requester)
+        .bind(&anchors)
+        .fetch_optional(pool)
+        .await?
+        .into_iter()
+        .collect();
     Ok(merge_context(&frozen, &states))
 }
+
+/// The newest replayable saved state anchored in the frozen history. The
+/// candidate query reads no state document and applies its LIMIT before the
+/// join, so at most one state document (up to MAX_STATE_BYTES) is read,
+/// whatever order the planner evaluates the filters in.
+const ANCHORED_STATE_SQL: &str = "WITH candidate AS MATERIALIZED (\
+    SELECT s.run_id FROM cloud_agent_omp_state s JOIN cloud_agent_fallback_runs r ON r.run_id=s.run_id \
+    WHERE s.owner_account_id=$1 AND s.session_id=$2 AND s.execution_agent_id=$3 AND s.route_json=$4 \
+    AND s.auth_snapshot_id=$5 AND s.provider=$6 AND s.model=$7 AND r.requester_account_id=$8 AND r.status='completed' \
+    AND s.response_message_id=ANY($9) AND s.replayable \
+    AND NOT EXISTS(SELECT 1 FROM cloud_chat_messages m JOIN cloud_chat_conversations c ON c.conversation_id=m.conversation_id \
+        WHERE c.legacy_session_id=s.session_id AND (m.deleted_at IS NOT NULL \
+        OR (m.edited_at>s.created_at AND m.created_at<=s.created_at) \
+        OR EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)) \
+        OR EXISTS(SELECT 1 FROM cloud_chat_attachment_visibility v WHERE v.message_id=m.message_id AND v.account_id IN (r.owner_account_id,r.requester_account_id)))) \
+    ORDER BY s.created_at DESC LIMIT 1) \
+    SELECT s.response_message_id,s.state_json FROM candidate JOIN cloud_agent_omp_state s ON s.run_id=candidate.run_id";
 
 /// Canonical message ids of the frozen history, the only anchors a saved
 /// state can replay from.
@@ -364,6 +383,19 @@ mod tests {
             vec!["first", "first-alias", "second"]
         );
         assert!(history_anchors(&json!({"prompt":"legacy"})).is_empty());
+    }
+
+    #[test]
+    fn the_replay_choice_reads_no_state_document_before_its_limit() {
+        let (candidate, load) = ANCHORED_STATE_SQL
+            .split_once(") SELECT ")
+            .expect("a candidate CTE followed by the state load");
+        assert!(candidate.starts_with("WITH candidate AS MATERIALIZED ("));
+        assert!(!candidate.contains("state_json"));
+        assert!(candidate.contains("s.replayable"));
+        assert!(candidate.ends_with("ORDER BY s.created_at DESC LIMIT 1"));
+        assert!(load.contains("state_json FROM candidate JOIN cloud_agent_omp_state s"));
+        assert!(!load.contains("WHERE"));
     }
 
     #[test]

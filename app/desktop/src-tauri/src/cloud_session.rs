@@ -7,9 +7,12 @@ use serde::{Deserialize, Serialize};
 use std::{fs, process::Command};
 
 pub(crate) mod device_identity;
+pub(crate) mod device_key_rotation;
 mod secret_store;
 
-pub(crate) use device_identity::sign_with_device_key;
+pub(crate) use device_identity::{
+    device_proof_message, sign_with_device_key, DEVICE_PROOF_VERSION,
+};
 pub(crate) use secret_store::configure_keychain_scope;
 use secret_store::{secret_delete, secret_load, secret_store};
 
@@ -46,7 +49,7 @@ pub struct CloudSessionEntry {
     pub device_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct CloudDeviceIdentityEntry {
     #[serde(rename = "privateKeyPkcs8")]
     pub private_key_pkcs8: String,
@@ -54,6 +57,29 @@ pub struct CloudDeviceIdentityEntry {
     pub public_key_spki: String,
     #[serde(rename = "keyAlgorithm")]
     pub key_algorithm: String,
+    /// Set on keys that native code created. Earlier releases created the
+    /// key in the webview, where page script could read its private half.
+    #[serde(rename = "nativeOnly", default, skip_serializing_if = "is_false")]
+    pub native_only: bool,
+    /// A native key that replaces this one once the server registers it.
+    #[serde(
+        rename = "pendingKey",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub pending_key: Option<PendingDeviceKey>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PendingDeviceKey {
+    #[serde(rename = "privateKeyPkcs8")]
+    pub private_key_pkcs8: String,
+    #[serde(rename = "publicKeySpki")]
+    pub public_key_spki: String,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -157,6 +183,10 @@ pub fn cloud_session_store(
     if let Err(err) = crate::cloud_host_activity::start() {
         eprintln!("[kordi] Unable to keep Cloud agent host active: {err}");
     }
+    // A key that an earlier release created is replaced once a session can
+    // register the new key, as after a sign-in or a refreshed session.
+    #[cfg(not(test))]
+    device_key_rotation::spawn();
     Ok(())
 }
 
@@ -296,6 +326,7 @@ mod tests {
                 private_key_pkcs8: "private".to_string(),
                 public_key_spki: "public".to_string(),
                 key_algorithm: "p256".to_string(),
+                ..CloudDeviceIdentityEntry::default()
             };
             cloud_device_identity_store(identity.clone()).unwrap();
             cloud_session_clear().unwrap();

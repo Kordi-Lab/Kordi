@@ -10,7 +10,7 @@ pub(super) fn random_device_key() -> SigningKey {
 }
 
 /// The base64url DER SubjectPublicKeyInfo the desktop registers.
-fn spki(key: &SigningKey) -> String {
+pub(super) fn spki(key: &SigningKey) -> String {
     let der = key.verifying_key().to_public_key_der().unwrap();
     URL_SAFE_NO_PAD.encode(der.as_bytes())
 }
@@ -41,4 +41,21 @@ pub(super) async fn sign_in_with_device_key(
         account_id: body["account"]["accountId"].as_str().unwrap().to_string(),
         token: body["session"]["token"].as_str().unwrap().to_string(),
     }
+}
+
+/// The device that registered `key` as its installation key for `account`.
+pub(super) async fn device_id_for_key(
+    pool: &sqlx_postgres::PgPool,
+    account: &TestAccount,
+    key: &SigningKey,
+) -> String {
+    let (device_id,): (String,) = sqlx_core::query_as::query_as(
+        "SELECT device_id FROM cloud_devices WHERE account_id=$1 AND device_public_key=$2",
+    )
+    .bind(&account.account_id)
+    .bind(spki(key))
+    .fetch_one(pool)
+    .await
+    .unwrap();
+    device_id
 }

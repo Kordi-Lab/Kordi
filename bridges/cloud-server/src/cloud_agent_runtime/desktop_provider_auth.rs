@@ -2,9 +2,8 @@
 //! only with proof that the request comes from the installation holding the
 //! device key registered for the session's device.
 use super::*;
-use crate::cloud_agent_runtime::device_proof::{
-    self, DeviceProof, PROOF_ALGORITHM, PROVIDER_AUTH_PURPOSE,
-};
+use crate::auth::device_signatures::{PROOF_ALGORITHM, PROOF_VERSION};
+use crate::cloud_agent_runtime::device_proof::{self, DeviceProof, PROVIDER_AUTH_PURPOSE};
 use crate::cloud_agent_runtime::provider_auth::{
     provider_auth_for_account_route, EnvProviderAuthCipher, ProviderAuthCipher,
     ProviderAuthForRunResult, RunnerProviderAuthMaterialEnvelope,
@@ -43,7 +42,9 @@ fn device_proof_invalid() -> Response {
 }
 
 /// Issues the single-use challenge the owner Mac signs with its device key
-/// before it requests provider material for the run it executes.
+/// before it requests provider material for the run it executes. The
+/// response names the signed-text version and the session's device; the
+/// desktop names this server's origin itself.
 pub(in crate::cloud_agent_runtime) async fn provider_auth_challenge(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -82,6 +83,8 @@ pub(in crate::cloud_agent_runtime) async fn provider_auth_challenge(
             "expiresAt": expires_at.to_rfc3339(),
             "algorithm": PROOF_ALGORITHM,
             "purpose": PROVIDER_AUTH_PURPOSE,
+            "version": PROOF_VERSION,
+            "deviceId": session.device_id,
         }))
         .into_response(),
         Ok(Err(response)) => response,
@@ -94,7 +97,8 @@ pub(in crate::cloud_agent_runtime) async fn provider_auth_challenge(
 }
 
 /// Refuses the request unless it carries a valid proof for this run and
-/// claim. Without a registered key the refusal says how to register one.
+/// claim. Without a registered key the refusal says how to register one, and
+/// a proof of an earlier signed-text version asks for a desktop update.
 async fn device_proof_refusal(
     pool: &PgPool,
     session: &CloudSession,
@@ -122,6 +126,7 @@ async fn device_proof_refusal(
         Ok::<_, sqlx_core::Error>(Some(match (registered, &input.device_proof) {
             (false, _) => device_key_required(),
             (true, None) => device_proof_required(),
+            (true, Some(proof)) if !proof.is_current_version() => device_proof_required(),
             (true, Some(_)) => device_proof_invalid(),
         }))
     }

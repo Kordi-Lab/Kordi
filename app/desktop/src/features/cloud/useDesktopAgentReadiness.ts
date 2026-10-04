@@ -56,11 +56,12 @@ export function useDesktopAgentReadiness({
           if (cancelled) return;
           const session = await loadSession();
           if (!session?.token || session.accountId !== accountId || cancelled) return;
-          // The native runtime signs device proofs, so the server may offer
-          // this Mac runs that use hosted provider accounts.
+          // The native runtime signs device proofs that name the server and
+          // this device, so the server may offer this Mac runs that use
+          // hosted provider accounts.
           await client.desktopAgentExecution(session.token, 'ready', {
             agentIds: JSON.parse(agentIdsKey) as string[],
-            ...(isNativeDesktopShell() ? { deviceProof: true } : {}),
+            ...(isNativeDesktopShell() ? { deviceProof: true, deviceProofVersion: 2 } : {}),
           });
           if (!cancelled) setAcknowledged(registration);
         } catch (error) {
