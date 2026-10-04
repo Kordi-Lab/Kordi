@@ -30,6 +30,7 @@ struct ThreadMessageHeader: View {
             .font(.caption)
             .monospacedDigit()
             .foregroundStyle(.secondary)
+            .accessibilityIdentifier("thread-message-time-\(message.id)")
     }
 }
 

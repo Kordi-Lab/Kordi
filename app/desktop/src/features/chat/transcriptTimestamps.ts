@@ -1,5 +1,5 @@
 import type { Message } from '@/kordi-app/types';
-import { formatDesktopDate, formatDesktopTranscriptTimeLabel } from '@/lib/time';
+import { formatDesktopDate, formatDesktopTranscriptDateLabel, formatDesktopTranscriptTimeLabel } from '@/lib/time';
 
 export const TRANSCRIPT_TIME_SEPARATOR_GAP_MS = 30 * 60 * 1_000;
 
@@ -8,6 +8,7 @@ type TranscriptTimeSeparatorOptions = {
   timeZone?: string;
   locales?: Intl.LocalesArgument;
   gapMs?: number;
+  dateOnly?: boolean;
 };
 
 function usableTimestamp(value?: number | null): value is number {
@@ -41,7 +42,7 @@ export function createTranscriptTimeSeparatorCache() {
     const now = options.now ?? Date.now();
     const nextContextKey = JSON.stringify([
       formatDesktopDate(now, { timeZone: options.timeZone }),
-      options.timeZone, options.locales, gapMs,
+      options.timeZone, options.locales, gapMs, Boolean(options.dateOnly),
     ]);
     let start = 0;
     if (contextKey === nextContextKey) {
@@ -67,8 +68,10 @@ export function createTranscriptTimeSeparatorCache() {
       let label: string | null = null;
       if (input.canAnchor && usableTimestamp(timestampMs) && (!anchor || timestampMs >= anchor.timestampMs)) {
         const calendarDay = formatDesktopDate(timestampMs, { timeZone: options.timeZone });
-        if (!anchor || calendarDay !== anchor.calendarDay || timestampMs - anchor.timestampMs >= gapMs) {
-          label = formatDesktopTranscriptTimeLabel(timestampMs, { ...options, now });
+        if (!anchor || calendarDay !== anchor.calendarDay || (!options.dateOnly && timestampMs - anchor.timestampMs >= gapMs)) {
+          label = options.dateOnly
+            ? formatDesktopTranscriptDateLabel(timestampMs, options)
+            : formatDesktopTranscriptTimeLabel(timestampMs, { ...options, now });
         }
         // Compare adjacent messages, so prepending history cannot re-phase later labels.
         anchor = { timestampMs, calendarDay };
@@ -84,7 +87,7 @@ export function createTranscriptTimeSeparatorCache() {
   };
 }
 
-/** One slot per message; label the first timestamp, day changes, and 30-minute gaps. */
+/** Label day boundaries; Chat also labels inactivity gaps with a clock time. */
 export function transcriptTimeSeparatorLabels(
   messages: readonly Message[],
   options: TranscriptTimeSeparatorOptions = {},
