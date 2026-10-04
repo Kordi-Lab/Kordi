@@ -57,6 +57,7 @@ export function GroupProfileHeader({
   adminCount,
   canInvitePeople,
   canManageGroup,
+  avatarEditor,
   onClose,
   onShowMembers,
   onAddPeople,
@@ -67,6 +68,7 @@ export function GroupProfileHeader({
   adminCount: number;
   canInvitePeople: boolean;
   canManageGroup: boolean;
+  avatarEditor?: ReactNode;
   onClose: () => void;
   onShowMembers: () => void;
   onAddPeople: () => void;
@@ -106,8 +108,8 @@ export function GroupProfileHeader({
       >
         <X className="h-4 w-4" />
       </button>
-      <div className="mx-auto flex h-16 items-center justify-center">
-        <GroupProfileAvatar space={space} />
+      <div className="mx-auto flex items-center justify-center">
+        {avatarEditor ?? <GroupProfileAvatar space={space} />}
       </div>
       <div className="mx-auto mt-2 min-w-0 max-w-[15rem]">
         <div className="truncate text-[16px] font-semibold leading-5" title={space.title}>

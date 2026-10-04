@@ -175,9 +175,10 @@ struct NewChatView: View {
 
     private var groupPage: some View {
         List {
-            Section("Group image") {
+            Section {
                 GroupAvatarPicker(participants: selectedGroupParticipants, imageSource: groupAvatarDataURL,
                                   disabled: isCreatingGroup) { groupAvatarDataURL = $0 }
+                    .frame(maxWidth: .infinity)
             }
             Section("Group name") {
                 TextField("Optional", text: $groupName)

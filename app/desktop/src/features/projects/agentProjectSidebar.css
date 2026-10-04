@@ -16,11 +16,10 @@
 }
 .chat-project-section-heading[data-first-section] { min-height: 28px; padding-top: 2px; }
 .chat-project-section-heading h3 { margin: 0; font: inherit; }
-.chat-project-heading-actions { display: flex; align-items: center; gap: 4px; }
+.chat-project-heading-actions { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
 .chat-project-heading-actions button { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; }
 .chat-project-heading-actions button:hover { background: var(--app-control-bg); color: var(--app-sidebar-title-text); }
-.chat-project-sidebar-options { width: 176px; }
-.chat-project-group, .chat-project-show-more, .chat-recents-heading {
+.chat-project-group, .chat-project-show-more, .chat-project-section-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -38,11 +37,12 @@
 .chat-project-group > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-project-group:hover, .chat-project-show-more:hover { background: var(--app-control-bg); color: var(--app-sidebar-title-text); }
 .chat-project-show-more { height: var(--chat-project-row-height); padding-left: var(--chat-project-child-inset); color: var(--app-sidebar-time-text); font-size: 13px; }
-.chat-recents-heading { color: inherit; font: inherit; }
+.chat-project-section-toggle { color: inherit; font: inherit; }
 .chat-project-collapse-indicator { opacity: 0; }
 button:hover > .chat-project-collapse-indicator, button:focus-visible > .chat-project-collapse-indicator,
 button[aria-expanded="false"] > .chat-project-collapse-indicator { opacity: 1; }
 button[aria-expanded="true"] > .chat-project-collapse-indicator { transform: rotate(90deg); }
+.chat-project-section-toggle > .chat-project-collapse-indicator { opacity: 1; }
 .chat-project-session-list .app-agent-session-row {
   padding: 0 var(--chat-project-row-inset);
   min-height: var(--chat-project-row-height);
@@ -60,7 +60,7 @@ button[aria-expanded="true"] > .chat-project-collapse-indicator { transform: rot
 .chat-project-session-list .app-agent-session-row-saved .app-agent-session-preview { display: flex; }
 .chat-project-session-list .app-session-fork-children { margin-left: 0; padding-left: 0; border-left: 0; }
 .chat-project-group:focus-visible, .chat-project-show-more:focus-visible,
-.chat-recents-heading:focus-visible, .chat-project-heading-actions button:focus-visible {
+.chat-project-section-toggle:focus-visible, .chat-project-heading-actions button:focus-visible {
   outline: 2px solid var(--app-sidebar-title-text);
   outline-offset: -2px;
 }

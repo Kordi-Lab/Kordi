@@ -20,10 +20,9 @@ function Gallery() {
       <h1 className="text-xl font-semibold">Kordi · square avatars</h1>
       <div className="app-transient-surface rounded-2xl border border-[var(--utility-border)] p-6">
         <div className="mb-6 flex items-center gap-4">
-          <GroupAvatar avatars={avatars} imageUrl={image} name="Research group" className="h-16 w-16" />
+          <GroupAvatarEditor avatars={avatars} imageUrl={image} name="Research group" avatarClassName="h-16 w-16" onUpload={setImage} onRemove={() => setImage(null)} />
           <div><h2 className="text-lg font-semibold">Research group</h2><p className="text-sm text-[var(--utility-muted-text)]">9 members · 3 channels</p></div>
         </div>
-        <GroupAvatarEditor avatars={avatars} imageUrl={image} name="Research group" onUpload={setImage} onRemove={() => setImage(null)} />
       </div>
       <div className="app-transient-surface rounded-2xl border border-[var(--utility-border)] p-6">
         <h2 className="mb-4 text-sm font-semibold">Chats</h2>

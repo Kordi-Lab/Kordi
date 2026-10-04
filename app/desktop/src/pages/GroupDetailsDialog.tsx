@@ -350,6 +350,7 @@ export function GroupDetailsDialog({
     memberSearchRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (dialogRef.current?.querySelector('[data-group-avatar-menu]')) return;
         event.preventDefault();
         event.stopPropagation();
         onCloseRef.current();
@@ -475,6 +476,17 @@ export function GroupDetailsDialog({
             adminCount={adminCount}
             canInvitePeople={canInvitePeople}
             canManageGroup={canManageGroup}
+            avatarEditor={onUpdateAvatar && canManageGroup ? (
+              <GroupAvatarEditor
+                avatars={space.avatarStack}
+                name={space.title}
+                imageUrl={space.groupAvatar?.imageUrl}
+                avatarClassName="h-16 w-16"
+                disabled={Boolean(pendingAction)}
+                onUpload={(dataUrl) => onUpdateAvatar(groupMembershipSessionIds, dataUrl)}
+                onRemove={() => onUpdateAvatar(groupMembershipSessionIds, null)}
+              />
+            ) : undefined}
             onClose={onClose}
             onShowMembers={() => memberSearchRef.current?.focus()}
             onAddPeople={openAddPeople}
@@ -501,7 +513,6 @@ export function GroupDetailsDialog({
               </div>
             ) : null}
 
-            {onUpdateAvatar ? <GroupAvatarEditor avatars={space.avatarStack} name={space.title} imageUrl={space.groupAvatar?.imageUrl} disabled={!canManageGroup || Boolean(pendingAction)} onUpload={(dataUrl) => onUpdateAvatar(groupMembershipSessionIds, dataUrl)} onRemove={() => onUpdateAvatar(groupMembershipSessionIds, null)} /> : null}
             <section aria-label="Group members">
               <label htmlFor={memberSearchId} className="sr-only">Search group members</label>
               <div className="app-group-management-search relative mb-3">

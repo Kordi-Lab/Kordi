@@ -519,7 +519,9 @@ export function ChatCreateDialog({
               .finally(() => setIsCreatingGroup(false));
           }}
         >
-          <GroupAvatarEditor avatars={selectedPeople.map((person) => ({ kind: 'human', seed: person.avatarSeed || person.id, imageUrl: person.profileImageUrl }))} imageUrl={groupAvatarDataUrl} name={groupName || 'Group'} disabled={isCreatingGroup} onUpload={(dataUrl) => setGroupAvatarDataUrl(dataUrl)} onRemove={() => setGroupAvatarDataUrl(null)} />
+          <div className="flex justify-center pb-1">
+            <GroupAvatarEditor avatars={selectedPeople.map((person) => ({ kind: 'human', seed: person.avatarSeed || person.id, imageUrl: person.profileImageUrl }))} imageUrl={groupAvatarDataUrl} name={groupName || 'Group'} disabled={isCreatingGroup} onUpload={(dataUrl) => setGroupAvatarDataUrl(dataUrl)} onRemove={() => setGroupAvatarDataUrl(null)} />
+          </div>
           {groupCreateError ? <div role="alert" className="app-error-text text-[11px]">{groupCreateError}</div> : null}
           <input
             value={groupName}

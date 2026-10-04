@@ -4,38 +4,56 @@ import SwiftUI
 struct GroupAvatarPicker: View {
     let participants: [CloudGroupParticipant]
     let imageSource: String?
+    var size: CGFloat = 56
     var disabled = false
     let onChange: (String?) async throws -> Void
 
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isPhotoPickerPresented = false
     @State private var isSaving = false
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 16) {
-                GroupAvatarStack(participants: participants, size: 56, imageSource: imageSource)
-                VStack(alignment: .leading, spacing: 4) {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Text(imageSource == nil ? "Choose group image" : "Change group image")
-                            .frame(minHeight: 44)
+        Menu {
+            Button("Upload photo", systemImage: "photo") {
+                isPhotoPickerPresented = true
+            }
+            if imageSource != nil {
+                Button("Remove image", systemImage: "trash", role: .destructive) { save(nil) }
+            }
+        } label: {
+            GroupAvatarStack(participants: participants, size: size, imageSource: imageSource)
+                .overlay(alignment: .bottomTrailing) {
+                    Group {
+                        if isSaving {
+                            ProgressView().controlSize(.mini).tint(.white)
+                        } else {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 10, weight: .semibold))
+                        }
                     }
-                    .disabled(disabled || isSaving)
-                    if imageSource != nil {
-                        Button("Remove image", role: .destructive) { save(nil) }
-                            .frame(minHeight: 44)
-                            .disabled(disabled || isSaving)
+                    .foregroundStyle(.white)
+                    .frame(width: 21, height: 21)
+                    .background(KordiTheme.signalBlue, in: .rect(cornerRadius: 6))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color(uiColor: .systemBackground), lineWidth: 2)
                     }
                 }
-                if isSaving { ProgressView().accessibilityLabel("Saving group image") }
-            }
-            Text("Without an image, the group uses a collage of its members.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            if let errorMessage {
-                Text(errorMessage).font(.caption).foregroundStyle(.red)
-                    .accessibilityLabel("Group image error: \(errorMessage)")
-            }
+                .accessibilityHidden(true)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled || isSaving)
+        .accessibilityLabel(isSaving ? "Saving group image" : "Edit group avatar")
+        .accessibilityHint("Upload or remove a group photo")
+        .photosPicker(isPresented: $isPhotoPickerPresented, selection: $selectedPhoto, matching: .images)
+        .alert("Could not update group image", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "Try again.")
         }
         .onChange(of: selectedPhoto) { _, photo in
             guard let photo else { return }

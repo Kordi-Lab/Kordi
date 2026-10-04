@@ -43,7 +43,16 @@ struct GroupManagementSheet: View {
                 List {
                     Section {
                         HStack(spacing: 13) {
-                            GroupAvatarStack(participants: space.participants, size: 50, imageSource: space.avatarSource)
+                            if space.canManage(accountId: model.account?.accountId) {
+                                GroupAvatarPicker(participants: space.participants, imageSource: space.avatarSource,
+                                                  size: 50, disabled: isSaving) { image in
+                                    guard await model.updateGroupAvatar(space, dataURL: image) else {
+                                        throw GroupAvatarPickerError(message: model.errorMessage ?? "Could not update the group image.")
+                                    }
+                                }
+                            } else {
+                                GroupAvatarStack(participants: space.participants, size: 50, imageSource: space.avatarSource)
+                            }
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(space.displayName)
                                     .font(.headline)
@@ -53,15 +62,6 @@ struct GroupManagementSheet: View {
                             }
                         }
                         .padding(.vertical, 4)
-                    }
-
-                    Section("Group image") {
-                        GroupAvatarPicker(participants: space.participants, imageSource: space.avatarSource,
-                                          disabled: isSaving || !space.canManage(accountId: model.account?.accountId)) { image in
-                            guard await model.updateGroupAvatar(space, dataURL: image) else {
-                                throw GroupAvatarPickerError(message: model.errorMessage ?? "Could not update the group image.")
-                            }
-                        }
                     }
 
                     Section("Group name") {

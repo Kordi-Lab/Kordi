@@ -55,3 +55,5 @@
 @import "./features/projects/chatProjects.css";
 @import "./features/projects/agentProjectSidebar.css";
 @import "./features/projects/projectImport.css";
+
+@import './styles/theme-palette.css';
