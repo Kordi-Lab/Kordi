@@ -4,6 +4,7 @@ import { MessageLayoutSetting } from '../../src/kordi-app/components/MessageLayo
 import { setMessageLayout } from '../../src/app/messageLayoutPreference';
 import { useChatTranscriptViewport } from '../../src/pages/chatsPage.transcriptViewport';
 import { navigateToTranscriptMessage } from '../../src/features/chat/transcriptNavigation';
+import type { VirtualTranscriptNavigationRequest } from '../../src/features/chat/useVirtualTranscriptNavigation';
 import type { Message } from '../../src/kordi-app/types';
 import '../../src/index.css';
 
@@ -23,8 +24,9 @@ const entries = messages.map((message, originalIndex) => ({ message, originalInd
 function Preview() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [action, setAction] = useState('');
+  const [navigationRequest, setNavigationRequest] = useState<VirtualTranscriptNavigationRequest | null>(null);
   const transcript = useChatTranscriptViewport({
-    viewport: { sessionKey: 'thread-date-preview', messages, scrollRef, scrollClassName: 'flex-1 min-h-0' },
+    viewport: { sessionKey: 'thread-date-preview', messages, scrollRef, scrollClassName: 'flex-1 min-h-0', navigationRequest, onNavigationHandled: () => setNavigationRequest(null) },
     presentation: { densityMode: 'contact-compact' }, selection: {},
     actions: {
       onOpenSource: () => {}, onOpenArtifact: () => {}, onOpenAuthSettings: () => {}, onStopCollaborationAgentRequest: () => {},
@@ -36,6 +38,7 @@ function Preview() {
   return <main style={{ maxWidth: 1120, margin: '0 auto', padding: 20, height: '100dvh', display: 'flex', flexDirection: 'column' }}>
     <MessageLayoutSetting />
     <output data-last-action={action}>{action}</output>
+    <button onClick={() => setNavigationRequest({ id: 'date-first', nonce: Date.now(), sessionKey: 'thread-date-preview' })}>Jump to first message</button>
     {transcript}
   </main>;
 }

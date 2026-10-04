@@ -274,6 +274,7 @@ export function useChatTranscriptViewport({
             <TranscriptTimeSeparator timestampMs={timestampMs} label={timeSeparators[idx]} timeZone={timeZone} dateOnly={threadLayout} />
           ) : null}
           {presentation.firstUnreadMessageId && transcriptWindowMessageMatchesId(msg,presentation.firstUnreadMessageId,idx)?<div className="my-3 flex items-center gap-3 text-[11px] font-medium text-[color:var(--app-sidebar-accent)]"><span className="h-px flex-1 bg-current opacity-25"/>New replies<span className="h-px flex-1 bg-current opacity-25"/></div>:null}
+          <div data-transcript-highlight-body="true">
           {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
             <QueuedMessageBubble
               message={{ id: msg.id ?? '', sessionId: sessionKey, text: msg.text, time: msg.time, attachments: msg.attachments ?? [] }}
@@ -320,6 +321,7 @@ export function useChatTranscriptViewport({
             isGroupedWithPrevious={!pinBoundaries.after.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, groupingSeparators)}
             isGroupedWithNext={!pinBoundaries.before.has(idx) && isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, groupingSeparators)}
           />}
+          </div>
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
               <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />

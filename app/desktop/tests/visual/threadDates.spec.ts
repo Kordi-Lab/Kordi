@@ -39,3 +39,27 @@ test('day dividers and message times use the viewer timezone together', async ({
     await expect(page.locator('.app-thread-message-time')).toHaveText(['02:00', '11:00', '17:01', '17:02']);
   } finally { await context.close(); }
 });
+
+test('navigation highlights the message without painting its date or time separator', async ({ page }) => {
+  for (const theme of ['light', 'dark']) {
+    for (const layout of ['threads', 'chat']) {
+      await page.goto(`${fixture}?theme=${theme}&layout=${layout}`);
+      await page.getByRole('button', { name: 'Jump to first message', exact: true }).click();
+      const shell = page.locator('[data-transcript-window-item][data-index="0"]');
+      await expect(shell).toHaveClass(/app-transcript-message-highlight/);
+      expect(await shell.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+      expect(await shell.evaluate(element => getComputedStyle(element).boxShadow)).toBe('none');
+      const body = shell.locator('[data-transcript-highlight-body]');
+      await expect(body).toBeVisible();
+      expect(await body.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe('rgba(0, 0, 0, 0)');
+      expect(await body.evaluate(element => getComputedStyle(element).boxShadow)).not.toBe('none');
+      const divider = shell.locator('[data-transcript-date-divider], [data-transcript-time-separator]');
+      expect(await divider.evaluate(element => element.closest('[data-transcript-highlight-body]'))).toBeNull();
+      const dividerBounds = await divider.boundingBox();
+      const bodyBounds = await body.boundingBox();
+      expect(bodyBounds!.y).toBeGreaterThanOrEqual(dividerBounds!.y + dividerBounds!.height);
+      await expect(shell).not.toHaveClass(/app-transcript-message-highlight/);
+      await expect(body).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    }
+  }
+});
