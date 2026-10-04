@@ -232,6 +232,13 @@ spec:
                   name: kordi-cloud-runner
                   key: runner-token
                   optional: true
+            - name: KORDI_AGENT_CONTEXT_LEGACY_DESKTOP
+              # Agent trust rollout: Macs from before schema version 112 keep
+              # answering other members in groups that became mention-only.
+              # Opt-outs are always enforced. Promotion does not apply this
+              # manifest; set it on the cluster and switch it to "deny" as
+              # described in docs/production-deployment.md#agent-trust-rollout.
+              value: "allow_without_opt_outs"
             - name: KORDI_SUPPORT_ENABLED
               valueFrom:
                 secretKeyRef:

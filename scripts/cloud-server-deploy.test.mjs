@@ -28,6 +28,7 @@ const runnerDeployScriptPath = new URL('../bridges/cloud-server/deploy/k3s/deplo
 const releaseCredentialsScriptPath = new URL('../bridges/cloud-server/deploy/k3s/create-release-credentials.sh', import.meta.url);
 const cloudServerManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml', import.meta.url);
 const livekitManifestPath = new URL('../bridges/cloud-server/deploy/k3s/manifests/livekit.yaml', import.meta.url);
+const productionDeploymentGuidePath = new URL('../docs/production-deployment.md', import.meta.url);
 const legacyInstallScriptPath = new URL('../bridges/cloud-server/deploy/install.sh', import.meta.url);
 const legacyServicePath = new URL('../bridges/cloud-server/deploy/kordi-cloud-server.service', import.meta.url);
 const dockerignorePath = new URL('../.dockerignore', import.meta.url);
@@ -198,6 +199,35 @@ test('cloud server manifest targets the hosted product public base', async () =>
     );
   }
   assert.match(manifest, /KORDI_SUPPORT_OPENAI_API_KEY[\s\S]*name: kordi-support-openai/);
+});
+
+test('agent trust rollout states the legacy Mac choice in the manifest and the runbook', async () => {
+  const [manifest, guide] = await Promise.all([
+    readFile(cloudServerManifestPath, 'utf8'),
+    readFile(productionDeploymentGuidePath, 'utf8'),
+  ]);
+
+  // The runbook switches the manifest from the rollout-window value back to
+  // `deny`, so either documented value is accepted here.
+  const documentedValues = ['allow_without_opt_outs', 'deny'];
+  const setting = manifest.match(
+    /- name: KORDI_AGENT_CONTEXT_LEGACY_DESKTOP\n(?:\s*#.*\n)*\s*value: "([^"]*)"/,
+  );
+  assert.ok(setting, 'the manifest states KORDI_AGENT_CONTEXT_LEGACY_DESKTOP');
+  assert.ok(documentedValues.includes(setting[1]), `unexpected legacy desktop value ${setting[1]}`);
+  const rollout = guide.split(/^## /m).find((section) => section.startsWith('Agent trust rollout'));
+  assert.ok(rollout, 'the production guide has an agent trust rollout section');
+  for (const value of documentedValues) {
+    assert.ok(rollout.includes(`KORDI_AGENT_CONTEXT_LEGACY_DESKTOP=${value}`), `the runbook documents ${value}`);
+  }
+  assert.match(rollout, /history_scope='mentions'/);
+  assert.match(
+    rollout,
+    /set env deployment\/kordi-cloud-server KORDI_AGENT_CONTEXT_LEGACY_DESKTOP=allow_without_opt_outs/,
+  );
+  assert.match(rollout, /Opt-outs are always enforced/);
+  assert.match(rollout, /release note/);
+  assert.match(rollout, /context_contract < 2/);
 });
 
 test('product media uses pinned host networking and secret-backed credentials', async () => {

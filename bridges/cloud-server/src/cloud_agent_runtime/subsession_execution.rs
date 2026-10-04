@@ -17,6 +17,14 @@ type FollowHistoryRow = (
     Option<String>,
 );
 
+/// Keeps a task thread row `c` of subsession `s` out of a follow-up's context
+/// when its sender turned on "Don't let AI use my messages" in the thread's
+/// parent conversation. The follow-up's requester (`$3`) and the agent's owner
+/// may always use their own messages, as in the conversation's context policy.
+/// An opted-out member's earlier follow-up is left out with the reply to it,
+/// since the reply answers a request the agent may not see.
+const NOT_OPTED_OUT_FOR_REQUESTER: &str = "NOT EXISTS(SELECT 1 FROM cloud_chat_ai_opt_outs opt_out WHERE opt_out.conversation_id=s.parent_conversation_id AND opt_out.account_id=c.sender_account_id AND opt_out.account_id<>$3 AND opt_out.account_id<>s.owner_account_id)";
+
 /// Cancels this desktop's queued follow-ups that `pending` would hide because
 /// their sender or the owner lost access: one of them left the chat, or the
 /// sender may no longer use the agent (a removed contact or a block). Left
@@ -43,8 +51,8 @@ pub(super) async fn pending(
         .bind(&session.account_id).bind(&session.device_id).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut pending = Vec::new();
     for (run, id, message, actor, text) in rows {
-        let ordinary:Vec<(String,String,String,i64)>=query_as("SELECT c.message_id::text,a.display_name,c.text,(extract(epoch from c.created_at)*1000)::bigint FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id WHERE c.subsession_id=$1 AND c.run_id IS NULL AND c.sequence<(SELECT sequence FROM cloud_agent_subsession_chat WHERE message_id::text=$2) ORDER BY c.sequence DESC LIMIT 64")
-            .bind(id).bind(&message).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+        let ordinary:Vec<(String,String,String,i64)>=query_as(&format!("SELECT c.message_id::text,a.display_name,c.text,(extract(epoch from c.created_at)*1000)::bigint FROM cloud_agent_subsession_chat c JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_accounts a ON a.account_id=c.sender_account_id WHERE c.subsession_id=$1 AND c.run_id IS NULL AND c.sequence<(SELECT sequence FROM cloud_agent_subsession_chat WHERE message_id::text=$2) AND {NOT_OPTED_OUT_FOR_REQUESTER} ORDER BY c.sequence DESC LIMIT 64"))
+            .bind(id).bind(&message).bind(&actor).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
         let context:Vec<Value>=ordinary.into_iter().rev().map(|(id,name,text,time)|json!({"id":id,"authorName":name,"authorKind":"person","text":text,"createdAtMs":time})).collect();
         pending.push(json!({"runId":run,"subsessionId":id,"messageId":message,"senderAccountId":actor,"text":text,"contextMessages":context}));
     }
@@ -192,9 +200,9 @@ pub(crate) fn public_activity(value: &Value) -> Value {
 }
 
 pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
-    let source:Option<(Uuid,i64,Value)>=query_as("SELECT c.subsession_id,c.sequence,s.messages FROM cloud_agent_subsession_chat c JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id WHERE c.run_id=$1")
+    let source:Option<(Uuid,i64,Value,String)>=query_as("SELECT c.subsession_id,c.sequence,s.messages,r.requester_account_id FROM cloud_agent_subsession_chat c JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.run_id=$1")
         .bind(run).fetch_optional(pool).await?;
-    let Some((id, sequence, initial)) = source else {
+    let Some((id, sequence, initial, requester)) = source else {
         return Ok(Vec::new());
     };
     let mut result: Vec<Value> = initial
@@ -214,8 +222,8 @@ pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
     if let Some((identity,)) = initial_identity {
         result.insert(0, json!({"role":"runtimeIdentity","content":identity}));
     }
-    let rows:Vec<FollowHistoryRow>=query_as("SELECT a.display_name,c.text,c.response_text,r.turn_identity,r.prompt,r.run_id FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND c.sequence<$2 ORDER BY c.sequence DESC LIMIT 128")
-        .bind(id).bind(sequence).fetch_all(pool).await?;
+    let rows:Vec<FollowHistoryRow>=query_as(&format!("SELECT a.display_name,c.text,c.response_text,r.turn_identity,r.prompt,r.run_id FROM cloud_agent_subsession_chat c JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND c.sequence<$2 AND {NOT_OPTED_OUT_FOR_REQUESTER} ORDER BY c.sequence DESC LIMIT 128"))
+        .bind(id).bind(sequence).bind(&requester).fetch_all(pool).await?;
     for (name, text, response, identity, prompt, prior_run) in rows.into_iter().rev() {
         if let Some(identity) = identity {
             result.push(json!({"role":"runtimeIdentity","content":identity}));

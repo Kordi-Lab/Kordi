@@ -109,6 +109,9 @@ mod tests {
 
     #[test]
     fn streamed_attachments_write_incrementally_and_cancel_cleanly() {
+        // Attachment storage follows `APP_DATA_DIR`, which other tests point
+        // at folders they remove, so this test holds the environment lock.
+        let _app_data = crate::test_support::ScopedAppDataDir::new("attachment-stream");
         let stream_id = desktop_chat_attachment_stream_start("recording.mp4".to_string())
             .expect("start attachment stream");
         desktop_chat_attachment_stream_append(stream_id.clone(), b"first".to_vec())

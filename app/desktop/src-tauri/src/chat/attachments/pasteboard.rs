@@ -93,12 +93,22 @@ pub(crate) mod macos {
 
     #[cfg(test)]
     mod tests {
+        use std::sync::Mutex;
+
         use super::*;
         use objc2::rc::Retained;
+
+        /// Serializes the tests' pasteboard work. Tests run on parallel
+        /// worker threads, and AppKit pasteboards are not safe to create and
+        /// use from several threads at once.
+        static PASTEBOARD_LOCK: Mutex<()> = Mutex::new(());
 
         /// Writes `urls` to a private, uniquely named pasteboard (never the
         /// person's clipboard) and reads the file paths back.
         fn round_trip(urls: &[&AnyObject]) -> Vec<PathBuf> {
+            let _pasteboard = PASTEBOARD_LOCK
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
             autoreleasepool(|_| unsafe {
                 let pasteboard: *mut AnyObject =
                     msg_send![class!(NSPasteboard), pasteboardWithUniqueName];

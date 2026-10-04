@@ -11,8 +11,10 @@ from unittest.mock import patch
 from backend_artifact import PRODUCTION_SERVICES, digest_file
 from backend_backup import verify_backup
 from backend_deploy_common import lock
-from backend_deploy_production import (KUBECTL, SANDBOX_EXCLUDED_RANGES, SANDBOX_POLICY, capture_previous, deploy,
-                                       sandbox_policy_problem, verify_sandbox_network_policy)
+from backend_deploy_production import (DATABASE, KUBECTL, LEGACY_DESKTOP_COMMAND, LEGACY_DESKTOP_SETTING,
+                                       LEGACY_DESKTOP_VALUES, SANDBOX_EXCLUDED_RANGES, SANDBOX_POLICY,
+                                       capture_previous, deploy, sandbox_policy_problem,
+                                       verify_agent_trust_rollout_setting, verify_sandbox_network_policy)
 from test_backend_deploy import ROOT, SHA, bundle
 
 
@@ -53,6 +55,9 @@ class ProductionTests(unittest.TestCase):
         policy_check = patch("backend_deploy_production.verify_sandbox_network_policy")
         self.verify_policy = policy_check.start()
         self.addCleanup(policy_check.stop)
+        rollout_check = patch("backend_deploy_production.verify_agent_trust_rollout_setting")
+        self.verify_rollout = rollout_check.start()
+        self.addCleanup(rollout_check.stop)
 
     def save_receipt(self):
         (self.backups / "snapshot.json").write_text(json.dumps(self.receipt))
@@ -158,6 +163,7 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(sorted(self.result()["images"]), sorted(PRODUCTION_SERVICES))
         self.assertFalse(any("omp-route-worker" in " ".join(call) for call in calls))
         self.verify_policy.assert_called_once_with()
+        self.verify_rollout.assert_called_once_with()
 
     def test_missing_sandbox_policy_stops_promotion_before_any_image_changes(self):
         self.verify_policy.side_effect = verify_sandbox_network_policy
@@ -251,6 +257,72 @@ class ProductionTests(unittest.TestCase):
         self.assertIn("app.kubernetes.io/component: agent-sandbox\n", manifest)
         for internal in SANDBOX_EXCLUDED_RANGES:
             self.assertIn(f"- {internal}\n", manifest)
+
+    def rollout_host(self, env, recorded="0"):
+        """Answers the server deployment and schema version reads with synthetic values."""
+        calls = []
+
+        def command(arguments):
+            calls.append(arguments)
+            if arguments[:len(DATABASE)] == DATABASE:
+                return recorded
+            if arguments == [*KUBECTL, "get", "deployment", "kordi-cloud-server", "-o", "json"]:
+                return json.dumps({"spec": {"template": {"spec": {"containers": [
+                    {"name": "server", "image": "kordi-cloud-server:old", "env": env}]}}}})
+            raise AssertionError(f"unexpected host command {arguments}")
+        return calls, command
+
+    def test_a_pending_agent_trust_migration_requires_the_legacy_mac_setting(self):
+        self.verify_rollout.side_effect = verify_agent_trust_rollout_setting
+        calls, command = self.rollout_host([{"name": "KORDI_SUPPORT_ENABLED", "value": "1"}])
+        with patch("backend_deploy_production.run", side_effect=command), \
+             patch("backend_deploy_production.capture_previous") as previous, \
+             patch("backend_deploy_production.apply_images") as apply:
+            with self.assertRaises(ValueError) as failure:
+                deploy(self.args())
+        previous.assert_not_called()
+        apply.assert_not_called()
+        self.assertIn(LEGACY_DESKTOP_COMMAND, str(failure.exception))
+        self.assertIn("schema version 112", str(failure.exception))
+        self.assertTrue(any("cloud_schema_versions WHERE version=112" in " ".join(call) for call in calls))
+        self.assertEqual((self.result()["outcome"], self.result()["stage"]),
+                         ("failure", "agent trust rollout setting verification"))
+
+    def test_the_legacy_mac_setting_must_be_one_documented_literal_value(self):
+        for env in [
+            [{"name": LEGACY_DESKTOP_SETTING, "value": "allow"}],
+            [{"name": LEGACY_DESKTOP_SETTING, "value": ""}],
+            [{"name": LEGACY_DESKTOP_SETTING, "valueFrom": {"configMapKeyRef": {"name": "kordi", "key": "legacy"}}}],
+            [{"name": LEGACY_DESKTOP_SETTING, "value": "deny"},
+             {"name": LEGACY_DESKTOP_SETTING, "value": "allow_without_opt_outs"}],
+        ]:
+            _, command = self.rollout_host(env)
+            with patch("backend_deploy_production.run", side_effect=command):
+                with self.assertRaises(ValueError, msg=str(env)):
+                    verify_agent_trust_rollout_setting()
+
+    def test_a_stated_legacy_mac_setting_passes_without_reading_the_database(self):
+        for value in LEGACY_DESKTOP_VALUES:
+            calls, command = self.rollout_host([{"name": LEGACY_DESKTOP_SETTING, "value": value}])
+            with patch("backend_deploy_production.run", side_effect=command):
+                verify_agent_trust_rollout_setting()
+            self.assertFalse(any(call[:len(DATABASE)] == DATABASE for call in calls), value)
+
+    def test_the_setting_is_optional_once_the_agent_trust_migration_is_recorded(self):
+        _, command = self.rollout_host([], recorded="1")
+        with patch("backend_deploy_production.run", side_effect=command):
+            verify_agent_trust_rollout_setting()
+
+    def test_an_unreadable_schema_version_stops_promotion(self):
+        _, command = self.rollout_host([], recorded="")
+        with patch("backend_deploy_production.run", side_effect=command):
+            with self.assertRaises(ValueError):
+                verify_agent_trust_rollout_setting()
+
+    def test_the_runbook_states_the_command_promotion_asks_for(self):
+        guide = (ROOT / "docs/production-deployment.md").read_text()
+        self.assertIn(LEGACY_DESKTOP_COMMAND, guide)
+        self.assertIn("agent trust rollout setting verification", guide)
 
     def test_independent_deployments_contend_for_the_same_host_lock(self):
         with lock("host-wide", self.directory / "locks", timeout=0):

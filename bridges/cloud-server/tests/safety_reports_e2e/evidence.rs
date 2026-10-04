@@ -162,3 +162,100 @@ async fn contact_requests_are_included_only_when_sent_to_the_reporter() {
     not_received["contactRequestId"] = json!(request_id);
     assert!(rejected(h.report(&sender, not_received).await));
 }
+
+/// Accepts every object deletion, so the removal job can finish a file.
+struct AcceptingObjects;
+
+#[async_trait::async_trait]
+impl kordi_cloud_server::chat_sync::removal::ObjectStoreDeleter for AcceptingObjects {
+    async fn delete_object(
+        &self,
+        _object_key: &str,
+    ) -> Result<(), kordi_cloud_server::chat_sync::removal::ObjectDeleteError> {
+        Ok(())
+    }
+}
+
+/// A report is moderation evidence. The sender deleting a reported message for
+/// everyone, and the removal job that follows, leave the report's copy as it
+/// is until report retention removes it, as `docs/data-deletion.md` says.
+#[tokio::test]
+async fn deleting_a_reported_message_for_everyone_leaves_the_report_copy() {
+    let Some(h) = harness().await else { return };
+    let reporter = h.signup("Deletion reporter").await;
+    let reported = h.signup("Deleting sender").await;
+    h.request_contact(&reporter, &reported, true).await;
+    let chat = h.direct_chat(&reporter, &reported).await;
+    let text = h.message(&reported, chat, "an unkind message").await;
+    let file = photo(&h.pool, &reported).await;
+    let with_photo = h
+        .message_with(&reported, chat, photo_content(&file), vec![file.clone()])
+        .await;
+    let (status, body) = h
+        .report(&reporter, message_report(chat, &[text, with_photo]))
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let report_id = &body["report"]["reportId"];
+    let before = evidence(&h.pool, report_id).await;
+
+    for message in [text, with_photo] {
+        chat_store::delete_message(&h.pool, &reported.id, chat, message, true)
+            .await
+            .expect("delete for everyone");
+    }
+    let jobs: Vec<(Uuid,)> =
+        query_as("SELECT job_id FROM cloud_content_removal_jobs WHERE message_id = ANY($1)")
+            .bind(vec![text, with_photo])
+            .fetch_all(&h.pool)
+            .await
+            .unwrap();
+    let jobs = jobs.into_iter().map(|(id,)| id).collect::<Vec<_>>();
+    assert_eq!(jobs.len(), 2);
+    for _ in 0..50 {
+        let ran = kordi_cloud_server::chat_sync::removal::run_jobs(
+            &h.pool,
+            Some(&AcceptingObjects),
+            &jobs,
+        )
+        .await
+        .unwrap();
+        if ran == 0 {
+            break;
+        }
+    }
+    // Chat storage no longer holds the text or the file's hash.
+    let (completed,): (i64,) = query_as(
+        "SELECT count(*) FROM cloud_content_removal_jobs WHERE job_id = ANY($1) AND completed_at IS NOT NULL",
+    )
+    .bind(&jobs)
+    .fetch_one(&h.pool)
+    .await
+    .unwrap();
+    assert_eq!(completed, 2, "the removal jobs finished");
+    let stored: Vec<(Value,)> =
+        query_as("SELECT content FROM cloud_chat_messages WHERE message_id = ANY($1)")
+            .bind(vec![text, with_photo])
+            .fetch_all(&h.pool)
+            .await
+            .unwrap();
+    assert!(stored
+        .iter()
+        .all(|(content,)| !content.to_string().contains("unkind")
+            && !content.to_string().contains(&file)));
+    let (hash,): (Option<String>,) =
+        query_as("SELECT sha256_hex FROM cloud_attachments WHERE attachment_id = $1")
+            .bind(&file)
+            .fetch_one(&h.pool)
+            .await
+            .unwrap();
+    assert!(hash.is_none(), "chat storage clears the file's hash");
+
+    // The report keeps the text and the attachment metadata, hash included.
+    let after = evidence(&h.pool, report_id).await;
+    assert_eq!(after, before);
+    assert!(after.to_string().contains("an unkind message"));
+    assert_eq!(
+        after["messages"][1]["attachments"][0]["sha256Hex"],
+        "ab".repeat(32)
+    );
+}

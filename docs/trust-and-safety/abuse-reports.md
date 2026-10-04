@@ -73,6 +73,11 @@ and server logs never contain report content.
   contact conversion from migration 110: that archive is the only way to
   revert the conversion, so it is kept until an operator runs the explicit
   purge described in the migration notes.
+- A report's copy of a message does not change when its sender deletes it for
+  everyone or edits it, or when someone removes it from their own view. The
+  text and attachment metadata, SHA-256 included, stay in the report until the
+  rules above delete it; content removal never reads reports. See
+  [data deletion](../data-deletion.md#what-is-kept-and-for-how-long).
 
 ## Operator access
 
