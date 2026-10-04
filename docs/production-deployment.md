@@ -125,6 +125,54 @@ promotion succeeds:
 Set `KORDI_ATTACHMENT_BUCKET_UNVERSIONED=1` only after the checks in
 [data deletion](data-deletion.md#reported-version-and-attestation).
 
+## Agent trust rollout
+
+The release that adds schema version 112 moves every group that already exists to
+mention-only agent context (`history_scope='mentions'`). Mac apps from before that
+release are legacy desktop executors (context contract 1): they build agent context
+from their local cache. With `KORDI_AGENT_CONTEXT_LEGACY_DESKTOP` at its server
+default, `deny`, a legacy Mac stops answering other members' requests to its owner's
+agent in every one of those groups. Those requests fall back to Kordi Cloud, which
+runs them only when the owner's provider credentials are available to Cloud;
+otherwise the requester gets a failed reply. Before the upgrade, the owner's Mac
+answered them. The owner's own requests keep running on a legacy Mac until someone in
+the conversation turns on "Don't let AI use my messages"; then the owner is asked to
+update. See [group agent context](development/group-agent-context.md#desktop-executor-contract).
+
+For the rollout window, use `allow_without_opt_outs`:
+
+1. Before the promotion, set it on the production machine. Promotion changes only
+   images, so the manifest value in
+   `bridges/cloud-server/deploy/k3s/manifests/cloud-server-deployment.yaml` does not
+   reach a running cluster by itself. The server reads it once at startup. Setting
+   it restarts the running server pods; a server from before version 112 does not
+   read it:
+
+   ```bash
+   sudo k3s kubectl -n kordi-cloud set env deployment/kordi-cloud-server KORDI_AGENT_CONTEXT_LEGACY_DESKTOP=allow_without_opt_outs
+   ```
+
+2. Publish the release note that Mac owners must update Kordi for other members'
+   requests in groups to keep running on their Mac.
+
+While it is set, legacy Macs answer other members in mention-only groups with their
+local history, as before the upgrade, so mention-only context is enforced only for
+Kordi Cloud runs and updated Macs. Opt-outs are always enforced: a legacy Mac never
+answers where an opt-out applies to the run. Until the switch back, do not describe
+mention-only context as enforced by Kordi's servers for every Mac.
+
+Switch back to `deny` once legacy Macs have stopped reporting readiness. This query
+reads no content:
+
+```sql
+SELECT count(DISTINCT device_id) FROM cloud_agent_desktop_capabilities
+WHERE context_contract < 2 AND updated_at > now() - interval '7 days';
+```
+
+When it returns 0, or the owners still on legacy Macs were told to update, set
+`KORDI_AGENT_CONTEXT_LEGACY_DESKTOP=deny` the same way and change the manifest value
+to match.
+
 ## Backup receipt
 
 The protected backup directory contains `<backup-id>.json` and its referenced data file.

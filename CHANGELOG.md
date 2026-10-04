@@ -6,6 +6,13 @@ This file records notable user-facing changes to Kordi for macOS and iOS.
 
 ### Changed
 
+- Agents asked in a group now see only the messages sent to them by default, and
+  existing groups move to this setting. Group owners and admins can let agents
+  read recent messages, and any member can turn on "Don't let AI use my
+  messages". Mac owners need to update Kordi on their Mac so that other
+  members' requests to their agent in groups keep running there. Requests an
+  older Mac cannot answer run on Kordi Cloud only when the owner's provider
+  account is available to Cloud.
 - Simplified message forwarding on macOS and iOS with searchable people, groups,
   and agents, recent activity ordering, visible group context, compact layouts,
   and brief translucent success confirmations.
