@@ -207,6 +207,19 @@ export function formatDesktopTranscriptTimeLabel(
   return `${calendarDate} ${time}`;
 }
 
+/** A calendar date for daily Threads boundaries, without a repeated clock time. */
+export function formatDesktopTranscriptDateLabel(
+  value: Date | number,
+  options: Pick<DesktopTranscriptTimeOptions, 'locales' | 'timeZone'> = {},
+) {
+  return cachedFormatter(
+    desktopTranscriptTimeFormatters,
+    formatterKey(['thread-date', localesKey(options.locales), options.timeZone]),
+    options.locales,
+    { year: 'numeric', month: 'long', day: 'numeric', timeZone: options.timeZone },
+  ).format(toDate(value));
+}
+
 export function formatDesktopContactRequestTimeLabel(
   value: string,
   options: DesktopTranscriptTimeOptions = {},

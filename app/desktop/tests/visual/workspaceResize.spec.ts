@@ -82,6 +82,39 @@ test('session list keeps its web tint if native backing initialization fails', a
   expect(colors.webSession[3]).toBeLessThan(255);
 });
 
+test('native sidebar backing follows page zoom independently of the display scale', async ({ page }) => {
+  await page.goto('/tests/visual/workspaceResize.html?backdrop=1&theme=light');
+  await expect(page.locator('.app-native-viewport')).toHaveAttribute('data-native-backdrop', 'ready');
+  for (const zoom of [0.7, 1.6, 1]) {
+    await page.evaluate(value => {
+      document.documentElement.dataset.kordiInterfaceZoom = String(value);
+      document.documentElement.style.setProperty('--app-interface-zoom', String(value));
+      window.dispatchEvent(new Event('kordi:interface-zoom-changed'));
+    }, zoom);
+    await expect.poll(() => page.evaluate(() => (window as Window & { backdropRequests: { sidebarWidth: number }[] }).backdropRequests.at(-1)?.sidebarWidth)).toBe(320 * zoom);
+    const request = await page.evaluate(() => (window as Window & { backdropRequests: { navigationWidth: number; titlebarHeight: number }[] }).backdropRequests.at(-1)!);
+    expect(request.navigationWidth).toBe(48 * zoom);
+    expect(request.titlebarHeight).toBeCloseTo(Math.max(40, 40 * zoom), 1);
+    const clearance = await page.evaluate(() => {
+      const button = document.querySelector('.app-native-titlebar-navigation button')!.getBoundingClientRect();
+      const header = document.querySelector('.app-native-titlebar')!.getBoundingClientRect();
+      return { left: button.left, bottom: button.bottom, headerBottom: header.bottom };
+    });
+    expect(clearance.left * zoom).toBeGreaterThanOrEqual(79.9);
+    expect(clearance.bottom).toBeLessThanOrEqual(clearance.headerBottom);
+    await page.getByRole('button', { name: 'Hide sidebar' }).click();
+    await expect.poll(() => page.evaluate(() => {
+      const sidebar = document.querySelector('.app-side-shell')!.getBoundingClientRect();
+      const titlebar = document.querySelector('.app-native-titlebar-workspace')!.getBoundingClientRect();
+      return { sidebarWidth: sidebar.width, titlebarLeft: titlebar.left };
+    })).toEqual({ sidebarWidth: 48, titlebarLeft: 48 });
+    expect(await page.locator('.app-native-titlebar-workspace').evaluate(element => getComputedStyle(element, '::before').content)).toBe('none');
+    await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('Draft stays editable during resizing');
+    await page.getByRole('button', { name: 'Show sidebar' }).click();
+    await expect.poll(() => page.evaluate(() => document.querySelector('.app-native-titlebar-workspace')!.getBoundingClientRect().left)).toBe(320);
+  }
+});
+
 test('workspace reflows its columns and transcript without scaling text, icons, or the composer', async ({ page }) => {
   await page.goto('/tests/visual/workspaceResize.html');
   const input = page.getByRole('textbox', { name: 'Message' });
