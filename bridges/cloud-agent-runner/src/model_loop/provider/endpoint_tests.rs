@@ -443,3 +443,39 @@ async fn the_private_network_transport_refuses_redirects_to_metadata() {
     assert!(error.is_redirect(), "{chain}");
     assert!(chain.contains("not authorized"), "{chain}");
 }
+
+#[tokio::test]
+async fn endpoints_for_the_omp_worker_must_resolve_to_allowed_addresses() {
+    // `localhost` resolves without network access, to loopback addresses.
+    let error =
+        endpoint::ensure_endpoint_resolves_to_allowed_addresses("http://localhost:11434/v1", false)
+            .await
+            .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        format!("provider error: {}", endpoint::OWNER_LOCAL_ENDPOINT_ERROR)
+    );
+    assert!(endpoint::ensure_endpoint_resolves_to_allowed_addresses(
+        "http://localhost:11434/v1",
+        true
+    )
+    .await
+    .is_ok());
+    for refused in [
+        "http://169.254.169.254/v1",
+        "http://[fe80::1]/v1",
+        "not a url",
+    ] {
+        assert!(
+            endpoint::ensure_endpoint_resolves_to_allowed_addresses(refused, true)
+                .await
+                .is_err(),
+            "{refused}"
+        );
+    }
+    assert!(
+        endpoint::ensure_endpoint_resolves_to_allowed_addresses("https://8.8.8.8/v1", false)
+            .await
+            .is_ok()
+    );
+}

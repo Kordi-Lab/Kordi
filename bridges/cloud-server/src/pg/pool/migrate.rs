@@ -181,6 +181,22 @@ mod tests {
         }
     }
 
+    /// Versions held by schema changes still in review, as listed in the
+    /// migrations README. Taking one here would record it twice once those
+    /// changes merge.
+    const VERSIONS_HELD_IN_REVIEW: [i64; 4] = [110, 111, 112, 116];
+
+    #[test]
+    fn versions_held_by_changes_in_review_stay_free() {
+        for migration in EMBEDDED_MIGRATIONS {
+            assert!(
+                !VERSIONS_HELD_IN_REVIEW.contains(&migration.version),
+                "migration version {} is held by a change in review",
+                migration.version
+            );
+        }
+    }
+
     #[test]
     fn embedded_versions_match_their_file_names() {
         // Every quoted `.sql` literal in the table is a migration file name.

@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use crate::client::{CloudAgentRun, CloudAgentRunClient, RunnerClientError};
 use crate::k8s_sandbox::K8sSandboxBackend;
 use crate::model_loop::{
-    run_model_loop, run_omp_model_loop, CloudModelProvider, OpenAiCompatibleProvider,
+    omp_serves_provider_account, run_model_loop, run_omp_model_loop, CloudModelProvider,
+    OpenAiCompatibleProvider,
 };
 use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 
@@ -32,6 +33,19 @@ pub enum CloudModelEngine {
 pub fn cloud_model_engine_from_env() -> CloudModelEngine {
     match std::env::var("KORDI_CLOUD_AGENT_ENGINE") {
         Ok(value) if value.trim().eq_ignore_ascii_case("omp") => CloudModelEngine::Omp,
+        _ => CloudModelEngine::Rust,
+    }
+}
+
+/// The engine for one run. The OMP engine serves only accounts on built-in
+/// vendor endpoints; an account with its own endpoint runs on the Rust loop,
+/// whose provider client checks every DNS answer and redirect.
+pub fn cloud_model_engine_for_account(
+    configured: CloudModelEngine,
+    material: &crate::client::ProviderAuthMaterial,
+) -> CloudModelEngine {
+    match configured {
+        CloudModelEngine::Omp if omp_serves_provider_account(material) => CloudModelEngine::Omp,
         _ => CloudModelEngine::Rust,
     }
 }
@@ -339,9 +353,10 @@ where
         Rust(String),
         Omp(String, crate::client::OmpState),
     }
+    let engine = cloud_model_engine_for_account(cloud_model_engine_from_env(), &auth_material);
     let result = {
         let generation = async {
-            match cloud_model_engine_from_env() {
+            match engine {
                 CloudModelEngine::Rust => {
                     run_model_loop(client, provider, &run, &sandbox, auth_material)
                         .await

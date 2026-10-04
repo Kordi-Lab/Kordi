@@ -5,7 +5,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
-use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest, RunError};
+use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
 };
@@ -416,10 +416,11 @@ pub(super) async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
         runtime_route: None,
         idempotency_key: format!("scheduled:{}", run.run_id),
     };
-    if super::admission::admit_scheduled_run(pool, &claim, run, now).await? {
-        claim_run(pool, &claim)
-            .await
-            .map_err(RunError::into_persistence_error)?;
+    if !super::admission::admit_scheduled_run(pool, &claim, run, now).await? {
+        return Ok(());
     }
-    Ok(())
+    match claim_run(pool, &claim).await {
+        Ok(_) => Ok(()),
+        Err(refusal) => super::admission::record_refused_claim(pool, run, refusal, now).await,
+    }
 }

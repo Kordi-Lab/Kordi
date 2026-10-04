@@ -132,6 +132,110 @@ fn chatgpt_oauth_uses_codex_transport_and_endpoint() {
     assert_eq!(auth.account_id.as_deref(), Some("synthetic-account"));
 }
 
+fn account(provider: &str, payload: Value) -> ProviderAuthMaterial {
+    ProviderAuthMaterial {
+        snapshot_id: "synthetic-snapshot".into(),
+        provider: provider.into(),
+        auth_choice: "cloud-api-key:synthetic".into(),
+        payload,
+    }
+}
+
+/// Accounts on a vendor's built-in endpoint, written the ways OMP catalogs
+/// and snapshots spell it.
+fn built_in_endpoint_accounts() -> Vec<ProviderAuthMaterial> {
+    vec![
+        account("openai", json!({"apiKey":"synthetic-key"})),
+        account(
+            "openai",
+            json!({"apiKey":"synthetic-key","baseUrl":"https://api.openai.com/v1/"}),
+        ),
+        account(
+            "anthropic",
+            json!({"apiKey":"synthetic-key","baseUrl":"https://api.anthropic.com/v1"}),
+        ),
+        account(
+            "google",
+            json!({"apiKey":"synthetic-key","baseUrl":"https://generativelanguage.googleapis.com/v1beta"}),
+        ),
+        account("openrouter", json!({"apiKey":"synthetic-key"})),
+        account(
+            "openai-codex",
+            json!({"apiMode":"openai-codex-oauth","accessToken":"synthetic-token"}),
+        ),
+    ]
+}
+
+/// Accounts whose endpoint the account itself chose. The worker cannot check
+/// the addresses such a name resolves to on each connection, or where it
+/// redirects, so these never reach it.
+fn own_endpoint_accounts() -> Vec<ProviderAuthMaterial> {
+    vec![
+        account(
+            "openai",
+            json!({"apiKey":"synthetic-key","baseUrl":"https://llm.example.com/v1"}),
+        ),
+        account(
+            "openai-codex",
+            json!({"apiMode":"openai-codex-oauth","accessToken":"synthetic-token","baseUrl":"https://llm.example.com/backend-api"}),
+        ),
+        account(
+            "groq",
+            json!({"apiKey":"synthetic-key","baseUrl":"https://api.openai.com/v1"}),
+        ),
+        account(
+            "mistral",
+            json!({"apiKey":"synthetic-key","baseUrl":"https://api.mistral.ai/v1","model":"m"}),
+        ),
+        account(
+            "openai",
+            json!({"apiKey":"synthetic-key","baseUrl":"https://api.openai.com.example.com/v1"}),
+        ),
+    ]
+}
+
+#[test]
+fn only_built_in_vendor_endpoints_run_on_the_omp_worker() {
+    use crate::runtime::{cloud_model_engine_for_account, CloudModelEngine};
+    for material in built_in_endpoint_accounts() {
+        assert!(omp_serves_provider_account(&material), "{material:?}");
+        assert_eq!(
+            cloud_model_engine_for_account(CloudModelEngine::Omp, &material),
+            CloudModelEngine::Omp
+        );
+        assert_eq!(
+            cloud_model_engine_for_account(CloudModelEngine::Rust, &material),
+            CloudModelEngine::Rust
+        );
+    }
+    for material in own_endpoint_accounts() {
+        assert!(!omp_serves_provider_account(&material), "{material:?}");
+        assert_eq!(
+            cloud_model_engine_for_account(CloudModelEngine::Omp, &material),
+            CloudModelEngine::Rust,
+            "{material:?}"
+        );
+    }
+    let unusable = account("openai", json!({}));
+    assert!(!omp_serves_provider_account(&unusable));
+}
+
+#[tokio::test]
+async fn the_omp_loop_refuses_an_account_endpoint_before_any_request() {
+    let sandbox = Arc::new(crate::sandbox_client::LocalSandboxBackend::new(
+        std::env::temp_dir().join(format!("kordi-omp-endpoint-test-{}", uuid::Uuid::new_v4())),
+    )) as SandboxBackendHandle;
+    for material in own_endpoint_accounts() {
+        let error = run_omp_model_loop(&NoCloudCalls, &run(), &sandbox, material)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!("provider error: {OMP_CUSTOM_ENDPOINT_ERROR}")
+        );
+    }
+}
+
 /// Run with KORDI_OMP_WORKER_SCRIPT=<absolute worker.ts path>.
 /// A local synthetic SSE server exercises the real OMP model loop without
 /// touching a provider or weakening production endpoint validation.

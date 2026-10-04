@@ -392,3 +392,89 @@ async fn revoke_all_others_preserves_only_the_authenticated_caller() {
         );
     }
 }
+
+async fn current_device_platform(router: &axum::Router, token: &str) -> serde_json::Value {
+    let devices = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/auth/devices", token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    devices["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|device| device["currentDevice"] == true)
+        .expect("current device")["platform"]
+        .clone()
+}
+
+async fn report_platform(router: &axum::Router, token: &str, platform: &str) {
+    let response = router
+        .clone()
+        .oneshot(put_json_with_token(
+            "/v1/cloud/auth/devices/current",
+            token,
+            json!({ "platform": platform }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+/// Desktop execution is limited to desktop platforms, so a session cannot
+/// relabel its own device. A device without a recorded platform may report
+/// one once.
+#[tokio::test]
+async fn a_session_cannot_change_the_recorded_platform_of_its_device() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let router = fast_router(state);
+    let phone = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body_with_device(
+                    &unique_email("device-platform-phone"),
+                    "correct horse",
+                    device_registration(41, "Test iPhone", "ios"),
+                ),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let phone_token = phone["session"]["token"].as_str().unwrap();
+    report_platform(&router, phone_token, "macos").await;
+    assert_eq!(current_device_platform(&router, phone_token).await, "ios");
+
+    let unlabeled = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body(&unique_email("device-platform-legacy"), "correct horse"),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let unlabeled_token = unlabeled["session"]["token"].as_str().unwrap();
+    assert_eq!(
+        current_device_platform(&router, unlabeled_token).await,
+        serde_json::Value::Null
+    );
+    report_platform(&router, unlabeled_token, "macos").await;
+    assert_eq!(
+        current_device_platform(&router, unlabeled_token).await,
+        "macos"
+    );
+    report_platform(&router, unlabeled_token, "ios").await;
+    assert_eq!(
+        current_device_platform(&router, unlabeled_token).await,
+        "macos"
+    );
+}

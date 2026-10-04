@@ -16,6 +16,15 @@ use super::{
     OpenAiProviderConfig, MAX_MODEL_CALLS, MAX_TOOL_CALLS,
 };
 
+/// Whether the OMP worker may serve this provider account. The worker opens
+/// provider connections itself, so it cannot check each DNS answer or each
+/// redirect against the address policy that the Rust provider clients apply.
+/// It is therefore only handed built-in vendor endpoints. An account with
+/// its own `baseUrl` runs on the Rust model loop instead.
+pub fn omp_serves_provider_account(material: &ProviderAuthMaterial) -> bool {
+    OpenAiProviderConfig::from_material(material).is_ok_and(|auth| auth.uses_builtin_endpoint())
+}
+
 pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
     client: &C,
     run: &CloudAgentRun,
@@ -23,7 +32,18 @@ pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
     auth_material: ProviderAuthMaterial,
 ) -> Result<(String, OmpState), ModelLoopError> {
     let mut auth = OpenAiProviderConfig::from_material(&auth_material)?;
+    if !auth.uses_builtin_endpoint() {
+        return Err(ModelLoopError::Provider(OMP_CUSTOM_ENDPOINT_ERROR.into()));
+    }
     auth.apply_runtime_route(&run.runtime_route, &auth_material.provider)?;
+    // The worker connects to the provider itself, without the runner's
+    // guarded client. Built-in vendor endpoints are public, so this check is
+    // a second line of defense.
+    super::provider::ensure_endpoint_resolves_to_allowed_addresses(
+        &auth.base_url,
+        super::provider::private_provider_endpoints_allowed(),
+    )
+    .await?;
     let omp_provider = omp_provider(&auth).to_string();
     let context = client
         .fetch_omp_context(
@@ -57,6 +77,8 @@ pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
     )
     .await
 }
+
+const OMP_CUSTOM_ENDPOINT_ERROR: &str = "The OMP engine serves only built-in provider endpoints.";
 
 struct OmpTurnConfig {
     snapshot_id: String,

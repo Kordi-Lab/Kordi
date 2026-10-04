@@ -5,7 +5,7 @@ mod omp;
 mod prompt;
 mod provider;
 
-pub use omp::run_omp_model_loop;
+pub use omp::{omp_serves_provider_account, run_omp_model_loop};
 pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
 pub use provider::{
     public_provider_client, OpenAiCompatibleProvider, OpenAiProviderConfig,

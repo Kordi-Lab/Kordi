@@ -44,3 +44,37 @@ a verified backup before an explicitly authorized production rollout. Deploy the
 server before updating the macOS/iOS clients. The history API is membership-gated,
 paged, and filters private actions to the actor account; existing pin-state APIs
 and older clients remain compatible.
+
+## Version numbers
+
+Every migration has its own version. From version 106 on, the runner refuses a
+database that recorded a version under a different description, so two changes
+must never be given the same number. Schema changes still in review hold these
+versions, and other changes must not take them:
+
+- 110: contact consent and blocks
+- 111: abuse reports
+- 112: agent trust
+- 116: content removal
+
+A unit test keeps these versions free; a change that lands one of them removes
+it from that list. Gaps in the sequence are allowed.
+
+Versions 107 to 113 were renumbered before release, when chat projects took
+version 107. Production databases never recorded the earlier numbers. A
+development database that did is refused at startup. Such databases are
+disposable, so recreate them. To keep one, renumber its records in one
+transaction before starting this build:
+
+```sql
+BEGIN;
+UPDATE cloud_schema_versions SET version = 113
+ WHERE version IN (109, 110) AND description = 'runner run token hash';
+UPDATE cloud_schema_versions SET version = 109
+ WHERE version = 108 AND description = 'session-bound realtime tickets';
+UPDATE cloud_schema_versions SET version = 108
+ WHERE version = 107 AND description = 'account email verification';
+COMMIT;
+```
+
+The build then applies version 107 and keeps every other recorded version.

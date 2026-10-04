@@ -5,7 +5,7 @@
 use std::sync::{Arc, Mutex};
 
 use kordi_cloud_agent_runner::client::{
-    CloudAgentRunClient, HttpCloudAgentRunClient, RUN_TOKEN_HEADER,
+    CloudAgentRunClient, HttpCloudAgentRunClient, OmpState, RUN_TOKEN_HEADER,
 };
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -86,6 +86,8 @@ async fn handle(mut stream: TcpStream, recorded: Arc<Mutex<Vec<RecordedRequest>>
         let mut run = run_json("car_a");
         run["runToken"] = json!("run-token-for-car-a");
         json!({ "run": run })
+    } else if path.ends_with("/omp-context") {
+        json!({ "prompt": "hello", "messages": [] })
     } else if path.ends_with("/provider-auth") {
         json!({
             "providerAuth": {
@@ -183,4 +185,56 @@ async fn an_execution_never_sends_another_executions_run_credential() {
     assert_eq!(requests[1].run_token, None);
     assert_eq!(requests[2].path, "/v1/cloud/agent-runs/car_other/running");
     assert_eq!(requests[2].run_token, None);
+}
+
+#[tokio::test]
+async fn omp_context_and_completion_carry_the_runs_credential() {
+    let (base, recorded) = start_server().await;
+    let runner = HttpCloudAgentRunClient::new(
+        base,
+        "shared-runner-token".to_string(),
+        "runner-a".to_string(),
+    );
+    let execution = runner.for_execution();
+
+    execution.lease_next_run().await.unwrap().unwrap();
+    execution
+        .fetch_omp_context("car_a", "openai", "gpt-test", "snap")
+        .await
+        .unwrap();
+    execution
+        .complete_run_with_omp_state(
+            "car_a",
+            "done",
+            OmpState {
+                schema_version: 1,
+                provider: "openai".to_string(),
+                model: "gpt-test".to_string(),
+                auth_snapshot_id: "snap".to_string(),
+                messages: Vec::new(),
+                replayable: false,
+                checkpoint: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let requests = recorded.lock().unwrap().clone();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[1].path, "/v1/cloud/agent-runs/car_a/omp-context");
+    assert_eq!(requests[2].path, "/v1/cloud/agent-runs/car_a/complete");
+    for request in &requests[1..] {
+        assert_eq!(
+            request.authorization.as_deref(),
+            Some("Bearer shared-runner-token"),
+            "{}",
+            request.path
+        );
+        assert_eq!(
+            request.run_token.as_deref(),
+            Some("run-token-for-car-a"),
+            "{}",
+            request.path
+        );
+    }
 }

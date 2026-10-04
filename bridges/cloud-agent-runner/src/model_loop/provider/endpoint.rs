@@ -16,7 +16,7 @@ pub(super) fn normalize_provider(provider: &str) -> &str {
 
 /// Endpoints the runner knows without a `baseUrl` in the snapshot. Any other
 /// provider must carry its own `baseUrl`.
-fn default_base_url(provider: &str, api_mode: OpenAiApiMode) -> Option<&'static str> {
+pub(super) fn default_base_url(provider: &str, api_mode: OpenAiApiMode) -> Option<&'static str> {
     if api_mode == OpenAiApiMode::CodexOAuth {
         return Some("https://chatgpt.com/backend-api");
     }
@@ -165,4 +165,42 @@ pub(super) fn ensure_provider_endpoint_allowed(
             OWNER_LOCAL_ENDPOINT_ERROR.to_string(),
         ))
     }
+}
+
+/// Checks the current DNS answers for an endpoint's host with the address
+/// policy that the guarded provider clients apply when they connect. The OMP
+/// worker opens provider connections itself and cannot apply that policy, so
+/// this check runs before an endpoint is handed to it. It does not cover a
+/// name that is rebound after the check, or a redirect the worker follows,
+/// which is why the worker is only handed built-in vendor endpoints.
+pub(crate) async fn ensure_endpoint_resolves_to_allowed_addresses(
+    base_url: &str,
+    allow_private: bool,
+) -> Result<(), ModelLoopError> {
+    let refused = || ModelLoopError::Provider(OWNER_LOCAL_ENDPOINT_ERROR.to_string());
+    let url = reqwest::Url::parse(base_url).map_err(|_| refused())?;
+    let host = url.host_str().ok_or_else(refused)?;
+    let addresses = match host.trim_matches(['[', ']']).parse::<std::net::IpAddr>() {
+        Ok(ip) => vec![ip],
+        Err(_) => {
+            let port = url.port_or_known_default().unwrap_or(443);
+            tokio::net::lookup_host((host, port))
+                .await
+                .map_err(|error| {
+                    ModelLoopError::Provider(format!(
+                        "Could not resolve the provider endpoint: {error}"
+                    ))
+                })?
+                .map(|address| address.ip())
+                .collect()
+        }
+    };
+    if addresses.is_empty()
+        || addresses
+            .iter()
+            .any(|ip| !kordi_tools::endpoint_address_allowed(*ip, allow_private))
+    {
+        return Err(refused());
+    }
+    Ok(())
 }
