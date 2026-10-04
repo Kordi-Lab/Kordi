@@ -1,4 +1,5 @@
 import { CloudPinClient } from './cloudPinClient';
+import { uploadCloudAvatarAsset } from './avatarAssetClient';
 import type { CloudMessage } from './cloudMessageTypes';
 import { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLookup,type CloudProviderAuthSnapshot,type CloudProviderAuthSnapshotInput } from "./cloudAgentRuntimeTypes";
 // Cloud-edition HTTP client. Authentication and ancillary account features
@@ -124,25 +125,8 @@ export type CloudProfileUpdateInput = {
   agentDisplayName?: string; agentAvatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
 };
 
-export type CloudContactRequestDirection = 'incoming' | 'outgoing';
-export type CloudContactRequestStatus = 'pending' | 'accepted' | 'rejected';
-
-export type CloudContactRequest = {
-  requestId: string;
-  fromAccountId: string;
-  toAccountId: string;
-  status: CloudContactRequestStatus;
-  direction: CloudContactRequestDirection;
-  message: string | null;
-  createdAt: string;
-  decidedAt: string | null;
-  counterpart: CloudContactSummary | null;
-};
-
-export type CloudContactAcceptResult = {
-  request: CloudContactRequest;
-  helloMessage?: CloudMessage | null;
-};
+import type { CloudContactRequest, CloudContactAcceptResult } from './cloudContactRequestTypes';
+export type { CloudContactRequestDirection, CloudContactRequestStatus, CloudContactRequest, CloudContactAcceptResult } from './cloudContactRequestTypes';
 
 export type SendCloudMessageOptions = {
   sessionId?: string | null;
@@ -406,6 +390,11 @@ export class CloudAuthClient {
 
   async startOAuth(provider: CloudOAuthProvider, redirectAfter: string): Promise<CloudOAuthStartResponse> {
     return this.identity.startOAuth(provider, redirectAfter);
+  }
+
+  async uploadGroupAvatarAsset(token: string, dataUrl: string, accountId = this.activeAccountId): Promise<string> {
+    if (!accountId) throw new Error('Not signed in.');
+    return uploadCloudAvatarAsset({ request: (path, init, fallback) => this.send(path, init, fallback), token, entityType: 'human', entityId: accountId, dataUrl });
   }
 
   async updateProfile(token: string, input: CloudProfileUpdateInput): Promise<CloudAccount> {

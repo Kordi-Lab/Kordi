@@ -29,6 +29,7 @@ export type IdentityAvatarProps = {
   imageUrl?: string | null;
   avatarKey?: string | null;
   className?: string;
+  cornerRadius?: string;
   generatedClassName?: string;
   presenceStatus?: 'online' | 'offline' | string | null;
   presenceLabel?: string | null;
@@ -121,7 +122,7 @@ export function getIdentityAvatarKey(kind: IdentityAvatarKind, seed: string, ava
   return kind === 'agent' ? `agent:${value.replace(/^agent:/i, '')}` : avatarKey?.trim() || `human:${value}`;
 }
 
-export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, avatarKey, className, generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
+export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, avatarKey, className, cornerRadius = '17%', generatedClassName, presenceStatus, presenceLabel }: IdentityAvatarProps) {
   const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
   const { fallbackLabel, normalizedSeed, resolvedImageUrl: identityImageUrl } = resolveIdentityAvatarPresentation({
     kind,
@@ -179,9 +180,10 @@ export function IdentityAvatar({ kind, seed, isSelf = false, name, imageUrl, ava
     || (normalizedPresenceStatus ? `${name?.trim() || fallbackLabel} is ${normalizedPresenceStatus}` : null);
 
   return (
-    <span className={cn('relative inline-flex shrink-0 rounded-full', className)}>
+    <span className={cn('relative inline-flex shrink-0 rounded-[17%]', className)} style={{ borderRadius: cornerRadius }}>
       <Avatar
-        className="h-full w-full rounded-full bg-transparent"
+        className="h-full w-full rounded-[17%] bg-transparent"
+        style={{ borderRadius: cornerRadius }}
         aria-label={label}
         data-avatar-kind={kind}
         data-avatar-state={avatarState}

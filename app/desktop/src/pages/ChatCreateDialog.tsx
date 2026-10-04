@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { popoverGeometry, type ChatCreatePopoverAnchor } from './chatCreateGeometry';
+export type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -12,15 +14,9 @@ import {
 import type { Agent, Contact } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import { cn } from '@/lib/utils';
+import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
-
-export type ChatCreatePopoverAnchor = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
 
 export type AddContactLookupResult = {
   accountId: string;
@@ -56,63 +52,6 @@ export type ChatCreateDialogProps = {
 
 export type ChatCreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
 type CreateMode = ChatCreateMode;
-type PopoverPlacement = 'right' | 'left' | 'floating';
-type PopoverStyle = CSSProperties & {
-  '--app-create-enter-x'?: string;
-  '--app-popover-origin'?: string;
-};
-
-type PopoverGeometry = {
-  style: PopoverStyle;
-  arrowStyle: CSSProperties;
-  placement: PopoverPlacement;
-};
-
-function popoverGeometry(anchorRect?: ChatCreatePopoverAnchor | null): PopoverGeometry {
-  const width = 284;
-  const gap = 10;
-  const margin = 10;
-  const fallbackLeft = 92;
-  const fallbackTop = 74;
-
-  if (!anchorRect) {
-    return {
-      placement: 'floating',
-      arrowStyle: { top: 18 },
-      style: {
-        left: fallbackLeft,
-        top: fallbackTop,
-        '--app-create-enter-x': '-6px',
-        '--app-popover-origin': 'left 22px',
-      },
-    };
-  }
-
-  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth;
-  const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
-  const rightLeft = anchorRect.left + anchorRect.width + gap;
-  const leftLeft = anchorRect.left - width - gap;
-  const canFitRight = rightLeft + width <= viewportWidth - margin;
-  const canFitLeft = leftLeft >= margin;
-  const placement: PopoverPlacement = canFitRight || !canFitLeft ? 'right' : 'left';
-  const unclampedLeft = placement === 'right' ? rightLeft : leftLeft;
-  const left = Math.min(Math.max(margin, unclampedLeft), Math.max(margin, viewportWidth - width - margin));
-  const top = Math.min(Math.max(margin, anchorRect.top - 4), Math.max(margin, viewportHeight - 220));
-  const anchorCenterY = anchorRect.top + anchorRect.height / 2;
-  const arrowTop = Math.min(Math.max(18, anchorCenterY - top - 6), 54);
-
-  return {
-    placement,
-    arrowStyle: { top: arrowTop },
-    style: {
-      left,
-      top,
-      '--app-create-enter-x': placement === 'right' ? '-8px' : '8px',
-      '--app-popover-origin': placement === 'right' ? 'left 22px' : 'right 22px',
-    },
-  };
-}
-
 function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; onClose: () => void; anchorRect?: ChatCreatePopoverAnchor | null }) {
   const { style, arrowStyle, placement } = popoverGeometry(anchorRect);
 
@@ -198,6 +137,9 @@ export function ChatCreateDialog({
   const [mode, setMode] = useState<CreateMode>(initialMode);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
+  const [groupAvatarDataUrl, setGroupAvatarDataUrl] = useState<string | null>(null);
+  const [groupCreateError, setGroupCreateError] = useState<string | null>(null);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [contactNodeId, setContactNodeId] = useState('');
   const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'pending' | 'error'>('idle');
   const [addContactError, setAddContactError] = useState('');
@@ -222,6 +164,8 @@ export function ChatCreateDialog({
     setMode(initialMode);
     setSelectedContactIds([]);
     setGroupName('');
+    setGroupAvatarDataUrl(null);
+    setGroupCreateError(null);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -245,6 +189,8 @@ export function ChatCreateDialog({
     setMode(initialMode);
     setSelectedContactIds([]);
     setGroupName('');
+    setGroupAvatarDataUrl(null);
+    setGroupCreateError(null);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -566,11 +512,17 @@ export function ChatCreateDialog({
           className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!canSubmitGroup) return;
-            void onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null });
-            close();
+            if (!canSubmitGroup || isCreatingGroup) return;
+            setIsCreatingGroup(true); setGroupCreateError(null);
+            void Promise.resolve().then(() => onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null, avatarDataUrl: groupAvatarDataUrl }))
+              .then(close).catch((error: unknown) => setGroupCreateError(error instanceof Error ? error.message : 'Could not create this group.'))
+              .finally(() => setIsCreatingGroup(false));
           }}
         >
+          <div className="flex justify-center pb-1">
+            <GroupAvatarEditor avatars={selectedPeople.map((person) => ({ kind: 'human', seed: person.avatarSeed || person.id, imageUrl: person.profileImageUrl }))} imageUrl={groupAvatarDataUrl} name={groupName || 'Group'} disabled={isCreatingGroup} onUpload={(dataUrl) => setGroupAvatarDataUrl(dataUrl)} onRemove={() => setGroupAvatarDataUrl(null)} />
+          </div>
+          {groupCreateError ? <div role="alert" className="app-error-text text-[11px]">{groupCreateError}</div> : null}
           <input
             value={groupName}
             onChange={(event) => setGroupName(event.target.value)}
@@ -603,8 +555,8 @@ export function ChatCreateDialog({
           </div>
           <div className="flex gap-1.5">
             <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
-            <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={!canSubmitGroup}>
-              {canSubmitGroup ? 'Create group' : 'Pick 2 people'}
+            <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={isCreatingGroup || !canSubmitGroup}>
+              {isCreatingGroup ? 'Creating…' : canSubmitGroup ? 'Create group' : 'Pick 2 people'}
             </Button>
           </div>
         </form>

@@ -29,7 +29,7 @@ export function participantSpaceAvatarParticipants(
     .sort((left, right) => (
       groupParticipantStableKey(left).localeCompare(groupParticipantStableKey(right))
     ))
-    .slice(0, 3);
+    .slice(0, 9);
 }
 
 export function earliestParticipantSpaceSession(

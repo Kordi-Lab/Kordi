@@ -14,7 +14,7 @@ struct GroupSpaceRow: View {
         HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 11) {
             GroupAvatarStack(
                 participants: space.participants,
-                size: dynamicTypeSize.isAccessibilitySize ? 52 : 44
+                size: dynamicTypeSize.isAccessibilitySize ? 52 : 44, imageSource: space.avatarSource
             )
 
             VStack(alignment: .leading, spacing: 2) {

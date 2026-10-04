@@ -57,6 +57,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         handleAddCollaborationContact: args.handleAddCollaborationContact,
         handleCreateChatSessionInParticipantSpace: args.handleCreateChatSessionInParticipantSpace,
         handleRenameChatGroup: args.handleRenameChatGroup,
+        handleUpdateChatGroupAvatar: args.handleUpdateChatGroupAvatar,
         handleRenameChatSession: args.handleRenameChatSession,
         handleAddChatGroupMembers: args.handleAddChatGroupMembers,
         handleRemoveChatGroupMember: args.handleRemoveChatGroupMember,

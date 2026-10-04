@@ -186,6 +186,7 @@ export function useKordiAppShellComposition({
       handleCreateChatSessionInParticipantSpace:
         groups.handleCreateChatSessionInParticipantSpace,
       handleRenameChatGroup: groups.handleRenameChatGroup,
+      handleUpdateChatGroupAvatar: groups.handleUpdateChatGroupAvatar,
       handleRenameChatSession: chatSession.handleRenameChatSession,
       handleAddChatGroupMembers: groups.handleAddChatGroupMembers,
       handleRemoveChatGroupMember: groups.handleRemoveChatGroupMember,

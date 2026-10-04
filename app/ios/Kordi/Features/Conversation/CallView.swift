@@ -586,7 +586,7 @@ private struct CallWaitingStage: View {
     var body: some View {
         VStack(spacing: 22) {
             if conversation.kind == .group {
-                GroupAvatarStack(participants: conversation.groupParticipants, size: 132)
+                GroupAvatarStack(participants: conversation.groupParticipants, size: 132, imageSource: conversation.avatarSource)
             } else {
                 IdentityAvatar(
                     name: peerIdentity.name,

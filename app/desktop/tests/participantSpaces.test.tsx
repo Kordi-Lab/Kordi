@@ -851,7 +851,7 @@ test('buildParticipantSpaces truncates long inferred group names with a remainin
   ]);
 
   assert.equal(spaces[0]?.title, 'member1, member2 +103 more');
-  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'member1', 'member10']);
+  assert.deepEqual(spaces[0]?.avatarStack.map((avatar) => avatar.seed), ['me', 'member1', 'member10', 'member100', 'member101', 'member102', 'member103', 'member104', 'member105']);
 });
 
 test('buildParticipantSpaces does not expose raw session ids as participant-space previews', () => {

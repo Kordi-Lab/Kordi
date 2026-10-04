@@ -6,6 +6,7 @@ use super::support::*;
 use super::*;
 
 mod fanout;
+mod group_avatar;
 mod group_identity;
 mod mutations;
 mod server_refresh;
@@ -120,7 +121,19 @@ pub(crate) async fn send_message_in_transaction(
 
     require_active_member(transaction, conversation_id, account_id).await?;
     if let Some(projection) = &group_projection {
+        // Serialize group projections before taking any sibling conversation lock.
+        query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("group-projection:{}", projection.group_space_id))
+            .execute(&mut **transaction)
+            .await?;
         apply_group_control_title(transaction, account_id, conversation_id, projection).await?;
+        let group_avatar = group_avatar::prepare_group_avatar(
+            transaction,
+            account_id,
+            conversation_id,
+            projection,
+        )
+        .await?;
         let group_title = matches!(
             projection.kind.as_str(),
             "group-invite" | "group-update" | "group-title-update"
@@ -130,6 +143,11 @@ pub(crate) async fn send_message_in_transaction(
         query(
             "UPDATE cloud_chat_conversations conversation \
              SET group_space_id = $2, \
+                 group_avatar = COALESCE($4, conversation.group_avatar, ( \
+                   SELECT sibling.group_avatar FROM cloud_chat_conversations sibling \
+                   WHERE sibling.group_space_id = $2 AND sibling.group_avatar IS NOT NULL \
+                   ORDER BY (sibling.group_avatar->>'updatedAtMs')::bigint DESC LIMIT 1 \
+                 )), \
                  group_title = COALESCE( \
                    $3, conversation.group_title, ( \
                      SELECT sibling.group_title \
@@ -143,8 +161,20 @@ pub(crate) async fn send_message_in_transaction(
         .bind(conversation_id)
         .bind(&projection.group_space_id)
         .bind(group_title)
+        .bind(&group_avatar)
         .execute(&mut **transaction)
         .await?;
+        if let Some(avatar) = group_avatar {
+            group_avatar::publish_group_avatar(transaction, &projection.group_space_id, &avatar)
+                .await?;
+        }
+        let avatar: (Option<Value>,) = query_as(
+            "SELECT group_avatar FROM cloud_chat_conversations WHERE conversation_id = $1",
+        )
+        .bind(conversation_id)
+        .fetch_one(&mut **transaction)
+        .await?;
+        group_identity::set_group_avatar(&mut request.content, avatar.0)?;
         if let Some(group_title) = group_title {
             query(
                 "UPDATE cloud_chat_conversations \
