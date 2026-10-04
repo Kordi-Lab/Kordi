@@ -61,3 +61,9 @@ migration_create_database kordi_migration_test_runtime
 # shared fixture. Serialize them so one test cannot sweep another test's rows.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --test cloud_agent_runtime_e2e --test chat_sync_e2e -- --test-threads=1
+migration_create_database kordi_migration_test_service
+# Unit and integration tests that skip without DATABASE_URL, such as sign-in
+# limits, account linking, session checks, and scheduled task budgets.
+DATABASE_URL="$(migration_database_url kordi_migration_test_service)" \
+  cargo test -p kordi-cloud-server --lib --test cloud_auth_e2e --test cloud_agent_definitions_e2e \
+    --test scheduled_task_tool_e2e -- --test-threads=1

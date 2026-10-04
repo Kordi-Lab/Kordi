@@ -456,7 +456,10 @@ async fn retention_advances_the_cursor_floor_before_replay_rows_are_deleted() {
     .await
     .expect("age replay rows");
 
-    let deleted = retention::sweep_expired_events(&pool, chrono::Utc::now())
+    // Sweep only rows older than the retention window, so replay rows that
+    // parallel tests write now keep their cursors.
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(retention::retention_days());
+    let deleted = retention::sweep_expired_events(&pool, cutoff)
         .await
         .expect("sweep replay rows");
     assert!(deleted >= 2);
