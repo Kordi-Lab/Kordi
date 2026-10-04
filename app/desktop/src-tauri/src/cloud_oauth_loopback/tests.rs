@@ -83,6 +83,26 @@ mod completion_page_tests {
     }
 
     #[test]
+    fn script_clears_the_fragment_from_history_before_posting_it() {
+        let html = completion_page_html("cloud_oauth_history");
+        let capture = html
+            .find("const fragment = window.location.hash")
+            .expect("fragment is captured once");
+        let replace = html
+            .find("window.history.replaceState(null, '', window.location.pathname + window.location.search)")
+            .expect("fragment is removed from the address bar and history");
+        let post = html
+            .find("fetch('/complete/cloud_oauth_history'")
+            .expect("fragment is posted to the loopback listener");
+        assert!(capture < replace && replace < post);
+        assert!(html.contains("body: fragment,"));
+        assert!(
+            !html.contains("body: window.location.hash"),
+            "the post must use the captured fragment, not the cleared location"
+        );
+    }
+
+    #[test]
     fn page_carries_brand_palette_and_dark_mode_support() {
         let html = completion_page_html("cloud_oauth_palette");
 

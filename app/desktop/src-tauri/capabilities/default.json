@@ -1,11 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability set for the main Kordi window.",
+  "description": "Shared capability set for every Kordi window. Window creation, deep links, and the updater are granted only to the main window in main-window.json.",
   "windows": ["main", "auth-popup", "media-preview", "call"],
   "permissions": [
     "core:default",
-    "core:window:allow-create",
     "core:window:allow-close",
     "core:window:allow-center",
     "core:window:allow-destroy",
@@ -23,8 +22,6 @@
     "core:window:allow-start-dragging",
     "core:window:allow-start-resize-dragging",
     "core:window:allow-unminimize",
-    "core:webview:allow-create-webview-window",
-    "deep-link:default",
     {
       "identifier": "http:default",
       "allow": [
@@ -32,7 +29,6 @@
         { "url": "http://127.0.0.1:17081" },
         { "url": "http://127.0.0.1:18181" }
       ]
-    },
-    "updater:default"
+    }
   ]
 }

@@ -11,6 +11,7 @@ import {threadReadKey, threadUnreadMarkerMessageId} from '@/features/chat/thread
 import type { Conversation, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { CompactComposerModelMenu, ComposerMentionMenu, type ComposerMentionOption } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
+import { attachDesktopReferencedPath } from '@/lib/desktopLocalAttachments';
 import { useVoiceComposer } from '@/pages/chatsPage.voiceComposer';
 import { VoiceComposerControls } from '@/pages/chatsPage.voiceControls';
 import { chatTranscriptDensityMode } from '@/pages/chatsPage.model';
@@ -95,7 +96,7 @@ export function ChatThreadPanel({
     targetsForText: chatMentionTargetsForText,
     onTextChange: (value) => setDrafts((current) => ({ ...current, [rootId]: value })),
     onPickFile: () => inputRef.current?.click(),
-    onAttachPath: (path) => { void addAttachmentPaths([path]); },
+    onAttachPath: (path) => { void attachDesktopReferencedPath(path, addAttachmentPaths); },
     onFocus: (cursor) => {
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(cursor, cursor);

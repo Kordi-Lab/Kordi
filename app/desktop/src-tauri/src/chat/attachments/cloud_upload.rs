@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::io::AsyncReadExt;
 use tokio_util::sync::CancellationToken;
 
-use super::{attachment_storage_dir, ensure_attachment_file_path, MAX_CHAT_ATTACHMENT_SIZE_BYTES};
+use super::{access, attachment_storage_dir, MAX_CHAT_ATTACHMENT_SIZE_BYTES};
 
 mod http;
 
@@ -261,6 +261,25 @@ async fn run_upload(
     Ok(result)
 }
 
+/// Uploads read only files the attachment access policy allows. An upload
+/// that was already in progress before that policy existed keeps its resume
+/// record, which proves the file was attached earlier, so it may finish.
+fn authorize_upload_source(path: &Path) -> Result<PathBuf, String> {
+    match access::authorize_attachment_file(path) {
+        Ok(source) => Ok(source),
+        Err(error) if error == access::ATTACHMENT_ACCESS_DENIED => {
+            let source = std::fs::canonicalize(path).map_err(|_| error.clone())?;
+            if resume_record_path(&source).is_ok_and(|record| record.is_file()) {
+                access::register_created_file(&source)?;
+                Ok(source)
+            } else {
+                Err(error)
+            }
+        }
+        Err(error) => Err(error),
+    }
+}
+
 #[tauri::command]
 pub async fn desktop_cloud_attachment_upload(
     app: AppHandle,
@@ -273,7 +292,7 @@ pub async fn desktop_cloud_attachment_upload(
     if request_id.is_empty() || request_id.len() > 128 {
         return Err("Attachment upload request is invalid.".to_string());
     }
-    let source = ensure_attachment_file_path(Path::new(&path))?;
+    let source = authorize_upload_source(Path::new(&path))?;
     let metadata = std::fs::metadata(&source)
         .map_err(|error| format!("Unable to read attachment metadata: {error}"))?;
     let size_bytes = metadata.len();

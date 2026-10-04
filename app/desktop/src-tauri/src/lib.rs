@@ -11,6 +11,7 @@ mod cloud_presence;
 mod cloud_session;
 mod digest_calendar;
 mod digest_calendar_sync;
+mod external_url;
 mod link_preview;
 mod media_preview_window;
 mod menu_bar;
@@ -188,29 +189,21 @@ fn run_external_command(command: &mut Command) -> Result<(), String> {
     }
 }
 #[tauri::command]
-fn desktop_open_external_url(url: String) -> Result<String, String> {
-    let trimmed = url.trim();
-    if trimmed.is_empty() {
-        return Err("URL is required".to_string());
-    }
-    if cfg!(target_os = "macos") {
-        run_external_command(Command::new("open").arg(trimmed))?;
-    } else if cfg!(target_os = "windows") {
-        run_external_command(Command::new("explorer").arg(trimmed))?;
-    } else {
-        run_external_command(Command::new("xdg-open").arg(trimmed))?;
-    }
-    Ok(trimmed.to_string())
-}
-
-#[tauri::command]
 fn desktop_reveal_in_finder(path: String) -> Result<String, String> {
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("Path is required".to_string());
     }
+    if trimmed.starts_with('-') {
+        return Err("Path is invalid".to_string());
+    }
     if cfg!(target_os = "macos") {
-        run_external_command(Command::new("open").arg("-R").arg(trimmed))?;
+        run_external_command(
+            Command::new("/usr/bin/open")
+                .arg("-R")
+                .arg("--")
+                .arg(trimmed),
+        )?;
     } else if cfg!(target_os = "windows") {
         run_external_command(Command::new("explorer").arg(format!("/select,{trimmed}")))?;
     } else {
@@ -232,11 +225,17 @@ pub fn run() {
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
         .manage(DesktopChatManager::default())
+        .manage(chat::artifacts::preview_document::ArtifactPreviewDocuments::default())
+        .register_asynchronous_uri_scheme_protocol(
+            chat::artifacts::preview_document::ARTIFACT_PREVIEW_SCHEME,
+            chat::artifacts::preview_document::handle_artifact_preview_request,
+        )
         .setup(|app| {
             let is_cloud_edition = is_cloud_edition_app(app);
             if is_cloud_edition {
                 cloud_api_base_url_from_env().map_err(std::io::Error::other)?;
             }
+            cloud_session::configure_keychain_scope(&app.config().identifier);
             configure_cloud_app_data_dir(app, is_cloud_edition);
             activate_stored_cloud_account_data_dir(is_cloud_edition);
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
@@ -257,7 +256,7 @@ pub fn run() {
             desktop_workspace_status,
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
-            desktop_open_external_url,
+            external_url::desktop_open_external_url,
             desktop_reveal_in_finder,
             desktop_relaunch_after_update,
             desktop_open_media_preview_window,
@@ -372,15 +371,19 @@ pub fn run() {
             chat::attachments::desktop_chat_cached_cloud_attachment_path,
             chat::attachments::desktop_chat_download_cloud_attachment,
             chat::attachments::desktop_chat_store_attachment_path,
+            chat::attachments::desktop_chat_attach_reference_path,
             chat::attachments::desktop_chat_pick_attachment_paths,
             chat::attachments::live_photos::desktop_chat_prepare_live_photos,
             chat::attachments::desktop_chat_read_attachment,
             chat::attachments::desktop_chat_download_attachment,
+            chat::attachments::open_local::desktop_open_local_attachment,
             chat::attachments::save_as::desktop_save_attachment_as,
             chat::attachments::cloud_upload::desktop_cloud_attachment_upload,
             chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,
             chat::artifacts::desktop_chat_artifact_preview,
             chat::artifacts::desktop_chat_artifact_directory,
+            chat::artifacts::preview_document::desktop_artifact_preview_document_open,
+            chat::artifacts::preview_document::desktop_artifact_preview_document_close,
             chat::desktop_chat_state,
             chat::desktop_chat_session_detail,
             chat::agent_identity::desktop_chat_rename_agent,

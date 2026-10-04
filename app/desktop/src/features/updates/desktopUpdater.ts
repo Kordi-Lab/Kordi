@@ -7,6 +7,24 @@ export function manualUpdateUrlForVersion(version: string | undefined) {
   return `${KORDI_RELEASE_ORIGIN}/updates/releases/${encoded}/Kordi_${encoded}_aarch64.dmg`;
 }
 
+/**
+ * Returns the manual download link only when it is an HTTPS release download
+ * on the Kordi product origin; anything else is never handed to the system
+ * opener.
+ */
+export function safeManualDownloadUrl(value: string | undefined | null) {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== 'https:' || url.origin !== KORDI_RELEASE_ORIGIN) return undefined;
+  if (url.username || url.password || !url.pathname.startsWith('/updates/releases/')) return undefined;
+  return url.toString();
+}
+
 export type DesktopUpdaterDownloadEvent =
   | { event: 'Started'; data: { contentLength?: number } }
   | { event: 'Progress'; data: { chunkLength: number } }

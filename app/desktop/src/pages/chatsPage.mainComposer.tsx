@@ -22,6 +22,7 @@ import {
 } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
 import { isRouteAccountUnavailable } from '@/kordi-app/components/composerModelSelection';
+import { attachDesktopReferencedPath } from '@/lib/desktopLocalAttachments';
 import { cn } from '@/lib/utils';
 import { ComposerDropSurface } from './chatsPage.composerDropSurface';
 import { CollaborationRoutingControls } from '@/pages/chatsPage.collaborationRoutingControls';
@@ -119,7 +120,7 @@ export function MainComposer({
     targetsForText: chatMentionTargetsForText,
     onTextChange: setChatComposerText,
     onPickFile: () => chatAttachmentInputRef.current?.click(),
-    onAttachPath: (path) => { void saveDesktopAttachmentPaths([path]); },
+    onAttachPath: (path) => { void attachDesktopReferencedPath(path, saveDesktopAttachmentPaths); },
     onFocus: (cursor) => composerInputRef.current?.focus({ start: cursor, end: cursor }),
     onSelectOption: acceptChatMentionTarget,
     selectedIndex: chatSlashMenuIndex,

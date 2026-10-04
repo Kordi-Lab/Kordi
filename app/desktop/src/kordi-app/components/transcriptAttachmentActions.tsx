@@ -10,9 +10,12 @@ import {
 import { loadSession } from '@/features/cloud/session';
 import {
   downloadDesktopAttachment,
-  openDesktopExternalUrl,
   storeDesktopChatAttachment,
 } from '@/lib/desktop';
+import {
+  openDesktopLocalAttachment,
+  withDesktopAttachmentPathFallback,
+} from '@/lib/desktopLocalAttachments';
 import type { MessageAttachment } from '../types';
 import { formatAttachmentSize } from './transcriptAttachmentTypes';
 
@@ -34,6 +37,10 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
 
   async function ensureLocalPath() {
     if (attachment.localPath) return attachment.localPath;
+    return cloudCopyPath();
+  }
+
+  async function cloudCopyPath() {
     if (!attachment.attachmentId) return null;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
@@ -68,7 +75,11 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
         const videoPath = await downloadCloudAttachmentToLocalPath(session.token, video.attachmentId, video.name);
         await downloadDesktopAttachment(videoPath, attachment.name.replace(/\.[^.]+$/, '') + '.mov');
       }
-      setDownloadedPath(await downloadDesktopAttachment(localPath, attachment.name));
+      setDownloadedPath(await withDesktopAttachmentPathFallback(
+        localPath,
+        attachment.localPath ? cloudCopyPath : null,
+        (path) => downloadDesktopAttachment(path, attachment.name),
+      ));
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
     } finally {
@@ -81,7 +92,11 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
     if (!target) return;
     setError(null);
     try {
-      await openDesktopExternalUrl(target);
+      await withDesktopAttachmentPathFallback(
+        target,
+        downloadedPath ? null : cloudCopyPath,
+        openDesktopLocalAttachment,
+      );
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
     }
@@ -94,7 +109,13 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
       const localPath = await ensureLocalPath();
       if (!localPath) return;
       setDownloadedPath(localPath);
-      if (isNativeShell()) await openDesktopExternalUrl(localPath);
+      if (isNativeShell()) {
+        await withDesktopAttachmentPathFallback(
+          localPath,
+          attachment.localPath ? cloudCopyPath : null,
+          openDesktopLocalAttachment,
+        );
+      }
     } catch (openError) {
       setError(openError instanceof Error ? openError.message : 'Unable to open original attachment');
     } finally {

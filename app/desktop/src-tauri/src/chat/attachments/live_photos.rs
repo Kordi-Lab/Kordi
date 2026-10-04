@@ -1,5 +1,6 @@
 #[tauri::command]
 pub async fn desktop_chat_prepare_live_photos(
+    app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<serde_json::Value, String> {
     #[cfg(target_os = "macos")]
@@ -9,7 +10,13 @@ pub async fn desktop_chat_prepare_live_photos(
         }
         let directory = super::attachment_storage_dir()?;
         for path in &paths {
-            super::ensure_attachment_file_path(std::path::Path::new(path))?;
+            let source = super::ensure_attachment_file_path(std::path::Path::new(path))?;
+            // Pairs come from the native picker or a paste, so the same access
+            // rules as attaching a single file apply.
+            super::authorize_requested_path(&source, || {
+                super::pasteboard::general_pasteboard_file_paths(&app)
+            })
+            .await?;
         }
         tokio::task::spawn_blocking(move || {
             use std::ffi::{c_char, CStr, CString};
@@ -40,7 +47,7 @@ pub async fn desktop_chat_prepare_live_photos(
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = paths;
+        let _ = (app, paths);
         Ok(serde_json::json!([]))
     }
 }

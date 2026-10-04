@@ -10,6 +10,7 @@ import {
   type ExpressiveMediaKind,
 } from '@/features/emoji/expressiveMediaLibrary';
 import { readDesktopChatAttachment } from '@/lib/desktop';
+import { isDesktopAttachmentAccessDenied } from '@/lib/desktopLocalAttachments';
 import type { MessageAttachment } from '../types';
 
 export function AddAttachmentToMediaLibraryAction({
@@ -29,7 +30,14 @@ export function AddAttachmentToMediaLibraryAction({
   if (!mediaKind) return null;
 
   async function loadAttachmentData() {
-    if (attachment.localPath) return readDesktopChatAttachment(attachment.localPath);
+    if (attachment.localPath) {
+      try {
+        return await readDesktopChatAttachment(attachment.localPath);
+      } catch (readError) {
+        // An older local path Kordi can no longer read falls back to the Cloud copy.
+        if (!attachment.attachmentId || !isDesktopAttachmentAccessDenied(readError)) throw readError;
+      }
+    }
     if (attachment.attachmentId) {
       const session = await loadSession();
       if (!session?.token) throw new Error('Sign in to save this media.');
