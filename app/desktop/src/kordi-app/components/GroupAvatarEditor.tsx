@@ -48,7 +48,9 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
   };
   return (
     <div ref={root} className="relative inline-flex max-w-full flex-col items-center" onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+      // macOS WebKit can blur a button to no element on pointer down.
+      // Keep the menu mounted until that pointer's click reaches its action.
+      if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) setOpen(false);
     }}>
       <button
         ref={trigger}

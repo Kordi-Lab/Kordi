@@ -18,10 +18,15 @@ test('group image selection and removal restore the square member collage', asyn
   expect(bounds.top).toBe(0);
   expect(bounds.width).toBe(bounds.height);
   // A small synthetic PNG exercises the existing crop/upload preparation path.
-  await page.getByLabel('Group image file').setInputFiles({ name: 'group.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==', 'base64') });
-  await expect(page.getByRole('button', { name: 'Remove image' })).toBeVisible();
+  await page.getByRole('button', { name: 'Edit group avatar' }).click();
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser'),
+    page.getByRole('menuitem', { name: 'Upload photo' }).click(),
+  ]);
+  await chooser.setFiles({ name: 'group.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==', 'base64') });
   await expect(group.locator(':scope > img')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Remove image' }).click();
+  await page.getByRole('button', { name: 'Edit group avatar' }).click();
+  await page.getByRole('menuitem', { name: 'Remove image' }).click();
   await expect(group.locator(':scope > img')).toHaveCount(0);
   await expect(group.locator('.grid > span')).toHaveCount(9);
 });
