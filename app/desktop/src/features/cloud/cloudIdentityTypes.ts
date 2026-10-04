@@ -30,6 +30,8 @@ export type CloudPublicProfile = {
   nodeId: string | null;
   isContact: boolean;
   isSelf: boolean;
+  /** Whether the viewer blocked this account. Absent on older servers. */
+  isBlocked?: boolean;
 };
 
 export type CloudAppInvitation = {
@@ -54,7 +56,8 @@ export type CloudGroupInvitationSummary = {
 export type CloudGroupInvitationPreview = {
   inviter: {
     displayName: string | null;
-    kordiId: string;
+    /** Older servers include it; unauthenticated previews no longer do. */
+    kordiId?: string;
     avatarUrl: string | null;
   };
   group: {

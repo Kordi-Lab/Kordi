@@ -350,4 +350,56 @@ pub(super) async fn verify(
             .count(),
         1
     );
+    if agent == format!("cloud-agent:{}", owner.account_id) {
+        default_agent_follow_ups_need_contacts(router, pool, owner, peer, &uri, input).await;
+    }
+}
+
+/// People who are no longer contacts cannot ask each other's default agent
+/// to continue a subsession. They may still write in it inside a group, while
+/// a direct chat between them becomes read-only.
+async fn default_agent_follow_ups_need_contacts(
+    router: &axum::Router,
+    pool: &sqlx_postgres::PgPool,
+    owner: &TestAccount,
+    peer: &TestAccount,
+    uri: &str,
+    input: impl Fn(uuid::Uuid, &str, Option<&str>) -> Value,
+) {
+    let agent = format!("cloud-agent:{}", owner.account_id);
+    let contacts = |sql: &'static str| {
+        sqlx_core::query::query(sql)
+            .bind(&owner.account_id)
+            .bind(&peer.account_id)
+            .bind(chrono::Utc::now().to_rfc3339())
+            .execute(pool)
+    };
+    contacts("DELETE FROM cloud_contacts WHERE ((account_id=$1 AND peer_account_id=$2) OR (account_id=$2 AND peer_account_id=$1)) AND $3<>''").await.unwrap();
+    let post = |text: &str, target: Option<&str>| {
+        router.clone().oneshot(post_json_with_token(
+            &format!("{uri}/messages"),
+            &peer.token,
+            input(uuid::Uuid::new_v4(), text, target),
+        ))
+    };
+    let refused = post("@Kordi one more thing", Some(&agent)).await.unwrap();
+    assert_eq!(refused.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        read_json(refused).await["error"]["code"],
+        "subsession_agent_unavailable"
+    );
+    let id = uuid::Uuid::parse_str(uri.rsplit('/').next().unwrap()).unwrap();
+    let (kind,): (String,) = sqlx_core::query_as::query_as("SELECT c.kind FROM cloud_agent_subsessions s JOIN cloud_chat_conversations c ON c.conversation_id=s.parent_conversation_id WHERE s.subsession_id=$1")
+        .bind(id).fetch_one(pool).await.unwrap();
+    let plain = post("Thanks for the summary", None).await.unwrap();
+    if kind == "group" {
+        assert_eq!(plain.status(), StatusCode::OK);
+    } else {
+        assert_eq!(plain.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            read_json(plain).await["error"]["code"],
+            "CHAT_RELATIONSHIP_REQUIRED"
+        );
+    }
+    contacts("INSERT INTO cloud_contacts(account_id,peer_account_id,created_at) VALUES($1,$2,$3),($2,$1,$3)").await.unwrap();
 }

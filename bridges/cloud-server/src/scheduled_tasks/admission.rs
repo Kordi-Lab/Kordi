@@ -3,57 +3,56 @@
 use chrono::{DateTime, Utc};
 use sqlx_postgres::PgPool;
 
-use crate::cloud_agent_runtime::runs::{claim_conversation_admits_run, ClaimRunRequest, RunError};
+use crate::cloud_agent_runtime::runs::{
+    claim_conversation_admits_run, destination_accepts_owner, ClaimRunRequest, RunError,
+};
 use crate::scheduled_tasks::models::ScheduledTaskRunResponse;
 use crate::scheduled_tasks::store::mark_scheduled_task_run_failed;
 
 const SESSION_UNAVAILABLE: &str = "session_unavailable";
 const SESSION_UNAVAILABLE_MESSAGE: &str =
     "The conversation for this task is not available to its owner.";
+const RELATIONSHIP_REQUIRED: &str = "relationship_required";
+const RELATIONSHIP_REQUIRED_MESSAGE: &str =
+    "This task answers in a chat with someone who is no longer your contact.";
 const PROJECT_MAC_REQUIRED: &str = "project_mac_required";
 const PROJECT_MAC_REQUIRED_MESSAGE: &str =
     "The conversation for this task is in a project on a Mac, so Kordi Cloud cannot run it.";
 const CONTEXT_UNAVAILABLE: &str = "context_unavailable";
 
 /// A scheduled run reads the conversation its task names, under the same
-/// membership rule as an interactive claim. A conversation in a project on
-/// the owner's Mac never runs in the cloud. A refused run is recorded as
-/// failed instead of failing the due batch, so other tasks still start.
+/// membership rule as an interactive claim, and answers there as its owner,
+/// so a direct chat with someone who is no longer the owner's contact refuses
+/// it too. A conversation in a project on the owner's Mac never runs in the
+/// cloud. A refused run is recorded as failed instead of failing the due
+/// batch, so other tasks still start.
 pub(super) async fn admit_scheduled_run(
     pool: &PgPool,
     claim: &ClaimRunRequest,
     run: &mut ScheduledTaskRunResponse,
     now: DateTime<Utc>,
 ) -> Result<bool, sqlx_core::Error> {
-    if !claim_conversation_admits_run(pool, claim)
+    let refusal = if !claim_conversation_admits_run(pool, claim)
         .await
         .map_err(RunError::into_persistence_error)?
     {
-        record_failed_run(
-            pool,
-            run,
-            SESSION_UNAVAILABLE,
-            SESSION_UNAVAILABLE_MESSAGE,
-            now,
-        )
-        .await?;
-        return Ok(false);
-    }
-    if crate::projects::session_device(pool, &claim.owner_account_id, &claim.session_id)
+        (SESSION_UNAVAILABLE, SESSION_UNAVAILABLE_MESSAGE)
+    } else if !destination_accepts_owner(pool, &claim.session_id, &claim.owner_account_id)
+        .await
+        .map_err(RunError::into_persistence_error)?
+    {
+        (RELATIONSHIP_REQUIRED, RELATIONSHIP_REQUIRED_MESSAGE)
+    } else if crate::projects::session_device(pool, &claim.owner_account_id, &claim.session_id)
         .await?
         .is_some()
     {
-        record_failed_run(
-            pool,
-            run,
-            PROJECT_MAC_REQUIRED,
-            PROJECT_MAC_REQUIRED_MESSAGE,
-            now,
-        )
-        .await?;
-        return Ok(false);
-    }
-    Ok(true)
+        (PROJECT_MAC_REQUIRED, PROJECT_MAC_REQUIRED_MESSAGE)
+    } else {
+        return Ok(true);
+    };
+    let (code, message) = refusal;
+    record_failed_run(pool, run, code, message, now).await?;
+    Ok(false)
 }
 
 /// Records a claim the run domain refused, for example a conversation that

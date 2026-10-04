@@ -31,6 +31,9 @@ pub async fn request_identity(
     Ok(None)
 }
 
+/// Whether the requester may use the owner's default agent: the owner
+/// always may, PiP's agent never answers members, and anyone else must be a
+/// mutual contact without a block.
 pub async fn requester_can_target_owner(
     pool: &PgPool,
     requester_account_id: &str,
@@ -42,14 +45,19 @@ pub async fn requester_can_target_owner(
     if is_pip_owner(owner_account_id) {
         return Ok(false);
     }
-    let row: Option<(String,)> = query_as(
-        "SELECT peer_account_id FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2 LIMIT 1",
-    )
-    .bind(requester_account_id)
-    .bind(owner_account_id)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row.is_some())
+    Ok(crate::relationships::are_contacts(pool, requester_account_id, owner_account_id).await?)
+}
+
+/// Whether the claim's requester may run the agent it targets: a shared
+/// agent through its sharing rules, otherwise the owner's default agent.
+pub async fn requester_may_invoke(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<bool> {
+    match shared_cloud_agent_target_for_claim(pool, input).await? {
+        Some(target) => shared_target_allowed(pool, input, &target).await,
+        None => {
+            requester_can_target_owner(pool, &input.requester_account_id, &input.owner_account_id)
+                .await
+        }
+    }
 }
 
 /// A run reads the history of the conversation its session id names, so the
@@ -212,7 +220,7 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
 
 /// PiP lives in every group and runs on a Kordi-operated key, so members may
 /// never start an agent run on PiP's account; PiP's sweep queues its own runs.
-fn is_pip_owner(owner_account_id: &str) -> bool {
+pub(super) fn is_pip_owner(owner_account_id: &str) -> bool {
     crate::pip::service_account_id() == Some(owner_account_id)
 }
 
@@ -249,9 +257,28 @@ pub async fn validate_shared_cloud_agent_claim(
     let Some(target) = shared_cloud_agent_target_for_claim(pool, input).await? else {
         return Ok(true);
     };
+    shared_target_allowed(pool, input, &target).await
+}
+
+async fn shared_target_allowed(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    target: &SharedCloudAgentTarget,
+) -> RunResult<bool> {
     if target.owner_account_id != input.owner_account_id
         || (is_pip_owner(&target.owner_account_id)
             && input.requester_account_id != target.owner_account_id)
+    {
+        return Ok(false);
+    }
+    // Sharing never reaches across a block in either direction.
+    if input.requester_account_id != target.owner_account_id
+        && crate::relationships::blocked_either_way(
+            pool,
+            &input.requester_account_id,
+            &target.owner_account_id,
+        )
+        .await?
     {
         return Ok(false);
     }

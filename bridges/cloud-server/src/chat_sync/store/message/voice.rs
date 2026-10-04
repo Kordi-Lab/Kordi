@@ -28,6 +28,7 @@ pub async fn update_voice_transcript(
         return Err(StoreError::NotFound);
     }
     require_active_member(&mut transaction, conversation_id, account_id).await?;
+    require_direct_relationship(&mut transaction, conversation_id, account_id).await?;
     if sender != account_id {
         return Err(StoreError::Forbidden);
     }

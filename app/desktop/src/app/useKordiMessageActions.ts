@@ -1,4 +1,4 @@
-import { createElement, useCallback, useState } from 'react';
+import { createElement, useCallback, useEffect, useState } from 'react';
 
 import { MessageForwardDialog } from '@/pages/MessageForwardDialog';
 import { cloudGroupMessageSessionId, cloudGroupTargetAccountIds } from '@/features/cloud/cloudGroupMessages';
@@ -35,6 +35,7 @@ import type {
   Message,
 } from '@/kordi-app/types';
 import { appendCanonicalMessageFast } from '@/lib/desktop';
+import { publishReportSelection } from '@/features/safety/reportSelectionStore';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { useMessageSelectionActions } from './useMessageSelectionActions';
 import { useKordiMessageMutations } from './useKordiMessageMutations';
@@ -178,6 +179,7 @@ export function useKordiMessageActions({
     onSelectionDragEnter,
     onSelectionDragEnd,
   } = useMessageSelectionActions({ activeConversation, sourceForSelectableMessage });
+  useEffect(() => publishReportSelection(activeConversation.messages, selectedMessageIds), [activeConversation.messages, selectedMessageIds]);
 
   const orderedSelectedMessageSources = useCallback(() => {
     if (

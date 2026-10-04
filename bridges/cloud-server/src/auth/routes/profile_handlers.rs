@@ -380,17 +380,25 @@ pub(super) async fn get_profile(
     };
 
     let is_self = account_id == session.account_id;
-    let is_contact = if is_self {
-        false
+    // Contacts means both accepted and neither blocked; `isBlocked` reports
+    // only the viewer's own block, never whether the viewer is blocked.
+    let (is_contact, is_blocked) = if is_self {
+        (false, false)
     } else {
-        let contact_row: Option<(i32,)> =
-            query_as("SELECT 1 FROM cloud_contacts WHERE account_id = $1 AND peer_account_id = $2")
-                .bind(&session.account_id)
-                .bind(&account_id)
-                .fetch_optional(pool)
-                .await
-                .unwrap_or(None);
-        contact_row.is_some()
+        let viewer = session.account_id.as_str();
+        match tokio::try_join!(
+            crate::relationships::are_contacts(pool, viewer, &account_id),
+            crate::relationships::has_blocked(pool, viewer, &account_id),
+        ) {
+            Ok(value) => value,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        }
     };
     let default_agent = match default_agent_profile_row(pool, &account_id).await {
         Ok(row) => default_agent_profile_from_row(&account_id, row, &Utc::now().to_rfc3339()),
@@ -412,6 +420,7 @@ pub(super) async fn get_profile(
         node_id: None,
         is_contact,
         is_self,
+        is_blocked,
     })
     .into_response()
 }

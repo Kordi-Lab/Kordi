@@ -224,6 +224,10 @@ pub async fn set_attachment_reaction(
     let mut transaction = pool.begin().await?;
     let current =
         locked_message(&mut transaction, account_id, conversation_id, message_key).await?;
+    if active {
+        // Removing a reaction stays possible after a relationship ends.
+        require_direct_relationship(&mut transaction, conversation_id, account_id).await?;
+    }
     let visible = for_viewer(&mut transaction, account_id, current.clone()).await?;
     if current.deleted_at.is_some() || !visible.attachment_ids.iter().any(|id| id == attachment_id)
     {

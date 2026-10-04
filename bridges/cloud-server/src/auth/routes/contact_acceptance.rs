@@ -29,8 +29,13 @@ fn direct_person_session_id(left_account_id: &str, right_account_id: &str) -> St
 
 /// Shared body of "accept this pending request" used by both the
 /// explicit POST and the "mutual reachout" auto-accept inside
-/// `send_contact_request`. `from_id` and `to_id` are the request's
+/// `request_or_accept_contact`. `from_id` and `to_id` are the request's
 /// from / to (NOT relative to the caller).
+///
+/// Accept, reject, withdraw, and block all take the pair lock, so the
+/// request is decided exactly once: if it is no longer pending, or either
+/// account blocked the other, nothing is written and the caller gets 409
+/// `request_decided`.
 pub(super) async fn finalize_request_acceptance(
     state: &Arc<ServerState>,
     session: &CloudSession,
@@ -38,21 +43,38 @@ pub(super) async fn finalize_request_acceptance(
     request_id: &str,
     from_id: &str,
     to_id: &str,
-) -> Response {
+) -> Result<ContactRequestResponse, Box<Response>> {
     let now = Utc::now().to_rfc3339();
-
-    let mut tx = match pool.begin().await {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not start transaction.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
+    let failed = |message: &'static str| {
+        boxed_err("server_error", message, StatusCode::INTERNAL_SERVER_ERROR)
     };
 
-    if query(
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|_| failed("Could not start transaction."))?;
+    crate::relationships::lock_pair(&mut tx, from_id, to_id)
+        .await
+        .map_err(|_| failed("Could not accept request."))?;
+    let current: Option<(String, Option<String>, String)> = query_as(
+        "SELECT status, message, created_at FROM cloud_contact_requests \
+         WHERE request_id = $1 FOR UPDATE",
+    )
+    .bind(request_id)
+    .fetch_optional(&mut *tx)
+    .await
+    .map_err(|_| failed("Could not accept request."))?;
+    let Some((status, request_message, request_created_at)) = current else {
+        return Err(Box::new(request_decided()));
+    };
+    if status != "pending"
+        || crate::relationships::blocked_either_way(&mut *tx, from_id, to_id)
+            .await
+            .map_err(|_| failed("Could not accept request."))?
+    {
+        return Err(Box::new(request_decided()));
+    }
+    let updated = query(
         "UPDATE cloud_contact_requests \
          SET status = 'accepted', decided_at = $1 \
          WHERE request_id = $2 AND status = 'pending'",
@@ -61,13 +83,9 @@ pub(super) async fn finalize_request_acceptance(
     .bind(request_id)
     .execute(&mut *tx)
     .await
-    .is_err()
-    {
-        return err(
-            "server_error",
-            "Could not accept request.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
+    .map_err(|_| failed("Could not accept request."))?;
+    if updated.rows_affected() != 1 {
+        return Err(Box::new(request_decided()));
     }
 
     // Symmetric contact rows. ON CONFLICT DO NOTHING keeps the
@@ -85,11 +103,7 @@ pub(super) async fn finalize_request_acceptance(
         .await
         .is_err()
         {
-            return err(
-                "server_error",
-                "Could not record contact.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
+            return Err(failed("Could not record contact."));
         }
     }
 
@@ -115,13 +129,7 @@ pub(super) async fn finalize_request_acceptance(
     .await
     {
         Ok(outcome) => outcome.value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not open the contact conversation.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
+        Err(_) => return Err(failed("Could not open the contact conversation.")),
     };
     let hello_message = match store::send_message_in_transaction(
         &mut tx,
@@ -145,22 +153,12 @@ pub(super) async fn finalize_request_acceptance(
     .await
     {
         Ok(outcome) => outcome.value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not record the contact greeting.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
+        Err(_) => return Err(failed("Could not record the contact greeting.")),
     };
 
-    if tx.commit().await.is_err() {
-        return err(
-            "server_error",
-            "Could not commit acceptance.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
+    tx.commit()
+        .await
+        .map_err(|_| failed("Could not commit acceptance."))?;
 
     let _ = write_audit(
         pool,
@@ -215,8 +213,8 @@ pub(super) async fn finalize_request_acceptance(
         to_account_id: to_id.to_string(),
         status: "accepted".into(),
         direction: direction.into(),
-        message: None,
-        created_at: now.clone(),
+        message: request_message,
+        created_at: request_created_at,
         decided_at: Some(now),
         counterpart,
     };
@@ -237,14 +235,10 @@ pub(super) async fn finalize_request_acceptance(
         },
         attachments: Vec::new(),
     };
-    (
-        StatusCode::OK,
-        Json(ContactRequestResponse {
-            request: summary,
-            hello_message: Some(hello_summary),
-        }),
-    )
-        .into_response()
+    Ok(ContactRequestResponse {
+        request: summary,
+        hello_message: Some(hello_summary),
+    })
 }
 
 pub(super) fn account_to_summary(account: AccountResponse) -> ContactSummary {

@@ -10,6 +10,7 @@ import {
 } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { groupInviterAvatarSeed } from '@/pages/groupInvitationAvatarSeed';
 
 type GroupInvitationDialogProps = {
   invitationToken: string;
@@ -226,7 +227,7 @@ export function GroupInvitationDialog({
             <div className="mt-4 flex items-center gap-2.5 border-y border-[color:var(--app-divider)] py-3">
               <IdentityAvatar
                 kind="human"
-                seed={`group-inviter:${preview.inviter.kordiId}`}
+                seed={groupInviterAvatarSeed(preview.inviter)}
                 name={inviterName}
                 imageUrl={preview.inviter.avatarUrl}
                 className="h-8 w-8 border border-white/10"

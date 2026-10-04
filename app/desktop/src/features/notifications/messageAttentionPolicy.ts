@@ -75,16 +75,40 @@ export function messageAttentionSnapshot(
   }));
 }
 
+const DEFAULT_CLOUD_AGENT_IDENTITY_PREFIX = 'agent:cloud-agent:cloud-agent:';
+
+/**
+ * Whether a message comes from a suppressed sender: the sender itself, or for
+ * an agent message, the agent's human owner (`human:<account>`). A default
+ * cloud agent names its owner in its identity even before the owner is known.
+ */
+function fromSuppressedSender(message: Message, suppressed: ReadonlySet<string> | undefined): boolean {
+  if (!suppressed?.size) return false;
+  const sender = message.senderIdentityId?.trim();
+  const owner = message.senderOwnerIdentityId?.trim()
+    || (sender?.startsWith(DEFAULT_CLOUD_AGENT_IDENTITY_PREFIX)
+      ? `human:${sender.slice(DEFAULT_CLOUD_AGENT_IDENTITY_PREFIX.length)}`
+      : null);
+  return Boolean((sender && suppressed.has(sender)) || (owner && suppressed.has(owner)));
+}
+
 export function newMessageAttentionEvents({
   previous,
   conversations,
+  suppressedSenderIdentityIds,
 }: {
   previous: MessageAttentionSnapshot;
   conversations: Conversation[];
+  /**
+   * Senders whose messages never notify, such as `human:<account>` identities
+   * the user blocked. Their agents' messages are suppressed too.
+   */
+  suppressedSenderIdentityIds?: ReadonlySet<string>;
 }): DesktopMessageAttentionEvent[] {
   return conversations.flatMap((conversation) => {
     const message = latestIncomingMessage(conversation);
     if (!message?.id) return [];
+    if (fromSuppressedSender(message, suppressedSenderIdentityIds)) return [];
     const sessionId = conversation.canonicalSessionId?.trim() || conversation.id;
     const unreadCount = Math.max(0, conversation.unread ?? 0);
     const prior = previous[sessionId];

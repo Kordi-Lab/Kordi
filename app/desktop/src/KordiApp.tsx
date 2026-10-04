@@ -46,6 +46,7 @@ import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
+import { SafetyActionsProvider } from '@/features/safety/SafetyActionsContext';
 
 export { CloudStartingScreen } from '@/features/cloud/CloudStartingScreen';
 
@@ -337,15 +338,17 @@ function KordiAppShell({
           conversations={callConversations}
           enabled={detachedCallWindowEnabled}
         />
-        <AppShellFrame
-          {...frameProps}
-          callOverlay={(
-            <CloudCallHost
-              controller={cloudCalls}
-              suppressCurrentSurface={detachedCallWindowEnabled}
-            />
-          )}
-        />
+        <SafetyActionsProvider account={cloudSession?.account ?? null}>
+          <AppShellFrame
+            {...frameProps}
+            callOverlay={(
+              <CloudCallHost
+                controller={cloudCalls}
+                suppressCurrentSurface={detachedCallWindowEnabled}
+              />
+            )}
+          />
+        </SafetyActionsProvider>
       </CloudCallProvider>
       {windowReady ? <WhatsNewLaunchWindow /> : null}
       {windowReady && pendingGroupInvitation.token ? (

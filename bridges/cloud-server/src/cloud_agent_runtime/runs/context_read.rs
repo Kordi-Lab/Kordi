@@ -106,7 +106,7 @@ async fn authorize(pool: &PgPool, run_id: &str, actor: &ContextActor) -> RunResu
         runtime_route: None,
         idempotency_key: String::new(),
     };
-    if !super::authorization::validate_shared_cloud_agent_claim(pool, &claim).await? {
+    if !super::authorization::requester_may_invoke(pool, &claim).await? {
         return Err(RunError::NotFound);
     }
     Ok(ContextScope {

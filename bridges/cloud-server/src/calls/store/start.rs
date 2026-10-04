@@ -4,6 +4,7 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 
 use crate::calls::models::{CallKind, CallState, StartCallRequest};
+use crate::chat_sync::store::{require_direct_relationship, StoreError};
 
 use super::activity::{record_call_activity, CallActivityEvent};
 use super::{
@@ -42,6 +43,12 @@ pub async fn start(
         "group" => CallKind::Meeting,
         _ => return Err(CallStoreError::Forbidden),
     };
+    // Direct calls need the two people to be contacts, like direct messages.
+    match require_direct_relationship(&mut transaction, conversation_id, account_id).await {
+        Ok(()) => {}
+        Err(StoreError::RelationshipRequired(_)) => return Err(CallStoreError::Forbidden),
+        Err(error) => return Err(error.into()),
+    }
     let members: Vec<(String,)> = query_as(
         "SELECT account_id FROM cloud_chat_conversation_members \
          WHERE conversation_id = $1 AND membership_state = 'active' ORDER BY account_id",

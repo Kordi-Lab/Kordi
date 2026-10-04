@@ -41,6 +41,7 @@ pub async fn backfill_missing_images(
         return Err(StoreError::NotFound);
     }
     require_active_member(&mut tx, conversation, account).await?;
+    super::relationship_gate::require_direct_relationship(&mut tx, conversation, account).await?;
     if sender != account {
         return Err(StoreError::Forbidden);
     }

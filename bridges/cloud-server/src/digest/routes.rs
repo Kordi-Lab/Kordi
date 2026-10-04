@@ -438,6 +438,17 @@ async fn task(
     else {
         return failed();
     };
+    // The task joins the source chat's task list, so it follows the rules for
+    // recording activity there (a direct chat needs a contact).
+    if let Err(refused) = crate::auth::session_activity::access::require_writer(
+        pool,
+        &session.account_id,
+        &source.session_id,
+    )
+    .await
+    {
+        return refused;
+    }
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(_) => return failed(),

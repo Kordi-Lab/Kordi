@@ -1,7 +1,9 @@
 use super::*;
 pub use crate::chat_sync::models::CloudSessionPinSummary;
 
+mod blocks;
 mod group_invitations;
+pub use blocks::*;
 pub use group_invitations::*;
 
 #[derive(Debug, Clone)]
@@ -148,6 +150,8 @@ pub struct PublicProfileResponse {
     pub is_contact: bool,
     #[serde(rename = "isSelf")]
     pub is_self: bool,
+    #[serde(rename = "isBlocked")]
+    pub is_blocked: bool,
 }
 
 #[derive(Debug, Deserialize)]

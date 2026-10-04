@@ -34,6 +34,21 @@ export type CloudAuthErrorCode =
   | 'network_error'
   | 'plan_card_revision_conflict'
   | 'omp_unavailable'
+  | 'contact_request_unavailable'
+  | 'blocked_account'
+  | 'self_block'
+  | 'cannot_block_service'
+  | 'invalid_report'
+  | 'invalid_report_evidence'
+  | 'self_report'
+  | 'report_conflict'
+  | 'report_too_large'
+  | 'request_decided'
+  | 'already_contact'
+  | 'not_found'
+  | 'CHAT_RELATIONSHIP_REQUIRED'
+  | 'CHAT_ENTITY_NOT_FOUND'
+  | 'CHAT_FORBIDDEN'
   | 'unknown';
 
 export class CloudAuthError extends Error {
@@ -75,6 +90,12 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'group_invitation_expired', 'group_invitation_full', 'group_invitation_permission_denied',
   'group_invitation_missing', 'self_group_invitation', 'wrong_group_invitation_account',
   'server_error', 'plan_card_revision_conflict', 'omp_unavailable',
+  // Contact consent, blocking, and reports. Chat codes are listed so a real
+  // 404 from a known route is never mistaken for a route the server lacks.
+  'contact_request_unavailable', 'blocked_account', 'self_block', 'cannot_block_service',
+  'invalid_report', 'invalid_report_evidence', 'self_report', 'report_conflict',
+  'report_too_large', 'request_decided', 'already_contact', 'not_found',
+  'CHAT_RELATIONSHIP_REQUIRED', 'CHAT_ENTITY_NOT_FOUND', 'CHAT_FORBIDDEN',
 ]);
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {

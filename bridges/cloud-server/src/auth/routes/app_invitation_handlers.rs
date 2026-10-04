@@ -14,6 +14,8 @@ struct AppInvitationRecord {
     expires_at: String,
 }
 
+type AppInvitationRow = (String, Option<String>, i64, Option<String>, String);
+
 enum AppInvitationLookup {
     Valid(AppInvitationRecord),
     Invalid,
@@ -50,8 +52,8 @@ async fn lookup_app_invitation(
         return Ok(AppInvitationLookup::Invalid);
     }
 
-    let row: Option<(Option<String>, i64, Option<String>, String)> = query_as(
-        "SELECT account.display_name, account.public_account_number, account.avatar_url, invite.expires_at \
+    let row: Option<AppInvitationRow> = query_as(
+        "SELECT account.account_id, account.display_name, account.public_account_number, account.avatar_url, invite.expires_at \
          FROM cloud_app_invitations invite \
          JOIN cloud_accounts account ON account.account_id = invite.inviter_account_id \
          WHERE invite.token_hash = $1 AND invite.revoked_at IS NULL",
@@ -60,7 +62,8 @@ async fn lookup_app_invitation(
     .fetch_optional(pool)
     .await?;
 
-    let Some((display_name, public_account_number, avatar_url, expires_at)) = row else {
+    let Some((account_id, display_name, public_account_number, avatar_url, expires_at)) = row
+    else {
         return Ok(AppInvitationLookup::Invalid);
     };
     let is_expired = DateTime::parse_from_rfc3339(&expires_at)
@@ -73,7 +76,7 @@ async fn lookup_app_invitation(
     Ok(AppInvitationLookup::Valid(AppInvitationRecord {
         display_name,
         public_account_number,
-        avatar_url,
+        avatar_url: public_avatar_url(avatar_url.as_deref(), &account_id),
         expires_at,
     }))
 }

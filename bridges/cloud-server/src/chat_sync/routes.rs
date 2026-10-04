@@ -31,6 +31,7 @@ const MAX_IMAGE_PIXEL_DIMENSION: u64 = 100_000;
 mod attachment_actions;
 mod group_envelope;
 mod http;
+mod leave;
 mod message_mutations;
 mod reaction;
 mod thread_reads;
@@ -75,6 +76,7 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             get(history).post(send_message),
         )
         .merge(message_mutations::routes())
+        .merge(leave::routes())
         .merge(attachment_actions::routes())
         .route("/v2/chat/attention", get(thread_reads::attention))
         .route(

@@ -40,6 +40,26 @@ fn db_error(_: impl std::fmt::Display) -> ApiError {
     error(StatusCode::INTERNAL_SERVER_ERROR, "subsession_store_error")
 }
 
+/// Subsessions are written inside their parent conversation, so a direct or
+/// AI chat between people who are no longer contacts refuses them too.
+async fn require_parent_relationship<'e>(
+    executor: impl sqlx_core::executor::Executor<'e, Database = sqlx_postgres::Postgres>,
+    parent: Uuid,
+    account: &str,
+) -> Result<(), ApiError> {
+    if crate::relationships::may_write_outside_groups(executor, parent, account)
+        .await
+        .map_err(db_error)?
+    {
+        return Ok(());
+    }
+    let message = crate::chat_sync::store::DIRECT_REQUIRES_CONTACT;
+    Err((
+        StatusCode::FORBIDDEN,
+        Json(json!({"error":{"code":"CHAT_RELATIONSHIP_REQUIRED","message":message}})),
+    ))
+}
+
 pub fn routes() -> Router<Arc<ServerState>> {
     Router::new()
         .route("/v1/cloud/agent-subsessions", get(catalog::list))
@@ -407,6 +427,9 @@ async fn write(
             ));
         }
         if title != request.title || status != request.status || stored_messages != messages {
+            if title != request.title || stored_messages != messages {
+                require_parent_relationship(&mut *transaction, parent, &session.account_id).await?;
+            }
             if status == "stopped" && request.status != "stopped" {
                 return Err(error(StatusCode::CONFLICT, "subsession_is_terminal"));
             }
@@ -423,6 +446,7 @@ async fn write(
         if request.expected_version != 0 {
             return Err(error(StatusCode::CONFLICT, "subsession_version_conflict"));
         }
+        require_parent_relationship(&mut *transaction, parent, &session.account_id).await?;
         let agent_id = request_agent(
             pool,
             parent,

@@ -155,7 +155,7 @@ async fn admitted_invocation(
     let visible = snapshot(pool, id, &session.account_id, false).await?;
     let invokes = invokes_agent(&input.text, &input.mentions, &visible.agent_id);
     if invokes {
-        let allowed:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active' WHERE s.subsession_id=$1 AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=$2))))")
+        let allowed:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active' WHERE s.subsession_id=$1 AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=$2))) AND cloud_requester_may_use_agent($2,s.owner_account_id,s.agent_id))")
             .bind(id).bind(&session.account_id).fetch_one(pool).await.map_err(db_error)?;
         if !allowed.0 {
             return Err(error(StatusCode::FORBIDDEN, "subsession_agent_unavailable"));
@@ -178,10 +178,11 @@ async fn store_message(
         .execute(&mut *tx)
         .await
         .map_err(db_error)?;
-    let member:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id WHERE s.subsession_id=$1 AND m.account_id=$2 AND m.membership_state='active')").bind(id).bind(&session.account_id).fetch_one(&mut *tx).await.map_err(db_error)?;
-    if !member.0 {
+    let parent:Option<(Uuid,)>=query_as("SELECT s.parent_conversation_id FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id WHERE s.subsession_id=$1 AND m.account_id=$2 AND m.membership_state='active'").bind(id).bind(&session.account_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
+    let Some((parent,)) = parent else {
         return Err(error(StatusCode::NOT_FOUND, "subsession_not_found"));
-    }
+    };
+    super::require_parent_relationship(&mut *tx, parent, &session.account_id).await?;
     let previous:Option<(Uuid,String,String,Value)>=query_as("SELECT subsession_id,sender_account_id,text,mentions FROM cloud_agent_subsession_chat WHERE message_id=$1")
         .bind(input.client_message_id).fetch_optional(&mut *tx).await.map_err(db_error)?;
     if let Some((stored, actor, text, mentions)) = previous {

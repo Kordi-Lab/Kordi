@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Check, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
+import { Ban, Check, Flag, LoaderCircle, MessageCircle, UserPlus } from 'lucide-react';
 
 import { isApprovedCollaborationContact } from '@/features/chat/chatCreateFlows';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import { useSafetyActions } from '@/features/safety/safetyActions';
+import { isServiceAccountId } from '@/features/safety/serviceAccounts';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { Contact, ConversationParticipant } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -70,6 +72,11 @@ export function MemberContactProfileContent({
   const isExistingContact = Boolean(contact && isApprovedCollaborationContact(contact));
   const requestPending = contactStatus === 'pending' || requestState === 'sent';
   const canRequestContact = Boolean(onAddContact && accountId && !isSelf && !isExistingContact);
+  const safety = useSafetyActions();
+  // Other people only: Kordi service accounts cannot be blocked or reported here.
+  const canUseSafetyActions = safety.safetyFeaturesAvailable && !isSelf && Boolean(accountId)
+    && accountId !== safety.account?.accountId && !isServiceAccountId(accountId);
+  const memberBlocked = safety.blockedAccountIds.has(accountId);
   const resolvedPresence = presenceStatus ?? contact?.presenceStatus ?? participant.presenceStatus ?? 'offline';
   const relationshipLabel = isSelf ? 'You' : isExistingContact ? 'Contact' : requestPending ? 'Request pending' : '';
   const profileDetail = readableContactDetail(contact, accountId);
@@ -172,6 +179,32 @@ export function MemberContactProfileContent({
           </button>
         ) : null}
       </div>
+
+      {canUseSafetyActions ? (
+        <div className="mt-2 flex flex-wrap gap-1.5" data-member-contact-safety-actions>
+          <button
+            type="button"
+            data-member-contact-action={memberBlocked ? 'unblock' : 'block'}
+            className="app-transient-flat-action app-transient-action-row inline-flex min-h-7 items-center gap-1.5 rounded-[9px] px-2 py-1 transition"
+            onClick={() => {
+              if (memberBlocked) safety.openUnblock({ accountId, name: participant.name });
+              else safety.openBlock({ accountId, name: participant.name });
+            }}
+          >
+            <Ban className="app-transient-action-icon" aria-hidden="true" />
+            <span className="app-transient-action-label">{memberBlocked ? 'Unblock…' : 'Block…'}</span>
+          </button>
+          <button
+            type="button"
+            data-member-contact-action="report"
+            className="app-transient-flat-action app-transient-action-row inline-flex min-h-7 items-center gap-1.5 rounded-[9px] px-2 py-1 transition"
+            onClick={() => safety.openReport({ accountId, name: participant.name })}
+          >
+            <Flag className="app-transient-action-icon" aria-hidden="true" />
+            <span className="app-transient-action-label">Report…</span>
+          </button>
+        </div>
+      ) : null}
 
       {requestError ? (
         <p role="alert" className="app-transient-status mt-2 text-rose-500">{requestError}</p>

@@ -9,6 +9,7 @@ enum CloudConversationCatalog {
         messagesByPeer: [String: [CloudMessageDTO]],
         canonicalConversations: [CloudChatConversation] = [],
         canonicalParticipantsBySessionId: [String: [CloudGroupParticipant]] = [:],
+        canonicalInactiveMemberIdsBySessionId: [String: Set<String>] = [:],
         sessionForksById: [String: CloudSessionForkSummary] = [:],
         hiddenSessionIds: Set<String> = [],
         deletedSessionIds: Set<String> = [],
@@ -64,6 +65,7 @@ enum CloudConversationCatalog {
             messages: allMessages,
             canonicalConversations: visibleCanonicalConversations,
             canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
+            canonicalInactiveMemberIdsBySessionId: canonicalInactiveMemberIdsBySessionId,
             canonicalConversationsBySessionId: canonicalConversationsBySessionId,
             controls: groupRows
         )
@@ -179,6 +181,7 @@ enum CloudConversationCatalog {
         messages: [CloudMessageDTO],
         canonicalConversations: [CloudChatConversation],
         canonicalParticipantsBySessionId: [String: [CloudGroupParticipant]],
+        canonicalInactiveMemberIdsBySessionId: [String: Set<String>],
         canonicalConversationsBySessionId: [String: CloudChatConversation],
         controls: [(CloudMessageDTO, CloudGroupControlEnvelope)]
     ) -> [ConversationSummary] {
@@ -226,7 +229,8 @@ enum CloudConversationCatalog {
             let participants = enrichedParticipants(
                 mergedParticipants(
                     legacy: latestParticipants(in: sorted.map(\.1)),
-                    canonical: canonicalParticipantsBySessionId[groupId] ?? []
+                    canonical: canonicalParticipantsBySessionId[groupId] ?? [],
+                    inactiveAccountIds: canonicalInactiveMemberIdsBySessionId[groupId] ?? []
                 ),
                 account: account,
                 contactsById: contactsById
@@ -897,11 +901,17 @@ enum CloudConversationCatalog {
         }
     }
 
-    private static func mergedParticipants(
+    /// Envelope participants are a history: someone who left or was removed
+    /// stays listed in older envelopes. A legacy participant whose canonical
+    /// membership is known and inactive is dropped; canonical members win.
+    static func mergedParticipants(
         legacy: [CloudGroupParticipant],
-        canonical: [CloudGroupParticipant]
+        canonical: [CloudGroupParticipant],
+        inactiveAccountIds: Set<String> = []
     ) -> [CloudGroupParticipant] {
-        var byAccountId = Dictionary(uniqueKeysWithValues: legacy.map { ($0.accountId, $0) })
+        var byAccountId = Dictionary(uniqueKeysWithValues: legacy
+            .filter { !inactiveAccountIds.contains($0.accountId) }
+            .map { ($0.accountId, $0) })
         for participant in canonical {
             let previous = byAccountId[participant.accountId]
             byAccountId[participant.accountId] = CloudGroupParticipant(

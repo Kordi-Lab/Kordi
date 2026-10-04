@@ -167,6 +167,8 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(version: 107, "account-scoped desktop projects", "0107_chat_projects.sql"),
     migration!(version: 108, "session pin stacks", "0108_session_pin_stacks.sql"),
     migration!(version: 109, "session-bound realtime tickets", "0109_realtime_ticket_sessions.sql"),
+    migration!(version: 110, "contact consent and blocks", "0110_contact_consent_and_blocks.sql"),
+    migration!(version: 111, "abuse reports", "0111_abuse_reports.sql"),
     migration!(version: 113, "runner run token hash", "0113_runner_run_token_hash.sql"),
     migration!(version: 114, "desktop device proofs", "0114_desktop_device_proofs.sql"),
     migration!(version: 116, "content removal jobs and deletion indexes",

@@ -9,17 +9,22 @@ use super::{
     MESSAGE_DELIVERY_RETRY_AFTER_SECONDS,
 };
 
-pub(super) async fn register_message_notification_events(
+pub(in crate::notifications) async fn register_message_notification_events(
     pool: &PgPool,
     message: &MessageSnapshot,
     environment: &str,
 ) -> Result<Vec<String>, sqlx_core::Error> {
     let mut transaction = pool.begin().await?;
+    // A member who muted the conversation, or blocked the sender (an agent's
+    // messages are sent by its owner), gets no push for this message.
     query(
         "INSERT INTO cloud_message_notification_events \
          (recipient_account_id, message_id, conversation_id, accepted_at) \
          SELECT member.account_id, $1, $2, \
-                CASE WHEN member.muted_until IS NOT NULL AND member.muted_until > NOW() \
+                CASE WHEN (member.muted_until IS NOT NULL AND member.muted_until > NOW()) \
+                       OR EXISTS (SELECT 1 FROM cloud_account_blocks block \
+                                  WHERE block.blocker_account_id = member.account_id \
+                                    AND block.blocked_account_id = $3) \
                      THEN NOW() ELSE NULL END \
          FROM cloud_chat_conversation_members member \
          WHERE member.conversation_id = $2 \
@@ -175,3 +180,7 @@ pub(super) async fn finish_message_notification_event(
     .await?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "notifications_block_tests.rs"]
+mod block_tests;

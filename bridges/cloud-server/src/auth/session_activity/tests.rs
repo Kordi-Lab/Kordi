@@ -53,21 +53,3 @@ fn artifact_activity_sync_payload_keeps_attachment_reference() {
     assert_eq!(payload["artifact"]["artifactId"], "docs/plan.md");
     assert_eq!(payload["artifact"]["attachmentId"], "att_1");
 }
-
-#[test]
-fn cloud_activity_recipient_ids_exclude_duplicates_and_empty_values() {
-    let recipients = cloud_activity_recipient_ids(
-        "acct_owner",
-        &[
-            "acct_b".to_string(),
-            "acct_owner".to_string(),
-            " ".to_string(),
-            "acct_b".to_string(),
-        ],
-    );
-
-    assert_eq!(
-        recipients,
-        vec!["acct_b".to_string(), "acct_owner".to_string()]
-    );
-}

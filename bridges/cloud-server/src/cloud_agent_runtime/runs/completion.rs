@@ -135,6 +135,10 @@ pub async fn complete_run_with_state(
         crate::pip::store::complete(pool, run_id, runner_id, response_text).await?;
         return digest_run_response(pool, run_id).await;
     }
+    if !super::revocation::run_still_allowed(pool, run_id).await? {
+        super::revocation::cancel_revoked_run(pool, run_id).await?;
+        return digest_run_response(pool, run_id).await;
+    }
     let trimmed = response_text.trim();
     if trimmed.is_empty() {
         return Err(RunError::NotFound);
@@ -307,6 +311,10 @@ pub async fn fail_run(
     }
     if run_id.starts_with(crate::pip::RUN_PREFIX) {
         crate::pip::store::fail(pool, run_id, Some(runner_id), error_code).await?;
+        return digest_run_response(pool, run_id).await;
+    }
+    if !super::revocation::run_still_allowed(pool, run_id).await? {
+        super::revocation::cancel_revoked_run(pool, run_id).await?;
         return digest_run_response(pool, run_id).await;
     }
     let mut tx = pool.begin().await?;

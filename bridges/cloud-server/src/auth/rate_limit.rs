@@ -54,6 +54,7 @@ mod email_lockout;
 
 pub use account_actions::{
     AccountActionLimit, AGENT_RUN_CLAIM_LIMIT, CONTACT_ADD_LIMIT, MESSAGE_SEND_LIMIT,
+    REPORT_SUBMIT_LIMIT,
 };
 
 #[derive(Debug, Clone, Copy)]

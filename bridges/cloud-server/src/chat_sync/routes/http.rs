@@ -70,6 +70,12 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
             "The account is not allowed to perform this operation.",
             None,
         ),
+        StoreError::RelationshipRequired(message) => error_response(
+            StatusCode::FORBIDDEN,
+            "CHAT_RELATIONSHIP_REQUIRED",
+            message,
+            None,
+        ),
         StoreError::IdempotencyKeyReused => error_response(
             StatusCode::CONFLICT,
             "IDEMPOTENCY_KEY_REUSED",

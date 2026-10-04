@@ -17,11 +17,29 @@ type FollowHistoryRow = (
     Option<String>,
 );
 
+/// Cancels this desktop's queued follow-ups that `pending` would hide because
+/// their sender or the owner lost access: one of them left the chat, or the
+/// sender may no longer use the agent (a removed contact or a block). Left
+/// queued, each would hold back every later follow-up in its thread, since a
+/// follow-up starts only after the earlier ones finish.
+async fn cancel_hidden_queued(pool: &PgPool, owner: &str, device: &str) -> RunResult<()> {
+    let hidden:Vec<(String,)>=query_as("SELECT r.run_id FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id WHERE s.owner_account_id=$1 AND s.publisher_device_id=$2 AND s.execution_backend='desktop' AND r.status='queued' AND NOT (EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active') AND cloud_requester_may_use_agent(c.sender_account_id,s.owner_account_id,s.agent_id)) ORDER BY c.sequence LIMIT 16")
+        .bind(owner).bind(device).fetch_all(pool).await?;
+    for (run,) in hidden {
+        // The sender is the run's requester, so the recheck cancels the run.
+        revalidate(pool, &run).await?;
+    }
+    Ok(())
+}
+
 pub(super) async fn pending(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Result<Json<Vec<Value>>, axum::http::StatusCode> {
-    let rows:Vec<(String,Uuid,String,String,String)>=query_as("SELECT r.run_id,s.subsession_id,c.message_id::text,c.sender_account_id,c.text FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active' WHERE EXISTS(SELECT 1 FROM cloud_chat_conversation_members owner_member WHERE owner_member.conversation_id=s.parent_conversation_id AND owner_member.account_id=s.owner_account_id AND owner_member.membership_state='active') AND s.owner_account_id=$1 AND s.publisher_device_id=$2 AND s.execution_backend='desktop' AND r.status='queued' ORDER BY c.sequence LIMIT 16")
+    cancel_hidden_queued(state.db_pool(), &session.account_id, &session.device_id)
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    let rows:Vec<(String,Uuid,String,String,String)>=query_as("SELECT r.run_id,s.subsession_id,c.message_id::text,c.sender_account_id,c.text FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active' WHERE EXISTS(SELECT 1 FROM cloud_chat_conversation_members owner_member WHERE owner_member.conversation_id=s.parent_conversation_id AND owner_member.account_id=s.owner_account_id AND owner_member.membership_state='active') AND cloud_requester_may_use_agent(c.sender_account_id,s.owner_account_id,s.agent_id) AND s.owner_account_id=$1 AND s.publisher_device_id=$2 AND s.execution_backend='desktop' AND r.status='queued' ORDER BY c.sequence LIMIT 16")
         .bind(&session.account_id).bind(&session.device_id).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     let mut pending = Vec::new();
     for (run, id, message, actor, text) in rows {
@@ -57,7 +75,7 @@ pub(super) async fn claim(
     query("SELECT pg_advisory_xact_lock(81208411)")
         .execute(&mut *tx)
         .await?;
-    let eligible:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_agent_subsession_chat c ON c.subsession_id=s.subsession_id JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE s.subsession_id=$1 AND c.message_id=$2 AND s.owner_account_id=$3 AND s.publisher_device_id=$4 AND s.execution_backend='desktop' AND r.status='queued' AND s.status<>'running' AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities ready WHERE ready.device_id=$4 AND ready.agent_id=s.agent_id AND ready.updated_at>now()-interval '35 seconds') AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat earlier JOIN cloud_agent_fallback_runs e ON e.run_id=earlier.run_id WHERE earlier.subsession_id=s.subsession_id AND earlier.sequence<c.sequence AND e.status IN ('queued','leased','running')))")
+    let eligible:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_agent_subsession_chat c ON c.subsession_id=s.subsession_id JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE s.subsession_id=$1 AND c.message_id=$2 AND s.owner_account_id=$3 AND s.publisher_device_id=$4 AND s.execution_backend='desktop' AND r.status='queued' AND s.status<>'running' AND cloud_requester_may_use_agent(c.sender_account_id,s.owner_account_id,s.agent_id) AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=c.sender_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=s.owner_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities ready WHERE ready.device_id=$4 AND ready.agent_id=s.agent_id AND ready.updated_at>now()-interval '35 seconds') AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat earlier JOIN cloud_agent_fallback_runs e ON e.run_id=earlier.run_id WHERE earlier.subsession_id=s.subsession_id AND earlier.sequence<c.sequence AND e.status IN ('queued','leased','running')))")
         .bind(id).bind(message).bind(&session.account_id).bind(&session.device_id).fetch_one(&mut *tx).await?;
     if eligible.0 {
         query("UPDATE cloud_agent_fallback_runs SET execution_backend='desktop',status='leased',claimed_by=$2,lease_expires_at=(now()+interval '45 seconds')::text,updated_at=now()::text WHERE run_id=$1 AND status='queued'")
@@ -81,9 +99,17 @@ pub(super) async fn mark_active(pool: &PgPool, run: &str, backend: &str) -> RunR
 }
 
 pub(crate) async fn revalidate(pool: &PgPool, run: &str) -> RunResult<bool> {
-    let valid: Option<(bool,)> = query_as("SELECT EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.owner_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.requester_account_id AND m.membership_state='active') AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=r.requester_account_id))) FROM cloud_agent_fallback_runs r JOIN cloud_agent_subsessions s ON s.subsession_id=r.subsession_id WHERE r.run_id=$1")
+    let valid: Option<(bool, Uuid, String)> = query_as("SELECT EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.owner_account_id AND m.membership_state='active') AND EXISTS(SELECT 1 FROM cloud_chat_conversation_members m WHERE m.conversation_id=s.parent_conversation_id AND m.account_id=r.requester_account_id AND m.membership_state='active') AND (s.agent_id='cloud-agent:'||s.owner_account_id OR EXISTS(SELECT 1 FROM cloud_agent_definitions d WHERE d.agent_id=s.agent_id AND d.owner_account_id=s.owner_account_id AND d.status='active' AND (d.access_scope='participant_conversations' OR s.owner_account_id=r.requester_account_id))) AND cloud_requester_may_use_agent(r.requester_account_id,s.owner_account_id,s.agent_id),s.parent_conversation_id,s.owner_account_id FROM cloud_agent_fallback_runs r JOIN cloud_agent_subsessions s ON s.subsession_id=r.subsession_id WHERE r.run_id=$1")
         .bind(run).fetch_optional(pool).await?;
-    if valid.is_some_and(|value| !value.0) {
+    // The answer is written inside the parent chat, so the owner must still
+    // be allowed to write there (a direct chat needs a contact).
+    let valid = match valid {
+        Some((true, parent, owner)) => {
+            Some(crate::relationships::may_write_outside_groups(pool, parent, &owner).await?)
+        }
+        other => other.map(|(value, _, _)| value),
+    };
+    if valid.is_some_and(|value| !value) {
         let mut tx = pool.begin().await?;
         query("SELECT pg_advisory_xact_lock(81208411)")
             .execute(&mut *tx)

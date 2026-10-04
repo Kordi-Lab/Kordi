@@ -201,6 +201,10 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
 mod abuse_limits;
 #[path = "cloud_auth_e2e/account_auth.rs"]
 mod account_auth;
+#[path = "cloud_auth_e2e/blocks.rs"]
+mod blocks;
+#[path = "cloud_auth_e2e/contact_consent.rs"]
+mod contact_consent;
 #[path = "cloud_auth_e2e/devices.rs"]
 mod devices;
 #[path = "cloud_auth_e2e/expressive_media.rs"]
@@ -211,8 +215,12 @@ mod group_invitations;
 mod public_identity;
 #[path = "cloud_auth_e2e/realtime_sign_out.rs"]
 mod realtime_sign_out;
+#[path = "cloud_auth_e2e/session_activity_access.rs"]
+mod session_activity_access;
 #[path = "cloud_auth_e2e/session_and_presence.rs"]
 mod session_and_presence;
+#[path = "cloud_auth_e2e/session_fork_targets.rs"]
+mod session_fork_targets;
 #[path = "cloud_auth_e2e/session_list_actions.rs"]
 mod session_list_actions;
 #[path = "cloud_auth_e2e/session_list_fixtures.rs"]

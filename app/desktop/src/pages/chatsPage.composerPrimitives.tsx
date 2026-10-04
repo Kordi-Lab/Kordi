@@ -1,6 +1,7 @@
 import { Copy, Pencil, Send, X } from 'lucide-react';
 
 import { BlobEmojiInlineText } from '@/features/emoji/BlobEmojiInlineText';
+import { ReportSelectedMessagesButton } from '@/features/safety/ReportSelectedMessagesButton';
 import { useActiveLocalProfileIdentity } from '@/kordi-app/components/localProfileIdentity';
 import { quotedSenderLabel } from '@/lib/identityLabels';
 import type { ChatsPageComposer } from '@/pages/chatsPage.types';
@@ -32,6 +33,7 @@ export function MessageSelectionBar({
         >
           Cancel
         </button>
+        <ReportSelectedMessagesButton />
         <button
           type="button"
           className="app-button-quiet inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold"

@@ -13,6 +13,8 @@ const PROOFS: &str = "desktop device proofs";
 const EMAIL: &str = "account email verification";
 const CONTENT_REMOVAL: &str = "content removal jobs and deletion indexes";
 const FILES_PANEL: &str = "keep removed files-panel entries archived";
+const CONSENT: &str = "contact consent and blocks";
+const ABUSE_REPORTS: &str = "abuse reports";
 
 /// Every numbering from version 106 on that a database could have recorded:
 /// earlier states of this change, the changes still in review, a database
@@ -55,8 +57,8 @@ const EARLIER_NUMBERINGS: &[&[(i64, &str)]] = &[
         (107, EMAIL),
         (108, TICKETS),
         (109, RUNNER),
-        (110, "contact consent and blocks"),
-        (111, "abuse reports"),
+        (110, CONSENT),
+        (111, ABUSE_REPORTS),
     ],
     &[
         (107, EMAIL),
@@ -162,24 +164,16 @@ async fn readme_renumbering_resolves_every_earlier_numbering() {
     }
 }
 
-#[tokio::test]
-#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn a_database_from_the_deletion_change_upgrades_after_renumbering() {
-    // Before it merged, the content removal change recorded email
-    // verification, realtime tickets, and the runner token hash at 107 to
-    // 109, then its own migrations at 116 and 117, without versions 106 to
-    // 108 of the main branch.
+/// Builds a database that ran a change before it merged: every version up to
+/// 105, then `records` with the SQL this build embeds for each description.
+/// It checks that startup refuses that numbering, runs the README statements,
+/// and upgrades twice concurrently to exactly this build's records.
+async fn upgrade_after_renumbering(records: &[(i64, &str)]) -> PgPool {
     let pool = fixture(105).await;
-    for (version, description) in [
-        (107_i64, EMAIL),
-        (108, TICKETS),
-        (109, RUNNER),
-        (116, CONTENT_REMOVAL),
-        (117, FILES_PANEL),
-    ] {
+    for (version, description) in records {
         let migration = EMBEDDED_MIGRATIONS
             .iter()
-            .find(|migration| migration.description == description)
+            .find(|migration| migration.description == *description)
             .unwrap();
         execute(&pool, migration.sql).await;
         query("INSERT INTO cloud_schema_versions(version,description) VALUES($1,$2)")
@@ -214,9 +208,54 @@ async fn a_database_from_the_deletion_change_upgrades_after_renumbering() {
     .await
     .unwrap();
     assert_eq!(columns, 1, "email verification stays applied");
+    pool
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn a_database_from_the_deletion_change_upgrades_after_renumbering() {
+    // Before it merged, the content removal change recorded email
+    // verification, realtime tickets, and the runner token hash at 107 to
+    // 109, then its own migrations at 116 and 117, without versions 106 to
+    // 108 of the main branch.
+    let pool = upgrade_after_renumbering(&[
+        (107, EMAIL),
+        (108, TICKETS),
+        (109, RUNNER),
+        (116, CONTENT_REMOVAL),
+        (117, FILES_PANEL),
+    ])
+    .await;
     let (state_rows,): (i64,) = query_as("SELECT count(*) FROM cloud_content_removal_state")
         .fetch_one(&pool)
         .await
         .unwrap();
     assert_eq!(state_rows, 1, "content removal stays applied");
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn a_database_from_the_consent_change_upgrades_after_renumbering() {
+    // Before it merged, the contact consent change recorded the same three
+    // migrations at 107 to 109 and its own at 110 and 111, so versions 106 to
+    // 108 of the main branch apply after contact consent.
+    let pool = upgrade_after_renumbering(&[
+        (107, EMAIL),
+        (108, TICKETS),
+        (109, RUNNER),
+        (110, CONSENT),
+        (111, ABUSE_REPORTS),
+    ])
+    .await;
+    let (blocks, reports, projects): (Option<String>, Option<String>, Option<String>) = query_as(
+        "SELECT to_regclass('public.cloud_account_blocks')::text, \
+                to_regclass('public.cloud_abuse_reports')::text, \
+                to_regclass('public.cloud_project_devices')::text",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(blocks.is_some(), "contact consent stays applied");
+    assert!(reports.is_some(), "abuse reports stay applied");
+    assert!(projects.is_some(), "chat projects apply after them");
 }

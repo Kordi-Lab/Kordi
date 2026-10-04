@@ -168,6 +168,22 @@ pub struct UpdatePersonalTitleRequest {
     pub personal_title: Option<String>,
 }
 
+/// Leaves a group. Leaving a space's main conversation leaves every channel
+/// of the space. `successor_account_id` is the owner's suggestion for the
+/// next owner; the server uses it only when it names an active member.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LeaveConversationRequest {
+    pub client_operation_id: Uuid,
+    #[serde(default)]
+    pub successor_account_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct LeaveConversationResponse {
+    pub left_conversation_ids: Vec<Uuid>,
+    pub successor_account_id: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct AddConversationMembersRequest {
     pub client_operation_id: Uuid,

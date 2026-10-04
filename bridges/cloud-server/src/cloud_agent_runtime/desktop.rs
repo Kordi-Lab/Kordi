@@ -1,6 +1,6 @@
 //! Desktop admission and publication use the same durable run as the cloud runner.
 use super::runs::{error_response, execution_agent_id, run_error_response, ClaimRunRequest};
-use crate::{auth::routes::CloudSession, server::ServerState};
+use crate::{auth::routes::CloudSession, chat_sync::store::StoreError, server::ServerState};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -109,6 +109,16 @@ fn executor(session: &CloudSession, claim_id: Uuid) -> String {
     format!("desktop:{}:{claim_id}", session.device_id)
 }
 
+/// Rechecks a run that this caller's claim holds (`runs::recheck_held_run`).
+async fn recheck(
+    pool: &PgPool,
+    session: &CloudSession,
+    run_id: &str,
+    claim_id: Uuid,
+) -> super::runs::RunResult<bool> {
+    super::runs::recheck_held_run(pool, run_id, &executor(session, claim_id)).await
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct DesktopContextInput {
@@ -155,6 +165,14 @@ fn expired() -> Response {
         StatusCode::CONFLICT,
     )
 }
+/// Retrying cannot succeed: the chat or the run refused the result for good.
+fn rejected() -> Response {
+    error_response(
+        "execution_progress_rejected",
+        "The chat server rejected this execution progress.",
+        StatusCode::UNPROCESSABLE_ENTITY,
+    )
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -168,6 +186,11 @@ pub(super) async fn admit(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
+    match recheck(state.db_pool(), &session, &run_id, input.claim_id).await {
+        Ok(true) => {}
+        Ok(false) => return expired(),
+        Err(e) => return run_error_response("desktop recheck", "Could not check the run.", e),
+    }
     let result = async {
         let mut tx = state.db_pool().begin().await?;
         query("SELECT pg_advisory_xact_lock(81208411)").execute(&mut *tx).await?;
@@ -198,11 +221,12 @@ pub(super) async fn renew(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
-    if !matches!(
-        super::subsession_execution::revalidate(state.db_pool(), &run_id).await,
-        Ok(true)
-    ) {
-        return expired();
+    // A run whose requester lost access to the agent, or whose chat no longer
+    // accepts the owner's answer, is cancelled instead (runs::revocation).
+    match recheck(state.db_pool(), &session, &run_id, input.claim_id).await {
+        Ok(true) => {}
+        Ok(false) => return expired(),
+        Err(e) => return run_error_response("desktop recheck", "Could not check the run.", e),
     }
     let result = query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=$3, updated_at=$4 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")
         .bind(run_id).bind(executor(&session,input.claim_id)).bind((Utc::now()+chrono::Duration::seconds(45)).to_rfc3339()).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await;
@@ -297,6 +321,11 @@ pub(super) async fn progress(
             )
         }
     }
+    match recheck(state.db_pool(), &session, &run_id, input.claim_id).await {
+        Ok(true) => {}
+        Ok(false) => return rejected(),
+        Err(e) => return run_error_response("desktop recheck", "Could not check the run.", e),
+    }
     let result = async {
         let mut tx = state.db_pool().begin().await?;
         let row: Option<(String,String,String,String)> = query_as("SELECT session_id,request_message_id,requester_account_id,execution_agent_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND owner_account_id=$2 AND claimed_by=$3 AND execution_backend='desktop' AND ((status IN ('leased','running') AND lease_expires_at::timestamptz>now()) OR (status=$4 AND status IN ('completed','failed','cancelled') AND EXISTS(SELECT 1 FROM cloud_chat_messages WHERE sender_account_id=$2 AND client_message_id=$5))) FOR UPDATE")
@@ -330,13 +359,9 @@ pub(super) async fn progress(
             Json(value).into_response()
         }
         Ok(None) => expired(),
-        // The chat server refused the published content itself. Retrying the
-        // same content cannot succeed, so report it as a permanent rejection.
-        Err(crate::chat_sync::store::StoreError::InvalidInput(_)) => error_response(
-            "execution_progress_rejected",
-            "The chat server rejected this execution progress.",
-            StatusCode::UNPROCESSABLE_ENTITY,
-        ),
+        // The chat server refused the content or the chat (the two people are
+        // no longer contacts).
+        Err(StoreError::InvalidInput(_) | StoreError::RelationshipRequired(_)) => rejected(),
         Err(_) => error_response(
             "server_error",
             "Could not publish execution progress.",
