@@ -92,6 +92,11 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
           aria-label="Group avatar"
           data-group-avatar-menu="true"
           className="app-transient-surface app-frosted-popover absolute left-1/2 top-full z-[70] mt-2 w-40 -translate-x-1/2 rounded-[12px] p-1 text-left"
+          onPointerDown={(event) => {
+            // WebKit otherwise focuses the parent dialog on mouse down,
+            // dismissing this menu before mouse up can click its action.
+            if (event.button === 0) event.preventDefault();
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();

@@ -50,3 +50,39 @@ test('native photo selection reaches image preparation through the desktop bridg
   await expect(avatar.locator(':scope > img')).toHaveCount(1);
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
+
+test('Upload photo opens the chooser inside the full group management dialog', async ({ page }) => {
+  await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=admin');
+  const dialog = page.getByRole('dialog', { name: 'Group management', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Edit group avatar' }).click();
+  const upload = dialog.getByRole('menuitem', { name: 'Upload photo' });
+  await expect(upload).toBeVisible();
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 5000 }),
+    upload.click(),
+  ]);
+  await chooser.setFiles({ name: 'group.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==', 'base64') });
+  await expect(page.locator('body')).toHaveAttribute('data-avatar-updated', 'uploaded');
+});
+
+test('the full group management dialog delivers Upload photo to the native picker', async ({ page }) => {
+  const bytes = [...Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==', 'base64')];
+  await page.addInitScript((imageBytes) => {
+    Object.defineProperty(navigator, 'platform', { value: 'MacIntel' });
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { value: {
+      invoke: async (command: string) => {
+        if (command !== 'desktop_pick_avatar_image') throw new Error('Unexpected native command');
+        document.body.dataset.nativeAvatarPicker = 'opened';
+        return { name: 'group.png', contentType: 'image/png', bytes: imageBytes };
+      },
+    } });
+  }, bytes);
+  await page.goto('/tests/visual/groupInvitationGallery.html?theme=light&mode=admin');
+  const dialog = page.getByRole('dialog', { name: 'Group management', exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Edit group avatar' }).click();
+  await dialog.getByRole('menuitem', { name: 'Upload photo' }).click();
+  await expect(page.locator('body')).toHaveAttribute('data-native-avatar-picker', 'opened');
+  await expect(page.locator('body')).toHaveAttribute('data-avatar-updated', 'uploaded');
+});

@@ -174,6 +174,9 @@ createRoot(document.querySelector('#root')!).render(
         onAddMembers={() => undefined}
         onRemoveMember={() => undefined}
         onSetAdmin={() => undefined}
+        onUpdateAvatar={(_ids, image) => {
+          document.body.dataset.avatarUpdated = image ? 'uploaded' : 'removed';
+        }}
         anchorRect={{ left: 220, top: 140, width: 260, height: 56 }}
         onCreateGroupInvitation={async () => ({
           invitationId: 'groupinv_visual',
