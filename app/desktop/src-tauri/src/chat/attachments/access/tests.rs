@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use super::*;
 use crate::test_support::ScopedAppDataDir;
 
@@ -12,20 +14,27 @@ fn outside_file(label: &str) -> (PathBuf, PathBuf) {
     (dir, file)
 }
 
-/// Points `HOME` at a fresh temporary folder until dropped. Callers must hold
-/// the process environment lock (for example through `ScopedAppDataDir`).
-struct ScopedHome {
+/// Points `HOME` at a fresh temporary folder until dropped.
+///
+/// It borrows the `ScopedAppDataDir` that holds the process environment lock,
+/// so it is always restored before that lock is released.
+struct ScopedHome<'environment> {
     home: PathBuf,
     previous: Option<std::ffi::OsString>,
+    _environment: PhantomData<&'environment ScopedAppDataDir>,
 }
 
-impl ScopedHome {
-    fn new() -> Self {
+impl<'environment> ScopedHome<'environment> {
+    fn new(_environment: &'environment ScopedAppDataDir) -> Self {
         let home = std::env::temp_dir().join(format!("kordi-home-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&home).unwrap();
         let previous = std::env::var_os("HOME");
         std::env::set_var("HOME", &home);
-        Self { home, previous }
+        Self {
+            home,
+            previous,
+            _environment: PhantomData,
+        }
     }
 
     fn file(&self, relative: &str, contents: &[u8]) -> PathBuf {
@@ -36,7 +45,7 @@ impl ScopedHome {
     }
 }
 
-impl Drop for ScopedHome {
+impl Drop for ScopedHome<'_> {
     fn drop(&mut self) {
         match self.previous.take() {
             Some(value) => std::env::set_var("HOME", value),
@@ -47,16 +56,24 @@ impl Drop for ScopedHome {
 }
 
 /// Uses `database` as the local session history for the seeding step.
-struct ScopedSessionDatabase;
+///
+/// Every test that authorizes a file reads this setting, so, like
+/// `ScopedHome`, it borrows the `ScopedAppDataDir` that holds the process
+/// environment lock and is cleared before that lock is released.
+struct ScopedSessionDatabase<'environment> {
+    _environment: PhantomData<&'environment ScopedAppDataDir>,
+}
 
-impl ScopedSessionDatabase {
-    fn new(database: &Path) -> Self {
+impl<'environment> ScopedSessionDatabase<'environment> {
+    fn new(_environment: &'environment ScopedAppDataDir, database: &Path) -> Self {
         *TEST_SESSION_DATABASE.lock().unwrap() = Some(database.to_path_buf());
-        Self
+        Self {
+            _environment: PhantomData,
+        }
     }
 }
 
-impl Drop for ScopedSessionDatabase {
+impl Drop for ScopedSessionDatabase<'_> {
     fn drop(&mut self) {
         *TEST_SESSION_DATABASE.lock().unwrap() = None;
     }
@@ -147,8 +164,8 @@ fn attached_files_stay_usable_after_the_registry_reloads() {
 
 #[test]
 fn requested_attachments_from_credential_folders_are_refused() {
-    let _app_data = ScopedAppDataDir::new("attachment-access-protected");
-    let home = ScopedHome::new();
+    let app_data = ScopedAppDataDir::new("attachment-access-protected");
+    let home = ScopedHome::new(&app_data);
     let key = home.file(".ssh/id_ed25519", b"key");
     let provider_credentials = home.file(".kordi/auth.json", b"{}");
     let agent_notes = home.file(".kordi/agents/notes.md", b"notes");
@@ -182,8 +199,8 @@ fn requested_attachments_from_credential_folders_are_refused() {
 
 #[test]
 fn token_history_and_browser_profile_locations_are_protected() {
-    let _app_data = ScopedAppDataDir::new("attachment-access-protected-list");
-    let home = ScopedHome::new();
+    let app_data = ScopedAppDataDir::new("attachment-access-protected-list");
+    let home = ScopedHome::new(&app_data);
     for relative in [
         ".npmrc",
         ".pypirc",
@@ -209,8 +226,8 @@ fn token_history_and_browser_profile_locations_are_protected() {
 #[cfg(target_os = "macos")]
 #[test]
 fn protected_locations_match_every_spelling_of_the_same_folder() {
-    let _app_data = ScopedAppDataDir::new("attachment-access-firmlink");
-    let home = ScopedHome::new();
+    let app_data = ScopedAppDataDir::new("attachment-access-firmlink");
+    let home = ScopedHome::new(&app_data);
     let key = home.file(".ssh/id_ed25519", b"key");
     let credentials = home.file(".kordi/auth.json", b"{}");
 
@@ -281,7 +298,7 @@ fn pasted_paths_need_a_matching_file_url_on_the_pasteboard() {
 #[test]
 fn files_sent_in_earlier_local_sessions_stay_usable() {
     let app_data = ScopedAppDataDir::new("attachment-access-history");
-    let home = ScopedHome::new();
+    let home = ScopedHome::new(&app_data);
     let (dir, sent) = outside_file("history");
     let never_sent = dir.join("never-sent.txt");
     std::fs::write(&never_sent, b"never sent").unwrap();
@@ -294,7 +311,7 @@ fn files_sent_in_earlier_local_sessions_stay_usable() {
     let session_id =
         kordi_session::store::create_session(&conn, &dir.display().to_string()).unwrap();
     record_sent_attachments(&conn, &session_id, &[&sent, &sent_key]);
-    let _history = ScopedSessionDatabase::new(&database);
+    let history = ScopedSessionDatabase::new(&app_data, &database);
 
     assert!(authorize_attachment_file(&sent).is_ok());
     assert_eq!(
@@ -317,8 +334,10 @@ fn files_sent_in_earlier_local_sessions_stay_usable() {
         ATTACHMENT_ACCESS_DENIED
     );
 
+    // `home` and `app_data` are dropped at the end of the test, in reverse
+    // order, so `HOME` is restored before the environment lock is released.
+    drop(history);
     drop(conn);
-    drop(app_data);
     std::fs::remove_dir_all(dir).ok();
 }
 
