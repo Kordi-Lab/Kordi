@@ -393,3 +393,5 @@ mod desktop_contract;
 mod omp_context;
 #[path = "agent_context_policy_e2e/settings.rs"]
 mod settings;
+#[path = "agent_context_policy_e2e/subsession_context.rs"]
+mod subsession_context;
