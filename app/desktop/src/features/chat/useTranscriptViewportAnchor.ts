@@ -1,15 +1,17 @@
+import { useMessageLayout } from '@/app/messageLayoutPreference';
 import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 
 type Anchor = { rowKey: string; screenTop: number; scrollTop: number; viewportTop: number };
 type Snapshot = { sessionKey: string; updateKey: string; contentKey: string; anchor: Anchor | null; active: boolean };
 
 /** Pin decorations preserve the visible message, including changes to the shelf above it. */
-export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey, viewportRef }: {
+export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey: messageContentKey, viewportRef }: {
   sessionKey: string;
   updateKey?: string;
   contentKey: string;
   viewportRef: RefObject<HTMLDivElement | null>;
 }) {
+  const contentKey = `${useMessageLayout()}|${messageContentKey}`;
   const snapshot = useRef<Snapshot | null>(null);
   const [revision, setRevision] = useState({ sessionKey, updateKey, contentKey, preserving: false });
   let preserving = revision.preserving;

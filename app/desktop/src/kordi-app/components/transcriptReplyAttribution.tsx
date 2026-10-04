@@ -1,3 +1,5 @@
+import { useMessageLayout } from '@/app/messageLayoutPreference';
+import { IdentityAvatar } from './IdentityAvatar';
 import { CornerDownLeft, MessagesSquare } from 'lucide-react';
 
 import { replyStatusText } from '@/features/chat/replyAttribution';
@@ -29,6 +31,7 @@ export function SourceMessageQuote({
   onNavigateToMessage?: (messageId: string, sourceMessage?: MessageSourceReference) => void;
 }) {
   const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
+  const threadLayout = useMessageLayout() === 'threads';
   if (!sourceMessage) return null;
   const senderLabel = quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName);
   const text = sourceQuoteText(sourceMessage);
@@ -48,8 +51,9 @@ export function SourceMessageQuote({
       onClick={navigate}
       title={text ? `${senderLabel}: ${text}` : senderLabel}
     >
+      {threadLayout ? <IdentityAvatar kind="human" seed={`human:${senderLabel}`} name={senderLabel} className="app-thread-quote-avatar h-4 w-4 shrink-0" /> : null}
       <span className="app-source-message-quote-text" data-kordi-copy-surface="message">
-        <span className="app-source-message-quote-label">{senderLabel}: </span>
+        <span className="app-source-message-quote-label">{threadLayout ? `@${senderLabel} ` : `${senderLabel}: `}</span>
         <MessageInlineContent text={text} mentions={sourceMessage.mentions} linksInteractive={false} showSiteIcons={false} />
       </span>
     </button>

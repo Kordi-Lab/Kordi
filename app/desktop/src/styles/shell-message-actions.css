@@ -355,6 +355,20 @@
   animation: app-transcript-message-highlight-band 1500ms var(--app-motion-ease) both;
 }
 
+/* The virtual row also measures timeline decorations; paint only its message. */
+.app-transcript-message-highlight:has([data-transcript-highlight-body]) {
+  background-color: transparent;
+  box-shadow: none;
+  clip-path: none;
+  animation: none;
+}
+.app-transcript-message-highlight [data-transcript-highlight-body] {
+  background-color: var(--app-transcript-highlight-band);
+  box-shadow: 0 0 0 100vmax var(--app-transcript-highlight-band);
+  clip-path: inset(-3px -100vmax);
+  animation: app-transcript-message-highlight-band 1500ms var(--app-motion-ease) both;
+}
+
 .app-transcript-message-highlight .app-transcript-message-highlight {
   background-color: transparent;
   box-shadow: none;
@@ -380,6 +394,7 @@
 @media (prefers-reduced-motion: reduce) {
   .app-message-forward-reveal,
   .app-message-forward-reveal :where(.app-chat-bubble-user, .app-chat-bubble-peer, .app-live-assistant-answer-surface),
+  .app-transcript-message-highlight [data-transcript-highlight-body],
   .app-transcript-message-highlight {
     animation: none;
   }

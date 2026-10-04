@@ -96,6 +96,8 @@ struct MessageBubble: View, Equatable {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.kordiChatTheme) private var chatTheme
     let message: ChatMessage
+    var layout: MessageLayout = .chat
+    private var isThreadLayout: Bool { layout == .threads }
     let mentionTargets: [ComposerMentionTarget]
     let showAuthor: Bool
     let showAvatar: Bool
@@ -181,6 +183,7 @@ struct MessageBubble: View, Equatable {
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message
+            && lhs.layout == rhs.layout
             && lhs.mentionTargets == rhs.mentionTargets
             && lhs.showAuthor == rhs.showAuthor
             && lhs.showAvatar == rhs.showAvatar
@@ -219,13 +222,13 @@ struct MessageBubble: View, Equatable {
     }
 
     var body: some View {
-        HStack(alignment: usesBorderlessMediaSurface ? .top : .bottom, spacing: 8) {
-            if showsAvatarSlot && message.author != .me {
-                if showAvatar {
+        HStack(alignment: isThreadLayout || usesBorderlessMediaSurface ? .top : .bottom, spacing: 8) {
+            if isThreadLayout || (showsAvatarSlot && message.author != .me) {
+                if isThreadLayout ? !groupedWithPrevious || visibleReplySource != nil : showAvatar {
                     Button(action: onOpenAuthorProfile) {
                         Color.clear
                             .frame(width: 44, height: 44)
-                            .overlay(alignment: usesBorderlessMediaSurface ? .top : .bottom) {
+                            .overlay(alignment: isThreadLayout || usesBorderlessMediaSurface ? .top : .bottom) {
                                 IdentityAvatar(
                                     name: authorAvatarName,
                                     imageSource: authorAvatarSource,
@@ -242,6 +245,7 @@ struct MessageBubble: View, Equatable {
                     .accessibilityHidden(selectionMode)
                     .accessibilityLabel("Open profile for \(authorAvatarName)")
                     .padding(.bottom, 2)
+                    .padding(.top, isThreadLayout && visibleReplySource != nil ? 32 : 0)
                 } else {
                     Color.clear
                         .frame(width: 44, height: 28)
@@ -250,16 +254,22 @@ struct MessageBubble: View, Equatable {
                 }
             }
 
-            if message.author == .me { Spacer(minLength: 34) }
+            if !isThreadLayout && message.author == .me { Spacer(minLength: 34) }
 
-            VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: !isThreadLayout && message.author == .me ? .trailing : .leading, spacing: isThreadLayout ? 2 : 4) {
+                if isThreadLayout {
+                    if let source = visibleReplySource { quoteLine(source) }
+                    if !groupedWithPrevious || visibleReplySource != nil {
+                        ThreadMessageHeader(message: message, authorName: authorAvatarName, avatarSeed: authorAvatarSeed)
+                    }
+                }
                 if let position = message.agentQueuePosition {
                     Label(position == 1 ? "Queued next" : "Queued · \(position)", systemImage: "clock")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 4)
                 }
-                if showAuthor && message.author == .agent {
+                if !isThreadLayout && showAuthor && message.author == .agent {
                     HStack(spacing: 6) {
                         Text(message.authorName)
                             .font(.caption.weight(.semibold))
@@ -390,7 +400,7 @@ struct MessageBubble: View, Equatable {
                         isRequestingActionFrame = true
                     }
 
-                if let source = visibleReplySource {
+                if !isThreadLayout, let source = visibleReplySource {
                     quoteLine(source)
                 }
 
@@ -400,7 +410,7 @@ struct MessageBubble: View, Equatable {
                     threadHasUnread: threadHasUnread,
                     threadAgentState: threadAgentState,
                     ownAccountId: ownAccountId,
-                    scrollAnchor: message.author == .me ? .trailing : .leading,
+                    scrollAnchor: !isThreadLayout && message.author == .me ? .trailing : .leading,
                     onReact: onReact,
                     onOpenThread: onOpenThread,
                     quoteReplyCount: rendersQuoteReplyMarkInsideBubble ? 0 : quoteReplyCount,
@@ -421,8 +431,9 @@ struct MessageBubble: View, Equatable {
                 }
 
             }
+            .frame(maxWidth: isThreadLayout ? .infinity : nil, alignment: .leading)
 
-            if showsAvatarSlot && message.author == .me {
+            if !isThreadLayout && showsAvatarSlot && message.author == .me {
                 Group {
                     if showAvatar && outgoingAvatarGroupID == nil {
                         IdentityAvatar(
@@ -440,8 +451,9 @@ struct MessageBubble: View, Equatable {
                 .accessibilityHidden(!showAvatar)
             }
 
-            if message.author != .me { Spacer(minLength: 34) }
+            if !isThreadLayout && message.author != .me { Spacer(minLength: 34) }
         }
+        .frame(maxWidth: isThreadLayout ? .infinity : nil, alignment: .leading)
         // Sent, received, and agent messages share one full-width highlight, so a jump
         // lands the same way whatever the bubble color or surface.
         .background {
@@ -455,7 +467,7 @@ struct MessageBubble: View, Equatable {
         }
         // Selection uses the existing avatar/spacer area. Adding a column here
         // would narrow every bubble and rewrap the conversation on menu dismissal.
-        .overlay(alignment: message.author == .agent ? .bottomTrailing : .bottomLeading) {
+        .overlay(alignment: isThreadLayout ? .topLeading : message.author == .agent ? .bottomTrailing : .bottomLeading) {
             if selectionMode {
                 Button(action: onSelect) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -520,11 +532,11 @@ struct MessageBubble: View, Equatable {
             ConversationCallActivityCard(message: message)
         } else if let standaloneEmojiItem {
             standaloneEmojiView(standaloneEmojiItem)
-                .padding(.trailing, message.author == .me ? 28 : 0)
+                .padding(.trailing, !isThreadLayout && message.author == .me ? 28 : 0)
         } else if usesBorderlessImageSurface {
             imageCollection
         } else if usesDetachedImageGroup {
-            VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 7) {
+            VStack(alignment: !isThreadLayout && message.author == .me ? .trailing : .leading, spacing: 7) {
                 imageCollection
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("\(message.attachments.count) photos from \(message.authorName)")
@@ -534,7 +546,7 @@ struct MessageBubble: View, Equatable {
             }
         } else if usesStandalonePlanCard, let planCard = message.planCard {
             VStack(alignment: .leading, spacing: 6) {
-                if showAuthor && message.author == .person {
+                if !isThreadLayout && showAuthor && message.author == .person {
                     authorHeader
                         .padding(.leading, 4)
                 }
@@ -637,30 +649,45 @@ struct MessageBubble: View, Equatable {
     }
 
     private var bubbleSurface: some View {
-        AdaptiveBubbleLayout(
-            maximumWidth: 360,
-            minimumWidth: agentExecutionMinimumWidth,
-            fixedWidth: isActionPresented && actionAttachment == nil ? actionPlacement?.sourceFrame.width : nil
-        ) {
-            bubbleContents
-                .padding(.leading, message.voiceMessage == nil ? 12 : 10)
-                .padding(
-                    .trailing,
-                    message.voiceMessage != nil ? 8 : message.author == .me
-                        ? message.isEdited
-                            ? (message.voiceMessage == nil ? 12 : 10)
-                            : (message.voiceMessage == nil ? 30 : 26)
-                        : (message.voiceMessage == nil ? 12 : 10)
-                )
-                .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
+        Group {
+            if isThreadLayout {
+                bubbleContents
+                    .padding(.trailing, message.author == .me && !message.isEdited ? 24 : 0)
+                    .padding(.vertical, 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                AdaptiveBubbleLayout(
+                    maximumWidth: 360,
+                    minimumWidth: agentExecutionMinimumWidth,
+                    fixedWidth: isActionPresented && actionAttachment == nil ? actionPlacement?.sourceFrame.width : nil
+                ) {
+                    bubbleContents
+                        .padding(.leading, message.voiceMessage == nil ? 12 : 10)
+                        .padding(
+                            .trailing,
+                            message.voiceMessage != nil ? 8 : message.author == .me
+                                ? message.isEdited
+                                    ? (message.voiceMessage == nil ? 12 : 10)
+                                    : (message.voiceMessage == nil ? 30 : 26)
+                                : (message.voiceMessage == nil ? 12 : 10)
+                        )
+                        .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
+                }
+            }
         }
         .environment(\.colorScheme, bubbleContentColorScheme)
         .foregroundStyle(bubbleTextColor)
         .background {
-            bubbleShape.fill(bubbleColor)
-            bubbleShape.fill(lightAppearanceBubbleTintColor)
+            if isThreadLayout {
+                // The lifted action preview must cover messages behind its cutout.
+                chatTheme.canvas.opacity(isActionPresented ? 1 : 0)
+                    .animation(nil, value: isActionPresented)
+            } else {
+                bubbleShape.fill(bubbleColor)
+                bubbleShape.fill(lightAppearanceBubbleTintColor)
+            }
         }
-        .clipShape(bubbleShape)
+        .clipShape(isThreadLayout ? AnyShape(Rectangle()) : AnyShape(bubbleShape))
     }
 
     private var agentExecutionMinimumWidth: CGFloat {
@@ -703,8 +730,8 @@ struct MessageBubble: View, Equatable {
 
     @ViewBuilder
     private var bubbleContents: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            if showAuthor && message.author == .person {
+        VStack(alignment: .leading, spacing: isThreadLayout ? 4 : 7) {
+            if !isThreadLayout && showAuthor && message.author == .person {
                 authorHeader
             }
 
@@ -756,6 +783,7 @@ struct MessageBubble: View, Equatable {
                 } else {
                     MarkdownMessageContent(
                         text: message.text,
+                        density: isThreadLayout ? .threads : .standard,
                         mentionTargets: mentionTargets,
                         mentions: message.mentions,
                         inlineAccent: bubbleInlineAccentColor,
@@ -823,8 +851,8 @@ struct MessageBubble: View, Equatable {
 
             if message.isEdited && message.voiceMessage == nil {
                 HStack(spacing: 2) {
-                    Spacer(minLength: 0)
-                    if quoteReplyCount > 0 {
+                    if !isThreadLayout { Spacer(minLength: 0) }
+                    if !isThreadLayout && quoteReplyCount > 0 {
                         quoteReplyMark
                             .padding(.trailing, 4)
                     }
@@ -840,7 +868,7 @@ struct MessageBubble: View, Equatable {
                 .font(.caption2)
                 .foregroundStyle(bubbleSecondaryTextColor)
                 .accessibilityElement(children: quoteReplyCount > 0 ? .contain : .combine)
-            } else if quoteReplyCount > 0 {
+            } else if !isThreadLayout && quoteReplyCount > 0 {
                 HStack(spacing: 0) {
                     Spacer(minLength: 0)
                     quoteReplyMark
@@ -870,7 +898,7 @@ struct MessageBubble: View, Equatable {
 
     /// Messages without a bubble keep the reply mark in the accessory row below them.
     private var rendersQuoteReplyMarkInsideBubble: Bool {
-        !isCallActivity && standaloneEmojiItem == nil && !usesBorderlessImageSurface && !usesBorderlessVideoSurface
+        !isThreadLayout && !isCallActivity && standaloneEmojiItem == nil && !usesBorderlessImageSurface && !usesBorderlessVideoSurface
     }
 
     private var usesBorderlessImageSurface: Bool {
@@ -1100,7 +1128,7 @@ struct MessageBubble: View, Equatable {
 
     /// Only the final message of a run is allowed to grow a tail. Agent bubbles stay plain.
     private var showsBubbleTail: Bool {
-        message.author != .agent
+        !isThreadLayout && message.author != .agent
             && !groupedWithNext
             && !usesBorderlessImageSurface
             && !usesDetachedImageGroup
@@ -1133,9 +1161,9 @@ struct MessageBubble: View, Equatable {
         }
     }
 
-    /// One quiet line under the bubble that names the quoted message and jumps back to it.
+    /// A compact quoted reference above the author in Threads and below the bubble in Chat.
     private func quoteLine(_ source: MessageActionSource) -> some View {
-        let isOwn = message.author == .me
+        let isOwn = !isThreadLayout && message.author == .me
         let senderLabel = MessageQuotePresentation.senderLabel(source.senderLabel, selfDisplayName: selfDisplayName)
         let previewText = MessageQuotePresentation.previewText(source.textPreview, attachmentCount: source.attachmentCount)
         let accessibilityText = ComposerMentionTargetCatalog.accessibilityText(
@@ -1148,26 +1176,40 @@ struct MessageBubble: View, Equatable {
             onNavigateToReply(replySourceMessage?.id ?? source.sourceMessageId)
         } label: {
             HStack(spacing: 6) {
-                if !isOwn { MessageQuoteBar() }
-                BlobEmojiPreviewText(text: "\(senderLabel): \(previewText)")
+                if isThreadLayout {
+                    IdentityAvatar(name: senderLabel, imageSource: nil,
+                                   kind: replySourceMessage?.author == .agent ? .agent : .person,
+                                   size: 16, seed: replySourceMessage?.authorName ?? senderLabel)
+                } else if !isOwn { MessageQuoteBar() }
+                BlobEmojiPreviewText(text: isThreadLayout ? "@\(senderLabel) \(previewText)" : "\(senderLabel): \(previewText)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if isOwn { MessageQuoteBar() }
             }
-            .frame(maxWidth: 260, minHeight: 28, alignment: isOwn ? .trailing : .leading)
+            .frame(maxWidth: isThreadLayout ? .infinity : 260, minHeight: 28, alignment: isOwn ? .trailing : .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 4)
+        .padding(.horizontal, isThreadLayout ? 0 : 4)
+        .overlay(alignment: .topLeading) {
+            if isThreadLayout {
+                ThreadQuoteConnector().stroke(Color.secondary.opacity(0.45), lineWidth: 1.5)
+                    .frame(width: 22, height: 22)
+                    .offset(x: -30, y: 14)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
         .disabled(selectionMode)
         .accessibilityLabel("Quoted message from \(senderLabel): \(accessibilityText)")
         .accessibilityHint("Jumps to the quoted message")
     }
 
     private var bubbleColor: Color {
-        switch message.author {
+        if isThreadLayout { return .clear }
+        return switch message.author {
         case .me: chatTheme.ownBubble
         case .agent: chatTheme.agentBubble
         case .person: chatTheme.peerBubble
@@ -1175,6 +1217,7 @@ struct MessageBubble: View, Equatable {
     }
 
     private var lightAppearanceBubbleTintColor: Color {
+        if isThreadLayout { return .clear }
         guard colorScheme == .light else { return .clear }
         return switch message.author {
         case .me: chatTheme == .quiet || chatTheme == .sand ? .clear : chatTheme.accent.opacity(0.12)
@@ -1186,7 +1229,8 @@ struct MessageBubble: View, Equatable {
     }
 
     private var bubbleInlineAccentColor: Color {
-        switch message.author {
+        if isThreadLayout { return chatTheme.accent }
+        return switch message.author {
         case .me: chatTheme.ownAgentMention
         case .person: chatTheme.accent
         case .agent: KordiTheme.agentMention
@@ -1194,23 +1238,28 @@ struct MessageBubble: View, Equatable {
     }
 
     private var bubblePersonMentionColor: Color {
-        message.author == .me ? chatTheme.ownPersonMention : KordiTheme.personMention
+        if isThreadLayout { return KordiTheme.personMention }
+        return message.author == .me ? chatTheme.ownPersonMention : KordiTheme.personMention
     }
 
     private var bubbleAgentMentionColor: Color {
-        message.author == .me ? chatTheme.ownAgentMention : KordiTheme.agentMention
+        if isThreadLayout { return KordiTheme.agentMention }
+        return message.author == .me ? chatTheme.ownAgentMention : KordiTheme.agentMention
     }
 
     private var bubbleDeliveryColor: Color {
-        message.deliveryState == .read ? chatTheme.ownPersonMention : chatTheme.ownReplyAccent
+        if isThreadLayout { return chatTheme.accent }
+        return message.deliveryState == .read ? chatTheme.ownPersonMention : chatTheme.ownReplyAccent
     }
 
     private var bubbleTextColor: Color {
-        message.author == .me ? chatTheme.ownText : chatTheme.peerText
+        if isThreadLayout { return .primary }
+        return message.author == .me ? chatTheme.ownText : chatTheme.peerText
     }
 
     private var bubbleSecondaryTextColor: Color {
-        bubbleTextColor.opacity(
+        if isThreadLayout { return .secondary }
+        return bubbleTextColor.opacity(
             message.author == .me
                 ? KordiChatTheme.ownMetadataOpacity
                 : KordiChatTheme.otherMetadataOpacity
@@ -1218,6 +1267,7 @@ struct MessageBubble: View, Equatable {
     }
 
     private var bubbleContentColorScheme: ColorScheme {
+        if isThreadLayout { return colorScheme }
         if colorScheme == .light,
            message.author == .me,
            chatTheme.usesLightOwnTextInLightAppearance {

@@ -48,6 +48,8 @@ test('a partially visible row inside the pane padding stays anchored when it gro
   await page.goto('/tests/visual/transcriptHistoryBoundary.html');
   await expect(page.locator('[data-virtual-transcript-session-ready="true"]')).toBeVisible();
   const viewport = page.locator('[data-virtual-transcript-scroll]');
+  // Signal history-reading intent before setting the precise pane-padding boundary.
+  await viewport.dispatchEvent('wheel', { deltaY: -1 });
   await viewport.evaluate(element => { element.scrollTop = 0; });
   const row = page.locator('[data-transcript-window-item][data-index="0"]');
   await expect(row).toBeVisible();
