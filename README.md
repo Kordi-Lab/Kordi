@@ -20,7 +20,8 @@
   <a href="#how-kordi-works">Architecture</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="#development">Development</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a>
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="SECURITY.md">Security</a>
 </p>
 
 ---
@@ -161,3 +162,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 Contributions start with a GitHub issue and land through a reviewed pull request. If this is your first Kordi contribution, read the [community contributor guide](docs/community-contributor-guide.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for the detailed branch workflow, validation commands, and PR checklist.
 
 Kordi currently targets macOS and iPhone and is in beta. Product behavior, hosted interfaces, and contributor workflows may evolve as the project approaches a stable release.
+
+## Security
+
+Please report security issues privately as described in [SECURITY.md](SECURITY.md), not in public issues.

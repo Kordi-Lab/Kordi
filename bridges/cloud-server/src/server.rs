@@ -174,6 +174,10 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)
         .route("/health", axum::routing::get(health))
+        .route(
+            crate::security_txt::PATH,
+            axum::routing::get(crate::security_txt::security_txt),
+        )
         .layer(cors)
 }
 

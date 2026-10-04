@@ -4,6 +4,8 @@ Thanks for helping build Kordi. This repository uses GitHub issues, pull request
 
 If this is your first contribution, begin with the [community contributor guide](docs/community-contributor-guide.md) for contribution areas, issue preparation, safe local setup, bug-report guidance, and review expectations.
 
+Do not report security issues in public issues or pull requests. Follow [SECURITY.md](SECURITY.md) to report them privately.
+
 ## Prerequisites
 
 - Rust with `cargo`, `rustfmt`, and `clippy`
