@@ -228,7 +228,21 @@ mod message;
 mod subtyped_attachment_validation;
 pub use message::{update_voice_transcript, UpdateVoiceTranscriptRequest};
 mod pin_snapshots;
+mod quote_redaction;
+pub(crate) use quote_redaction::scrub_quote_page;
 mod reaction;
+mod redaction;
+pub use redaction::{
+    backfill_content_removal_history, reconcile_deleted_messages, reconcile_hidden_messages,
+    request_was_deleted, HistoryBackfillReport, BACKFILL_WINDOW_DAYS,
+};
+// The removal worker and the media library queue and finish jobs through these.
+#[allow(unused_imports)]
+pub(crate) use redaction::{
+    cancel_queued_runs_for_deleted_request, conversation_session_ids, deleted_request_runs_sql,
+    enqueue_removal_job, exclusive_identifiers, message_identifiers, DeletedRequest, NewRemovalJob,
+    RemovalReason,
+};
 mod service_members;
 mod support;
 mod sync_events;

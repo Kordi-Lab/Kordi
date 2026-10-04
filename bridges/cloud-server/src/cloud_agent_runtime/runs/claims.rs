@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
 
 use super::prompt_history::fallback_prompt_for_claim;
-use super::RunResult;
+use super::{RunError, RunResult};
 
 #[derive(Debug, Deserialize)]
 pub struct ClaimRunRequest {
@@ -201,6 +201,22 @@ async fn claim_run_with_executor(
     let agent_id = super::execution_agent_id(pool, input).await?;
     if let Some(run) = existing_run(pool, input, &agent_id).await? {
         return Ok(run);
+    }
+
+    // A request deleted for everyone never starts a new run. A claim that
+    // races the deletion is cancelled by the removal job before it starts.
+    if crate::chat_sync::store::request_was_deleted(
+        pool,
+        &input.session_id,
+        &input.request_message_id,
+        &input.requester_account_id,
+    )
+    .await
+    .map_err(|error| match error {
+        crate::chat_sync::store::StoreError::Database(error) => RunError::Persistence(error),
+        error => RunError::Persistence(sqlx_core::Error::Protocol(error.to_string())),
+    })? {
+        return Err(RunError::ContextUnavailable("The request was deleted."));
     }
 
     let now = Utc::now().to_rfc3339();

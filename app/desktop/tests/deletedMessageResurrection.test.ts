@@ -138,3 +138,41 @@ test('a filtered history page retains its pagination cursor', async () => {
   const page = await new ChatSyncSyncClient(state).listChatConversationHistoryPage('test-token', conversation.id);
   assert.deepEqual(page, { messages: [], nextBeforeSequence: 8, hasMore: true });
 });
+
+for (const type of ['message.deleted', 'message.hidden']) {
+  test(`a content-free ${type} removes a synced message and older snapshots stay removed`, async () => {
+    const responses = [
+      response([{ ...event(type, 1, { message_id: message.id, conversation }), critical: true }]),
+      response([event('message.updated', 2, { message: { ...message, version: 1 }, conversation })]),
+    ];
+    const state = new ChatSyncState(async <T>() => responses.shift() as T, () => 'acct_b', () => {}, () => null, new CloudMessageDeletions(async () => []));
+    state.rememberConversation(conversation);
+    state.messageById.set(message.id, message);
+    const client = new ChatSyncSyncClient(state);
+    let visible = { acct_a: [cloudMessageFromChatSync(message, conversation, 'acct_b')] };
+    const removal = await client.syncCloudEvents('test-token', 'start');
+    assert.deepEqual(removal.events.map((value) => [value.eventType, value.messageId]), [['message.deleted', message.id]]);
+    visible = applyCloudSyncEventsToMessagesByPeer('acct_b', visible, removal.events) as typeof visible;
+    assert.equal(Object.values(visible).flat().length, 0);
+    const replay = await client.syncCloudEvents('test-token', 'cursor-1');
+    assert.equal(replay.chat?.messages.length, 0, 'an older snapshot must not be published again');
+    visible = applyCloudSyncEventsToMessagesByPeer('acct_b', visible, replay.events) as typeof visible;
+    assert.equal(Object.values(visible).flat().length, 0);
+    assert.equal(state.messageById.has(message.id), false);
+  });
+}
+
+test('a noncritical message.superseded is ignored and removes nothing', async () => {
+  const removals = new CloudMessageDeletions(async () => []);
+  const result = response([event('message.superseded', 1, { message_id: message.id, conversation })]);
+  const state = new ChatSyncState(async <T>() => result as T, () => 'acct_b', () => {}, () => null, removals);
+  state.rememberConversation(conversation);
+  state.messageById.set(message.id, message);
+  const batch = await new ChatSyncSyncClient(state).syncCloudEvents('test-token', 'start');
+  assert.deepEqual(batch.events, []);
+  assert.equal(batch.chat?.messages.length, 0);
+  assert.deepEqual(batch.chat?.events.map((value) => [value.type, value.critical]), [['message.superseded', false]]);
+  assert.equal(state.messageById.has(message.id), true);
+  assert.equal(removals.ids('acct_b').has(message.id), false);
+  assert.deepEqual(state.retainMessages([message]).map((value) => value.id), [message.id]);
+});

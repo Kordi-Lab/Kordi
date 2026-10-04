@@ -369,6 +369,7 @@ async fn sync(
     {
         Ok(batch) => Json(SyncResponse {
             protocol_version: PROTOCOL_VERSION,
+            content_removal_version: crate::chat_sync::content_removal_version(),
             events: batch.events,
             next_cursor: codec.encode(&session.account_id, batch.next_stream_seq),
             last_stream_seq: batch.next_stream_seq,
@@ -393,6 +394,7 @@ async fn bootstrap(
         Ok(snapshot) => Json(BootstrapResponse {
             session_visibility: snapshot.session_visibility,
             protocol_version: PROTOCOL_VERSION,
+            content_removal_version: crate::chat_sync::content_removal_version(),
             conversations: snapshot.conversations,
             latest_messages: snapshot.latest_messages,
             session_pins: snapshot.session_pins,

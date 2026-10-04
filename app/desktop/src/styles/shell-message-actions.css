@@ -263,6 +263,19 @@
   color: var(--utility-muted-text);
 }
 
+.app-source-message-quote[data-quote-deleted="true"] {
+  cursor: default;
+}
+
+.app-source-message-quote[data-quote-deleted="true"]:hover {
+  --app-source-message-quote-bar: color-mix(in oklab, var(--utility-muted-text) 28%, transparent);
+  color: var(--app-source-message-quote-muted);
+}
+
+.app-source-message-quote-deleted {
+  font-style: italic;
+}
+
 .app-source-message-quote-text,
 .app-source-message-quote .app-message-mention {
   color: inherit;

@@ -37,6 +37,7 @@ export function cloudMessageActionFromRecord(value: unknown): MessageActionMetad
       createdAtMs: integerMilliseconds(source.createdAtMs),
       timeLabel: cleanText(source.timeLabel) || null,
       ...(mentions ? { mentions } : {}),
+      ...(source.sourceDeleted === true ? { sourceDeleted: true } : {}),
     },
   };
 }

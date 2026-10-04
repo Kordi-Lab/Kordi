@@ -6,8 +6,10 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } 
 import { prepareMessageDeleteAnimation } from '@/features/chat/messageDeleteAnimation';
 import type { UseCloudCollaborationStateResult } from '@/features/cloud/useCloudCollaborationState';
 import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
+import { useServerContentRemovalVersion } from '@/features/cloud/contentRemovalCapability';
 import type { CanonicalSessionState, ComposerQuoteState, Conversation, Message, MessageEditState } from '@/kordi-app/types';
 import { MessageDeleteDialog } from '@/pages/MessageDeleteDialog';
+import { MESSAGE_DELETE_ERROR } from '@/pages/messageDeleteCopy';
 
 type MessageMutationTransport = Pick<
   UseCloudCollaborationStateResult,
@@ -38,6 +40,7 @@ export function useKordiMessageMutations({
   const messageEditBusyRef = useRef(false);
   const [messageEditError, setMessageEditError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Message | null>(null);
+  const serverDeletesStoredCopies = useServerContentRemovalVersion() >= 1;
 
   const onEditMessage = useCallback((message: Message) => {
     const conversationId = message.reactionConversationId?.trim();
@@ -109,6 +112,7 @@ export function useKordiMessageMutations({
         message: deleteTarget,
         peerName: activeConversation.name,
         group: (activeConversation.canonicalSessionId ?? activeConversation.id).startsWith('session:group:'),
+        serverDeletesStoredCopies,
         onCancel: () => setDeleteTarget(null),
         onDelete: async (forEveryone: boolean) => {
           const conversationId = deleteTarget.reactionConversationId?.trim();
@@ -149,7 +153,7 @@ export function useKordiMessageMutations({
               ...current,
               messages: current.messages.filter((message) => !deletedCanonicalIds.has(message.id)),
             }));
-          } catch (error) {
+          } catch {
             deletionAnimation?.cancel();
             setCanonicalState((current) => {
               if (!current || removedCanonicalMessages.length === 0) return current;
@@ -164,7 +168,9 @@ export function useKordiMessageMutations({
                     )),
                   };
             });
-            setDesktopChatError(error instanceof Error ? error.message : 'Could not delete message.');
+            // The dialog already closed so the removal could animate. People
+            // see the retry text, never the transport error.
+            setDesktopChatError(MESSAGE_DELETE_ERROR);
             return;
           }
           await animation;

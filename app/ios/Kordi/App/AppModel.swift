@@ -210,9 +210,13 @@ final class AppModel: ObservableObject {
             if oldValue?.accountId != account?.accountId {
                 resetDigestReads()
                 voiceTranscriptions.activate(accountId: account?.accountId)
+                serverContentRemovalVersion = 0
             }
         }
     }
+    /// The server's `content_removal_version`; 1 or higher means it deletes
+    /// stored copies of deleted content. Delete copy names storage only then.
+    @Published private(set) var serverContentRemovalVersion = 0
     @Published var rollingDigestSnapshot: RollingDigestResponse?
     @Published var digestCalendarSnapshot: DigestCalendarResponse?
     @Published var digestMutationState = DigestMutationState()
@@ -2615,7 +2619,7 @@ final class AppModel: ObservableObject {
             return true
         } catch {
             guard self.token == token, account?.accountId == accountID else { return false }
-            errorMessage = userFacing(error, fallback: "Could not delete this photo.")
+            errorMessage = userFacing(error, fallback: MessageDeletePresentation.photoDeleteFailedText)
             return false
         }
     }
@@ -2703,7 +2707,7 @@ final class AppModel: ObservableObject {
             } catch {
                 guard self.token == token, account?.accountId == deletingAccountID,
                       !CloudTransportErrorPolicy.isCancellation(error) else { return false }
-                errorMessage = userFacing(error, fallback: "Could not delete this message.")
+                errorMessage = userFacing(error, fallback: MessageDeletePresentation.deleteFailedText)
                 return false
             }
         }
@@ -4761,7 +4765,7 @@ final class AppModel: ObservableObject {
                 if let messages { messagesByConversation[conversation.id] = messages }
                 if let activity { sessionActivityByID[conversation.sessionId] = activity }
                 cacheCurrentConversations()
-                errorMessage = userFacing(error, fallback: "Could not delete this session.")
+                errorMessage = userFacing(error, fallback: "Could not remove this chat. Try again.")
                 return false
             }
         }
@@ -6325,6 +6329,9 @@ final class AppModel: ObservableObject {
                 do {
                     let response = try await api.sync(token: token, cursor: nextCursor)
                     guard self.token == token, !Task.isCancelled else { return }
+                    // An absent field means an older server that keeps stored copies.
+                    let removalVersion = response.contentRemovalVersion ?? 0
+                    if serverContentRemovalVersion != removalVersion { serverContentRemovalVersion = removalVersion }
                     if cloudConnectionState != .connected {
                         cloudConnectionState = .connected
                         if errorMessage == Self.cloudUnavailableMessage {
@@ -7001,24 +7008,42 @@ final class AppModel: ObservableObject {
 
     private func removeCloudMessages(_ messageIds: Set<String>, updateRenderedMessages: Bool = true) {
         guard !messageIds.isEmpty else { return }
+        var removedAttachmentIDs = Set<String>()
         cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
-            messages.filter { !messageIds.contains($0.messageId) }
+            messages.filter {
+                guard messageIds.contains($0.messageId) else { return true }
+                removedAttachmentIDs.formUnion(MessageAttachmentReferences.ids(in: $0))
+                return false
+            }
         }
         rebuildCloudMessageIndices()
         if let accountId = account?.accountId {
             cache?.deleteMessages(messageIds, accountId: accountId)
         }
+        defer { evictReleasedAttachmentFiles(removedAttachmentIDs) }
         guard updateRenderedMessages else { return }
         for conversationId in Array(messagesByConversation.keys) {
             guard let messages = messagesByConversation[conversationId] else { continue }
             let filtered = messages.filter {
-                !messageIds.contains($0.id)
-                    && !messageIds.contains($0.reactionTargetMessageId ?? "")
+                guard messageIds.contains($0.id) || messageIds.contains($0.reactionTargetMessageId ?? "") else { return true }
+                removedAttachmentIDs.formUnion(MessageAttachmentReferences.ids(in: $0))
+                return false
             }
             guard filtered.count != messages.count else { continue }
             messagesByConversation[conversationId] = filtered
             cacheCurrentMessages(conversationId)
         }
+    }
+
+    /// Cached files of removed messages are dropped unless a message still on
+    /// this device uses them. Eviction is best effort and never blocks removal.
+    private func evictReleasedAttachmentFiles(_ candidates: Set<String>) {
+        guard !candidates.isEmpty, let accountId = account?.accountId else { return }
+        let released = MessageAttachmentReferences.released(candidates,
+            keptBy: cloudMessagesByPeer.values.joined(), rendered: messagesByConversation.values.joined())
+        guard !released.isEmpty else { return }
+        let store = attachmentFileStore
+        Task { await store.evict(attachmentIds: released, accountId: accountId) }
     }
 
     private func removeCloudMessage(_ messageId: String) {

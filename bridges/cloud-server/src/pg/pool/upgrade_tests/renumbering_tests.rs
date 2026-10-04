@@ -165,11 +165,18 @@ async fn readme_renumbering_resolves_every_earlier_numbering() {
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
 async fn a_database_from_the_deletion_change_upgrades_after_renumbering() {
-    // The content removal change records email verification, realtime
-    // tickets, and the runner token hash at 107 to 109, then its own
-    // migrations at 116 and 117.
+    // Before it merged, the content removal change recorded email
+    // verification, realtime tickets, and the runner token hash at 107 to
+    // 109, then its own migrations at 116 and 117, without versions 106 to
+    // 108 of the main branch.
     let pool = fixture(105).await;
-    for (version, description) in [(107_i64, EMAIL), (108, TICKETS), (109, RUNNER)] {
+    for (version, description) in [
+        (107_i64, EMAIL),
+        (108, TICKETS),
+        (109, RUNNER),
+        (116, CONTENT_REMOVAL),
+        (117, FILES_PANEL),
+    ] {
         let migration = EMBEDDED_MIGRATIONS
             .iter()
             .find(|migration| migration.description == description)
@@ -182,7 +189,6 @@ async fn a_database_from_the_deletion_change_upgrades_after_renumbering() {
             .await
             .unwrap();
     }
-    execute(&pool, &format!("INSERT INTO cloud_schema_versions(version,description) VALUES(116,'{CONTENT_REMOVAL}'),(117,'{FILES_PANEL}')")).await;
 
     let refused = apply_migrations(&pool)
         .await
@@ -195,15 +201,10 @@ async fn a_database_from_the_deletion_change_upgrades_after_renumbering() {
     second.unwrap();
     latest_version(&pool).await;
 
-    let mut expected = EMBEDDED_MIGRATIONS
+    let expected = EMBEDDED_MIGRATIONS
         .iter()
         .map(|migration| (migration.version, migration.description.to_string()))
         .collect::<Vec<_>>();
-    expected.extend([
-        (116, CONTENT_REMOVAL.to_string()),
-        (117, FILES_PANEL.to_string()),
-    ]);
-    expected.sort();
     assert_eq!(recorded(&pool).await, expected);
     let (columns,): (i64,) = query_as(
         "SELECT count(*) FROM information_schema.columns \
@@ -213,4 +214,9 @@ async fn a_database_from_the_deletion_change_upgrades_after_renumbering() {
     .await
     .unwrap();
     assert_eq!(columns, 1, "email verification stays applied");
+    let (state_rows,): (i64,) = query_as("SELECT count(*) FROM cloud_content_removal_state")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(state_rows, 1, "content removal stays applied");
 }

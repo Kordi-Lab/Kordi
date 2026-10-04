@@ -187,12 +187,14 @@ struct MessageActionOverlayLayout: Equatable {
         actionCount: Int,
         alignsTrailing: Bool? = nil,
         forcedMenuIsBelow: Bool? = nil,
-        fixedPreviewFrame: CGRect? = nil
+        fixedPreviewFrame: CGRect? = nil,
+        menuContentHeight: CGFloat? = nil
     ) -> Self {
         let margin: CGFloat = 12
         let reactionHeight: CGFloat = showsReactions ? 52 : 0
         let menuWidth = min(238, containerSize.width - margin * 2)
-        let preferredMenuHeight = CGFloat(actionCount) * 44 + 10
+        // Rows are 44 pt; menus with wrapping text pass their measured height.
+        let preferredMenuHeight = menuContentHeight.map { max(44, $0) + 2 } ?? CGFloat(actionCount) * 44 + 10
         let availableHeight = max(1, containerSize.height - margin * 2)
         let gaps: CGFloat = showsReactions ? 16 : 8
         let menuHeight = min(
@@ -350,6 +352,7 @@ struct MessageActionOverlay: View {
     @State private var isDismissing = false
     @State private var showsAllReactions = false
     @State private var isConfirmingDelete = false
+    @State private var deleteConfirmationHeight: CGFloat = 0
     @State private var didSchedulePreviewExpansion = false
     let message: ChatMessage
     let sourceFrame: CGRect
@@ -364,7 +367,7 @@ struct MessageActionOverlay: View {
     let allowsReactions: Bool
     let allowsEdit: Bool
     let allowsDelete: Bool
-    let deleteForEveryoneLabel: String
+    let deletePresentation: MessageDeletePresentation
     let isPinned: Bool
     let mediaAttachment: ChatAttachment?
     let readReceiptLabel: String?
@@ -405,8 +408,11 @@ struct MessageActionOverlay: View {
             + (readReceiptLabel == nil ? 0 : 1)
     }
 
-    private var actionCount: Int {
-        isConfirmingDelete ? (message.author == .me ? 2 : 1) : regularActionCount
+    /// The delete confirmation wraps helper text, so its menu follows the
+    /// measured content height instead of a row count.
+    private var deleteConfirmationMenuHeight: CGFloat? {
+        guard isConfirmingDelete else { return nil }
+        return deleteConfirmationHeight > 0 ? deleteConfirmationHeight : deletePresentation.estimatedHeight
     }
 
     private var mediaKind: ExpressiveMediaLibraryKind? {
@@ -460,10 +466,11 @@ struct MessageActionOverlay: View {
                 containerSize: layoutFrame.size,
                 showsReactions: showsReactionSurface,
                 reactionCount: showsReactionSurface ? quickReactions.count : 0,
-                actionCount: actionCount,
+                actionCount: regularActionCount,
                 alignsTrailing: message.author == .me,
                 forcedMenuIsBelow: regularLayout.menuIsBelow,
-                fixedPreviewFrame: regularLayout.previewFrame
+                fixedPreviewFrame: regularLayout.previewFrame,
+                menuContentHeight: deleteConfirmationMenuHeight
             )
             let previewFrame = regularLayout.previewFrame.offsetBy(
                 dx: layoutOffset.width, dy: layoutOffset.height + previewScroll.offset
@@ -767,11 +774,21 @@ struct MessageActionOverlay: View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
                 if isConfirmingDelete {
-                    if message.author == .me && !message.isLocalFailedSend {
-                        deleteChoiceButton(deleteForEveryoneLabel) { onDelete(true) }
+                    if let forEveryone = deletePresentation.forEveryone {
+                        deleteChoiceButton(forEveryone) { onDelete(true) }
                         Divider().padding(.horizontal, 14)
                     }
-                    deleteChoiceButton(message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete for me" : "Delete photo for me") { onDelete(false) }
+                    deleteChoiceButton(deletePresentation.forMe) { onDelete(false) }
+                    if let footnote = deletePresentation.footnote {
+                        Text(footnote)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .accessibilityIdentifier("message-delete-footnote")
+                    }
                 } else {
                     if mediaAttachment != nil {
                         actionButton("Review", systemImage: "eye", action: onReviewAttachment)
@@ -854,6 +871,9 @@ struct MessageActionOverlay: View {
                 }
             }
             .padding(.vertical, 4)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if isConfirmingDelete { deleteConfirmationHeight = height }
+            }
         }
         .scrollBounceBehavior(.basedOnSize)
         .background {
@@ -869,22 +889,32 @@ struct MessageActionOverlay: View {
     }
 
     private func deleteChoiceButton(
-        _ title: String,
+        _ choice: MessageDeletePresentation.Choice,
         action: @escaping () -> Void
     ) -> some View {
         Button(role: .destructive) {
             performAction(action)
         } label: {
-            Text(title)
-                .font(.body)
-                .foregroundStyle(.red)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .padding(.horizontal, 20)
-                .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(choice.title)
+                    .font(.body)
+                    .foregroundStyle(.red)
+                if let helper = choice.helper {
+                    Text(helper)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 20)
+            .padding(.vertical, choice.helper == nil ? 0 : 8)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(choice.title)
+        .accessibilityHint(choice.helper ?? "")
+        .accessibilityIdentifier(choice.identifier)
     }
 
     private func actionButton(

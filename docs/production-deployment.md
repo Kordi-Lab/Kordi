@@ -103,6 +103,28 @@ If rollout or health fails after images were applied and the schema was declared
 `forward-only`, it records that a forward fix is required. Database restoration is always
 a separate approved operation; application rollback never claims to restore a database.
 
+## Content removal rollout
+
+The release that adds schema version 116 removes copies of deleted, hidden, and edited
+messages only for changes made after it is installed. Deploying it rewrites and deletes
+nothing. Copies of content changed earlier stay in replay rows, stored digests, and object
+storage until an operator runs the history backfill on the product machine. Until then,
+earlier versions of messages edited before the upgrade keep replaying to members and to
+former members until replay journal retention removes them (up to 90 days). After the
+promotion succeeds:
+
+1. Confirm that the promotion's backup receipt is verified.
+2. Run `kordi-cloud-server backfill-content-removal` without arguments. It is a dry run
+   that reports counts and writes nothing. Record the counts.
+3. Get explicit approval for those counts, then run
+   `kordi-cloud-server backfill-content-removal --apply`. Its changes remove copies and
+   cannot be reverted from the database.
+4. Follow the removal job backlog query in [data deletion](data-deletion.md#worker) until
+   the `backfill` job has `completed_at` set.
+
+Set `KORDI_ATTACHMENT_BUCKET_UNVERSIONED=1` only after the checks in
+[data deletion](data-deletion.md#reported-version-and-attestation).
+
 ## Backup receipt
 
 The protected backup directory contains `<backup-id>.json` and its referenced data file.

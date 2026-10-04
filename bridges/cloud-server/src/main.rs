@@ -42,6 +42,17 @@ enum Commands {
         #[arg(long)]
         database_url: Option<String>,
     },
+    /// Remove stored copies of content that was deleted, hidden, or edited
+    /// before content removal shipped. Reports counts only unless `--apply`
+    /// is given. See docs/data-deletion.md before applying.
+    BackfillContentRemoval {
+        /// Postgres connection string. Falls back to the DATABASE_URL env var.
+        #[arg(long)]
+        database_url: Option<String>,
+        /// Write the changes. Without this flag nothing is changed.
+        #[arg(long, default_value_t = false)]
+        apply: bool,
+    },
 }
 
 #[tokio::main]
@@ -82,6 +93,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             );
             if summary.failed > 0 {
                 return Err("Avatar asset backfill completed with failures".into());
+            }
+        }
+        Commands::BackfillContentRemoval {
+            database_url,
+            apply,
+        } => {
+            let database_url = database_url
+                .or_else(|| std::env::var("DATABASE_URL").ok())
+                .ok_or("DATABASE_URL is required (env var or --database-url flag)")?;
+            let pool = kordi_cloud_server::pg::init_pool(&database_url).await?;
+            let report = kordi_cloud_server::chat_sync::store::backfill_content_removal_history(
+                &pool, apply,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            println!(
+                "Content removal backfill {}: photo_removal_jobs={}, removed_photo_attachments={}, \
+                 hidden_rows={}, superseded_rows={}, digest_prompts={}, \
+                 deleted_messages_in_window={}, backfill_job_queued={}",
+                if report.applied { "applied" } else { "dry run (no changes)" },
+                report.photo_removal_jobs,
+                report.removed_photo_attachments,
+                report.hidden_rows,
+                report.superseded_rows,
+                report.digest_prompts,
+                report.deleted_messages,
+                report.backfill_job_queued,
+            );
+            if !report.applied {
+                println!("Run again with --apply to make these changes.");
             }
         }
     }

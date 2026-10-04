@@ -139,7 +139,13 @@ paths:
           name: limit
           schema: { type: integer, minimum: 1, maximum: 1000, default: 500 }
       responses:
-        '200': { description: Ordered event batch, last stream sequence, and next opaque cursor. }
+        '200':
+          description: >-
+            Ordered event batch, last stream sequence, and next opaque cursor.
+            `content_removal_version` (integer, 0 or 1) is 1 when the server
+            deletes stored copies and files of deleted content; a missing
+            field means 0. Events of deleted, hidden, or superseded messages
+            carry only `message_id` and an optional `conversation`.
         '409':
           description: Cursor expired and bootstrap is required.
   /v2/chat/sync/bootstrap:
@@ -147,7 +153,10 @@ paths:
       operationId: bootstrapSync
       summary: Capture a consistent snapshot and matching sync cursor.
       responses:
-        '200': { description: Consistent account chat snapshot. }
+        '200':
+          description: >-
+            Consistent account chat snapshot. `content_removal_version`
+            (integer, 0 or 1) has the same meaning as in incremental sync.
   /v2/chat/realtime/ticket:
     post:
       operationId: issueRealtimeTicket

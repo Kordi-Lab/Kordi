@@ -4,6 +4,11 @@
 //! replay rows are trimmed here, and each user's `min_seq` is advanced in the
 //! same transaction before the rows disappear so an old cursor fails with an
 //! explicit bootstrap requirement.
+//!
+//! Retention is not how deleted content is removed. Deletes, hides, and edits
+//! rewrite the affected replay rows when they happen, and replay checks
+//! deletion and hide state on read; see `store/redaction.rs` and
+//! `docs/data-deletion.md`.
 
 use chrono::{DateTime, Utc};
 use sqlx_core::query::query;

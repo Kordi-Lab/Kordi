@@ -117,6 +117,8 @@ export type MessageSourceReference = {
   mentions?: MessageMention[];
   attachmentCount?: number;
   time?: string | null;
+  /** The source was deleted for everyone; render a non-interactive notice. */
+  deleted?: boolean;
 };
 
 export type MessageReplySummary = {
@@ -159,6 +161,7 @@ export type MessageActionSource = {
   attachmentCount: number;
   createdAtMs?: number | null;
   timeLabel?: string | null;
+  sourceDeleted?: boolean;
 };
 
 export type MessageActionMetadata = {

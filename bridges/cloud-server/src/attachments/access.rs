@@ -16,6 +16,9 @@ pub(crate) type AttachmentAccessRow = (
     Option<String>,
 );
 
+/// The attachment as the session may read it. A file queued for deletion is
+/// not found for anyone, its owner included, and a member reads another
+/// person's file only through a message that has not been deleted.
 pub(crate) async fn attachment_access_row(
     state: &ServerState,
     session: &CloudSession,
@@ -25,7 +28,7 @@ pub(crate) async fn attachment_access_row(
     let row: Option<AttachmentAccessRow> = match query_as(
         "SELECT object_key, owner_account_id, finalized_at, content_type, detected_content_type, size_bytes, preview_url \
          FROM cloud_attachments \
-         WHERE attachment_id = $1",
+         WHERE attachment_id = $1 AND purge_requested_at IS NULL",
     )
     .bind(attachment_id)
     .fetch_optional(pool)
@@ -60,6 +63,7 @@ pub(crate) async fn attachment_access_row(
              JOIN cloud_chat_conversation_members member \
                ON member.conversation_id = message.conversation_id \
              WHERE attachment.attachment_id = $1 \
+               AND message.deleted_at IS NULL \
                AND member.account_id = $2 \
                AND member.membership_state = 'active' \
              LIMIT 1",

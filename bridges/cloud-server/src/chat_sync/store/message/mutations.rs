@@ -1,3 +1,7 @@
+use super::super::redaction::{
+    finish_content_change, finish_delete_for_everyone, finish_hide, message_identifiers,
+    RemovalReason,
+};
 use super::envelope_placement::{
     ensure_rewrite_keeps_envelope_placement, CLOUD_DIRECT_PREFIX, CLOUD_GROUP_PREFIX,
     RESERVED_ENVELOPE_PREFIXES,
@@ -160,6 +164,14 @@ pub async fn edit_message(
     .await?;
     let message = load_message(&mut transaction, message_id).await?;
     fanout_message_sync_event(&mut transaction, "message.updated", &message).await?;
+    // Replay keeps only the current version; digests drop the earlier one.
+    finish_content_change(
+        &mut transaction,
+        &message,
+        RemovalReason::MessageEdited,
+        &[],
+    )
+    .await?;
     let message =
         super::super::attachment_actions::for_viewer(&mut transaction, account_id, message).await?;
     transaction.commit().await?;
@@ -214,6 +226,7 @@ pub async fn delete_message(
                 &json!({ "message_id": message_id }),
             )
             .await?;
+            finish_hide(&mut transaction, account_id, conversation_id, message_id).await?;
         }
         transaction.commit().await?;
         return Ok(());
@@ -226,6 +239,10 @@ pub async fn delete_message(
         transaction.commit().await?;
         return Ok(());
     }
+    // Read before the content is emptied: quotes, threads, and agent runs
+    // refer to the message by these ids, and the job removes these files.
+    let identifiers = message_identifiers(&current);
+    let attachment_ids = current.attachment_ids.clone();
     query(
         "UPDATE cloud_chat_messages \
          SET content = '{\"schema\":1,\"blocks\":[]}'::jsonb, \
@@ -246,6 +263,7 @@ pub async fn delete_message(
         .await?;
     let message = load_message(&mut transaction, message_id).await?;
     fanout_message_sync_event(&mut transaction, "message.deleted", &message).await?;
+    finish_delete_for_everyone(&mut transaction, &message, &identifiers, &attachment_ids).await?;
     transaction.commit().await?;
     Ok(())
 }

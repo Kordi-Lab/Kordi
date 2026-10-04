@@ -50,14 +50,49 @@ pub(super) async fn insert_sync_event_fanout(
     entity_version: Option<i32>,
     payloads: Vec<(String, Value)>,
 ) -> Result<(), StoreError> {
-    let payloads = payloads
+    let rows = payloads
         .into_iter()
-        .filter(|(account_id, _)| !account_id.trim().is_empty())
+        .map(|(account_id, payload)| FanoutRow {
+            account_id,
+            event_type,
+            payload,
+        })
+        .collect();
+    insert_sync_event_fanout_rows(
+        transaction,
+        conversation_id,
+        entity_id,
+        entity_version,
+        rows,
+    )
+    .await
+}
+
+/// One recipient's critical event in a fanout. Recipients of one entity
+/// change may receive different event types, such as a content-free
+/// `message.hidden` for an account that removed the message from its view.
+pub(super) struct FanoutRow<'a> {
+    pub(super) account_id: String,
+    pub(super) event_type: &'a str,
+    pub(super) payload: Value,
+}
+
+pub(super) async fn insert_sync_event_fanout_rows(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Option<Uuid>,
+    entity_id: Option<Uuid>,
+    entity_version: Option<i32>,
+    rows: Vec<FanoutRow<'_>>,
+) -> Result<(), StoreError> {
+    let rows = rows
+        .into_iter()
+        .filter(|row| !row.account_id.trim().is_empty())
+        .map(|row| (row.account_id, (row.event_type, row.payload)))
         .collect::<std::collections::BTreeMap<_, _>>();
-    if payloads.is_empty() {
+    if rows.is_empty() {
         return Ok(());
     }
-    let account_ids = payloads.keys().cloned().collect::<Vec<_>>();
+    let account_ids = rows.keys().cloned().collect::<Vec<_>>();
     query(
         "INSERT INTO cloud_chat_user_sync_heads(account_id, last_seq, min_seq) \
          SELECT account_id, 0, 0 FROM UNNEST($1::TEXT[]) AS recipient(account_id) \
@@ -83,7 +118,7 @@ pub(super) async fn insert_sync_event_fanout(
     .bind(&account_ids)
     .fetch_all(&mut **transaction)
     .await?;
-    if heads.len() != payloads.len() {
+    if heads.len() != rows.len() {
         return Err(StoreError::InvariantViolation(
             "sync event fanout did not advance every recipient",
         ));
@@ -91,13 +126,13 @@ pub(super) async fn insert_sync_event_fanout(
     let sequences = heads
         .into_iter()
         .collect::<std::collections::BTreeMap<_, _>>();
-    let rows = payloads
+    let rows = rows
         .into_iter()
-        .map(|(account_id, payload)| {
+        .map(|(account_id, (event_type, payload))| {
             sequences
                 .get(&account_id)
                 .copied()
-                .map(|stream_seq| (account_id, stream_seq, payload))
+                .map(|stream_seq| (account_id, stream_seq, event_type, payload))
                 .ok_or(StoreError::InvariantViolation(
                     "sync event fanout sequence is missing",
                 ))
@@ -110,13 +145,13 @@ pub(super) async fn insert_sync_event_fanout(
     );
     builder.push_values(
         rows.iter(),
-        |mut values, (account_id, stream_seq, payload)| {
+        |mut values, (account_id, stream_seq, event_type, payload)| {
             values
                 .push_bind(account_id)
                 .push_bind(stream_seq)
                 .push_bind(Uuid::now_v7())
                 .push_bind(PROTOCOL_VERSION)
-                .push_bind(event_type)
+                .push_bind(*event_type)
                 .push_bind(conversation_id)
                 .push_bind(entity_id)
                 .push_bind(entity_version)

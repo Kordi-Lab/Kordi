@@ -38,5 +38,6 @@ export function collaborationMessageActionSourceReference(action: Message['messa
     mentions: action.source.mentions,
     attachmentCount: action.source.attachmentCount,
     time: action.source.timeLabel ?? null,
+    ...(action.source.sourceDeleted === true ? { deleted: true } : {}),
   };
 }
