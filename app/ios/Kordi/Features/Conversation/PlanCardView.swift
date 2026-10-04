@@ -268,7 +268,7 @@ struct PlanCardView: View {
             size: 22,
             seed: participant.participantId
         )
-        .overlay(Circle().strokeBorder(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2))
+        .overlay(RoundedRectangle(cornerRadius: 22 * 0.17, style: .continuous).strokeBorder(Color(uiColor: .secondarySystemGroupedBackground), lineWidth: 2))
         .opacity(participant.rsvp == .no ? 0.5 : 1)
     }
 

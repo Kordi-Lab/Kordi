@@ -1,3 +1,4 @@
+import { MessageLayoutSetting } from '@/kordi-app/components/MessageLayoutSetting';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AuthPage } from '@/kordi-app/auth/AuthPage';
@@ -138,6 +139,7 @@ export function SettingsPage({
                       )}
                     />
                   ) : null}
+                  {activeSettingsSection.id === 'appearance' ? <MessageLayoutSetting /> : null}
                   {activeSettingsSection.items.map((item) => (
                     <SettingsRow
                       key={item.label}

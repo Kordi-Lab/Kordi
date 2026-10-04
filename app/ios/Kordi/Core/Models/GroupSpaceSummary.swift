@@ -20,6 +20,8 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     /// Includes every canonical session used for group membership fanout.
     let membershipSessions: [ConversationSummary]
 
+    var avatarSource: String? { membershipSessions.first?.avatarSource }
+
     var preferenceId: String {
         normalizedGroupSpaceId(id) ?? id
     }

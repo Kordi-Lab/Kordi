@@ -30,6 +30,7 @@ export type ChatSyncConversation = {
   legacy_session_id: string | null;
   group_space_id?: string | null;
   group_title?: string | null;
+  group_avatar?: import('@/features/chat/groupAvatar').GroupAvatarSnapshot | null;
   forked_from_session_id?: string | null;
   forked_from_message_id?: string | null;
   latest_message_sequence: number;

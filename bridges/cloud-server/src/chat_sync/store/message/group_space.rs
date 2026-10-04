@@ -1,3 +1,4 @@
+use super::group_avatar::publish_group_avatar;
 use super::group_identity::GroupEnvelopeProjection;
 use super::*;
 
@@ -6,17 +7,25 @@ use super::*;
 /// A conversation joins a space only when the envelope names the
 /// conversation itself (a space's main conversation) or the sender is an
 /// active member of the space's main conversation; otherwise its stored space
-/// is kept. Once a conversation belongs to a space whose main conversation
-/// exists, only an owner or admin of that main conversation can move it, so a
-/// member cannot take a channel out of its space (leaving the space's main
-/// conversation leaves every channel still in it). A new space title reaches
-/// only conversations of that space the sender is an active member of.
+/// is kept. The caller has already refused an envelope that names a space
+/// other than the one the conversation belongs to; as a second guard, a
+/// conversation in a space whose main conversation exists changes space only
+/// for an owner or admin of that main conversation, so a member cannot take a
+/// channel out of its space (leaving the space's main conversation leaves
+/// every channel still in it). A new space title reaches only conversations of
+/// that space the sender is an active member of.
+///
+/// `group_avatar` is an authorized new space image, which reaches every
+/// conversation of the space. Without one, the conversation keeps its own
+/// image or takes the newest image of the space it now belongs to. Returns
+/// the image the conversation shows afterwards.
 pub(super) async fn apply_group_projection(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     conversation_id: Uuid,
     projection: &GroupEnvelopeProjection,
-) -> Result<(), StoreError> {
+    group_avatar: Option<Value>,
+) -> Result<Option<Value>, StoreError> {
     let group_title = matches!(
         projection.kind.as_str(),
         "group-invite" | "group-update" | "group-title-update"
@@ -49,6 +58,12 @@ pub(super) async fn apply_group_projection(
            WHERE conversation.conversation_id = $1) \
          UPDATE cloud_chat_conversations conversation \
          SET group_space_id = space.group_space_id, \
+             group_avatar = COALESCE($5, conversation.group_avatar, ( \
+               SELECT sibling.group_avatar FROM cloud_chat_conversations sibling \
+               WHERE sibling.group_space_id = space.group_space_id \
+                 AND sibling.group_avatar IS NOT NULL \
+               ORDER BY (sibling.group_avatar->>'updatedAtMs')::bigint DESC LIMIT 1 \
+             )), \
              group_title = COALESCE( \
                $3, conversation.group_title, ( \
                  SELECT sibling.group_title \
@@ -65,8 +80,12 @@ pub(super) async fn apply_group_projection(
     .bind(&projection.group_space_id)
     .bind(group_title)
     .bind(account_id)
+    .bind(&group_avatar)
     .execute(&mut **transaction)
     .await?;
+    if let Some(avatar) = &group_avatar {
+        publish_group_avatar(transaction, &projection.group_space_id, avatar).await?;
+    }
     if let Some(group_title) = group_title {
         query(
             "UPDATE cloud_chat_conversations conversation \
@@ -83,5 +102,10 @@ pub(super) async fn apply_group_projection(
         .execute(&mut **transaction)
         .await?;
     }
-    Ok(())
+    let (avatar,): (Option<Value>,) =
+        query_as("SELECT group_avatar FROM cloud_chat_conversations WHERE conversation_id = $1")
+            .bind(conversation_id)
+            .fetch_one(&mut **transaction)
+            .await?;
+    Ok(avatar)
 }

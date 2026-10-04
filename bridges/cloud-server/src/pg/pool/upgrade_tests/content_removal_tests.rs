@@ -173,9 +173,9 @@ async fn jobs(pool: &PgPool) -> Vec<(String, Option<Uuid>, Vec<String>)> {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_114_keeps_rows_until_the_operator_backfill_applies() {
-    // 114 is the newest version before content removal.
-    let pool = fixture(114).await;
+async fn upgrade_from_115_keeps_rows_until_the_operator_backfill_applies() {
+    // 115 is the newest version before content removal.
+    let pool = fixture(115).await;
     let seeded = seed(&pool).await;
     let before = rows(&pool).await;
     let (first, second) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));

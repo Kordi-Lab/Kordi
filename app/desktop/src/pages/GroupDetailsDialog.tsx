@@ -30,6 +30,7 @@ import type {
   CloudGroupInvitationCreateInput,
   CloudGroupInvitationSummary,
 } from '@/features/cloud/authClient';
+import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
   buildChatCreateGroupPersonOptions,
@@ -72,6 +73,7 @@ export type GroupDetailsDialogProps = {
   currentAccountId?: string | null;
   onClose: () => void;
   onRename: (sessionIds: string[], name: string) => Promise<void> | void;
+  onUpdateAvatar?: (sessionIds: string[], dataUrl: string | null) => Promise<void> | void;
   onAddMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
   onRemoveMember: (sessionIds: string[], identityId: string) => Promise<void> | void;
   onSetAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void> | void;
@@ -94,6 +96,7 @@ export function GroupDetailsDialog({
   currentAccountId,
   onClose,
   onRename,
+  onUpdateAvatar,
   onAddMembers,
   onRemoveMember,
   onSetAdmin,
@@ -266,6 +269,7 @@ export function GroupDetailsDialog({
     memberSearchRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (dialogRef.current?.querySelector('[data-group-avatar-menu]')) return;
         event.preventDefault();
         event.stopPropagation();
         onCloseRef.current();
@@ -391,6 +395,17 @@ export function GroupDetailsDialog({
             adminCount={adminCount}
             canInvitePeople={canInvitePeople}
             canManageGroup={canManageGroup}
+            avatarEditor={onUpdateAvatar && canManageGroup ? (
+              <GroupAvatarEditor
+                avatars={space.avatarStack}
+                name={space.title}
+                imageUrl={space.groupAvatar?.imageUrl}
+                avatarClassName="h-16 w-16"
+                disabled={Boolean(pendingAction)}
+                onUpload={(dataUrl) => onUpdateAvatar(groupMembershipSessionIds, dataUrl)}
+                onRemove={() => onUpdateAvatar(groupMembershipSessionIds, null)}
+              />
+            ) : undefined}
             onClose={onClose}
             onShowMembers={() => memberSearchRef.current?.focus()}
             onAddPeople={openAddPeople}

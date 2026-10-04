@@ -79,7 +79,7 @@ function renderContactsPage(contactRequests: ContactRequest[], overrides: Partia
 }
 
 test('contact request rows do not repeat the review-details action beside accept and reject', () => {
-  const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/components/transcriptContacts.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('export function ContactRequestRow');
   const end = source.indexOf('export function ContactRow', start + 1);
   assert.ok(start >= 0, 'ContactRequestRow source block should be present');
@@ -272,7 +272,7 @@ test('active contact rows stay visually neutral until hover', () => {
 
 test('contacts page uses positive-only request activity and flat page-plane controls', () => {
   const source = readContactsPageSource();
-  const componentSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  const componentSource = readFileSync(new URL('../src/kordi-app/components/transcriptContacts.tsx', import.meta.url), 'utf8');
   const shellCss = readDesktopShellCss();
   const themeOverridesCss = shellCss;
 

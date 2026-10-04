@@ -77,6 +77,7 @@ export type KordiShellCompositionArgs = {
     | 'handleCreateChatGroup'
     | 'handleCreateChatSessionInParticipantSpace'
     | 'handleRenameChatGroup'
+    | 'handleUpdateChatGroupAvatar'
     | 'handleRenameChatSession'
     | 'handleAddChatGroupMembers'
     | 'handleRemoveChatGroupMember'

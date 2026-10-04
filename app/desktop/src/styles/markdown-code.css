@@ -1,0 +1,9 @@
+/* Quiet controls are relative by default; code actions stay outside text flow. */
+.app-markdown-code-copy-button { position: absolute; }
+.app-markdown-code-content { min-height: 2.625rem; margin-right: 2.5rem; }
+.app-markdown-code-content-with-actions { margin-right: 4.5rem; }
+@media (pointer: coarse) {
+  .app-markdown-code-content { min-height: 3.75rem; margin-right: 3.75rem; }
+  .app-markdown-code-content-with-actions { margin-right: 7rem; }
+  .app-markdown-code-extra-actions { right: 3.5rem; }
+}

@@ -1,3 +1,4 @@
+import { sharedGroupAvatar } from '@/features/chat/groupAvatar';
 import {
   groupMetadataWithoutSessionTitleOwnership,
   resolveReplicatedGroupTitle,
@@ -74,6 +75,7 @@ export type ApplyCloudGroupSessionControlInput = {
   envelope: CloudGroupControlEnvelope;
   historyReplay?: boolean;
   catalogGroupTitle?: string | null;
+  catalogGroupAvatar?: CloudGroupControlEnvelope['groupAvatar'];
   runtime: CloudGroupSessionRuntime;
   canonical: CloudGroupCanonicalRuntime;
   stateOps: CloudGroupSessionStateOps;
@@ -88,6 +90,7 @@ export function cloudGroupHistoryReplayPreservesSessionShell(
   return historyReplay === true
     && hasExistingSession
     && !hasCatalogGroupTitle
+    && controlKind !== 'group-avatar-update'
     && controlKind !== 'group-title-update'
     && controlKind !== 'session-title-update';
 }
@@ -97,6 +100,7 @@ export async function applyCloudGroupSessionControl({
   envelope,
   historyReplay,
   catalogGroupTitle,
+  catalogGroupAvatar,
   runtime,
   canonical,
   stateOps,
@@ -189,7 +193,7 @@ export async function applyCloudGroupSessionControl({
   if (cloudGroupHistoryReplayPreservesSessionShell(
     historyReplay,
     Boolean(envelopeSession),
-    Boolean(normalizedCatalogGroupTitle),
+    Boolean(normalizedCatalogGroupTitle) || Boolean(catalogGroupAvatar),
     envelope.kind,
   )) {
     const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId)
@@ -312,6 +316,7 @@ export async function applyCloudGroupSessionControl({
   const groupMetadata = {
     ...inheritedGroupRootMetadata,
     ...envelopeSessionMetadata,
+    groupAvatar: catalogGroupAvatar ?? sharedGroupAvatar([groupRootMetadata.groupAvatar, envelopeSessionMetadata.groupAvatar, envelope.groupAvatar]),
     schemaVersion: 1,
     kind: 'chat-group',
     customName: groupTitleResolution.title || null,

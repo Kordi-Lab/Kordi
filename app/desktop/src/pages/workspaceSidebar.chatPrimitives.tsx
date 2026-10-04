@@ -1,5 +1,6 @@
 import { Bookmark } from 'lucide-react';
 
+import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import type { WorkspaceSidebarParticipantSpace as ParticipantSpaceItem } from '@/pages/workspaceSidebar.types';
 
@@ -11,12 +12,16 @@ export function ParticipantSpaceAvatarStack({
   if (space.kind === 'self') {
     return (
       <span
-        className="app-saved-messages-avatar grid h-9 w-9 shrink-0 place-items-center rounded-full"
+        className="app-saved-messages-avatar grid h-9 w-9 shrink-0 place-items-center rounded-[17%]"
         aria-hidden="true"
       >
         <Bookmark className="h-[1.15rem] w-[1.15rem]" strokeWidth={2} />
       </span>
     );
+  }
+
+  if (space.kind === 'group') {
+    return <GroupAvatar avatars={space.avatarStack} imageUrl={space.groupAvatar?.imageUrl} name={space.title} />;
   }
 
   const avatars =
@@ -30,7 +35,7 @@ export function ParticipantSpaceAvatarStack({
           imageUrl: null,
         },
       ];
-  const showPresenceLight = space.kind !== 'group';
+  const showPresenceLight = true;
 
   if (avatars.length === 1) {
     const avatar = avatars[0];

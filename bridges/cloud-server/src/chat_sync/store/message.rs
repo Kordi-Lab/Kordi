@@ -8,6 +8,7 @@ use super::*;
 mod attachment_links;
 mod envelope_placement;
 mod fanout;
+mod group_avatar;
 mod group_identity;
 mod group_sender;
 mod group_space;
@@ -140,9 +141,35 @@ pub(crate) async fn send_message_in_transaction(
     require_active_member(transaction, conversation_id, account_id).await?;
     require_direct_relationship(transaction, conversation_id, account_id).await?;
     if let Some(projection) = &group_projection {
-        apply_group_control_title(transaction, account_id, conversation_id, projection).await?;
-        group_space::apply_group_projection(transaction, account_id, conversation_id, projection)
+        // Serialize group projections before taking any sibling conversation lock.
+        query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!("group-projection:{}", projection.group_space_id))
+            .execute(&mut **transaction)
             .await?;
+        group_avatar::authorize_group_space_attachment(
+            transaction,
+            account_id,
+            conversation_id,
+            &projection.group_space_id,
+        )
+        .await?;
+        apply_group_control_title(transaction, account_id, conversation_id, projection).await?;
+        let group_avatar = group_avatar::prepare_group_avatar(
+            transaction,
+            account_id,
+            conversation_id,
+            projection,
+        )
+        .await?;
+        let avatar = group_space::apply_group_projection(
+            transaction,
+            account_id,
+            conversation_id,
+            projection,
+            group_avatar,
+        )
+        .await?;
+        group_identity::set_group_avatar(&mut request.content, avatar)?;
     }
     if let Some(reply_to_message_id) = request.reply_to_message_id {
         let reply: Option<(i32,)> = query_as(

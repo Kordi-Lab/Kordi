@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import { useState } from 'react';
 import { AppShellFrame } from '../../src/app/AppShellFrame';
 import { LEFT_RAIL_WIDTH } from '../../src/kordi-app/layout';
 import { ChatPaneLayout } from '../../src/pages/ChatPaneLayout';
@@ -24,17 +25,20 @@ const noop = () => {};
 // Cross several line boundaries at both test widths instead of depending on a
 // short paragraph gaining one line with a particular browser's font metrics.
 const resizeMessage = 'The available message width changes with the window, while text and icons retain their original dimensions and the composer remains at the bottom of the chat column. '.repeat(3);
-createRoot(document.getElementById('root')!).render(
+function WorkspaceResize() {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
   <div className="app-cloud-workspace-surface">
   <AppShellFrame
     rootThemeClass={theme} isNativeShell isLayoutResizing={false}
-    windowSize={{ width: 1480, height: 980 }} leftWorkspaceWidth={320}
-    isSingleWorkspacePage={false} showSessionRail collapseChatSessions={false}
+    windowSize={{ width: 1480, height: 980 }} leftWorkspaceWidth={collapsed ? LEFT_RAIL_WIDTH : 320}
+    isSingleWorkspacePage={false} showSessionRail collapseChatSessions={collapsed}
     showRightDetailRail={false} isDetailPanelCollapsed detailRailWidth={0}
     onSessionResizeMouseDown={noop} onDetailResizeMouseDown={noop}
+    onToggleSessionPanel={() => setCollapsed(value => !value)}
     sidebar={<aside className="app-side-shell flex min-h-0 overflow-hidden">
       <nav style={{ width: LEFT_RAIL_WIDTH, flexShrink: 0 }} aria-label="Navigation">Chats</nav>
-      <div className="app-session-panel min-w-0 flex-1 overflow-y-auto">Test conversation</div>
+      {!collapsed && <div className="app-session-panel min-w-0 flex-1 overflow-y-auto">Test conversation</div>}
     </aside>}
     mainContent={<ChatPaneLayout hasHeader>
       <header className="app-page-header app-chat-pane-header flex shrink-0 items-center justify-between">
@@ -53,5 +57,7 @@ createRoot(document.getElementById('root')!).render(
       </div>
     </ChatPaneLayout>}
   />
-  </div>,
-);
+  </div>
+  );
+}
+createRoot(document.getElementById('root')!).render(<WorkspaceResize />);

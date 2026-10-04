@@ -374,7 +374,7 @@ enum CloudConversationCatalog {
                     ?? canonical.map { parseCloudDate($0.updatedAt) }
                     ?? .distantPast,
                 unreadCount: unreadMessageIds.union(canonicalUnreadMessageIds).count,
-                avatarSource: nil,
+                avatarSource: GroupAvatarCatalog.imageSource(groupSpaceId: groupSpaceId, canonical: canonicalConversations, controls: controls),
                 agentActivity: nil,
                 sessionId: groupId,
                 groupSpaceId: groupSpaceId,

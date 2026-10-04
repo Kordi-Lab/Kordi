@@ -43,6 +43,7 @@ struct NewChatView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var groupName = ""
+    @State private var groupAvatarDataURL: String?
     @State private var selectedGroupContactIDs = Set<String>()
     @State private var isCreatingGroup = false
     /// "Add PiP, the plan helper" starts off; PiP joins only when chosen.
@@ -190,6 +191,11 @@ struct NewChatView: View {
 
     private var groupPage: some View {
         List {
+            Section {
+                GroupAvatarPicker(participants: selectedGroupParticipants, imageSource: groupAvatarDataURL,
+                                  disabled: isCreatingGroup) { groupAvatarDataURL = $0 }
+                    .frame(maxWidth: .infinity)
+            }
             Section("Group name") {
                 TextField("Optional", text: $groupName)
                     .textInputAutocapitalization(.words)
@@ -278,6 +284,13 @@ struct NewChatView: View {
         }
     }
 
+    private var selectedGroupParticipants: [CloudGroupParticipant] {
+        model.contacts.filter { selectedGroupContactIDs.contains($0.accountId) }.map {
+            CloudGroupParticipant(accountId: $0.accountId, displayName: $0.preferredName,
+                                  avatarUrl: $0.avatarUrl, role: "person")
+        }
+    }
+
     private func createGroup() {
         guard !isCreatingGroup else { return }
         let selected = model.contacts.filter { selectedGroupContactIDs.contains($0.accountId) }
@@ -285,7 +298,7 @@ struct NewChatView: View {
         isCreatingGroup = true
         Task {
             let pipEnabled = addsPip && model.aiFeatures?.pipAvailable == true
-            if let created = await model.createGroup(with: selected, title: groupName, pipEnabled: pipEnabled) {
+            if let created = await model.createGroup(with: selected, title: groupName, avatarDataURL: groupAvatarDataURL, pipEnabled: pipEnabled) {
                 if created.pipFailed {
                     // The group exists; say why PiP is off before opening it.
                     groupWithoutPip = created.conversation

@@ -262,6 +262,7 @@ mod tests {
             legacy_session_id: None,
             group_space_id: None,
             group_title: None,
+            group_avatar: None,
             forked_from_session_id: None,
             forked_from_message_id: None,
             latest_message_sequence: 0,

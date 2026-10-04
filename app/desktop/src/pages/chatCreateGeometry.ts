@@ -1,4 +1,3 @@
-// Placement of the create-chat popover beside the control that opened it.
 import type { CSSProperties } from 'react';
 
 export type ChatCreatePopoverAnchor = {

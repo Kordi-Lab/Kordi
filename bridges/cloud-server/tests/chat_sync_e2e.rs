@@ -18,6 +18,10 @@ mod content_removal_quotes;
 mod content_removal_runs;
 #[path = "chat_sync_e2e/content_removal_worker.rs"]
 mod content_removal_worker;
+#[path = "chat_sync_e2e/group_avatar_references.rs"]
+mod group_avatar_references;
+#[path = "chat_sync_e2e/group_avatars.rs"]
+mod group_avatars;
 #[path = "chat_sync_e2e/live_photos.rs"]
 mod live_photos;
 #[path = "chat_sync_e2e/thread_attention.rs"]

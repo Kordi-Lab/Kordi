@@ -46,6 +46,17 @@ final class MessageAccessibilityLabelTests: XCTestCase {
         XCTAssertFalse(AgentMessageLabels.isPip(message(.agent, name: "PiP"), avatarSeed: KordiPipIdentity.accountId))
     }
 
+    func testTheThreadsHeaderShowsTheSameMarksAsTheChatLayout() {
+        XCTAssertEqual(ThreadMessageHeader.mark(for: message(.agent, name: "Scout", owner: "Olive"), avatarSeed: "cloud_agent_scout"), .ai)
+        XCTAssertEqual(ThreadMessageHeader.mark(for: message(.agent, name: "PiP"), avatarSeed: KordiPipIdentity.agentId), .ai)
+        XCTAssertEqual(ThreadMessageHeader.mark(for: message(.person, name: "Plan helper"), avatarSeed: KordiPipIdentity.accountId), .pip)
+        XCTAssertEqual(ThreadMessageHeader.mark(for: message(.person, name: "PiP"), avatarSeed: nil), .pip)
+        XCTAssertNil(ThreadMessageHeader.mark(for: message(.person, name: "Riley"), avatarSeed: "acct_riley"))
+        // A member who named themselves PiP gets no mark, as in the Chat layout.
+        XCTAssertNil(ThreadMessageHeader.mark(for: message(.person, name: "PiP"), avatarSeed: "acct_member"))
+        XCTAssertNil(ThreadMessageHeader.mark(for: message(.me, name: "You"), avatarSeed: KordiPipIdentity.accountId))
+    }
+
     func testTheChipNeverReliesOnColor() {
         XCTAssertEqual(AgentMessageLabels.chipText, "AI")
         XCTAssertEqual(AgentMessageLabels.chipAccessibilityLabel, "AI agent, about this reply")

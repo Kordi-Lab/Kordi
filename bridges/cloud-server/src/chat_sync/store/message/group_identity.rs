@@ -23,6 +23,7 @@ pub(super) struct GroupEnvelopeProjection {
     pub group_space_id: String,
     pub group_title: Option<String>,
     pub session_title: Option<String>,
+    pub group_avatar: Option<Value>,
 }
 
 pub(super) async fn lock_group_message_fingerprint(
@@ -71,7 +72,7 @@ pub(super) async fn apply_group_control_title(
 ) -> Result<(), StoreError> {
     if matches!(
         projection.kind.as_str(),
-        "group-title-update" | "session-title-update"
+        "group-title-update" | "session-title-update" | "group-avatar-update"
     ) {
         let authorization: Option<(String, String)> = query_as(
             "SELECT conversation.kind, member.role \
@@ -158,6 +159,23 @@ pub(super) fn decode_group_envelope(content: &mut Value) -> Option<(Value, &mut 
     let decoded = URL_SAFE_NO_PAD.decode(encoded).ok()?;
     let envelope = serde_json::from_slice(&decoded).ok()?;
     Some((envelope, text))
+}
+
+pub(super) fn set_group_avatar(
+    content: &mut Value,
+    avatar: Option<Value>,
+) -> Result<(), StoreError> {
+    let Some((mut envelope, text)) = decode_group_envelope(content) else {
+        return Ok(());
+    };
+    if let Some(object) = envelope.as_object_mut() {
+        object.remove("groupAvatar");
+        if let Some(avatar) = avatar {
+            object.insert("groupAvatar".to_string(), avatar);
+        }
+    }
+    *text = Value::String(encode_group_envelope(&envelope)?);
+    Ok(())
 }
 
 pub(super) fn encode_group_envelope(envelope: &Value) -> Result<String, StoreError> {
@@ -341,6 +359,10 @@ pub(super) async fn normalize_group_envelope(
             group_space_id,
             group_title,
             session_title,
+            group_avatar: envelope
+                .get("groupAvatar")
+                .cloned()
+                .filter(|value| !value.is_null()),
         }),
     )
 }

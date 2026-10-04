@@ -412,7 +412,7 @@ async fn a_conversation_joins_only_a_space_its_sender_belongs_to() {
 
     // Someone outside the space cannot attach their group to it.
     let (foreign, foreign_session) = create_group(&pool, &other, &[&other_friend]).await;
-    store::send_message(
+    let attached = store::send_message(
         &pool,
         &other,
         foreign,
@@ -424,8 +424,12 @@ async fn a_conversation_joins_only_a_space_its_sender_belongs_to() {
             &other,
         ),
     )
-    .await
-    .expect("the message itself is accepted");
+    .await;
+    assert!(
+        matches!(attached, Err(StoreError::Forbidden)),
+        "{:?}",
+        attached.err()
+    );
     assert_eq!(group_space_of(&pool, foreign).await, None);
     let titles: Vec<(Uuid, Option<String>)> = query_as(
         "SELECT conversation_id, group_title FROM cloud_chat_conversations \

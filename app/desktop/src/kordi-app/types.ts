@@ -97,52 +97,7 @@ export type ConversationCollaborationTarget = {
   agentId?: string | null;
 };
 
-export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'group';
-
-export type ParticipantSpaceAvatar = {
-  kind: 'human' | 'agent';
-  seed: string;
-  isSelf?: boolean;
-  imageUrl?: string | null;
-  presenceStatus?: string | null;
-};
-export type ParticipantSpaceSessionViewModel = {
-  id: string;
-  canonicalSessionId?: string;
-  title: string;
-  preview: string;
-  unread: number;
-  updatedAtLabel?: string;
-  updatedAtMs: number;
-  participantCount: number;
-  statusIndicator?: SessionStatusIndicator;
-  conversation: Conversation;
-  forkedFromSessionId?: string | null;
-  forkedFromMessageId?: string | null;
-};
-
-export type ParticipantSpaceViewModel = {
-  id: string;
-  kind: ParticipantSpaceKind;
-  title: string;
-  participants: ConversationParticipant[];
-  participantCount: number;
-  sessionCount: number;
-  unread: number;
-  updatedAtLabel?: string;
-  updatedAtMs: number;
-  /** Creation time of the logical group root, not its oldest or latest chat activity. */
-  createdAtMs?: number | null;
-  preview: string;
-  avatarStack: ParticipantSpaceAvatar[];
-  sessions: ParticipantSpaceSessionViewModel[];
-  groupCreatorIdentityId?: string | null;
-  groupAdminIdentityIds?: string[];
-  /** All persisted membership sessions, including hidden legacy empty shells. */
-  membershipSessionIds?: string[];
-  /** Hidden persisted blank continuation that can be reused instead of creating another shell. */
-  reusableBlankSessionId?: string | null;
-};
+export type { ParticipantSpaceKind, ParticipantSpaceAvatar, ParticipantSpaceSessionViewModel, ParticipantSpaceViewModel } from './types/participantSpace';
 
 export type ContactRequest = {
   id: string;

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, CheckCheck, LoaderCircle, RotateCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { useMessageLayout } from '@/app/messageLayoutPreference';
 import { messageDeliveryVisual } from '@/features/chat/deliveryStatus';
 import { cn } from '@/lib/utils';
 
@@ -61,6 +62,8 @@ function MessageDeliveryGlyph({ status }: { status?: string | null }) {
 }
 
 export function MessageDeliveryStatusSlot({ status }: { status?: string | null }) {
+  const layout = useMessageLayout();
+  if (layout === 'threads' && messageDeliveryVisual(status)?.glyph === 'double-check') return null;
   return (
     <span
       className="inline-flex h-3.5 w-4 shrink-0 justify-center"

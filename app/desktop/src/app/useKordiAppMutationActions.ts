@@ -7,6 +7,7 @@ import { useKordiChatStartActions } from '@/app/useKordiChatStartActions';
 import { useKordiGroupCreation } from '@/app/useKordiGroupCreation';
 import { useKordiGroupMemberInvites } from '@/app/useKordiGroupMemberInvites';
 import { useKordiGroupMemberRoles } from '@/app/useKordiGroupMemberRoles';
+import { useKordiGroupAvatar } from '@/app/useKordiGroupAvatar';
 import { useKordiGroupRename } from '@/app/useKordiGroupRename';
 import { useKordiParticipantDraftSend } from '@/app/useKordiParticipantDraftSend';
 import { useKordiParticipantSpaceContinuation } from '@/app/useKordiParticipantSpaceContinuation';
@@ -210,6 +211,8 @@ export function useKordiAppMutationActions({
       setDesktopError: setDesktopChatError,
     });
 
+  const handleUpdateChatGroupAvatar = useKordiGroupAvatar({ account: cloudSession.account, canonicalState: canonicalSessionState, isNativeShell, sendCloudGroupControl });
+
   const handleRenameChatGroup = useKordiGroupRename({
     account: cloudSession.account,
     canonicalState: canonicalSessionState,
@@ -318,6 +321,7 @@ export function useKordiAppMutationActions({
       handleCreateChatGroup,
       handleCreateChatSessionInParticipantSpace,
       handleRenameChatGroup,
+      handleUpdateChatGroupAvatar,
       handleAddChatGroupMembers,
       handleRemoveChatGroupMember,
       handleSetChatGroupAdmin,

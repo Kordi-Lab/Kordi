@@ -1,5 +1,6 @@
 mod auth;
 mod auth_window;
+mod avatar_picker;
 mod canonical_sessions;
 mod chat;
 mod cloud_account_paths;
@@ -322,6 +323,7 @@ pub fn run() {
             chat::attachments::desktop_chat_store_attachment_path,
             chat::attachments::desktop_chat_attach_reference_path,
             chat::attachments::desktop_chat_pick_attachment_paths,
+            avatar_picker::desktop_pick_avatar_image,
             chat::attachments::live_photos::desktop_chat_prepare_live_photos,
             chat::attachments::desktop_chat_read_attachment,
             chat::attachments::desktop_chat_download_attachment,

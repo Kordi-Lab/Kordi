@@ -61,11 +61,11 @@ async fn only_the_space_owner_adds_space_members_to_channels() {
         .expect("the space owner adds space members to its channels");
 }
 
-/// Only an owner or admin of a space can move a conversation out of it, so a
-/// member cannot take a channel out of the space (or the main conversation
-/// into another space) to keep people who leave the space in it.
+/// No group envelope moves a conversation that belongs to a space into
+/// another space, so nobody can take a channel out of the space (or the main
+/// conversation into another space) to keep people who leave the space in it.
 #[tokio::test]
-async fn members_cannot_move_conversations_out_of_their_space() {
+async fn no_envelope_moves_a_conversation_out_of_its_space() {
     let Some(pool) = try_pool().await else { return };
     let owner = account(&pool, "space-move-owner").await;
     let member = account(&pool, "space-move-member").await;
@@ -96,41 +96,37 @@ async fn members_cannot_move_conversations_out_of_their_space() {
     .await
     .unwrap();
 
-    // The member's envelopes are accepted, but both conversations stay put.
-    for (conversation, group, space) in [
-        (channel, &channel_session, &channel_session),
-        (channel, &channel_session, &own_session),
-        (root, &root_session, &own_session),
+    // Envelopes naming another space are refused, from a member or the owner,
+    // and both conversations stay put.
+    for (sender, conversation, group, space) in [
+        (&member, channel, &channel_session, &channel_session),
+        (&member, channel, &channel_session, &own_session),
+        (&member, root, &root_session, &own_session),
+        (&owner, channel, &channel_session, &channel_session),
     ] {
-        store::send_message(
-            &pool,
-            &member,
-            conversation,
-            envelope(group, space, &member),
-        )
-        .await
-        .expect("the message itself is accepted");
+        let moved =
+            store::send_message(&pool, sender, conversation, envelope(group, space, sender)).await;
+        assert!(
+            matches!(moved, Err(StoreError::Forbidden)),
+            "{:?}",
+            moved.err()
+        );
         assert_eq!(
             group_space_of(&pool, conversation).await.as_deref(),
             Some(root_session.as_str())
         );
     }
+    // Envelopes naming the space itself are still accepted.
+    store::send_message(
+        &pool,
+        &member,
+        channel,
+        envelope(&channel_session, &root_session, &member),
+    )
+    .await
+    .expect("a message in the channel's own space is accepted");
     let left = store::leave_group(&pool, &leaver, root, leave_request(None))
         .await
         .expect("leave the space");
     assert!(left.left_conversation_ids.contains(&channel));
-
-    // The space's owner can still move the channel.
-    store::send_message(
-        &pool,
-        &owner,
-        channel,
-        envelope(&channel_session, &channel_session, &owner),
-    )
-    .await
-    .unwrap();
-    assert_eq!(
-        group_space_of(&pool, channel).await.as_deref(),
-        Some(channel_session.as_str())
-    );
 }

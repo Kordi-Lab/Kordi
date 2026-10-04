@@ -1,3 +1,5 @@
+import { popoverGeometry, type ChatCreatePopoverAnchor } from './chatCreateGeometry';
+export type { ChatCreatePopoverAnchor } from './chatCreateGeometry';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
 
@@ -12,13 +14,11 @@ import {
 import type { Agent, Contact } from '@/kordi-app/types';
 import type { CreateChatGroupRequest } from '@/app/chatGroupRequest.types';
 import { cn } from '@/lib/utils';
+import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import type { AgentTrustApi } from '@/features/agentTrust/agentTrustApi';
 import { PipCreateSwitch } from '@/kordi-app/components/pipCreateSwitch';
-import { popoverGeometry, type ChatCreatePopoverAnchor } from '@/pages/chatCreateDialog.geometry';
-
-export type { ChatCreatePopoverAnchor } from '@/pages/chatCreateDialog.geometry';
 
 export type AddContactLookupResult = {
   accountId: string;
@@ -142,6 +142,9 @@ export function ChatCreateDialog({
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
   const [pipEnabled, setPipEnabled] = useState(false);
+  const [groupAvatarDataUrl, setGroupAvatarDataUrl] = useState<string | null>(null);
+  const [groupCreateError, setGroupCreateError] = useState<string | null>(null);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [contactNodeId, setContactNodeId] = useState('');
   const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'pending' | 'error'>('idle');
   const [addContactError, setAddContactError] = useState('');
@@ -163,18 +166,11 @@ export function ChatCreateDialog({
     // (that key tore the whole dialog down and replayed its enter animation
     // on every open and close, and made an exit animation impossible -- see
     // WorkspaceSidebar.tsx).
-    setMode(initialMode);
-    setSelectedContactIds([]);
-    setGroupName('');
-    setPipEnabled(false);
-    setContactNodeId('');
-    setAddContactState('idle');
-    setAddContactError('');
-    setRequestingContactNodeId(null);
-    setRequestedContactNodeIds([]);
-    setLookupState('idle');
-    setLookupError('');
-    setLookupResult(null);
+    setMode(initialMode); setSelectedContactIds([]); setGroupName(''); setPipEnabled(false);
+    setGroupAvatarDataUrl(null); setGroupCreateError(null);
+    setContactNodeId(''); setAddContactState('idle'); setAddContactError('');
+    setRequestingContactNodeId(null); setRequestedContactNodeIds([]);
+    setLookupState('idle'); setLookupError(''); setLookupResult(null);
   }, [initialMode, isOpen]);
 
   const selectedPeople = groupPersonOptions.filter((option) => selectedContactIds.includes(option.id));
@@ -187,18 +183,11 @@ export function ChatCreateDialog({
   if (!isOpen) return null;
 
   const close = () => {
-    setMode(initialMode);
-    setSelectedContactIds([]);
-    setGroupName('');
-    setPipEnabled(false);
-    setContactNodeId('');
-    setAddContactState('idle');
-    setAddContactError('');
-    setRequestingContactNodeId(null);
-    setRequestedContactNodeIds([]);
-    setLookupState('idle');
-    setLookupError('');
-    setLookupResult(null);
+    setMode(initialMode); setSelectedContactIds([]); setGroupName(''); setPipEnabled(false);
+    setGroupAvatarDataUrl(null); setGroupCreateError(null);
+    setContactNodeId(''); setAddContactState('idle'); setAddContactError('');
+    setRequestingContactNodeId(null); setRequestedContactNodeIds([]);
+    setLookupState('idle'); setLookupError(''); setLookupResult(null);
     onClose();
   };
 
@@ -512,11 +501,17 @@ export function ChatCreateDialog({
           className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!canSubmitGroup) return;
-            void onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null, ...(pipEnabled ? { pipEnabled } : {}) });
-            close();
+            if (!canSubmitGroup || isCreatingGroup) return;
+            setIsCreatingGroup(true); setGroupCreateError(null);
+            void Promise.resolve().then(() => onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null, avatarDataUrl: groupAvatarDataUrl, ...(pipEnabled ? { pipEnabled } : {}) }))
+              .then(close).catch((error: unknown) => setGroupCreateError(error instanceof Error ? error.message : 'Could not create this group.'))
+              .finally(() => setIsCreatingGroup(false));
           }}
         >
+          <div className="flex justify-center pb-1">
+            <GroupAvatarEditor avatars={selectedPeople.map((person) => ({ kind: 'human', seed: person.avatarSeed || person.id, imageUrl: person.profileImageUrl }))} imageUrl={groupAvatarDataUrl} name={groupName || 'Group'} disabled={isCreatingGroup} onUpload={(dataUrl) => setGroupAvatarDataUrl(dataUrl)} onRemove={() => setGroupAvatarDataUrl(null)} />
+          </div>
+          {groupCreateError ? <div role="alert" className="app-error-text text-[11px]">{groupCreateError}</div> : null}
           <input
             value={groupName}
             onChange={(event) => setGroupName(event.target.value)}
@@ -550,8 +545,8 @@ export function ChatCreateDialog({
           <PipCreateSwitch checked={pipEnabled} onChange={setPipEnabled} api={agentTrustApi} />
           <div className="flex gap-1.5">
             <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
-            <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={!canSubmitGroup}>
-              {canSubmitGroup ? 'Create group' : 'Pick 2 people'}
+            <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={isCreatingGroup || !canSubmitGroup}>
+              {isCreatingGroup ? 'Creating…' : canSubmitGroup ? 'Create group' : 'Pick 2 people'}
             </Button>
           </div>
         </form>

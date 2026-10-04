@@ -18,6 +18,7 @@ import type { ReplyDisclosure, ReplyDisclosureRequest } from '../src/features/cl
 import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import { KORDI_PIP_AVATAR_URL } from '../src/features/pip/pipIdentity';
 import { AgentAiChip } from '../src/kordi-app/components/AgentOwnerTag';
+import { ThreadMessageHeader } from '../src/kordi-app/components/ThreadMessageHeader';
 import { pipDisclosureText, replyDisclosureRows } from '../src/features/agentTrust/replyDisclosureCopy';
 import { AgentReplyDisclosureHost } from '../src/kordi-app/components/agentReplyDisclosureDialog';
 import type { Message } from '../src/kordi-app/types';
@@ -84,6 +85,13 @@ test('the AI chip opens About this reply only where Kordi can describe the reply
   assert.doesNotMatch(label, /<button/);
   assert.equal(messageOffersReplyDisclosure({ ...agentReply, turn: turn({ sessionId: 'session:group:g', completed: false }) }), false);
   assert.equal(messageOffersReplyDisclosure({ id: 'pip', role: 'person', text: 'Plan', time: '', senderProfileImageUrl: KORDI_PIP_AVATAR_URL }), true);
+});
+
+test('the Threads layout header shows the same AI chip on agent messages only', () => {
+  const agent = renderToStaticMarkup(createElement(ThreadMessageHeader, { msg: agentReply, name: 'Scout', ownerName: 'Olivia', ai: true }));
+  assert.match(agent, /aria-label="AI agent, about this reply"/);
+  const person = renderToStaticMarkup(createElement(ThreadMessageHeader, { msg: { ...agentReply, role: 'person' }, name: 'Rui' }));
+  assert.doesNotMatch(person, /AI agent/);
 });
 
 function fakeApi(replyDisclosures: AgentTrustCalls['replyDisclosures'], providerLabel: string | null = 'OpenAI') {

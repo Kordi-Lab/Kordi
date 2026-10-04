@@ -134,7 +134,7 @@ pub(super) async fn load_conversation(
                 conversation.group_space_id, conversation.group_title, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
-                conversation.updated_at \
+                conversation.updated_at, conversation.group_avatar \
          FROM cloud_chat_conversations conversation \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
@@ -164,6 +164,7 @@ pub(super) async fn load_conversation(
         legacy_session_id: row.5,
         group_space_id: row.6,
         group_title: row.7,
+        group_avatar: row.13,
         forked_from_session_id: row.8,
         forked_from_message_id: row.9,
         latest_message_sequence: row.10,
@@ -193,7 +194,7 @@ pub(super) async fn load_active_conversation_projections(
                 conversation.group_space_id, conversation.group_title, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
-                conversation.updated_at \
+                conversation.updated_at, conversation.group_avatar \
          FROM cloud_chat_conversations conversation \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
@@ -229,6 +230,7 @@ pub(super) async fn load_active_conversation_projections(
                     legacy_session_id: row.5.clone(),
                     group_space_id: row.6.clone(),
                     group_title: row.7.clone(),
+                    group_avatar: row.13.clone(),
                     forked_from_session_id: row.8.clone(),
                     forked_from_message_id: row.9.clone(),
                     latest_message_sequence: row.10,

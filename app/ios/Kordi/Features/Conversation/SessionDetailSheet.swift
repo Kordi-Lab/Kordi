@@ -744,7 +744,7 @@ private struct SessionProfileHero<Actions: View>: View {
     @ViewBuilder
     private var avatar: some View {
         if conversation.kind == .group {
-            GroupAvatarStack(participants: participants, size: avatarSize)
+            GroupAvatarStack(participants: participants, size: avatarSize, imageSource: conversation.avatarSource)
         } else {
             IdentityAvatar(
                 name: conversation.displayName,
@@ -1219,7 +1219,7 @@ private struct SessionRelatedGroupsSection: View {
             ForEach(Array(spaces.enumerated()), id: \.element.id) { index, space in
                 Button { onOpen(space) } label: {
                     HStack(spacing: 12) {
-                        GroupAvatarStack(participants: space.participants, size: 44)
+                        GroupAvatarStack(participants: space.participants, size: 44, imageSource: space.avatarSource)
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(space.displayName)

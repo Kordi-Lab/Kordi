@@ -26,6 +26,7 @@ type SidebarChatActions = Pick<
   | 'onStartChatWithAgent'
   | 'onCreateChatGroup'
   | 'onRenameChatGroup'
+  | 'onUpdateChatGroupAvatar'
   | 'onAddChatGroupMembers'
   | 'onRemoveChatGroupMember'
   | 'onSetChatGroupAdmin'
@@ -55,6 +56,7 @@ export function assembleSidebarSlot(args: SidebarShellArgs) {
         },
         onCreateChatGroup: args.handleCreateChatGroup,
         onRenameChatGroup: args.handleRenameChatGroup,
+        onUpdateChatGroupAvatar: args.handleUpdateChatGroupAvatar,
         onAddChatGroupMembers: args.handleAddChatGroupMembers,
         onRemoveChatGroupMember: args.handleRemoveChatGroupMember,
         onSetChatGroupAdmin: args.handleSetChatGroupAdmin,
@@ -166,6 +168,7 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         addContactPlaceholder: 'Kordi ID, e.g. @482731906',
         onCreateChatSessionInParticipantSpace: args.handleCreateChatSessionInParticipantSpace,
         onRenameChatGroup: chatActions.onRenameChatGroup,
+        onUpdateChatGroupAvatar: chatActions.onUpdateChatGroupAvatar,
         onRenameChatSession: (sessionId, title) => {
           void args.handleRenameChatSession(sessionId, title);
         },

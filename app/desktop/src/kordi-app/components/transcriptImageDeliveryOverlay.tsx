@@ -1,4 +1,5 @@
 import { Check, CheckCheck, LoaderCircle, X } from 'lucide-react';
+import { useMessageLayout } from '@/app/messageLayoutPreference';
 
 import { cn } from '@/lib/utils';
 import {
@@ -38,7 +39,8 @@ export function TranscriptImageDeliveryOverlay({
   onCancelUpload,
   mediaLabel = 'image',
 }: TranscriptImageDeliveryOverlayProps) {
-  if (!visual) return null;
+  const layout = useMessageLayout();
+  if (!visual || (layout === 'threads' && visual.kind === 'read')) return null;
 
   if (visual.kind === 'uploading') {
     const progress = uploadProgress === null

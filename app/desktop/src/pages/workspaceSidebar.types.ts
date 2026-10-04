@@ -104,6 +104,7 @@ export type WorkspaceSidebarChats = {
     channelName?: string,
   ) => Promise<void> | void;
   onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
+  onUpdateChatGroupAvatar: (sessionIds: string[], dataUrl: string | null) => Promise<void> | void;
   onRenameChatSession: (sessionId: string, title: string) => void;
   onAddChatGroupMembers: (sessionIds: string[], contactIds: string[]) => Promise<void> | void;
   onRemoveChatGroupMember: (
