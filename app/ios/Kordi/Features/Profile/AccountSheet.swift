@@ -2,15 +2,15 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-private enum AccountSettingsRoute: Hashable {
+private enum AccountSettingsRoute: String, Hashable {
     case profile
-    case activeSessions
+    case activeSessions = "active-sessions"
     case authentication
     case notifications
     case appearance
-    case colorMode
-    case messageDisplay
-    case chatTheme
+    case colorMode = "color-mode"
+    case messageDisplay = "message-display"
+    case chatTheme = "chat-theme"
 }
 
 struct AccountSheet: View {
@@ -198,17 +198,19 @@ struct AccountSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("settings-\(route.rawValue)")
     }
 }
 
 private struct CompactSettingsLabel: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     var subtitle: String? = nil
     let systemImage: String
     var value: String? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             Image(systemName: systemImage)
                 .font(.body)
                 .frame(width: 22)
@@ -218,8 +220,12 @@ private struct CompactSettingsLabel: View {
                 if let subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
+                if dynamicTypeSize.isAccessibilitySize, let value {
+                    Text(value).font(.caption).foregroundStyle(.secondary)
+                }
             }
-            if let value {
+            .fixedSize(horizontal: false, vertical: true)
+            if !dynamicTypeSize.isAccessibilitySize, let value {
                 Spacer(minLength: 8)
                 Text(value).font(.caption).foregroundStyle(.secondary)
             }
@@ -241,19 +247,19 @@ private struct CompactAppearanceSettingsView: View {
             switch route {
             case .colorMode:
                 ForEach(AppAppearance.allCases) { appearance in
-                    option(appearance.label, icon: appearance.systemImage, selected: appearanceRawValue == appearance.rawValue) {
+                    option(appearance.label, identifier: appearance.rawValue, icon: appearance.systemImage, selected: appearanceRawValue == appearance.rawValue) {
                         appearanceRawValue = appearance.rawValue
                     }
                 }
             case .messageDisplay:
                 ForEach(MessageLayout.allCases) { layout in
-                    option(layout.title, detail: layout == .chat ? "Messages in familiar chat bubbles" : "A compact, continuous conversation", icon: layout == .chat ? "bubble.left.and.bubble.right" : "text.alignleft", selected: messageLayoutRawValue == layout.rawValue) {
+                    option(layout.title, identifier: layout.rawValue, detail: layout == .chat ? "Messages in familiar chat bubbles" : "A compact, continuous conversation", icon: layout == .chat ? "bubble.left.and.bubble.right" : "text.alignleft", selected: messageLayoutRawValue == layout.rawValue) {
                         messageLayoutRawValue = layout.rawValue
                     }
                 }
             case .chatTheme:
                 ForEach(KordiChatTheme.allCases) { theme in
-                    option(theme.label, detail: theme.detail, icon: theme.systemImage, selected: chatThemeRawValue == theme.rawValue) {
+                    option(theme.label, identifier: theme.rawValue, detail: theme.detail, icon: theme.systemImage, selected: chatThemeRawValue == theme.rawValue) {
                         chatThemeRawValue = theme.rawValue
                     }
                 }
@@ -276,7 +282,7 @@ private struct CompactAppearanceSettingsView: View {
         }
     }
 
-    private func option(_ title: String, detail: String? = nil, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
+    private func option(_ title: String, identifier: String, detail: String? = nil, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack {
                 CompactSettingsLabel(title: title, subtitle: detail, systemImage: icon)
@@ -289,6 +295,7 @@ private struct CompactAppearanceSettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("appearance-option-\(identifier)")
         .accessibilityValue(selected ? "Selected" : "")
         .accessibilityAddTraits(selected ? .isSelected : [])
     }

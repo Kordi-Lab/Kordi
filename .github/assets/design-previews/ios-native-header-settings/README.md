@@ -1,6 +1,6 @@
 # Native iPhone header and settings proposal
 
-Status: design prototype for review. This branch has not been merged or released.
+Status: approved design implemented for review. This branch has not been merged or released.
 
 The proposal follows the compact title capsules in the supplied Slack and Telegram iPhone references, and the density of Slack's preferences sheet. Captures use Kordi's actual SwiftUI screens with its offline sample fixtures.
 
@@ -43,6 +43,8 @@ Build the `Kordi Beta` scheme for an iPhone simulator and launch with:
 
 Back navigation returns to a preview menu with group, direct, agent, thread, and Settings destinations. Focused initial states also accept `--preview-account`, `--preview-contact-chat`, `--preview-native-agent`, or `--preview-native-thread` alongside the two arguments above.
 
+For the complete app with the sample discussion, launch with `--preview-data --preview-native-samples`. The design menu remains available only in Debug builds.
+
 ## Validation and remaining work
 
-The prototype builds successfully with the Beta configuration and uses offline fixtures. Light and dark captures are included. Production adoption still requires interactive navigation and keyboard checks, long-title and narrow-device checks, VoiceOver and accessibility text-size checks, Reduce Transparency verification, and validation of the material fallback on older supported iOS versions.
+The implementation uses the existing conversation, thread, and settings flows. The Beta build passes. Native UI checks pass for saved inline preferences, sheet dismissal, title-to-details navigation, discussion back navigation with draft and parent position preservation, and reachable settings at the largest accessibility text size. All checks use offline sample data. Light and dark captures are included. Physical-iPhone review, long-title and narrow-device checks, VoiceOver review, Reduce Transparency verification, and validation of the material fallback on older supported iOS versions remain before release.

@@ -207,6 +207,7 @@ struct ConversationThreadView: View {
                 .modifier(ConversationTitleSurface())
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("thread-title")
             }
         }
     }
@@ -2639,6 +2640,7 @@ struct ConversationView: View {
         .modifier(ConversationTitleSurface())
         .accessibilityLabel("\(conversation.displayName), \(conversationHeaderStatus)")
         .accessibilityHint("Opens conversation details")
+        .accessibilityIdentifier("conversation-title")
     }
 
     private var conversationHeader: some View {
@@ -2648,10 +2650,7 @@ struct ConversationView: View {
                 .lineLimit(1)
 
             if let id = conversation.subsessionId {
-                let snapshot = model.subsessions[id]
-                let status = model.stoppingSubsessionIDs.contains(id) ? "Stopping…"
-                    : snapshot?.statusNotice ?? snapshot?.state.label ?? "Loading…"
-                Text("Shared thread · \(status)")
+                Text(sharedThreadHeaderStatus(id: id))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -2699,9 +2698,13 @@ struct ConversationView: View {
         .contentShape(Rectangle())
         .accessibilityLabel("Open info for \(conversation.displayName)")
         .accessibilityHint("Shows media, files, tasks, and session details")
+        .accessibilityIdentifier("conversation-details")
     }
 
     private var conversationHeaderStatus: String {
+        if let id = conversation.subsessionId {
+            return sharedThreadHeaderStatus(id: id)
+        }
         return switch conversation.kind {
         case .agent:
             agentHeaderStatus
@@ -2716,6 +2719,13 @@ struct ConversationView: View {
                 )
             }
         }
+    }
+
+    private func sharedThreadHeaderStatus(id: String) -> String {
+        let snapshot = model.subsessions[id]
+        let status = model.stoppingSubsessionIDs.contains(id) ? "Stopping…"
+            : snapshot?.statusNotice ?? snapshot?.state.label ?? "Loading…"
+        return "Shared thread · \(status)"
     }
 
     private func openSessionDetails() {

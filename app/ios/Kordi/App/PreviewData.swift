@@ -449,7 +449,8 @@ enum PreviewData {
                 reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000006"
             )
         ])
-        if ProcessInfo.processInfo.arguments.contains("--preview-native-design"),
+        if ProcessInfo.processInfo.arguments.contains("--preview-native-design")
+            || ProcessInfo.processInfo.arguments.contains("--preview-native-samples"),
            let root = messages.first(where: { $0.id == "gm1" }) {
             let action = MessageActionMetadata.thread(root.actionSource(sessionId: "session:group:mobile"))
             messages.append(contentsOf: [

@@ -35,6 +35,7 @@ enum KordiPreviewModePersistence {
     /// never runs against the scheme's backend.
     private static let launchArguments: Set<String> = [
         "--preview-launching", "--preview-data", "--preview-background-stop", "--preview-markdown",
+        "--preview-native-design", "--preview-native-agent", "--preview-native-thread", "--preview-native-samples",
         "--preview-login", "--preview-signup", "--preview-account", "--preview-devices",
         "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
         "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
