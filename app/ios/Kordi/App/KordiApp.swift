@@ -86,6 +86,10 @@ struct KordiApp: App {
     init() {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-data"),
+           ProcessInfo.processInfo.arguments.contains("--preview-native-thread") {
+            UserDefaults.standard.set(MessageLayout.threads.rawValue, forKey: MessageLayout.storageKey)
+        }
+        if ProcessInfo.processInfo.arguments.contains("--preview-data"),
            ProcessInfo.processInfo.arguments.contains("--preview-theme-contrast") {
             UserDefaults.standard.set(KordiChatTheme.sand.rawValue, forKey: KordiChatTheme.storageKey)
             UserDefaults.standard.set(AppAppearance.light.rawValue, forKey: AppAppearance.storageKey)
@@ -325,6 +329,7 @@ private struct NativeDesignPreview: View {
         if arguments.contains("--preview-account") { return [] }
         if arguments.contains("--preview-contact-chat") { return ["person:acct_maya"] }
         if arguments.contains("--preview-native-agent") { return ["agent:my-kordi"] }
+        if arguments.contains("--preview-native-thread") { return ["group:mobile", "thread:gm1"] }
         return ["group:mobile"]
     }()
     @State private var showsSettings = false
@@ -336,6 +341,7 @@ private struct NativeDesignPreview: View {
                     NavigationLink("Group conversation", value: "group:mobile")
                     NavigationLink("Direct message", value: "person:acct_maya")
                     NavigationLink("Agent conversation", value: "agent:my-kordi")
+                    NavigationLink("Thread discussion", value: "thread:gm1")
                     Button("Settings") { showsSettings = true }
                 } header: {
                     Text("Design preview")
@@ -345,7 +351,9 @@ private struct NativeDesignPreview: View {
             }
             .navigationTitle("")
             .navigationDestination(for: String.self) { id in
-                if let conversation = model.conversations.first(where: { $0.id == id }) {
+                if id == "thread:gm1", let conversation = model.conversations.first(where: { $0.id == "group:mobile" }) {
+                    ConversationThreadView(conversation: conversation, rootMessageID: "gm1")
+                } else if let conversation = model.conversations.first(where: { $0.id == id }) {
                     ConversationView(conversation: conversation)
                 }
             }

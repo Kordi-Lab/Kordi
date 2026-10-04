@@ -449,6 +449,15 @@ enum PreviewData {
                 reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000006"
             )
         ])
+        if ProcessInfo.processInfo.arguments.contains("--preview-native-design"),
+           let root = messages.first(where: { $0.id == "gm1" }) {
+            let action = MessageActionMetadata.thread(root.actionSource(sessionId: "session:group:mobile"))
+            messages.append(contentsOf: [
+                ChatMessage(id: "native-thread-1", conversationId: conversationId, author: .me, authorName: "Alex", text: "The title should float over the chat background. The glass controls are enough.", createdAt: now.addingTimeInterval(-1_100), deliveryState: .read, errorMessage: nil, requestMessageId: nil, replyToMessageId: root.id, messageAction: action),
+                ChatMessage(id: "native-thread-2", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "Agreed. Smaller Settings labels also make the page feel calmer.", createdAt: now.addingTimeInterval(-1_040), deliveryState: .read, errorMessage: nil, requestMessageId: nil, replyToMessageId: root.id, messageAction: action),
+                ChatMessage(id: "native-thread-3", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "I’ll check both appearances and the thread view before the next build.", createdAt: now.addingTimeInterval(-980), deliveryState: .read, errorMessage: nil, requestMessageId: nil, replyToMessageId: root.id, messageAction: action)
+            ])
+        }
         if includesMentionAttention {
             let mention = MessageMention(
                 label: "Alex",

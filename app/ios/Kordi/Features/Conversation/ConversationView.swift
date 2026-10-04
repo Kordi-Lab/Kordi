@@ -154,13 +154,11 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
     }
 
     private func threadDestination(rootID: String) -> some View {
-        ConversationView(
+        ConversationThreadView(
             conversation: conversation,
+            rootMessageID: rootID,
             initialMessageID: firstMessageID,
             showsThreadUnreadDivider: showsUnreadDivider,
-            allowsCompanionPanel: false,
-            showsNavigationChrome: false,
-            scopedThreadRootMessageID: rootID,
             onNavigateThread: onNavigateThread,
             onReplyInConversation: { source in
                 onReplyInConversation(source)
@@ -168,16 +166,56 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
             }
         )
         .id(rootID)
+    }
+}
+
+struct ConversationThreadView: View {
+    @EnvironmentObject private var model: AppModel
+    let conversation: ConversationSummary
+    let rootMessageID: String
+    var initialMessageID: String? = nil
+    var showsThreadUnreadDivider = false
+    var onNavigateThread: ((String, String?) -> Void)? = nil
+    var onReplyInConversation: ((MessageActionSource) -> Void)? = nil
+
+    var body: some View {
+        ConversationView(
+            conversation: conversation,
+            initialMessageID: initialMessageID,
+            showsThreadUnreadDivider: showsThreadUnreadDivider,
+            allowsCompanionPanel: false,
+            showsNavigationChrome: false,
+            scopedThreadRootMessageID: rootMessageID,
+            onNavigateThread: onNavigateThread,
+            onReplyInConversation: onReplyInConversation
+        )
         .navigationTitle("Discussion")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("Discussion")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Discussion").font(.headline)
+                    Text(context)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 15)
+                .padding(.vertical, 7)
+                .frame(minHeight: 44)
+                .modifier(ConversationTitleSurface())
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
             }
         }
+    }
+
+    private var context: String {
+        let count = MessageThreadProjection(messages: model.messages(for: conversation))
+            .thread(rootID: rootMessageID)?.replies.count ?? 0
+        let name = conversation.kind == .group ? "# \(conversation.displayName)" : conversation.displayName
+        return "\(name) · \(count) \(count == 1 ? "reply" : "replies")"
     }
 }
 
@@ -697,7 +735,8 @@ struct ConversationView: View {
                                         0,
                                         viewport.size.height - timelineVerticalInset
                                     ),
-                                    alignment: timeline.isEmpty || trajectoryViewport.isPinned ? .top : .bottom
+                                    alignment: timeline.isEmpty || trajectoryViewport.isPinned
+                                        || scopedThreadRootMessageID != nil ? .top : .bottom
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)

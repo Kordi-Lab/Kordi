@@ -40,14 +40,14 @@
     </div>
     <div class="screens">
       <article>
-        <div class="screen-heading"><h2>Conversation</h2><select id="conversation" aria-label="Conversation type"><option value="group">Group</option><option value="direct">Direct message</option><option value="agent">Agent</option></select></div>
+        <div class="screen-heading"><h2>Conversation</h2><select id="conversation" aria-label="Conversation type"><option value="group">Group</option><option value="direct">Direct message</option><option value="agent">Agent</option><option value="thread">Thread</option></select></div>
         <div class="phone"><img id="chat" src="group-light.png" alt="Proposed Kordi group conversation with a floating title capsule and native action controls"></div>
-        <p class="caption"><strong>Compact, tappable conversation identity</strong>Title and context share one capsule. Native back navigation and grouped actions stay easy to reach.</p>
+        <p class="caption" id="chat-caption"><strong>Compact, tappable conversation identity</strong><span>Title and context share one capsule. Native back navigation and grouped actions stay easy to reach.</span></p>
       </article>
       <article>
-        <div class="screen-heading"><h2>Settings</h2><span class="status">52 pt minimum rows</span></div>
+        <div class="screen-heading"><h2>Settings</h2><span class="status">48 pt minimum rows</span></div>
         <div class="phone"><img id="settings" src="settings-light.png" alt="Proposed Kordi settings sheet with a white canvas, compact sections, and inline preference values"></div>
-        <p class="caption"><strong>More useful information in less space</strong>A continuous list with clear sections, restrained icons, and visible preference values. Tap the profile to edit it.</p>
+        <p class="caption"><strong>More useful information in less space</strong>Smaller 15 pt labels, 12 pt supporting text, tighter sections, and visible preference values. Tap the profile to edit it.</p>
       </article>
     </div>
     <footer>Actual simulator captures of the proposed app screens, using offline sample data. This is a design proposal; it has not been merged or released. The browser presents screenshots; the native simulator runs the interactive prototype.</footer>
@@ -56,12 +56,14 @@
     let mode = 'light';
     const selection = document.querySelector('#conversation');
     const params = new URLSearchParams(location.search);
-    if (['group', 'direct', 'agent'].includes(params.get('screen'))) selection.value = params.get('screen');
+    if (['group', 'direct', 'agent', 'thread'].includes(params.get('screen'))) selection.value = params.get('screen');
     if (params.get('mode') === 'dark') mode = 'dark';
     function update() {
-      document.querySelector('#chat').src = selection.value + '-' + mode + '.png?v=2';
+      document.querySelector('#chat').src = selection.value + '-' + mode + '.png?v=4';
       document.querySelector('#chat').alt = 'Proposed Kordi ' + selection.options[selection.selectedIndex].text.toLowerCase() + ' conversation with glass controls over the continuous conversation background';
-      document.querySelector('#settings').src = 'settings-' + mode + '.png?v=2';
+      document.querySelector('#chat-caption strong').textContent = selection.value === 'thread' ? 'A focused thread, with its context' : 'Compact, tappable conversation identity';
+      document.querySelector('#chat-caption span').textContent = selection.value === 'thread' ? 'The parent message and three replies stay together. The glass title shows the conversation and reply count.' : 'Title and context share one capsule. Native back navigation and grouped actions stay easy to reach.';
+      document.querySelector('#settings').src = 'settings-' + mode + '.png?v=4';
       for (const button of document.querySelectorAll('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
     }
     selection.addEventListener('change', update);

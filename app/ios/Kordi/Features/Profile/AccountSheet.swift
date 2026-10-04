@@ -97,7 +97,7 @@ struct AccountSheet: View {
                         Spacer(minLength: 8)
                         if !model.providerAuthProfiles.isEmpty {
                             Text("\(model.providerAuthProfiles.count)")
-                                .font(.subheadline)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -147,41 +147,41 @@ struct AccountSheet: View {
     }
 
     private var accountHeader: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             IdentityAvatar(
                 name: model.account?.preferredName ?? "Me",
                 imageSource: model.account?.avatar.imageSource,
                 kind: .person,
-                size: 48,
+                size: 40,
                 seed: model.account?.accountId
             )
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.account?.preferredName ?? "Kordi account")
-                    .font(.title3.weight(.semibold))
+                    .font(.headline)
                 if let email = model.account?.primaryEmail.nonEmpty {
                     Text(email)
-                        .font(.subheadline)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
     }
 
     private func settingsSectionTitle(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline.weight(.semibold))
+            .font(.footnote.weight(.semibold))
             .foregroundStyle(.primary)
             .textCase(nil)
-            .padding(.top, 8)
-            .padding(.bottom, 8)
+            .padding(.top, 6)
+            .padding(.bottom, 6)
             .accessibilityAddTraits(.isHeader)
     }
 
     private var settingsDivider: some View {
-        Divider().padding(.vertical, 14)
+        Divider().padding(.vertical, 10)
     }
 
     private func settingsLink<Content: View>(_ route: AccountSettingsRoute, @ViewBuilder content: () -> Content) -> some View {
@@ -190,11 +190,11 @@ struct AccountSheet: View {
                 content()
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .regular))
+                    .font(.caption)
                     .foregroundStyle(.tertiary)
                     .accessibilityHidden(true)
             }
-            .frame(minHeight: 52)
+            .frame(minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -208,20 +208,20 @@ private struct CompactSettingsLabel: View {
     var value: String? = nil
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             Image(systemName: systemImage)
-                .font(.system(size: 20, weight: .regular))
-                .frame(width: 24)
+                .font(.body)
+                .frame(width: 22)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body)
+                Text(title).font(.subheadline)
                 if let subtitle {
-                    Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
             }
             if let value {
                 Spacer(minLength: 8)
-                Text(value).font(.subheadline).foregroundStyle(.secondary)
+                Text(value).font(.caption).foregroundStyle(.secondary)
             }
         }
         .foregroundStyle(.primary)
@@ -262,7 +262,7 @@ private struct CompactAppearanceSettingsView: View {
             }
         }
         .listStyle(.plain)
-        .environment(\.defaultMinListRowHeight, 52)
+        .environment(\.defaultMinListRowHeight, 48)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: appearanceRawValue + messageLayoutRawValue + chatThemeRawValue)

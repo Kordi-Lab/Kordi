@@ -13,6 +13,13 @@ The proposal follows the compact title capsules in the supplied Slack and Telegr
 - Extend the conversation wallpaper behind the status and navigation areas. There must be no tall white band or opaque full-width header behind the controls; the glass capsules and back control provide the chrome. Use native glass on iOS 26 and later, a material fallback on older versions, and an opaque control surface when Reduce Transparency is enabled.
 - Preserve the transcript, composer, session actions, presence, and agent activity behavior.
 
+## Thread
+
+- Show the parent message and its replies in the existing native discussion screen. Short threads begin beneath the title instead of leaving a large blank area above the messages.
+- Use a glass title capsule with the conversation name and reply count.
+- Continue the chat background behind the navigation controls.
+- The focused thread preview uses the compact Threads message display preference.
+
 ## Settings
 
 - Use one continuous system-background canvas with section dividers instead of separate cards.
@@ -20,13 +27,13 @@ The proposal follows the compact title capsules in the supplied Slack and Telegr
 - Make the compact profile row the entry point for profile editing.
 - Group settings into Notifications, Appearance, and Account.
 - Show Color mode, Message display, and Chat theme with their current values directly in the root sheet.
-- Keep rows at least 52 points high; use 17-point primary text, 13-point secondary text, restrained symbols, and short section labels.
+- Keep rows at least 48 points high; use 15-point primary text, 12-point secondary text, restrained symbols, and short section labels.
 - Keep selections connected to existing appearance and message-layout preferences.
 - Keep device review notices and provider account counts visible.
 
 ## Preview
 
-Open `index.html` through a local HTTP server to compare group, direct, and agent captures in light and dark appearances. The browser displays screenshots; the simulator runs the interactive prototype.
+Open `index.html` through a local HTTP server to compare group, direct, agent, and thread captures in light and dark appearances. The browser displays screenshots; the simulator runs the interactive prototype.
 
 Build the `Kordi Beta` scheme for an iPhone simulator and launch with:
 
@@ -34,7 +41,7 @@ Build the `Kordi Beta` scheme for an iPhone simulator and launch with:
 --preview-data --preview-native-design
 ```
 
-Back navigation returns to a preview menu with group, direct, agent, and Settings destinations. Focused initial states also accept `--preview-account`, `--preview-contact-chat`, or `--preview-native-agent` alongside the two arguments above.
+Back navigation returns to a preview menu with group, direct, agent, thread, and Settings destinations. Focused initial states also accept `--preview-account`, `--preview-contact-chat`, `--preview-native-agent`, or `--preview-native-thread` alongside the two arguments above.
 
 ## Validation and remaining work
 
