@@ -175,21 +175,31 @@ fn only_agent_envelopes_allow_notifying_the_sender_account() {
     )));
 }
 
+fn text_message(text: &str) -> MessageSnapshot {
+    message(
+        json!({ "schema": 1, "blocks": [{ "type": "text", "text": text }] }),
+        0,
+    )
+}
+
 #[test]
-fn agent_notifications_use_the_agent_display_name() {
+fn agent_notifications_use_the_agent_display_name_with_an_ai_label() {
     let direct_agent = encoded_envelope(
         CLOUD_AGENT_RESPONSE_PREFIX,
         json!({ "kind": "agent-response", "text": "Finished" }),
     );
+    let direct_agent = text_message(&direct_agent);
     assert_eq!(
-        notification_sender_display_name(
-            &message(
-                json!({ "schema": 1, "blocks": [{ "type": "text", "text": direct_agent }] }),
-                0,
-            ),
-            "Alex".to_string(),
-        ),
-        "Kordi"
+        notification_sender_display_name(&direct_agent, "Alex".to_string(), Some("Scout"), false),
+        "Scout (AI)"
+    );
+    assert_eq!(
+        notification_sender_display_name(&direct_agent, "Alex".to_string(), None, false),
+        "Kordi (AI)"
+    );
+    assert_eq!(
+        notification_sender_display_name(&direct_agent, "Alex".to_string(), Some("  "), false),
+        "Kordi (AI)"
     );
 
     let group_agent = encoded_envelope(
@@ -205,14 +215,89 @@ fn agent_notifications_use_the_agent_display_name() {
     );
     assert_eq!(
         notification_sender_display_name(
-            &message(
-                json!({ "schema": 1, "blocks": [{ "type": "text", "text": group_agent }] }),
-                0,
-            ),
+            &text_message(&group_agent),
             "Maya".to_string(),
+            Some("Scout"),
+            false,
         ),
-        "Researcher · Maya's Agent"
+        "Researcher · Maya's Agent (AI)"
     );
+}
+
+#[test]
+fn human_and_pip_notification_titles() {
+    let group_human = encoded_envelope(
+        CLOUD_GROUP_PREFIX,
+        json!({
+            "kind": "group-message",
+            "message": { "senderKind": "human", "senderDisplayName": "Maya", "text": "Hi" }
+        }),
+    );
+    assert_eq!(
+        notification_sender_display_name(
+            &text_message(&group_human),
+            "Fallback".to_string(),
+            Some("Scout"),
+            false,
+        ),
+        "Maya"
+    );
+    assert_eq!(
+        notification_sender_display_name(&text_message("Plain"), "Maya".to_string(), None, false),
+        "Maya"
+    );
+    // PiP posts as an ordinary member, so its account name gets the label.
+    let pip_group = encoded_envelope(
+        CLOUD_GROUP_PREFIX,
+        json!({
+            "kind": "group-message",
+            "message": { "senderKind": "human", "senderDisplayName": "PiP", "text": "Plan" }
+        }),
+    );
+    assert_eq!(
+        notification_sender_display_name(&text_message(&pip_group), "PiP".to_string(), None, true,),
+        "PiP (AI)"
+    );
+    assert_eq!(
+        notification_sender_display_name(
+            &message(json!({ "schema": 1, "blocks": [] }), 1),
+            "PiP".to_string(),
+            None,
+            true
+        ),
+        "PiP (AI)"
+    );
+}
+
+#[test]
+fn previews_off_title_stays_kordi_for_agent_messages() {
+    let event = MessageAttentionEvent {
+        event_id: Uuid::now_v7(),
+        account_id: "recipient".to_string(),
+        session_id: Uuid::now_v7(),
+        message_id: Uuid::now_v7(),
+        message_sequence: 1,
+        thread_root_id: None,
+        conversation_kind: "group".to_string(),
+        sender_display_name: "Scout (AI)".to_string(),
+        preview_kind: "text".to_string(),
+        preview_text: "Private text".to_string(),
+        absolute_unread_count: 1,
+    };
+    let hidden = push_alert(false, &event);
+    assert_eq!((hidden.title, hidden.body), ("Kordi", "New message"));
+    let shown = push_alert(true, &event);
+    assert_eq!((shown.title, shown.body), ("Scout (AI)", "Private text"));
+}
+
+#[test]
+fn ai_access_notices_are_not_frontend_visible() {
+    let mut notice = text_message("Maya turned off PiP in this group.");
+    notice.kind = "ai-access-notice".to_string();
+    assert!(!is_frontend_visible_message(&notice));
+    assert!(!is_notifiable_message(&notice));
+    notice.kind = "text".to_string();
+    assert!(is_frontend_visible_message(&notice));
 }
 
 #[test]

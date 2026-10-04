@@ -229,6 +229,19 @@ async fn accept_contacts(router: &axum::Router, from: &TestAccount, to: &TestAcc
     assert_eq!(accepted.status(), StatusCode::OK);
 }
 
+/// Lets agents asked in a group read its recent messages, for checks that
+/// need the whole conversation rather than mention-only context.
+async fn allow_recent_history(pool: &sqlx_postgres::PgPool, conversation_id: uuid::Uuid) {
+    sqlx_core::query::query(
+        "INSERT INTO cloud_chat_ai_policies (conversation_id, history_scope) VALUES ($1, 'recent') \
+         ON CONFLICT (conversation_id) DO UPDATE SET history_scope = 'recent'",
+    )
+    .bind(conversation_id)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 async fn count_cloud_agent_runs_for_key(
     pool: &sqlx_postgres::PgPool,
     idempotency_key: &str,
@@ -345,39 +358,6 @@ async fn insert_leased_scheduled_run(
     .await
     .unwrap();
     run_id
-}
-
-async fn run_sandbox_id(pool: &sqlx_postgres::PgPool, run_id: &str) -> Option<String> {
-    let row: (Option<String>,) = sqlx_core::query_as::query_as(
-        "SELECT sandbox_id FROM cloud_agent_fallback_runs WHERE run_id = $1",
-    )
-    .bind(run_id)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    row.0
-}
-
-async fn expire_sandbox(pool: &sqlx_postgres::PgPool, sandbox_id: &str) {
-    sqlx_core::query::query(
-        "UPDATE cloud_agent_sandboxes SET expires_at = $2 WHERE sandbox_id = $1",
-    )
-    .bind(sandbox_id)
-    .bind((chrono::Utc::now() - chrono::Duration::seconds(60)).to_rfc3339())
-    .execute(pool)
-    .await
-    .unwrap();
-}
-
-async fn count_sandboxes_for_session(pool: &sqlx_postgres::PgPool, session_id: &str) -> i64 {
-    let row: (i64,) = sqlx_core::query_as::query_as(
-        "SELECT COUNT(*)::BIGINT FROM cloud_agent_sandboxes WHERE session_id = $1",
-    )
-    .bind(session_id)
-    .fetch_one(pool)
-    .await
-    .unwrap();
-    row.0
 }
 
 async fn lease_claimed_run_for_export(

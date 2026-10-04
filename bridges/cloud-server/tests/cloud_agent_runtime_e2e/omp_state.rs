@@ -192,6 +192,32 @@ async fn omp_state_is_private_route_scoped_and_fenced_with_completion() {
         read_json(replay).await["messages"][0]["content"],
         "newest state"
     );
+    // A state saved before the conversation's AI access changed is never
+    // replayed, since it may hold messages the run may no longer use.
+    let mut members = [owner.account_id.as_str(), peer.account_id.as_str()];
+    members.sort_unstable();
+    let session = format!("session:direct-person:{}:{}", members[0], members[1]);
+    query("INSERT INTO cloud_chat_ai_opt_outs(conversation_id,account_id,created_at) SELECT conversation_id,$2,now()+interval '1 hour' FROM cloud_chat_conversations WHERE legacy_session_id=$1")
+        .bind(&session).bind(&peer.account_id).execute(&pool).await.unwrap();
+    let after_change = router
+        .clone()
+        .oneshot(post_json_with_runner_token(
+            &format!("/v1/cloud/agent-runs/{next}/omp-context"),
+            "runner-test-token",
+            context_body.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(after_change.status(), StatusCode::OK);
+    assert!(!read_json(after_change)
+        .await
+        .to_string()
+        .contains("newest state"));
+    query("DELETE FROM cloud_chat_ai_opt_outs WHERE account_id=$1")
+        .bind(&peer.account_id)
+        .execute(&pool)
+        .await
+        .unwrap();
     // A private hide after admission invalidates both frozen canonical content
     // and structured replay, so saved signatures cannot revive hidden content.
     query("INSERT INTO cloud_chat_message_visibility(account_id,message_id) VALUES($1,$2::uuid)")

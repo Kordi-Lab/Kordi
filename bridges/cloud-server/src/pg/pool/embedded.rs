@@ -169,6 +169,8 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(version: 109, "session-bound realtime tickets", "0109_realtime_ticket_sessions.sql"),
     migration!(version: 110, "contact consent and blocks", "0110_contact_consent_and_blocks.sql"),
     migration!(version: 111, "abuse reports", "0111_abuse_reports.sql"),
+    migration!(version: 112, "agent trust: AI access, opt-outs, pending actions, run disclosure",
+        "0112_agent_trust.sql"),
     migration!(version: 113, "runner run token hash", "0113_runner_run_token_hash.sql"),
     migration!(version: 114, "desktop device proofs", "0114_desktop_device_proofs.sql"),
     migration!(version: 116, "content removal jobs and deletion indexes",
@@ -179,3 +181,7 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(version: 119, "device key rotation", "0119_device_key_rotation.sql"),
     migration!(version: 120, "account email verification", "0120_account_email_verification.sql"),
 ];
+
+#[cfg(test)]
+#[path = "embedded_tests.rs"]
+mod tests;

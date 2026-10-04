@@ -86,8 +86,8 @@ pub struct PlanCardOption {
 }
 
 /// A participant as the propose caller supplied them: identity plus whether
-/// they organize the plan. Their RSVP always starts `pending`, except the
-/// organizer, who starts `yes` — they proposed it.
+/// they organize the plan. Every RSVP starts `pending`, the organizer's too:
+/// PiP suggests the organizer's yes for them to confirm.
 #[derive(Clone, Debug)]
 pub struct PlanCardParticipantInput {
     pub account_id: String,

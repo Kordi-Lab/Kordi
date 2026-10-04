@@ -419,6 +419,7 @@ export function WorkspaceSidebar({
       <GroupDetailsDialog
         isOpen={isGroupDetailsDialogOpen}
         space={chatModel.selectedParticipantSpace}
+        activeSessionId={activeConvId}
         contacts={displayedContacts}
         currentAccountId={cloudAccount?.accountId}
         onClose={() => {

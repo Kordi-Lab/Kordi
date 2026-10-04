@@ -8,6 +8,7 @@ use uuid::Uuid;
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
 async fn provider_context_excludes_pre_join_messages_across_retry_and_completion() {
+    let _settings = super::GROUP_SETTING_TESTS.read().await;
     let url =
         std::env::var("KORDI_DIGEST_TEST_DATABASE_URL").expect("isolated test database required");
     let pool = sqlx_postgres::PgPoolOptions::new()
@@ -41,6 +42,14 @@ async fn provider_context_excludes_pre_join_messages_across_retry_and_completion
         .await
         .expect("send pre-join message");
     }
+    query(
+        "INSERT INTO cloud_chat_ai_policies (conversation_id, pip_enabled) VALUES ($1, true)
+         ON CONFLICT (conversation_id) DO UPDATE SET pip_enabled = true",
+    )
+    .bind(chat)
+    .execute(&pool)
+    .await
+    .unwrap();
     super::membership::join_conversation(&pool, &pip, chat)
         .await
         .expect("join PiP");

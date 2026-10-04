@@ -209,10 +209,7 @@ pub(super) fn member_runtime(
     {
         return Err(unavailable());
     }
-    let source = identity
-        .as_ref()
-        .filter(|i| i.requester_account_id != i.owner_account_id)
-        .map(|i| i.request_id.clone());
+    let authorization = member_authorization(scope, identity.as_ref());
     let owner = session.account_id;
     let token = Arc::new(move || {
         let current = crate::cloud_session::cloud_session_load()
@@ -227,7 +224,7 @@ pub(super) fn member_runtime(
     let base = crate::cloud_api_base_url_from_env().unwrap_or_default();
     let observation = Arc::new(CloudObservation {
         scope: scope.into(),
-        authorization: json!({"sessionId":scope,"sourceRequestId":source}),
+        authorization,
         endpoint: format!(
             "{}/v1/cloud/agent-runs/desktop/read-context",
             base.trim_end_matches('/')
@@ -240,4 +237,14 @@ pub(super) fn member_runtime(
         token,
     });
     Ok(Some(runtime(observation, None)))
+}
+
+/// Every run with a runtime identity names its request, including the owner's
+/// own requests, so the server applies that run's conversation access policy.
+/// Only reads without an identity (the owner's private assistant) omit it.
+fn member_authorization(
+    scope: &str,
+    identity: Option<&kordi_core::types::RuntimeIdentity>,
+) -> Value {
+    json!({"sessionId":scope,"sourceRequestId":identity.map(|i| i.request_id.clone())})
 }

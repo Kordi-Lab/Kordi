@@ -25,6 +25,53 @@ Cloud retrieval is bound to the leased run and exact conversation. Each request 
 
 Conversation text remains untrusted data. The mention directory describes valid handles; it does not grant additional tool, file, outreach, or account permissions. Background sessions inherit the group retrieval scope.
 
+## Conversation access settings
+
+Each group stores what agents asked in it may use (`cloud_chat_ai_policies`). Snapshots carry the viewer's `ai_access` projection, and `GET`/`PUT /v2/chat/conversations/:conversation_id/ai-access` read and change it. The path accepts the conversation UUID or the URL-encoded session ID. `GET /v2/chat/ai-features` reports whether this server runs PiP. Every channel of a group is its own conversation with its own settings: the Mac's group details panel starts on the channel that is open, names it when the group has several channels, and offers the others; the iPhone opens AI access from the channel itself.
+
+- **What agents can see.** `mentions` (the default for every group) gives a run its request, the one message the request replies to, quotes or threads under, the requester's earlier requests to the same agent, and that agent's replies to them. `recent` adds the bounded recent history and search over the conversation. Only group owners and admins change it. Direct conversations are always `recent`; agent conversations have no settings.
+- **Don't let AI use my messages.** Any member of a group or direct conversation can turn it on. The member's own messages are then left out of other people's agent context, run-bound `read_session`/`search_sessions`, attachment references, digests and PiP input. The requester's and the agent owner's own opt-outs do not apply to their own runs, and replies written by a member's agent are not that member's words (PiP reads them too, but they never let PiP suggest an answer for that member). The row survives leaving the conversation, so earlier messages stay excluded: snapshots list active members with the setting on in `excluded_member_ids` for settings screens, and everyone with it on, including members who left, in `excluded_account_ids`, which the Mac's private assistant search reads.
+- **PiP** is a member only while the group's setting is on; a join rechecks the setting, so a retried request cannot bring PiP back after it was turned off. New groups start with PiP off; clients that want PiP turn it on right after creating the group. Startup reconciles PiP's memberships with the settings: groups without a setting row (created by an older server) keep PiP as they have it, PiP leaves groups where it is off and joins groups where it is on. Every join starts PiP at the newest message. While PiP is off, existing plan cards still refresh in place, and PiP posts nothing new.
+
+Every change that alters a stored value posts a notice as the member who made it, with the server-only message kind `ai-access-notice`, and sends each member a `conversation.updated` projection. Clients cannot send that kind (`RESERVED_MESSAGE_KIND`), so a notice is recognized by its kind, never by its text. Older clients show it as an ordinary message from that member. A notice is never agent, digest or PiP context. Changes count against the member's message send limit.
+
+### One policy for every read path
+
+`runs/context_policy.rs` decides, for every stored row, whether a run may use it. The cloud prompt, the desktop executor's server context, run-bound retrieval and attachment references all apply it. Request identity is bound to its sender: a later message from another member that reuses a request's logical ID never becomes the request, a thread root or an earlier request, and an ambiguous reply target admits nothing. Only one reply hop is followed. A handoff from another agent sees only the handoff and its target; a scheduled task sees only the creator's earlier requests and the agent's replies. The model receives a short "Conversation access" note in the run identity so it does not guess at what it cannot see.
+
+A member's private assistant reading a synced conversation without a run (`read-context` without `sourceRequestId`) is not limited by "What agents can see"; only other members' opt-outs apply. Digests follow the same rule.
+
+A cloud run's initial prompt is built when the run is claimed. If the conversation's settings change before a runner leases the run (a member opts out, or the group narrows what agents can see), the lease rebuilds the prompt under the current settings; the stored prompt is left as it was. A change after the lease applies to every later `read_session` and `search_sessions` call, which check the settings on each read, but it cannot recall what the provider already received. The same holds for desktop runs, which start right after their claim.
+
+### Desktop executor contract
+
+Desktop executors declare `contextContract` in `ready` and `claim`. Contract 2 executors receive `serverContext` with an acquired claim wherever the conversation's settings filter the run's history: a mention-only group, or a member's opt-out that applies to the run (the requester's and the owner's own opt-outs never do). It is the same bounded history the cloud prompt uses, at most eight messages of up to 800 characters, and the executor uses it instead of its local cache. Where nothing is filtered (agent conversations, direct conversations and recent groups without such an opt-out), the claim carries no `serverContext` and the executor keeps its local history, which leaves AI access notices out. In a direct conversation, a run with an opt-out that applies therefore sees fewer earlier messages than one without. Executors that send no contract are legacy executors:
+
+| Claim | Legacy executor |
+| --- | --- |
+| The owner's own request, no opt-outs | Runs as before with local context |
+| The owner's own request, someone opted out | `409 desktop_update_required`, shown as a failed reply asking the owner to update |
+| Another member's request where someone opted out | `acquired:false`; the requester's app claims cloud fallback |
+| Another member's request in a mention-only group | `acquired:false` while `KORDI_AGENT_CONTEXT_LEGACY_DESKTOP` is `deny` (the default); `allow_without_opt_outs` lets legacy executors answer there during a rollout. Opt-outs are always enforced |
+
+A legacy executor that would refuse a claim never counts as a ready owner Mac, so it does not delay cloud fallback. The server reads `KORDI_AGENT_CONTEXT_LEGACY_DESKTOP` once at startup; on the development compose stack, set it in `deploy/dev/.env` and recreate the `cloud-server` container.
+
+### Workspaces
+
+A group owner's own requests keep the group's shared cloud workspace. Every other requester in a group works in a workspace of their own. No existing workspace is changed or removed.
+
+## What Kordi says about agent access
+
+Product copy may claim only the following, and only in these terms:
+
+- Agents asked in a group see only messages sent to them by default. Kordi's servers and current Kordi apps enforce this.
+- "Don't let AI use my messages" is enforced by Kordi's servers and current Kordi apps. It does not remove what an AI already received, and people can still read, copy or forward the messages.
+- Sharing the owner's calendar in a shared conversation needs the owner's approval.
+- PiP only suggests answers and decisions; people confirm them.
+- Agent replies say where they ran, and for Kordi Cloud runs, which provider and model answered.
+
+These statements support transparency about AI use. They are not a claim of compliance with any regulation.
+
 ## Validation
 
 Regression checks cover bounded snapshots, preserved stored history, directory exclusion, explicit directory retrieval, cross-session denial, long-message continuation, stable prompt prefixes, and cloud tool dispatch. The cloud HTTP integration test also checks runner ownership and conversation isolation; it requires an isolated PostgreSQL test database.

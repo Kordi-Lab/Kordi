@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Bot, MessageSquare, UserPlus, Users, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -10,17 +10,15 @@ import {
   groupDefaultName,
 } from '@/features/chat/chatCreateFlows';
 import type { Agent, Contact } from '@/kordi-app/types';
-import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
+import type { CreateChatGroupRequest } from '@/app/chatGroupRequest.types';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
+import type { AgentTrustApi } from '@/features/agentTrust/agentTrustApi';
+import { PipCreateSwitch } from '@/kordi-app/components/pipCreateSwitch';
+import { popoverGeometry, type ChatCreatePopoverAnchor } from '@/pages/chatCreateDialog.geometry';
 
-export type ChatCreatePopoverAnchor = {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-};
+export type { ChatCreatePopoverAnchor } from '@/pages/chatCreateDialog.geometry';
 
 export type AddContactLookupResult = {
   accountId: string;
@@ -52,67 +50,11 @@ export type ChatCreateDialogProps = {
   addContactPlaceholder?: string;
   initialMode?: CreateMode;
   anchorRect?: ChatCreatePopoverAnchor | null;
+  agentTrustApi?: AgentTrustApi;
 };
 
 export type ChatCreateMode = 'menu' | 'person' | 'agent' | 'group' | 'add-contact';
 type CreateMode = ChatCreateMode;
-type PopoverPlacement = 'right' | 'left' | 'floating';
-type PopoverStyle = CSSProperties & {
-  '--app-create-enter-x'?: string;
-  '--app-popover-origin'?: string;
-};
-
-type PopoverGeometry = {
-  style: PopoverStyle;
-  arrowStyle: CSSProperties;
-  placement: PopoverPlacement;
-};
-
-function popoverGeometry(anchorRect?: ChatCreatePopoverAnchor | null): PopoverGeometry {
-  const width = 284;
-  const gap = 10;
-  const margin = 10;
-  const fallbackLeft = 92;
-  const fallbackTop = 74;
-
-  if (!anchorRect) {
-    return {
-      placement: 'floating',
-      arrowStyle: { top: 18 },
-      style: {
-        left: fallbackLeft,
-        top: fallbackTop,
-        '--app-create-enter-x': '-6px',
-        '--app-popover-origin': 'left 22px',
-      },
-    };
-  }
-
-  const viewportWidth = typeof window === 'undefined' ? 1280 : window.innerWidth;
-  const viewportHeight = typeof window === 'undefined' ? 800 : window.innerHeight;
-  const rightLeft = anchorRect.left + anchorRect.width + gap;
-  const leftLeft = anchorRect.left - width - gap;
-  const canFitRight = rightLeft + width <= viewportWidth - margin;
-  const canFitLeft = leftLeft >= margin;
-  const placement: PopoverPlacement = canFitRight || !canFitLeft ? 'right' : 'left';
-  const unclampedLeft = placement === 'right' ? rightLeft : leftLeft;
-  const left = Math.min(Math.max(margin, unclampedLeft), Math.max(margin, viewportWidth - width - margin));
-  const top = Math.min(Math.max(margin, anchorRect.top - 4), Math.max(margin, viewportHeight - 220));
-  const anchorCenterY = anchorRect.top + anchorRect.height / 2;
-  const arrowTop = Math.min(Math.max(18, anchorCenterY - top - 6), 54);
-
-  return {
-    placement,
-    arrowStyle: { top: arrowTop },
-    style: {
-      left,
-      top,
-      '--app-create-enter-x': placement === 'right' ? '-8px' : '8px',
-      '--app-popover-origin': placement === 'right' ? 'left 22px' : 'right 22px',
-    },
-  };
-}
-
 function DialogCard({ children, onClose, anchorRect }: { children: ReactNode; onClose: () => void; anchorRect?: ChatCreatePopoverAnchor | null }) {
   const { style, arrowStyle, placement } = popoverGeometry(anchorRect);
 
@@ -194,10 +136,12 @@ export function ChatCreateDialog({
   addContactPlaceholder,
   initialMode = 'menu',
   anchorRect = null,
+  agentTrustApi,
 }: ChatCreateDialogProps) {
   const [mode, setMode] = useState<CreateMode>(initialMode);
   const [selectedContactIds, setSelectedContactIds] = useState<string[]>([]);
   const [groupName, setGroupName] = useState('');
+  const [pipEnabled, setPipEnabled] = useState(false);
   const [contactNodeId, setContactNodeId] = useState('');
   const [addContactState, setAddContactState] = useState<'idle' | 'saving' | 'sent' | 'pending' | 'error'>('idle');
   const [addContactError, setAddContactError] = useState('');
@@ -222,6 +166,7 @@ export function ChatCreateDialog({
     setMode(initialMode);
     setSelectedContactIds([]);
     setGroupName('');
+    setPipEnabled(false);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -245,6 +190,7 @@ export function ChatCreateDialog({
     setMode(initialMode);
     setSelectedContactIds([]);
     setGroupName('');
+    setPipEnabled(false);
     setContactNodeId('');
     setAddContactState('idle');
     setAddContactError('');
@@ -567,7 +513,7 @@ export function ChatCreateDialog({
           onSubmit={(event) => {
             event.preventDefault();
             if (!canSubmitGroup) return;
-            void onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null });
+            void onCreateGroup({ contactIds: selectedGroupContactIds, name: groupName.trim() || null, ...(pipEnabled ? { pipEnabled } : {}) });
             close();
           }}
         >
@@ -601,6 +547,7 @@ export function ChatCreateDialog({
               <div className="app-chat-create-empty rounded-[12px] border px-2.5 py-2.5 text-[11px]">No approved contacts available.</div>
             )}
           </div>
+          <PipCreateSwitch checked={pipEnabled} onChange={setPipEnabled} api={agentTrustApi} />
           <div className="flex gap-1.5">
             <Button type="button" variant="quiet" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" onClick={() => setMode('menu')}>Back</Button>
             <Button type="submit" className="h-8 flex-1 rounded-[12px] px-3 text-[12px]" disabled={!canSubmitGroup}>

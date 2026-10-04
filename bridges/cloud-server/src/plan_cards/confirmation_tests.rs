@@ -71,6 +71,16 @@ async fn calendar_requires_a_time_and_the_viewers_own_rsvp() {
     let scheduled = super::store::propose(&pool, &owner, args(Some(&initial), Some(time)))
         .await
         .unwrap();
+    // The organizer answers for themselves; nobody is marked attending for them.
+    let scheduled = super::store::rsvp(
+        &pool,
+        &scheduled.event_id,
+        &owner,
+        super::models::PlanCardRsvp::Yes,
+        None,
+    )
+    .await
+    .unwrap();
     let confirmed = super::routes::dispatch_row(&pool, &actor, confirm(&scheduled))
         .await
         .unwrap();
@@ -122,7 +132,7 @@ async fn calendar_requires_a_time_and_the_viewers_own_rsvp() {
 
 #[tokio::test]
 #[ignore = "requires a task-owned PostgreSQL database in KORDI_DIGEST_TEST_DATABASE_URL"]
-async fn represented_confirm_and_cancel_require_provenance_and_manager_authority() {
+async fn pip_confirm_and_cancel_are_only_suggestions_for_plan_managers() {
     let pool = sqlx_postgres::PgPoolOptions::new()
         .connect(
             &std::env::var("KORDI_DIGEST_TEST_DATABASE_URL").expect("isolated database required"),
@@ -132,11 +142,12 @@ async fn represented_confirm_and_cancel_require_provenance_and_manager_authority
     crate::pg::pool::apply_migrations(&pool).await.unwrap();
     let owner = format!("represented-owner-{}", Uuid::new_v4().simple());
     let peer = format!("represented-peer-{}", Uuid::new_v4().simple());
-    for account in [&owner, &peer] {
+    let pip = format!("represented-pip-{}", Uuid::new_v4().simple());
+    for account in [&owner, &peer, &pip] {
         seed_account(&pool, account).await;
     }
     let conversation = Uuid::new_v4();
-    seed_conversation(&pool, conversation, &owner, &[&owner, &peer]).await;
+    seed_conversation(&pool, conversation, &owner, &[&owner, &peer, &pip]).await;
     let scheduled = super::store::propose(
         &pool,
         &owner,
@@ -160,69 +171,48 @@ async fn represented_confirm_and_cancel_require_provenance_and_manager_authority
     )
     .await
     .unwrap();
-    let request = |confirmed_by: &str| {
-        serde_json::from_value(json!({
-            "action":"confirm",
-            "eventId":scheduled.event_id,
-            "revision":scheduled.revision,
-            "confirmedBy":confirmed_by
-        }))
-        .unwrap()
-    };
-    let actor = |represented_accounts| super::routes::Actor {
-        account_id: "pip-service".to_string(),
+    let actor = super::routes::Actor {
+        account_id: pip.clone(),
         on_behalf_of_conversation: Some(conversation),
-        represented_accounts,
+        represented_accounts: std::collections::BTreeSet::from([owner.clone()]),
     };
-
-    let missing_provenance = super::routes::dispatch_row(
-        &pool,
-        &actor(std::collections::BTreeSet::new()),
-        request(&owner),
+    let decision = |action: &str, by_key: &str| {
+        let mut request = json!({
+            "action": action,
+            "eventId": scheduled.event_id,
+            "revision": scheduled.revision,
+        });
+        request[by_key] = json!(owner);
+        serde_json::from_value(request).unwrap()
+    };
+    for (action, by_key) in [("confirm", "confirmedBy"), ("cancel", "canceledBy")] {
+        let outcome = super::routes::dispatch(&pool, &actor, decision(action, by_key))
+            .await
+            .unwrap_or_else(|_| panic!("{action} suggestion"));
+        let super::suggestions::Dispatched::Suggested { row, awaiting, .. } = outcome else {
+            panic!("PiP's {action} must not change the card");
+        };
+        assert_eq!(awaiting, "organizer_or_admin");
+        assert_eq!(row.revision, scheduled.revision);
+        assert_eq!(row.state, PlanCardState::AwaitingConfirmation);
+    }
+    // The newer decision replaces the older one: one pending decision per card.
+    let pending: Vec<(String, Option<String>, i64)> = query_as(
+        "SELECT kind, approver_account_id, (subject->>'revision')::bigint
+         FROM cloud_agent_pending_actions WHERE event_id = $1 AND status = 'pending'",
     )
-    .await
-    .unwrap_err();
-    assert_eq!(missing_provenance.status(), 403);
-
-    let non_manager = super::routes::dispatch_row(
-        &pool,
-        &actor(std::collections::BTreeSet::from([peer.clone()])),
-        request(&peer),
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(non_manager.status(), 403);
-
-    let confirmed = super::routes::dispatch_row(
-        &pool,
-        &actor(std::collections::BTreeSet::from([owner.clone()])),
-        request(&owner),
-    )
+    .bind(&scheduled.event_id)
+    .fetch_all(&pool)
     .await
     .unwrap();
-    let cancel = |canceled_by: &str| {
-        serde_json::from_value(json!({
-            "action":"cancel",
-            "eventId":confirmed.event_id,
-            "revision":confirmed.revision,
-            "canceledBy":canceled_by
-        }))
+    assert_eq!(
+        pending,
+        vec![("plan_cancel".to_string(), None, scheduled.revision)]
+    );
+    let unchanged = super::store::load(&pool, &scheduled.event_id)
+        .await
         .unwrap()
-    };
-    let non_manager = super::routes::dispatch_row(
-        &pool,
-        &actor(std::collections::BTreeSet::from([peer.clone()])),
-        cancel(&peer),
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(non_manager.status(), 403);
-    let canceled = super::routes::dispatch_row(
-        &pool,
-        &actor(std::collections::BTreeSet::from([owner.clone()])),
-        cancel(&owner),
-    )
-    .await
-    .unwrap();
-    assert_eq!(canceled.state, PlanCardState::Canceled);
+        .unwrap();
+    assert_eq!(unchanged.revision, scheduled.revision);
+    assert_eq!(unchanged.state, PlanCardState::AwaitingConfirmation);
 }

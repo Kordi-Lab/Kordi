@@ -1,7 +1,12 @@
 import { Forward } from 'lucide-react';
 
-export function ForwardedFromHeader({ senderLabel }: { senderLabel?: string | null }) {
-  const sender = senderLabel?.trim() || 'Unknown sender';
+import { sourceSenderLabelWithAi } from '@/features/agentTrust/agentAuthorship';
+
+export function ForwardedFromHeader({ senderLabel, sourceMessageKind }: {
+  senderLabel?: string | null;
+  sourceMessageKind?: string | null;
+}) {
+  const sender = sourceSenderLabelWithAi(senderLabel?.trim() || 'Unknown sender', sourceMessageKind);
 
   return (
     <div

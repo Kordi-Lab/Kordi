@@ -269,6 +269,15 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
 
 enum CloudGroupMessageCodec {
     static let prefix = "kordi-cloud-group:"
+
+    /// The kind a group message is shown as. An AI access notice is
+    /// recognized only by the kind the server stored for the message, so an
+    /// envelope that claims that kind is shown as an ordinary message.
+    static func projectedMessageKind(wireKind: String?, envelopeKind: String?) -> String? {
+        if wireKind == ChatMessage.aiAccessNoticeMessageKind { return ChatMessage.aiAccessNoticeMessageKind }
+        if envelopeKind == ChatMessage.aiAccessNoticeMessageKind { return nil }
+        return envelopeKind
+    }
     private static let supportedKinds: Set<String> = [
         "group-invite",
         "group-message",

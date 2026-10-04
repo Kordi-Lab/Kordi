@@ -48,20 +48,34 @@ pub async fn provider_auth_for_run(
         return Ok(ProviderAuthForRunResult::RunNotFound);
     };
 
-    if let Some(provider_auth) =
-        service_provider_auth_for_run(&owner_account_id, run_id, &runtime_route, service_auths)
-    {
-        return Ok(ProviderAuthForRunResult::Found(provider_auth));
-    }
-
-    provider_auth_for_account_route(
-        pool,
-        cipher,
+    let result = match service_provider_auth_for_run(
         &owner_account_id,
+        run_id,
         &runtime_route,
-        Some(run_id),
-    )
-    .await
+        service_auths,
+    ) {
+        Some(provider_auth) => ProviderAuthForRunResult::Found(provider_auth),
+        None => {
+            provider_auth_for_account_route(
+                pool,
+                cipher,
+                &owner_account_id,
+                &runtime_route,
+                Some(run_id),
+            )
+            .await?
+        }
+    };
+    // "About this reply" names the provider a Kordi Cloud run used, as the
+    // server resolved it here, never as the runner reports it.
+    if let ProviderAuthForRunResult::Found(material) = &result {
+        query("UPDATE cloud_agent_fallback_runs SET disclosed_provider = $2 WHERE run_id = $1")
+            .bind(run_id)
+            .bind(&material.provider)
+            .execute(pool)
+            .await?;
+    }
+    Ok(result)
 }
 
 pub async fn provider_auth_for_account_route(

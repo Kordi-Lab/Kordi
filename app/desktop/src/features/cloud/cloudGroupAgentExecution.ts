@@ -38,7 +38,7 @@ import {
   loadCloudGroupAgentTargetMessages,
 } from './cloudGroupAgentGuard';
 import { ensureCloudGroupAgentIdentity } from './cloudGroupAgentPersistence';
-import { cloudGroupAgentReplyThreadAction } from './cloudGroupAgentPolicy';
+import { cloudGroupAgentReplyThreadAction, splitCloudAgentNativeContext } from './cloudGroupAgentPolicy';
 import {
   publishCloudGroupAgentEnvelope,
   publishCloudGroupAgentTerminalAfterGuards,
@@ -152,18 +152,20 @@ export async function respondToCloudGroupAgentMention(
   const presentation = await ensureCloudGroupAgentIdentity(input, signal);
   throwIfCloudAgentTurnAborted(signal);
 
+  const nativeContext = splitCloudAgentNativeContext(policy.nativeContext({
+    groupRows,
+    groupId: envelope.groupId,
+    requestMessageId: message.id,
+    requestCreatedAtMs: message.createdAtMs,
+    respondingAccountId: account.accountId,
+    respondingAgentId: presentation.agentId,
+  }));
   const contextMessages = [
     ...cloudAgentContextMessagesFromDefinition(
       runtime.agentDefinitionsById[message.targetCloudAgentId ?? ''] ?? null,
     ),
-    ...policy.nativeContext({
-      groupRows,
-      groupId: envelope.groupId,
-      requestMessageId: message.id,
-      requestCreatedAtMs: message.createdAtMs,
-      respondingAccountId: account.accountId,
-      respondingAgentId: presentation.agentId,
-    }),
+    ...lease.history(nativeContext.history),
+    ...nativeContext.instructions,
   ];
   let rememberedTurn: DesktopChatTurnSnapshot | undefined;
   let observedRevision = '';

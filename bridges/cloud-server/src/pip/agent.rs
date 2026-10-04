@@ -13,7 +13,7 @@ use super::config::{PendingPipConfig, PipConfig, PipConfigError};
 use super::prompt::PIP_SYSTEM_PROMPT;
 
 /// Creates or refreshes PiP's account, default agent profile and agent
-/// definition, then makes sure PiP sits in every existing group conversation.
+/// definition, then makes PiP's group memberships match each group's setting.
 pub async fn bootstrap_pip_agent(
     pool: &PgPool,
     pending: PendingPipConfig,
@@ -135,9 +135,14 @@ pub async fn bootstrap_pip_agent(
         ));
     }
 
-    let joined = super::membership::join_all_groups(pool, &config.account_id).await?;
-    if joined > 0 {
-        println!("PiP joined {joined} existing group conversation(s)");
+    // Membership changes below publish projections that report PiP's state.
+    super::register_service(&config);
+    let reconciled = super::membership::reconcile_groups(pool, &config.account_id).await?;
+    if reconciled != super::membership::Reconciled::default() {
+        println!(
+            "PiP group settings reconciled: {} recorded, {} joined, {} left",
+            reconciled.grandfathered, reconciled.joined, reconciled.left
+        );
     }
     Ok(config)
 }

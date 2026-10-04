@@ -31,6 +31,8 @@ pub(crate) struct ContextMessage {
     pub kind: String,
     pub text: String,
     pub created_at: String,
+    /// Written by a member's agent; it never speaks for that member.
+    pub from_agent: bool,
 }
 
 /// Keeps the newest messages that fit the character budget, oldest first,
@@ -73,6 +75,7 @@ pub(crate) fn budget_messages(
                 "senderId": message.sender_id,
                 "senderName": message.sender_name,
                 "fromPip": message.sender_id == pip_account_id,
+                "fromAgent": message.from_agent,
                 "kind": message.kind,
                 "text": message.text,
                 "createdAt": message.created_at,
@@ -466,6 +469,7 @@ mod tests {
                 kind: "text".into(),
                 text: long.clone(),
                 created_at: String::new(),
+                from_agent: false,
             })
             .collect();
         let kept = budget_messages(messages, 10, 27, "acct_pip");

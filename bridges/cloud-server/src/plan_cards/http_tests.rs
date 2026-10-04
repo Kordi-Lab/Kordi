@@ -81,13 +81,21 @@ async fn full_lifecycle_over_real_http() {
     let jordan = format!("jordan-{suffix}");
     let maya = format!("maya-{suffix}");
     let riya = format!("riya-{suffix}");
-    for account in [&jordan, &maya, &riya] {
+    let pip_account = format!("pip-{suffix}");
+    for account in [&jordan, &maya, &riya, &pip_account] {
         seed_account(&pool, account).await;
     }
     let conversation_id = Uuid::new_v4();
-    seed_conversation(&pool, conversation_id, &jordan, &[&jordan, &maya, &riya]).await;
+    seed_conversation(
+        &pool,
+        conversation_id,
+        &jordan,
+        &[&jordan, &maya, &riya, &pip_account],
+    )
+    .await;
 
     let jordan_token = bearer_token_for(&pool, &jordan).await;
+    let maya_token = bearer_token_for(&pool, &maya).await;
     let riya_token = bearer_token_for(&pool, &riya).await;
 
     // Bind an ephemeral local port and run the REAL router — the same one
@@ -139,9 +147,9 @@ async fn full_lifecycle_over_real_http() {
     // PiP proposes through the same request shape inside its own chat.
     let request: super::wire::Request = serde_json::from_value(propose_body).unwrap();
     let pip = super::routes::Actor {
-        account_id: jordan.clone(),
+        account_id: pip_account.clone(),
         on_behalf_of_conversation: Some(conversation_id),
-        represented_accounts: std::collections::BTreeSet::new(),
+        represented_accounts: std::collections::BTreeSet::from([maya.clone()]),
     };
     let card = super::routes::dispatch_row(&pool, &pip, request)
         .await
@@ -151,6 +159,16 @@ async fn full_lifecycle_over_real_http() {
     assert_eq!(card["revision"], 1);
     let event_id = card["eventId"].as_str().unwrap().to_string();
     assert_eq!(card["participants"].as_array().unwrap().len(), 3);
+    // Nobody starts as attending; the organizer gets a yes to confirm.
+    let suggested: Vec<(String, String)> = sqlx_core::query_as::query_as(
+        "SELECT approver_account_id, subject->>'rsvp' FROM cloud_agent_pending_actions
+         WHERE event_id = $1 AND kind = 'plan_rsvp' AND status = 'pending'",
+    )
+    .bind(&event_id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(suggested, vec![(jordan.clone(), "yes".to_string())]);
 
     // Conflict recovery is read-only and requires current membership.
     let snapshot_url = format!("{base}/v1/cloud/plan_cards/{event_id}");
@@ -212,7 +230,7 @@ async fn full_lifecycle_over_real_http() {
     );
 
     // An ordinary participant cannot confirm; a chat admin can, even with
-    // only the organizer answered and everyone else still pending.
+    // everyone still pending.
     let denied = client
         .post(format!("{base}/v1/cloud/plan_cards"))
         .bearer_auth(&riya_token)
@@ -230,7 +248,7 @@ async fn full_lifecycle_over_real_http() {
             .iter()
             .filter(|p| p["rsvp"] != "pending")
             .count(),
-        1
+        0
     );
     let response = client
         .post(format!("{base}/v1/cloud/plan_cards"))
@@ -309,6 +327,36 @@ async fn full_lifecycle_over_real_http() {
         .unwrap();
     assert_eq!(riya_status["rsvp"], "no");
 
+    // PiP's answer for Maya waits for her; answering on the card herself
+    // settles the suggestion.
+    let request: super::wire::Request = serde_json::from_value(json!({
+        "action": "rsvp", "eventId": event_id, "participantId": maya, "rsvp": "yes",
+    }))
+    .unwrap();
+    let suggested = super::routes::dispatch(&pool, &pip, request)
+        .await
+        .unwrap_or_else(|_| panic!("PiP's rsvp becomes a suggestion"));
+    let super::suggestions::Dispatched::Suggested { action_id, row, .. } = suggested else {
+        panic!("PiP never records an answer itself");
+    };
+    assert_eq!(row.revision, 3, "a suggestion leaves the card unchanged");
+    let response = client
+        .post(format!("{base}/v1/cloud/plan_cards"))
+        .bearer_auth(&maya_token)
+        .json(&json!({"action": "rsvp", "eventId": event_id, "participantId": maya, "rsvp": "yes"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let (status,): (String,) = sqlx_core::query_as::query_as(
+        "SELECT status FROM cloud_agent_pending_actions WHERE action_id = $1",
+    )
+    .bind(action_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(status, "superseded");
+
     // Riya cannot RSVP on Jordan's behalf using her own token.
     let response = client
         .post(format!("{base}/v1/cloud/plan_cards"))
@@ -336,7 +384,7 @@ async fn full_lifecycle_over_real_http() {
         .json(&json!({
             "action": "cancel",
             "eventId": event_id,
-            "revision": 3,
+            "revision": 4,
             "canceledBy": jordan,
             "reason": "Something came up",
         }))

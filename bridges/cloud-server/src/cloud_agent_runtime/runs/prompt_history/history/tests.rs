@@ -43,10 +43,103 @@ fn fallback_context_isolated_by_thread_before_history_limit() {
         context_history_indices(&rows, "followup", None),
         (Some(4), vec![0, 1, 2])
     );
+    // Only the server id of the request selects it; transport aliases were
+    // resolved for the request's sender before this point.
     assert_eq!(
         context_history_indices(&rows, "ios_client-main", None),
-        (Some(3), vec![0])
+        (None, vec![0, 3])
     );
+}
+
+fn envelope_row(
+    wire: &str,
+    sender: &str,
+    message: serde_json::Value,
+) -> (String, String, String, String) {
+    let envelope = serde_json::json!({
+        "kind": "group-message", "groupId": "session:group:history", "groupTitle": null,
+        "createdByAccountId": "acct_owner", "actor": {"accountId": sender, "displayName": "Actor"},
+        "participants": [], "message": message
+    });
+    (
+        wire.to_string(),
+        format!("client-{wire}"),
+        sender.to_string(),
+        format!(
+            "kordi-cloud-group:{}",
+            URL_SAFE_NO_PAD.encode(serde_json::to_vec(&envelope).unwrap())
+        ),
+    )
+}
+
+#[test]
+fn the_oldest_row_keeps_a_duplicated_logical_id() {
+    let rows = vec![
+        envelope_row(
+            "w-root",
+            "acct_requester",
+            serde_json::json!({"id": "root", "senderAccountId": "acct_requester", "text": "Root"}),
+        ),
+        envelope_row(
+            "w-request",
+            "acct_requester",
+            serde_json::json!({"id": "logical-request", "senderAccountId": "acct_requester",
+                "text": "@Owner continue", "messageAction": {"kind": "thread", "source": {"sourceMessageId": "root"}}}),
+        ),
+        // Another member later reuses both the request id and the thread root id.
+        envelope_row(
+            "w-reuse-request",
+            "acct_member",
+            serde_json::json!({"id": "logical-request", "senderAccountId": "acct_member", "text": "Not the request"}),
+        ),
+        envelope_row(
+            "w-reuse-root",
+            "acct_member",
+            serde_json::json!({"id": "root", "senderAccountId": "acct_member", "text": "Not the root"}),
+        ),
+    ];
+    let (request, history) = context_history_indices(&rows, "w-request", None);
+    assert_eq!(request, Some(1), "the request is the sender-bound wire row");
+    assert_eq!(
+        history,
+        vec![0],
+        "the thread root resolves to the oldest row"
+    );
+}
+
+#[test]
+fn quote_previews_are_left_out_when_the_source_is_not_allowed() {
+    let quote = |source: &str| {
+        envelope_row(
+            "w-quote",
+            "acct_requester",
+            serde_json::json!({"id": "q", "senderAccountId": "acct_requester", "senderKind": "human",
+                "text": "see this", "createdAtMs": 1,
+                "messageAction": {"kind": "quote", "source": {"sourceMessageId": source,
+                    "senderLabel": "Member", "textPreview": "PRIVATE_PREVIEW"}}}),
+        )
+    };
+    let history = |source: &str| {
+        let (_, _, sender, body) = quote(source);
+        vec![history_message(&sender, body)]
+    };
+    let allowed = fallback_prompt_with_history(
+        "acct_requester",
+        "acct_owner",
+        "current",
+        &history("visible"),
+        &|id| id == "visible",
+    );
+    assert!(allowed.contains("[quotes message visible from Member: PRIVATE_PREVIEW]"));
+    let redacted = fallback_prompt_with_history(
+        "acct_requester",
+        "acct_owner",
+        "current",
+        &history("hidden"),
+        &|id| id == "visible",
+    );
+    assert!(redacted.contains("[quotes message hidden from Member]"));
+    assert!(!redacted.contains("PRIVATE_PREVIEW"));
 }
 
 #[test]
@@ -131,6 +224,7 @@ fn history_labels_speakers_from_the_stored_sender_account() {
                 group_body("acct_requester", "human", "requester text"),
             ),
         ],
+        &|_| true,
     );
     assert!(prompt.contains("Participant: named owner agent text"));
     assert!(prompt.contains("Participant: named owner text"));
@@ -157,6 +251,7 @@ fn agent_messages_are_attributed_to_the_agent_of_the_stored_sender() {
                 group_body("acct_participant", "agent", "participant agent text"),
             ),
         ],
+        &|_| true,
     );
     assert!(prompt.contains("Requester agent: requester agent text"));
     assert!(prompt.contains("Participant agent: participant agent text"));
@@ -183,6 +278,7 @@ fn agent_response_bodies_are_owner_agent_only_when_stored_by_the_owner() {
             history_message("acct_participant", response("participant formatted text")),
             history_message("acct_owner", response("owner agent reply")),
         ],
+        &|_| true,
     );
     // Replies from another account's agent stay in context under that
     // account's agent, never under the owner's agent or the human requester.

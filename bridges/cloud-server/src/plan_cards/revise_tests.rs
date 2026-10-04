@@ -93,7 +93,12 @@ async fn revising_a_card_keeps_votes_and_answers_that_still_apply() {
     store::vote(&pool, &card.event_id, &riya, "opt_2")
         .await
         .unwrap();
-    let card = store::rsvp(&pool, &card.event_id, &riya, PlanCardRsvp::Yes, None)
+    store::rsvp(&pool, &card.event_id, &riya, PlanCardRsvp::Yes, None)
+        .await
+        .unwrap();
+    // The organizer starts pending like everyone and answers for themselves.
+    assert_eq!(rsvp_of(&card, &jordan), PlanCardRsvp::Pending);
+    let card = store::rsvp(&pool, &card.event_id, &jordan, PlanCardRsvp::Yes, None)
         .await
         .unwrap();
 
@@ -139,5 +144,5 @@ async fn revising_a_card_keeps_votes_and_answers_that_still_apply() {
     .await
     .expect("settle the plan");
     assert_eq!(rsvp_of(&settled, &riya), PlanCardRsvp::Pending);
-    assert_eq!(rsvp_of(&settled, &jordan), PlanCardRsvp::Yes);
+    assert_eq!(rsvp_of(&settled, &jordan), PlanCardRsvp::Pending);
 }

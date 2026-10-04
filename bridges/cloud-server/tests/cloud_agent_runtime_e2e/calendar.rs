@@ -105,6 +105,69 @@ async fn chat_calendar_enforces_owner_disclosure_membership_and_live_runner_scop
             .unwrap();
         assert_eq!(response.status().is_success(), allowed);
     }
+    // Sharing in the group waits for the owner's approval in Kordi; only the
+    // owner sees the request, and the approval covers this window.
+    let waiting = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/calendar/read",
+            &owner.token,
+            input.clone(),
+        ))
+        .await
+        .unwrap();
+    let waiting = read_json(waiting).await;
+    assert_eq!(waiting["status"], "approval_required");
+    assert!(waiting.get("events").is_none());
+    let action_id = waiting["pendingActionId"].as_str().unwrap().to_string();
+    let list_uri = format!(
+        "/v1/cloud/agent-actions?sessionId={}",
+        session.replace(':', "%3A")
+    );
+    for (token, expected) in [(&owner.token, 1), (&peer.token, 0)] {
+        let listed = router
+            .clone()
+            .oneshot(get_with_token(&list_uri, token))
+            .await
+            .unwrap();
+        assert_eq!(listed.status(), StatusCode::OK);
+        let listed = read_json(listed).await;
+        assert_eq!(listed["actions"].as_array().unwrap().len(), expected);
+    }
+    let decision_uri = format!("/v1/cloud/agent-actions/{action_id}/decision");
+    let denied = router
+        .clone()
+        .oneshot(post_json_with_token(
+            &decision_uri,
+            &peer.token,
+            json!({"decision":"approve"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+    let approved = router
+        .clone()
+        .oneshot(post_json_with_token(
+            &decision_uri,
+            &owner.token,
+            json!({"decision":"approve"}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(approved.status(), StatusCode::OK);
+    let shared = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/calendar/read",
+            &owner.token,
+            input.clone(),
+        ))
+        .await
+        .unwrap();
+    let shared = read_json(shared).await;
+    assert_eq!(shared["scope"], "owner_requested_shared_read");
+    assert_eq!(shared["events"][0]["title"], "Saved appointment");
+
     // Model arguments cannot change the run's admitted account or conversation.
     let run = insert_leased_scheduled_run(&pool, &owner, &owner, &session, "calendar-runner").await;
     query("UPDATE cloud_agent_fallback_runs SET request_message_id=$2,execution_backend='cloud' WHERE run_id=$1")

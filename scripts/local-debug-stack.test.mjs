@@ -46,6 +46,7 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
     /KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS: \$\{KORDI_CLOUD_ALLOW_PRIVATE_PROVIDER_ENDPOINTS:-\}/,
   );
   assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
+  assert.match(compose, /KORDI_AGENT_CONTEXT_LEGACY_DESKTOP: \$\{KORDI_AGENT_CONTEXT_LEGACY_DESKTOP:-deny\}/);
 });
 
 test('debug environment template contains placeholders instead of usable credentials', () => {

@@ -59,6 +59,8 @@ import type { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavig
 import { SupportConversationEmptyState } from '@/features/support/SupportReportDialog';
 import { SupportReportSubmissionProvider } from '@/features/support/SupportReportSubmissionContext';
 import { ConversationCallBanner } from '@/features/cloud/ConversationCallBanner';
+import { AgentReplyDisclosureHost } from '@/kordi-app/components/agentReplyDisclosureDialog';
+import { PendingAgentActionsBanner } from '@/kordi-app/components/pendingAgentActionsBanner';
 
 type ChatMainWorkspaceProps = {
   layout: ChatsPageLayout;
@@ -357,6 +359,7 @@ export function ChatMainWorkspace({
                       layout.setIsDetailPanelCollapsed
                     }
                   >
+                    <PendingAgentActionsBanner sessionId={activeConv.canonicalSessionId ?? activeConv.id} />
                     <MainComposer
                       conversation={activeConv}
                       cloudAccountId={session.cloudAccount?.accountId}
@@ -439,6 +442,7 @@ export function ChatMainWorkspace({
           onClose={models.senderProfiles.close}
         />
       ) : null}
+      <AgentReplyDisclosureHost sessionId={activeConv.canonicalSessionId ?? activeConv.id} accountId={session.cloudAccount?.accountId} />
       {models.pins.dialog.value ? (
         <PinMessageDialog
           mode={models.pins.dialog.value.mode}

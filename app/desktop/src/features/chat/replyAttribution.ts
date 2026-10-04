@@ -1,3 +1,4 @@
+import { sourceMessageKindForMessage } from '@/features/agentTrust/agentAuthorship';
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import type {
   Conversation,
@@ -42,6 +43,7 @@ function sourceReferenceForMessage(message: Message, messageId: string): Message
   return {
     messageId,
     senderLabel: message.sender ?? (message.isOwnMessage ? 'You' : null),
+    sourceMessageKind: sourceMessageKindForMessage(message),
     text: responseText,
     mentions: message.mentions,
     attachmentCount: message.attachments?.length ?? 0,
@@ -254,6 +256,17 @@ function withSourceMessage(message: Message, sourceMessage?: MessageSourceRefere
   };
 }
 
+/** A quote or thread source loaded in this transcript says who wrote it
+ * better than the kind the quoting app declared. Forwards come from other
+ * conversations, so they keep the declared kind. */
+function withLoadedSourceKind(message: Message, sourceByMessageId: ReadonlyMap<string, MessageSourceReference>): Message {
+  const declared = message.sourceMessage;
+  if (!declared || message.messageAction?.kind === 'forward') return message;
+  const loaded = sourceByMessageId.get(cleanText(declared.messageId));
+  if (!loaded || loaded.sourceMessageKind === declared.sourceMessageKind) return message;
+  return { ...message, sourceMessage: { ...declared, sourceMessageKind: loaded.sourceMessageKind } };
+}
+
 function withoutAgentReplyAttribution(message: Message): Message {
   if (!isAgentResponse(message)) return { ...message, replySummary: undefined };
   return {
@@ -396,9 +409,9 @@ export function buildReplyAttribution(
       const sourceMessage = explicitTarget ? sourceByMessageId.get(explicitTarget) : undefined;
       if (sourceMessage && sourceMessage.messageId !== messageId) {
         addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, true);
-        return withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
+        return withLoadedSourceKind(withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage), sourceByMessageId);
       }
-      return message;
+      return withLoadedSourceKind(message, sourceByMessageId);
     }
     if (!isAgentResponse(message)) return message;
 

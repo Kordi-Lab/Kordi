@@ -3,6 +3,7 @@ import { CornerDownLeft, MessagesSquare } from 'lucide-react';
 import { replyStatusText } from '@/features/chat/replyAttribution';
 import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
 import { quotedSenderLabel } from '@/lib/identityLabels';
+import { sourceSenderLabelWithAi } from '@/features/agentTrust/agentAuthorship';
 import { cn } from '@/lib/utils';
 import type { MessageReplySummary, MessageSourceReference } from '../types';
 import { useActiveLocalProfileIdentity } from './localProfileIdentity';
@@ -32,7 +33,10 @@ export function SourceMessageQuote({
 }) {
   const activeLocalProfileIdentity = useActiveLocalProfileIdentity();
   if (!sourceMessage) return null;
-  const senderLabel = quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName);
+  const senderLabel = sourceSenderLabelWithAi(
+    quotedSenderLabel(sourceMessage.senderLabel, activeLocalProfileIdentity.displayName),
+    sourceMessage.sourceMessageKind,
+  );
   if (sourceMessage.deleted) {
     // There is nothing to jump to, so this is plain text rather than a button.
     return (

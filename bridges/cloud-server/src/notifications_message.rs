@@ -37,6 +37,10 @@ const CLOUD_AGENT_RESPONSE_PREFIX: &str = "kordi-cloud-agent-response:";
 const CLOUD_AGENT_CANCEL_PREFIX: &str = "kordi-cloud-agent-cancel:";
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 
+/// Sender name, conversation kind, image attachment count, thread root, and
+/// the sender's default agent name.
+type AttentionContextRow = (String, String, i64, Option<Uuid>, Option<String>);
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MessageAttentionEvent {
     pub event_id: Uuid,
@@ -200,7 +204,7 @@ impl PushNotificationService {
     ) -> Result<(), sqlx_core::Error> {
         reconcile_message_deliveries(pool, recipient, message.id, &self.environment).await?;
 
-        let context: Option<(String, String, i64, Option<Uuid>)> = query_as(
+        let context: Option<AttentionContextRow> = query_as(
             "SELECT COALESCE(sender.display_name, 'Kordi'), conversation.kind, \
                     (SELECT COUNT(*) \
                      FROM cloud_chat_message_attachments message_attachment \
@@ -208,7 +212,9 @@ impl PushNotificationService {
                        ON attachment.attachment_id = message_attachment.attachment_id \
                      WHERE message_attachment.message_id = $3 \
                        AND LOWER(COALESCE(attachment.content_type, '')) LIKE 'image/%'), \
-                    (SELECT thread_root_message_id FROM cloud_chat_messages WHERE message_id=$3) \
+                    (SELECT thread_root_message_id FROM cloud_chat_messages WHERE message_id=$3), \
+                    (SELECT agent.display_name FROM cloud_default_agent_profiles agent \
+                     WHERE agent.owner_account_id = $1) \
              FROM cloud_chat_conversations conversation \
              JOIN cloud_accounts sender ON sender.account_id = $1 \
              WHERE conversation.conversation_id = $2",
@@ -218,8 +224,13 @@ impl PushNotificationService {
         .bind(message.id)
         .fetch_optional(pool)
         .await?;
-        let Some((sender_display_name, conversation_kind, image_attachment_count, thread_root_id)) =
-            context
+        let Some((
+            sender_display_name,
+            conversation_kind,
+            image_attachment_count,
+            thread_root_id,
+            default_agent_name,
+        )) = context
         else {
             return Ok(());
         };
@@ -239,7 +250,12 @@ impl PushNotificationService {
             }
             after = summaries.last().map(|summary| summary.conversation_id);
         }
-        let sender_display_name = notification_sender_display_name(message, sender_display_name);
+        let sender_display_name = notification_sender_display_name(
+            message,
+            sender_display_name,
+            default_agent_name.as_deref(),
+            crate::pip::service_account_id() == Some(message.sender_account_id.as_str()),
+        );
         let (preview_kind, preview_text) =
             message_preview(message, image_attachment_count.max(0) as usize);
         let event = MessageAttentionEvent {
@@ -381,22 +397,9 @@ impl PushNotificationService {
         let event_id = event.event_id.to_string();
         let session_id = event.session_id.to_string();
         let message_id = event.message_id.to_string();
-        let private_preview = "New message";
-        let private_title = "Kordi";
         let payload = MessagePushPayload {
             aps: MessagePushAps {
-                alert: MessagePushAlert {
-                    title: if preferences.previews_enabled {
-                        &event.sender_display_name
-                    } else {
-                        private_title
-                    },
-                    body: if preferences.previews_enabled {
-                        &event.preview_text
-                    } else {
-                        private_preview
-                    },
-                },
+                alert: push_alert(preferences.previews_enabled, event),
                 badge: preferences
                     .badge_enabled
                     .then_some(event.absolute_unread_count),
@@ -420,6 +423,22 @@ impl PushNotificationService {
             device_token: &preferences.device_token,
         };
         self.client.send(payload).await.map(|_| ())
+    }
+}
+
+/// With previews off, the title is always "Kordi", so the sender's name and
+/// any "(AI)" label stay off the lock screen.
+fn push_alert(previews_enabled: bool, event: &MessageAttentionEvent) -> MessagePushAlert<'_> {
+    if previews_enabled {
+        MessagePushAlert {
+            title: &event.sender_display_name,
+            body: &event.preview_text,
+        }
+    } else {
+        MessagePushAlert {
+            title: "Kordi",
+            body: "New message",
+        }
     }
 }
 

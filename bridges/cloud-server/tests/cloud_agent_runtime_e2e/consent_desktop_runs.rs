@@ -60,7 +60,9 @@ async fn owner_desktop_group_runs_stop_when_the_requester_loses_access() {
         &router,
         &owner,
         "ready".into(),
-        json!({"agentIds": [agent]}),
+        // A current executor (context contract 2) may answer another member's
+        // request in a group that shares only mentions with agents.
+        json!({"agentIds": [agent], "contextContract": 2}),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -73,6 +75,7 @@ async fn owner_desktop_group_runs_stop_when_the_requester_loses_access() {
         let claim_id = uuid::Uuid::new_v4();
         let mut input = claim_body_with_session(&owner, &requester, &request, &session);
         input["claimId"] = json!(claim_id);
+        input["contextContract"] = json!(2);
         input["requestMessageId"] = json!(wire_id);
         let (status, claimed) = desktop_call(&router, &owner, "claim".into(), input).await;
         assert_eq!(status, StatusCode::OK, "{claimed}");

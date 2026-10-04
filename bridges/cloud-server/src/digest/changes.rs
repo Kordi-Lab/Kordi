@@ -57,6 +57,11 @@ pub async fn note_message<'e>(
     if crate::pip::service_account_id() == Some(message.sender_account_id.as_str()) {
         return Ok(());
     }
+    // AI access notices never reach a digest. Turning the opt-out on marks the
+    // conversation explicitly instead.
+    if is_ai_access_notice(message) {
+        return Ok(());
+    }
     let deleted = event_type == "message.deleted" || message.deleted_at.is_some();
     if !deleted {
         let generating = message
@@ -68,6 +73,10 @@ pub async fn note_message<'e>(
         }
     }
     mark_conversation(executor, message.conversation_id).await
+}
+
+fn is_ai_access_notice(message: &MessageSnapshot) -> bool {
+    message.kind.trim() == crate::cloud_agent_runtime::runs::context_policy::AI_ACCESS_NOTICE_KIND
 }
 
 /// Digest rows are locked in account order before they are marked. A message
@@ -136,6 +145,32 @@ mod tests {
         assert!(is_trivial(&text("lol thanks")));
         assert!(is_trivial(&text("\u{1f44d}\u{1f602}")));
         assert!(is_trivial(&json!({"blocks": []})));
+    }
+
+    #[test]
+    fn ai_access_notices_are_recognized_by_message_kind() {
+        let mut message = MessageSnapshot {
+            id: Uuid::now_v7(),
+            client_message_id: Uuid::now_v7(),
+            conversation_id: Uuid::now_v7(),
+            conversation_sequence: 1,
+            sender_account_id: "member".to_string(),
+            kind: "ai-access-notice".to_string(),
+            content: text("Maya turned off PiP in this group."),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+            version: 1,
+            generation_status: None,
+            provider_response_id: None,
+            created_at: chrono::Utc::now(),
+            edited_at: None,
+            deleted_at: None,
+            reactions: Vec::new(),
+            attachment_reactions: Vec::new(),
+        };
+        assert!(is_ai_access_notice(&message));
+        message.kind = "text".to_string();
+        assert!(!is_ai_access_notice(&message));
     }
 
     #[test]

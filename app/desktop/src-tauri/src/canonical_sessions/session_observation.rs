@@ -6,6 +6,7 @@ use kordi_tools::{
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::open_db;
+mod ai_opt_outs;
 mod media;
 mod reading;
 use reading::{
@@ -25,14 +26,16 @@ pub(crate) fn search_sessions_for_observation_scoped(
     session_id: Option<&str>,
 ) -> Result<SearchSessionsResponse, String> {
     let conn = open_db()?;
-    search_sessions_in_scope(&conn, request, session_id)
+    let viewer = ai_opt_outs::signed_in_account();
+    search_sessions_as(&conn, request, session_id, viewer.as_deref())
 }
 
 pub(crate) fn read_session_for_observation(
     request: ReadSessionRequest,
 ) -> Result<ReadSessionResponse, String> {
     let conn = open_db()?;
-    read_session_for_observation_in_db(&conn, request)
+    let viewer = ai_opt_outs::signed_in_account();
+    read_session_as(&conn, request, viewer.as_deref())
 }
 
 #[cfg(test)]
@@ -43,10 +46,22 @@ pub(crate) fn search_sessions_for_observation_in_db(
     search_sessions_in_scope(conn, request, None)
 }
 
+#[cfg(test)]
 pub(crate) fn search_sessions_in_scope(
     conn: &Connection,
     request: SearchSessionsRequest,
     scope: Option<&str>,
+) -> Result<SearchSessionsResponse, String> {
+    search_sessions_as(conn, request, scope, None)
+}
+
+/// Searches as `viewer`, leaving out messages from members who turned on
+/// "Don't let AI use my messages" (see `ai_opt_outs`).
+pub(crate) fn search_sessions_as(
+    conn: &Connection,
+    request: SearchSessionsRequest,
+    scope: Option<&str>,
+    viewer: Option<&str>,
 ) -> Result<SearchSessionsResponse, String> {
     let query = request.query.trim().to_lowercase();
     if query.is_empty() {
@@ -85,9 +100,10 @@ pub(crate) fn search_sessions_in_scope(
         let participant_matches = participants
             .iter()
             .any(|name| name.to_lowercase().contains(&query));
-        let message_matches = session_has_message_match(conn, &session_id, &query)?;
+        let hidden = ai_opt_outs::hidden_message_ids(conn, &session_id, viewer)?;
+        let message_matches = session_has_message_match(conn, &session_id, &query, &hidden)?;
         let snippets = if include_messages {
-            message_snippets(conn, &session_id, &query)?
+            message_snippets(conn, &session_id, &query, &hidden)?
         } else {
             Vec::new()
         };
@@ -124,9 +140,20 @@ pub(crate) fn search_sessions_in_scope(
     })
 }
 
+#[cfg(test)]
 pub(crate) fn read_session_for_observation_in_db(
     conn: &Connection,
     request: ReadSessionRequest,
+) -> Result<ReadSessionResponse, String> {
+    read_session_as(conn, request, None)
+}
+
+/// Reads as `viewer`, leaving out messages from members who turned on
+/// "Don't let AI use my messages" (see `ai_opt_outs`).
+pub(crate) fn read_session_as(
+    conn: &Connection,
+    request: ReadSessionRequest,
+    viewer: Option<&str>,
 ) -> Result<ReadSessionResponse, String> {
     let session_id = request.session_id.trim();
     if session_id.is_empty() {
@@ -152,8 +179,9 @@ pub(crate) fn read_session_for_observation_in_db(
         .optional()
         .map_err(|err| err.to_string())?
         .ok_or_else(|| format!("session not found: {session_id}"))?;
+    let hidden = ai_opt_outs::hidden_message_ids(conn, session_id, viewer)?;
     if request.mode.as_deref() == Some("attachment") {
-        return media::read(conn, request);
+        return media::read(conn, request, viewer, &hidden);
     }
     let participants = if request.mode.as_deref() == Some("participants") {
         participants_for_read(conn, session_id)?
@@ -249,6 +277,7 @@ pub(crate) fn read_session_for_observation_in_db(
         other => return Err(format!("unsupported read_session mode: {other}")),
     };
 
+    messages.retain(|message| !hidden.contains(&message.message_id));
     for message in &mut messages {
         message.attachments = media::references(conn, session_id, &message.message_id)?;
     }
@@ -345,25 +374,32 @@ fn session_has_message_match(
     conn: &Connection,
     session_id: &str,
     query: &str,
+    hidden: &std::collections::HashSet<String>,
 ) -> Result<bool, String> {
     let like = escaped_like_contains(query);
-    let exists: i64 = conn
-        .query_row(
-            "SELECT EXISTS(
-                 SELECT 1 FROM session_messages
-                 WHERE session_id = ?1 AND lower(content_text) LIKE ?2 ESCAPE '\\'
-             )",
-            params![session_id, like],
-            |row| row.get(0),
+    let mut stmt = conn
+        .prepare(
+            "SELECT id FROM session_messages
+             WHERE session_id = ?1 AND lower(content_text) LIKE ?2 ESCAPE '\\'
+             LIMIT ?3",
         )
         .map_err(|err| err.to_string())?;
-    Ok(exists != 0)
+    let mut rows = stmt
+        .query(params![session_id, like, hidden.len() + 1])
+        .map_err(|err| err.to_string())?;
+    while let Some(row) = rows.next().map_err(|err| err.to_string())? {
+        if !hidden.contains(&row.get::<_, String>(0).map_err(|err| err.to_string())?) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn message_snippets(
     conn: &Connection,
     session_id: &str,
     query: &str,
+    hidden: &std::collections::HashSet<String>,
 ) -> Result<Vec<SessionObservationSnippet>, String> {
     let like = escaped_like_contains(query);
     let mut stmt = conn
@@ -373,11 +409,11 @@ fn message_snippets(
              LEFT JOIN identities i ON i.id = m.sender_identity_id
              WHERE m.session_id = ?1 AND lower(m.content_text) LIKE ?2 ESCAPE '\\'
              ORDER BY m.sequence_num ASC
-             LIMIT 3",
+             LIMIT ?3",
         )
         .map_err(|err| err.to_string())?;
     let rows = stmt
-        .query_map(params![session_id, like], |row| {
+        .query_map(params![session_id, like, hidden.len() + 3], |row| {
             Ok(SessionObservationSnippet {
                 message_id: row.get(0)?,
                 sender: row.get(1)?,
@@ -392,6 +428,12 @@ fn message_snippets(
             })
         })
         .map_err(|err| err.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|err| err.to_string())
+    let mut snippets = Vec::new();
+    for row in rows {
+        let snippet = row.map_err(|err| err.to_string())?;
+        if !hidden.contains(&snippet.message_id) && snippets.len() < 3 {
+            snippets.push(snippet);
+        }
+    }
+    Ok(snippets)
 }

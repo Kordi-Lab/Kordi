@@ -51,15 +51,19 @@ pub(crate) async fn read(
     if input.offset > 1000 {
         return Err(RunError::NotFound);
     }
-    let shared = match (&input.session_id, &input.request_message_id) {
-        (None, None) => false,
+    let shared_request = match (&input.session_id, &input.request_message_id) {
+        (None, None) => None,
         (Some(session), Some(request)) if input.share_in_conversation => {
             // Resolve transport aliases, then revalidate the canonical human sender,
             // active membership, message visibility and deletion on every read.
-            let (_, wire) =
-                crate::cloud_agent_runtime::runs::request_identity(pool, session, request)
-                    .await?
-                    .ok_or(RunError::NotFound)?;
+            let (_, wire) = crate::cloud_agent_runtime::runs::request_identity(
+                pool,
+                session,
+                request,
+                Some(account),
+            )
+            .await?
+            .ok_or(RunError::NotFound)?;
             let sources =
                 super::store::sources(pool, account, Some(std::slice::from_ref(&wire))).await?;
             if !sources.iter().any(|source| {
@@ -70,14 +74,31 @@ pub(crate) async fn read(
             }) {
                 return Err(RunError::NotFound);
             }
-            true
+            Some((session.clone(), wire, request.clone()))
         }
         _ => return Err(RunError::NotFound),
     };
+    let shared = shared_request.is_some();
     let start = parse_instant(input.start_at.as_deref())?;
     let end = parse_instant(input.end_at.as_deref())?;
     if matches!((start, end), (Some(start), Some(end)) if start >= end) {
         return Err(RunError::NotFound);
+    }
+    // Sharing in a shared chat also needs the owner's approval in Kordi. Older
+    // tools hand the waiting or declined answer to the model as text.
+    if let Some((session, wire, request)) = &shared_request {
+        let gate = crate::cloud_agent_runtime::agent_actions::calendar_gate(
+            pool,
+            account,
+            session,
+            [wire, request],
+            input.start_at.as_deref(),
+            input.end_at.as_deref(),
+        )
+        .await?;
+        if let crate::cloud_agent_runtime::agent_actions::CalendarGate::Respond(body) = gate {
+            return Ok(body);
+        }
     }
     let events = super::store::calendar(pool, account).await?;
     let events: Vec<_> = events

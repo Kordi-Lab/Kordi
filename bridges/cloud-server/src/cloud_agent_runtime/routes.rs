@@ -152,6 +152,8 @@ pub fn routes(state: Arc<ServerState>) -> Router {
     );
 
     user_routes
+        .merge(super::agent_actions::routes(state.clone()))
+        .merge(super::disclosure::routes(state.clone()))
         .merge(provider_auth_routes::routes(state))
         .merge(runner_routes)
         .merge(public_catalog)
@@ -238,12 +240,14 @@ async fn complete_runner_run(
             StatusCode::BAD_REQUEST,
         );
     };
+    let model = input.disclosed_model();
     match super::runs::complete_run_with_state(
         state.db_pool(),
         &run_id,
         &runner_id,
         &input.response_text,
         input.omp_state.as_ref(),
+        model.as_deref(),
     )
     .await
     {

@@ -2,7 +2,9 @@
 //!
 //! The runner authenticates with its runner token; this module binds the
 //! action to the run's owner (PiP's system account) and the run's own
-//! conversation, so a run can never touch another chat's card.
+//! conversation, so a run can never touch another chat's card. PiP proposes
+//! cards; its answers, votes, and plan decisions come back as
+//! `{"status": "suggested", ...}` until a person confirms them.
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -17,9 +19,13 @@ use uuid::Uuid;
 
 use crate::server::ServerState;
 
-use super::routes::{dispatch_row, Actor};
+use super::routes::{dispatch, Actor};
+use super::suggestions::Dispatched;
 use super::wire::Request;
 
+/// Members PiP may suggest an answer or vote for: those who wrote one of the
+/// run's new messages themselves. A reply a member's agent wrote is not that
+/// member's word.
 fn represented_accounts(prompt: &str) -> BTreeSet<String> {
     let Ok(input) = serde_json::from_str::<Value>(prompt) else {
         return BTreeSet::new();
@@ -28,10 +34,12 @@ fn represented_accounts(prompt: &str) -> BTreeSet<String> {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|message| message["isNew"] == true)
+        .filter(|message| message["isNew"] == true && message["fromAgent"] != true)
         .filter(|message| {
-            message["id"]
+            // The run input names messages `messageId`; `id` is the older name.
+            message["messageId"]
                 .as_str()
+                .or_else(|| message["id"].as_str())
                 .is_some_and(|message_id| !message_id.is_empty())
         })
         .filter_map(|message| message["senderId"].as_str().map(str::to_string))
@@ -120,8 +128,23 @@ pub async fn runner_action(
         on_behalf_of_conversation: Some(conversation_id),
         represented_accounts: represented_accounts(&prompt),
     };
-    match dispatch_row(state.db_pool(), &actor, request).await {
-        Ok(row) => {
+    match dispatch(state.db_pool(), &actor, request).await {
+        Ok(Dispatched::Suggested {
+            row,
+            action_id,
+            awaiting,
+        }) => {
+            // The card did not change, so there is nothing to refresh or mark
+            // seen. The model learns that a person still has to confirm.
+            Json(json!({
+                "status": "suggested",
+                "pendingActionId": action_id,
+                "awaiting": awaiting,
+                "card": crate::pip::context::compact_card(&row),
+            }))
+            .into_response()
+        }
+        Ok(Dispatched::Applied(row)) => {
             // Publish each successful tool mutation, even if a later model
             // step fails before the run completion callback.
             if let Err(error) =
@@ -174,6 +197,35 @@ mod tests {
         assert_eq!(
             represented_accounts(&prompt),
             std::collections::BTreeSet::from(["new-member".to_string()])
+        );
+    }
+
+    #[test]
+    fn represented_accounts_read_the_run_input_and_skip_agent_replies() {
+        let messages = crate::pip::context::budget_messages(
+            ["writer", "agent-owner"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, sender)| crate::pip::context::ContextMessage {
+                    id: format!("m{index}"),
+                    sequence: 10 + index as i64,
+                    sender_id: sender.to_string(),
+                    sender_name: sender.to_string(),
+                    kind: "text".to_string(),
+                    text: "Saturday works".to_string(),
+                    created_at: String::new(),
+                    from_agent: sender == "agent-owner",
+                })
+                .rev()
+                .collect(),
+            0,
+            5,
+            "acct_pip",
+        );
+        let prompt = json!({ "messages": messages }).to_string();
+        assert_eq!(
+            represented_accounts(&prompt),
+            std::collections::BTreeSet::from(["writer".to_string()])
         );
     }
 }

@@ -8,7 +8,7 @@ use chrono::{DateTime, FixedOffset};
 use super::models::{PlanCardOption, PlanCardProposeArgs, PlanCardRow, PlanCardRsvp};
 use super::store::parse_pg_timestamp;
 
-fn same_instant(left: Option<&str>, right: Option<&str>) -> bool {
+pub(super) fn same_instant(left: Option<&str>, right: Option<&str>) -> bool {
     let instant = |value: &str| -> Option<DateTime<FixedOffset>> { parse_pg_timestamp(value) };
     match (left, right) {
         (None, None) => true,
@@ -20,7 +20,7 @@ fn same_instant(left: Option<&str>, right: Option<&str>) -> bool {
     }
 }
 
-fn same_place(left: Option<&str>, right: Option<&str>) -> bool {
+pub(super) fn same_place(left: Option<&str>, right: Option<&str>) -> bool {
     let place = |value: Option<&str>| {
         value
             .map(str::trim)
@@ -86,25 +86,22 @@ pub(super) fn keeps_answers(previous: &PlanCardRow, args: &PlanCardProposeArgs) 
 }
 
 /// A participant's answer on the revised card: the one they gave if it still
-/// applies, otherwise pending, and yes for the organizer who proposed it.
+/// applies, otherwise pending. The organizer starts pending too: PiP proposes
+/// cards, and only suggests the organizer's yes for them to confirm.
 pub(super) fn revised_rsvp(
     previous: Option<&PlanCardRow>,
     account_id: &str,
-    organizer: bool,
+    _organizer: bool,
 ) -> PlanCardRsvp {
-    let kept = previous
+    previous
         .and_then(|row| {
             row.participants
                 .iter()
                 .find(|participant| participant.account_id == account_id)
         })
         .map(|participant| participant.rsvp)
-        .filter(|rsvp| *rsvp != PlanCardRsvp::Pending);
-    match kept {
-        Some(rsvp) => rsvp,
-        None if organizer => PlanCardRsvp::Yes,
-        None => PlanCardRsvp::Pending,
-    }
+        .filter(|rsvp| *rsvp != PlanCardRsvp::Pending)
+        .unwrap_or(PlanCardRsvp::Pending)
 }
 
 #[cfg(test)]

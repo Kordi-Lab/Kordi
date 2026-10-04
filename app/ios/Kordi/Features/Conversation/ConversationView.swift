@@ -259,6 +259,7 @@ struct ConversationView: View {
     @State private var didPresentForwardPreview = false
     @State private var detailsMessage: ChatMessage?
     @State private var reportTarget: ReportTarget?
+    @State private var presentedReplyDisclosure: AgentReplyDisclosureTarget?
     @State private var pinTarget: ChatMessage?
     @State private var unpinTarget: PinnedMessageItem?
     @State private var editTarget: ChatMessage?
@@ -379,7 +380,7 @@ struct ConversationView: View {
               let root = threadProjection.thread(rootID: scopedThreadRootMessageID)?.root else {
             return nil
         }
-        return .thread(root.actionSource(sessionId: conversation.sessionId))
+        return .thread(root.actionSource(sessionId: conversation.sessionId, isPip: isPipMessage(root)))
     }
     private var linkedBackgroundSessionState: BackgroundAgentSession.State? {
         linkedBackgroundSession?.resolvedState(in: model.conversations)
@@ -767,6 +768,9 @@ struct ConversationView: View {
 
                 if selectedMessageIDs.isEmpty {
                     if !isWaitingForLinkedBackgroundSession {
+                        if showsPendingAgentActions {
+                            PendingAgentActionsBanner(sessionId: conversation.sessionId)
+                        }
                         ComposerView(
                             text: $draft,
                             attachments: $attachments,
@@ -1128,6 +1132,11 @@ struct ConversationView: View {
         .task(id: mentionTargetRefreshID) {
             await model.refreshMentionTargets(for: conversation)
         }
+        .modifier(ConversationAgentTrustModifier(
+            conversation: conversation,
+            showsPendingActions: showsPendingAgentActions,
+            presentedDisclosure: $presentedReplyDisclosure
+        ))
         .task {
             _ = await MessageDeleteParticleResources.prepared.value
         }
@@ -1451,6 +1460,9 @@ struct ConversationView: View {
                             && !presentation.groupedWithPrevious),
                     showAvatar: presentation.showsAvatar,
                     replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
+                    replySourceIsPip: message.quotedReplyMessageId
+                        .flatMap { messagesByID[$0] }
+                        .map(isPipMessage) ?? false,
                     isHighlighted: highlightedMessageID == message.id,
                     isActionPresented: messageActionMessage?.id == message.id && messageActionImage == nil,
                     pendingSendEntrance: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
@@ -1603,7 +1615,10 @@ struct ConversationView: View {
                     },
                     isPinConfirmationPresented: pinTarget?.id == message.id,
                     onDismissPinConfirmation: { if pinTarget?.id == message.id { pinTarget = nil } },
-                    onConfirmPin: { shared in pinMessage(message, shared: shared) }
+                    onConfirmPin: { shared in pinMessage(message, shared: shared) },
+                    onOpenReplyDisclosure: replyDisclosureTarget(for: message).map { target in
+                        { presentedReplyDisclosure = target }
+                    }
                 )
                 .equatable()
                 .background(alignment: .bottomTrailing) {
@@ -1762,9 +1777,10 @@ struct ConversationView: View {
                     let source = destination == .thread
                         ? MessageThreadProjection.rootSource(
                             for: message,
-                            sessionID: conversation.sessionId
+                            sessionID: conversation.sessionId,
+                            isPip: isPipMessage(message)
                         )
-                        : message.actionSource(sessionId: conversation.sessionId)
+                        : message.actionSource(sessionId: conversation.sessionId, isPip: isPipMessage(message))
                     if destination == .conversation,
                        scopedThreadRootMessageID != nil,
                        let onReplyInConversation {
@@ -1830,6 +1846,12 @@ struct ConversationView: View {
                     {
                         dismissMessageActions()
                         reportTarget = target
+                    }
+                },
+                onAboutReply: replyDisclosureTarget(for: message).map { target in
+                    {
+                        dismissMessageActions()
+                        presentedReplyDisclosure = target
                     }
                 }
             )
@@ -2544,6 +2566,29 @@ struct ConversationView: View {
                 highlightedMessageID = nil
             }
         }
+    }
+
+    /// What is waiting for this person shows in the main view of chats
+    /// synced through Kordi Cloud, not inside discussions or task threads.
+    private var showsPendingAgentActions: Bool {
+        conversation.subsessionId == nil
+            && scopedThreadRootMessageID == nil
+            && AIAccessCopy.supportsAIAccess(sessionId: conversation.sessionId)
+    }
+
+    /// "About this reply" for finished agent replies and PiP in chats synced
+    /// through Kordi Cloud.
+    private func replyDisclosureTarget(for message: ChatMessage) -> AgentReplyDisclosureTarget? {
+        guard conversation.subsessionId == nil,
+              AIAccessCopy.supportsAIAccess(sessionId: conversation.sessionId) else { return nil }
+        let isPip = isPipMessage(message)
+        guard AgentReplyDisclosurePresentation.offersDisclosure(for: message, isPip: isPip) else { return nil }
+        return AgentReplyDisclosureTarget(message: message, isPip: isPip)
+    }
+
+    /// PiP's messages, by the same rule as its avatar and tag.
+    private func isPipMessage(_ message: ChatMessage) -> Bool {
+        AgentMessageLabels.isPip(message, avatarSeed: avatarIdentity(for: message).seed)
     }
 
     private func avatarIdentity(for message: ChatMessage) -> ConversationAvatarIdentity {

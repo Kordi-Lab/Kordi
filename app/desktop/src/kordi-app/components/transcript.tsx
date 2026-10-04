@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { memo,useLayoutEffect,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
 import type { Contact, ContactRequest, EditFilePreview, Message, MessageAttachment, MessageSourceReference } from '../types';
-import { AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
+import { AgentAiChip,AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
 import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { HumanMessageMarkdown } from './humanMessageMarkdown';
@@ -630,7 +630,7 @@ function MessageBubbleBody({
               <div className="app-message-meta">
                 {msg.sender}
               </div>
-              <AgentOwnerTag name={agentOwnerName} />
+              <AgentAiChip message={msg} /><AgentOwnerTag name={agentOwnerName} />
               {forkButton}
               {forkChip}
             </div>
@@ -708,7 +708,7 @@ function MessageBubbleBody({
       {showInlineHumanSender ? (
         <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4" data-transcript-leading-decoration="true">{msg.sender}<PipSenderTag avatarUrl={msg.senderProfileImageUrl} /></div>
       ) : null}
-      {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
+      {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} sourceMessageKind={forwardedSource.sourceMessageKind} /> : null}
       {standaloneEmojiItem ? <StandaloneEmojiMessage item={standaloneEmojiItem} own={isOwnHumanMessage} status={bubbleDeliveryStatus} /> : showCompactFooter ? (
         showInlineCompactFooter ? (
           <div className="leading-[1.45]">
@@ -801,7 +801,7 @@ function MessageBubbleBody({
       )}
       data-transcript-density={compactDensity}
     >
-      {showHeaderMeta ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
+      {showHeaderMeta ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} message={msg} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
         hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',

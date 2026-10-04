@@ -426,3 +426,36 @@ fn another_providers_model_is_rejected() {
     assert!(model_fits_provider("gpt-5.6-sol", "openai-codex"));
     assert!(model_fits_provider("llama-3.3-70b-versatile", "groq"));
 }
+
+#[test]
+fn effective_model_matches_the_model_the_loop_calls() {
+    let material = ProviderAuthMaterial {
+        snapshot_id: "snap".to_string(),
+        provider: "openai-codex".to_string(),
+        auth_choice: "local-active-oauth".to_string(),
+        payload: json!({
+            "apiMode": "openai-codex-oauth",
+            "accessToken": "oauth-token",
+            "accountId": "account-123",
+            "model": "gpt-5.5"
+        }),
+    };
+    assert_eq!(
+        effective_model(&material, &AgentRuntimeRoute::default()).as_deref(),
+        Some("gpt-5.5")
+    );
+    let route = AgentRuntimeRoute {
+        default_model: Some("openai-codex/gpt-5.6-sol".to_string()),
+        thinking: None,
+    };
+    assert_eq!(
+        effective_model(&material, &route).as_deref(),
+        Some("gpt-5.6-sol")
+    );
+    // Material the loop would refuse reports no model at all.
+    let unusable = ProviderAuthMaterial {
+        payload: json!({}),
+        ..material
+    };
+    assert_eq!(effective_model(&unusable, &route), None);
+}

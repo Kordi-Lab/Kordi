@@ -55,6 +55,8 @@ struct CloudConversationMessagePage {
 
 actor CloudAPIClient {
     static let productionBaseURL = KordiAppEnvironment.productionBaseURL
+    /// Something waiting for a person changed; see `CloudAgentTrustAPI.swift`.
+    static let agentActionUpdatedEventType = "agent_action.updated"
     static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
     private static let sharedAgentOwnerBatchSize = 50
 
@@ -2569,6 +2571,12 @@ actor CloudAPIClient {
         remember(conversation.withCursor(response.cursor))
     }
 
+    /// Keeps a conversation snapshot that another request returned, such as
+    /// an AI access change.
+    func rememberChatConversation(_ conversation: CloudChatConversation) {
+        remember(conversation)
+    }
+
     private func remember(_ conversation: CloudChatConversation) {
         activateAccount(conversation.preferences.accountId)
         let previousSessionId = chatConversationsById[conversation.id]?.legacySessionId?.nonEmpty
@@ -2826,6 +2834,25 @@ actor CloudAPIClient {
                 payload: CloudSyncEventPayload(
                     message: nil, messageIds: nil, messageId: nil, readAt: nil,
                     sessionId: sessionId, scope: nil, updatedAt: event.payload.updatedAt,
+                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: nil, call: nil
+                ),
+                occurredAt: event.occurredAt
+            )]
+        }
+        if event.eventType == Self.agentActionUpdatedEventType {
+            // A refresh signal only: the app reloads what is waiting for a
+            // person. The action itself is read from the actions route.
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: Self.agentActionUpdatedEventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: CloudSyncEventPayload(
+                    message: nil, messageIds: nil, messageId: nil, readAt: nil,
+                    sessionId: conversation?.legacySessionId?.nonEmpty,
+                    scope: nil, updatedAt: nil,
                     forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                     createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
                     deviceId: nil, call: nil

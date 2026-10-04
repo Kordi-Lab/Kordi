@@ -109,8 +109,8 @@ async fn full_lifecycle_against_real_postgres() {
         .find(|p| p.account_id == jordan)
         .unwrap();
     assert!(
-        matches!(jordan_status.rsvp, PlanCardRsvp::Yes),
-        "the organizer starts as yes, not pending"
+        matches!(jordan_status.rsvp, PlanCardRsvp::Pending),
+        "the organizer starts pending too; PiP only suggests their yes"
     );
     let maya_status = proposed
         .participants
@@ -257,7 +257,7 @@ async fn full_lifecycle_against_real_postgres() {
         .find(|p| p.account_id == jordan)
         .unwrap();
     assert!(
-        matches!(jordan_status.rsvp, PlanCardRsvp::Yes),
+        matches!(jordan_status.rsvp, PlanCardRsvp::Pending),
         "other participants' RSVPs are untouched by someone else's decline"
     );
 

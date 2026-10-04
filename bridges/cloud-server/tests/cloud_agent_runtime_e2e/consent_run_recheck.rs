@@ -149,7 +149,9 @@ async fn only_the_desktop_holding_a_run_makes_the_server_recheck_it() {
         &router,
         &owner,
         "ready".into(),
-        json!({"agentIds": [agent]}),
+        // A current executor (context contract 2) may answer another member's
+        // request in a group that shares only mentions with agents.
+        json!({"agentIds": [agent], "contextContract": 2}),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
@@ -158,6 +160,7 @@ async fn only_the_desktop_holding_a_run_makes_the_server_recheck_it() {
     let claim_id = uuid::Uuid::new_v4();
     let mut input = claim_body_with_session(&owner, &requester, &request, &session);
     input["claimId"] = json!(claim_id);
+    input["contextContract"] = json!(2);
     input["requestMessageId"] = json!(wire_id);
     let (status, claimed) = desktop_call(&router, &owner, "claim".into(), input).await;
     assert_eq!(status, StatusCode::OK, "{claimed}");

@@ -134,7 +134,7 @@ enum KordiPipIdentity {
     static let accountId = "acct_kordi_pip"
     static let agentId = "cloud_agent_kordi_pip"
     static let displayName = "PiP"
-    static let tag = "Built-in agent"
+    static let tag = "Built-in AI agent"
 
     /// PiP is a built-in agent, not a person: it posts in the chat but is never
     /// counted, named, or pictured as a member.

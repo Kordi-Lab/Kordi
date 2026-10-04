@@ -9,6 +9,7 @@ import type {
   CanonicalSessionState,
 } from '@/kordi-app/types';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
+import { AI_ACCESS_NOTICE_MESSAGE_KIND } from '@/features/canonical/readModel/messageRole';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
 import { withoutVoiceAttachment } from './cloudVoiceMessage';
 import {
@@ -112,6 +113,10 @@ export async function applyCloudGroupMessageControl({
     && message.senderAccountId === account.accountId
     && Boolean((message.replyToMessageId || message.requestId)?.trim());
   const senderIsAgent = message.senderKind === 'agent';
+  // Notices are recognized by the server-set wire kind; an envelope cannot claim one.
+  const envelopeKind = stateOps.cleanText(message.messageKind);
+  const groupMessageKind = cloudMessage.messageKind === AI_ACCESS_NOTICE_MESSAGE_KIND ? AI_ACCESS_NOTICE_MESSAGE_KIND
+    : envelopeKind === AI_ACCESS_NOTICE_MESSAGE_KIND ? 'text' : envelopeKind;
   const senderAgentId = senderIsAgent
     ? cloudAgentId(message.senderAgentId, message.senderAccountId)
     : null;
@@ -159,7 +164,7 @@ export async function applyCloudGroupMessageControl({
     && stateOps.incomingAlreadyApplied(
       existingCloudGroupMessage,
       agentDeliveryState ?? humanOutgoingDeliveryState,
-      message.messageKind,
+      groupMessageKind,
     );
   if (senderIsAgent) {
     const senderIdentity = await upsertCanonicalIdentityFast({
@@ -312,7 +317,7 @@ export async function applyCloudGroupMessageControl({
       senderRole: senderIsAgent
         ? cloudGroupAgentCanonicalRole(message.senderAccountId, account.accountId)
         : (message.senderAccountId === account.accountId ? 'user' : 'person'),
-      messageKind: stateOps.cleanText(message.messageKind)
+      messageKind: groupMessageKind
         || (senderIsAgent ? 'agent-turn' : 'text'),
       contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : message.text,
       content: senderIsAgent ? {

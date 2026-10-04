@@ -15,11 +15,13 @@ const CONTENT_REMOVAL: &str = "content removal jobs and deletion indexes";
 const FILES_PANEL: &str = "keep removed files-panel entries archived";
 const CONSENT: &str = "contact consent and blocks";
 const ABUSE_REPORTS: &str = "abuse reports";
+const AGENT_TRUST: &str = "agent trust: AI access, opt-outs, pending actions, run disclosure";
 
 /// Every numbering from version 106 on that a database could have recorded:
-/// earlier states of this change, the changes still in review, a database
-/// that ran the main branch and then one of those changes, and this change
-/// before account email verification left version 117.
+/// earlier states of this change, the contact consent, agent trust, and
+/// content removal changes before they merged, a database that ran the main
+/// branch and then one of those changes, and this change before account email
+/// verification left version 117.
 const EARLIER_NUMBERINGS: &[&[(i64, &str)]] = &[
     &[(106, RUNNER)],
     &[(106, EMAIL), (107, TICKETS)],
@@ -64,10 +66,7 @@ const EARLIER_NUMBERINGS: &[&[(i64, &str)]] = &[
         (107, EMAIL),
         (108, TICKETS),
         (109, RUNNER),
-        (
-            112,
-            "agent trust: AI access, opt-outs, pending actions, run disclosure",
-        ),
+        (112, AGENT_TRUST),
     ],
     &[
         (107, EMAIL),
@@ -144,15 +143,9 @@ async fn readme_renumbering_resolves_every_earlier_numbering() {
         let rows = recorded(&pool).await;
         assert_eq!(rows.len(), numbering.len(), "{numbering:?} lost a record");
         for (version, description) in &rows {
-            // Every migration this build embeds sits at its version, and the
-            // versions held by changes still in review keep theirs.
-            let expected = embedded_version(description).unwrap_or_else(|| {
-                numbering
-                    .iter()
-                    .find(|(_, held)| held == description)
-                    .map(|(held_version, _)| *held_version)
-                    .unwrap()
-            });
+            // Every recorded migration sits at the version this build embeds.
+            let expected = embedded_version(description)
+                .unwrap_or_else(|| panic!("{numbering:?}: {description} is not embedded"));
             assert_eq!(*version, expected, "{numbering:?}: {description}");
             if let Some(migration) = EMBEDDED_MIGRATIONS.iter().find(|m| m.version == *version) {
                 assert!(
@@ -258,4 +251,30 @@ async fn a_database_from_the_consent_change_upgrades_after_renumbering() {
     assert!(blocks.is_some(), "contact consent stays applied");
     assert!(reports.is_some(), "abuse reports stay applied");
     assert!(projects.is_some(), "chat projects apply after them");
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn a_database_from_the_agent_trust_change_upgrades_after_renumbering() {
+    // Before it merged, the agent trust change recorded the same three
+    // migrations at 107 to 109 and its own at 112, so versions 106 to 111 apply
+    // after agent trust.
+    let pool = upgrade_after_renumbering(&[
+        (107, EMAIL),
+        (108, TICKETS),
+        (109, RUNNER),
+        (112, AGENT_TRUST),
+    ])
+    .await;
+    let (policies, blocks, projects): (Option<String>, Option<String>, Option<String>) = query_as(
+        "SELECT to_regclass('public.cloud_chat_ai_policies')::text, \
+                to_regclass('public.cloud_account_blocks')::text, \
+                to_regclass('public.cloud_project_devices')::text",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(policies.is_some(), "agent trust stays applied");
+    assert!(blocks.is_some(), "contact consent applies after it");
+    assert!(projects.is_some(), "chat projects apply after it");
 }

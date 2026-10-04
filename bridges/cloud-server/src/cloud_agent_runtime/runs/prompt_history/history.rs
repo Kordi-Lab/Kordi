@@ -21,9 +21,12 @@ pub(super) fn history_payload(body: &str) -> Option<serde_json::Value> {
 
 // Rows are bounded by the existing 256-message query. Resolve reply ancestry
 // before applying the history limit so an old thread request still scopes its result.
+// `request_wire_id` is the server id of the request, already resolved for its
+// sender. Rows are oldest first and the oldest row wins every id form, so a
+// later message that reuses an id never becomes the request or a thread root.
 pub(super) fn context_history_indices(
     rows: &[(String, String, String, String)],
-    request_id: &str,
+    request_wire_id: &str,
     reply_action: Option<&serde_json::Value>,
 ) -> (Option<usize>, Vec<usize>) {
     let payloads: Vec<_> = rows
@@ -32,17 +35,17 @@ pub(super) fn context_history_indices(
         .collect();
     let mut indices = HashMap::new();
     for (index, (id, client_id, _, _)) in rows.iter().enumerate() {
-        indices.insert(id.clone(), index);
-        indices.insert(format!("ios_{client_id}"), index);
+        indices.entry(id.clone()).or_insert(index);
+        indices.entry(format!("ios_{client_id}")).or_insert(index);
         if let Some(id) = payloads[index]
             .as_ref()
             .and_then(|value| value.get("id"))
             .and_then(|value| value.as_str())
         {
-            indices.insert(id.to_string(), index);
+            indices.entry(id.to_string()).or_insert(index);
         }
     }
-    let request_index = indices.get(request_id).copied();
+    let request_index = rows.iter().position(|row| row.0 == request_wire_id);
     let root_for = |index: usize| -> Option<String> {
         let mut current = index;
         let mut visited = HashSet::new();
@@ -119,7 +122,13 @@ pub(super) fn strip_leading_agent_mention(text: &str) -> String {
     rest.trim().to_string()
 }
 
-fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
+/// Which quote and forward previews may reach the model, by source message id.
+pub(in crate::cloud_agent_runtime::runs) type PreviewAllowed<'a> = &'a dyn Fn(&str) -> bool;
+
+pub(super) fn action_context_suffix(
+    action: Option<&serde_json::Value>,
+    preview_allowed: PreviewAllowed<'_>,
+) -> String {
     let Some(action) = action else {
         return String::new();
     };
@@ -146,6 +155,7 @@ fn action_context_suffix(action: Option<&serde_json::Value>) -> String {
         .and_then(serde_json::Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
+        .filter(|_| preview_allowed(source_message_id))
         .map(|value| format!(": {}", value.chars().take(180).collect::<String>()))
         .unwrap_or_default();
     match kind {
@@ -182,6 +192,7 @@ pub(super) fn fallback_prompt_history_line(
     requester_account_id: &str,
     owner_account_id: &str,
     message: &CloudFallbackHistoryMessage,
+    preview_allowed: PreviewAllowed<'_>,
 ) -> Option<String> {
     let from_account_id = message.from_account_id.as_str();
     let (label, text, suffix) = if let Some(text) = cloud_agent_response_text(&message.body) {
@@ -205,7 +216,7 @@ pub(super) fn fallback_prompt_history_line(
         (
             label,
             strip_leading_agent_mention(&group_message.text),
-            action_context_suffix(group_message.message_action.as_ref()),
+            action_context_suffix(group_message.message_action.as_ref(), preview_allowed),
         )
     } else if let Some(envelope) = direct_message_envelope(&message.body) {
         let text = envelope
@@ -213,7 +224,7 @@ pub(super) fn fallback_prompt_history_line(
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default()
             .to_string();
-        let suffix = action_context_suffix(envelope.get("messageAction"));
+        let suffix = action_context_suffix(envelope.get("messageAction"), preview_allowed);
         if message.from_account_id == requester_account_id {
             ("Requester", strip_leading_agent_mention(&text), suffix)
         } else if message.from_account_id == owner_account_id {
@@ -247,6 +258,7 @@ pub(in crate::cloud_agent_runtime::runs) fn fallback_prompt_with_history(
     owner_account_id: &str,
     current_prompt: &str,
     history: &[CloudFallbackHistoryMessage],
+    preview_allowed: PreviewAllowed<'_>,
 ) -> String {
     let current_prompt = current_prompt.trim();
     let lines = history[history
@@ -254,7 +266,12 @@ pub(in crate::cloud_agent_runtime::runs) fn fallback_prompt_with_history(
         .saturating_sub(MAX_CLOUD_FALLBACK_HISTORY_MESSAGES as usize)..]
         .iter()
         .filter_map(|message| {
-            fallback_prompt_history_line(requester_account_id, owner_account_id, message)
+            fallback_prompt_history_line(
+                requester_account_id,
+                owner_account_id,
+                message,
+                preview_allowed,
+            )
         })
         .collect::<Vec<_>>();
     if lines.is_empty() {

@@ -1,7 +1,7 @@
-//! Completion/failure DTOs and terminal Cloud run state transitions.
+//! Terminal Cloud run state transitions; the request bodies live in
+//! `completion_requests.rs`.
 
 use chrono::Utc;
-use serde::Deserialize;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
@@ -21,55 +21,9 @@ use super::{RunError, RunResult};
 
 type FailedRunRow = (String, String, String, String, Option<String>);
 
-#[derive(Debug, Deserialize)]
-pub struct CompleteRunRequest {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    #[serde(rename = "responseText")]
-    pub response_text: String,
-    #[serde(rename = "ompState", default)]
-    pub omp_state: Option<super::omp_state::OmpState>,
-}
-
-impl CompleteRunRequest {
-    pub fn runner_id(&self) -> Option<String> {
-        let trimmed = self.runner_id.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct FailRunRequest {
-    #[serde(rename = "runnerId")]
-    pub runner_id: String,
-    #[serde(rename = "errorCode")]
-    pub error_code: String,
-    pub message: String,
-}
-
-impl FailRunRequest {
-    pub fn runner_id(&self) -> Option<String> {
-        let trimmed = self.runner_id.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    }
-
-    pub fn error_code(&self) -> String {
-        let trimmed = self.error_code.trim();
-        if trimmed.is_empty() {
-            "runner_error".to_string()
-        } else {
-            trimmed.to_string()
-        }
-    }
-}
+#[path = "completion_requests.rs"]
+mod requests;
+pub use requests::{CompleteRunRequest, FailRunRequest};
 
 fn cloud_agent_failure_response_text(error_code: &str, is_support_agent: bool) -> &'static str {
     match error_code {
@@ -105,16 +59,30 @@ pub async fn complete_run(
     runner_id: &str,
     response_text: &str,
 ) -> RunResult<RunnerRunResponse> {
-    complete_run_with_state(pool, run_id, runner_id, response_text, None).await
+    complete_run_with_state(pool, run_id, runner_id, response_text, None, None).await
 }
 
+/// Completes a run with the runner's OMP state and records the model the
+/// runner used, for runs that are still leased by this runner.
 pub async fn complete_run_with_state(
     pool: &PgPool,
     run_id: &str,
     runner_id: &str,
     response_text: &str,
     omp_state: Option<&super::omp_state::OmpState>,
+    model: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
+    if let Some(model) = model {
+        sqlx_core::query::query(
+            "UPDATE cloud_agent_fallback_runs SET disclosed_model = $3 \
+             WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
+        )
+        .bind(run_id)
+        .bind(runner_id)
+        .bind(model)
+        .execute(pool)
+        .await?;
+    }
     if let Some(run) = super::subsession_lifecycle::finish_with_state(
         pool,
         run_id,

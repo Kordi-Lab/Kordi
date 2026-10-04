@@ -145,21 +145,19 @@ export function useCloudDirectAgentExecution({
         const prompt = promptTextForCloudAgentMention(
           directDisplayMessage.body, voice,
         );
-        const contextMessages = [
-          ...cloudAgentContextMessagesFromDefinition(
-            cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null,
-          ),
-          ...cloudAgentNativeContextMessagesFromDirectCloudSession({
-            messages,
-            requestMessage: message,
-            localAccountId: account.accountId,
-            localHumanName:
-              account.displayName || account.primaryEmail || 'Me',
-            peerHumanName,
-            localAgentName: account.defaultAgent?.displayName || 'Kordi',
-            peerAgentName: contact?.targetCloudAgentName || 'Kordi',
-          }),
-        ];
+        const definitionContext = cloudAgentContextMessagesFromDefinition(
+          cloudAgentDefinitionsById[targetCloudAgentId ?? ''] ?? null,
+        );
+        const localHistory = cloudAgentNativeContextMessagesFromDirectCloudSession({
+          messages,
+          requestMessage: message,
+          localAccountId: account.accountId,
+          localHumanName:
+            account.displayName || account.primaryEmail || 'Me',
+          peerHumanName,
+          localAgentName: account.defaultAgent?.displayName || 'Kordi',
+          peerAgentName: contact?.targetCloudAgentName || 'Kordi',
+        });
         const visibleTaskRecords = activitySessionId
           ? cloudVisibleTaskRecordsForSession(
             activityRef.current,
@@ -245,7 +243,7 @@ export function useCloudDirectAgentExecution({
               prompt,
               agentAttachmentPaths,
               requestedRoute,
-              lease.contextMessages(contextMessages),
+              lease.contextMessages([...definitionContext, ...lease.history(localHistory)]),
               visibleTaskRecords,
               activitySessionId,
               lease.deadline,

@@ -225,7 +225,7 @@ async fn confirm_with_option_marks_voters_attending() {
         "a member who never voted is left pending"
     );
     assert!(
-        matches!(rsvp_of(&jordan), PlanCardRsvp::Yes),
-        "the organizer was already yes and stays yes"
+        matches!(rsvp_of(&jordan), PlanCardRsvp::Pending),
+        "an organizer who neither answered nor voted is not marked attending"
     );
 }

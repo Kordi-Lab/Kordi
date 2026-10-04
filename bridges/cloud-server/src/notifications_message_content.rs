@@ -26,7 +26,10 @@ pub(crate) fn is_frontend_visible_message(message: &MessageSnapshot) -> bool {
         return false;
     }
     let kind = message.kind.trim().to_ascii_lowercase();
+    // AI access notices are visible in the conversation, but they never push,
+    // revive a hidden chat, or count toward thread attention.
     if kind.is_empty()
+        || kind == crate::cloud_agent_runtime::runs::context_policy::AI_ACCESS_NOTICE_KIND
         || kind.contains("control")
         || kind.contains("snapshot")
         || kind.contains("cursor")
@@ -82,19 +85,35 @@ pub(crate) fn is_agent_authored_message(message: &MessageSnapshot) -> bool {
             == Some("agent")
 }
 
+/// The push title for a message. Agent-authored messages and PiP's messages
+/// carry an "(AI)" suffix: a group agent message uses the server-derived
+/// envelope `senderDisplayName`, a direct agent response uses the owner's
+/// default agent name (`default_agent_name`, "Kordi" when unknown), and PiP
+/// uses its account name. The previews-off title is chosen by the caller.
 pub(super) fn notification_sender_display_name(
     message: &MessageSnapshot,
     fallback: String,
+    default_agent_name: Option<&str>,
+    sender_is_pip: bool,
 ) -> String {
+    let with_ai_label = |name: String| format!("{name} (AI)");
     let Some(raw_text) = raw_message_text(message) else {
-        return fallback;
+        return if sender_is_pip {
+            with_ai_label(fallback)
+        } else {
+            fallback
+        };
     };
     if decoded_envelope(raw_text, CLOUD_AGENT_RESPONSE_PREFIX).is_some_and(|envelope| {
         envelope.get("kind").and_then(serde_json::Value::as_str) == Some("agent-response")
     }) {
-        return "Kordi".to_string();
+        let name = default_agent_name
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("Kordi");
+        return with_ai_label(name.to_string());
     }
-    decoded_envelope(raw_text, CLOUD_GROUP_PREFIX)
+    let name = decoded_envelope(raw_text, CLOUD_GROUP_PREFIX)
         .filter(|envelope| {
             envelope.get("kind").and_then(serde_json::Value::as_str) == Some("group-message")
         })
@@ -107,7 +126,12 @@ pub(super) fn notification_sender_display_name(
                 .filter(|value| !value.is_empty())
                 .map(ToString::to_string)
         })
-        .unwrap_or(fallback)
+        .unwrap_or(fallback);
+    if sender_is_pip || is_agent_authored_message(message) {
+        with_ai_label(name)
+    } else {
+        name
+    }
 }
 
 fn visible_envelope_text(value: &serde_json::Value) -> Option<String> {

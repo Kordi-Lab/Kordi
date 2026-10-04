@@ -349,6 +349,8 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
+    // Reported with the reply, for "About this reply".
+    let model = crate::model_loop::effective_model(&auth_material, &run.runtime_route);
     enum GenerationResult {
         Rust(String),
         Omp(String, crate::client::OmpState),
@@ -396,8 +398,12 @@ where
     };
     match response {
         GenerationResult::Rust(response_text) => {
-            client.complete_run(&run.run_id, &response_text).await?
+            client
+                .complete_run_with_model(&run.run_id, &response_text, model.as_deref())
+                .await?
         }
+        // The OMP state names the model the worker called, and the client
+        // reports it with the state.
         GenerationResult::Omp(response_text, state) => {
             client
                 .complete_run_with_omp_state(&run.run_id, &response_text, state)
