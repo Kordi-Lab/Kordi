@@ -153,6 +153,7 @@ type ConversationRow = (
     i64,
     DateTime<Utc>,
     DateTime<Utc>,
+    Option<Value>,
 );
 
 type BootstrapConversationRow = (
@@ -171,6 +172,7 @@ type BootstrapConversationRow = (
     DateTime<Utc>,
     Option<String>,
     i32,
+    Option<Value>,
 );
 
 type MemberRow = (

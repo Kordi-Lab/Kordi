@@ -16,13 +16,47 @@ const FILES_PANEL: &str = "keep removed files-panel entries archived";
 const CONSENT: &str = "contact consent and blocks";
 const ABUSE_REPORTS: &str = "abuse reports";
 const AGENT_TRUST: &str = "agent trust: AI access, opt-outs, pending actions, run disclosure";
+const OMP_REPLAY: &str = "OMP state replay flag";
+const KEY_ROTATION: &str = "device key rotation";
+const GROUP_AVATARS: &str = "group avatars";
+
+/// What a database that ran these changes together recorded before group
+/// avatars merged: realtime tickets at 109, every other migration at its
+/// version in this build, and no group avatars.
+const BEFORE_GROUP_AVATARS: &[(i64, &str)] = &[
+    (106, OMP),
+    (107, PROJECTS),
+    (108, PINS),
+    (109, TICKETS),
+    (110, CONSENT),
+    (111, ABUSE_REPORTS),
+    (112, AGENT_TRUST),
+    (113, RUNNER),
+    (114, PROOFS),
+    (116, CONTENT_REMOVAL),
+    (117, FILES_PANEL),
+    (118, OMP_REPLAY),
+    (119, KEY_ROTATION),
+    (120, EMAIL),
+];
+
+/// What a production database at the newest released version recorded from
+/// version 106 on, where the recorded-description check starts.
+const RELEASED_AT_109: &[(i64, &str)] = &[
+    (106, OMP),
+    (107, PROJECTS),
+    (108, PINS),
+    (109, GROUP_AVATARS),
+];
 
 /// Every numbering from version 106 on that a database could have recorded:
 /// earlier states of this change, the contact consent, agent trust, and
 /// content removal changes before they merged, a database that ran the main
-/// branch and then one of those changes, and this change before account email
-/// verification left version 117.
+/// branch and then one of those changes, this change before account email
+/// verification left version 117, and these changes together before group
+/// avatars took version 109.
 const EARLIER_NUMBERINGS: &[&[(i64, &str)]] = &[
+    BEFORE_GROUP_AVATARS,
     &[(106, RUNNER)],
     &[(106, EMAIL), (107, TICKETS)],
     &[(107, EMAIL), (108, TICKETS)],
@@ -52,8 +86,8 @@ const EARLIER_NUMBERINGS: &[&[(i64, &str)]] = &[
         (113, RUNNER),
         (114, PROOFS),
         (117, EMAIL),
-        (118, "OMP state replay flag"),
-        (119, "device key rotation"),
+        (118, OMP_REPLAY),
+        (119, KEY_ROTATION),
     ],
     &[
         (107, EMAIL),
@@ -157,6 +191,21 @@ async fn readme_renumbering_resolves_every_earlier_numbering() {
     }
 }
 
+/// The first version startup refuses for `records`: the lowest recorded
+/// version that this build embeds under another description.
+fn first_refused_version(records: &[(i64, &str)]) -> i64 {
+    records
+        .iter()
+        .filter(|(version, description)| {
+            EMBEDDED_MIGRATIONS.iter().any(|migration| {
+                migration.version == *version && migration.description != *description
+            })
+        })
+        .map(|(version, _)| *version)
+        .min()
+        .expect("an earlier numbering has a refused version")
+}
+
 /// Builds a database that ran a change before it merged: every version up to
 /// 105, then `records` with the SQL this build embeds for each description.
 /// It checks that startup refuses that numbering, runs the README statements,
@@ -180,7 +229,13 @@ async fn upgrade_after_renumbering(records: &[(i64, &str)]) -> PgPool {
     let refused = apply_migrations(&pool)
         .await
         .expect_err("an earlier numbering is refused");
-    assert!(refused.to_string().contains("107"), "{refused}");
+    let version = first_refused_version(records);
+    assert!(
+        refused
+            .to_string()
+            .contains(&format!("schema version {version} ")),
+        "{refused}"
+    );
 
     execute(&pool, readme_renumbering()).await;
     let (first, second) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
@@ -277,4 +332,56 @@ async fn a_database_from_the_agent_trust_change_upgrades_after_renumbering() {
     assert!(policies.is_some(), "agent trust stays applied");
     assert!(blocks.is_some(), "contact consent applies after it");
     assert!(projects.is_some(), "chat projects apply after it");
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn a_database_from_before_group_avatars_upgrades_after_renumbering() {
+    // Before group avatars took version 109, these changes recorded realtime
+    // tickets there. Group avatars apply after the renumbering.
+    let pool = upgrade_after_renumbering(BEFORE_GROUP_AVATARS).await;
+    let (avatars, tickets): (i64, i64) = query_as(
+        "SELECT \
+           (SELECT count(*) FROM information_schema.columns \
+            WHERE table_name='cloud_chat_conversations' AND column_name='group_avatar'), \
+           (SELECT count(*) FROM information_schema.columns \
+            WHERE table_name='cloud_chat_realtime_tickets' AND column_name='session_token_id')",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(avatars, 1, "group avatars apply after the renumbering");
+    assert_eq!(tickets, 1, "realtime tickets stay applied");
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn a_production_database_at_109_upgrades_without_renumbering() {
+    // A production database at group avatars (109) recorded only released
+    // versions. The README statements leave it unchanged, and startup accepts
+    // every recorded description and applies the rest.
+    let pool = fixture(109).await;
+    let released = recorded(&pool)
+        .await
+        .into_iter()
+        .filter(|(version, _)| *version >= 106)
+        .collect::<Vec<_>>();
+    let expected = RELEASED_AT_109
+        .iter()
+        .map(|(version, description)| (*version, description.to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(released, expected);
+    let before = recorded(&pool).await;
+    execute(&pool, readme_renumbering()).await;
+    assert_eq!(recorded(&pool).await, before, "nothing is renumbered");
+
+    let (first, second) = tokio::join!(apply_migrations(&pool), apply_migrations(&pool));
+    first.unwrap();
+    second.unwrap();
+    latest_version(&pool).await;
+    let expected = EMBEDDED_MIGRATIONS
+        .iter()
+        .map(|migration| (migration.version, migration.description.to_string()))
+        .collect::<Vec<_>>();
+    assert_eq!(recorded(&pool).await, expected);
 }

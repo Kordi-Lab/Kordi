@@ -1,12 +1,21 @@
 import { useState } from 'react';
 import { formatDesktopTranscriptDetailedTimeLabel } from '@/lib/time';
 
-export function TranscriptTimeSeparator({ timestampMs, label, timeZone }: {
+export function TranscriptTimeSeparator({ timestampMs, label, timeZone, dateOnly = false }: {
   timestampMs: number;
   label: string;
   timeZone: string;
+  dateOnly?: boolean;
 }) {
   const [detailed, setDetailed] = useState(false);
+  if (dateOnly) return (
+    <div className="app-thread-date-divider" role="separator" aria-label={label}
+      data-transcript-date-divider="true" data-transcript-leading-decoration="true">
+      <span aria-hidden="true" />
+      <time dateTime={new Date(timestampMs).toISOString()}>{label}</time>
+      <span aria-hidden="true" />
+    </div>
+  );
   const visibleLabel = detailed
     ? formatDesktopTranscriptDetailedTimeLabel(timestampMs, { timeZone })
     : label;

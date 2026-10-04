@@ -452,7 +452,7 @@ function MarkdownCodeBlock({
     <div className="group relative max-w-full overflow-hidden rounded-[10px] border border-white/8 bg-[color:var(--app-code-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]" aria-label={`Code block language: ${resolvedLanguage}`} data-kordi-copy-block="true">
       <span className="sr-only" data-kordi-copy-exclude="true">{resolvedLanguage}</span>
       {headerActions ? (
-        <div className="absolute right-9 top-2 z-10 flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        <div className="app-markdown-code-extra-actions absolute right-9 top-2 z-10 flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
           {headerActions}
         </div>
       ) : null}
@@ -467,7 +467,7 @@ function MarkdownCodeBlock({
       >
         {copied ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
       </button>
-      <pre className={cn('overflow-auto px-2.5 py-2.5 font-mono text-[11px] leading-5.5 text-slate-100', maxHeightClass)} {...copySurfaceProps(copySurface)}>
+      <pre className={cn('app-markdown-code-content overflow-auto px-2.5 py-2.5 font-mono text-[11px] leading-5.5 text-slate-100', maxHeightClass, headerActions && 'app-markdown-code-content-with-actions')} {...copySurfaceProps(copySurface)}>
         <code className={cn('block', wrapLines ? 'min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'min-w-max')}>
           {highlightedLines.map((line, lineIndex) => (
             <div key={`code-line-${lineIndex}`} className={wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}>

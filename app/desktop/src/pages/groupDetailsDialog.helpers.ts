@@ -99,23 +99,7 @@ export function hasDuplicateName(name: string, counts: Map<string, number>) {
   return (counts.get(name.trim().toLowerCase()) ?? 0) > 1;
 }
 
-export function normalizedSearch(value: string) {
-  return value.trim().toLocaleLowerCase();
-}
-
-export function filterGroupManagementMembers(
-  members: ConversationParticipant[],
-  query: string,
-) {
-  const needle = normalizedSearch(query);
-  if (!needle) return members;
-  return members.filter((member) => [
-    member.name,
-    member.id,
-    member.humanId,
-    member.sourceIdentityId,
-  ].some((value) => value?.toLocaleLowerCase().includes(needle)));
-}
+export { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
 
 export function groupActionErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) return error.message.trim();

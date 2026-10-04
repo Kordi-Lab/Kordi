@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useMemo, useState, type MouseEventHandler, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type MouseEventHandler, type ReactNode } from 'react';
 import { NativeChatTitlebarContext, type NativeCompanionTitlebarLayout } from '@/app/nativeChatTitlebarContext';
 
 import {
@@ -161,9 +161,10 @@ export function AppShellFrame({
             'app-shell-layout-grid relative grid min-h-0 min-w-0 flex-1 gap-0 overflow-hidden box-border transition-[grid-template-columns]',
           )}
           style={{
-            gridTemplateColumns: `${leftWorkspaceWidth}px minmax(0, 1fr)`,
+            '--app-shell-panel-width': leftWorkspaceWidth,
+            gridTemplateColumns: 'calc(var(--app-shell-panel-width) * 1px) minmax(0, 1fr)',
             gridTemplateRows: 'minmax(0, 1fr)',
-          }}
+          } as CSSProperties}
         >
           {sidebar}
           {showSessionRail && !collapseChatSessions && (
@@ -190,9 +191,10 @@ export function AppShellFrame({
                 'app-shell-layout-grid grid min-h-0 min-w-0 transition-[grid-template-columns] duration-300',
               )}
               style={{
-                gridTemplateColumns: showRightDetailRail && !isDetailPanelCollapsed ? `minmax(0, 1fr) ${detailRailWidth}px` : 'minmax(0, 1fr)',
+                '--app-shell-panel-width': showRightDetailRail && !isDetailPanelCollapsed ? detailRailWidth : 0,
+                gridTemplateColumns: showRightDetailRail && !isDetailPanelCollapsed ? 'minmax(0, 1fr) calc(var(--app-shell-panel-width) * 1px)' : 'minmax(0, 1fr)',
                 gridTemplateRows: 'minmax(0, 1fr)',
-              }}
+              } as CSSProperties}
             >
               <main className="flex min-h-0 min-w-0 overflow-hidden">
                 <NativeChatTitlebarContext value={chatTitlebar}>

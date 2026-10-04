@@ -124,7 +124,7 @@ fn row(account: &str, peer: &str, outcome: &str) -> (String, String, String) {
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
 async fn upgrade_from_109_converts_one_way_contacts_only_with_peer_consent() {
-    // 109 is the last version before contact consent (110).
+    // 109 (group avatars) is the last version before contact consent (110).
     let pool = fixture(109).await;
     for account in [
         "mutual-a",

@@ -513,7 +513,7 @@ enum KordiMarkdownParser {
 
 struct MarkdownMessageContent: View {
     enum Density: Equatable {
-        case standard
+        case standard, threads
         case compact
     }
 
@@ -530,7 +530,7 @@ struct MarkdownMessageContent: View {
     @State private var standalonePresentation = ConversationRowContentState()
     private var presentation: ConversationRowContentState {
         // Quotes and execution details have independent compact text controls.
-        density == .standard ? rowPresentation ?? standalonePresentation : standalonePresentation
+        density != .compact ? rowPresentation ?? standalonePresentation : standalonePresentation
     }
     private var showsFullOversizedText: Bool {
         get { presentation.showsFullOversizedText }
@@ -568,11 +568,11 @@ struct MarkdownMessageContent: View {
     }
 
     private var bodyFont: Font {
-        density == .compact ? .caption : .body
+        density == .compact ? .caption : density == .threads ? .callout : .body
     }
 
     private var blockSpacing: CGFloat {
-        density == .compact ? 5 : 9
+        density == .standard ? 9 : 5
     }
 
     static func collapsedText(_ text: String) -> String? {

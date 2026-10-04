@@ -160,20 +160,20 @@ reports (111), and agent trust (112) landed with the versions they held while
 in review; no other change holds a version now.
 
 Versions from 106 on were renumbered before release, when chat projects took
-version 107 and session pin stacks took version 108. Session-bound realtime
-tickets moved to version 109, the runner run token hash to version 113, and
-account email verification to version 120, because content removal took
-versions 116 and 117. Production databases never recorded the earlier
-numbers. A development database that did is refused at startup. Such databases
-are disposable, so recreate them. To keep one, renumber its records in one
-transaction before starting this build:
+version 107, session pin stacks took version 108, and group avatars took
+version 109. Session-bound realtime tickets moved to version 115 and the runner
+run token hash to version 113. Account email verification moved to version 120
+because content removal took versions 116 and 117. Production databases never
+recorded the earlier numbers. A development database that did is refused at
+startup. Such databases are disposable, so recreate them. To keep one,
+renumber its records in one transaction before starting this build:
 
 ```sql
 BEGIN;
 UPDATE cloud_schema_versions SET version = 113
  WHERE version IN (106, 109, 110) AND description = 'runner run token hash';
-UPDATE cloud_schema_versions SET version = 109
- WHERE version IN (107, 108) AND description = 'session-bound realtime tickets';
+UPDATE cloud_schema_versions SET version = 115
+ WHERE version IN (107, 108, 109) AND description = 'session-bound realtime tickets';
 UPDATE cloud_schema_versions SET version = 120
  WHERE version IN (106, 107, 108, 117) AND description = 'account email verification';
 COMMIT;
@@ -183,9 +183,15 @@ These statements cover every earlier number of those three migrations. A
 development database from the contact consent, agent trust, or content removal
 change before it merged recorded them at versions 107 to 109; the statements
 move those records too, and its own versions (110 and 111, 112, or 116 and 117)
-already match this build. The build then applies every version it embeds that
-is still missing, such as versions 106 to 108 after the versions that change
-recorded, and keeps every other recorded version. A database that recorded
-another migration under a number this build uses, such as an unreleased number
-of chat projects or session pin stacks, cannot be renumbered this way. Recreate
-it. Upgrade tests run these statements as written here.
+already match this build. A development database that ran these changes
+together before group avatars merged recorded session-bound realtime tickets
+at version 109 and every other migration at its version in this build; the
+statements move that record to version 115. The build then applies every
+version it embeds that is still missing, such as versions 106 to 108 after the
+versions that change recorded or group avatars at version 109, and keeps every
+other recorded version. The statements change nothing in a database that
+recorded only released versions, such as a production database at group
+avatars (109). A database that recorded another migration under a number this
+build uses, such as an unreleased number of chat projects or session pin
+stacks, cannot be renumbered this way. Recreate it. Upgrade tests run these
+statements as written here.

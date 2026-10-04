@@ -345,7 +345,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 conversation.group_space_id, conversation.group_title, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
-                conversation.updated_at, viewer.personal_title, viewer.preferences_version \
+                conversation.updated_at, viewer.personal_title, viewer.preferences_version, conversation.group_avatar \
          FROM cloud_chat_conversation_members viewer \
          JOIN cloud_chat_conversations conversation \
            ON conversation.conversation_id = viewer.conversation_id \
@@ -406,6 +406,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 legacy_session_id: row.5,
                 group_space_id: row.6,
                 group_title: row.7,
+                group_avatar: row.15,
                 forked_from_session_id: row.8,
                 forked_from_message_id: row.9,
                 latest_message_sequence: row.10,

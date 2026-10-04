@@ -19,6 +19,7 @@ export type SendCloudGroupControlInput = {
   groupId: string;
   groupSpaceId?: string | null;
   groupTitle?: string | null;
+  groupAvatar?: CloudGroupControlEnvelope['groupAvatar'];
   createdByAccountId?: string | null;
   actor?: CloudGroupParticipant | null;
   participants?: CloudGroupParticipant[];

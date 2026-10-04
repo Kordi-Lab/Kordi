@@ -1351,38 +1351,6 @@ struct CloudChatPreferences: Codable, Hashable {
     }
 }
 
-struct CloudChatConversation: Codable, Hashable {
-    let id: String
-    let kind: String
-    let sharedTitle: String?
-    let version: Int
-    let createdByAccountId: String
-    let legacySessionId: String?
-    var groupSpaceId: String? = nil
-    var groupTitle: String? = nil
-    let forkedFromSessionId: String?
-    let forkedFromMessageId: String?
-    let latestMessageSequence: Int64
-    let createdAt: String
-    let updatedAt: String
-    let members: [CloudChatMember]
-    let preferences: CloudChatPreferences
-
-    enum CodingKeys: String, CodingKey {
-        case id, kind, version, members, preferences
-        case sharedTitle = "shared_title"
-        case createdByAccountId = "created_by_account_id"
-        case legacySessionId = "legacy_session_id"
-        case groupSpaceId = "group_space_id"
-        case groupTitle = "group_title"
-        case forkedFromSessionId = "forked_from_session_id"
-        case forkedFromMessageId = "forked_from_message_id"
-        case latestMessageSequence = "latest_message_sequence"
-        case createdAt = "created_at"
-        case updatedAt = "updated_at"
-    }
-}
-
 struct CloudChatBlock: Codable, Hashable {
     let type: String
     let text: String?

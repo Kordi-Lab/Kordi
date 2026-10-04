@@ -4,52 +4,6 @@ struct CloudGroupStructuredContent: Codable, Hashable {
     let tools: [AgentExecutionTool]?
 }
 
-struct CloudGroupParticipant: Codable, Hashable, Identifiable {
-    let accountId: String
-    let displayName: String
-    let avatarUrl: String?
-    let agentId: String?
-    let agentDisplayName: String?
-    let agentAvatarUrl: String?
-    let role: String?
-    let joinedAt: String?
-
-    var id: String { accountId }
-
-    init(
-        accountId: String,
-        displayName: String,
-        avatarUrl: String?,
-        agentId: String? = nil,
-        agentDisplayName: String? = nil,
-        agentAvatarUrl: String? = nil,
-        role: String?,
-        joinedAt: String? = nil
-    ) {
-        self.accountId = accountId
-        self.displayName = displayName
-        self.avatarUrl = avatarUrl
-        self.agentId = agentId
-        self.agentDisplayName = agentDisplayName
-        self.agentAvatarUrl = agentAvatarUrl
-        self.role = role
-        self.joinedAt = joinedAt
-    }
-
-    static func canonicalPrecedes(
-        _ left: CloudGroupParticipant,
-        _ right: CloudGroupParticipant
-    ) -> Bool {
-        let leftJoinedAt = left.joinedAt?.nonEmpty
-        let rightJoinedAt = right.joinedAt?.nonEmpty
-        if leftJoinedAt != rightJoinedAt {
-            if let leftJoinedAt, let rightJoinedAt { return leftJoinedAt < rightJoinedAt }
-            return leftJoinedAt != nil
-        }
-        return left.accountId < right.accountId
-    }
-}
-
 struct CloudGroupMessagePayload: Codable, Hashable {
     let id: String
     let senderAccountId: String
@@ -199,6 +153,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let groupId: String
     let groupSpaceId: String?
     let groupTitle: String?
+    let groupAvatar: CloudGroupAvatar?
     let createdByAccountId: String
     let actor: CloudGroupParticipant
     let participants: [CloudGroupParticipant]
@@ -210,7 +165,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let message: CloudGroupMessagePayload?
 
     private enum CodingKeys: String, CodingKey {
-        case kind, groupId, groupSpaceId, groupTitle, createdByAccountId, actor, participants
+        case kind, groupId, groupSpaceId, groupTitle, groupAvatar, createdByAccountId, actor, participants
         case sessionTitle, sessionTitleSyncOnly, channelCreated, memberJoins, memberLeaves, message
     }
 
@@ -219,6 +174,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         groupId: String,
         groupSpaceId: String?,
         groupTitle: String?,
+        groupAvatar: CloudGroupAvatar? = nil,
         createdByAccountId: String,
         actor: CloudGroupParticipant,
         participants: [CloudGroupParticipant],
@@ -232,6 +188,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         self.kind = kind
         self.groupId = groupId
         self.groupSpaceId = groupSpaceId
+        self.groupAvatar = groupAvatar
         self.groupTitle = groupTitle
         self.createdByAccountId = createdByAccountId
         self.actor = actor
@@ -250,6 +207,9 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         groupId = try container.decode(String.self, forKey: .groupId)
         groupSpaceId = try container.decodeIfPresent(String.self, forKey: .groupSpaceId)
         groupTitle = try container.decodeIfPresent(String.self, forKey: .groupTitle)
+        // An image that is not an uploaded reference is left out, never shown,
+        // and never hides the rest of the envelope.
+        groupAvatar = try? container.decodeIfPresent(CloudGroupAvatar.self, forKey: .groupAvatar)
         createdByAccountId = try container.decode(String.self, forKey: .createdByAccountId)
         actor = try container.decode(CloudGroupParticipant.self, forKey: .actor)
         participants = try container.decode([CloudGroupParticipant].self, forKey: .participants)
@@ -283,6 +243,7 @@ enum CloudGroupMessageCodec {
         "group-message",
         "group-update",
         "group-title-update",
+        "group-avatar-update",
         "session-title-update"
     ]
 
@@ -336,6 +297,7 @@ enum CloudGroupMessageCodec {
             groupId: envelope.groupId,
             groupSpaceId: envelope.groupSpaceId,
             groupTitle: envelope.groupTitle,
+            groupAvatar: envelope.groupAvatar,
             createdByAccountId: envelope.createdByAccountId,
             actor: transportParticipant(envelope.actor),
             participants: envelope.participants.map(transportParticipant),

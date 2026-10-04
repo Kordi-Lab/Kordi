@@ -805,6 +805,7 @@ private struct ProfileSettingsView: View {
 }
 
 private struct AppearanceSettingsView: View {
+    @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -838,6 +839,22 @@ private struct AppearanceSettingsView: View {
                 Text("Choose how Kordi looks on this iPhone.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Message layout").font(.headline)
+                    Picker("Message layout", selection: $messageLayoutRawValue) {
+                        ForEach(MessageLayout.allCases) { layout in
+                            Text(layout.title).tag(layout.rawValue)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("message-layout-picker")
+                    Text("Chat uses bubbles. Threads uses a compact, continuous list.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Divider()
 
                 Text("App appearance")
                     .font(.headline)

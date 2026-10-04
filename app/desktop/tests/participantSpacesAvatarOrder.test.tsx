@@ -139,8 +139,8 @@ test('group participant avatar stack uses stable group-member identity', () => {
     metadata,
   }])[0];
 
-  assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
-  assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
+  assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c', 'seed-d']);
+  assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c', 'seed-d']);
 });
 
 test('group avatar order does not follow child-session activity', () => {

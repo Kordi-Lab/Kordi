@@ -114,7 +114,7 @@ enum ConversationInitialPlaceholderCatalog {
             return ConversationInitialPlaceholder(
                 id: "loading-\(index)", author: author, kind: author == .agent ? .agent : .message,
                 lineCount: index.isMultiple(of: 2) ? 2 : 3, width: width,
-                presentation: ConversationMessagePresentation(showsTimestamp: false,
+                presentation: ConversationMessagePresentation(showsTimestamp: false, showsDateDivider: false,
                     groupedWithPrevious: false, groupedWithNext: false, showsAvatar: true, outgoingAvatarGroupID: nil)
             )
         }
@@ -324,7 +324,7 @@ private struct ConversationInitialPlaceholderRow: View {
             )
             .overlay(alignment: placeholder.kind == .image ? .top : .bottom) {
                 if placeholder.presentation.showsAvatar {
-                    ConversationLoadingSurface(shape: Circle(), phase: phase)
+                    ConversationLoadingSurface(shape: RoundedRectangle(cornerRadius: 28 * 0.17, style: .continuous), phase: phase)
                         .frame(width: 28, height: 28)
                 }
             }
@@ -334,7 +334,7 @@ private struct ConversationInitialPlaceholderRow: View {
     private var ownAvatarSlot: some View {
         Group {
             if placeholder.presentation.showsAvatar {
-                ConversationLoadingSurface(shape: Circle(), phase: phase)
+                ConversationLoadingSurface(shape: RoundedRectangle(cornerRadius: 28 * 0.17, style: .continuous), phase: phase)
                     .frame(width: 28, height: 28)
             } else {
                 Color.clear.frame(width: 28, height: 28)

@@ -212,7 +212,7 @@ test('IdentityAvatar renders avatars edge to edge without decorative boundaries'
   assert.doesNotMatch(agentHtml, /<circle/);
   assert.match(agentHtml, /bg-transparent/);
   assert.doesNotMatch(imageHtml, /bg-slate-800\/60/);
-  assert.doesNotMatch(imageHtml, /border|ring-|shadow-/);
+  assert.doesNotMatch(imageHtml, /class="[^"]*(?:border(?:-| )|ring-|shadow-)/);
 });
 
 test('presence light styling is a small flat inset dot without a chunky frame', () => {

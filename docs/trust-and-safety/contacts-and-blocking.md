@@ -196,8 +196,8 @@ command that only counts them unless told to delete.
   applying the role from the leave update. Messaging keeps working either way.
 - A member of two group spaces can still attach a group that does not belong
   to a space yet to the other space; leaving that space's main conversation
-  then also leaves that group. Once a group or channel belongs to a space, only
-  an owner or admin of the space's main conversation can move it, so leaving
-  the main conversation always leaves every channel still in the space.
+  then also leaves that group. Once a group or channel belongs to a space, no
+  one can move it to another space, so leaving the main conversation always
+  leaves every channel in the space.
 - Kordi service accounts cannot be blocked; contact requests to them have no
   effect.

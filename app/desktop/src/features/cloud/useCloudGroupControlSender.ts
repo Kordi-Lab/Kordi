@@ -124,6 +124,7 @@ export function useCloudGroupControlSender({
         .map((participant) => participant.accountId.trim())
         .filter(Boolean),
     ])].filter((accountId) => accountId !== account.accountId);
+    if (targetAccountIds.length === 0 && input.kind === 'group-avatar-update') targetAccountIds.push(account.accountId);
     if (targetAccountIds.length === 0) {
       finishChatPerformanceSpan(firstAckPerformanceSpan, {
         resultClass: 'failed',
@@ -196,6 +197,7 @@ export function useCloudGroupControlSender({
         groupId: input.groupId,
         groupSpaceId: input.groupSpaceId ?? null,
         groupTitle,
+        groupAvatar: input.groupAvatar,
         createdByAccountId:
           input.createdByAccountId?.trim() || account.accountId,
         actor,

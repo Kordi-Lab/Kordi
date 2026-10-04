@@ -27,6 +27,7 @@ export function cloudGroupCatalogRow(conversation: ChatSyncConversation, account
     groupId,
     groupSpaceId: conversation.group_space_id ?? groupId,
     groupTitle: conversation.group_title ?? conversation.shared_title,
+    groupAvatar: conversation.group_avatar,
     createdByAccountId: conversation.created_by_account_id,
     actor,
     participants,

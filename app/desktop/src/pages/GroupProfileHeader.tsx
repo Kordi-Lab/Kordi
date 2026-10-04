@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 import { useCloudCallContext } from '@/features/cloud/useCloudCallContext';
-import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { GroupAvatar } from '@/kordi-app/components/GroupAvatar';
 import type { ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { formatDesktopDate } from '@/lib/time';
 
@@ -21,42 +21,7 @@ function groupCreatedLabel(space: ParticipantSpaceViewModel) {
 }
 
 function GroupProfileAvatar({ space }: { space: ParticipantSpaceViewModel }) {
-  const avatars = space.avatarStack.length > 0
-    ? space.avatarStack.slice(0, 3)
-    : [{ kind: 'human' as const, seed: space.id, imageUrl: null }];
-  if (avatars.length === 1) {
-    const avatar = avatars[0];
-    return (
-      <IdentityAvatar
-        kind={avatar.kind}
-        seed={avatar.seed}
-        isSelf={avatar.isSelf}
-        name={space.title}
-        imageUrl={avatar.imageUrl ?? undefined}
-        className="h-16 w-16 border border-white/10"
-      />
-    );
-  }
-  return (
-    <div className="flex h-16 w-[5.5rem] items-center justify-center -space-x-6" aria-hidden="true">
-      {avatars.map((avatar, index) => (
-        <span
-          key={`${avatar.seed}-${index}`}
-          className="relative inline-flex rounded-full"
-          style={{ zIndex: avatars.length - index }}
-        >
-          <IdentityAvatar
-            kind={avatar.kind}
-            seed={avatar.seed}
-            isSelf={avatar.isSelf}
-            name={space.title}
-            imageUrl={avatar.imageUrl ?? undefined}
-            className="h-12 w-12 border-2 border-[color:var(--app-transient-surface-fallback)]"
-          />
-        </span>
-      ))}
-    </div>
-  );
+  return <GroupAvatar avatars={space.avatarStack} imageUrl={space.groupAvatar?.imageUrl} name={space.title} className="h-16 w-16" />;
 }
 
 function GroupProfileAction({
@@ -92,6 +57,7 @@ export function GroupProfileHeader({
   adminCount,
   canInvitePeople,
   canManageGroup,
+  avatarEditor,
   onClose,
   onShowMembers,
   onAddPeople,
@@ -102,6 +68,7 @@ export function GroupProfileHeader({
   adminCount: number;
   canInvitePeople: boolean;
   canManageGroup: boolean;
+  avatarEditor?: ReactNode;
   onClose: () => void;
   onShowMembers: () => void;
   onAddPeople: () => void;
@@ -141,8 +108,8 @@ export function GroupProfileHeader({
       >
         <X className="h-4 w-4" />
       </button>
-      <div className="mx-auto flex h-16 items-center justify-center">
-        <GroupProfileAvatar space={space} />
+      <div className="mx-auto flex items-center justify-center">
+        {avatarEditor ?? <GroupProfileAvatar space={space} />}
       </div>
       <div className="mx-auto mt-2 min-w-0 max-w-[15rem]">
         <div className="truncate text-[16px] font-semibold leading-5" title={space.title}>

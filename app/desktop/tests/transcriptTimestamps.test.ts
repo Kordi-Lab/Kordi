@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { transcriptTimeSeparatorLabels } from '../src/features/chat/transcriptTimestamps';
+import { createTranscriptTimeSeparatorCache, transcriptTimeSeparatorLabels } from '../src/features/chat/transcriptTimestamps';
 import { isGroupedWithAdjacentHumanMessage } from '../src/pages/chatsPage.transcriptViewport';
 import type { Message } from '../src/kordi-app/types';
 
@@ -16,6 +16,30 @@ function message(timestampMs: number | null, overrides: Partial<Message> = {}): 
     ...overrides,
   };
 }
+
+test('Threads labels only local calendar-day boundaries, never same-day inactivity gaps', () => {
+  const messages = [
+    message(Date.parse('2026-10-02T09:00:00Z')),
+    message(Date.parse('2026-10-02T18:00:00Z')),
+    message(Date.parse('2026-10-03T00:01:00Z')),
+    message(Date.parse('2026-10-03T00:02:00Z'), { role: 'system' }),
+  ];
+  const options = { dateOnly: true, locales: 'en-US', timeZone: 'UTC' };
+  assert.deepEqual(transcriptTimeSeparatorLabels(messages, options), ['October 2, 2026', null, 'October 3, 2026', null]);
+  assert.deepEqual(transcriptTimeSeparatorLabels(messages, { ...options, timeZone: 'America/Los_Angeles' }), ['October 2, 2026', null, null, null]);
+});
+
+test('daily cache keeps mode switches, missing timestamps, and prepended history accurate', () => {
+  const first = Date.parse('2026-10-02T23:59:00Z');
+  const messages = [message(null), message(first), message(first + 120_000)];
+  const options = { now: first, timeZone: 'UTC', locales: 'en-US' };
+  const cache = createTranscriptTimeSeparatorCache();
+  assert.deepEqual(cache(messages, options), [null, '23:59', 'Oct 3 00:01']);
+  assert.deepEqual(cache(messages, { ...options, dateOnly: true }), [null, 'October 2, 2026', 'October 3, 2026']);
+  const prepended = [message(first - 3_600_000), ...messages];
+  assert.deepEqual(cache(prepended, { ...options, dateOnly: true }), ['October 2, 2026', null, null, 'October 3, 2026']);
+  assert.deepEqual(cache(messages, options), transcriptTimeSeparatorLabels(messages, options));
+});
 
 test('transcript separators follow gaps between adjacent messages', () => {
   const start = Date.parse('2026-08-08T10:00:00.000Z');

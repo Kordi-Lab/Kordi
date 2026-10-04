@@ -994,7 +994,7 @@ private struct MessageActionReadReceiptRow: View {
                                 seed: reader.accountId
                             )
                             .overlay {
-                                Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: avatarSize * 0.17, style: .continuous).stroke(Color(uiColor: .systemBackground), lineWidth: 1)
                             }
                             .zIndex(Double(index))
                         }

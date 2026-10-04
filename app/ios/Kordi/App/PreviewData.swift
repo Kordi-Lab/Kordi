@@ -807,7 +807,7 @@ enum PreviewData {
                 requestMessageId: nil
             ))
         }
-        return messages
+        return ThreadDatePreview.replacing(messages, now: now)
     }
 
     private static func bubbleWidthRiskConversation(now: Date) -> [ChatMessage] {
