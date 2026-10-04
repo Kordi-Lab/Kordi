@@ -268,7 +268,8 @@ struct MessageBubble: View, Equatable {
                 if isThreadLayout {
                     if let source = visibleReplySource { quoteLine(source) }
                     if !groupedWithPrevious || visibleReplySource != nil {
-                        ThreadMessageHeader(message: message, authorName: authorAvatarName, avatarSeed: authorAvatarSeed)
+                        ThreadMessageHeader(message: message, authorName: authorAvatarName, avatarSeed: authorAvatarSeed,
+                                            onOpenReplyDisclosure: onOpenReplyDisclosure)
                     }
                 }
                 if let position = message.agentQueuePosition {

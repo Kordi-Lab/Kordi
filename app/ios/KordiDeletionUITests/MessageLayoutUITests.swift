@@ -43,6 +43,18 @@ final class MessageLayoutUITests: ProviderUITestCase {
         app.terminate()
     }
 
+    func testThreadsKeepsTheAIChipThatOpensAboutThisReply() {
+        let app = launch("--preview-link-showcase", "-kordi.messageLayout.v1", "threads", "-kordi.appearance", "light")
+        let chip = app.buttons["AI agent, about this reply"].firstMatch
+        XCTAssertTrue(chip.waitForExistence(timeout: 15))
+        XCTAssertTrue(reveal(chip, in: app))
+        capture("AI chip on an agent reply in Threads", app: app)
+        chip.tap()
+        XCTAssertTrue(app.navigationBars["About this reply"].waitForExistence(timeout: 5))
+        capture("About this reply opened from Threads", app: app)
+        app.terminate()
+    }
+
     func testThreadsPersistsAndKeepsQuoteAndMessageActions() {
         var app = launch("--preview-appearance")
         let picker = app.segmentedControls["message-layout-picker"]
