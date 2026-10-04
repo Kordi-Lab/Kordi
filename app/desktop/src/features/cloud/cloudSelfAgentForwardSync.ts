@@ -33,6 +33,8 @@ export type CloudSelfAgentSyncOperation = {
   targetAgentId?: string; targetAgentName?: string;
   /** A request that runs on Kordi Cloud: the cloud message carries this route to the runner. */
   agentRuntimeRoute?: DesktopChatMessageRoute;
+  /** Recovered transcript content that must not start another hosted turn. */
+  historyOnly?: boolean;
 };
 
 /** The Kordi Cloud route a delivered user message carries, if any. */
@@ -65,6 +67,44 @@ function contentText(content: Record<string, unknown>, key: string): string {
   return cleanText(typeof content[key] === 'string' ? content[key] : null);
 }
 
+function leasedDesktopRequestMirrors(
+  messages: readonly CanonicalSessionMessage[],
+  ledger: CloudSelfAgentSyncLedger,
+) {
+  const key = (sessionId: string, wireId: string) => `${sessionId}\u0000${wireId}`;
+  const cloudRequestWireIds = new Set<string>();
+  for (const message of messages) {
+    if (message.senderRole !== 'user') continue;
+    // A Cloud mirror alone may be historical transcript export. Only an
+    // explicitly routed local request proves this native entry is a leased
+    // execution echo, rather than a new turn or recovered history.
+    if (!kordiCloudRouteFromContent(objectContent(message.content))) continue;
+    const forwardedWireId = ledger[message.id]?.cloudMessageId;
+    if (forwardedWireId) cloudRequestWireIds.add(key(message.sessionId, forwardedWireId));
+  }
+
+  const nativeRequestIds = new Set<string>();
+  for (const message of messages) {
+    if (message.sourceTransport !== 'desktop-chat' || message.senderRole !== 'user') continue;
+    const entryId = contentText(objectContent(message.content), 'desktopEntryId');
+    if (entryId && cloudRequestWireIds.has(key(message.sessionId, entryId))) {
+      nativeRequestIds.add(message.id);
+    }
+  }
+  return { cloudRequestWireIds, nativeRequestIds };
+}
+
+function forwardEligibilityAtMs(message: CanonicalSessionMessage) {
+  const content = objectContent(message.content);
+  const dispatchedAtMs = content.queuedMessage === true
+    && message.senderRole === 'user'
+    && contentText(content, 'queueState') === 'sent'
+    && kordiCloudRouteFromContent(content)
+    && typeof content.queueUpdatedAtMs === 'number'
+      ? content.queueUpdatedAtMs : null;
+  return Math.max(message.createdAtMs, dispatchedAtMs ?? message.createdAtMs);
+}
+
 function selfAgentMessageDeliveryState(
   message: CanonicalSessionMessage,
 ): CloudSelfAgentSyncOperation['deliveryState'] | null {
@@ -72,6 +112,11 @@ function selfAgentMessageDeliveryState(
   const content = objectContent(message.content);
   const deliveryState = contentText(content, 'deliveryState').toLowerCase();
   if (message.senderRole === 'user') {
+    // A hosted draft in the local send queue has no execution lease yet.
+    // Publish it only after dispatch changes its queue state to sent.
+    if (content.queuedMessage === true
+      && ['queued', 'cancelled'].includes(contentText(content, 'queueState') || deliveryState || status)
+      && kordiCloudRouteFromContent(content)) return null;
     if (content.queuedMessage === true && ['queued', 'cancelled'].includes(contentText(content, 'queueState') || deliveryState || status)) return 'sent';
     return ['sent', 'delivered', 'read', 'complete', 'completed'].includes(
       deliveryState || status,
@@ -227,6 +272,7 @@ export function seedCloudSelfAgentForwardSyncLedger(
   state: CanonicalSessionState,
   ledger: CloudSelfAgentSyncLedger,
   syncedAtMs: number = Date.now(),
+  createdBeforeMs: number = Number.POSITIVE_INFINITY,
 ): { ledger: CloudSelfAgentSyncLedger; changed: boolean } {
   const selfAgentSessionIds = cloudSyncedLocalAgentSessionIds(state);
   if (selfAgentSessionIds.size === 0) {
@@ -239,6 +285,7 @@ export function seedCloudSelfAgentForwardSyncLedger(
     if (
       !selfAgentSessionIds.has(message.sessionId)
       || !selfAgentMessageDeliveryState(message)
+      || forwardEligibilityAtMs(message) > createdBeforeMs
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(message)) continue;
     if (next[message.id]) continue;
@@ -266,11 +313,19 @@ export function planCloudSelfAgentSync(
   const selfAgentSessionIds = cloudSyncedLocalAgentSessionIds(state);
   if (selfAgentSessionIds.size === 0) return [];
   const targetBySessionId = cloudAgentTargetsBySessionId(state, selfAgentSessionIds);
+  const leasedMirrors = leasedDesktopRequestMirrors(state.messages, ledger);
 
   const messagesBySession =
     new Map<string, CanonicalSessionMessage[]>();
   for (const message of state.messages) {
     if (!selfAgentSessionIds.has(message.sessionId)) continue;
+    if (message.sourceTransport === 'desktop-chat') {
+      if (leasedMirrors.nativeRequestIds.has(message.id)) continue;
+      const parentId = explicitSelfAgentParentMessageId(message);
+      if (message.senderRole.includes('agent') && parentId
+        && (leasedMirrors.nativeRequestIds.has(parentId)
+          || leasedMirrors.cloudRequestWireIds.has(`${message.sessionId}\u0000${parentId}`))) continue;
+    }
     const recoveringMissingChatSession = Boolean(
       options.recoverSessionIds?.has(message.sessionId),
     );
@@ -279,7 +334,7 @@ export function planCloudSelfAgentSync(
     if (
       !recoveringMissingChatSession
       && options.createdAfterMs != null
-      && message.createdAtMs <= options.createdAfterMs
+      && forwardEligibilityAtMs(message) <= options.createdAfterMs
     ) continue;
     if (shouldSkipSelfAgentForwardSyncMessage(
       message,
@@ -308,6 +363,9 @@ export function planCloudSelfAgentSync(
         const queuedState = contentText(content, 'queueState') || contentText(content, 'deliveryState') || message.status;
         const cancelledWhileQueued = content.queuedMessage === true && queuedState === 'cancelled';
         const kordiCloudRoute = kordiCloudRouteFromContent(content);
+        const liveHostedRequest = message.sourceTransport === 'desktop-chat-ui'
+          && options.createdAfterMs != null && forwardEligibilityAtMs(message) > options.createdAfterMs
+          && !ledger[message.id]?.cloudMessageId;
         if (
           options.recoverSessionIds?.has(message.sessionId)
           || !ledger[message.id]
@@ -329,6 +387,8 @@ export function planCloudSelfAgentSync(
               cancelledAtMs: typeof content.queueUpdatedAtMs === 'number' ? content.queueUpdatedAtMs : message.updatedAtMs,
             } : {}),
             ...(kordiCloudRoute ? { agentRuntimeRoute: kordiCloudRoute } : {}),
+            ...(kordiCloudRoute && options.recoverSessionIds?.has(message.sessionId)
+              && !liveHostedRequest ? { historyOnly: true } : {}),
             ...target,
           };
           if (queuedState === 'queued' || cancelledWhileQueued || !options.remoteClientMessageIds?.has(

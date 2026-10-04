@@ -1,9 +1,10 @@
+import { ChatWorkspaceControls } from '@/features/projects/ChatWorkspaceControls';
+import { canChooseChatProject } from '@/features/projects/chatProjects';
 import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
-import { KordiCloudRuntimeCaption } from '@/pages/chatsPage.kordiCloudCaption';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
@@ -182,6 +183,9 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
+      {!editingMessage && !voiceSurfaceActive && !videoSurfaceActive && canChooseChatProject(conversation) ? (
+        <ChatWorkspaceControls key={conversation.id} conversation={conversation} disabled={display.activeLiveTurnIsRunning} />
+      ) : null}
       <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
         videoReviews.stage(saveDesktopAttachments(files))
       )}>
@@ -351,10 +355,9 @@ export function MainComposer({
           )}
         >
           <div
-            className="flex shrink-0 items-center gap-2 overflow-visible pr-1"
+            className="flex min-w-0 flex-wrap items-center gap-2 overflow-visible pr-1"
             data-composer-left-actions="true"
           >
-            {!editingMessage && useCompactRouteMenu ? <KordiCloudRuntimeCaption /> : null}
             {!editingMessage && useCompactRouteMenu ? (
               <CompactComposerModelMenu
                 scope="chat"
@@ -408,7 +411,6 @@ export function MainComposer({
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
                 <>
-                <KordiCloudRuntimeCaption />
                 <ComposerModelControls
                   scope="chat"
                   selection={composerSelection}

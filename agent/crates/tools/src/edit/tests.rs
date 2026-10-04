@@ -8,6 +8,7 @@ fn make_ctx(dir: &Path, execution_policy: crate::ExecutionPolicy) -> ToolContext
         artifacts_dir: dir.to_path_buf(),
         model: None,
         execution_policy,
+        invocation_id: None,
         on_output: None,
         web_search: None,
         reach_out: None,

@@ -1,5 +1,7 @@
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import { matchingComposerAccountOption } from '@/kordi-app/components/composerModelSelection';
+import { ACCOUNT_UNAVAILABLE_LABEL, isAccountAuthChoice } from '@/features/cloud/routeAccountChoice';
 import type { Conversation, ConversationParticipant, Message } from '@/kordi-app/types';
 import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
@@ -360,6 +362,14 @@ export function localAgentConversationNeedsProvider({
     && !hasAnyAuth;
 }
 
+/** A ready hosted account also satisfies the chat connection gate. */
+export function chatHasConnectedProvider(
+  hasLocalAuth: boolean,
+  providerOptions: readonly ComposerProviderOption[] = [],
+) {
+  return hasLocalAuth || providerOptions.some((option) => option.hosted && !option.disabled);
+}
+
 function oppositeCompanionSide(side: CompanionSide): CompanionSide {
   return side === 'left' ? 'right' : 'left';
 }
@@ -429,10 +439,9 @@ export function firstModelForProvider(providerId: string, modelOptions?: Compose
 
 export function collaborationAuthDisplayName(authProvider?: string | null, authChoice?: string | null, providerOptions?: ComposerProviderOption[]) {
   if (!authProvider?.trim() && !authChoice?.trim()) return null;
-  const option = providerOptions?.find((candidate) => (
-    candidate.providerId === authProvider && authChoiceFromProviderOption(candidate) === (authChoice ?? null)
-  ));
+  const option = matchingComposerAccountOption(authProvider, authChoice, providerOptions ?? []);
   if (option) return [option.label, option.detail].filter(Boolean).join(' · ');
+  if (isAccountAuthChoice(authChoice)) return ACCOUNT_UNAVAILABLE_LABEL;
   return authProvider ?? null;
 }
 

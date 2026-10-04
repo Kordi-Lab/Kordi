@@ -49,6 +49,25 @@ pub(crate) async fn read_context(
     read_for_actor(state, run_id, &actor, &input.tool, &input.arguments).await
 }
 
+pub(super) async fn authorize_runner_context(
+    pool: &PgPool,
+    run_id: &str,
+    runner_id: &str,
+) -> RunResult<()> {
+    authorize(
+        pool,
+        run_id,
+        &ContextActor {
+            executor: runner_id.to_owned(),
+            backend: "cloud",
+            account: None,
+            observation: None,
+        },
+    )
+    .await
+    .map(|_| ())
+}
+
 pub(crate) async fn read_desktop_context(
     state: &ServerState,
     run_id: &str,

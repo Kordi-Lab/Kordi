@@ -35,6 +35,7 @@ kordi-core.workspace = true
 kordi-provider.workspace = true
 kordi-tools.workspace = true
 kordi-session.workspace = true
+kordi-omp-runtime.workspace = true
 kordi-cli = { path = "../../agent/crates/cli", default-features = false }
 
 [dev-dependencies]

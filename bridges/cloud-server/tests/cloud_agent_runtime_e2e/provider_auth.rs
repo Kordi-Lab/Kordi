@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "provider_auth/desktop_claim.rs"]
+mod desktop_claim;
+
 #[path = "provider_auth/cross_account.rs"]
 mod cross_account;
 #[path = "provider_auth/login_method.rs"]

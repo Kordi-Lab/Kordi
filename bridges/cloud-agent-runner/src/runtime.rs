@@ -2,7 +2,9 @@ use std::path::PathBuf;
 
 use crate::client::{CloudAgentRun, CloudAgentRunClient, RunnerClientError};
 use crate::k8s_sandbox::K8sSandboxBackend;
-use crate::model_loop::{run_model_loop, CloudModelProvider, OpenAiCompatibleProvider};
+use crate::model_loop::{
+    run_model_loop, run_omp_model_loop, CloudModelProvider, OpenAiCompatibleProvider,
+};
 use crate::sandbox_client::{LocalSandboxBackend, SandboxBackendHandle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +21,19 @@ pub enum RunnerStepOutcome {
 pub enum SandboxBackendMode {
     Local,
     K8s,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloudModelEngine {
+    Rust,
+    Omp,
+}
+
+pub fn cloud_model_engine_from_env() -> CloudModelEngine {
+    match std::env::var("KORDI_CLOUD_AGENT_ENGINE") {
+        Ok(value) if value.trim().eq_ignore_ascii_case("omp") => CloudModelEngine::Omp,
+        _ => CloudModelEngine::Rust,
+    }
 }
 
 pub const SANDBOX_BACKEND_ENV: &str = "KORDI_CLOUD_SANDBOX_BACKEND";
@@ -320,8 +335,23 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
+    enum GenerationResult {
+        Rust(String),
+        Omp(String, crate::client::OmpState),
+    }
     let result = {
-        let generation = run_model_loop(client, provider, &run, &sandbox, auth_material);
+        let generation = async {
+            match cloud_model_engine_from_env() {
+                CloudModelEngine::Rust => {
+                    run_model_loop(client, provider, &run, &sandbox, auth_material)
+                        .await
+                        .map(GenerationResult::Rust)
+                }
+                CloudModelEngine::Omp => run_omp_model_loop(client, &run, &sandbox, auth_material)
+                    .await
+                    .map(|(text, state)| GenerationResult::Omp(text, state)),
+            }
+        };
         tokio::pin!(generation);
         let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
         heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -336,8 +366,8 @@ where
             }
         }
     };
-    let response_text = match result {
-        Ok(response_text) => response_text,
+    let response = match result {
+        Ok(response) => response,
         Err(err) => {
             client
                 .fail_run(
@@ -349,7 +379,16 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
-    client.complete_run(&run.run_id, &response_text).await?;
+    match response {
+        GenerationResult::Rust(response_text) => {
+            client.complete_run(&run.run_id, &response_text).await?
+        }
+        GenerationResult::Omp(response_text, state) => {
+            client
+                .complete_run_with_omp_state(&run.run_id, &response_text, state)
+                .await?
+        }
+    }
     Ok(RunnerStepOutcome::Completed { run_id: run.run_id })
 }
 

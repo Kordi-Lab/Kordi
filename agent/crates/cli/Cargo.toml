@@ -29,6 +29,7 @@ kordi-hooks.workspace = true
 kordi-plugin-host.workspace = true
 kordi-tui = { workspace = true, optional = true }
 kordi-monitor.workspace = true
+kordi-omp-runtime.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }

@@ -7,6 +7,8 @@ export type ComposerProviderOption = {
   detail?: string | null;
   selectionLabel?: string;
   active?: boolean;
+  /** Saved in the Kordi account rather than on this device. */
+  hosted?: boolean;
   /** The route names an account this device no longer has. */
   unavailable?: boolean;
   /** Listed but not selectable, for example a hosted account that needs reconnecting. */
@@ -34,8 +36,25 @@ export function normalizeComposerProviderId(providerId: string) {
   return normalized === 'openai-codex' ? 'openai' : normalized;
 }
 
-function authChoiceFromProviderOption(option: ComposerProviderOption) {
+export function authChoiceFromProviderOption(option: ComposerProviderOption) {
   return option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
+}
+
+/** Resolve one saved account across a legacy provider alias without borrowing another choice. */
+export function matchingComposerAccountOption(
+  providerId: string | null | undefined,
+  authChoice: string | null | undefined,
+  providerOptions: readonly ComposerProviderOption[],
+): ComposerProviderOption | null {
+  if (!providerId) return null;
+  const accountOptions = providerOptions.filter((option) => authChoiceFromProviderOption(option) === (authChoice ?? null));
+  const exact = accountOptions.find((option) => option.providerId === providerId);
+  if (exact) return exact;
+  if (!isAccountAuthChoice(authChoice)) return null;
+  const family = accountOptions.filter((option) => (
+    normalizeComposerProviderId(option.providerId) === normalizeComposerProviderId(providerId)
+  ));
+  return family.length === 1 ? family[0] : null;
 }
 
 export function providerDisplayLabel(providerId: string) {
@@ -90,12 +109,11 @@ export function resolveComposerModelSelection({
   )
     ? modelProviderValue
     : '';
-  const selectedAuthProviderOption = selection.authProvider
-    ? providerOptions.find((option) => (
-        option.providerId === selection.authProvider
-        && authChoiceFromProviderOption(option) === (selection.authChoice ?? null)
-      )) ?? null
-    : null;
+  const selectedAuthProviderOption = matchingComposerAccountOption(
+    selection.authProvider,
+    selection.authChoice,
+    providerOptions,
+  );
   // A route bound to a removed account stays on it, marked unavailable, until
   // the owner explicitly chooses another account.
   const missingAccountOption: ComposerProviderOption | null = selection.authProvider

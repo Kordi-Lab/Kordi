@@ -7,6 +7,7 @@ include!("tests/background_sessions.rs");
 include!("tests/persona.rs");
 include!("tests/workspace.rs");
 include!("tests/live_local_tools.rs");
+include!("tests/omp_integration.rs");
 fn effective_thinking_for_model(requested: ThinkingLevel, model: &Model) -> ThinkingLevel {
     model_options::effective_thinking_for_model_with_auth(requested, model, None)
 }

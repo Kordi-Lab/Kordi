@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { CloudProviderRouteTestInput, CloudProviderRouteTestResult } from '@/features/cloud/cloudAgentRuntimeTypes';
-import { SettingsRow, SettingsSection, SettingsSelect } from '@/kordi-app/components/settingsLayout';
+import { SettingsSection, SettingsSelect } from '@/kordi-app/components/settingsLayout';
 import { AuthActionButton, authButtonPrimaryClass } from './AuthDetailPrimitives';
 import type { AuthDisplayProvider } from './model';
 import { routeAccounts } from './authRouteAccounts';
@@ -21,7 +21,7 @@ type AuthRouteTestProps = {
   disabledReason?: string | null;
 };
 
-/** Provider, Account, Model and Thinking rows, then one explicit hosted test. */
+/** A compact route form followed by one explicit hosted test. */
 export function AuthRouteTest({ provider, onTestRoute, disabledReason = null }: AuthRouteTestProps) {
   const [providerChoice, setProviderChoice] = useState('');
   const [routeChoice, setRouteChoice] = useState('');
@@ -78,68 +78,69 @@ export function AuthRouteTest({ provider, onTestRoute, disabledReason = null }: 
   };
 
   return (
-    <SettingsSection title="Test route" className="app-auth-detail-section">
-      <SettingsRow
-        title="Provider"
-        description="The OMP provider that runs the test."
-        control={(
+    <SettingsSection title="Test route" className="app-auth-detail-section min-w-0">
+      <div className="grid min-w-0 grid-cols-1 gap-x-4 gap-y-3 py-3.5 sm:grid-cols-2">
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[12px] font-medium text-slate-400">Provider</span>
           <SettingsSelect
             label="Provider"
+            className="app-input-shell app-flat-input h-9 w-full max-w-none rounded-lg"
             value={selectedProviderId}
             options={providerIds.map((id) => ({ value: id, label: providerName(id) }))}
             onChange={(event) => chooseProvider(event.target.value)}
           />
-        )}
-      />
-      <SettingsRow
-        title="Account"
-        description="The saved account OMP signs in with."
-        control={(
+        </label>
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[12px] font-medium text-slate-400">Account</span>
           <SettingsSelect
             label="Account"
+            className="app-input-shell app-flat-input h-9 w-full max-w-none rounded-lg"
             value={account.value}
             options={providerAccounts.map((option) => ({ value: option.value, label: option.label }))}
             onChange={(event) => chooseAccount(event.target.value)}
           />
-        )}
-      />
-      <SettingsRow
-        title="Model"
-        description="Models this provider offers through OMP."
-        control={account.modelIds.length ? (
+        </label>
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[12px] font-medium text-slate-400">Model</span>
+          {account.modelIds.length ? (
+            <SettingsSelect
+              label="Model"
+              className="app-input-shell app-flat-input h-9 w-full max-w-none rounded-lg"
+              value={account.modelIds.includes(routeModel) ? routeModel : account.suggestedModel}
+              options={account.modelIds.map((modelId) => ({ value: modelId, label: modelId }))}
+              onChange={(event) => { setModelOverride(event.target.value); clearResult(); }}
+            />
+          ) : (
+            <input
+              aria-label="Model ID"
+              placeholder="Model ID from your endpoint"
+              className="app-input-shell app-flat-input h-9 w-full min-w-0 rounded-lg px-3 text-[13px] text-white outline-none"
+              value={routeModel}
+              onChange={(event) => { setModelOverride(event.target.value); clearResult(); }}
+            />
+          )}
+        </label>
+        <label className="grid min-w-0 gap-1.5">
+          <span className="text-[12px] font-medium text-slate-400">Thinking</span>
           <SettingsSelect
-            label="Model"
-            value={account.modelIds.includes(routeModel) ? routeModel : account.suggestedModel}
-            options={account.modelIds.map((modelId) => ({ value: modelId, label: modelId }))}
-            onChange={(event) => { setModelOverride(event.target.value); clearResult(); }}
+            label="Thinking"
+            className="app-input-shell app-flat-input h-9 w-full max-w-none rounded-lg"
+            value={thinking}
+            options={thinkingOptions}
+            onChange={(event) => { setThinking(event.target.value); clearResult(); }}
           />
-        ) : (
-          <input
-            aria-label="Model ID"
-            placeholder="Model ID from your endpoint"
-            className="app-input-shell app-flat-input h-8 w-[240px] rounded-lg px-3 text-[13px] text-white outline-none"
-            value={routeModel}
-            onChange={(event) => { setModelOverride(event.target.value); clearResult(); }}
-          />
-        )}
-      />
-      <SettingsRow
-        title="Thinking"
-        description="Reasoning effort for the test turn."
-        control={<SettingsSelect label="Thinking" value={thinking} options={thinkingOptions} onChange={(event) => { setThinking(event.target.value); clearResult(); }} />}
-      />
-      <SettingsRow
-        title="Run a test"
-        description="Sends one short hosted request through OMP and may use provider quota."
-        control={(
-          <AuthActionButton type="button" className={authButtonPrimaryClass} title={disabledReason ?? undefined} disabled={Boolean(disabledReason) || routeTesting || !routeModel.trim()} onClick={() => { void runRouteTest(); }}>
-            {routeTesting ? 'Testing…' : 'Test route'}
-          </AuthActionButton>
-        )}
-      />
+        </label>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[color:var(--app-divider)] py-3.5">
+        <p className="m-0 text-[12px] leading-5 text-slate-400">Sends one short request and may use provider quota.</p>
+        <AuthActionButton type="button" className={authButtonPrimaryClass} title={disabledReason ?? undefined} disabled={Boolean(disabledReason) || routeTesting || !routeModel.trim()} onClick={() => { void runRouteTest(); }}>
+          {routeTesting ? 'Testing…' : 'Run test'}
+        </AuthActionButton>
+      </div>
+      {disabledReason ? <p className="m-0 pb-3.5 text-[12px] leading-5 text-slate-400">{disabledReason}</p> : null}
       {routeResult ? (
         <div role="status" className="py-3.5">
-          <div className="text-[13px] font-medium text-white">{routeResult.runner} confirmed · {routeResult.accountLabel} · {routeResult.model}</div>
+          <div className="text-[13px] font-medium text-white">Confirmed · {routeResult.accountLabel} · {routeResult.model}</div>
           <div className="mt-0.5 text-[12px] leading-5 text-slate-400">{routeResult.response}</div>
         </div>
       ) : null}

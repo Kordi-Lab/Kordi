@@ -16,6 +16,8 @@ import type { DesktopChatTurnSnapshot, DesktopCollaborationState } from '../src/
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import { cloudAccountAvatarFixture as avatar } from './helpers/cloudAccountAvatarFixture';
+import { authStateSatisfiesStartupGate } from '../src/kordi-app/auth/model';
+import { hostedAccountsFromSnapshots } from '../src/features/cloud/hostedAccounts';
 
 const noop = () => {};
 const owner: CloudAccount = { accountId: 'owner', displayName: 'Owner', primaryEmail: 'owner@example.test', avatarUrl: null, avatar, nodeId: 'owner', passwordSet: true };
@@ -51,9 +53,10 @@ function request(sender: CloudAccount): CloudMessage {
 
 test('an unauthenticated owner opens provider settings before publishing a mention; peer requests remain sendable', async () => {
   await withDom(async root => {
-    for (const [hasAuth, targetOwner, savedAuth, inThread] of [
+    for (const [hasAuth, targetOwner, savedAuth, inThread, hostedAuth = false] of [
       [false, 'owner', false, false], [false, 'peer', false, false], [true, 'owner', true, false],
       [false, 'owner', true, false], [false, 'owner', false, true],
+      [false, 'owner', false, false, true],
     ] as const) {
       let loginRequests = 0;
       let sent = 0;
@@ -68,7 +71,15 @@ test('an unauthenticated owner opens provider settings before publishing a menti
         activeConversationUsesCollaboration: true, activeConvMessages: [], chatConversations: [],
         activeConvCollaborationTarget: { hostId: 'cloud', nodeId: 'peer', humanId: 'peer', runtime: 'person' },
         activeConvMentionScope: { id: 'cloud:conversation:peer:person', canonicalSessionId: 'session:direct-person:owner:peer' },
-        isNativeShell: true, hasAnyDesktopAuth: hasAuth, hasLocalProviderAuth: savedAuth, desktopChatState: null, canonicalSessionState: null,
+        isNativeShell: true, hasAnyDesktopAuth: hasAuth,
+        hasConfiguredProviderAuth: authStateSatisfiesStartupGate(
+          { authPath: '', hasAnyAuth: savedAuth, providers: [] },
+          hostedAccountsFromSnapshots(hostedAuth ? [{
+            snapshotId: 'saved', provider: 'openai-codex', authChoice: 'cloud-login:saved',
+            label: 'Work', createdAt: '2026-01-01T00:00:00Z', revokedAt: null,
+          }] : []),
+        ),
+        desktopChatState: null, canonicalSessionState: null,
         desktopCollaborationState: state, desktopLiveTurn: null, queuedDesktopMessagesBySession: {},
         composerDrafts: { chat: text, project: '' }, composerSelections: { chat: { model: 'test', thinking: 'default', mode: 'agent' } }, chatComposerAttachments: [],
         selectedChatAgentMentionRef: { current: { targetKind: 'agent', value: `${targetOwner}Agent`, label: `${targetOwner} Assistant`,
@@ -86,8 +97,8 @@ test('an unauthenticated owner opens provider settings before publishing a menti
       } as unknown as UseChatMessageActionsArgs;
       let actions: ReturnType<typeof useChatMessageActions> | undefined;
       function Harness() { actions = useChatMessageActions(args); return null; }
-      await act(async () => root.render(<Harness key={`${hasAuth}-${targetOwner}-${savedAuth}-${inThread}`} />));
-      const blocked = !savedAuth && targetOwner === 'owner';
+      await act(async () => root.render(<Harness key={`${hasAuth}-${targetOwner}-${savedAuth}-${inThread}-${hostedAuth}`} />));
+      const blocked = !savedAuth && !hostedAuth && targetOwner === 'owner';
       await act(async () => {
         if (inThread) await assert.rejects(actions!.handleSendChatMessage(undefined, undefined, [], [], {
           action: 'thread', source: { sourceSessionId: 'session:direct-person:owner:peer', sourceMessageId: 'root', senderLabel: 'Owner', textPreview: 'Root', attachmentCount: 0 },

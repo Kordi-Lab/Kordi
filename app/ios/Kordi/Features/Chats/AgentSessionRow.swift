@@ -34,13 +34,24 @@ struct AgentSessionSectionHeader: View {
 struct AgentSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
+    var compact = false
     var isFork = false
     var isPinned = false
     var isMuted = false
 
     var body: some View {
         Group {
-            if dynamicTypeSize.isAccessibilitySize {
+            if compact {
+                HStack(spacing: 10) {
+                    title
+                    Spacer(minLength: 4)
+                    if conversation.hasUnreadAttention { attentionBadge }
+                    else if let activity = conversation.agentActivity, activity != .ready {
+                        AgentSessionActivityLabel(activity: activity, compact: true)
+                    }
+                }
+                .padding(.vertical, 6)
+            } else if dynamicTypeSize.isAccessibilitySize {
                 accessibilityLayout
             } else {
                 regularLayout
@@ -105,7 +116,7 @@ struct AgentSessionRow: View {
                     .accessibilityHidden(true)
             }
             Text(sessionTitle)
-                .font(.headline)
+                .font(compact ? .subheadline : .headline)
                 .foregroundStyle(.primary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 .layoutPriority(1)

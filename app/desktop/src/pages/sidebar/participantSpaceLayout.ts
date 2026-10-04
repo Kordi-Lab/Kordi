@@ -9,10 +9,10 @@ export type ParticipantSpaceBlock = {
   channels: ChatSidebarRow[];
 };
 
-export function participantSpaceBlocks(rows: readonly ChatSidebarRow[]): ParticipantSpaceBlock[] {
+export function participantSpaceBlocks(rows: readonly ChatSidebarRow[], compactChannels = false): ParticipantSpaceBlock[] {
   const blocks: ParticipantSpaceBlock[] = [];
   for (const row of rows) {
-    if (row.kind === 'space') blocks.push({ header: row, channels: [] });
+    if (row.kind === 'space' && !(compactChannels && row.key.startsWith('project-more:'))) blocks.push({ header: row, channels: [] });
     else blocks[blocks.length - 1]?.channels.push(row);
   }
   return blocks;

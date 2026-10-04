@@ -1,9 +1,11 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
+mod omp;
 mod prompt;
 mod provider;
 
+pub use omp::run_omp_model_loop;
 pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
 pub use provider::{
     public_provider_client, OpenAiCompatibleProvider, OpenAiProviderConfig,
@@ -182,7 +184,7 @@ where
     Err(ModelLoopError::LimitExceeded)
 }
 
-async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
+pub(crate) async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     client: &C,
     executor: &CloudToolExecutor,
     sandbox: &SandboxBackendHandle,

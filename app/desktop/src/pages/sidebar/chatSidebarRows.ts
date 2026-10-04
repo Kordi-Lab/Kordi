@@ -1,5 +1,5 @@
 export type ChatSidebarRow =
-  | { kind: 'space'; key: string; spaceId: string; depth: number }
+  | { kind: 'space'; key: string; spaceId: string; depth: number; estimatedHeight?: number }
   | {
       kind: 'session';
       key: string;
@@ -7,6 +7,7 @@ export type ChatSidebarRow =
       spaceId: string;
       depth: number;
       activePath: boolean;
+      estimatedHeight?: number;
     };
 
 export type ChatSidebarSpaceInput = {
@@ -22,6 +23,9 @@ export type ChatSidebarSessionInput = {
 };
 
 export function estimatedChatSidebarRowSize(row?: ChatSidebarRow) {
+  if (row?.estimatedHeight !== undefined) return row.estimatedHeight;
+  if (row?.key.startsWith('project-group:') || row?.key.startsWith('project-more:')) return 26;
+  if (row?.kind === 'session' && /^(project:|pinned:|recent:)/.test(row.key)) return 26;
   return row?.kind === 'session' ? 46 : 64;
 }
 

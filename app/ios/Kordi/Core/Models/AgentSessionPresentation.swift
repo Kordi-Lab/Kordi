@@ -81,14 +81,15 @@ enum AgentSessionTimelineCatalog {
         conversations: [ConversationSummary],
         searchText: String = "",
         collapsedForkParentIds: Set<String> = [],
-        pinnedSessionIds: Set<String> = []
+        pinnedSessionIds: Set<String> = [],
+        retainedSessionIds: Set<String> = []
     ) -> [AgentSessionListItem] {
         let allSessions = conversations
             .filter {
                 $0.kind == .agent
                     && !$0.representsKordiSupport
                     && !$0.isAgentLaunchTemplate
-                    && !isEmptyAgentSessionPlaceholder($0)
+                    && (!isEmptyAgentSessionPlaceholder($0) || retainedSessionIds.contains($0.sessionId))
             }
             .sorted { sessionSort($0, $1, pinnedSessionIds: pinnedSessionIds) }
         let bySessionId = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.sessionId, $0) })

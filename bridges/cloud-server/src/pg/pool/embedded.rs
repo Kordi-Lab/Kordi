@@ -163,9 +163,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         "0104_provider_auth_payload_version.sql"),
     migration!(version: 105, "provider auth snapshot readiness",
         "0105_provider_auth_snapshot_readiness.sql"),
-    // Version 106 is left for changes in flight on other branches. The runner
-    // refuses a recorded version whose description differs from this list.
-    migration!(version: 107, "account email verification", "0107_account_email_verification.sql"),
-    migration!(version: 108, "session-bound realtime tickets", "0108_realtime_ticket_sessions.sql"),
-    migration!(version: 109, "runner run token hash", "0109_runner_run_token_hash.sql"),
+    migration!(version: 106, "private OMP runtime replay state", "0106_omp_runtime_state.sql"),
+    migration!(version: 107, "account-scoped desktop projects", "0107_chat_projects.sql"),
+    migration!(version: 108, "account email verification", "0108_account_email_verification.sql"),
+    migration!(version: 109, "session-bound realtime tickets", "0109_realtime_ticket_sessions.sql"),
+    migration!(version: 110, "runner run token hash", "0110_runner_run_token_hash.sql"),
 ];

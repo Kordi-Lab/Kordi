@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 
 import { openLocalAgentChatFromArgs } from '../src/app/openLocalAgentChat';
 import { completeKordiCloudChatRequest, currentKordiCloudChatRequest } from '../src/features/chat/kordiCloudChatRoute';
@@ -10,10 +8,11 @@ import { cloudRunRuntimeRoute, routeRunsOnKordiCloud } from '../src/features/clo
 import { encodeCloudDirectMessageEnvelope, parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { setHostedAccountChoices, setLocalAccountChoices } from '../src/features/cloud/hostedAccountRegistry';
 import { publishCloudSelfAgentOperations } from '../src/features/cloud/cloudSelfAgentForwardExecution';
+import { cloudSelfAgentForwardMessageKind } from '../src/features/cloud/cloudSelfAgentForwardPolicy';
+import type { CloudSelfAgentSyncOperation } from '../src/features/cloud/cloudSelfAgentForwardSync';
 import { cloudFallbackRunClaimsForMessages } from '../src/features/cloud/useCloudCollaborationState';
 import { pendingCloudSelfAgentExecutionRequests } from '../src/features/cloud/cloudSelfAgentExecutionState';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
-import { KORDI_CLOUD_RUNTIME_CAPTION, KordiCloudRuntimeCaptionView } from '../src/pages/chatsPage.kordiCloudCaption';
 import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 
 const hostedRoute = { model: 'custom/deepseek-chat', authProvider: 'custom', authChoice: 'cloud-api-key:bai', thinking: 'off' };
@@ -58,7 +57,7 @@ function selfRequest(messageId: string, route: typeof hostedRoute): CloudMessage
   };
 }
 
-test('a Kordi Cloud request is claimed for the runner at once, with its route; a local one waits for the Mac', () => {
+test('a hosted request asks shared admission with its route and remains eligible for the online Mac', () => {
   const now = Date.now();
   const claims = cloudFallbackRunClaimsForMessages({
     account,
@@ -70,12 +69,12 @@ test('a Kordi Cloud request is claimed for the runner at once, with its route; a
   assert.deepEqual(claims[0].runtimeRoute, cloudRunRuntimeRoute(hostedRoute));
   assert.equal(claims[0].prompt, 'summarize this');
 
-  // This Mac executes only the local request; the hosted one is left to the runner.
+  // Both requests are eligible for the online Mac; the server arbitrates the lease.
   const pending = pendingCloudSelfAgentExecutionRequests({
     account,
     messageIndex: buildCloudMessageIndex(account.accountId, { [account.accountId]: [selfRequest('msg_cloud', hostedRoute), selfRequest('msg_local', localRoute)] }),
   });
-  assert.deepEqual(pending.map((message) => message.messageId), ['msg_local']);
+  assert.deepEqual(pending.map((message) => message.messageId), ['msg_cloud', 'msg_local']);
 });
 
 test('the cloud request carries the route, and this Mac posts no processing notice for it', async () => {
@@ -108,6 +107,42 @@ test('the cloud request carries the route, and this Mac posts no processing noti
   assert.deepEqual(envelope?.agentRuntimeRoute, hostedRoute);
 });
 
+test('a live hosted message in a mirrored session reaches run admission; recovered history does not', async () => {
+  const route = { model: 'openai-codex/gpt-5.5', authProvider: 'openai-codex', authChoice: 'cloud-login:work', thinking: 'medium' };
+  const operation: CloudSelfAgentSyncOperation = {
+    localMessageId: 'local-hosted', sessionId: 'session:self-agent:hosted', role: 'user', text: 'hi',
+    parentLocalMessageId: null, createdAtMs: Date.now(), deliveryState: 'sent', agentRuntimeRoute: route,
+  };
+  const historySessions = new Set([operation.sessionId]);
+  for (const recovering of [false, true]) {
+    const messages: CloudMessage[] = [];
+    await publishCloudSelfAgentOperations({
+      accountId: account.accountId,
+      client: { async sendMessage(_token, accountId, body, options) {
+        const message: CloudMessage = {
+          ...selfRequest('published-hosted', route), fromAccountId: accountId, body,
+          sessionId: options?.sessionId ?? null, messageKind: options?.messageKind ?? undefined,
+        };
+        messages.push(message);
+        return message;
+      } },
+      ledger: {}, operations: [operation], mergeMessage: () => {}, saveLedger: () => {},
+      messageKindForOperation: (item) => cloudSelfAgentForwardMessageKind({ ...item, historyOnly: recovering }, historySessions),
+      shouldPublishProcessing: () => false, token: 'test-token',
+    });
+    assert.equal(messages.length, 1);
+    assert.equal(messages[0].messageKind, recovering ? 'canonical-history-user' : undefined);
+    const claims = cloudFallbackRunClaimsForMessages({
+      account, contacts: [], messagesByPeer: { [account.accountId]: messages },
+      selfAgentFallbackBeforeMs: Date.now() - 120_000,
+    });
+    assert.equal(claims.length, recovering ? 0 : 1);
+    if (!recovering) assert.deepEqual(claims[0].runtimeRoute, cloudRunRuntimeRoute(route));
+  }
+  assert.equal(cloudSelfAgentForwardMessageKind({ ...operation, queued: true }, historySessions), 'canonical-history-user');
+  assert.equal(cloudSelfAgentForwardMessageKind({ ...operation, cancelledWhileQueued: true }, historySessions), 'canonical-history-user');
+});
+
 test('Start chat with a hosted-only account opens the chat with its route and never loads the model locally', async () => {
   const calls: string[] = [];
   const args = {
@@ -127,10 +162,4 @@ test('Start chat with a hosted-only account opens the chat with its route and ne
   await openLocalAgentChatFromArgs(args);
   assert.deepEqual(calls, ['nav:chats', 'create'], 'a local chat opens as before');
   assert.equal(currentKordiCloudChatRequest(), null);
-});
-
-test('the composer says when the chat runs on Kordi Cloud', () => {
-  assert.equal(KORDI_CLOUD_RUNTIME_CAPTION, 'Runs on Kordi Cloud');
-  assert.match(renderToStaticMarkup(createElement(KordiCloudRuntimeCaptionView, { show: true })), />Runs on Kordi Cloud</);
-  assert.equal(renderToStaticMarkup(createElement(KordiCloudRuntimeCaptionView, { show: false })), '');
 });

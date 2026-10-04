@@ -116,6 +116,14 @@ impl fmt::Debug for ExtensionCommandRegistry {
 }
 
 impl ExtensionCommandRegistry {
+    #[allow(
+        dead_code,
+        reason = "the CLI binary shares this registry with the desktop runtime library"
+    )]
+    pub(crate) fn has_hook_host(&self) -> bool {
+        self.host.is_some()
+    }
+
     #[cfg(test)]
     pub(crate) async fn from_test_plugin(cwd: &Path, path: &Path) -> Result<Self> {
         let (_, commands, _) =

@@ -18,7 +18,7 @@ impl RunnerToolBlockReason {
     pub fn explanation(self) -> &'static str {
         match self {
             Self::OwnerLocalResource => {
-                "Cloud fallback cannot access the owner's local device while it is offline. I can use the Cloud sandbox instead."
+                "Cloud fallback cannot access the owner's local device from this runtime. I can use the Cloud sandbox instead."
             }
             Self::PathEscapesSandbox => {
                 "Cloud fallback can only access files inside its isolated Cloud sandbox."

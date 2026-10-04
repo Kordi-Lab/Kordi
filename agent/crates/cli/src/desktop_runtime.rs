@@ -17,14 +17,21 @@ use crate::session_bootstrap::{
 use crate::tool_registry::ToolSelectionPreference;
 mod attachments;
 mod background_sessions;
+mod hosted_auth;
 mod identity;
 mod model_options;
 mod models;
+mod omp_turn;
 mod prompt_context;
 mod shared_context;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
+mod project_membership;
+use project_membership::runtime_cwd_for_session;
 mod session_catalog;
+pub use project_membership::{
+    move_session_to_project, move_session_to_project_workspace, remove_session_from_project,
+};
 mod session_detail;
 mod transcript;
 mod turn_execution;
@@ -53,14 +60,16 @@ pub use models::{
     DesktopSessionArtifact, DesktopVisibleTaskRecord,
 };
 
+use hosted_auth::refresh_provider_runtime_fields;
+#[cfg(test)]
+use model_options::resolve_auth_choice_override_for_model;
 use model_options::{
-    effective_thinking_for_model_with_auth, normalize_setup_thinking,
-    resolve_auth_choice_override_for_model, resolve_model_candidate,
+    effective_thinking_for_model_with_auth, normalize_setup_thinking, resolve_model_candidate,
 };
 use session_catalog::{
     fallback_session_display_title, load_project_info, open_sessions_db, project_group_id,
-    repair_session_title_from_history, runtime_cwd_for_session, session_activity_label,
-    session_title_from_messages, session_title_from_seed, truncate_chars,
+    repair_session_title_from_history, session_activity_label, session_title_from_messages,
+    session_title_from_seed, truncate_chars,
 };
 use session_detail::{
     build_agent_profile_from_setup, build_detail_from_setup, build_summary_from_setup,
@@ -424,6 +433,7 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_auth_choice(&mut self, provider: &str, choice: &str) -> Result<()> {
+        self.clear_ephemeral_provider_auth();
         let provider = provider.trim();
         let choice = choice.trim();
         if provider.is_empty() || choice.is_empty() {
@@ -680,23 +690,6 @@ pub fn hide_session(session_id: &str) -> Result<()> {
     )
 }
 
-pub fn move_session_to_project(session_id: &str, project_root: &std::path::Path) -> Result<()> {
-    let conn = open_sessions_db()?;
-    let Some(_row) = kordi_session::store::get_session(&conn, session_id)? else {
-        bail!("Session not found: {session_id}");
-    };
-    let project_root_str = project_root.display().to_string();
-    let group_id = project_group_id(project_root);
-    kordi_session::store::upsert_project(&conn, &group_id, &project_root_str, None)?;
-    kordi_session::store::update_session_scope(
-        &conn,
-        session_id,
-        "project",
-        &project_root_str,
-        Some(&project_root_str),
-    )
-}
-
 pub fn delete_session_forever(session_id: &str) -> Result<()> {
     let conn = open_sessions_db()?;
     kordi_session::store::delete_session(&conn, session_id)
@@ -715,33 +708,6 @@ fn retarget_runtime_setup_session(setup: &mut SessionRuntimeSetup, session_id: &
         sibling_conn,
     ));
     Ok(())
-}
-
-fn refresh_provider_runtime_fields(setup: &mut SessionRuntimeSetup) {
-    let settings = Settings::load_merged(&setup.tool_ctx.cwd);
-    let auth_override = setup
-        .auth_choice_override
-        .as_ref()
-        .and_then(|choice| resolve_auth_choice_override_for_model(&setup.model.provider, choice));
-    let runtime = crate::runtime_model::build_runtime_config_with_settings(
-        &setup.model,
-        &settings,
-        auth_override,
-    );
-
-    setup.provider = runtime.provider.clone();
-    setup.auth = runtime.auth;
-    setup.api_key = runtime.api_key.clone();
-    setup.base_url = runtime.base_url.clone();
-    setup.headers = runtime.headers.clone();
-    setup.tool_ctx.web_search = Some(kordi_tools::WebSearchRuntime {
-        provider: setup.provider.clone(),
-        model: setup.model.clone(),
-        api_key: setup.api_key.clone(),
-        base_url: setup.base_url.clone(),
-        headers: runtime.headers,
-        enabled: true,
-    });
 }
 
 fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {

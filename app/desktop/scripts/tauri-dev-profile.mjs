@@ -11,6 +11,7 @@ import {
   resolveDesktopPreviewIcons,
 } from './tauri-dev-env.mjs';
 import { resolveCloudDevApiBase } from './cloud-dev-endpoint.mjs';
+import { hostTargetTriple, ompExternalBins } from './omp-sidecar-config.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -169,6 +170,7 @@ const nextConfig = {
   identifier,
   bundle: {
     ...baseConfig.bundle,
+    externalBin: ompExternalBins(hostTargetTriple()),
     createUpdaterArtifacts: false,
     icon: resolveDesktopPreviewIcons(process.env),
   },

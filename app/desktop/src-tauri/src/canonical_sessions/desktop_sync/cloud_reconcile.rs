@@ -248,13 +248,23 @@ pub(super) fn request_uses_cloud_executor(
 ) -> Result<bool, String> {
     conn.query_row(
         "SELECT EXISTS(SELECT 1 FROM session_messages parent
-         WHERE parent.id=?1 AND parent.session_id=?2 AND parent.source_transport='cloud-self-agent'
-         AND NOT EXISTS(SELECT 1 FROM chat_sync_messages wire
-             JOIN chat_sync_conversations conversation
-               ON conversation.account_id=wire.account_id AND conversation.conversation_id=wire.conversation_id
-             WHERE wire.message_id=parent.source_event_id
-               AND conversation.client_session_id=parent.session_id
-               AND wire.message_kind='canonical-history-user'))",
+         WHERE parent.id=?1 AND parent.session_id=?2
+         AND (
+           (parent.source_transport='cloud-self-agent'
+            AND NOT EXISTS(SELECT 1 FROM chat_sync_messages wire
+                JOIN chat_sync_conversations conversation
+                  ON conversation.account_id=wire.account_id AND conversation.conversation_id=wire.conversation_id
+                WHERE wire.message_id=parent.source_event_id
+                  AND conversation.client_session_id=parent.session_id
+                  AND wire.message_kind='canonical-history-user'))
+           OR (parent.source_transport='desktop-chat'
+               AND json_valid(parent.content_json)
+               AND EXISTS(SELECT 1 FROM chat_sync_messages wire
+                   JOIN chat_sync_conversations conversation
+                     ON conversation.account_id=wire.account_id AND conversation.conversation_id=wire.conversation_id
+                   WHERE wire.message_id=json_extract(parent.content_json, '$.desktopEntryId')
+                     AND conversation.client_session_id=parent.session_id
+                     AND wire.message_kind='text'))))",
         rusqlite::params![parent_id, session_id], |row| row.get(0),
     ).map_err(|error| error.to_string())
 }

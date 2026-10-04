@@ -332,7 +332,7 @@ pub(crate) async fn snapshot_available_for_route(
 /// closed unless exactly one live snapshot matches, so the server never picks
 /// one of several saved accounts on the user's behalf: the same choice name
 /// (such as `local-active-oauth`) can exist once per provider.
-pub(super) async fn live_snapshot_for_route(
+pub(crate) async fn live_snapshot_for_route(
     pool: &PgPool,
     account_id: &str,
     route: &Value,

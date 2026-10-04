@@ -75,7 +75,8 @@ export function normalizeCloudSelfAgentRestoreMessage(
   const text = cleanText(
     response?.text ?? cloudDirectMessageDisplayText(message.body),
   );
-  if (!text && !message.attachments?.length && !(Array.isArray(message.attachments) && (message.version ?? 1) > 1)) return null;
+  const activeResponse = response?.deliveryState === 'processing';
+  if (!text && !activeResponse && !message.attachments?.length && !(Array.isArray(message.attachments) && (message.version ?? 1) > 1)) return null;
   const isModelChange = message.messageKind
     === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND;
   return {

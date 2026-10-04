@@ -61,7 +61,7 @@ export const steps = (page: Page) => section(page, 'Steps');
 export const signedIn = (page: Page, name: string) => steps(page).getByText(`Signed in as ${name}`, { exact: true });
 export const startChat = (page: Page) => page.getByRole('button', { name: 'Start chat', exact: true });
 export const chatNotice = (page: Page, model: string | null, cloudProvider?: string) => page.getByText(
-  `Chat would start with ${model ?? 'the default model'}${cloudProvider ? ` on Kordi Cloud (${cloudProvider} account)` : ''}.`,
+  `Chat would start with ${model ?? 'the default model'}${cloudProvider ? ` using the ${cloudProvider} account` : ''}.`,
 );
 
 /** OMP's dialog never repeats itself: consecutive step rows carry different descriptions. */
