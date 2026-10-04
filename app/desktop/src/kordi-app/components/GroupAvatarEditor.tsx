@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Camera, LoaderCircle } from 'lucide-react';
 import type { ParticipantSpaceAvatar } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { isNativeDesktopShell } from '@/lib/desktop';
 import { fileToAvatarDataUrl } from './avatarOverrides';
 import { GroupAvatar } from './GroupAvatar';
 
@@ -108,8 +109,16 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
           }}
         >
           <button type="button" role="menuitem" className="app-transient-flat-action app-transient-action-row w-full rounded-[9px] px-3 py-2 text-left text-[12px]" onClick={() => {
-            closeMenu();
-            input.current?.click();
+            if (isNativeDesktopShell() && /Mac/i.test(window.navigator.platform)) {
+              void run(async () => {
+                const { pickNativeAvatarFile } = await import('@/lib/nativeAvatarPicker');
+                const file = await pickNativeAvatarFile();
+                if (file) await onUpload(await fileToAvatarDataUrl(file));
+              });
+            } else {
+              closeMenu();
+              input.current?.click();
+            }
           }}>Upload photo</button>
           {imageUrl ? (
             <button type="button" role="menuitem" className="app-transient-row app-transient-row-danger app-transient-action-row w-full rounded-[9px] px-3 py-2 text-left text-[12px]" onClick={() => void run(onRemove)}>Remove image</button>
@@ -117,7 +126,7 @@ export function GroupAvatarEditor({ avatars, imageUrl, name, disabled, avatarCla
         </div>
       ) : null}
       {error ? <div role="alert" className="app-error-text mt-2 max-w-60 text-[11px]">{error}</div> : null}
-      {busy ? <span className="sr-only" aria-live="polite">Saving group avatar.</span> : null}
+      {busy ? <span className="sr-only" aria-live="polite">Updating group avatar.</span> : null}
     </div>
   );
 }
