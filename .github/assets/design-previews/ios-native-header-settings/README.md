@@ -7,10 +7,10 @@ The proposal follows the compact title capsules in the supplied Slack and Telegr
 ## Conversation header
 
 - Keep native back navigation in its own circular control.
-- Place the title and secondary context in one tappable capsule. Group conversations use a number symbol; direct and agent conversations retain their appropriate status text.
+- Place the title and secondary context in one tappable capsule, without a number symbol beside group titles. Direct and agent conversations retain their appropriate status text.
 - Open the existing conversation details from the title capsule.
 - Group Ask Agent and the existing details action at the trailing edge.
-- Extend the conversation wallpaper behind the status and navigation areas. There must be no tall white band or opaque full-width header behind the controls; the glass capsules and back control provide the chrome. Use native glass on iOS 26 and later, a material fallback on older versions, and an opaque control surface when Reduce Transparency is enabled.
+- Extend the conversation wallpaper behind the status and navigation areas. There must be no tall white band or opaque full-width header behind the controls; the glass capsules and back control provide the chrome. Messages scroll behind the floating controls without a top fade or transcript clip. Use native glass on iOS 26 and later, a material fallback on older versions, and an opaque control surface when Reduce Transparency is enabled.
 - Preserve the transcript, composer, session actions, presence, and agent activity behavior.
 
 ## Thread

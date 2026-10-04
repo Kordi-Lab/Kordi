@@ -18,6 +18,17 @@ private struct ConversationTitleSurface: ViewModifier {
     }
 }
 
+private struct ConversationTopScrollEdge: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 private struct ConversationTimelineRow: Identifiable {
     let id: String
     let offset: Int
@@ -215,8 +226,7 @@ struct ConversationThreadView: View {
     private var context: String {
         let count = MessageThreadProjection(messages: model.messages(for: conversation))
             .thread(rootID: rootMessageID)?.replies.count ?? 0
-        let name = conversation.kind == .group ? "# \(conversation.displayName)" : conversation.displayName
-        return "\(name) · \(count) \(count == 1 ? "reply" : "replies")"
+        return "\(conversation.displayName) · \(count) \(count == 1 ? "reply" : "replies")"
     }
 }
 
@@ -744,6 +754,7 @@ struct ConversationView: View {
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy(preservesTrajectoryPosition: trajectoryViewport.isPinned))
+                            .modifier(ConversationTopScrollEdge())
                             // A pushed destination can lay out before onAppear
                             // prepares its history. Geometry readiness must not
                             // depend on the state captured by that first layout.
@@ -820,10 +831,8 @@ struct ConversationView: View {
                         }
                     }
                 }
-                // This viewport already starts below navigation chrome. Its native
-                // scroll view can extend above it; clip to these bounds without
-                // applying the inherited safe-area inset a second time.
-                .clipped()
+                // Let the native scroll view extend into the top safe area so
+                // messages can pass behind the separate glass controls.
                 .contentShape(Rectangle())
 
                 if selectedMessageIDs.isEmpty {
@@ -2623,14 +2632,7 @@ struct ConversationView: View {
 
     private var conversationTitleButton: some View {
         Button(action: openSessionDetails) {
-            HStack(spacing: 9) {
-                if conversation.kind == .group {
-                    Image(systemName: "number")
-                        .font(.title3.weight(.medium))
-                        .accessibilityHidden(true)
-                }
-                conversationHeader
-            }
+            conversationHeader
             .padding(.horizontal, 15)
             .padding(.vertical, 7)
             .frame(minHeight: 44)
