@@ -151,8 +151,9 @@ messages you choose are included, copied by the server with details about any
 attached files (never the files themselves). You must still be a member of the
 conversation. Each account can send a limited number of reports per day. The
 receipt shows a reference you can quote; reports are kept for up to 90 days
-after they are closed. Only named Kordi operators can read report contents,
-and every read is logged.
+after they are closed. The copy stays in the report even if its sender later
+deletes the message for everyone. Only named Kordi operators can read report
+contents, and every read is logged.
 
 ## Invite link previews
 
