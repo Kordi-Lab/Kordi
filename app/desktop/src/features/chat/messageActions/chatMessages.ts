@@ -1,4 +1,5 @@
 import { appendCanonicalRequestToLocalState, mergeCanonicalSessionState } from './canonicalSendState';
+import { materializeLocalChatSession } from './localChatSessionCreation';
 import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
 import { ConversationSendQueue } from './conversationSendQueue';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
@@ -25,7 +26,6 @@ QueuedDesktopChatMessage
 } from '@/kordi-app/types';
 import {
 appendCanonicalMessage,
-createDesktopChatSession,
 fetchDesktopChatSessionActiveTurn,
 fetchDesktopChatTurnState,
 openOrCreateCanonicalSession,
@@ -1529,7 +1529,7 @@ export function useChatMessageActions({
           composerSelections.chat.thinking,
         );
       }
-      materializedState = await createDesktopChatSession();
+      materializedState = await materializeLocalChatSession(setCanonicalSessionState);
       targetSessionId = materializedState.activeSessionId;
       if (runtimeRouteForSend?.model && publishCloudAgentRuntimeRouteChange) {
         void publishCloudAgentRuntimeRouteChange({

@@ -13,6 +13,10 @@
   background: transparent;
 }
 
+.kordi-app.theme-light .app-page-header.app-chat-pane-header {
+  background: var(--app-chat-header-bg);
+}
+
 .kordi-app.theme-light .app-button-quiet,
 .kordi-app.theme-light .app-icon-button,
 .kordi-app.theme-light .app-utility-button {

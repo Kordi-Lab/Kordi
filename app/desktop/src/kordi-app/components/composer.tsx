@@ -715,7 +715,7 @@ export function ComposerModelControls({
   );
 
   return (
-    <div className={cn('relative flex items-center gap-1.5', compact ? 'min-w-0 max-w-full flex-nowrap justify-end' : 'shrink-0')}>
+    <div className={cn('relative flex min-w-0 max-w-full items-center gap-1.5', compact ? 'w-[18rem] flex-nowrap justify-end' : 'w-[27rem]')} data-composer-model-controls={scope}>
       <button
         ref={(node) => { selectorTriggerRefs.current.provider = node; }}
         type="button"
@@ -723,9 +723,9 @@ export function ComposerModelControls({
           updateSelectorMenuPosition('provider');
           onToggleSelector(scope, 'provider');
         }}
-        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[5.75rem]' : 'w-[8.75rem]')} aria-expanded={activeSelector === 'provider'}
+        className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'provider'} title={selectedProviderLabel}
       >
-        <span className="truncate text-left">{selectedProviderLabel || 'Provider'}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{selectedProviderLabel || 'Provider'}</span>
         <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'provider' ? 'rotate-180 text-slate-300' : '')} />
       </button>
       <button
@@ -735,9 +735,9 @@ export function ComposerModelControls({
           updateSelectorMenuPosition('model');
           onToggleSelector(scope, 'model');
         }}
-        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[5.75rem]' : 'w-[8.5rem]')} aria-expanded={activeSelector === 'model'}
+        className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'model'} title={selectedModel}
       >
-        <span className="truncate text-left">{selectedModel}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{selectedModel}</span>
         {selectedProviderValue ? <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} /> : null}
       </button>
       <button
@@ -747,9 +747,9 @@ export function ComposerModelControls({
           updateSelectorMenuPosition('thinking');
           onToggleSelector(scope, 'thinking');
         }}
-        className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[4.75rem]' : 'w-[6.5rem]')} aria-expanded={activeSelector === 'thinking'}
+        className="app-button-quiet inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium" aria-expanded={activeSelector === 'thinking'} title={selectedThinkingLabel}
       >
-        <span className="truncate text-left">{selectedThinkingLabel}</span>
+        <span className="min-w-0 flex-1 truncate text-left">{selectedThinkingLabel}</span>
         {selectedProviderValue ? <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} /> : null}
       </button>
       {activeSelector && activeSelector !== 'mode'
