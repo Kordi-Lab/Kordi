@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 
 type Anchor = { rowKey: string; screenTop: number; scrollTop: number; viewportTop: number };
 type Snapshot = { sessionKey: string; updateKey: string; contentKey: string; anchor: Anchor | null; active: boolean };
@@ -18,7 +18,10 @@ export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey,
       && (revision.preserving || revision.updateKey !== updateKey);
     setRevision({ sessionKey, updateKey, contentKey, preserving });
   }
-  const restore = () => {
+  // Callers keep these in effect and callback dependencies, so they must hold
+  // their identity between renders. A fresh object per render re-ran the
+  // transcript's tail alignment on every commit and let the tail row drift.
+  const restore = useCallback(() => {
     const element = viewportRef.current;
     const saved = snapshot.current;
     if (!element || !saved?.active || !saved.anchor) return;
@@ -29,11 +32,11 @@ export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey,
       ? element.scrollTop + row.getBoundingClientRect().top - anchor.screenTop
       : anchor.scrollTop + element.getBoundingClientRect().top - anchor.viewportTop;
     if (Math.abs(element.scrollTop - target) > 0.5) element.scrollTop = Math.max(0, target);
-  };
-  const release = () => {
+  }, [viewportRef]);
+  const release = useCallback(() => {
     if (snapshot.current) snapshot.current.active = false;
     setRevision(current => current.preserving ? { ...current, preserving: false } : current);
-  };
+  }, []);
   useLayoutEffect(() => {
     const element = viewportRef.current;
     if (!element || updateKey === undefined) { snapshot.current = null; return; }
@@ -70,5 +73,5 @@ export function useTranscriptViewportAnchor({ sessionKey, updateKey, contentKey,
       for (const type of ['wheel', 'touchstart', 'pointerdown', 'keydown']) element.removeEventListener(type, handleInteraction);
     };
   });
-  return { preserving, restore, release };
+  return useMemo(() => ({ preserving, restore, release }), [preserving, restore, release]);
 }
