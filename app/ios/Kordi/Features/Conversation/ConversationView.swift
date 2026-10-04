@@ -3,6 +3,21 @@ import QuickLook
 import UniformTypeIdentifiers
 import UIKit
 
+private struct ConversationTitleSurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+        } else if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content.background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
 private struct ConversationTimelineRow: Identifiable {
     let id: String
     let offset: Int
@@ -847,7 +862,7 @@ struct ConversationView: View {
             let presentedTimeline = timelineContent
             .background(
                 KordiChatWallpaper(theme: chatTheme)
-                    .ignoresSafeArea(edges: .bottom)
+                    .ignoresSafeArea(edges: [.top, .bottom])
             )
             .overlay {
                 ForEach(activeDeleteSnapshots) { snapshot in
@@ -1080,50 +1095,9 @@ struct ConversationView: View {
         .navigationTitle(showsNavigationChrome ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .tint(chatTheme.accent)
-        .toolbarBackground(.regularMaterial, for: .navigationBar)
-        .toolbarBackground(showsNavigationChrome ? .visible : .automatic, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(navigationBarVisibility, for: .navigationBar)
-        .toolbar {
-            if showsNavigationChrome {
-                if canOpenCompanionPanel {
-                    if #available(iOS 26.0, *) {
-                        ToolbarItem(placement: .topBarLeading) {
-                            headerBalanceSpacer
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    } else {
-                        ToolbarItem(placement: .topBarLeading) {
-                            headerBalanceSpacer
-                        }
-                    }
-                }
-                ToolbarItem(placement: .principal) {
-                    conversationHeader
-                        .accessibilityElement(children: .combine)
-                }
-                if #available(iOS 26.0, *) {
-                    if canOpenCompanionPanel {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            askAgentButton
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if conversation.subsessionId == nil { sessionActionsButton }
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                } else {
-                    if canOpenCompanionPanel {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            askAgentButton
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if conversation.subsessionId == nil { sessionActionsButton }
-                    }
-                }
-            }
-        }
+        .toolbar { conversationToolbar }
         .task(id: scopedThreadRootMessageID) {
             guard scopedThreadRootMessageID != nil, !cachedThreadRevealDeadlinePassed else { return }
             // Fallback only: positioning normally reveals a cached discussion within a few frames.
@@ -2585,8 +2559,51 @@ struct ConversationView: View {
         )
     }
 
+    @ToolbarContentBuilder
+    private var conversationToolbar: some ToolbarContent {
+        if showsNavigationChrome {
+            ToolbarItem(placement: .principal) { conversationTitleButton }
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 0) {
+                        if canOpenCompanionPanel { askAgentButton }
+                        if conversation.subsessionId == nil { sessionActionsButton }
+                    }
+                }
+            } else {
+                if canOpenCompanionPanel {
+                    ToolbarItem(placement: .topBarTrailing) { askAgentButton }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if conversation.subsessionId == nil { sessionActionsButton }
+                }
+            }
+        }
+    }
+
+    private var conversationTitleButton: some View {
+        Button(action: openSessionDetails) {
+            HStack(spacing: 9) {
+                if conversation.kind == .group {
+                    Image(systemName: "number")
+                        .font(.title3.weight(.medium))
+                        .accessibilityHidden(true)
+                }
+                conversationHeader
+            }
+            .padding(.horizontal, 15)
+            .padding(.vertical, 7)
+            .frame(minHeight: 44)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .modifier(ConversationTitleSurface())
+        .accessibilityLabel("\(conversation.displayName), \(conversationHeaderStatus)")
+        .accessibilityHint("Opens conversation details")
+    }
+
     private var conversationHeader: some View {
-        VStack(spacing: 1) {
+        VStack(alignment: .leading, spacing: 1) {
             Text(conversation.displayName)
                 .font(.headline)
                 .lineLimit(1)
@@ -2626,12 +2643,6 @@ struct ConversationView: View {
                     .lineLimit(1)
             }
         }
-    }
-
-    private var headerBalanceSpacer: some View {
-        Color.clear
-            .frame(width: 44, height: 44)
-            .accessibilityHidden(true)
     }
 
     private var agentActivity: AgentActivity {

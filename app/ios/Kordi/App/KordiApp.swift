@@ -317,6 +317,49 @@ private struct PreviewThemeControls: View {
     }
 }
 
+#if DEBUG
+private struct NativeDesignPreview: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var path: [String] = {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--preview-account") { return [] }
+        if arguments.contains("--preview-contact-chat") { return ["person:acct_maya"] }
+        if arguments.contains("--preview-native-agent") { return ["agent:my-kordi"] }
+        return ["group:mobile"]
+    }()
+    @State private var showsSettings = false
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            List {
+                Section {
+                    NavigationLink("Group conversation", value: "group:mobile")
+                    NavigationLink("Direct message", value: "person:acct_maya")
+                    NavigationLink("Agent conversation", value: "agent:my-kordi")
+                    Button("Settings") { showsSettings = true }
+                } header: {
+                    Text("Design preview")
+                } footer: {
+                    Text("Interactive proposal with offline sample data.")
+                }
+            }
+            .navigationTitle("")
+            .navigationDestination(for: String.self) { id in
+                if let conversation = model.conversations.first(where: { $0.id == id }) {
+                    ConversationView(conversation: conversation)
+                }
+            }
+        }
+        .sheet(isPresented: $showsSettings) { AccountSheet() }
+        .task {
+            if ProcessInfo.processInfo.arguments.contains("--preview-account") {
+                showsSettings = true
+            }
+        }
+    }
+}
+#endif
+
 private struct RootView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -326,7 +369,9 @@ private struct RootView: View {
     @ViewBuilder
     var body: some View {
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--preview-contacts") {
+        if ProcessInfo.processInfo.arguments.contains("--preview-native-design") {
+            NativeDesignPreview()
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-contacts") {
             NavigationStack {
                 ContactsView()
             }
@@ -427,6 +472,7 @@ private struct RootView: View {
 #else
         appPhase
 #endif
+
     }
 
     @ViewBuilder

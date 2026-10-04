@@ -8,12 +8,17 @@ private enum AccountSettingsRoute: Hashable {
     case authentication
     case notifications
     case appearance
+    case colorMode
+    case messageDisplay
+    case chatTheme
 }
 
 struct AccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var model: AppModel
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
+    @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
+    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @State private var path: [AccountSettingsRoute]
     private let embeddedInNavigationStack: Bool
 
@@ -50,55 +55,60 @@ struct AccountSheet: View {
     }
 
     private var settingsContent: some View {
-        List {
-            Section {
-                accountHeader
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                settingsLink(.profile) { accountHeader }
+                settingsDivider
 
-            Section {
-                NavigationLink(value: AccountSettingsRoute.profile) {
-                    SettingsNavigationLabel(title: "Profile", systemImage: "person")
+                settingsSectionTitle("Notifications")
+                settingsLink(.notifications) {
+                    CompactSettingsLabel(title: "Notifications", subtitle: "Messages, sounds, and previews", systemImage: "bell")
                 }
+                settingsDivider
 
-                NavigationLink(value: AccountSettingsRoute.activeSessions) {
+                settingsSectionTitle("Appearance")
+                settingsLink(.colorMode) {
+                    CompactSettingsLabel(title: "Color mode", systemImage: "circle.lefthalf.filled", value: (AppAppearance(rawValue: appearanceRawValue) ?? .system).label)
+                }
+                settingsLink(.messageDisplay) {
+                    CompactSettingsLabel(title: "Message display", systemImage: "text.bubble", value: MessageLayout.resolve(messageLayoutRawValue).title)
+                }
+                settingsLink(.chatTheme) {
+                    CompactSettingsLabel(title: "Chat theme", systemImage: "paintbrush", value: (KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet).label)
+                }
+                settingsDivider
+
+                settingsSectionTitle("Account")
+                settingsLink(.activeSessions) {
                     HStack {
-                        SettingsNavigationLabel(title: "Active sessions", systemImage: "iphone.and.arrow.forward")
+                        CompactSettingsLabel(title: "Active sessions", subtitle: "Manage your connected devices", systemImage: "iphone.and.arrow.forward")
                         Spacer(minLength: 8)
                         if model.deviceReviewRequired {
                             Text("Review")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.orange)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(.orange.opacity(0.12), in: Capsule())
                                 .accessibilityLabel("New device needs review")
                         }
                     }
                 }
-
-                NavigationLink(value: AccountSettingsRoute.authentication) {
+                settingsLink(.authentication) {
                     HStack {
-                        SettingsNavigationLabel(title: "Authentication", systemImage: "key")
+                        CompactSettingsLabel(title: "Authentication", subtitle: "Connected AI provider accounts", systemImage: "key")
                         Spacer(minLength: 8)
                         if !model.providerAuthProfiles.isEmpty {
-                            let count = model.providerAuthProfiles.count
-                            Text("\(count) \(count == 1 ? "account" : "accounts")")
+                            Text("\(model.providerAuthProfiles.count)")
+                                .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
                 .accessibilityIdentifier("settings-authentication")
-
-                NavigationLink(value: AccountSettingsRoute.notifications) {
-                    SettingsNavigationLabel(title: "Notifications", systemImage: "bell")
-                }
-
-                NavigationLink(value: AccountSettingsRoute.appearance) {
-                    SettingsNavigationLabel(title: "Appearance", systemImage: "paintpalette")
-                }
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
         }
-        .listStyle(.insetGrouped)
+        .background(Color(uiColor: .systemBackground))
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: AccountSettingsRoute.self) { route in
@@ -113,12 +123,16 @@ struct AccountSheet: View {
                 NotificationSettingsView()
             case .appearance:
                 AppearanceSettingsView()
+            case .colorMode, .messageDisplay, .chatTheme:
+                CompactAppearanceSettingsView(route: route)
             }
         }
         .toolbar {
             if !embeddedInNavigationStack {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close", systemImage: "xmark") { dismiss() }
+                        .labelStyle(.iconOnly)
+                        .tint(.primary)
                 }
             }
         }
@@ -138,12 +152,12 @@ struct AccountSheet: View {
                 name: model.account?.preferredName ?? "Me",
                 imageSource: model.account?.avatar.imageSource,
                 kind: .person,
-                size: 54,
+                size: 48,
                 seed: model.account?.accountId
             )
             VStack(alignment: .leading, spacing: 3) {
                 Text(model.account?.preferredName ?? "Kordi account")
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                 if let email = model.account?.primaryEmail.nonEmpty {
                     Text(email)
                         .font(.subheadline)
@@ -152,8 +166,131 @@ struct AccountSheet: View {
                 }
             }
         }
+        .padding(.vertical, 8)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func settingsSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+            .textCase(nil)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    private var settingsDivider: some View {
+        Divider().padding(.vertical, 14)
+    }
+
+    private func settingsLink<Content: View>(_ route: AccountSettingsRoute, @ViewBuilder content: () -> Content) -> some View {
+        NavigationLink(value: route) {
+            HStack(spacing: 10) {
+                content()
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct CompactSettingsLabel: View {
+    let title: String
+    var subtitle: String? = nil
+    let systemImage: String
+    var value: String? = nil
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .regular))
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body)
+                if let subtitle {
+                    Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            if let value {
+                Spacer(minLength: 8)
+                Text(value).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .foregroundStyle(.primary)
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct CompactAppearanceSettingsView: View {
+    let route: AccountSettingsRoute
+    @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
+    @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
+    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
+
+    var body: some View {
+        List {
+            switch route {
+            case .colorMode:
+                ForEach(AppAppearance.allCases) { appearance in
+                    option(appearance.label, icon: appearance.systemImage, selected: appearanceRawValue == appearance.rawValue) {
+                        appearanceRawValue = appearance.rawValue
+                    }
+                }
+            case .messageDisplay:
+                ForEach(MessageLayout.allCases) { layout in
+                    option(layout.title, detail: layout == .chat ? "Messages in familiar chat bubbles" : "A compact, continuous conversation", icon: layout == .chat ? "bubble.left.and.bubble.right" : "text.alignleft", selected: messageLayoutRawValue == layout.rawValue) {
+                        messageLayoutRawValue = layout.rawValue
+                    }
+                }
+            case .chatTheme:
+                ForEach(KordiChatTheme.allCases) { theme in
+                    option(theme.label, detail: theme.detail, icon: theme.systemImage, selected: chatThemeRawValue == theme.rawValue) {
+                        chatThemeRawValue = theme.rawValue
+                    }
+                }
+            default:
+                EmptyView()
+            }
+        }
+        .listStyle(.plain)
+        .environment(\.defaultMinListRowHeight, 52)
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .sensoryFeedback(.selection, trigger: appearanceRawValue + messageLayoutRawValue + chatThemeRawValue)
+    }
+
+    private var title: String {
+        switch route {
+        case .colorMode: "Color mode"
+        case .messageDisplay: "Message display"
+        default: "Chat theme"
+        }
+    }
+
+    private func option(_ title: String, detail: String? = nil, icon: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                CompactSettingsLabel(title: title, subtitle: detail, systemImage: icon)
+                Spacer(minLength: 8)
+                if selected {
+                    Image(systemName: "checkmark").foregroundStyle(KordiTheme.signalBlue)
+                }
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(selected ? "Selected" : "")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

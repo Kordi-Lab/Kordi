@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kordi — iPhone design proposal</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f4f4f2; color: #202124; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    header { border-bottom: 1px solid #dededb; padding: 24px max(24px, calc((100vw - 1020px) / 2)); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+    .brand { font-size: 21px; font-weight: 650; letter-spacing: -.6px; }
+    .status { color: #646560; font-size: 13px; }
+    main { max-width: 1020px; margin: auto; padding: 30px 24px 48px; }
+    h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.15; font-weight: 650; letter-spacing: -1px; }
+    p { margin: 0; color: #646560; }
+    .intro { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+    .switch { display: inline-flex; padding: 3px; background: #e8e8e5; border-radius: 9px; gap: 3px; }
+    button { border: 0; padding: 7px 12px; border-radius: 7px; background: transparent; color: #535450; font: inherit; font-size: 13px; cursor: pointer; }
+    button[aria-pressed="true"] { background: white; color: #202124; box-shadow: 0 1px 3px #00000012; }
+    button:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+    .screens { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; margin-top: 24px; }
+    article { min-width: 0; }
+    .screen-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px; gap: 12px; }
+    h2 { margin: 0; font-size: 16px; font-weight: 600; }
+    select { font: inherit; font-size: 13px; border: 1px solid #d5d5d1; border-radius: 7px; background: transparent; padding: 5px 9px; color: inherit; }
+    .phone { width: 100%; max-width: 345px; margin: auto; }
+    img { display: block; width: 100%; border-radius: 28px; border: 1px solid #dcdcd7; box-shadow: 0 9px 25px #00000008; }
+    .caption { margin-top: 16px; max-width: 345px; margin-inline: auto; font-size: 13px; }
+    .caption strong { display: block; color: #333431; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    footer { margin-top: 28px; border-top: 1px solid #dededb; padding-top: 16px; font-size: 12px; color: #777873; }
+    @media (max-width: 680px) { header { padding: 16px 20px; } main { padding: 24px 20px; } h1 { font-size: 26px; } .intro { align-items: start; flex-direction: column; gap: 16px; } .screens { grid-template-columns: 1fr; gap: 32px; } .phone { max-width: 360px; } }
+  </style>
+</head>
+<body>
+  <header><span class="brand">Kordi</span><span class="status">iPhone design proposal · Native SwiftUI</span></header>
+  <main>
+    <div class="intro">
+      <div><h1>A lighter header. Cleaner settings.</h1><p>Inspired by the iPhone interfaces in Slack and Telegram.</p></div>
+      <div class="switch" role="group" aria-label="Screenshot appearance"><button type="button" aria-pressed="true" data-mode="light">Light</button><button type="button" aria-pressed="false" data-mode="dark">Dark</button></div>
+    </div>
+    <div class="screens">
+      <article>
+        <div class="screen-heading"><h2>Conversation</h2><select id="conversation" aria-label="Conversation type"><option value="group">Group</option><option value="direct">Direct message</option><option value="agent">Agent</option></select></div>
+        <div class="phone"><img id="chat" src="group-light.png" alt="Proposed Kordi group conversation with a floating title capsule and native action controls"></div>
+        <p class="caption"><strong>Compact, tappable conversation identity</strong>Title and context share one capsule. Native back navigation and grouped actions stay easy to reach.</p>
+      </article>
+      <article>
+        <div class="screen-heading"><h2>Settings</h2><span class="status">52 pt minimum rows</span></div>
+        <div class="phone"><img id="settings" src="settings-light.png" alt="Proposed Kordi settings sheet with a white canvas, compact sections, and inline preference values"></div>
+        <p class="caption"><strong>More useful information in less space</strong>A continuous list with clear sections, restrained icons, and visible preference values. Tap the profile to edit it.</p>
+      </article>
+    </div>
+    <footer>Actual simulator captures of the proposed app screens, using offline sample data. This is a design proposal; it has not been merged or released. The browser presents screenshots; the native simulator runs the interactive prototype.</footer>
+  </main>
+  <script>
+    let mode = 'light';
+    const selection = document.querySelector('#conversation');
+    const params = new URLSearchParams(location.search);
+    if (['group', 'direct', 'agent'].includes(params.get('screen'))) selection.value = params.get('screen');
+    if (params.get('mode') === 'dark') mode = 'dark';
+    function update() {
+      document.querySelector('#chat').src = selection.value + '-' + mode + '.png?v=2';
+      document.querySelector('#chat').alt = 'Proposed Kordi ' + selection.options[selection.selectedIndex].text.toLowerCase() + ' conversation with glass controls over the continuous conversation background';
+      document.querySelector('#settings').src = 'settings-' + mode + '.png?v=2';
+      for (const button of document.querySelectorAll('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+    }
+    selection.addEventListener('change', update);
+    for (const button of document.querySelectorAll('[data-mode]')) button.addEventListener('click', () => { mode = button.dataset.mode; update(); });
+    update();
+  </script>
+</body>
+</html>
