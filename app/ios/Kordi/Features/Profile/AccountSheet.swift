@@ -7,6 +7,7 @@ private enum AccountSettingsRoute: Hashable {
     case activeSessions
     case authentication
     case notifications
+    case privacy
     case appearance
 }
 
@@ -93,6 +94,10 @@ struct AccountSheet: View {
                     SettingsNavigationLabel(title: "Notifications", systemImage: "bell")
                 }
 
+                NavigationLink(value: AccountSettingsRoute.privacy) {
+                    SettingsNavigationLabel(title: "Privacy", systemImage: "hand.raised")
+                }
+
                 NavigationLink(value: AccountSettingsRoute.appearance) {
                     SettingsNavigationLabel(title: "Appearance", systemImage: "paintpalette")
                 }
@@ -111,6 +116,8 @@ struct AccountSheet: View {
                 ProviderAuthenticationView()
             case .notifications:
                 NotificationSettingsView()
+            case .privacy:
+                PrivacySettingsView()
             case .appearance:
                 AppearanceSettingsView()
             }
@@ -157,7 +164,9 @@ struct AccountSheet: View {
     }
 }
 
-private struct NotificationSettingsView: View {
+struct NotificationSettingsView: View {
+    static let messagePreviewsFooter = "With Message previews on, the sender's name and the start of each message are sent through Apple's push notification service to show the alert. With previews off, alerts only say \"New message\"."
+
     @EnvironmentObject private var coordinator: KordiNotificationCoordinator
 
     var body: some View {
@@ -184,13 +193,17 @@ private struct NotificationSettingsView: View {
                 Text("iOS controls whether Kordi can show notifications. Kordi controls which message details are included.")
             }
 
-            Section("Messages") {
+            Section {
                 Toggle("Message notifications", isOn: preferenceBinding(.messages))
                 Toggle("Notification sound", isOn: preferenceBinding(.sound))
                     .disabled(!coordinator.messagesEnabled)
                 Toggle("Message previews", isOn: preferenceBinding(.previews))
                     .disabled(!coordinator.messagesEnabled)
                 Toggle("App icon badge", isOn: preferenceBinding(.badge))
+            } header: {
+                Text("Messages")
+            } footer: {
+                Text(Self.messagePreviewsFooter)
             }
         }
         .navigationTitle("Notifications")

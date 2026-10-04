@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { createElement } from 'react';
+import { afterEach, test } from 'node:test';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+import { LinkNetworkAccessProvider } from '../src/features/privacy/LinkPreviewAccess';
+import {
+  resetLinkPreviewPreferenceForTests,
+  setLinkPreviewPreference,
+} from '../src/features/privacy/linkPreviewPolicy';
 import {
   clearLinkPreviewCacheForTests,
   getLinkPreviewCacheStatsForTests,
@@ -11,6 +16,15 @@ import {
 import { MessageLinkPreview } from '../src/kordi-app/components/messageLinkPreview';
 import { firstExternalMessageLink, standaloneExternalMessageLink } from '../src/kordi-app/components/messageLinks';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
+import { mountWithNativeCalls } from './helpers/nativeDomFixture';
+
+function allowed(children: ReactNode) {
+  return createElement(LinkNetworkAccessProvider, { allowed: true, children });
+}
+
+afterEach(() => {
+  resetLinkPreviewPreferenceForTests();
+});
 
 test('link preview extraction skips code and preserves a markdown destination', () => {
   const destination = 'https://example.com/page_(final)?token=redacted';
@@ -38,7 +52,7 @@ test('only a bare URL sent by itself qualifies for a full card', () => {
 
 test('link preview renders a compact fallback without showing query parameters', () => {
   const url = 'https://example.com/reports/quarterly-review?token=redacted&share=private';
-  const html = renderToStaticMarkup(createElement(MessageLinkPreview, { text: url }));
+  const html = renderToStaticMarkup(allowed(createElement(MessageLinkPreview, { text: url })));
   const copy = html.match(/app-message-link-preview-copy[\s\S]*?<\/span><span class="app-message-link-preview-artwork"/)?.[0] ?? '';
 
   assert.match(html, /class="app-message-link-preview"/);
@@ -119,9 +133,9 @@ test('native metadata renders the page title and thumbnail with the compact path
       title: 'Introducing a model', imageDataUrl,
       description: 'A description that should not expand the preview card.',
     }) as T);
-    const html = renderToStaticMarkup(createElement(MessageLinkPreview, {
+    const html = renderToStaticMarkup(allowed(createElement(MessageLinkPreview, {
       text: href,
-    }));
+    })));
     assert.match(html, /data-link-preview-state="ready"/);
     assert.match(html, /app-message-link-preview-title">Introducing a model<\/span>/);
     assert.ok(html.includes(`src="${imageDataUrl}"`));
@@ -147,6 +161,58 @@ test('native artwork rejects unsupported and oversized data URLs', async () => {
       assert.equal(metadata.title, 'Page title');
     }
   } finally {
+    clearLinkPreviewCacheForTests();
+  }
+});
+
+test('link preview cards stay address-only without a per-message decision', async () => {
+  clearLinkPreviewCacheForTests();
+  const href = 'https://example.com/reports/cached-review';
+  try {
+    await loadLinkPreviewMetadata(href, async <T,>() => ({ title: 'Cached title', siteName: 'Cached site' }) as T);
+    const html = renderToStaticMarkup(createElement(MessageLinkPreview, { text: href }));
+    assert.match(html, /data-link-preview-state="disabled"/);
+    assert.match(html, /aria-label="Open cached review on example\.com"/);
+    assert.doesNotMatch(html, /Cached title|Cached site|<img/, 'earlier cached metadata stays hidden');
+
+    setLinkPreviewPreference('everyone');
+    assert.match(renderToStaticMarkup(createElement(MessageLinkPreview, { text: href })), /data-link-preview-state="ready"/);
+    setLinkPreviewPreference('off');
+    assert.match(renderToStaticMarkup(allowed(createElement(MessageLinkPreview, { text: href }))), /data-link-preview-state="ready"/);
+    assert.match(
+      renderToStaticMarkup(createElement(LinkNetworkAccessProvider, {
+        allowed: false,
+        children: createElement(MessageLinkPreview, { text: href }),
+      })),
+      /data-link-preview-state="disabled"/,
+    );
+  } finally {
+    clearLinkPreviewCacheForTests();
+  }
+});
+
+test('a disallowed preview card never calls the native fetch commands', async () => {
+  clearLinkPreviewCacheForTests();
+  const href = 'https://example.com/reports/private-review';
+  const view = await mountWithNativeCalls(async () => ({
+    title: 'Fetched title',
+    imageUrl: 'https://images.example/preview.jpg',
+  }));
+  try {
+    await view.render(createElement(MessageLinkPreview, { text: href }));
+    await view.settle();
+    assert.equal(view.host.querySelector('a')?.getAttribute('data-link-preview-state'), 'disabled');
+    assert.deepEqual(view.calls, []);
+
+    await view.render(allowed(createElement(MessageLinkPreview, { text: href })));
+    await view.waitFor(
+      () => view.host.querySelector('a')?.getAttribute('data-link-preview-state') === 'ready',
+      'an allowed card loads its metadata',
+    );
+    assert.deepEqual(view.calls.map((call) => call.command).slice(0, 1), ['desktop_fetch_link_preview_metadata']);
+    assert.match(view.host.textContent ?? '', /Fetched title/);
+  } finally {
+    await view.close();
     clearLinkPreviewCacheForTests();
   }
 });

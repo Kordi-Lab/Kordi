@@ -46,6 +46,7 @@ extension CloudAgentSubsession {
             var row = ChatMessage(id: message.id, conversationId: conversation.id, author: author,
                 authorName: agent ? agentDisplayName : author == .me ? "You" : message.senderDisplayName ?? "Task",
                 senderOwnerName: agent ? ownerAccountId == accountId ? "You" : ownerDisplayName : nil,
+                senderAccountId: agent ? nil : message.senderAccountId,
                 text: message.text, createdAt: Date(timeIntervalSince1970: Double(message.timestampMs) / 1000),
                 deliveryState: .delivered, errorMessage: nil, requestMessageId: message.requestId,
                 mentions: message.mentions ?? [], agentExecution: execution)

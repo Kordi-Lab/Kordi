@@ -8,6 +8,7 @@ export function messageSnapshotKey(msg: Message) {
     msg.role,
     msg.sender ?? '',
     msg.senderIdentityId ?? '',
+    msg.senderHumanId ?? '',
     msg.senderType ?? '',
     msg.isOwnMessage ? 'own' : 'peer',
     msg.showSenderMeta ? 'meta' : '',

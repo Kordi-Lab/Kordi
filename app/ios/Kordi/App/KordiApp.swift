@@ -25,6 +25,7 @@ final class KordiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificatio
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         coldLaunchNotificationPayload = launchOptions?[.remoteNotification] as? [AnyHashable: Any]
+        MainActor.assumeIsolated { PrivacyCoverController.shared.install() }
         return true
     }
 

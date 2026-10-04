@@ -184,6 +184,7 @@ enum ConversationIdentityResolver {
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.kordiChatTheme) private var chatTheme
+    @AppStorage(LinkPreviewSetting.storageKey) private var linkPreviewSettingRawValue = LinkPreviewSetting.contacts.rawValue
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1477,6 +1478,14 @@ struct ConversationView: View {
                     authorAvatarSource: avatar.source,
                     authorAvatarSeed: avatar.seed,
                     ownAccountId: model.account?.accountId,
+                    allowsLinkNetworkFetch: LinkPreviewPolicy.allowsNetworkFetch(
+                        setting: LinkPreviewSetting(storedValue: linkPreviewSettingRawValue),
+                        author: message.author,
+                        senderAccountId: message.senderAccountId,
+                        conversationKind: conversation.kind,
+                        conversationPeerAccountId: conversation.peerAccountId,
+                        contactAccountIds: model.contactAccountIDs
+                    ),
                     automaticallyPresentsActions: (
                         ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
                             || ProcessInfo.processInfo.arguments.contains("--preview-message-delete")
@@ -1786,7 +1795,7 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onCopy: {
-                    UIPasteboard.general.string = message.text
+                    MessageClipboard.copy(message.text)
                     dismissMessageActions()
                 },
                 onShareMessage: {
@@ -2043,7 +2052,7 @@ struct ConversationView: View {
             .filter { selectedMessageIDs.contains($0.id) }
             .map { "\($0.authorName) · \($0.createdAt.formatted(date: .omitted, time: .shortened))\n\($0.text)" }
             .joined(separator: "\n\n")
-        UIPasteboard.general.string = text
+        MessageClipboard.copy(text)
     }
 
     private func pinMessage(_ target: ChatMessage, shared: Bool) {

@@ -14,6 +14,8 @@ import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionCon
 import { isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
+import { LinkPreviewTrustProvider } from '@/features/privacy/LinkPreviewAccess';
+import { useLinkPreviewTrust } from '@/features/privacy/useLinkPreviewTrust';
 import type { ChatsPageProps } from '@/pages/chatsPage.types';
 import { ChatCompanionWorkspace } from '@/pages/chatsPage.companionWorkspace';
 import { ChatMainWorkspace } from '@/pages/chatsPage.mainWorkspace';
@@ -29,10 +31,7 @@ import { useChatHeaderModel } from '@/pages/useChatHeaderModel';
 import { useChatPins } from '@/pages/useChatPins';
 import { ChatSenderProfileContext, useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
 import { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
-import {
-  conversationPaneKind,
-  shouldSynchronizeConversationModelRoute,
-} from '@/pages/chatsPage.model';
+import { conversationPaneKind, shouldSynchronizeConversationModelRoute } from '@/pages/chatsPage.model';
 
 import { ChatCompanionLayout } from './chatsPage.companionLayout';
 
@@ -43,11 +42,7 @@ export {
   selfAgentSessionIdForTitleRename,
   shouldUseCompactModelRouteMenu,
 } from '@/pages/chatsPage.header';
-export {
-  PinActivityNotice,
-  PinMessageDialog,
-  PinnedMessageBar,
-} from '@/pages/chatsPage.pins';
+export { PinActivityNotice, PinMessageDialog, PinnedMessageBar } from '@/pages/chatsPage.pins';
 export {
   buildAskAgentSessionReferenceContext,
   buildAskAgentSessionReferenceContextMessage,
@@ -136,6 +131,7 @@ export function ChatsPage({
     [companionConversations],
   );
   const cloudPresence = useCloudPresence(cloudAccount);
+  const linkPreviewTrust = useLinkPreviewTrust(cloudAccount);
   const activePresenceTarget = cloudAccount
     ? cloudCallTargetForConversation(cloudAccount, activeConv)
     : null;
@@ -421,6 +417,7 @@ export function ChatsPage({
     companionLayout.setFolded(false);
   };
   return (
+    <LinkPreviewTrustProvider trustedHumanIds={linkPreviewTrust}>
     <AgentSubsessionNavigationContext.Provider value={(id) => openRelatedAgentSession(id, true)}>
     <ChatSenderProfileContext.Provider value={senderProfiles.openParticipant}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -560,5 +557,6 @@ export function ChatsPage({
       </div>
     </ChatSenderProfileContext.Provider>
     </AgentSubsessionNavigationContext.Provider>
+    </LinkPreviewTrustProvider>
   );
 }

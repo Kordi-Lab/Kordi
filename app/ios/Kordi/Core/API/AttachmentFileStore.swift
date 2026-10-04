@@ -7,21 +7,31 @@ enum AttachmentCacheVariant: String, Sendable {
     case original
 }
 
+/// Downloaded attachments are Class B (`completeUnlessOpen`), except audio,
+/// which stays Class C. See `LocalDataProtectionClass` for the reasons.
 actor AttachmentFileStore {
     private static let memoryEntryLimit = 256
     private static let defaultDiskByteLimit: Int64 = 512 * 1024 * 1024
 
     private let directory: URL?
     private let diskByteLimit: Int64
+    private let protection: any LocalDataProtecting
     private var cachedURLs: [String: URL] = [:]
     private var recentCacheKeys: [String] = []
+    /// The one-time protection upgrade for files cached by earlier builds.
+    private(set) var protectionUpgrade: Task<Bool, Never>?
 
-    init(directory: URL? = nil, diskByteLimit: Int64? = nil) {
+    init(
+        directory: URL? = nil,
+        diskByteLimit: Int64? = nil,
+        protection: any LocalDataProtecting = SystemLocalDataProtection()
+    ) {
         self.directory = directory ?? FileManager.default.urls(
             for: .cachesDirectory,
             in: .userDomainMask
         ).first?.appendingPathComponent("Kordi/Attachments", isDirectory: true)
         self.diskByteLimit = diskByteLimit ?? Self.defaultDiskByteLimit
+        self.protection = protection
     }
 
     func cachedURL(
@@ -29,6 +39,7 @@ actor AttachmentFileStore {
         accountId: String,
         variant: AttachmentCacheVariant = .original
     ) -> URL? {
+        scheduleProtectionUpgradeIfNeeded()
         let key = cacheKey(for: attachment, accountId: accountId, variant: variant)
         guard let url = cachedURLs[key]
             ?? cacheURL(for: attachment, accountId: accountId, variant: variant) else {
@@ -48,6 +59,7 @@ actor AttachmentFileStore {
         accountId: String,
         preferredVariant: AttachmentCacheVariant
     ) -> URL? {
+        scheduleProtectionUpgradeIfNeeded()
         if preferredVariant == .preview,
            let original = cachedURL(
                for: attachment,
@@ -65,12 +77,18 @@ actor AttachmentFileStore {
         accountId: String,
         variant: AttachmentCacheVariant = .original
     ) throws -> URL {
+        scheduleProtectionUpgradeIfNeeded()
         guard let directory = accountDirectory(accountId) else { throw URLError(.cannotCreateFile) }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try prepareAccountDirectory(directory)
         guard let url = cacheURL(for: attachment, accountId: accountId, variant: variant) else {
             throw URLError(.cannotCreateFile)
         }
-        try data.write(to: url, options: .atomic)
+        let fileProtection = Self.fileProtection(for: attachment)
+        try data.write(
+            to: url,
+            options: [.atomic, LocalDataProtectionClass.writingOption(for: fileProtection)]
+        )
+        protection.apply(fileProtection, to: url)
         remember(url, for: cacheKey(for: attachment, accountId: accountId, variant: variant))
         pruneDiskCache(protecting: url)
         return url
@@ -111,8 +129,9 @@ actor AttachmentFileStore {
         accountId: String,
         variant: AttachmentCacheVariant = .original
     ) throws -> URL {
+        scheduleProtectionUpgradeIfNeeded()
         guard let directory = accountDirectory(accountId) else { throw URLError(.cannotCreateFile) }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try prepareAccountDirectory(directory)
         guard let url = cacheURL(for: attachment, accountId: accountId, variant: variant) else {
             throw URLError(.cannotCreateFile)
         }
@@ -123,9 +142,31 @@ actor AttachmentFileStore {
             try FileManager.default.removeItem(at: url)
         }
         try FileManager.default.moveItem(at: temporaryURL, to: url)
+        // A copy keeps the source file's class, so set the cache class after the move.
+        protection.apply(Self.fileProtection(for: attachment), to: url)
         remember(url, for: cacheKey(for: attachment, accountId: accountId, variant: variant))
         pruneDiskCache(protecting: url)
         return url
+    }
+
+    private func prepareAccountDirectory(_ directory: URL) throws {
+        try protection.prepareDirectory(
+            directory,
+            protection: LocalDataProtectionClass.downloadedMedia,
+            excludeFromBackup: false
+        )
+    }
+
+    private static func fileProtection(for attachment: ChatAttachment) -> FileProtectionType {
+        LocalDataProtectionClass.attachment(fileName: attachment.name, mimeType: attachment.mimeType)
+    }
+
+    private func scheduleProtectionUpgradeIfNeeded() {
+        guard protectionUpgrade == nil, let directory else { return }
+        let protection = protection
+        protectionUpgrade = Task.detached(priority: .utility) {
+            AttachmentProtectionUpgrade.run(in: directory, protection: protection)
+        }
     }
 
     private func remember(_ url: URL, for key: String) {
@@ -195,6 +236,53 @@ actor AttachmentFileStore {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
         let result = value.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
         return result.nonEmpty ?? fallback
+    }
+}
+
+/// Upgrades attachment files cached by earlier builds to their current class.
+/// The marker is written only when every file succeeds, so a pass that runs
+/// before the first unlock, or that hits any other failure, retries on the
+/// next launch.
+enum AttachmentProtectionUpgrade {
+    static let markerName = ".protection-v1"
+
+    @discardableResult
+    static func run(
+        in directory: URL,
+        protection: any LocalDataProtecting,
+        fileManager: FileManager = .default
+    ) -> Bool {
+        let marker = directory.appendingPathComponent(markerName, isDirectory: false)
+        var isDirectory: ObjCBool = false
+        guard !fileManager.fileExists(atPath: marker.path),
+              fileManager.fileExists(atPath: directory.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return true }
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+        guard let enumerator = fileManager.enumerator(
+            at: directory,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles]
+        ) else { return false }
+        var succeeded = protection.apply(LocalDataProtectionClass.downloadedMedia, to: directory)
+        for case let url as URL in enumerator {
+            guard let values = try? url.resourceValues(forKeys: keys) else {
+                // A file pruned during the pass needs no upgrade.
+                if fileManager.fileExists(atPath: url.path) { succeeded = false }
+                continue
+            }
+            guard values.isSymbolicLink != true else { continue }
+            let target: FileProtectionType
+            if values.isDirectory == true {
+                target = LocalDataProtectionClass.downloadedMedia
+            } else if values.isRegularFile == true {
+                target = LocalDataProtectionClass.attachment(fileName: url.lastPathComponent, mimeType: nil)
+            } else {
+                continue
+            }
+            if !protection.apply(target, to: url) { succeeded = false }
+        }
+        guard succeeded else { return false }
+        return fileManager.createFile(atPath: marker.path, contents: Data())
     }
 }
 

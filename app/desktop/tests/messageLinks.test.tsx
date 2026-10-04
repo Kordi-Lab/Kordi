@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-import { createElement } from 'react';
+import { afterEach, test } from 'node:test';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+
+import { LinkNetworkAccessProvider, LinkPreviewTrustProvider } from '../src/features/privacy/LinkPreviewAccess';
+import { resetLinkPreviewPreferenceForTests, setLinkPreviewPreference } from '../src/features/privacy/linkPreviewPolicy';
 
 import { MessageBubble, LiveChatTurnCard } from '../src/kordi-app/components/transcript';
 import { SourceMessageQuote } from '../src/kordi-app/components/transcriptReplyAttribution';
@@ -27,6 +30,12 @@ import { QueuedMessageBubble } from '../src/pages/chatsPage.queuedMessage';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 const issueUrl = 'https://github.com/Kordi-AI/Kordi/issues/865';
+const allowed = (children: ReactNode) => createElement(LinkNetworkAccessProvider, { allowed: true, children });
+const iconState = (html: string) => html.match(/data-site-icon-state="([a-z]+)"/)?.[1];
+
+afterEach(() => {
+  resetLinkPreviewPreferenceForTests();
+});
 
 function installNativeWindow() {
   const target = globalThis as typeof globalThis & Record<string, unknown>;
@@ -324,9 +333,10 @@ test('shared inline renderer emits an accessible external link with a stable ico
   assert.match(html, /target="_blank"/);
   assert.match(html, /rel="noreferrer noopener"/);
   assert.match(html, /data-site-icon-host="github\.com"/);
-  assert.match(html, /data-site-icon-state="idle"/);
+  assert.match(html, /data-site-icon-state="disabled"/, 'no per-message decision loads nothing by default');
   assert.match(html, /<svg[^>]+aria-hidden="true"/);
-  assert.doesNotMatch(html, /<img[^>]+src="https:\/\/github\.com/);
+  assert.doesNotMatch(html, /<img/);
+  assert.match(renderToStaticMarkup(allowed(createElement(MessageInlineContent, { text: issueUrl }))), /data-site-icon-state="idle"/);
 });
 
 test('site icons reuse the native image cache and render cached or failed states without layout changes', async () => {
@@ -343,9 +353,12 @@ test('site icons reuse the native image cache and render cached or failed states
     };
     await loadAvatarThroughNativeProxy(faviconUrl, invoke);
     await loadAvatarThroughNativeProxy(faviconUrl, invoke);
-    const readyHtml = renderToStaticMarkup(createElement(MessageInlineContent, { text: issueUrl }));
+    const readyHtml = renderToStaticMarkup(allowed(createElement(MessageInlineContent, { text: issueUrl })));
+    const disabledHtml = renderToStaticMarkup(createElement(MessageInlineContent, { text: issueUrl }));
 
     assert.equal(calls, 1);
+    assert.match(disabledHtml, /data-site-icon-state="disabled"/);
+    assert.doesNotMatch(disabledHtml, /<img/, 'a cached icon stays hidden for a disallowed message');
     assert.match(readyHtml, /data-site-icon-state="ready"/);
     assert.match(readyHtml, /<img[^>]+src="data:image\/x-icon;base64,aWNvbg=="/);
 
@@ -353,7 +366,7 @@ test('site icons reuse the native image cache and render cached or failed states
     await assert.rejects(loadAvatarThroughNativeProxy(faviconUrl, async () => {
       throw new Error('missing icon');
     }));
-    const failedHtml = renderToStaticMarkup(createElement(MessageInlineContent, { text: issueUrl }));
+    const failedHtml = renderToStaticMarkup(allowed(createElement(MessageInlineContent, { text: issueUrl })));
     assert.match(failedHtml, /data-site-icon-state="failed"/);
     assert.match(failedHtml, /<svg[^>]+aria-hidden="true"/);
     assert.doesNotMatch(failedHtml, /<img/);
@@ -444,6 +457,34 @@ test('streaming replies and queued messages use the same transcript link treatme
     assert.match(html, /data-external-message-link="true"/);
     assert.match(html, /data-site-icon-host="github\.com"/);
   }
+});
+
+test('transcript rows load site icons only for senders the link preview setting allows', () => {
+  const bubble = (overrides: Partial<Message>, trusted: string[] = []) => renderToStaticMarkup(createElement(LinkPreviewTrustProvider, {
+    trustedHumanIds: new Set(trusted),
+    children: createElement(MessageBubble, { msg: message({ text: `Open ${issueUrl}`, mentions: undefined, ...overrides }) }),
+  }));
+  const peer: Partial<Message> = { role: 'person', sender: 'Peer', isOwnMessage: false, senderHumanId: 'acct_peer' };
+  const agent: Partial<Message> = { role: 'owned-agent', sender: 'My Kordi', senderType: 'agent', isOwnMessage: false, text: `See [issue](${issueUrl}).` };
+  const queued = (own: boolean) => renderToStaticMarkup(createElement(QueuedMessageBubble, {
+    message: { id: 'queued', sessionId: 'session', text: `Open ${issueUrl}`, time: '16:43', attachments: [] },
+    isCompressionActive: false,
+    own,
+  }));
+
+  assert.equal(iconState(bubble({})), 'idle');
+  assert.equal(iconState(bubble(peer)), 'disabled');
+  assert.equal(iconState(bubble(peer, ['acct_peer'])), 'idle');
+  assert.equal(iconState(bubble(agent, ['acct_peer'])), 'disabled');
+  assert.equal(iconState(queued(true)), 'idle');
+  assert.equal(iconState(queued(false)), 'disabled');
+
+  setLinkPreviewPreference('off');
+  assert.equal(iconState(bubble({})), 'disabled');
+  assert.equal(iconState(queued(true)), 'disabled');
+  setLinkPreviewPreference('everyone');
+  assert.equal(iconState(bubble(agent)), 'idle');
+  assert.equal(iconState(queued(false)), 'idle');
 });
 
 test('chat links keep fixed icon geometry and immediate hover/focus feedback', () => {

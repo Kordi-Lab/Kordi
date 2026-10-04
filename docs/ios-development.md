@@ -231,6 +231,45 @@ The iPhone production origin is not a product-server development target. If an o
 
 See [Kordi iOS cloud contract](cloud-mobile.md) for endpoints and projection rules.
 
+### Local data protection
+
+Kordi sets an explicit iOS Data Protection class on each local cache. Class B is `completeUnlessOpen`; Class C is `completeUntilFirstUserAuthentication`. `LocalDataProtection.swift` holds the shared classes and the injectable `LocalDataProtecting` helper; only creating a directory can throw, and every other protection or backup step is best effort.
+
+| Store | Location | Class | Backup | Why |
+|---|---|---|---|---|
+| `LocalMessageStore` (SwiftData) | App container `Application Support/Kordi/MessageStore/messages.store` (plus `-wal` and `-shm`) | C, set explicitly | Excluded (directory flag) | A VoIP push can launch the app on a locked device and open the store, and the `audio` background mode keeps the realtime socket writing during calls. Under Class A the store would fail to open. The data is a regenerable Cloud cache. Leaving the app-group container also keeps it away from the share extension. |
+| `CloudWireCache` | `Application Support/Kordi/Cloud/messages-<account>.json` | C, explicit on write | Excluded (directory flag) | The same background writers read and write the sync cursor. A locked read that returned nothing would force a full replay. |
+| `AttachmentFileStore` | `Caches/Kordi/Attachments/<account hash>/` | B, except `audio/*` and audio file extensions, which are C | Already excluded (Caches) | New downloads can still be written while locked, and an open file stays readable. Audio stays C so voice playback continues on a locked screen. |
+| API responses | None | Not stored | Not stored | `CloudAPIClient.reliableSession` sets `urlCache = nil` and `requestCachePolicy = .reloadIgnoringLocalCacheData`; the proxy-free session copies that configuration. |
+| `ExpressiveMediaLibraryStore`, `VoiceTranscriptLocalCache`, temporary media | Unchanged | Unchanged (C) | Unchanged | These stores read, modify, and write an index. A read that fails while locked would make the next write drop every entry, so they keep the system default. |
+
+**Message store relocation.** Earlier builds stored the SwiftData cache at the default URL, `ModelConfiguration(isStoredInMemoryOnly: false).url`, which is expected to be in the app-group container because the app has an App Groups entitlement. `MessageStoreLocation` moves it on the first launch, before the container opens:
+
+1. If `messages.store` already exists, it always wins. The legacy store is removed after the relocated store opens.
+2. Otherwise the legacy `-wal` file and then the main file are copied (through `messages.store.partial` and a final rename), so `messages.store` only appears once the copy is complete. The `-shm` file is never copied; SQLite rebuilds it.
+3. Any copy failure removes only the new files and opens the legacy store. A freshly copied store that fails to open is removed and the legacy store opens instead. In both cases the legacy files are excluded from backup and the next launch retries.
+4. No step deletes a store before its replacement has opened, and the Cloud wire cache and its cursor are never touched.
+
+DEBUG builds log the legacy store path on every launch and log once after the legacy store is removed. Use those lines on a device to confirm the legacy location, because the app-group container cannot be downloaded from Xcode.
+
+**Existing attachments.** The first attachment cache lookup or write in a process starts a one-time background pass that sets Class B (or C for audio) on files cached by earlier builds. It writes `Caches/Kordi/Attachments/.protection-v1` only when every file succeeds, so a pass that runs before the first unlock retries later.
+
+**URL cache purge.** The first use of the API session removes all responses from `URLCache.shared` once, guarded by the `kordi.privacy.apiResponseCachePurged.v1` user default. This also clears regenerable cached avatars once.
+
+**No default data-protection entitlement.** Neither scheme nor the share extension sets `com.apple.developer.default-data-protection`. The only value that would change behavior is `NSFileProtectionComplete`, which breaks the background paths above, and the entitlement also requires the Data Protection capability on every App ID.
+
+### App switcher privacy cover
+
+**Hide conversations in app switcher** (Settings, Privacy; `kordi.privacy.hideInAppSwitcher`, on by default) is implemented by `PrivacyCoverController`:
+
+- It shows a separate window at `.alert + 1` with the Kordi mark on the system background on `UIScene.willDeactivateNotification` and `didEnterBackgroundNotification`, and hides it only on `didActivateNotification`. The window never becomes key, is hidden from accessibility, and is dropped when its scene disconnects.
+- The cover also appears while the scene is inactive for Control Center, Notification Center, system permission alerts (camera, microphone), the sign-in consent alert, and a full-screen CallKit call. That system UI is drawn above Kordi's windows, so the cover never blocks it, and the cover hides as soon as the scene is active again.
+- After the consent alert, the Google and GitHub sign-in sheet (`ASWebAuthenticationSession`) runs with the scene active, and so does the photo picker, so the cover is hidden while they are used. `suspend()` and `resume()` exist for any future flow that keeps the scene inactive while it needs input inside Kordi; no current flow uses them.
+
+**Residual: the system keyboard.** The keyboard window sits above every app window, and Kordi does not raise the cover above it. While Kordi is inactive with the keyboard open, for example in the app switcher card during the swipe or behind Control Center, the keyboard and its QuickType bar stay visible above the cover. The QuickType bar can show the word being typed and word predictions; the rest of the draft and the conversation stay covered. The snapshot iOS keeps after Kordi moves to the background shows only the cover. Kordi does not end editing when the scene deactivates, because that would also close the keyboard for every Control Center, Notification Center, or permission prompt interruption.
+
+**Manual check after changing the cover.** With the setting on, verify on the Simulator: Google and GitHub sign-in against a backend with those providers configured (consent alert, then the sheet is usable and Cancel returns to the login screen), the photo picker, camera and microphone prompts, Notification Center, and the app switcher with and without the keyboard open. Check an incoming CallKit call on a device; the Simulator does not present the call screen.
+
 ## TestFlight
 
 For a coordinated desktop and iOS release, use the

@@ -83,6 +83,8 @@ for (const context of ['group', 'contact']) {
 for (const theme of ['light', 'dark']) {
   test(`transparent website icons use a visible fallback in ${theme} chat bubbles`, async ({ page }, testInfo) => {
     await page.addInitScript(() => {
+      // Agent answers load site icons only when link previews are set to Everyone.
+      localStorage.setItem('kordi.link-previews.v1', 'everyone');
       const host = window as unknown as {__TAURI_INTERNALS__: unknown};
       host.__TAURI_INTERNALS__ = {invoke: async (command: string, args: {url?:string}) => {
         if (command !== 'desktop_fetch_remote_image_data_url') return null;
