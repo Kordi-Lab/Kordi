@@ -254,9 +254,15 @@ test.describe('project folder motion', () => {
     await expect(reveal).toHaveCSS('height', '156px');
     const row = page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="project"]');
     await row.evaluate((element) => { element.setAttribute('data-motion-identity', 'preserved'); });
-    await group.click();
-    await page.waitForTimeout(50);
-    await group.click();
+    // Reverse within one browser frame; runner round trips can outlast the transition.
+    const collapsedBeforeReversal = await group.evaluate(async button => {
+      (button as HTMLElement).click();
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      const collapsed = button.getAttribute('aria-expanded');
+      (button as HTMLElement).click();
+      return collapsed;
+    });
+    expect(collapsedBeforeReversal).toBe('false');
     await expect(row).toHaveAttribute('data-motion-identity', 'preserved');
     await expect(reveal).toHaveCSS('height', '156px');
   });
