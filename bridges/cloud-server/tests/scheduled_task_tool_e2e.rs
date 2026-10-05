@@ -25,13 +25,9 @@ use tower::util::ServiceExt;
 
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
-    match init_pool(&url).await {
-        Ok(pool) => Some(pool),
-        Err(err) => {
-            eprintln!("[scheduled_task_tool_e2e] init_pool failed, skipping: {err}");
-            None
-        }
-    }
+    Some(init_pool(&url).await.unwrap_or_else(|_| {
+        panic!("Could not initialize the configured disposable integration database")
+    }))
 }
 
 fn unique_email(prefix: &str) -> String {
@@ -40,7 +36,7 @@ fn unique_email(prefix: &str) -> String {
 
 async fn signup_body(email: &str, password: &str) -> Body {
     Body::from(
-        serde_json::signup_email_fixture::with_proof(json!({
+        signup_email_fixture::with_proof(serde_json::json!({
             "email": email,
             "password": password,
             "displayName": "Scheduled Tool E2E",
