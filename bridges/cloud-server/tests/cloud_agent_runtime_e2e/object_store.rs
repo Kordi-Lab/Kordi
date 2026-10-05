@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::signup_email_fixture;
 use axum::body::{to_bytes, Body};
 use axum::extract::OriginalUri;
 use axum::http::{Method, StatusCode};
 use axum::response::IntoResponse;
 use kordi_cloud_server::attachments::S3Config;
-use kordi_cloud_server::events::EventBus;
-use kordi_cloud_server::server::ServerState;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use url::Url;
