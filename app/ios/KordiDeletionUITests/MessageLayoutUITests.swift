@@ -27,7 +27,7 @@ final class MessageLayoutUITests: ProviderUITestCase {
         let source = element("message-m5", in: app)
         XCTAssertTrue(reveal(source, in: app))
         source.press(forDuration: 0.5)
-        XCTAssertTrue(app.buttons["Close message actions"].waitForExistence(timeout: 5))
+        XCTAssertTrue(element("thread-message-actions-sheet", in: app).waitForExistence(timeout: 5))
         capture("Dark Threads actions with a clean preview", app: app)
         app.buttons["Quote"].tap()
         XCTAssertTrue(app.buttons["Remove quote"].waitForExistence(timeout: 5))
@@ -63,13 +63,19 @@ final class MessageLayoutUITests: ProviderUITestCase {
         let message = element("message-m5", in: app)
         XCTAssertTrue(reveal(message, in: app))
         message.press(forDuration: 0.5)
-        XCTAssertTrue(app.buttons["Close message actions"].waitForExistence(timeout: 5))
+        let sheet = element("thread-message-actions-sheet", in: app)
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(sheet.frame.width, app.frame.width * 0.9)
+        XCTAssertGreaterThan(sheet.frame.minY, app.frame.height * 0.3)
         XCTAssertTrue(app.buttons["Quote"].exists)
-        XCTAssertTrue(app.buttons["Open discussion"].exists)
+        XCTAssertTrue(app.buttons["thread-action-reply"].exists)
         XCTAssertTrue(app.buttons["Forward"].exists)
+        app.buttons["thread-more-actions"].tap()
         XCTAssertTrue(app.buttons["Select"].exists)
-        capture("All message actions in Threads", app: app)
-        app.buttons["Close message actions"].tap()
+        capture("More actions in the native Threads sheet", app: app)
+        app.buttons["Select"].tap()
+        XCTAssertTrue(app.staticTexts["1 selected"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
         app.terminate()
 
         app = launch("--preview-appearance")
@@ -77,6 +83,70 @@ final class MessageLayoutUITests: ProviderUITestCase {
         XCTAssertTrue(restored.waitForExistence(timeout: 15))
         XCTAssertTrue(restored.buttons["Threads"].isSelected)
         restored.buttons["Chat"].tap()
+        app.terminate()
+    }
+
+    func testThreadsReplyOpensDiscussionAndKeepsParentDraft() {
+        let app = launch("--preview-native-design", "-kordi.messageLayout.v1", "threads")
+        let editor = app.textViews["Message main"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        editor.tap()
+        editor.typeText("Keep the draft after replying in a discussion.")
+        let parent = element("message-gm1", in: app)
+        XCTAssertTrue(reveal(parent, in: app))
+        // A partially visible row can be hittable while its center is under
+        // the floating toolbar. Move the message body into the viewport.
+        if parent.frame.midY < app.navigationBars.firstMatch.frame.maxY + 30 {
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.3))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        parent.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.35)).press(forDuration: 0.5)
+        let reply = app.buttons["thread-action-reply"]
+        XCTAssertTrue(reply.waitForExistence(timeout: 5))
+        capture("Threads actions with reactions and primary buttons", app: app)
+        reply.tap()
+        XCTAssertTrue(element("thread-title", in: app).waitForExistence(timeout: 5))
+        XCTAssertTrue(element("message-native-thread-3", in: app).exists)
+        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue((editor.value as? String)?.contains("Keep the draft") == true)
+        app.terminate()
+    }
+
+    func testThreadsForwardWaitsForActionSheetDismissal() {
+        let app = launch("--preview-native-design", "--preview-contact-chat", "-kordi.messageLayout.v1", "threads")
+        XCTAssertTrue(app.buttons["Add photo, video, or file"].waitForExistence(timeout: 15))
+        let source = element("message-m5", in: app)
+        XCTAssertTrue(reveal(source, in: app))
+        source.press(forDuration: 0.5)
+        let forward = app.buttons["thread-action-forward"]
+        XCTAssertTrue(forward.waitForExistence(timeout: 5))
+        forward.tap()
+        XCTAssertTrue(app.textFields["forward-search"].waitForExistence(timeout: 5))
+        XCTAssertFalse(element("thread-message-actions-sheet", in: app).exists)
+        XCTAssertFalse(app.buttons["forward-submit"].isEnabled)
+        app.terminate()
+    }
+
+    func testThreadsDeleteKeepsConfirmationAndNeighboringMessage() {
+        let app = launch("--preview-contact-chat", "-kordi.messageLayout.v1", "threads")
+        XCTAssertTrue(app.buttons["Add photo, video, or file"].waitForExistence(timeout: 15))
+        let source = element("message-m5", in: app)
+        XCTAssertTrue(reveal(source, in: app))
+        source.press(forDuration: 0.5)
+        let more = app.buttons["thread-more-actions"]
+        XCTAssertTrue(more.waitForExistence(timeout: 5))
+        more.tap()
+        tap(app.buttons["Delete"], in: app)
+        let confirm = app.buttons["Delete for me"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Back to message actions"].exists)
+        confirm.tap()
+        XCTAssertTrue(source.waitForNonExistence(timeout: 10))
+        XCTAssertFalse(element("thread-message-actions-sheet", in: app).exists)
+        XCTAssertTrue(reveal(element("message-m4-voice", in: app), in: app))
+        XCTAssertTrue(app.buttons["Add photo, video, or file"].isHittable)
         app.terminate()
     }
 }
@@ -97,7 +167,7 @@ final class NativeChromeUITests: ProviderUITestCase {
     }
 
     func testFullAppKeepsDiscussionBackAndAccountNavigation() {
-        let app = launch("--preview-native-samples", "--preview-expanded-groups")
+        let app = launch("--preview-native-samples", "--preview-expanded-groups", "-kordi.messageLayout.v1", "chat")
         let group = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "main")).firstMatch
         XCTAssertTrue(group.waitForExistence(timeout: 15))
         tap(group, in: app)

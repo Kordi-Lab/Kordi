@@ -347,6 +347,7 @@ struct ConversationView: View {
     @State private var deleteReflowOffsets: [String: CGFloat] = [:]
     @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
+    @State private var pendingThreadMessageAction: (() -> Void)?
     @State private var messageActionImage: UIImage?
     @State private var messageActionFrame = CGRect.zero
     @State private var messageActionPreviewFrame = CGRect.zero
@@ -977,13 +978,21 @@ struct ConversationView: View {
                 }
             }
             .overlay {
-                if let messageActionMessage, !messageActionFrame.isEmpty {
+                if messageLayout == .chat, let messageActionMessage, !messageActionFrame.isEmpty {
                     messageActionsOverlay(
                         for: messageActionMessage,
                         pinnedMessageIDs: pinnedMessageIDs,
                         timeline: timeline
                     )
                 }
+            }
+            .sheet(item: threadMessageActions, onDismiss: finishThreadMessageActions) { message in
+                messageActionsContent(
+                    for: message,
+                    pinnedMessageIDs: pinnedMessageIDs,
+                    timeline: timeline,
+                    usableFrame: .zero
+                )
             }
             .overlay {
                 // Driven by the gesture, not the recorder phase, so it appears as the
@@ -1502,10 +1511,10 @@ struct ConversationView: View {
                     showAvatar: presentation.showsAvatar,
                     replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
                     isHighlighted: highlightedMessageID == message.id,
-                    isActionPresented: messageActionMessage?.id == message.id && messageActionImage == nil,
+                    isActionPresented: messageLayout == .chat && messageActionMessage?.id == message.id && messageActionImage == nil,
                     pendingSendEntrance: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
                     outgoingAvatarGroupID: presentation.outgoingAvatarGroupID,
-                    actionPlacement: messageActionMessage?.id == message.id && messageActionImage == nil && !messageActionPreviewFrame.isEmpty
+                    actionPlacement: messageLayout == .chat && messageActionMessage?.id == message.id && messageActionImage == nil && !messageActionPreviewFrame.isEmpty
                         ? MessageActionBubblePlacement(sourceFrame: messageActionFrame, previewFrame: messageActionPreviewFrame)
                         : nil,
                     actionViewportFrame: viewportFrame,
@@ -1564,7 +1573,7 @@ struct ConversationView: View {
                     onUpdateActionFrame: { frame in
                         updateMessageActionFrame(for: message.id, frame: frame, viewportFrame: viewportFrame)
                     },
-                    actionPreviewScroll: messageActionMessage?.id == message.id ? messageActionPreviewScroll : nil,
+                    actionPreviewScroll: messageLayout == .chat && messageActionMessage?.id == message.id ? messageActionPreviewScroll : nil,
                     onReactToAttachment: { attachment, reaction in
                         Task { _ = await model.toggleAttachmentReaction(reaction, on: attachment, message: message, in: conversation) }
                     },
@@ -1634,7 +1643,7 @@ struct ConversationView: View {
                     onContentExpansionChange: { expanded in
                         updateTrajectoryExpansion(row.id, expanded: expanded, viewportHeight: viewportFrame.height)
                     },
-                    usesOverlayPhotoPreview: messageActionMessage?.id == message.id && messageActionImage != nil,
+                    usesOverlayPhotoPreview: messageLayout == .chat && messageActionMessage?.id == message.id && messageActionImage != nil,
                     presentedActionAttachmentID: messageActionMessage?.id == message.id ? messageActionAttachment?.id : nil,
                     onPrepareActionImage: { messageActionImage = $0 },
                     deletingAttachmentID: pendingMessageDeletion?.message.id == message.id ? pendingMessageDeletion?.attachmentID : nil,
@@ -1702,10 +1711,6 @@ struct ConversationView: View {
         pinnedMessageIDs: Set<String>,
         timeline: [ChatMessage]
     ) -> some View {
-        let readReceiptReaders = MessageReadReceiptPresentation.readers(
-            for: message,
-            in: conversation
-        )
         let selectionFrame = messageActionPreviewFrame.isEmpty ? messageActionFrame : messageActionPreviewFrame
         let visibleSelectionFrame = messageActionViewportFrame.isEmpty
             ? selectionFrame : selectionFrame.intersection(messageActionViewportFrame)
@@ -1725,13 +1730,46 @@ struct ConversationView: View {
                 }
             }
         ) { usableFrame in
+            messageActionsContent(
+                for: message,
+                pinnedMessageIDs: pinnedMessageIDs,
+                timeline: timeline,
+                usableFrame: messageActionViewportFrame.isEmpty ? usableFrame : messageActionViewportFrame
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var threadMessageActions: Binding<ChatMessage?> {
+        Binding(
+            get: { messageLayout == .threads ? messageActionMessage : nil },
+            set: { messageActionMessage = $0 }
+        )
+    }
+
+    private func finishThreadMessageActions() {
+        let action = pendingThreadMessageAction
+        pendingThreadMessageAction = nil
+        if let action { action() }
+        else { dismissMessageActions() }
+    }
+
+    private func messageActionsContent(
+        for message: ChatMessage,
+        pinnedMessageIDs: Set<String>,
+        timeline: [ChatMessage],
+        usableFrame: CGRect
+    ) -> some View {
+        let readReceiptReaders = MessageReadReceiptPresentation.readers(for: message, in: conversation)
+        return
             MessageActionOverlay(
                 message: message,
+                layout: messageLayout,
                 sourceFrame: messageActionFrame,
                 photoPreview: messageActionImage,
                 hitTestRegions: messageActionHitTestRegions,
                 previewScroll: messageActionPreviewScroll,
-                usableFrame: messageActionViewportFrame.isEmpty ? usableFrame : messageActionViewportFrame,
+                usableFrame: usableFrame,
                 onPreviewFrameChange: { frame, allowsTextSelection in
                     // Floating photos animate entirely in the menu host. Feeding
                     // their animation back into the lazy chat layout is unnecessary.
@@ -1773,6 +1811,7 @@ struct ConversationView: View {
                     readers: readReceiptReaders
                 ),
                 readReceiptReaders: readReceiptReaders,
+                onSheetAction: { action in pendingThreadMessageAction = action },
                 onDismiss: dismissMessageActions,
                 onReviewAttachment: {
                     guard let attachment = messageActionAttachment else { return }
@@ -1869,8 +1908,6 @@ struct ConversationView: View {
                     dismissMessageActions()
                 }
             )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func joinCall(_ call: CloudCall) {
