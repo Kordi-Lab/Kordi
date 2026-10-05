@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { CheckCircle2, FolderOpen, Info, Layers3 } from 'lucide-react';
 
 import { ChatDetailPanel } from '@/pages/ChatDetailPanel';
@@ -13,7 +14,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
   const activeProjectSessionId = args.activeProjectSession.id;
   const navigateToResponse = (messageId: string) => {
     const navigate = () => navigateToTranscriptMessageOrScrollBottom(messageId, args.chatTranscriptScrollRef);
-    if (args.activeNav !== 'chats') {
+    if (!isChatNavigation(args.activeNav)) {
       navigate();
       return;
     }
@@ -24,7 +25,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
     }
     window.requestAnimationFrame(() => window.requestAnimationFrame(navigate));
   };
-  const allDetailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = args.activeNav === 'chats'
+  const allDetailTabs: Array<{ id: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }> = isChatNavigation(args.activeNav)
     ? [
         { id: 'info', label: 'Info', icon: Info },
         { id: 'artifacts', label: 'Artifacts', icon: FolderOpen },
@@ -48,7 +49,7 @@ export function assembleRightDetailSlot(args: RightDetailShellArgs) {
       }}
       activeSourcePreview={args.activeSourcePreview}
       onCloseSourcePreview={() => args.setActiveSourcePreview(null)}
-      variant={args.activeNav === 'chats' ? 'page' : 'rail'}
+      variant={isChatNavigation(args.activeNav) ? 'page' : 'rail'}
     >
       {args.activeNav === 'projects' ? (
         <ProjectDetailPanel

@@ -102,7 +102,7 @@ export function useKordiProjectActions({
         // creation would duplicate an empty session after a refresh failure.
         setDesktopError('Project updated, but the session list could not refresh. Reopen the chat to refresh it.');
       }
-      setActiveNav('chats');
+      setActiveNav('agent-chats');
     } catch (error) {
       setDesktopError(
         error instanceof Error

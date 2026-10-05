@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { localProjectSessions } from '@/features/projects/localProjectSessions';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {useThreadAttention} from '@/features/cloud/threadAttention';
@@ -250,7 +251,7 @@ export function useWorkspaceViewModels({
 
     return sessionSummaries.map((session) => {
       const isActiveSession = session.id === desktopChatState.activeSession.id;
-      const isVisibleSession = activeNav === 'chats' && activeConvId === session.id;
+      const isVisibleSession = isChatNavigation(activeNav) && activeConvId === session.id;
       const cachedSourceMessages = cachedDesktopSessionSourceMessages[session.id];
       const cachedMessages = !isActiveSession && isVisibleSession && cachedSourceMessages
         ? mapDesktopMessages(

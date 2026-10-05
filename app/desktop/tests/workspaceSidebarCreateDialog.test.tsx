@@ -9,13 +9,13 @@ import { participantSpaceSessionIdLabel, participantSpaceSessionRowTitle, sessio
 import { usesDefaultLocalAgentSession } from '../src/app/openLocalAgentChat';
 import { conversation, contact, agent } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
-test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-tab New session', () => {
+test('WorkspaceSidebar uses a destination-specific plus action and an agent picker for New session', () => {
   const source = readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8');
   const chromeSource = readFileSync(new URL('../src/pages/workspaceSidebar.chrome.tsx', import.meta.url), 'utf8');
   const dialogSource = readFileSync(new URL('../src/pages/ChatCreateDialog.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /const \[chatCreateInitialMode, setChatCreateInitialMode\]\s*=\s*useState<ChatCreateMode>\('menu'\)/);
-  assert.match(source, /const openChatCreateDialog = useCallback\(\(event: ReactMouseEvent<HTMLElement>\) => \{[\s\S]*setChatCreateInitialMode\('menu'\);[\s\S]*setIsChatCreateDialogOpen\(true\);[\s\S]*\}, \[setActiveNav\]\);/);
+  assert.match(source, /const openChatCreateDialog = useCallback\(\(event: ReactMouseEvent<HTMLElement>\) => \{[\s\S]*setChatCreateInitialMode\(activeNav === 'agent-chats' \? 'agent' : 'menu'\);[\s\S]*setIsChatCreateDialogOpen\(true\);[\s\S]*\}, \[activeNav\]\);/);
   assert.match(source, /setChatCreateInitialMode\('agent'\);[\s\S]*setIsChatCreateDialogOpen\(true\);/);
   assert.match(source, /initialMode=\{chatCreateInitialMode\}/);
   assert.doesNotMatch(source, /initialMode=\{chatChannel === 'agent' \? 'agent' : 'menu'\}/);
@@ -23,7 +23,7 @@ test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-
   assert.match(stableChrome, /ChatSidebarChrome/);
   assert.match(chromeSource, /app-chat-sidebar-header/);
   assert.match(chromeSource, /app-workspace-search/);
-  assert.match(chromeSource, /app-filter-tabs/);
+  assert.doesNotMatch(chromeSource, /app-filter-tabs/);
   assert.doesNotMatch(stableChrome, /showArchived/);
   assert.match(source, /\{chatSidebarChrome\}/);
   // The dialog resets its own transient state (mode included) whenever it

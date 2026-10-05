@@ -221,6 +221,11 @@ function spaceKindForConversation(conversation: Conversation, nonSelf: Conversat
   return 'self';
 }
 
+export function chatChannelForConversation(conversation: Conversation): ChatChannel {
+  const kind = spaceKindForConversation(conversation, nonSelfParticipants(conversation));
+  return kind === 'direct-human' || kind === 'group' ? 'contact' : 'agent';
+}
+
 function primaryParticipantForKind(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
   if (kind === 'self') return selfParticipant(participants) ?? participants[0];
   if (kind === 'direct-human') return nonSelfHumans(participants)[0] ?? participants.find((participant) => !isSelfParticipant(participant));

@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 
 import {
@@ -53,7 +54,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
 
   const [isSessionPanelCollapsed, setIsSessionPanelCollapsed] = useState(false);
   const [isDetailPanelCollapsed, setIsDetailPanelCollapsed] = useState(
-    () => activeNav === 'chats' || activeNav === 'projects',
+    () => isChatNavigation(activeNav) || activeNav === 'projects',
   );
   const [sessionRailUserWidth, setSessionRailUserWidth] = useState(248);
   const [detailRailUserWidth, setDetailRailUserWidth] = useState(344);
@@ -61,8 +62,8 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
   const [isPointerLayoutResizing, setIsPointerLayoutResizing] = useState(false);
   const [isNativeWindowResizing, setIsNativeWindowResizing] = useState(false);
 
-  const showSessionRail = activeNav === 'chats' || activeNav === 'projects';
-  const showRightDetailRail = activeNav === 'chats' || activeNav === 'projects';
+  const showSessionRail = isChatNavigation(activeNav) || activeNav === 'projects';
+  const showRightDetailRail = isChatNavigation(activeNav) || activeNav === 'projects';
   const showResizableRightDetailRail = activeNav === 'projects';
   const initialMinWindowWidth = Math.max(
     WINDOW_MIN_WIDTH,
@@ -70,7 +71,7 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       showSessionRail,
       collapseChatSessions: false,
       showRightDetailRail: showResizableRightDetailRail,
-      isDetailPanelCollapsed: activeNav === 'chats' || activeNav === 'projects',
+      isDetailPanelCollapsed: isChatNavigation(activeNav) || activeNav === 'projects',
     }),
   );
   const [windowSize, setWindowSize] = useState(() =>
@@ -78,9 +79,9 @@ export function useAppLayoutState({ activeNav, isNativeShell }: UseAppLayoutStat
       ? getViewportFillSize(initialMinWindowWidth, WINDOW_MIN_HEIGHT)
       : getInitialWindowSize({ minWidth: initialMinWindowWidth, minHeight: WINDOW_MIN_HEIGHT }),
   );
-  const showChatDetailRail = activeNav === 'chats';
+  const showChatDetailRail = isChatNavigation(activeNav);
   const collapseChatSessions = showSessionRail && isSessionPanelCollapsed;
-  const isSingleWorkspacePage = activeNav !== 'chats' && activeNav !== 'projects';
+  const isSingleWorkspacePage = !isChatNavigation(activeNav) && activeNav !== 'projects';
   const sessionRailWidth =
     showSessionRail && !collapseChatSessions
       ? clampSessionPanelWidth(sessionRailUserWidth, windowSize.width, showResizableRightDetailRail && !isDetailPanelCollapsed)

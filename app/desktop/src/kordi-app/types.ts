@@ -38,7 +38,7 @@ export type {
 } from './types/message';
 export type { DesktopChatSessionSummary };
 
-export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'settings' | 'digest';
+export type NavId = 'chats' | 'agent-chats' | 'contacts' | 'projects' | 'agents' | 'settings' | 'digest';
 export type ChatChannel = 'contact' | 'agent';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';

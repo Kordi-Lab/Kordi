@@ -1,8 +1,11 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { resolveProjectSelection, type ProjectRoutingGroup } from '@/features/canonical/sessionResolver';
 import { isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import type { DetailTab, NavId, Project } from '@/kordi-app/types';
+import type { Dispatch, SetStateAction } from 'react';
+import { reconcileChatNavigation, selectChatConversation, selectChatNavigation, type ChatNavigationState, type ChatNavId } from '@/features/chat/chatNavigation';
 
 type UseWorkspaceControllerArgs = {
   initialProjects: Project[];
@@ -15,8 +18,23 @@ export function useWorkspaceController({
   projectRoutingGroups,
   isNativeShell,
 }: UseWorkspaceControllerArgs) {
-  const [activeNav, setActiveNav] = useState<NavId>('chats');
-  const [activeConvId, setActiveConvId] = useState(isNativeShell ? '' : 'my-agent');
+  const [chatNavigation, setChatNavigation] = useState<ChatNavigationState>(() => ({
+    activeNav: 'agent-chats', activeConvId: isNativeShell ? '' : 'my-agent',
+    selections: { chats: '', 'agent-chats': isNativeShell ? '' : 'my-agent' },
+  }));
+  const { activeNav, activeConvId } = chatNavigation;
+  const chatIndexRef = useRef<ReadonlyMap<string, ChatNavId>>(new Map());
+  const setActiveNav: Dispatch<SetStateAction<NavId>> = useCallback(value => {
+    setChatNavigation(current => selectChatNavigation(current, typeof value === 'function' ? value(current.activeNav) : value, chatIndexRef.current));
+  }, []);
+  const setActiveConvId: Dispatch<SetStateAction<string>> = useCallback(value => {
+    setChatNavigation(current => selectChatConversation(current, typeof value === 'function' ? value(current.activeConvId) : value, chatIndexRef.current));
+  }, []);
+  const updateChatNavigationIndex = useCallback((index: ReadonlyMap<string, ChatNavId>) => {
+    const previousIndex = chatIndexRef.current;
+    chatIndexRef.current = index;
+    setChatNavigation(current => reconcileChatNavigation(current, index, previousIndex));
+  }, []);
   const [activeProjectId, setActiveProjectId] = useState(initialProjects[0]?.id ?? '');
   const [activeProjectSessionId, setActiveProjectSessionId] = useState(initialProjects[0]?.sessions[0]?.id ?? '');
   const [projectSelectedSessionIds, setProjectSelectedSessionIds] = useState<Record<string, string>>(() =>
@@ -73,7 +91,7 @@ export function useWorkspaceController({
   }, [activeProjectId, activeProjectSessionId]);
 
   useEffect(() => {
-    if (activeNav === 'chats' && activeDetailTab === 'context') {
+    if (isChatNavigation(activeNav) && activeDetailTab === 'context') {
       setActiveDetailTab('info');
     }
   }, [activeDetailTab, activeNav]);
@@ -83,6 +101,7 @@ export function useWorkspaceController({
     setActiveNav,
     activeConvId,
     setActiveConvId,
+    updateChatNavigationIndex,
     activeProjectId,
     setActiveProjectId,
     activeProjectSessionId,

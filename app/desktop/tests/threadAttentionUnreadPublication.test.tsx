@@ -30,7 +30,7 @@ function sidebar(liveUnread: number, polledUnread: number, threadUnread = 0) {
 test('the final sidebar shows a live unread while the attention poll still says zero', () => {
   const { conversations, markup } = sidebar(1, 0);
   assert.equal(conversations[0].unread, 1);
-  assert.match(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
+  assert.match(markup, /aria-label="Chats, 1 unread message"/);
   assert.match(markup, /data-unread-scope="participant-space" data-unread-count="1"/);
 });
 

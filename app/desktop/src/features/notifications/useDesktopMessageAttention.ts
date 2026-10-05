@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window';
 import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
@@ -160,7 +161,7 @@ export function useDesktopMessageAttention({
       const threadPanel=event.threadRootId ? Array.from(document.querySelectorAll<HTMLElement>('.app-thread-panel')).find(panel=>[panel.dataset.threadRootId,panel.dataset.threadRootClientId].includes(event.threadRootId)) : undefined;
       const threadScroll=threadPanel?.querySelector<HTMLElement>('.app-chat-pane-transcript-scroll');
       const exactVisibleSession = appIsActive
-        && activeNav === 'chats'
+        && isChatNavigation(activeNav)
         && event.sessionId === activeSessionId
         && (event.threadRootId ? Boolean(threadScroll && transcriptIsAtLatest(threadScroll)) : transcriptAtLatest);
       return !exactVisibleSession;

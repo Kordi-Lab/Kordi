@@ -58,6 +58,8 @@ export function VirtualChatList({
   scrollClassName,
   scrollStyle,
   dataMode,
+  scrollOffsets,
+  scrollPositionKey,
   renderRow,
   emptyState,
 }: {
@@ -69,11 +71,15 @@ export function VirtualChatList({
   scrollClassName?: string;
   scrollStyle?: CSSProperties;
   dataMode?: string;
+  scrollOffsets?: RefObject<Map<string, number>>;
+  scrollPositionKey?: string;
   renderRow: (row: ChatSidebarRow) => ReactNode;
   emptyState?: ReactNode;
 }) {
   const renderPerformanceSpan = beginChatPerformanceSpan('sidebar-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollOffsetsByMode = useRef(new Map<string, number>());
+  const restoredScrollPositionRef = useRef(false);
   const scrolledActiveSessionIdRef = useRef<string | null>(null);
   const renderRowRef = useRef(renderRow);
   renderRowRef.current = renderRow;
@@ -96,6 +102,16 @@ export function VirtualChatList({
     directDomUpdatesMode: 'transform',
   });
   useLayoutEffect(() => {
+    const element = internalScrollRef.current;
+    const key = scrollPositionKey ?? dataMode;
+    if (!element || !key) return;
+    const offsets = scrollOffsets?.current ?? scrollOffsetsByMode.current;
+    const previousOffset = offsets.get(key);
+    restoredScrollPositionRef.current = previousOffset !== undefined;
+    if (previousOffset !== undefined) virtualizer.scrollToOffset(previousOffset);
+    return () => { offsets.set(key, element.scrollTop); };
+  }, [dataMode, scrollOffsets, scrollPositionKey, virtualizer]);
+  useLayoutEffect(() => {
     if (!groupChannels) return;
     virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item, _delta, instance) => (
       item.end <= (instance.scrollOffset ?? 0)
@@ -113,13 +129,21 @@ export function VirtualChatList({
     const normalizedActiveId = activeSessionId?.trim() || null;
     if (!normalizedActiveId) {
       scrolledActiveSessionIdRef.current = null;
+      restoredScrollPositionRef.current = false;
       return;
     }
     if (
       activeRowIndex < 0
       || scrolledActiveSessionIdRef.current === normalizedActiveId
-    ) return;
+    ) {
+      restoredScrollPositionRef.current = false;
+      return;
+    }
     scrolledActiveSessionIdRef.current = normalizedActiveId;
+    if (restoredScrollPositionRef.current) {
+      restoredScrollPositionRef.current = false;
+      return;
+    }
     virtualizer.scrollToIndex(activeRowIndex, { align: 'auto' });
   }, [activeRowIndex, activeSessionId, groupChannels, virtualizer]);
 

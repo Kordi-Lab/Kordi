@@ -9,7 +9,7 @@ import {
   type ComposerDraftState,
 } from '@/features/chat/composerDrafts';
 import { contactRequests, projects, settingsSections } from '@/kordi-app/data';
-import type { ComposerQuoteState, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
+import type { ComposerQuoteState, ComposerScope, ComposerSelectorType, ContactClass, EditFilePreview, ResolvedThemeMode, ThemeMode, NavId } from '@/kordi-app/types';
 
 function getSystemThemeMode(): ResolvedThemeMode {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
@@ -18,7 +18,7 @@ function getSystemThemeMode(): ResolvedThemeMode {
   return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
 }
 
-export function useKordiLocalUiState() {
+export function useKordiLocalUiState(activeNav: NavId = 'agent-chats') {
   const [activeContactGroup, setActiveContactGroup] = useState<ContactClass>('my-agents');
   const [activeContactId, setActiveContactId] = useState('my-core-agent');
   const [isContactRequestsOpen, setIsContactRequestsOpen] = useState(false);
@@ -95,7 +95,12 @@ export function useKordiLocalUiState() {
     writeStoredComposerAttachments(chatComposerAttachments);
   }, [chatComposerAttachments]);
 
-  const [chatSearch, setChatSearch] = useState('');
+  const searchChannel = activeNav === 'chats' ? 'contact' : 'agent';
+  const [chatSearchByChannel, setChatSearchByChannel] = useState({ contact: '', agent: '' });
+  const chatSearch = chatSearchByChannel[searchChannel];
+  const setChatSearch: Dispatch<SetStateAction<string>> = useCallback(value => {
+    setChatSearchByChannel(current => ({ ...current, [searchChannel]: typeof value === 'function' ? value(current[searchChannel]) : value }));
+  }, [searchChannel]);
 
   return {
     contactsUi: {

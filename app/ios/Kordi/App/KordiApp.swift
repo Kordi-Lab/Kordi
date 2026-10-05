@@ -593,7 +593,7 @@ struct MainTabView: View {
             Tab(value: MainTab.agents) {
                 agentsRoot
             } label: {
-                Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol)
+                AgentChatTabLabel()
             }
             .badge(badgeLabel(unreadTabCounts.agents))
 
@@ -624,7 +624,7 @@ struct MainTabView: View {
                 .tag(MainTab.chats)
 
             agentsRoot
-                .tabItem { Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol) }
+                .tabItem { AgentChatTabLabel() }
                 .badge(badgeLabel(unreadTabCounts.agents))
                 .tag(MainTab.agents)
 

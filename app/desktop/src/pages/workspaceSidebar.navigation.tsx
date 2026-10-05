@@ -19,7 +19,8 @@ export function WorkspaceNavigationRail({
   isNativeShell,
   activeNav,
   setActiveNav,
-  totalUnread,
+  agentUnread,
+  contactUnread,
   pendingContactRequestCount,
   account,
   updater,
@@ -27,7 +28,8 @@ export function WorkspaceNavigationRail({
   isNativeShell: boolean;
   activeNav: NavId;
   setActiveNav: Dispatch<SetStateAction<NavId>>;
-  totalUnread: number;
+  agentUnread: number;
+  contactUnread: number;
   pendingContactRequestCount: number;
   account: WorkspaceSidebarAccount;
   updater: Omit<SidebarUpdaterProps, 'isNativeShell'>;
@@ -52,6 +54,7 @@ export function WorkspaceNavigationRail({
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = activeNav === item.id;
+            const unread = item.id === 'agent-chats' ? agentUnread : item.id === 'chats' ? contactUnread : 0;
             return (
               <button
                 key={item.id}
@@ -59,8 +62,8 @@ export function WorkspaceNavigationRail({
                 onClick={() => setActiveNav(item.id)}
                 className="app-workspace-nav-button relative mx-auto grid h-8 w-8 place-items-center rounded-[10px] p-0"
                 data-active={active ? 'true' : 'false'}
-                aria-label={item.id === 'chats' && totalUnread > 0
-                  ? `${item.label}, ${totalUnread} unread message${totalUnread === 1 ? '' : 's'}`
+                aria-label={unread > 0
+                  ? `${item.label}, ${unread} unread message${unread === 1 ? '' : 's'}`
                   : item.label}
                 aria-current={active ? 'page' : undefined}
                 title={item.label}
@@ -76,9 +79,9 @@ export function WorkspaceNavigationRail({
                     </span>
                   ) : null}
                 </span>
-                {item.id === 'chats' && totalUnread > 0 ? (
+                {unread > 0 ? (
                   <span className="app-nav-rail-unread-badge" aria-hidden="true">
-                    {formatUnreadCount(totalUnread)}
+                    {formatUnreadCount(unread)}
                   </span>
                 ) : null}
               </button>
