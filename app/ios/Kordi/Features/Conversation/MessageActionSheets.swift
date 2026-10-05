@@ -353,7 +353,6 @@ struct MessageActionOverlay: View {
     @State private var isConfirmingDelete = false
     @State private var didSchedulePreviewExpansion = false
     @State private var threadSheetContentHeight: CGFloat = 398
-    @State private var threadSheetDetent = PresentationDetent.height(398)
     let message: ChatMessage
     var layout: MessageLayout = .chat
     let sourceFrame: CGRect
@@ -462,10 +461,9 @@ struct MessageActionOverlay: View {
                             .padding(.bottom, 4)
                     }
                     if showsAllReactions {
-                        EmojiSelectionBoard(initialCategory: hasRecentReactions ? .recent : .noto) { item in
+                        EmojiSelectionBoard(initialCategory: initialThreadReactionCategory, maximumGridHeight: 200) { item in
                             performAction { onReact(item.reactionValue) }
                         }
-                        .frame(height: 420)
                     } else {
                         if allowsThreadReply || allowsConversationReply {
                             threadActionRow(
@@ -516,21 +514,32 @@ struct MessageActionOverlay: View {
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 guard height > 0 else { return }
                 threadSheetContentHeight = min(ceil(height), 398)
-                if !showsAllReactions, threadSheetDetent != .large {
-                    threadSheetDetent = .height(threadSheetContentHeight)
-                }
             }
         }
         .scrollBounceBehavior(.basedOnSize)
         .foregroundStyle(.primary)
         .background(Color(uiColor: .systemBackground))
-        .presentationDetents([.height(threadSheetContentHeight), .large], selection: $threadSheetDetent)
+        .presentationDetents([.height(threadSheetContentHeight)])
         .presentationContentInteraction(.scrolls)
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(24)
         .accessibilityIdentifier("thread-message-actions-sheet")
         .accessibilityLabel("Actions for message from \(message.authorName)")
         .accessibilityAction(.escape) { performAction(onDismiss) }
+        #if DEBUG
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--preview-expanded-reactions") {
+                showsAllReactions = true
+            }
+        }
+        #endif
+    }
+
+    private var initialThreadReactionCategory: EmojiPickerCategory {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview-recent-reactions") { return .recent }
+        #endif
+        return .noto
     }
 
     private var cannotForwardOrPin: Bool {
@@ -556,7 +565,6 @@ struct MessageActionOverlay: View {
             }
             Button {
                 showsAllReactions.toggle()
-                threadSheetDetent = showsAllReactions ? .large : .height(threadSheetContentHeight)
             } label: {
                 Image(systemName: showsAllReactions ? "chevron.up" : "face.smiling")
                     .font(.title3)

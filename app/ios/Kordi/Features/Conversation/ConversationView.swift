@@ -1158,7 +1158,7 @@ struct ConversationView: View {
                 if conversation.subsessionId == nil { await model.refreshActiveCall(in: conversation) }
             }
         }
-        return conversationTimeline
+        let conversationLifecycle = conversationTimeline
         .onGeometryChange(for: CGFloat.self) { geometry in
             geometry.size.width
         } action: { width in
@@ -1310,6 +1310,7 @@ struct ConversationView: View {
             fullScreenVideoAttachmentID = nil
             synchronizeReadPresentation()
         }
+        let conversationPresentations = conversationLifecycle
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: [.item],
@@ -1400,6 +1401,7 @@ struct ConversationView: View {
                 )
             )
         }
+        return conversationPresentations
         .alert(
             "Message action failed",
             isPresented: messageMutationErrorPresented
@@ -1411,7 +1413,7 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
-        .alert("Could not open discussion", isPresented: Binding(get: { threadNavigationError != nil }, set: { if !$0 { threadNavigationError = nil } })) {
+        .alert("Could not open discussion", isPresented: Binding<Bool>(get: { threadNavigationError != nil }, set: { if !$0 { threadNavigationError = nil } })) {
             Button("Retry") {
                 if let root = scopedThreadRootMessageID, let sequence = threadPageRetrySequence {
                     Task { await loadMoreThreadReplies(root: root, after: sequence) }
