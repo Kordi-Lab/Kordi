@@ -173,7 +173,7 @@ export function MainComposer({
   }
 
   return (
-    <div className="shrink-0 px-5 pb-4 pt-3">
+    <div className="app-chat-composer-frame shrink-0 px-5 pb-4 pt-3">
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <MessageSelectionBar
           count={selectedMessageCount}
@@ -206,7 +206,8 @@ export function MainComposer({
           <div
             className={cn(
               'app-composer-input rounded-[18px] transition',
-              !editingMessage && chatComposerAttachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
+              'px-4',
+              !editingMessage && chatComposerAttachments.length > 0 ? 'pb-1.5 pt-1' : 'py-2.5',
             )}
           >
             <input
