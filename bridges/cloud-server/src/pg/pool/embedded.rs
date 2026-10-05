@@ -4,16 +4,8 @@ use super::migration_entry::migration;
 use super::EmbeddedMigration;
 
 pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
-    EmbeddedMigration {
-        version: 1,
-        description: "initial cloud schema",
-        sql: include_str!("../../../migrations/0001_initial.sql"),
-    },
-    EmbeddedMigration {
-        version: 2,
-        description: "cloud_attachments table",
-        sql: include_str!("../../../migrations/0002_attachments.sql"),
-    },
+    migration!(1, "initial cloud schema", "0001_initial.sql"),
+    migration!(2, "cloud_attachments table", "0002_attachments.sql"),
     EmbeddedMigration {
         version: 3,
         description: "cloud_contact_requests + approval flow",
@@ -471,11 +463,11 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth payload version",
         sql: include_str!("../../../migrations/0104_provider_auth_payload_version.sql"),
     },
-    EmbeddedMigration {
-        version: 105,
-        description: "provider auth snapshot readiness",
-        sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
-    },
+    migration!(
+        105,
+        "provider auth snapshot readiness",
+        "0105_provider_auth_snapshot_readiness.sql"
+    ),
     migration!(
         106,
         "private OMP runtime replay state",
@@ -489,4 +481,14 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(108, "session pin stacks", "0108_session_pin_stacks.sql"),
     migration!(109, "group avatars", "0109_group_avatars.sql"),
     migration!(110, "signup email codes", "0110_signup_email_codes.sql"),
+    migration!(
+        111,
+        "account email verification",
+        "0111_account_email_verification.sql"
+    ),
+    migration!(
+        112,
+        "session-bound realtime tickets",
+        "0112_realtime_ticket_sessions.sql"
+    ),
 ];

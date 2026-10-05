@@ -195,6 +195,31 @@ pub async fn device_is_active(
     Ok(row.is_some())
 }
 
+/// Check that a long-lived connection authenticated by the session
+/// `token_id` may continue: the session is neither signed out nor expired
+/// and its device authorization is still active.
+pub async fn session_is_active(
+    pool: &PgPool,
+    account_id: &str,
+    device_id: &str,
+    token_id: &str,
+) -> Result<bool, SessionError> {
+    let row: Option<(i32,)> = query_as(
+        "SELECT 1 FROM cloud_refresh_tokens token \
+         JOIN cloud_devices device ON device.device_id = token.device_id \
+         WHERE token.token_id = $1 AND token.account_id = $2 AND token.device_id = $3 \
+           AND token.revoked_at IS NULL AND token.expires_at > $4 \
+           AND device.account_id = token.account_id AND device.revoked_at IS NULL",
+    )
+    .bind(token_id)
+    .bind(account_id)
+    .bind(device_id)
+    .bind(Utc::now().to_rfc3339())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.is_some())
+}
+
 /// Refresh non-sensitive activity metadata at most once per minute.
 pub async fn touch_device_activity(
     pool: &PgPool,
@@ -222,3 +247,6 @@ fn parse_rfc3339(value: String) -> DateTime<Utc> {
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|_| Utc::now())
 }
+
+#[cfg(test)]
+mod tests;

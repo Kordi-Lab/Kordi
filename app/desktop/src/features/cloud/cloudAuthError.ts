@@ -17,6 +17,7 @@ export type CloudAuthErrorCode =
   | 'provider_auth_not_configured'
   | 'provider_auth_snapshot_not_found'
   | 'oauth_not_configured'
+  | 'oauth_email_requires_sign_in'
   | 'requester_mismatch'
   | 'agent_not_available'
   | 'owner_online'
@@ -71,7 +72,8 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'invalid_avatar', 'invalid_avatar_seed', 'invalid_avatar_version', 'avatar_conflict',
   'invalid_session', 'invalid_session_id',
   'invalid_attachment', 'invalid_provider_auth_snapshot', 'provider_auth_not_configured',
-  'provider_auth_snapshot_not_found', 'oauth_not_configured', 'requester_mismatch',
+  'provider_auth_snapshot_not_found', 'oauth_not_configured', 'oauth_email_requires_sign_in',
+  'requester_mismatch',
   'agent_not_available', 'owner_online', 'rate_limited', 'account_missing',
   'invalid_account_id', 'invalid_pubkey', 'self_contact', 'invalid_group_invitation',
   'group_invitation_expired', 'group_invitation_full', 'group_invitation_permission_denied',
@@ -81,6 +83,11 @@ const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
 
 function isErrorCode(value: unknown): value is CloudAuthErrorCode {
   return typeof value === 'string' && SERVER_ERROR_CODES.has(value as CloudAuthErrorCode);
+}
+
+/** Converts an error returned through the OAuth callback fragment. */
+export function cloudOAuthCallbackError(code: string | null, message: string): CloudAuthError {
+  return new CloudAuthError(isErrorCode(code) ? code : 'unknown', message, 0);
 }
 
 export function buildCloudAuthError(

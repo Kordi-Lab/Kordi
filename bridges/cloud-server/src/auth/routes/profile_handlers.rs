@@ -319,6 +319,7 @@ pub(super) async fn get_profile(
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(session): Extension<CloudSession>,
     connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
     axum::extract::Path(account_id): axum::extract::Path<String>,
 ) -> Response {
     let target = account_id.trim().to_string();
@@ -331,7 +332,7 @@ pub(super) async fn get_profile(
     }
 
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
-        .observe_ip(ip_from_extension(connect_info.as_ref()))
+        .observe_ip(client_ip(&headers, connect_info.as_ref()))
         .await
     {
         return limited_response(retry_after);

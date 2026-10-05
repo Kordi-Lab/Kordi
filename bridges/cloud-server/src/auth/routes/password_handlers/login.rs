@@ -1,12 +1,15 @@
+//! Email and password sign-in.
+
 use super::*;
 
 pub(in crate::auth::routes) async fn login(
     State(state): State<Arc<ServerState>>,
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Response {
-    let peer_ip = ip_from_extension(connect_info.as_ref());
+    let peer_ip = client_ip(&headers, connect_info.as_ref());
     if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
         return limited_response(retry_after);
     }
@@ -16,8 +19,9 @@ pub(in crate::auth::routes) async fn login(
         Err(err_value) => return map_email_format(err_value),
     };
 
-    if let RateLimitDecision::Limited { retry_after } =
-        rate_limiter.check_email_lockout(&normalized_email).await
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .check_email_lockout(&normalized_email, peer_ip)
+        .await
     {
         return limited_response(retry_after);
     }
@@ -43,7 +47,9 @@ pub(in crate::auth::routes) async fn login(
     };
 
     let Some((account_id, password_hash)) = row else {
-        rate_limiter.record_email_failure(&normalized_email).await;
+        rate_limiter
+            .record_email_failure(&normalized_email, peer_ip)
+            .await;
         return err(
             "invalid_credentials",
             "Email or password is incorrect.",
@@ -51,7 +57,9 @@ pub(in crate::auth::routes) async fn login(
         );
     };
     let Some(password_hash) = password_hash else {
-        rate_limiter.record_email_failure(&normalized_email).await;
+        rate_limiter
+            .record_email_failure(&normalized_email, peer_ip)
+            .await;
         return err(
             "invalid_credentials",
             "Email or password is incorrect.",
@@ -76,7 +84,9 @@ pub(in crate::auth::routes) async fn login(
         }
     };
     if !verified {
-        rate_limiter.record_email_failure(&normalized_email).await;
+        rate_limiter
+            .record_email_failure(&normalized_email, peer_ip)
+            .await;
         let _ = write_audit(
             pool,
             Some(&account_id),
@@ -91,7 +101,9 @@ pub(in crate::auth::routes) async fn login(
             StatusCode::UNAUTHORIZED,
         );
     }
-    rate_limiter.clear_email_failures(&normalized_email).await;
+    rate_limiter
+        .record_login_success(&normalized_email, peer_ip)
+        .await;
 
     let registration = match req.device.clone() {
         Some(device) => match normalize_device_registration(device) {

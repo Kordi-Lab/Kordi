@@ -44,6 +44,7 @@ fn test_router(state: Arc<ServerState>) -> axum::Router {
         per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
+        per_email_global_failure_limit: 50,
     });
     router_with_rate_limiter(state, limiter)
 }
@@ -410,6 +411,8 @@ mod sandboxes;
 mod scheduled_runs;
 #[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]
 mod shared_desktop_lease;
+#[path = "cloud_agent_runtime_e2e/subsession_budgets.rs"]
+mod subsession_budgets;
 #[path = "cloud_agent_runtime_e2e/subsession_follow.rs"]
 mod subsession_follow;
 #[path = "cloud_agent_runtime_e2e/subsession_stop.rs"]

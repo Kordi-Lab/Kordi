@@ -138,6 +138,9 @@ services:
       KORDI_AUTH_SMTP_PASSWORD: ${KORDI_AUTH_SMTP_PASSWORD:-}
       KORDI_AUTH_SMTP_FROM: ${KORDI_AUTH_SMTP_FROM:-}
       KORDI_AUTH_EMAIL_CODE_SECRET: ${KORDI_AUTH_EMAIL_CODE_SECRET:-}
+      # No reverse proxy fronts the development API, so forwarded client
+      # addresses are ignored. Override only when testing behind a local proxy.
+      KORDI_CLOUD_TRUSTED_PROXIES: ${KORDI_DEBUG_TRUSTED_PROXIES:-127.0.0.1/32,::1/128}
       KORDI_SUPPORT_ENABLED: "false"
       KORDI_PIP_ENABLED: ${KORDI_PIP_ENABLED:-false}
       KORDI_PIP_OPENAI_API_KEY: ${KORDI_PIP_OPENAI_API_KEY:-}

@@ -9,9 +9,10 @@ pub(super) async fn signup(
     Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Extension(hasher_config): Extension<Arc<PasswordHasherConfig>>,
     connect_info: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
     Json(req): Json<SignupRequest>,
 ) -> Response {
-    let peer_ip = ip_from_extension(connect_info.as_ref());
+    let peer_ip = client_ip(&headers, connect_info.as_ref());
     if let RateLimitDecision::Limited { retry_after } = rate_limiter.observe_ip(peer_ip).await {
         return limited_response(retry_after);
     }
@@ -269,6 +270,9 @@ pub(super) async fn signup(
     }
 
     apply_deferred_signup_avatar(&state, &account_id, &avatar, &now, deferred_avatar_bytes).await;
+    rate_limiter
+        .record_login_success(&normalized_email, peer_ip)
+        .await;
 
     // Fire-and-forget event publish. We don't want NATS hiccups to slow
     // down or fail signup; the bus is a no-op when NATS isn't wired.

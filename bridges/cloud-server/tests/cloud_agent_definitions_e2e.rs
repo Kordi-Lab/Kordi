@@ -27,6 +27,7 @@ fn test_router(pool: sqlx_postgres::PgPool) -> axum::Router {
         per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
+        per_email_global_failure_limit: 50,
     });
     router_with_rate_limiter(Arc::new(signup_email_fixture::state(pool)), limiter)
 }

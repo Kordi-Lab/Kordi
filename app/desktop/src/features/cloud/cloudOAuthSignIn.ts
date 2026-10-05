@@ -12,6 +12,8 @@ import {
   type CloudAuthResult,
   type CloudOAuthProvider,
 } from './authClient';
+import { cloudOAuthCallbackError } from './cloudAuthError';
+import { parseCloudOAuthHashError } from './cloudOAuthResult';
 import {
   throwIfCloudOAuthCancelled,
   waitForCloudOAuthOrCancellation,
@@ -40,6 +42,10 @@ export async function startCloudOAuthSignIn(
       throwIfCloudOAuthCancelled(signal);
       const oauthResult = parseCloudOAuthHashResult(fragment);
       if (!oauthResult) {
+        const callbackError = parseCloudOAuthHashError(fragment);
+        if (callbackError) {
+          throw cloudOAuthCallbackError(callbackError.code, callbackError.message);
+        }
         throw new CloudAuthError('unknown', 'OAuth sign-in did not return a valid Kordi session.', 0);
       }
       return oauthResult;

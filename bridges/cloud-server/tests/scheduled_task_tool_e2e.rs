@@ -23,6 +23,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use tower::util::ServiceExt;
 
+#[path = "scheduled_task_tool_e2e/budgets.rs"]
+mod budgets;
+
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
     Some(init_pool(&url).await.unwrap_or_else(|_| {
