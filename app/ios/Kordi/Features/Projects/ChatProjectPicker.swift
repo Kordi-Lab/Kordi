@@ -82,27 +82,3 @@ struct ChatProjectPicker: View {
         }
     }
 }
-
-struct ChatProjectComposerControl: View {
-    @EnvironmentObject private var model: AppModel
-    let conversation: ConversationSummary
-    @State private var presented = false
-
-    var body: some View {
-        if model.canChooseProject(conversation) {
-            Button { presented = true } label: {
-                Label(model.project(for: conversation.sessionId)?.name ?? "Choose project", systemImage: "folder")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(conversation.agentActivity == .replying)
-            .accessibilityHint("Choose the workspace on your Mac for this session")
-            .sheet(isPresented: $presented) { ChatProjectPicker(conversation: conversation) }
-        }
-    }
-}

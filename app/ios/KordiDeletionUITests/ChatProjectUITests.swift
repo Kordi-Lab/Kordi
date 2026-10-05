@@ -10,22 +10,24 @@ final class ChatProjectUITests: XCTestCase {
         app.launch()
         let session = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Plan the mobile release,")).firstMatch
         XCTAssertTrue(session.waitForExistence(timeout: 10))
-        session.tap()
-        let project = app.buttons["kordi"].firstMatch
-        XCTAssertTrue(project.waitForExistence(timeout: 10))
-        project.tap()
+        session.press(forDuration: 0.5)
+        let moveToProject = app.buttons["Move to project"]
+        XCTAssertTrue(moveToProject.waitForExistence(timeout: 5))
+        moveToProject.tap()
         XCTAssertTrue(app.navigationBars["Choose project"].waitForExistence(timeout: 5))
         let pickerCapture = XCTAttachment(screenshot: app.screenshot())
-        pickerCapture.name = "Projects available below the composer"
+        pickerCapture.name = "Projects available from the session menu"
         pickerCapture.lifetime = .keepAlways
         add(pickerCapture)
         app.buttons["website"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["website"].firstMatch.waitForExistence(timeout: 5))
-        app.buttons["website"].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Choose project"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(session.waitForExistence(timeout: 5))
+        session.press(forDuration: 0.5)
+        XCTAssertTrue(moveToProject.waitForExistence(timeout: 5))
+        moveToProject.tap()
         XCTAssertTrue(app.buttons["No project"].waitForExistence(timeout: 5))
         app.buttons["No project"].tap()
-        XCTAssertTrue(app.buttons["Choose project"].waitForExistence(timeout: 5))
-        app.navigationBars.buttons.firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["Choose project"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Recents"].waitForExistence(timeout: 5))
         XCTAssertTrue(session.waitForExistence(timeout: 5))
         app.buttons["Recents"].tap()
