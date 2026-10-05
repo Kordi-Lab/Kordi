@@ -29,10 +29,20 @@ pub enum CloudModelEngine {
     Omp,
 }
 
-pub fn cloud_model_engine_from_env() -> CloudModelEngine {
-    match std::env::var("KORDI_CLOUD_AGENT_ENGINE") {
-        Ok(value) if value.trim().eq_ignore_ascii_case("omp") => CloudModelEngine::Omp,
-        _ => CloudModelEngine::Rust,
+pub fn cloud_model_engine_from_env() -> Result<CloudModelEngine, crate::model_loop::ModelLoopError>
+{
+    cloud_model_engine_from_setting(&std::env::var("KORDI_CLOUD_AGENT_ENGINE").unwrap_or_default())
+}
+
+fn cloud_model_engine_from_setting(
+    value: &str,
+) -> Result<CloudModelEngine, crate::model_loop::ModelLoopError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "" | "omp" => Ok(CloudModelEngine::Omp),
+        "rust" => Ok(CloudModelEngine::Rust),
+        _ => Err(crate::model_loop::ModelLoopError::Provider(
+            "Invalid cloud agent engine setting; expected omp or rust".into(),
+        )),
     }
 }
 
@@ -139,6 +149,21 @@ where
     C: CloudAgentRunClient + Sync,
     P: CloudModelProvider + Sync,
 {
+    let engine = cloud_model_engine_from_env()
+        .map_err(|error| RunnerClientError::Request(error.to_string()))?;
+    process_one_run_with_engine(client, provider, sandbox_root, engine).await
+}
+
+async fn process_one_run_with_engine<C, P>(
+    client: &C,
+    provider: &P,
+    sandbox_root: PathBuf,
+    engine: CloudModelEngine,
+) -> Result<RunnerStepOutcome, RunnerClientError>
+where
+    C: CloudAgentRunClient + Sync,
+    P: CloudModelProvider + Sync,
+{
     let Some(run) = client.lease_next_run().await? else {
         return Ok(RunnerStepOutcome::NoRun);
     };
@@ -169,8 +194,10 @@ where
         let response = {
             let generation = async {
                 match client.fetch_provider_auth(&run.run_id).await {
-                    Ok(material) => crate::pip::run(client, provider, &run, material)
-                        .await
+                    Ok(material) => match engine {
+                        CloudModelEngine::Omp => crate::pip::run_omp(client, &run, material).await,
+                        CloudModelEngine::Rust => crate::pip::run_legacy(client, provider, &run, material).await,
+                    }
                         .map_err(|error| {
                             tracing::warn!(run_id = %run.run_id, error = %error, "pip sweep run failed");
                         }),
@@ -212,9 +239,13 @@ where
         let response = {
             let generation = async {
                 match client.fetch_provider_auth(&run.run_id).await {
-                    Ok(material) => crate::digest::run(provider, &run, material)
-                        .await
-                        .map_err(|error| crate::digest::failure_reason(&error.to_string())),
+                    Ok(material) => match engine {
+                        CloudModelEngine::Omp => crate::digest::run_omp(&run, material).await,
+                        CloudModelEngine::Rust => {
+                            crate::digest::run_legacy(provider, &run, material).await
+                        }
+                    }
+                    .map_err(|error| crate::digest::failure_reason(&error.to_string())),
                     Err(error) => Err(crate::digest::DigestFailure {
                         code: "provider_unavailable",
                         detail: crate::digest::redact(&error.to_string()),
@@ -302,7 +333,7 @@ where
     }
     let result = {
         let generation = async {
-            match cloud_model_engine_from_env() {
+            match engine {
                 CloudModelEngine::Rust => {
                     run_model_loop(client, provider, &run, &sandbox, auth_material)
                         .await

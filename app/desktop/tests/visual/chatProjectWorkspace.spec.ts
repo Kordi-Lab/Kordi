@@ -3,6 +3,35 @@ import { expect, test } from '@playwright/test';
 const preview = '/tests/visual/chatProjectWorkspace.html';
 const introductoryMessage = 'Keep project selection in the chat. I want to organize agent sessions by project and open projects from GitHub or a local folder.';
 
+for (const theme of ['light', 'dark']) {
+  test(`New row and project plus create sessions with the right project (${theme})`, async ({ page }, testInfo) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { value: 'MacIntel' }));
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await page.goto(`${preview}?theme=${theme}`);
+    const newSession = page.getByRole('button', { name: 'New session', exact: true }).and(page.locator('.chat-sidebar-new-session'));
+    await expect(newSession).toHaveText('New⌘ N');
+    await expect(newSession).toHaveAttribute('aria-keyshortcuts', 'Meta+N');
+    const folder = page.locator('.chat-project-group').filter({ hasText: 'website' });
+    await folder.click();
+    await expect(folder).toHaveAttribute('aria-expanded', 'false');
+    await page.getByRole('button', { name: 'New session in website', exact: true }).click();
+    await expect(folder).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('button', { name: 'Project: website', exact: true })).toBeVisible();
+    await expect(page.locator('[data-chat-sidebar-row^="project:website:"] .app-session-row-title').filter({ hasText: 'New session' })).toBeVisible();
+    await page.setViewportSize({ width: 760, height: 640 });
+    await expect(newSession).toBeVisible();
+    const bounds = await newSession.boundingBox();
+    expect(bounds!.width).toBeGreaterThan(190);
+    await page.screenshot({ path: testInfo.outputPath(`project-session-create-${theme}.png`) });
+    await newSession.click();
+    await expect(page.getByText('Chat with agent', { exact: true })).toBeVisible();
+    await page.locator('.app-chat-create-close').click();
+    await expect(page.getByText('Chat with agent', { exact: true })).toBeHidden();
+    await page.keyboard.press('Meta+n');
+    await expect(page.getByText('Chat with agent', { exact: true })).toBeVisible();
+  });
+}
+
 test('Chat reopens an existing conversation and retains the original New chat and Switch Chat menu', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

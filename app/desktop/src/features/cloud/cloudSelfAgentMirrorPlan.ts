@@ -69,6 +69,7 @@ export function resolveCloudSelfAgentMirror({
   stableCanonicalMessageId,
   existingCanonicalMessageIndex,
   localUserMessageByClientMessageId,
+  expectedParentMessageId,
 }: {
   message: CloudMessage;
   sessionId: string;
@@ -78,6 +79,7 @@ export function resolveCloudSelfAgentMirror({
   stableCanonicalMessageId: string;
   existingCanonicalMessageIndex: CloudSelfAgentCanonicalMessageIndex;
   localUserMessageByClientMessageId: ReadonlyMap<string, CanonicalSessionMessage>;
+  expectedParentMessageId?: string | null;
 }): {
   existingMatch: CanonicalSessionMessage | null;
   reconciliation: CloudSelfAgentMirrorReconciliation | null;
@@ -106,6 +108,8 @@ export function resolveCloudSelfAgentMirror({
           : deterministicClientMatch.senderRole.includes('agent')
     )
     && cleanText(deterministicClientMatch.contentText) === text
+    && (role !== 'agent' || !expectedParentMessageId
+      || deterministicClientMatch.parentMessageId === expectedParentMessageId)
     ? deterministicClientMatch
     : null;
   const reconciliation = exactLocalMatch

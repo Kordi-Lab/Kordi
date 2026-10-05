@@ -247,6 +247,7 @@ export type KordiShellCompositionArgs = {
     | 'composerAuthLabelChat'
     | 'composerAuthOptionsProject'
     | 'composerAuthOptionsChat'
+    | 'resolveChatRuntimeRoute'
     | 'selectComposerAuthChoice'
     | 'selectComposerProviderChoice'
     | 'composerProviderOptions'

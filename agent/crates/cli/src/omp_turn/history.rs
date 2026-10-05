@@ -1,6 +1,6 @@
 use super::*;
 
-pub(super) const RAW_OMP_MESSAGE: &str = "omp_message";
+pub(crate) const RAW_OMP_MESSAGE: &str = "omp_message";
 
 pub(super) type PreparedHistory = (
     Vec<serde_json::Value>,
@@ -309,6 +309,7 @@ pub(super) fn build_request(
         message_entry_ids: Some(message_entry_ids),
         prompt: Prompt {
             text: prompt_text,
+            resume: false,
             entry_id: Some(prompt_entry_id),
             images: prompt_images,
             trailing_messages,

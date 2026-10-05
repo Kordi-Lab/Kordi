@@ -3,9 +3,11 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+mod agent_runtime;
 mod agents_md;
 mod compaction_exec;
 mod extensions;
+mod omp_turn;
 
 mod input_files;
 mod live_models;

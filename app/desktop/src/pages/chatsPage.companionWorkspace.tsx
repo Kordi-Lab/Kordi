@@ -128,6 +128,8 @@ export function ChatCompanionWorkspace({
     fallbackMode: runtime.composerSelection.mode,
     modelOptions: runtime.chatModelOptions ?? [],
     authOptions: runtime.composerAuthOptions,
+    providerOptions: runtime.composerProviderOptions,
+    runtimeRoute: runtime.resolveChatRuntimeRoute?.(localConfigTargetSessionId),
   });
   if (!conversation) return null;
 
@@ -384,7 +386,7 @@ export function ChatCompanionWorkspace({
           isNativeShell={shell.isNativeShell}
           attachmentInputRef={session.refs.attachmentInput}
           composer={companionComposer}
-          runtime={runtime}
+          runtime={{ ...runtime, composerProviderOptions: localRuntime.providerOptions }}
           localRouting={{
             enabled: presentation.showsLocalAgentControls,
             selection: localRuntime.selection,

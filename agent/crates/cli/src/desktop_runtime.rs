@@ -21,7 +21,6 @@ mod hosted_auth;
 mod identity;
 mod model_options;
 mod models;
-mod omp_turn;
 mod prompt_context;
 mod shared_context;
 #[cfg(test)]

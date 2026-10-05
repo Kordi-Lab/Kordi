@@ -101,11 +101,22 @@ pub(super) fn preserve_raw_context_messages(
 }
 
 pub(super) fn worker_command() -> Result<WorkerCommand> {
+    if let Some(path) = std::env::var_os("KORDI_OMP_WORKER_ENTRY").filter(|path| !path.is_empty()) {
+        let path = PathBuf::from(path);
+        if !path.is_absolute() || !path.is_file() {
+            bail!("OMP worker entry must name an existing absolute executable");
+        }
+        return Ok(WorkerCommand::sidecar(path));
+    }
     let sibling = std::env::current_exe()
-        .context("Cannot locate the desktop executable")?
+        .context("Cannot locate the Kordi executable")?
         .parent()
-        .context("Desktop executable has no directory")?
-        .join("kordi-omp");
+        .context("Kordi executable has no directory")?
+        .join(if cfg!(windows) {
+            "kordi-omp.exe"
+        } else {
+            "kordi-omp"
+        });
     if sibling.is_file() {
         return Ok(WorkerCommand::sidecar(sibling));
     }

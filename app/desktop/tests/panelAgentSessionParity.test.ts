@@ -427,7 +427,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.notEqual(targetedStart, -1, 'targeted side-panel send path should exist');
   assert.notEqual(activeStart, -1, 'active send path should exist after targeted send path');
   const targetedSendBlock = actionsSource.slice(targetedStart, activeStart);
-  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, attachments, contextMessages, activeChatQuote\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
+  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetRuntimeSessionId, text, attachments, contextMessages, activeChatQuote\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
   assert.match(targetedSendBlock, /if \(delayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'side-panel duplicate sends should wait for the in-flight session without promoting normal preparation to an error');
   assert.doesNotMatch(targetedSendBlock, /Kordi is still preparing this session/, 'normal session preparation should not render through the sidebar-wide error channel');
   assert.match(actionsSource, /message\.runtimeRoute \?\? resolveChatRuntimeRoute\(message\.sessionId\)[\s\S]*message\.contextMessages \?\? \[\]/, 'flushing queued side messages should preserve the selected runtime route and reference context');
@@ -473,7 +473,7 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
   const materializeIndex = sharedSendBlock.indexOf('await materializeTarget()');
   const sendIndex = sharedSendBlock.indexOf('await startLocalAgentTurn(');
 
-  assert.match(targetedSendBlock, /materializeTarget: \(\) => materializeLocalChatTarget\(targetConversation\.id\)/, 'an inactive side Agent session should supply its runtime materializer');
+  assert.match(targetedSendBlock, /materializeTarget: \(\) => materializeLocalChatTarget\(targetRuntimeSessionId\)/, 'an inactive side Agent session should supply its runtime materializer');
   assert.notEqual(materializeIndex, -1, 'the shared send should await runtime transcript materialization');
   assert.notEqual(sendIndex, -1, 'the shared send should start the live turn');
   assert.match(turnDispatchSource, /export async function startLocalAgentTurn[\s\S]*?await startDesktopChatMessage\(/, 'the turn helper starts the runtime turn');
@@ -483,7 +483,7 @@ test('side-panel local-agent sends materialize an unhydrated runtime transcript 
   assert.match(materializerBlock, /await fetchMaterializedLocalChatTarget\(sessionId, desktopChatState\)/, 'the action should use the shared target materializer');
   assert.match(targetSource, /await fetchDesktopChatState\(sessionId\)/, 'materialization should fetch the complete target runtime transcript');
   assert.match(targetSource, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/, 'materialization should fail closed if the runtime returns another session');
-  assert.match(materializerBlock, /setDesktopChatState\(materializedState\)/, 'the panel should render from the hydrated runtime state during the turn');
+  assert.match(materializerBlock, /mergeBackgroundDesktopChatState\(current, materializedState\)/, 'side-session materialization must preserve the main session selection');
   assert.match(queuedSendBlock, /if \(routeRunsOnKordiCloud\(route\)\) \{[\s\S]*?await startLocalAgentTurn\(/,
     'a queued hosted request must enter the shared hosted dispatch boundary before any native local turn');
 });

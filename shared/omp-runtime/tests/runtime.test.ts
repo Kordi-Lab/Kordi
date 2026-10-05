@@ -46,6 +46,7 @@ test('real OMP loop uses the exact route and emits progress before final text', 
   expect(events.some(e => e.kind === 'text_delta')).toBe(true);
   expect(requests[0].model).toBe('fixture-model');
   expect(requests[0].tools ?? []).toHaveLength(0);
+  expect(events.filter(event => event.kind === 'message_end').map(event => event.message.role)).toEqual(['user', 'assistant']);
 }, 20000);
 
 test.each(['fixture_tool', 'read', 'bash', 'edit'])('host tool %s preserves invocation ID and overrides builtins', async (toolName) => {
@@ -217,4 +218,24 @@ test('BeforeAgentStart custom context stays after the current prompt on every st
     expect(wire.match(/Current plugin context/g)).toHaveLength(1);
   }
   expect(JSON.stringify(result.messages)).not.toContain('Current plugin context');
+}, 20000);
+
+
+test('explicit provider continuation preserves completed tools without adding a user request', async () => {
+  const { request, requests } = await fixture(body => {
+    expect(body.messages.filter((message: any) => message.role === 'user')).toHaveLength(1);
+    expect(body.messages.some((message: any) => message.role === 'tool' && message.content.includes('already applied'))).toBe(true);
+    return textChunks('Continuation complete.');
+  });
+  request.messages = [
+    {role:'user',content:[{type:'text',text:'Apply once.'}],timestamp:1},
+    {role:'assistant',content:[{type:'toolCall',id:'applied',name:'fixture_tool',arguments:{}}],stop_reason:'toolUse',timestamp:2},
+    {role:'toolResult',tool_call_id:'applied',tool_name:'fixture_tool',content:[{type:'text',text:'already applied'}],is_error:false,timestamp:3},
+  ];
+  request.prompt = {text:'',resume:true};
+  request.tools = [{name:'fixture_tool',description:'Apply once',inputSchema:{type:'object'}}];
+  const result = await runTurn(request, {event:()=>{},tool:async()=>{throw Error('completed action replayed');}}, new AbortController().signal);
+  expect(result.text).toBe('Continuation complete.');
+  expect(requests).toHaveLength(1);
+  expect(result.contextMessages.filter(message=>message.role==='user')).toHaveLength(1);
 }, 20000);

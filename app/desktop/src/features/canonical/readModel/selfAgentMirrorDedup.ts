@@ -56,6 +56,9 @@ function selfAgentMirrorMessageRelationKey(
   if (!parentReference) return '';
   const parent = messageById.get(parentReference) ?? messageBySourceEventId.get(parentReference);
   if (!parent) return `reference:${parentReference}`;
+  const requestWireId = parent.senderRole === 'user'
+    ? stringValue(contentRecord(parent.content).desktopEntryId)?.trim() : null;
+  if (requestWireId) return `reference:${requestWireId}`;
   return [
     selfAgentLogicalSenderKey(
       parent,
@@ -219,6 +222,11 @@ export function selfAgentMirrorDuplicateIds(
       );
       return relation ? [relation] : [];
     }));
+    const matchesKnownRequest = (local: CanonicalSessionMessage, cloud: CanonicalSessionMessage) => {
+      const localRelation = selfAgentMirrorMessageRelationKey(local, messageById, messageBySourceEventId, identityById, profileHumanIdentityId, true);
+      const cloudRelation = selfAgentMirrorMessageRelationKey(cloud, messageById, messageBySourceEventId, identityById, profileHumanIdentityId, true);
+      return !localRelation.startsWith('reference:') || !cloudRelation.startsWith('reference:') || localRelation === cloudRelation;
+    };
     const cancellationKey = (message: CanonicalSessionMessage) => {
       const relation = selfAgentMirrorMessageRelationKey(
         message, messageById, messageBySourceEventId, identityById, profileHumanIdentityId, true,
@@ -281,6 +289,7 @@ export function selfAgentMirrorDuplicateIds(
             true,
           ) === sender
           && Math.abs(candidate.createdAtMs - message.createdAtMs) <= legacyMirrorWindowMs
+          && matchesKnownRequest(candidate, message)
         ));
         if (localTerminal) duplicateIds.add(message.id);
         continue;
@@ -304,8 +313,29 @@ export function selfAgentMirrorDuplicateIds(
           true,
         ) === sender
         && Math.abs(candidate.createdAtMs - message.createdAtMs) <= legacyMirrorWindowMs
+        && matchesKnownRequest(candidate, message)
       ));
       if (localMirror) duplicateIds.add(message.id);
+    }
+    const completedCloudRepliesByRequest = new Map<string, CanonicalSessionMessage[]>();
+    for (const message of messages) {
+      if (message.sourceTransport !== 'cloud-self-agent' || message.senderRole !== 'owned-agent'
+        || message.status !== 'complete' || !message.contentText.trim()) continue;
+      const requestId = stringValue(contentRecord(message.content).cloudRequestMessageId)?.trim();
+      if (requestId) pushMapArray(completedCloudRepliesByRequest, `${message.sessionId}:${requestId}`, message);
+    }
+    for (const message of messages) {
+      if (message.sourceTransport !== 'desktop-chat' || !isTerminalOwnedAgentMessage(message)) continue;
+      const parent = messageById.get(message.parentMessageId ?? '');
+      const wireId = parent?.senderRole === 'user'
+        ? stringValue(contentRecord(parent.content).desktopEntryId)?.trim() : null;
+      const publishedReplies = wireId ? completedCloudRepliesByRequest.get(`${message.sessionId}:${wireId}`) : null;
+      if (!publishedReplies?.length) continue;
+      const preferred = publishedReplies.find((reply) => !duplicateIds.has(reply.id)) ?? publishedReplies[0];
+      // An exact leased request alias makes the published reply authoritative.
+      // Keep it visible even when legacy text matching preferred its raw echo.
+      duplicateIds.delete(preferred.id);
+      duplicateIds.add(message.id);
     }
   }
   return duplicateIds;

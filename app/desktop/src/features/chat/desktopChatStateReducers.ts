@@ -8,6 +8,12 @@ import type {
 
 export const MAX_CACHED_DESKTOP_SESSION_TRANSCRIPTS = 8;
 
+/** A send or completed turn may update a side session without selecting it. */
+export function mergeBackgroundDesktopChatState(current: DesktopChatState | null, nextState: DesktopChatState) {
+  if (!current || current.activeSessionId === nextState.activeSessionId) return mergeLatestDesktopChatState(current, nextState, false);
+  return { ...current, sessions: mergeSessionSummaries(current.sessions, nextState.sessions), projects: mergeProjectGroups(current.projects, nextState.projects) };
+}
+
 export function recentDesktopSessionIds(
   current: readonly string[],
   sessionId: string,

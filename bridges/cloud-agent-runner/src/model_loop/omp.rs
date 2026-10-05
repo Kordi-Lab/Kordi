@@ -113,6 +113,7 @@ async fn run_omp_with_config<C: CloudAgentRunClient + Sync>(
         message_entry_ids: None,
         prompt: Prompt {
             text: prompt,
+            resume: false,
             entry_id: None,
             images: Vec::new(),
             trailing_messages: Vec::new(),
@@ -191,7 +192,7 @@ fn output_is_replayable(messages: &[Value]) -> bool {
         })
 }
 
-fn api_for_provider(auth: &OpenAiProviderConfig) -> &'static str {
+pub(crate) fn api_for_provider(auth: &OpenAiProviderConfig) -> &'static str {
     match auth.api_mode {
         OpenAiApiMode::CodexOAuth => "openai-codex-responses",
         OpenAiApiMode::AnthropicOAuth => "anthropic-messages",
@@ -201,7 +202,7 @@ fn api_for_provider(auth: &OpenAiProviderConfig) -> &'static str {
     }
 }
 
-fn omp_provider(auth: &OpenAiProviderConfig) -> &str {
+pub(crate) fn omp_provider(auth: &OpenAiProviderConfig) -> &str {
     if auth.api_mode == OpenAiApiMode::CodexOAuth {
         "openai-codex"
     } else {

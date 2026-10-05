@@ -6,19 +6,6 @@ use super::*;
 use kordi_core::types::UserMessage;
 
 #[test]
-fn only_explicit_omp_selection_changes_the_default_engine() {
-    assert_eq!(DesktopTurnEngine::from_setting(""), DesktopTurnEngine::Rust);
-    assert_eq!(
-        DesktopTurnEngine::from_setting("unknown"),
-        DesktopTurnEngine::Rust
-    );
-    assert_eq!(
-        DesktopTurnEngine::from_setting(" OMP "),
-        DesktopTurnEngine::Omp
-    );
-}
-
-#[test]
 fn chatgpt_oauth_uses_selected_codex_transport_and_account() -> Result<()> {
     let mut headers = std::collections::HashMap::new();
     headers.insert("ChatGPT-Account-ID".into(), "stale-account".into());

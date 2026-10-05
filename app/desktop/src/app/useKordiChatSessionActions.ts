@@ -106,6 +106,7 @@ export function useKordiChatSessionActions({
 }: UseKordiChatSessionActionsArgs) {
   const desktopActiveSessionId = desktopState?.activeSessionId;
   const desktopSessions = desktopState?.sessions;
+  const desktopProjects = desktopState?.projects;
 
   const optimisticallyRemoveSession = useCallback((sessionId: string, hideLocally = true) => {
     const fallbackSessionId = desktopSessions?.find(
@@ -210,9 +211,11 @@ export function useKordiChatSessionActions({
     if (!nextTitle) return;
     const actorIdentityId =
       canonicalState?.profile.humanIdentityId?.trim() || undefined;
-    const isDesktopRuntimeSession = desktopSessions?.some(
+    const isDesktopRuntimeSession = (desktopSessions?.some(
       (session) => session.id === sessionId,
-    ) ?? false;
+    ) ?? false) || (desktopProjects?.some((project) => (
+      project.sessions.some((session) => session.id === sessionId)
+    )) ?? false);
     try {
       setDesktopError(null);
       let nextCanonical = await renameCanonicalSession({
@@ -265,6 +268,7 @@ export function useKordiChatSessionActions({
   }, [
     canonicalState?.profile.humanIdentityId,
     desktopSessions,
+    desktopProjects,
     isNativeShell,
     refreshCanonicalState,
     refreshDesktopChat,

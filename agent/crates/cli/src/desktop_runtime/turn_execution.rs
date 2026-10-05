@@ -3,14 +3,13 @@
 use anyhow::{Result, anyhow, bail};
 use tokio::sync::mpsc;
 
-use crate::turn_runner::{self, TurnConfig, TurnEvent, run_turn};
+use crate::turn_runner::{self, TurnConfig, TurnEvent};
 
 use super::attachments::{
     append_attachment_context_message, attachment_is_image, attachment_metadata_from_path,
     expand_prompt_for_policy, expand_prompt_with_attachment_paths, load_images_from_paths,
 };
 use super::model_options::request_thinking_for_model_with_auth;
-use super::omp_turn::{DesktopTurnEngine, selected_desktop_turn_engine};
 use super::{
     DesktopChatSessionDetail, DesktopRuntimeSession, ensure_session_row_created,
     maybe_name_session_from_prompt, refresh_provider_runtime_fields,
@@ -195,14 +194,8 @@ impl DesktopRuntimeSession {
         }
         let turn_config = turn_config?;
         let (turn_event_tx, turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
-        let engine = selected_desktop_turn_engine();
         let handle = tokio::spawn(async move {
-            match engine {
-                DesktopTurnEngine::Rust => run_turn(turn_config, turn_event_tx, prompt_text).await,
-                DesktopTurnEngine::Omp => {
-                    super::omp_turn::run_turn(turn_config, turn_event_tx, prompt_text).await
-                }
-            }
+            crate::agent_runtime::run_turn(turn_config, turn_event_tx, prompt_text).await
         });
 
         Ok(DesktopRuntimeTurn {

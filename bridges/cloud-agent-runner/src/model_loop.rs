@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-mod omp;
+pub(crate) mod omp;
 mod prompt;
 mod provider;
 
 pub use omp::run_omp_model_loop;
 pub use prompt::{cloud_sandbox_system_prompt, tool_catalog};
+pub(crate) use provider::OpenAiApiMode;
 pub use provider::{OpenAiCompatibleProvider, OpenAiProviderConfig};
 
 use crate::artifacts::export_sandbox_file;

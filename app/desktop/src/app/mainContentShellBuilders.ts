@@ -129,6 +129,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     selectComposerValue: args.selectComposerValue,
     composerAuthLabel: args.composerAuthLabelChat,
     composerAuthOptions: args.composerAuthOptionsChat,
+    resolveChatRuntimeRoute: args.resolveChatRuntimeRoute,
     selectComposerAuthChoice: args.selectComposerAuthChoice,
     selectComposerProviderChoice: args.selectComposerProviderChoice,
     composerProviderOptions: args.composerProviderOptions,

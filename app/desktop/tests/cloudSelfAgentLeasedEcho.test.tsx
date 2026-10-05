@@ -130,6 +130,12 @@ test('replay retains the historical reply id but enriches it from the traced lea
     preferredMessageId: historicalReply.id, duplicateMessageId: directReply.id,
   }], 'opening an already durable conversation repairs its exact leased reply alias');
   const cloudMessages = [originalWire, echoWire, echoReply, tracedReply];
+  const legacyReply = { ...tracedReply, body: encodeCloudAgentResponse({ requestId: wireRequest, text: 'Updated answer', deliveryState: 'complete' }) };
+  const legacyState = { ...state, messages: state.messages.map((message) => message.id === directReply.id
+    ? { ...message, content: { cloudRequestMessageId: wireRequest } } : message) };
+  const legacyPlan = planCloudSelfAgentCanonicalSync({ account, messages: [originalWire, echoWire, echoReply, legacyReply], state: legacyState });
+  assert.equal(legacyPlan.messageRequests.find((request) => request.id === historicalReply.id)?.contentText, 'Updated answer', 'An exact hosted route repairs legacy reply exports that lack execution traces');
+  assert.equal(legacyPlan.messageRequests.some((request) => request.id === directReply.id), false);
   const plan = planCloudSelfAgentCanonicalSync({ account, messages: cloudMessages, state });
   assert.deepEqual(plan.mirrorReconciliations, [{
     preferredMessageId: historicalReply.id, duplicateMessageId: directReply.id,

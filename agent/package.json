@@ -1,6 +1,7 @@
 {
   "name": "kordi",
   "version": "0.0.18",
+  "ompRuntimeVersion": "18.2.11",
   "description": "Kordi — a Rust-native AI coding agent for the terminal",
   "license": "MIT",
   "repository": {
@@ -32,7 +33,8 @@
     "LICENSE"
   ],
   "scripts": {
-    "postinstall": "node scripts/postinstall.js"
+    "postinstall": "node scripts/postinstall.js",
+    "build:runtime-assets": "node scripts/build-runtime-assets.mjs"
   },
   "os": [
     "darwin",

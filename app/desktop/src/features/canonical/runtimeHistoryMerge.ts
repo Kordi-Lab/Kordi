@@ -13,9 +13,12 @@ export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
   runtimeMessages: Message[],
 ) {
-  const runtimeMessageIds = new Set(runtimeMessages.flatMap((message) => (
-    [message.id, message.entryId].filter((value): value is string => Boolean(value?.trim()))
-  )));
+  const runtimeIndexByReplyId = new Map<string, number>();
+  const runtimeMessageIds = new Set(runtimeMessages.flatMap((message, runtimeIndex) => {
+    const ids = [message.id, message.entryId].filter((value): value is string => Boolean(value?.trim()));
+    for (const id of ids) runtimeIndexByReplyId.set(id, runtimeIndex);
+    return ids;
+  }));
   const canonicalIndexesById = new Map<string, number>();
   const canonicalIndexesByAnchor = new Map<string, number[]>();
   canonicalMessages.forEach((message, canonicalIndex) => {
@@ -83,6 +86,7 @@ export function mergeCanonicalHistoryIntoRuntime(
     const canonicalId = canonicalMessage.id;
     const canonicalAliasIds = [canonicalId, canonicalMessage.entryId, ...(canonicalMessage.replyAliasIds ?? [])]
       .filter((value): value is string => Boolean(value?.trim()));
+    for (const id of [...runtimeAliasIds, ...canonicalAliasIds]) runtimeIndexByReplyId.set(id, runtimeIndex);
     const replyAliasIds = [...new Set([
       ...runtimeAliasIds,
       ...canonicalAliasIds,
@@ -151,16 +155,23 @@ export function mergeCanonicalHistoryIntoRuntime(
   ));
   for (const { message, canonicalIndex } of overlayMessages) {
     const nextAnchorPosition = firstIndexGreaterThan(matchedCanonicalIndexes, canonicalIndex);
-    const nextRuntimeIndex = suffixEarliestRuntimeIndex[nextAnchorPosition];
-    if (nextRuntimeIndex !== undefined) {
-      canonicalBeforeRuntimeIndex[nextRuntimeIndex].push(message);
-      continue;
-    }
-
     const lastEarlierRuntimeIndex = nextAnchorPosition > 0
       ? prefixLatestRuntimeIndex[nextAnchorPosition - 1]
       : -1;
-    const unmatchedPosition = firstIndexGreaterThan(unmatchedRuntimeIndexes, lastEarlierRuntimeIndex);
+    const replyTargetId = 'replyToMessageId' in message ? message.replyToMessageId
+      : 'turn' in message ? message.turn?.replyToMessageId : undefined;
+    const replyTargetIndex = runtimeIndexByReplyId.get(replyTargetId ?? '');
+    // Imported history can put canonical anchors in a different order from the
+    // native transcript. An earlier native anchor must never pull a reply above
+    // its request, or above an already matched preceding canonical message.
+    const minimumRuntimeIndex = Math.max(lastEarlierRuntimeIndex, replyTargetIndex ?? -1) + 1;
+    const nextRuntimeIndex = suffixEarliestRuntimeIndex[nextAnchorPosition];
+    if (nextRuntimeIndex !== undefined) {
+      canonicalBeforeRuntimeIndex[Math.max(nextRuntimeIndex, minimumRuntimeIndex)].push(message);
+      continue;
+    }
+
+    const unmatchedPosition = firstIndexGreaterThan(unmatchedRuntimeIndexes, minimumRuntimeIndex - 1);
     const targetIndex = unmatchedRuntimeIndexes[unmatchedPosition] ?? enrichedRuntimeMessages.length;
     canonicalBeforeRuntimeIndex[targetIndex].push(message);
   }

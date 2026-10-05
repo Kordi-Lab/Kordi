@@ -1,14 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { normalizeSelectedProviderId } from '@/kordi-app/auth/model';
-import type { ComposerAuthOption, ComposerModelOption } from '@/kordi-app/components';
+import type { ComposerAuthOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
 import type { DesktopChatSessionDetail } from '@/kordi-app/types';
-import { fetchDesktopChatSessionDetail } from '@/lib/desktop';
+import { fetchDesktopChatSessionDetail, type DesktopChatMessageRoute } from '@/lib/desktop';
 
 import type { ComposerConfigTargetOverride, ComposerSelection } from './composerController.types';
+import { ACCOUNT_UNAVAILABLE_LABEL, isAccountAuthChoice } from '@/features/cloud/routeAccountChoice';
 
 type CompanionSessionDetail = Pick<DesktopChatSessionDetail, 'id' | 'provider' | 'model' | 'thinking'>;
 type CompanionSessionDetailLoader = (sessionId: string) => Promise<CompanionSessionDetail | null>;
+
+export function companionComposerProviderOptions(
+  options: ComposerProviderOption[],
+  route?: DesktopChatMessageRoute | null,
+): ComposerProviderOption[] {
+  if (!route?.authChoice || !isAccountAuthChoice(route.authChoice)) return options;
+  const provider = route.authProvider ?? route.model?.split('/')[0] ?? '';
+  const value = `${provider}::${route.authChoice}`;
+  const presented = options.map((option) => ({
+    ...option,
+    active: normalizedProviderId(option.providerId) === normalizedProviderId(provider)
+      && option.value.slice(option.value.indexOf('::') + 2) === route.authChoice,
+  }));
+  if (presented.some(option => option.active)) return presented;
+  return [...presented, { value, providerId: provider, label: ACCOUNT_UNAVAILABLE_LABEL,
+    selectionLabel: ACCOUNT_UNAVAILABLE_LABEL, active: true, disabled: true,
+    disabledReason: 'Reconnect this account in Authentication or choose another account.' }];
+}
 
 function normalizedProviderId(value: string) {
   const trimmed = value.trim();
@@ -62,13 +81,17 @@ export function companionComposerAuthPresentation(
   selection: ComposerSelection | null,
   modelOptions: ComposerModelOption[],
   authOptions: ComposerAuthOption[],
+  runtimeRoute?: DesktopChatMessageRoute | null,
 ) {
   if (!selection) {
     return { label: 'Loading auth', options: [] as ComposerAuthOption[] };
   }
 
   const providerId = composerProviderIdForSelection(selection, modelOptions);
-  const orderedOptions = [...authOptions].sort((left, right) => {
+  const presentedOptions = runtimeRoute?.authChoice
+    ? authOptions.map((option) => ({ ...option, active: option.value === runtimeRoute.authChoice }))
+    : authOptions;
+  const orderedOptions = [...presentedOptions].sort((left, right) => {
     const leftIsCurrent = normalizedProviderId(left.providerId) === providerId;
     const rightIsCurrent = normalizedProviderId(right.providerId) === providerId;
     return Number(rightIsCurrent) - Number(leftIsCurrent);
@@ -92,6 +115,8 @@ type UseCompanionComposerRuntimeArgs = {
   fallbackMode: string;
   modelOptions: ComposerModelOption[];
   authOptions: ComposerAuthOption[];
+  providerOptions?: ComposerProviderOption[];
+  runtimeRoute?: DesktopChatMessageRoute | null;
   loadSessionDetail?: CompanionSessionDetailLoader;
 };
 
@@ -102,6 +127,8 @@ export function useCompanionComposerRuntime({
   fallbackMode,
   modelOptions,
   authOptions,
+  providerOptions = [],
+  runtimeRoute,
   loadSessionDetail = fetchDesktopChatSessionDetail,
 }: UseCompanionComposerRuntimeArgs) {
   const normalizedSessionId = sessionId?.trim() || null;
@@ -150,9 +177,12 @@ export function useCompanionComposerRuntime({
       ? companionComposerSelectionFromSessionDetail(loadedDetail.detail, modelOptions, fallbackMode)
       : null
   ), [enabled, fallbackMode, loadedDetail, modelOptions, normalizedSessionId]);
+  const routeSelection = enabled && normalizedSessionId && runtimeRoute?.model
+    ? { mode: fallbackMode, model: runtimeRoute.model, thinking: runtimeRoute.thinking ?? hydratedSelection?.thinking ?? 'off' }
+    : null;
   const selection = localSelection?.sessionId === normalizedSessionId
     ? localSelection.selection
-    : hydratedSelection;
+    : routeSelection ?? hydratedSelection;
 
   const onSelectionChange = useCallback((nextSelection: ComposerSelection) => {
     if (!normalizedSessionId) return;
@@ -169,8 +199,12 @@ export function useCompanionComposerRuntime({
       : null
   ), [normalizedSessionId, onSelectionChange, selection]);
   const authPresentation = useMemo(
-    () => companionComposerAuthPresentation(selection, modelOptions, authOptions),
-    [authOptions, modelOptions, selection],
+    () => companionComposerAuthPresentation(selection, modelOptions, authOptions, runtimeRoute),
+    [authOptions, modelOptions, selection, runtimeRoute],
+  );
+  const presentedProviderOptions = useMemo(
+    () => companionComposerProviderOptions(providerOptions, runtimeRoute),
+    [providerOptions, runtimeRoute],
   );
   const retry = useCallback(() => {
     setLoadAttempt((current) => current + 1);
@@ -181,6 +215,7 @@ export function useCompanionComposerRuntime({
     configTarget,
     authLabel: authPresentation.label,
     authOptions: authPresentation.options,
+    providerOptions: presentedProviderOptions,
     isLoading: Boolean(enabled && isNativeShell && normalizedSessionId && !selection && !loadError),
     loadError,
     retry,

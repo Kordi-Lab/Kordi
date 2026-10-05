@@ -300,6 +300,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         composerSelectionChat: args.composerSelectionChat,
         composerAuthLabelChat: args.composerAuthLabelChat,
         composerAuthOptionsChat: args.composerAuthOptionsChat,
+        resolveChatRuntimeRoute: args.resolveChatRuntimeRoute,
         handleSendChatMessage: args.handleSendChatMessage,
         handleRetryChatMessage: args.handleRetryChatMessage,
         handleForkChatMessage: args.handleForkChatMessage,

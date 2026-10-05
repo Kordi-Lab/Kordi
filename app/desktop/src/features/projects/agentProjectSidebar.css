@@ -4,6 +4,24 @@
   --chat-project-child-inset: 28px;
 }
 
+.chat-sidebar-new-session-row { flex-shrink: 0; padding: 2px 4px 6px; }
+.chat-sidebar-new-session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 9px;
+  background: var(--app-control-bg);
+  color: var(--app-sidebar-title-text);
+  font-size: 13px;
+  text-align: left;
+}
+.chat-sidebar-new-session:hover { background: var(--app-control-hover); }
+.chat-sidebar-new-session > svg { flex-shrink: 0; }
+.chat-sidebar-new-session > kbd { margin-left: auto; color: var(--app-sidebar-time-text); font: inherit; font-size: 12px; }
+
 .chat-project-section-heading {
   display: flex;
   align-items: center;
@@ -33,6 +51,19 @@
   color: var(--app-sidebar-title-text);
   font-size: 13px;
 }
+.chat-project-group-row { display: flex; align-items: center; padding-right: var(--chat-project-row-inset); border-radius: 7px; }
+.chat-project-group-row .chat-project-group { flex: 1; min-width: 0; width: auto; padding-right: 4px; }
+.chat-project-new-session {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--app-sidebar-time-text);
+}
+.chat-project-new-session:hover { background: var(--app-control-hover); color: var(--app-sidebar-title-text); }
+.chat-project-new-session:disabled { opacity: 0.45; }
 .chat-project-group > svg { flex-shrink: 0; }
 .chat-project-group > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chat-project-group:hover, .chat-project-show-more:hover { background: var(--app-control-bg); color: var(--app-sidebar-title-text); }
@@ -60,7 +91,8 @@ button[aria-expanded="true"] > .chat-project-collapse-indicator { transform: rot
 .chat-project-session-list .app-agent-session-row-saved .app-agent-session-preview { display: flex; }
 .chat-project-session-list .app-session-fork-children { margin-left: 0; padding-left: 0; border-left: 0; }
 .chat-project-group:focus-visible, .chat-project-show-more:focus-visible,
-.chat-project-section-toggle:focus-visible, .chat-project-heading-actions button:focus-visible {
+.chat-project-section-toggle:focus-visible, .chat-project-heading-actions button:focus-visible,
+.chat-project-new-session:focus-visible, .chat-sidebar-new-session:focus-visible {
   outline: 2px solid var(--app-sidebar-title-text);
   outline-offset: -2px;
 }

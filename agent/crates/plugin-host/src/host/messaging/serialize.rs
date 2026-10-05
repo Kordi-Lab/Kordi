@@ -82,6 +82,7 @@ pub(super) fn serialize_event(event: &kordi_hooks::Event) -> serde_json::Value {
         Event::Context(ctx) => serde_json::json!({
             "type": event_type,
             "message_count": ctx.message_count(),
+            "messages": ctx.messages(),
         }),
         Event::BeforeProviderRequest { payload } => serde_json::json!({
             "type": event_type,

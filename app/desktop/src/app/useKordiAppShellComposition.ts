@@ -379,6 +379,7 @@ export function useKordiAppShellComposition({
         composer.composerAuthByScope.optionsByScope.project,
       composerAuthOptionsChat:
         composer.composerAuthByScope.optionsByScope.chat,
+      resolveChatRuntimeRoute: cloud.resolveChatRuntimeRoute,
       selectComposerAuthChoice: wrappedSelectComposerAuthChoice,
       selectComposerProviderChoice: wrappedSelectComposerProviderChoice,
       composerProviderOptions: composer.composerProviderOptions,

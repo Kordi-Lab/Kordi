@@ -8,21 +8,29 @@ import {
   MAX_CHAT_ATTACHMENT_SIZE_BYTES,
 } from '../src/features/chat/composerAttachments';
 import { localAgentComposerConfigTargetSessionId } from '../src/pages/ChatsPage';
+import type { DesktopChatState } from '../src/kordi-app/types';
 
 test('isolated companion config updates preserve the active main desktop state', () => {
-  const stateAfterUpdate = (
-    composerInputActions as typeof composerInputActions & {
-      desktopChatStateAfterConfigUpdate?: <T>(current: T, next: T, isolated: boolean) => T;
-    }
-  ).desktopChatStateAfterConfigUpdate;
-
-  assert.equal(typeof stateAfterUpdate, 'function');
-  if (!stateAfterUpdate) return;
-
-  const mainState = { activeSessionId: 'session:main' };
-  const companionState = { activeSessionId: 'session:companion' };
+  const stateAfterUpdate = composerInputActions.desktopChatStateAfterConfigUpdate;
+  const mainState = { activeSessionId: 'session:main', activeSession: { id: 'session:main' } } as DesktopChatState;
+  const companionState = { activeSessionId: 'session:companion', activeSession: { id: 'session:companion' } } as DesktopChatState;
   assert.equal(stateAfterUpdate(mainState, companionState, true), mainState);
-  assert.equal(stateAfterUpdate(mainState, companionState, false), companionState);
+  assert.equal(stateAfterUpdate(mainState, companionState, false), mainState, 'A late config response must not select another session');
+});
+
+test('a config response preserves messages sent after its snapshot and only updates runtime settings', () => {
+  const oldMessages = [{ role: 'user', text: 'Earlier question' }];
+  const messages = [...oldMessages, { role: 'system', text: 'Model: openai/next' }, { role: 'user', text: 'Just sent' }];
+  const current = { activeSessionId: 'session:main', projects: [], sessions: [],
+    activeSession: { id: 'session:main', title: 'Renamed meanwhile', messages, messageCount: 3, model: 'old' },
+  } as unknown as DesktopChatState;
+  const next = { ...current, activeSession: { ...current.activeSession, title: 'Old title', messages: oldMessages, messageCount: 1, model: 'next', thinking: 'high' } } as DesktopChatState;
+  const merged = composerInputActions.desktopChatStateAfterConfigUpdate(current, next, false)!;
+  assert.equal(merged.activeSession.messages, messages);
+  assert.equal(merged.activeSession.messageCount, 3);
+  assert.equal(merged.activeSession.title, 'Renamed meanwhile');
+  assert.equal(merged.activeSession.model, 'next');
+  assert.equal(merged.activeSession.thinking, 'high');
 });
 
 test('composer config routing does not target canonical Cloud direct or group sessions', () => {
@@ -123,6 +131,10 @@ test('composer config routing still targets local chat and project sessions', ()
     activeProjectSessionId: 'project-session',
     desktopActiveSessionId: 'local-agent-session',
   }), 'project-session');
+  assert.equal(composerConfigTargetSessionId({
+    scope: 'chat', activeConvId: 'visible-alias', activeConvCanonicalSessionId: 'native-session',
+    activeProjectSessionId: 'project-session', desktopActiveSessionId: 'native-session',
+  }), 'native-session');
 });
 
 test('local agent composer config targets the canonical runtime session when available', () => {
