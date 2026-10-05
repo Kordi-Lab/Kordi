@@ -42,7 +42,7 @@
       <article>
         <div class="screen-heading"><h2>Conversation</h2><select id="conversation" aria-label="Conversation type"><option value="group">Group</option><option value="direct">Direct message</option><option value="agent">Agent</option><option value="thread">Thread</option></select></div>
         <div class="phone"><img id="chat" src="group-light.png" alt="Proposed Kordi group conversation with a floating title capsule and native action controls"></div>
-        <p class="caption" id="chat-caption"><strong>Compact, tappable conversation identity</strong><span>Title and context share one capsule. Messages scroll behind separate glass controls, without a header band.</span></p>
+        <p class="caption" id="chat-caption"><strong>Compact, tappable conversation identity</strong><span>Title and status are centered. Messages scroll behind the glass controls with a soft native background blur.</span></p>
       </article>
       <article>
         <div class="screen-heading"><h2>Settings</h2><span class="status">48 pt minimum rows</span></div>
@@ -59,11 +59,11 @@
     if (['group', 'direct', 'agent', 'thread'].includes(params.get('screen'))) selection.value = params.get('screen');
     if (params.get('mode') === 'dark') mode = 'dark';
     function update() {
-      document.querySelector('#chat').src = selection.value + '-' + mode + '.png?v=5';
+      document.querySelector('#chat').src = selection.value + '-' + mode + '.png?v=6';
       document.querySelector('#chat').alt = 'Proposed Kordi ' + selection.options[selection.selectedIndex].text.toLowerCase() + ' conversation with glass controls over the continuous conversation background';
       document.querySelector('#chat-caption strong').textContent = selection.value === 'thread' ? 'A focused thread, with its context' : 'Compact, tappable conversation identity';
-      document.querySelector('#chat-caption span').textContent = selection.value === 'thread' ? 'The parent message and three replies stay together. The glass title shows the conversation and reply count.' : 'Title and context share one capsule. Messages scroll behind separate glass controls, without a header band.';
-      document.querySelector('#settings').src = 'settings-' + mode + '.png?v=5';
+      document.querySelector('#chat-caption span').textContent = selection.value === 'thread' ? 'The parent message and three replies stay together. The centered glass title shows the conversation and reply count.' : 'Title and status are centered. Messages scroll behind the glass controls with a soft native background blur.';
+      document.querySelector('#settings').src = 'settings-' + mode + '.png?v=6';
       for (const button of document.querySelectorAll('[data-mode]')) button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
     }
     selection.addEventListener('change', update);

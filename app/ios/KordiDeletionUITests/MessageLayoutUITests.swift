@@ -83,6 +83,19 @@ final class MessageLayoutUITests: ProviderUITestCase {
 
 @MainActor
 final class NativeChromeUITests: ProviderUITestCase {
+    func testConversationTitlesStayCenteredWithLongContext() {
+        for flag in ["--preview-contact-chat", "--preview-native-agent"] {
+            let app = launch("--preview-native-design", flag)
+            let title = element("conversation-title", in: app)
+            XCTAssertTrue(title.waitForExistence(timeout: 15))
+            XCTAssertEqual(title.frame.midX, app.frame.midX, accuracy: 2)
+            XCTAssertTrue(title.isHittable)
+            XCTAssertTrue(element("conversation-details", in: app).isHittable)
+            capture("Centered title with native background blur", app: app)
+            app.terminate()
+        }
+    }
+
     func testFullAppKeepsDiscussionBackAndAccountNavigation() {
         let app = launch("--preview-native-samples", "--preview-expanded-groups")
         let group = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "main")).firstMatch

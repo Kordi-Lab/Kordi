@@ -7,16 +7,16 @@ The proposal follows the compact title capsules in the supplied Slack and Telegr
 ## Conversation header
 
 - Keep native back navigation in its own circular control.
-- Place the title and secondary context in one tappable capsule, without a number symbol beside group titles. Direct and agent conversations retain their appropriate status text.
+- Center the title and secondary context in one tappable capsule on the screen centerline, without a number symbol beside group titles. Direct and agent conversations retain their appropriate status text.
 - Open the existing conversation details from the title capsule.
 - Group Ask Agent and the existing details action at the trailing edge.
-- Extend the conversation wallpaper behind the status and navigation areas. There must be no tall white band or opaque full-width header behind the controls; the glass capsules and back control provide the chrome. Messages scroll behind the floating controls without a top fade or transcript clip. Use native glass on iOS 26 and later, a material fallback on older versions, and an opaque control surface when Reduce Transparency is enabled.
+- Extend the conversation wallpaper behind the status and navigation areas. There must be no tall white band or opaque full-width header behind the controls; the glass capsules and back control provide the chrome. Messages scroll behind the floating controls with a native soft blur around the top edge and no transcript clip. The blur fades smoothly into the conversation, without an opaque header band. Use native glass on iOS 26 and later, a material fallback on older versions, and an opaque control surface when Reduce Transparency is enabled.
 - Preserve the transcript, composer, session actions, presence, and agent activity behavior.
 
 ## Thread
 
 - Show the parent message and its replies in the existing native discussion screen. Short threads begin beneath the title instead of leaving a large blank area above the messages.
-- Use a glass title capsule with the conversation name and reply count.
+- Use a centered glass title capsule with the conversation name and reply count.
 - Continue the chat background behind the navigation controls.
 - The focused thread preview uses the compact Threads message display preference.
 
@@ -47,4 +47,4 @@ For the complete app with the sample discussion, launch with `--preview-data --p
 
 ## Validation and remaining work
 
-The implementation uses the existing conversation, thread, and settings flows. The Beta build passes. Native UI checks pass for saved inline preferences, sheet dismissal, title-to-details navigation, discussion back navigation with draft and parent position preservation, and reachable settings at the largest accessibility text size. All checks use offline sample data. Light and dark captures are included. Physical-iPhone review, long-title and narrow-device checks, VoiceOver review, Reduce Transparency verification, and validation of the material fallback on older supported iOS versions remain before release.
+The implementation uses the existing conversation, thread, and settings flows. The Beta build passes. Centering checks cover direct and agent titles with long context. Native UI checks pass for saved inline preferences, sheet dismissal, title-to-details navigation, discussion back navigation with draft and parent position preservation, and reachable settings at the largest accessibility text size. All checks use offline sample data. Light and dark captures are included. Physical-iPhone review, long-title and narrow-device checks, VoiceOver review, Reduce Transparency verification, and validation of the material fallback on older supported iOS versions remain before release.

@@ -22,7 +22,7 @@ private struct ConversationTopScrollEdge: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content.scrollEdgeEffectHidden(true, for: .top)
+            content.scrollEdgeEffectStyle(.soft, for: .top)
         } else {
             content
         }
@@ -204,23 +204,31 @@ struct ConversationThreadView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Discussion").font(.headline)
-                    Text(context)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 15)
-                .padding(.vertical, 7)
-                .frame(minHeight: 44)
-                .modifier(ConversationTitleSurface())
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("thread-title")
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .principal) { title }
+                    .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .principal) { title }
             }
         }
+    }
+
+    private var title: some View {
+        VStack(spacing: 1) {
+            Text("Discussion").font(.headline)
+            Text(context)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 7)
+        .frame(minHeight: 44)
+        .modifier(ConversationTitleSurface())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("thread-title")
     }
 
     private var context: String {
@@ -348,6 +356,7 @@ struct ConversationView: View {
     @State private var messageActionPreviewScroll = MessageActionPreviewScroll()
     @State private var messageActionFeedback = 0
     @State private var messageActionHitTestRegions = WindowOverlayHitTestRegions()
+    @State private var navigationContentWidth: CGFloat = 0
 
     private var navigationBarVisibility: Visibility {
         showsNavigationChrome ? .visible : .automatic
@@ -1141,6 +1150,11 @@ struct ConversationView: View {
             }
         }
         return conversationTimeline
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.width
+        } action: { width in
+            navigationContentWidth = width
+        }
         .navigationTitle(showsNavigationChrome ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .tint(chatTheme.accent)
@@ -2611,8 +2625,9 @@ struct ConversationView: View {
     @ToolbarContentBuilder
     private var conversationToolbar: some ToolbarContent {
         if showsNavigationChrome {
-            ToolbarItem(placement: .principal) { conversationTitleButton }
             if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .principal) { conversationTitleButton }
+                    .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 0) {
                         if canOpenCompanionPanel { askAgentButton }
@@ -2620,6 +2635,7 @@ struct ConversationView: View {
                     }
                 }
             } else {
+                ToolbarItem(placement: .principal) { conversationTitleButton }
                 if canOpenCompanionPanel {
                     ToolbarItem(placement: .topBarTrailing) { askAgentButton }
                 }
@@ -2635,18 +2651,28 @@ struct ConversationView: View {
             conversationHeader
             .padding(.horizontal, 15)
             .padding(.vertical, 7)
+            .frame(width: conversationTitleWidth)
             .frame(minHeight: 44)
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .modifier(ConversationTitleSurface())
+        .fixedSize(horizontal: true, vertical: false)
         .accessibilityLabel("\(conversation.displayName), \(conversationHeaderStatus)")
         .accessibilityHint("Opens conversation details")
         .accessibilityIdentifier("conversation-title")
     }
 
+    private var conversationTitleWidth: CGFloat {
+        let actionCount = (canOpenCompanionPanel ? 1 : 0) + (conversation.subsessionId == nil ? 1 : 0)
+        // Reserve the wider control group on both sides so the native title
+        // stays on the screen's centerline, including long presence labels.
+        let controlWidth = CGFloat(max(1, actionCount)) * 44 + 36
+        return min(220, max(44, (navigationContentWidth > 0 ? navigationContentWidth : 402) - controlWidth * 2))
+    }
+
     private var conversationHeader: some View {
-        VStack(alignment: .leading, spacing: 1) {
+        VStack(spacing: 1) {
             Text(conversation.displayName)
                 .font(.headline)
                 .lineLimit(1)
@@ -2683,6 +2709,7 @@ struct ConversationView: View {
                     .lineLimit(1)
             }
         }
+        .multilineTextAlignment(.center)
     }
 
     private var agentActivity: AgentActivity {
