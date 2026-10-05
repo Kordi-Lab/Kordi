@@ -14,7 +14,9 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
   assert.notEqual(sendTargetedEnd, -1, 'expected end of targeted chat send handler');
   const targetedHandler = source.slice(sendTargetedStart, sendTargetedEnd);
 
-  const directCloudBranch = targetedHandler.indexOf('if (isCloudCollaborationConversationId(targetCloudConversationId))');
+  const directCloudBranch = targetedHandler.search(
+    /if \((?:targetUsesCollaborationRouting && )?isCloudCollaborationConversationId\(targetCloudConversationId\)\)/,
+  );
   const groupTargets = targetedHandler.indexOf('const groupTargets = isCollaborationGroupSession(targetGroupScope)');
   const groupTransportSend = targetedHandler.indexOf("kind: 'group-message'", groupTargets);
 
@@ -43,7 +45,7 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
   );
   assert.match(
     targetedHandler,
-    /sendCloudCollaborationMessage\([\s\S]*?attachments,\s*\{ clientMessageId: optimisticMessageId \},/,
+    /sendCloudCollaborationMessage\([\s\S]*?attachments,\s*\{ clientMessageId: optimisticMessageId(?:, \.\.\.voiceMessageSendFields\(attachments\))? \},/,
     'targeted direct sends must use their optimistic id as the retry-safe client id',
   );
   assert.doesNotMatch(targetedHandler, /attachments:\s*\[\]/);
