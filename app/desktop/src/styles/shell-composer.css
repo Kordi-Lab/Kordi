@@ -1,3 +1,9 @@
+.app-chat-composer-frame > .chat-workspace-controls {
+  /* Align the first pill's icon with the input: shell border + p-3 + px-4,
+     minus the pill's border and horizontal padding. */
+  padding-inline: calc(1px + 0.75rem + 1rem - 8px);
+}
+
 .app-composer-shell {
   min-height: 7.25rem;
   border: 1px solid color-mix(in oklab, var(--app-divider) 86%, var(--utility-muted-text));
