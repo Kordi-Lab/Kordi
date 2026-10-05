@@ -34,6 +34,8 @@ import type {
 import { CloudDeviceClient } from './cloudDeviceClient';
 import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
 import { CloudIdentityAuthClient } from './cloudIdentityAuthClient';
+import type { CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
+export type { CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
 import type {
   CloudAccount,
   CloudAppInvitation,
@@ -115,6 +117,7 @@ export type CloudAuthCapabilities = {
   password: boolean;
   oauthProviders: CloudOAuthProvider[];
 };
+
 
 export type CloudOAuthStartResponse = {
   authUrl: string;
@@ -361,13 +364,7 @@ export class CloudAuthClient {
   }
 
   knownChatSessionIds(accountId: string): string[] { return this.chat.knownSessionIds(accountId); }
-  async signup(input: {
-    email: string;
-    password: string;
-    displayName?: string;
-    avatarSeed: string;
-    avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
-  }): Promise<CloudAuthResult> {
+  async signup(input: CloudSignupInput): Promise<CloudAuthResult> {
     const result = await this.identity.signup(input);
     this.activeAccountId = result.account.accountId;
     return result;
@@ -375,6 +372,8 @@ export class CloudAuthClient {
   async capabilities(): Promise<CloudAuthCapabilities> {
     return this.identity.capabilities();
   }
+
+  requestSignupCode(email: string): Promise<CloudSignupCodeChallenge> { return this.identity.requestSignupCode(email); }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {
     const result = await this.identity.login(input);

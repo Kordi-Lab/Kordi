@@ -9,21 +9,16 @@ use std::time::Duration;
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use kordi_cloud_server::auth::rate_limit::{CloudRateLimitConfig, CloudRateLimiter};
-use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
-use kordi_cloud_server::server::{router_with_rate_limiter, ServerState};
+use kordi_cloud_server::server::router_with_rate_limiter;
 use serde_json::{json, Value};
 use tower::util::ServiceExt;
 
 async fn try_pool() -> Option<sqlx_postgres::PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
-    match init_pool(&url).await {
-        Ok(pool) => Some(pool),
-        Err(err) => {
-            eprintln!("[cloud_agent_definitions_e2e] init_pool failed, skipping: {err}");
-            None
-        }
-    }
+    Some(init_pool(&url).await.unwrap_or_else(|_| {
+        panic!("Could not initialize the configured disposable integration database")
+    }))
 }
 
 fn test_router(pool: sqlx_postgres::PgPool) -> axum::Router {
@@ -33,7 +28,7 @@ fn test_router(pool: sqlx_postgres::PgPool) -> axum::Router {
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
     });
-    router_with_rate_limiter(Arc::new(ServerState::new(pool, EventBus::noop())), limiter)
+    router_with_rate_limiter(Arc::new(signup_email_fixture::state(pool)), limiter)
 }
 
 fn unique_email(prefix: &str) -> String {
@@ -71,12 +66,13 @@ async fn signup(router: &axum::Router, prefix: &str) -> (String, String) {
             "/v1/cloud/auth/signup",
             None,
             Body::from(
-                json!({
+                signup_email_fixture::with_proof(json!({
                     "email": email,
                     "password": "correct horse",
                     "displayName": prefix,
                     "avatarSeed": "agent_definition_avatar",
-                })
+                }))
+                .await
                 .to_string(),
             ),
         ))
@@ -352,3 +348,6 @@ async fn cloud_agent_create_rejects_unsupported_access() {
         "invalid_cloud_agent"
     );
 }
+
+#[path = "common/signup_email.rs"]
+mod signup_email_fixture;

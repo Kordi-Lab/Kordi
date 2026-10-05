@@ -227,6 +227,42 @@ spec:
                   name: kordi-cloud-runner
                   key: runner-token
                   optional: true
+            - name: KORDI_AUTH_SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-host
+                  optional: true
+            - name: KORDI_AUTH_SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-port
+                  optional: true
+            - name: KORDI_AUTH_SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-username
+                  optional: true
+            - name: KORDI_AUTH_SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-password
+                  optional: true
+            - name: KORDI_AUTH_SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-from
+                  optional: true
+            - name: KORDI_AUTH_EMAIL_CODE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: code-secret
+                  optional: true
             - name: KORDI_SUPPORT_ENABLED
               valueFrom:
                 secretKeyRef:

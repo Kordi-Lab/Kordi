@@ -16,6 +16,8 @@ import {
   type CloudAuthResult,
   type CloudOAuthProvider,
   type CloudProfileUpdateInput,
+  type CloudSignupCodeChallenge,
+  type CloudSignupInput,
 } from './authClient';
 import { cloudAccountsEqual } from './cloudAccountState';
 import {
@@ -43,13 +45,8 @@ export type UseCloudSessionResult = {
   error: CloudAuthError | null;
   oauthProviders: CloudOAuthProvider[];
   signIn(email: string, password: string): Promise<void>;
-  signUp(input: {
-    email: string;
-    password: string;
-    displayName?: string;
-    avatarSeed: string;
-    avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
-  }): Promise<void>;
+  requestSignupCode(this: void, email: string): Promise<CloudSignupCodeChallenge>;
+  signUp(input: CloudSignupInput): Promise<void>;
   signInWithProvider(provider: CloudOAuthProvider, signal?: AbortSignal): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
   signOut(this: void): Promise<void>;
@@ -348,9 +345,9 @@ export function useCloudSession({
   );
 
   const signUp = useCallback<UseCloudSessionResult['signUp']>(
-    async ({ email, password, displayName, avatarSeed, avatarMutation }) => {
+    async ({ email, password, verificationId, verificationCode, displayName, avatarSeed, avatarMutation }) => {
       try {
-        const result = await authClient.signup({ email, password, displayName, avatarSeed, avatarMutation });
+        const result = await authClient.signup({ email, password, verificationId, verificationCode, displayName, avatarSeed, avatarMutation });
         await completeCloudAuthResult({
           result,
           currentAccountId: accountIdRef.current,
@@ -376,6 +373,10 @@ export function useCloudSession({
       }
     },
     [authClient, reloadForAccountStorageSwitch, setAuthenticated],
+  );
+
+  const requestSignupCode = useCallback(
+    (email: string) => authClient.requestSignupCode(email), [authClient],
   );
 
   const signInWithProvider = useCallback(
@@ -473,6 +474,7 @@ export function useCloudSession({
     oauthProviders,
     signIn,
     signUp,
+    requestSignupCode,
     signInWithProvider,
     updateProfile,
     signOut,

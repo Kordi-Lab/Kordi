@@ -76,6 +76,7 @@ mod profile_handlers;
 mod session_forks;
 mod session_pins;
 mod session_visibility;
+mod signup_email_handlers;
 mod support;
 mod types;
 
@@ -130,6 +131,10 @@ pub fn routes_with_shared_rate_limiter(
     let public = Router::new()
         .route("/v1/cloud/auth/capabilities", get(auth_capabilities))
         .route("/v1/cloud/auth/signup", post(signup))
+        .route(
+            "/v1/cloud/auth/signup/code",
+            post(signup_email_handlers::send_signup_code),
+        )
         .route("/v1/cloud/auth/login", post(login))
         .route(
             "/v1/cloud/invitations/app/resolve/:token",

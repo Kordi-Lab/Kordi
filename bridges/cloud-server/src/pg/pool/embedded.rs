@@ -1,5 +1,6 @@
 //! Every embedded Postgres migration, in version order.
 
+use super::migration_entry::migration;
 use super::EmbeddedMigration;
 
 pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
@@ -475,24 +476,17 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "provider auth snapshot readiness",
         sql: include_str!("../../../migrations/0105_provider_auth_snapshot_readiness.sql"),
     },
-    EmbeddedMigration {
-        version: 106,
-        description: "private OMP runtime replay state",
-        sql: include_str!("../../../migrations/0106_omp_runtime_state.sql"),
-    },
-    EmbeddedMigration {
-        version: 107,
-        description: "account-scoped desktop projects",
-        sql: include_str!("../../../migrations/0107_chat_projects.sql"),
-    },
-    EmbeddedMigration {
-        version: 108,
-        description: "session pin stacks",
-        sql: include_str!("../../../migrations/0108_session_pin_stacks.sql"),
-    },
-    EmbeddedMigration {
-        version: 109,
-        description: "group avatars",
-        sql: include_str!("../../../migrations/0109_group_avatars.sql"),
-    },
+    migration!(
+        106,
+        "private OMP runtime replay state",
+        "0106_omp_runtime_state.sql"
+    ),
+    migration!(
+        107,
+        "account-scoped desktop projects",
+        "0107_chat_projects.sql"
+    ),
+    migration!(108, "session pin stacks", "0108_session_pin_stacks.sql"),
+    migration!(109, "group avatars", "0109_group_avatars.sql"),
+    migration!(110, "signup email codes", "0110_signup_email_codes.sql"),
 ];

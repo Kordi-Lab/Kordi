@@ -24,7 +24,7 @@ async fn pin_history_survives_reload_and_respects_audience_and_pagination() {
     let pool = try_pool()
         .await
         .expect("configured test database must initialize");
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let (owner_token, owner) = signup_account(&router, "pin-history-owner").await;
     let (peer_token, peer) = signup_account(&router, "pin-history-peer").await;
     let (outsider_token, _) = signup_account(&router, "pin-history-outsider").await;
@@ -53,7 +53,7 @@ async fn pin_history_survives_reload_and_respects_audience_and_pagination() {
         }
     }
     // A fresh service instance must load the same durable events.
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let path = format!("/v1/cloud/sessions/{session_id}/pin-history");
     let owner_page = read_json(
         router
@@ -160,7 +160,7 @@ async fn pin_history_backfill_deduplicates_shared_fanout_and_preserves_original_
     let pool = try_pool()
         .await
         .expect("configured test database must initialize");
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let (_, owner) = signup_account(&router, "pin-backfill-owner").await;
     let (_, peer) = signup_account(&router, "pin-backfill-peer").await;
     let session_id = format!("session:group:{}", uuid::Uuid::now_v7());
@@ -203,7 +203,7 @@ async fn pin_history_rechecks_membership_after_waiting_for_the_conversation_lock
         return;
     }
     let pool = try_pool().await.expect("configured fixture database");
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let (token, account) = signup_account(&router, "pin-lock-member").await;
     let session = format!("session:group:{}", uuid::Uuid::now_v7());
     let conversation = seed_stale_group(&pool, &account, Some(&session), None, "active").await;

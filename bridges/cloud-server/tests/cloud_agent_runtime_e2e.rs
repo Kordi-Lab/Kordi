@@ -15,7 +15,6 @@ use kordi_cloud_server::chat_sync::models::{
     ConversationKind, CreateConversationRequest, SendMessageRequest,
 };
 use kordi_cloud_server::chat_sync::store as chat_store;
-use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
 use kordi_cloud_server::server::{router_with_rate_limiter, ServerState};
 use serde_json::{json, Value};
@@ -141,12 +140,13 @@ async fn signup(router: &axum::Router, prefix: &str, display_name: &str) -> Test
         .oneshot(post(
             "/v1/cloud/auth/signup",
             Body::from(
-                json!({
+                signup_email_fixture::with_proof(json!({
                     "email": email,
                     "password": "correct horse",
                     "displayName": display_name,
                     "avatarSeed": "agent_runtime_avatar",
-                })
+                }))
+                .await
                 .to_string(),
             ),
         ))
@@ -422,3 +422,6 @@ mod attachment_backfill;
 
 #[path = "cloud_agent_runtime_e2e/projects.rs"]
 mod projects;
+
+#[path = "common/signup_email.rs"]
+mod signup_email_fixture;

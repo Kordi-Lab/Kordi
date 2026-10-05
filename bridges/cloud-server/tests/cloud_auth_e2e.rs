@@ -30,13 +30,9 @@ use tower::util::ServiceExt;
 
 async fn try_pool() -> Option<sqlx_postgres::PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
-    match init_pool(&url).await {
-        Ok(pool) => Some(pool),
-        Err(err) => {
-            eprintln!("[cloud_auth_e2e] init_pool failed, skipping: {err}");
-            None
-        }
-    }
+    Some(init_pool(&url).await.unwrap_or_else(|_| {
+        panic!("Could not initialize the configured disposable integration database")
+    }))
 }
 
 fn fast_router(state: Arc<ServerState>) -> axum::Router {
@@ -54,14 +50,15 @@ fn unique_email(prefix: &str) -> String {
     format!("{prefix}-{}@e2e.local", uuid::Uuid::new_v4().simple())
 }
 
-fn signup_body(email: &str, password: &str) -> Body {
+async fn signup_body(email: &str, password: &str) -> Body {
     Body::from(
-        json!({
+        signup_email_fixture::with_proof(json!({
             "email": email,
             "password": password,
             "displayName": "E2E",
             "avatarSeed": "e2e_avatar_seed",
-        })
+        }))
+        .await
         .to_string(),
     )
 }
@@ -83,15 +80,16 @@ fn device_registration(seed: u8, name: &str, platform: &str) -> serde_json::Valu
     })
 }
 
-fn signup_body_with_device(email: &str, password: &str, device: serde_json::Value) -> Body {
+async fn signup_body_with_device(email: &str, password: &str, device: serde_json::Value) -> Body {
     Body::from(
-        json!({
+        signup_email_fixture::with_proof(json!({
             "email": email,
             "password": password,
             "displayName": "E2E",
             "avatarSeed": "e2e_avatar_seed",
             "device": device,
-        })
+        }))
+        .await
         .to_string(),
     )
 }
@@ -101,7 +99,7 @@ async fn signup_account(router: &axum::Router, prefix: &str) -> (String, String)
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&unique_email(prefix), "correct horse"),
+            signup_body(&unique_email(prefix), "correct horse").await,
         ))
         .await
         .unwrap();
@@ -216,3 +214,8 @@ mod session_list_fixtures;
 mod session_pin_history;
 #[path = "cloud_auth_e2e/session_pin_stacks.rs"]
 mod session_pin_stacks;
+#[path = "cloud_auth_e2e/signup_email.rs"]
+mod signup_email;
+
+#[path = "common/signup_email.rs"]
+mod signup_email_fixture;

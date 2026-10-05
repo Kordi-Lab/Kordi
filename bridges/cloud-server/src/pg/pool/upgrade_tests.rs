@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 mod pin_stack_tests;
 mod projection_tests;
+mod signup_email_tests;
 mod title_tests;
 
 async fn fixture(version: i64) -> PgPool {

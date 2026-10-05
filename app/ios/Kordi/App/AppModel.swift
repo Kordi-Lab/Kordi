@@ -519,9 +519,21 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func requestSignupCode(email: String) async -> CloudSignupCodeChallenge? {
+        errorMessage = nil
+        do {
+            return try await api.requestSignupCode(email: email.trimmingCharacters(in: .whitespacesAndNewlines))
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not send verification code.")
+            return nil
+        }
+    }
+
     func signUp(
         email: String,
         password: String,
+        verificationId: String,
+        verificationCode: String,
         displayName: String?,
         avatarSeed: String,
         avatarMutation: CanonicalAvatarMutation? = nil
@@ -541,6 +553,8 @@ final class AppModel: ObservableObject {
             let response = try await api.signup(
                 email: cleanEmail,
                 password: password,
+                verificationId: verificationId,
+                verificationCode: verificationCode,
                 displayName: cleanName,
                 avatarSeed: avatarSeed,
                 avatarMutation: avatarMutation
