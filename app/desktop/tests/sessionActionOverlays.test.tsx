@@ -51,8 +51,8 @@ test('SessionContextMenu exposes unread, pin, mute, archive, and reversible dele
   assert.match(markup, />Mute notifications</);
   assert.match(markup, />Mark as unread</);
   assert.match(markup, />Archive</);
-  assert.match(markup, /Delete chat…/);
-  assert.equal((markup.match(/items-center gap-2\.5 whitespace-nowrap/g) ?? []).length, 5);
+  assert.match(markup, /Delete chat/);
+  assert.equal((markup.match(/items-center gap-2\.5 whitespace-nowrap/g) ?? []).length, 6);
 });
 
 test('GroupContextMenu exposes whole-group chat actions', () => {
@@ -122,11 +122,11 @@ test('SessionContextMenu keeps available actions flat and omits the removed proj
     ...menuActions,
   }));
 
-  assert.match(markup, /app-transient-flat-action[^>]*>Rename…</);
+  assert.match(markup, /app-transient-flat-action[^>]*>[\s\S]*?Rename<\/button>/);
   assert.match(markup, /app-transient-row app-transient-row-danger/);
-  assert.match(markup, /Delete chat…/);
+  assert.match(markup, /Delete chat/);
   assert.doesNotMatch(markup, /Move to project/);
-  assert.doesNotMatch(markup, /app-transient-row[^>]*>Rename…</);
+  assert.doesNotMatch(markup, /app-transient-row[^>]*>[\s\S]*?Rename<\/button>/);
 });
 
 test('SessionContextMenu hides rename for a non-admin group member', () => {
@@ -146,8 +146,8 @@ test('SessionContextMenu hides rename for a non-admin group member', () => {
     ...menuActions,
   }));
 
-  assert.doesNotMatch(markup, /Rename…/);
-  assert.match(markup, /Delete chat…/);
+  assert.doesNotMatch(markup, /Rename<\/button>/);
+  assert.match(markup, /Delete chat/);
 });
 
 test('SessionContextMenu restores archived chats without offering pin', () => {
