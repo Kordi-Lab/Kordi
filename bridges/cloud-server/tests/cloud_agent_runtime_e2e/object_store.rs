@@ -150,6 +150,6 @@ pub(super) fn test_router_with_s3(
     pool: sqlx_postgres::PgPool,
     store: &TestObjectStore,
 ) -> axum::Router {
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()).with_s3(store.s3_config()));
+    let state = Arc::new(signup_email_fixture::state(pool).with_s3(store.s3_config()));
     test_router(state)
 }

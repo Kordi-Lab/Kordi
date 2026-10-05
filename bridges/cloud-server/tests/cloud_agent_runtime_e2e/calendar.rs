@@ -5,7 +5,7 @@ use sqlx_core::query::query;
 async fn chat_calendar_enforces_owner_disclosure_membership_and_live_runner_scope() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "calendar-owner", "Owner").await;
     let peer = signup(&router, "calendar-peer", "Peer").await;
     accept_contacts(&router, &owner, &peer).await;

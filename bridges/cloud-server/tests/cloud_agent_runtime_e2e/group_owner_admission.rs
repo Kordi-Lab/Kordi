@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn group_logical_request_prefers_mac_and_rejects_another_default_agent_owner() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "group-target-owner", "Target Owner").await;
     let peer = signup(&router, "group-other-owner", "Other Owner").await;
     accept_contacts(&router, &owner, &peer).await;
