@@ -8,11 +8,11 @@ const rows: ChatSidebarRow[] = ['one', 'two', 'three'].map((id) => ({
 }));
 const projects = [{ id: 'app', name: 'App', sessions: [{ id: 'one' }, { id: 'three' }] }];
 
-test('project collapse preserves session identity and keeps active chats discoverable in Recents', () => {
+test('project sessions stay out of Recents even when their folder is collapsed', () => {
   const grouped = projectChatGroups(rows, projects, new Set());
-  assert.deepEqual(grouped.rows.map((row) => row.key), ['agent-section:projects', 'project-group:app', 'project:app:session:one', 'project:app:session:three', 'agent-section:recents', 'recent:session:one', 'recent:session:two', 'recent:session:three']);
+  assert.deepEqual(grouped.rows.map((row) => row.key), ['agent-section:projects', 'project-group:app', 'project:app:session:one', 'project:app:session:three', 'agent-section:recents', 'recent:session:two']);
   assert.equal(grouped.rows[2].kind === 'session' && grouped.rows[2].sessionId, 'one');
-  assert.deepEqual(projectChatGroups(rows, projects, new Set(['app'])).rows.map((row) => row.key), ['agent-section:projects', 'project-group:app', 'agent-section:recents', 'recent:session:one', 'recent:session:two', 'recent:session:three']);
+  assert.deepEqual(projectChatGroups(rows, projects, new Set(['app'])).rows.map((row) => row.key), ['agent-section:projects', 'project-group:app', 'agent-section:recents', 'recent:session:two']);
 });
 
 test('collapsing the Projects section hides folders while preserving pinned chats and Recents', () => {
@@ -20,21 +20,30 @@ test('collapsing the Projects section hides folders while preserving pinned chat
   const grouped = projectChatGroups(rows, projects, collapsed, true, { pinnedSessionIds: new Set(['one']) });
   assert.deepEqual(grouped.rows.map((row) => row.key), [
     'agent-section:pinned', 'pinned:session:one', 'agent-section:projects',
-    'agent-section:recents', 'recent:session:two', 'recent:session:three',
+    'agent-section:recents', 'recent:session:two',
   ]);
   assert.equal(grouped.groups.get('app')?.rows.length, 2);
   assert(collapsed.has('app'));
 });
 
-test('moving or removing membership keeps every chat discoverable in Recents after projects', () => {
+test('moving project membership updates Recents and unassigned sessions return there', () => {
   const moved = [{ id: 'other', name: 'Other', sessions: [{ id: 'two' }] }];
   const grouped = projectChatGroups(rows, moved, new Set());
   assert.equal(grouped.groups.get('other')?.rows.length, 1);
   assert.equal(grouped.rows[1].key, 'project-group:other');
+  assert.deepEqual(grouped.rows.filter((row) => row.key.startsWith('recent:')).map((row) => row.kind === 'session' && row.sessionId), ['one', 'three']);
   const unassigned = projectChatGroups(rows, [], new Set());
   assert.equal(unassigned.rows[0].key, 'agent-section:recents');
   assert.deepEqual(unassigned.rows.slice(1).map((row) => row.kind === 'session' && row.sessionId), ['one', 'two', 'three']);
   assert.deepEqual(projectChatGroups(rows, [], new Set(['section:recents'])).rows.map((row) => row.key), ['agent-section:recents']);
+});
+
+test('Recents is omitted when every visible session belongs to a project or is pinned', () => {
+  const grouped = projectChatGroups(rows, projects, new Set(), true, { pinnedSessionIds: new Set(['two']) });
+  assert(!grouped.rows.some((row) => row.key === 'agent-section:recents' || row.key.startsWith('recent:')));
+  assert.equal(grouped.rows.filter((row) => row.kind === 'session').length, rows.length);
+  const search = projectChatGroups([rows[0]], projects, new Set());
+  assert.deepEqual(search.rows.map((row) => row.key), ['agent-section:projects', 'project-group:app', 'project:app:session:one']);
 });
 
 test('a fork moved to another project remains visible independently of its original parent', () => {
@@ -82,6 +91,7 @@ test('project previews keep fork trees together and show all matches while searc
   assert(preview.rows.some((row) => row.key === 'project:tree:session:two'));
   assert(!preview.rows.some((row) => row.key === 'project:tree:session:three'));
   assert(preview.rows.some((row) => row.key === 'project-more:tree'));
+  assert(!preview.rows.some((row) => row.key.startsWith('recent:')));
   const expanded = projectChatGroups(tree, project, new Set(), true, { previewLimit: 1, expandedProjectIds: new Set(['tree']) });
   assert(expanded.rows.some((row) => row.key === 'project:tree:session:three'));
   assert(!projectChatGroups(tree, project, new Set(), false).limitedProjectIds.size);

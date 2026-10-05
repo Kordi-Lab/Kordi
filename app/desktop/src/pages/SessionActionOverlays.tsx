@@ -1,6 +1,6 @@
 import { ChatProjectPicker } from '@/features/projects/ChatProjectPicker';
 import { useState } from 'react';
-import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, LoaderCircle, Mail, Pin, PinOff, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, LoaderCircle, Mail, Pencil, Pin, PinOff, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -80,7 +80,7 @@ export function SessionContextMenu({
         {target.canRename !== false ? (
           <button
             type="button"
-            className="app-transient-flat-action app-transient-action-row w-full whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
             onClick={() => {
               onClose();
               onRename({
@@ -90,7 +90,8 @@ export function SessionContextMenu({
               });
             }}
           >
-            Rename…
+            <Pencil className="app-transient-action-icon" aria-hidden="true" />
+            Rename
           </button>
         ) : null}
         {target.canChooseProject ? <ChatProjectPicker key={target.sessionId} sessionId={target.sessionId} menuLabel /> : null}
@@ -157,7 +158,7 @@ export function SessionContextMenu({
           }}
         >
           <Trash2 className="app-transient-action-icon" aria-hidden="true" />
-          Delete chat…
+          Delete chat
         </button>
       </div>
     </div>
