@@ -352,7 +352,6 @@ struct MessageActionOverlay: View {
     @State private var showsAllReactions = false
     @State private var isConfirmingDelete = false
     @State private var didSchedulePreviewExpansion = false
-    @State private var showsMoreThreadActions = false
     @State private var threadSheetContentHeight: CGFloat = 398
     @State private var threadSheetDetent = PresentationDetent.height(398)
     let message: ChatMessage
@@ -497,38 +496,17 @@ struct MessageActionOverlay: View {
                             }
                         }
                         Divider().padding(.vertical, 4)
-                        Button {
-                            showsMoreThreadActions.toggle()
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "ellipsis").frame(width: 20)
-                                Text("More Actions")
-                                Spacer(minLength: 8)
-                                Image(systemName: showsMoreThreadActions ? "chevron.down" : "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .font(.subheadline)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .contentShape(Rectangle())
+                        if allowsEdit { threadActionRow("Edit", systemImage: "pencil", action: onEdit) }
+                        if let stickerAttachment {
+                            threadActionRow("Save to My Stickers", systemImage: "square.stack.3d.up") { onSaveSticker(stickerAttachment) }
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("thread-more-actions")
-                        .accessibilityValue(showsMoreThreadActions ? "Expanded" : "Collapsed")
-
-                        if showsMoreThreadActions {
-                            if allowsEdit { threadActionRow("Edit", systemImage: "pencil", action: onEdit) }
-                            if let stickerAttachment {
-                                threadActionRow("Save to My Stickers", systemImage: "square.stack.3d.up") { onSaveSticker(stickerAttachment) }
+                        threadActionRow("Select", systemImage: "checkmark.circle", action: onSelect)
+                        if allowsDelete {
+                            threadActionRow(message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete" : "Delete photo", systemImage: "trash", role: .destructive, dismissesMenu: false) {
+                                isConfirmingDelete = true
                             }
-                            threadActionRow("Select", systemImage: "checkmark.circle", action: onSelect)
-                            if allowsDelete {
-                                threadActionRow(message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete" : "Delete photo", systemImage: "trash", role: .destructive, dismissesMenu: false) {
-                                    isConfirmingDelete = true
-                                }
-                            }
-                            MessageActionReadReceiptRow(label: readReceiptLabel, readers: readReceiptReaders)
                         }
+                        MessageActionReadReceiptRow(label: readReceiptLabel, readers: readReceiptReaders)
                     }
                 }
             }
@@ -537,7 +515,7 @@ struct MessageActionOverlay: View {
             .padding(.bottom, 8)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 guard height > 0 else { return }
-                threadSheetContentHeight = ceil(height)
+                threadSheetContentHeight = min(ceil(height), 398)
                 if !showsAllReactions, threadSheetDetent != .large {
                     threadSheetDetent = .height(threadSheetContentHeight)
                 }
@@ -547,6 +525,7 @@ struct MessageActionOverlay: View {
         .foregroundStyle(.primary)
         .background(Color(uiColor: .systemBackground))
         .presentationDetents([.height(threadSheetContentHeight), .large], selection: $threadSheetDetent)
+        .presentationContentInteraction(.scrolls)
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(24)
         .accessibilityIdentifier("thread-message-actions-sheet")
