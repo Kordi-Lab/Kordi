@@ -26,8 +26,8 @@ The proposal follows the compact title capsules in the supplied Slack and Telegr
 ## Threads long-press actions
 
 - Present Threads actions in a native bottom sheet over the conversation, inspired by the supplied Slack reference.
-- Place quick reactions and the full reaction picker first, followed by prominent Reply, Forward, and Pin buttons. Keep Kordi's existing actions and permission checks.
-- Place Quote, Copy message, Share, and applicable attachment actions in compact rows. Expose editing, selection, deletion, and read receipts under More Actions.
+- Use a small quick-reaction strip followed by one compact list of Reply, Quote, Forward, Pin, Copy, Share, and applicable attachment actions. Keep Kordi's existing actions and permission checks.
+- Use 44-point minimum action rows with 15-point labels and restrained symbols. Fit the sheet to its content and expand it for More Actions or the full reaction picker. Expose editing, selection, deletion, and read receipts under More Actions.
 - Keep the transcript in place behind the sheet. Complete sheet dismissal before quoting, opening a discussion, forwarding, pinning, or deleting, so drafts and subsequent presentations remain intact.
 - Support native drag dismissal, accessibility escape, larger text, and light/dark appearances.
 

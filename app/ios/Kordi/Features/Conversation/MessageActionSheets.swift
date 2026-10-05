@@ -353,7 +353,8 @@ struct MessageActionOverlay: View {
     @State private var isConfirmingDelete = false
     @State private var didSchedulePreviewExpansion = false
     @State private var showsMoreThreadActions = false
-    @State private var threadSheetDetent = PresentationDetent.height(460)
+    @State private var threadSheetContentHeight: CGFloat = 398
+    @State private var threadSheetDetent = PresentationDetent.height(398)
     let message: ChatMessage
     var layout: MessageLayout = .chat
     let sourceFrame: CGRect
@@ -459,7 +460,7 @@ struct MessageActionOverlay: View {
                 } else {
                     if allowsReactions {
                         threadReactionButtons
-                            .padding(.bottom, 18)
+                            .padding(.bottom, 4)
                     }
                     if showsAllReactions {
                         EmojiSelectionBoard(initialCategory: hasRecentReactions ? .recent : .noto) { item in
@@ -467,24 +468,23 @@ struct MessageActionOverlay: View {
                         }
                         .frame(height: 420)
                     } else {
-                        HStack(spacing: 8) {
-                            if allowsThreadReply || allowsConversationReply {
-                                threadPrimaryAction(
-                                    allowsThreadReply ? "Reply" : "Quote",
-                                    systemImage: allowsThreadReply ? "bubble.left.and.bubble.right" : "text.quote",
-                                    identifier: "thread-action-reply"
-                                ) {
-                                    onReply(allowsThreadReply ? .thread : .conversation)
-                                }
+                        if allowsThreadReply || allowsConversationReply {
+                            threadActionRow(
+                                allowsThreadReply ? "Reply" : "Quote",
+                                systemImage: allowsThreadReply ? "bubble.left.and.bubble.right" : "text.quote"
+                            ) {
+                                onReply(allowsThreadReply ? .thread : .conversation)
                             }
-                            threadPrimaryAction("Forward", systemImage: "arrowshape.turn.up.right", identifier: "thread-action-forward", disabled: cannotForwardOrPin, action: onForward)
-                            threadPrimaryAction(isPinned ? "Unpin" : "Pin", systemImage: "pin", identifier: "thread-action-pin", disabled: cannotForwardOrPin, action: onPin)
+                            .accessibilityIdentifier("thread-action-reply")
                         }
-                        .padding(.bottom, 14)
-
                         if allowsConversationReply && allowsThreadReply {
                             threadActionRow("Quote", systemImage: "text.quote") { onReply(.conversation) }
                         }
+                        threadActionRow("Forward", systemImage: "arrowshape.turn.up.right", disabled: cannotForwardOrPin, action: onForward)
+                            .accessibilityIdentifier("thread-action-forward")
+                        threadActionRow(isPinned ? "Unpin" : "Pin", systemImage: "pin", disabled: cannotForwardOrPin, action: onPin)
+                            .accessibilityIdentifier("thread-action-pin")
+                        Divider().padding(.vertical, 4)
                         if !message.text.isEmpty, mediaAttachment == nil {
                             threadActionRow("Copy message", systemImage: "doc.on.doc", action: onCopy)
                             threadActionRow("Share", systemImage: "square.and.arrow.up", action: onShareMessage)
@@ -496,13 +496,12 @@ struct MessageActionOverlay: View {
                                 threadActionRow("Add to \(mediaKind.libraryName)", systemImage: "square.stack.3d.up", action: onAddAttachmentToMediaLibrary)
                             }
                         }
-                        Divider().padding(.vertical, 8)
+                        Divider().padding(.vertical, 4)
                         Button {
                             showsMoreThreadActions.toggle()
-                            if showsMoreThreadActions { threadSheetDetent = .large }
                         } label: {
-                            HStack(spacing: 16) {
-                                Image(systemName: "ellipsis").frame(width: 24)
+                            HStack(spacing: 12) {
+                                Image(systemName: "ellipsis").frame(width: 20)
                                 Text("More Actions")
                                 Spacer(minLength: 8)
                                 Image(systemName: showsMoreThreadActions ? "chevron.down" : "chevron.right")
@@ -510,7 +509,7 @@ struct MessageActionOverlay: View {
                                     .foregroundStyle(.secondary)
                             }
                             .font(.subheadline)
-                            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -533,16 +532,23 @@ struct MessageActionOverlay: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-            .padding(.bottom, 16)
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                guard height > 0 else { return }
+                threadSheetContentHeight = ceil(height)
+                if !showsAllReactions, threadSheetDetent != .large {
+                    threadSheetDetent = .height(threadSheetContentHeight)
+                }
+            }
         }
         .scrollBounceBehavior(.basedOnSize)
         .foregroundStyle(.primary)
         .background(Color(uiColor: .systemBackground))
-        .presentationDetents([.height(460), .large], selection: $threadSheetDetent)
+        .presentationDetents([.height(threadSheetContentHeight), .large], selection: $threadSheetDetent)
         .presentationDragIndicator(.visible)
-        .presentationCornerRadius(30)
+        .presentationCornerRadius(24)
         .accessibilityIdentifier("thread-message-actions-sheet")
         .accessibilityLabel("Actions for message from \(message.authorName)")
         .accessibilityAction(.escape) { performAction(onDismiss) }
@@ -553,7 +559,7 @@ struct MessageActionOverlay: View {
     }
 
     private var threadReactionButtons: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             ForEach(quickReactions.prefix(5)) { item in
                 Button {
                     performAction {
@@ -561,9 +567,9 @@ struct MessageActionOverlay: View {
                         onReact(item.reactionValue)
                     }
                 } label: {
-                    reactionImage(item)
+                    reactionImage(item, size: 24)
                         .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(targetReactions.first(where: { $0.value == item.reactionValue })?.includes(accountId: ownAccountId) == true ? KordiTheme.agentViolet.opacity(0.14) : Color(uiColor: .secondarySystemBackground), in: Circle())
+                        .background(targetReactions.first(where: { $0.value == item.reactionValue })?.includes(accountId: ownAccountId) == true ? KordiTheme.agentViolet.opacity(0.14) : .clear, in: Circle())
                         .contentShape(Circle())
                 }
                 .buttonStyle(MessageReactionButtonStyle())
@@ -571,19 +577,19 @@ struct MessageActionOverlay: View {
             }
             Button {
                 showsAllReactions.toggle()
-                threadSheetDetent = showsAllReactions ? .large : .height(460)
+                threadSheetDetent = showsAllReactions ? .large : .height(threadSheetContentHeight)
             } label: {
                 Image(systemName: showsAllReactions ? "chevron.up" : "face.smiling")
                     .font(.title3)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(Color(uiColor: .secondarySystemBackground), in: Circle())
                     .overlay(alignment: .topTrailing) {
                         if !showsAllReactions {
                             Image(systemName: "plus.circle.fill")
                                 .font(.caption2)
                                 .background(Color(uiColor: .systemBackground), in: Circle())
+                                .offset(x: 4, y: -4)
                         }
                     }
+                    .frame(maxWidth: .infinity, minHeight: 44)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -591,37 +597,22 @@ struct MessageActionOverlay: View {
         }
     }
 
-    private func threadPrimaryAction(_ title: String, systemImage: String, identifier: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button { performAction(action) } label: {
-            VStack(spacing: 8) {
-                Image(systemName: systemImage).font(.title3)
-                Text(title).font(.caption.weight(.medium))
-            }
-            .frame(maxWidth: .infinity, minHeight: 82)
-            .padding(.vertical, 4)
-            .background(Color(uiColor: .secondarySystemBackground), in: .rect(cornerRadius: 14))
-            .contentShape(.rect(cornerRadius: 14))
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .accessibilityIdentifier(identifier)
-    }
-
-    private func threadActionRow(_ title: String, systemImage: String, role: ButtonRole? = nil, dismissesMenu: Bool = true, action: @escaping () -> Void) -> some View {
+    private func threadActionRow(_ title: String, systemImage: String, role: ButtonRole? = nil, disabled: Bool = false, dismissesMenu: Bool = true, action: @escaping () -> Void) -> some View {
         Button(role: role) {
             if dismissesMenu { performAction(action) }
             else { action() }
         } label: {
-            HStack(spacing: 16) {
-                Image(systemName: systemImage).frame(width: 24)
+            HStack(spacing: 12) {
+                Image(systemName: systemImage).frame(width: 20)
                 Text(title)
             }
             .font(.subheadline)
             .foregroundStyle(role == .destructive ? Color.red : Color.primary)
-            .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
     }
 
     private var floatingActionOverlay: some View {
@@ -953,12 +944,12 @@ struct MessageActionOverlay: View {
     }
 
     @ViewBuilder
-    private func reactionImage(_ item: EmojiPickerItem) -> some View {
+    private func reactionImage(_ item: EmojiPickerItem, size: CGFloat = 30) -> some View {
         switch item {
         case .noto(let emoji):
-            NotoEmojiView(emoji: emoji, size: 30)
+            NotoEmojiView(emoji: emoji, size: size)
         case .blob(let emoji):
-            BlobEmojiView(emoji: emoji, size: 30)
+            BlobEmojiView(emoji: emoji, size: size)
         }
     }
 

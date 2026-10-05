@@ -92,19 +92,19 @@ final class MessageLayoutUITests: ProviderUITestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
         editor.tap()
         editor.typeText("Keep the draft after replying in a discussion.")
+        // Return from details to dismiss the keyboard before targeting a row.
+        // The floating toolbar can overlap a partially visible message.
+        let title = element("conversation-title", in: app)
+        title.tap()
+        XCTAssertTrue(app.buttons["Members"].waitForExistence(timeout: 5))
+        app.buttons["Back"].tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
         let parent = element("message-gm1", in: app)
         XCTAssertTrue(reveal(parent, in: app))
-        // A partially visible row can be hittable while its center is under
-        // the floating toolbar. Move the message body into the viewport.
-        if parent.frame.midY < app.navigationBars.firstMatch.frame.maxY + 30 {
-            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.3))
-            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
-            start.press(forDuration: 0.05, thenDragTo: end)
-        }
-        parent.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.35)).press(forDuration: 0.5)
+        parent.press(forDuration: 0.5)
         let reply = app.buttons["thread-action-reply"]
         XCTAssertTrue(reply.waitForExistence(timeout: 5))
-        capture("Threads actions with reactions and primary buttons", app: app)
+        capture("Threads actions with a compact reaction strip and action list", app: app)
         reply.tap()
         XCTAssertTrue(element("thread-title", in: app).waitForExistence(timeout: 5))
         XCTAssertTrue(element("message-native-thread-3", in: app).exists)
