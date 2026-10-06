@@ -9,6 +9,17 @@ function contentRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/** Content marker on a failed request that was sent again; the retried send replaces it in the transcript. */
+export const RETIRED_BY_RETRY_CONTENT_KEY = 'retiredByRetry';
+
+/**
+ * Only a failed row can be retired, so callers pass the status they already read and every other row
+ * costs no extra property reads.
+ */
+export function isRetiredFailedRequest(message: CanonicalSessionMessage, normalizedStatus: string) {
+  return normalizedStatus === 'failed' && contentRecord(message.content)[RETIRED_BY_RETRY_CONTENT_KEY] === true;
+}
+
 export function isPlaceholderSessionTitleNotice(message: CanonicalSessionMessage) {
   if (message.messageKind !== 'status') return false;
   const content = contentRecord(message.content);
@@ -40,8 +51,10 @@ export function isInternalCloudAgentControlMessage(message: CanonicalSessionMess
 
 export function canonicalMessageCountsAsReadable(message: CanonicalSessionMessage) {
   if (message.sourceTransport === 'canonical-fork-snapshot') return false;
-  if (['sending', 'processing'].includes(message.status.trim().toLowerCase())) return false;
+  const status = message.status.trim().toLowerCase();
+  if (['sending', 'processing'].includes(status)) return false;
   return !isPlaceholderSessionTitleNotice(message)
+    && !isRetiredFailedRequest(message, status)
     && !isSynchronizationOnlyCloudGroupTitleNotice(message)
     && !isInternalCloudAgentControlMessage(message);
 }
