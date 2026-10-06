@@ -223,6 +223,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellComposerRouteArgs & KordiShe
   onProjectTranscriptScroll: () => void;
   onChatTranscriptScroll: () => void;
   onCompanionReadPresentationChange: (sessionId: string | null) => void;
+  onCompanionHistorySessionChange: (sessionId: string | null) => void;
   activeSourcePreview: EditFilePreview | null;
   setActiveSourcePreview: Dispatch<SetStateAction<EditFilePreview | null>>;
   activeArtifactId: string | null;
@@ -525,7 +526,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showChatDetailRail'
   | 'activeConv'
   | 'activeConversationUsesCollaboration'
-  | 'onChatTranscriptScroll' | 'onCompanionReadPresentationChange'
+  | 'onChatTranscriptScroll' | 'onCompanionReadPresentationChange' | 'onCompanionHistorySessionChange'
   | 'filteredChatSlashCommands'
   | 'chatMentionTargetsForText'
   | 'acceptChatSlashCommand' | 'acceptChatMentionTarget'

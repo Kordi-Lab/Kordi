@@ -104,6 +104,8 @@ export type ChatsPageTranscript = {
   onLoadOlderCanonicalSessionMessages?: (sessionId: string) => Promise<void>;
   onTranscriptScroll: (isAtLatest?: boolean) => void;
   onCompanionReadPresentationChange?: (sessionId: string | null) => void;
+  /** Keeps the side panel's canonical history loaded, so its sends stay visible and forwardable. */
+  onCompanionHistorySessionChange?: (sessionId: string | null) => void;
   onOpenSource: (file: EditFilePreview) => void;
   onClearSourcePreview?: () => void;
   onOpenArtifact: (artifactId: string) => void;

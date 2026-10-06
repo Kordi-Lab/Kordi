@@ -317,6 +317,18 @@ export function selfAgentMirrorDuplicateIds(
       ));
       if (localMirror) duplicateIds.add(message.id);
     }
+    // The Cloud echo of a request this Mac published names the original
+    // bubble's wire id. It is the same request, so only the original shows.
+    const localRequestWireIds = new Set(messages.flatMap((message) => {
+      const wireId = message.senderRole === 'user' && message.sourceTransport === 'desktop-chat-ui'
+        ? stringValue(contentRecord(message.content).desktopEntryId)?.trim() : null;
+      return wireId ? [`${message.sessionId}:${wireId}`] : [];
+    }));
+    for (const message of messages) {
+      if (message.sourceTransport !== 'cloud-self-agent' || message.senderRole !== 'user') continue;
+      const wireId = message.sourceEventId?.trim() || stringValue(contentRecord(message.content).desktopEntryId)?.trim();
+      if (wireId && localRequestWireIds.has(`${message.sessionId}:${wireId}`)) duplicateIds.add(message.id);
+    }
     const completedCloudRepliesByRequest = new Map<string, CanonicalSessionMessage[]>();
     for (const message of messages) {
       if (message.sourceTransport !== 'cloud-self-agent' || message.senderRole !== 'owned-agent'

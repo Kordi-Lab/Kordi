@@ -1,4 +1,5 @@
 import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentation';
+import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useEffect, useRef, useState } from 'react';
 import { GripVertical, RefreshCw } from 'lucide-react';
@@ -75,6 +76,7 @@ type ChatCompanionWorkspaceProps = {
   transcript: Pick<
     ChatsPageTranscript,
     | 'onCompanionReadPresentationChange'
+    | 'onCompanionHistorySessionChange'
     | 'canonicalHasOlderBySessionId'
     | 'onLoadOlderCanonicalSessionMessages'
     | 'queuedDesktopMessagesBySession'
@@ -100,6 +102,7 @@ export function ChatCompanionWorkspace({
   runtime,
 }: ChatCompanionWorkspaceProps) {
   const conversation = session.conversation;
+  useCompanionHistorySession(conversation, transcript.onCompanionHistorySessionChange);
   const onTranscriptScroll = useCompanionReadPresentation({
     sessionId: conversation?.agentSubsessionId ? null : conversation?.canonicalSessionId ?? conversation?.id ?? null,
     isPresented: layoutModel.isVisible && destinations.value === 'messages'

@@ -173,6 +173,7 @@ export type KordiShellCompositionArgs = {
     | 'onProjectTranscriptScroll'
     | 'onChatTranscriptScroll'
     | 'onCompanionReadPresentationChange'
+    | 'onCompanionHistorySessionChange'
     | 'activeSourcePreview'
     | 'setActiveSourcePreview'
     | 'activeArtifactId'
