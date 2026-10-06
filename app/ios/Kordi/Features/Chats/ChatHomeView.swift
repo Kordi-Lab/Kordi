@@ -1321,21 +1321,26 @@ private struct ChatPullToRefreshScrollView<Content: View>: View {
 
     private func list(includeLegacyOffsetProbe: Bool) -> some View {
         List {
-            if includeLegacyOffsetProbe {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: ChatPullOffsetPreferenceKey.self,
-                        value: proxy.frame(in: .named(coordinateSpaceName)).minY
-                    )
+            Section {
+                if includeLegacyOffsetProbe {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ChatPullOffsetPreferenceKey.self,
+                            value: proxy.frame(in: .named(coordinateSpaceName)).minY
+                        )
+                    }
+                    .frame(height: 0)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .accessibilityHidden(true)
                 }
-                .frame(height: 0)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .accessibilityHidden(true)
-            }
 
-            content
+                content
+                    .listRowSeparator(.hidden)
+            }
+            // Rows provide their own dividers; empty states need no trailing rule.
+            .listSectionSeparator(.hidden)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
