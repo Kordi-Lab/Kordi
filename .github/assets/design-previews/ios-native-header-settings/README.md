@@ -1,6 +1,6 @@
 # Native iPhone header and settings proposal
 
-Status: approved design implemented for review. This branch has not been merged or released.
+Status: implemented and merged to main in #1691 on 2026-10-05. Not yet in a release.
 
 The proposal follows the compact title capsules in the supplied Slack and Telegram iPhone references, and the density of Slack's preferences sheet. Captures use Kordi's actual SwiftUI screens with its offline sample fixtures.
 
