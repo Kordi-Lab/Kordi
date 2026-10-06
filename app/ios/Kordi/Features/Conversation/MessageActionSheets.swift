@@ -993,7 +993,7 @@ struct MessageActionOverlay: View {
                     actionButton(
                         "Forward",
                         systemImage: "arrowshape.turn.up.right",
-                        disabled: message.deliveryState == .sending || message.deliveryState == .failed,
+                        disabled: cannotForwardOrPin,
                         action: onForward
                     )
                     if let stickerAttachment {
@@ -1006,7 +1006,7 @@ struct MessageActionOverlay: View {
                     actionButton(
                         isPinned ? "Unpin" : "Pin",
                         systemImage: "pin",
-                        disabled: message.deliveryState == .sending || message.deliveryState == .failed,
+                        disabled: cannotForwardOrPin,
                         action: onPin
                     )
                     Divider().padding(.horizontal, 14)
