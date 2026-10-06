@@ -53,7 +53,10 @@ def deploy(args):
                  "KORDI_OMP_ROUTE_WORKER_TOKEN", "KORDI_CHAT_SYNC_CURSOR_SECRET", "KORDI_PIP_FALLBACK_API_KEY",
                  "KORDI_PIP_FALLBACK_BASE_URL", "KORDI_PIP_FALLBACK_MODEL", "KORDI_OAUTH_GITHUB_CLIENT_ID",
                  "KORDI_OAUTH_GITHUB_CLIENT_SECRET", "KORDI_OAUTH_GOOGLE_CLIENT_ID",
-                 "KORDI_OAUTH_GOOGLE_CLIENT_SECRET"):
+                 "KORDI_OAUTH_GOOGLE_CLIENT_SECRET", "KORDI_CONNECTOR_GOOGLE_CLIENT_ID",
+                 "KORDI_CONNECTOR_GOOGLE_CLIENT_SECRET", "KORDI_CONNECTOR_GITHUB_CLIENT_ID",
+                 "KORDI_CONNECTOR_GITHUB_CLIENT_SECRET", "KORDI_CONNECTOR_SLACK_CLIENT_ID",
+                 "KORDI_CONNECTOR_SLACK_CLIENT_SECRET", "KORDI_CONNECTOR_EVENT_RETENTION_DAYS"):
         os.environ.pop(name, None)
     compose = ["docker", "compose", "--project-name", args.project, "--env-file", str(args.env_file),
                "-f", str(args.compose), "-f", str(override)]

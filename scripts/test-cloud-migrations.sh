@@ -50,6 +50,7 @@ tests=(
   title_tests::upgrade_from_89_repairs_only_proven_defaults_and_authenticated_titles
   email_verification_tests::upgrade_from_110_marks_only_provider_verified_primary_emails
   account_email_tests::upgrade_from_112_adds_account_email_codes
+  connectors_tests::upgrade_from_113_adds_connectors_without_touching_accounts
 )
 index=0
 for test_name in "${tests[@]}"; do

@@ -31,6 +31,7 @@ pub struct ServerState {
     call_media: Option<CallMediaConfig>,
     notifications: Option<PushNotificationService>,
     signup_email: Option<crate::auth::signup_email::SignupEmailService>,
+    connectors: crate::connectors::ConnectorRuntime,
 }
 
 impl ServerState {
@@ -46,6 +47,7 @@ impl ServerState {
             call_media: None,
             notifications: None,
             signup_email: None,
+            connectors: crate::connectors::ConnectorRuntime::from_env(),
         }
     }
 
@@ -89,6 +91,16 @@ impl ServerState {
     pub fn with_notifications(mut self, notifications: PushNotificationService) -> Self {
         self.notifications = Some(notifications);
         self
+    }
+
+    /// Replaces the connector cipher and providers; tests inject the stub.
+    pub fn with_connector_runtime(mut self, runtime: crate::connectors::ConnectorRuntime) -> Self {
+        self.connectors = runtime;
+        self
+    }
+
+    pub fn connectors(&self) -> &crate::connectors::ConnectorRuntime {
+        &self.connectors
     }
 
     pub fn db_pool(&self) -> &PgPool {
@@ -174,6 +186,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         )
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
+        .merge(crate::connectors::routes::routes(state.clone()))
         .merge(
             crate::cloud_agent_runtime::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter.clone())),
