@@ -10,6 +10,7 @@ import type { UseChatMessageActionsArgs } from '../src/features/chat/messageActi
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import { canonicalMessageCountsAsReadable } from '../src/features/canonical/readModel/messageVisibility';
 import type { CanonicalSessionMessage, CanonicalSessionState, DesktopChatState, Message } from '../src/kordi-app/types';
+import { waitForReactCondition } from './helpers/waitForReactCondition';
 
 const sessionId = 'synthetic-owned-agent-session';
 const failedMessageId = 'msg:ui:synthetic-failed';
@@ -25,9 +26,13 @@ function failedCanonicalMessage(): CanonicalSessionMessage {
   } as CanonicalSessionMessage;
 }
 
-type RetryScenario = { activeTurn?: boolean; collaboration?: boolean };
+type RetryResult = {
+  canonical: CanonicalSessionState; errors: string[]; appended: Array<Record<string, unknown>>; upserted: Array<Record<string, unknown>>;
+  started: string[]; queued: string[]; composerCleared: boolean;
+};
+type RetryScenario = { activeTurn?: boolean; collaboration?: boolean; settled?: (result: RetryResult) => boolean };
 
-async function retryFailedRequest({ activeTurn = false, collaboration = false }: RetryScenario = {}) {
+async function retryFailedRequest({ activeTurn = false, collaboration = false, settled }: RetryScenario = {}): Promise<RetryResult> {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost', pretendToBeVisual: true });
   const globals = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
     requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), IS_REACT_ACT_ENVIRONMENT: true, __TAURI_INTERNALS__: {} };
@@ -92,7 +97,10 @@ async function retryFailedRequest({ activeTurn = false, collaboration = false }:
   try {
     await act(async () => root.render(<RetryHarness />));
     await act(async () => { await actions.handleRetryChatMessage(failedRow); });
-    return { canonical, errors, appended, upserted, started, queued, composerCleared };
+    const result = () => ({ canonical, errors, appended, upserted, started, queued, composerCleared });
+    // Queue and retirement writes finish after IPC round trips the retry does not await.
+    if (settled) await waitForReactCondition(() => settled(result()), 'the retry state did not settle');
+    return result();
   } finally {
     await act(async () => root.unmount());
     clearMocks(); dom.window.close();
@@ -107,8 +115,12 @@ function isRetired(message: CanonicalSessionMessage | undefined) {
   return (message?.content as Record<string, unknown> | undefined)?.retiredByRetry === true;
 }
 
+function retirementStored(result: RetryResult) {
+  return result.upserted.some(request => request.id === failedMessageId && isRetired(request as unknown as CanonicalSessionMessage));
+}
+
 test('retrying a failed owned-agent request sends it again and retires the failed row', async () => {
-  const result = await retryFailedRequest();
+  const result = await retryFailedRequest({ settled: current => current.started.length > 0 && retirementStored(current) });
   assert.equal(result.errors.some(error => error.includes('Retry is unavailable')), false);
   assert.deepEqual(result.errors, []);
   const resent = result.appended.filter(request => request.contentText === failedText);
@@ -117,18 +129,19 @@ test('retrying a failed owned-agent request sends it again and retires the faile
   assert.deepEqual(result.started, [failedText], 'the local agent receives the original text once');
   const failed = result.canonical.messages.find(message => message.id === failedMessageId);
   assert.equal(isRetired(failed), true, 'the failed row is retired locally');
-  assert.equal(result.upserted.some(request => request.id === failedMessageId && isRetired(request as unknown as CanonicalSessionMessage)), true,
+  assert.equal(retirementStored(result), true,
     'the retirement is stored so the failed row stays hidden after reload');
   assert.equal(result.canonical.messages.filter(message => message.contentText === failedText && !isRetired(message)).length, 1);
   assert.equal(result.composerCleared, false, 'a retry never clears the composer draft');
 });
 
 test('retrying while the session is running queues the request and retires the failed row', async () => {
-  const result = await retryFailedRequest({ activeTurn: true });
+  const result = await retryFailedRequest({ activeTurn: true, settled: current => current.queued.length > 0 && retirementStored(current) });
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.queued, [failedText]);
   assert.deepEqual(result.started, []);
   assert.equal(isRetired(result.canonical.messages.find(message => message.id === failedMessageId)), true);
+  assert.equal(retirementStored(result), true, 'the retirement is stored so the failed row stays hidden after reload');
   assert.equal(result.composerCleared, false);
 });
 
