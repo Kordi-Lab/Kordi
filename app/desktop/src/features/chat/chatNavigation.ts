@@ -1,5 +1,5 @@
 import type { Conversation, NavId } from '@/kordi-app/types';
-import { chatChannelForConversation } from './participantSpaces';
+import { spaceKindForConversation } from './participantSpaces';
 import { isLocalDraftChatConversationId, LOCAL_DRAFT_CHAT_CONVERSATION_ID } from './draftSessions';
 
 export type ChatNavId = 'chats' | 'agent-chats';
@@ -9,7 +9,9 @@ export function isChatNavigation(nav: string): nav is ChatNavId {
 }
 
 export function chatNavigationForConversation(conversation?: Conversation): ChatNavId {
-  return conversation && chatChannelForConversation(conversation) === 'agent' ? 'agent-chats' : 'chats';
+  if (!conversation) return 'chats';
+  const kind = spaceKindForConversation(conversation);
+  return kind === 'direct-human' || kind === 'group' ? 'chats' : 'agent-chats';
 }
 
 export function chatNavigationIndex(conversations: readonly Conversation[]) {

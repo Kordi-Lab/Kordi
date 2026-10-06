@@ -2,12 +2,7 @@ import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { localProjectSessions } from '@/features/projects/localProjectSessions';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {useThreadAttention} from '@/features/cloud/threadAttention';
-import {
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createCollaborationConversationMapper } from '@/features/collaboration/conversationProjectionCache';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';

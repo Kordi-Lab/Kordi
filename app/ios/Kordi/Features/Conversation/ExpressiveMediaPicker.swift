@@ -391,16 +391,20 @@ struct EmojiSelectionBoard: View {
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
     @State private var category: EmojiPickerCategory
     @State private var query = ""
+    @State private var availableWidth: CGFloat = 320
     let allowsSearch: Bool
+    let maximumGridHeight: CGFloat?
     let onSelect: (EmojiPickerItem) -> Void
 
     init(
         initialCategory: EmojiPickerCategory = .noto,
         allowsSearch: Bool = true,
+        maximumGridHeight: CGFloat? = nil,
         onSelect: @escaping (EmojiPickerItem) -> Void
     ) {
         _category = State(initialValue: initialCategory)
         self.allowsSearch = allowsSearch
+        self.maximumGridHeight = maximumGridHeight
         self.onSelect = onSelect
     }
 
@@ -428,11 +432,18 @@ struct EmojiSelectionBoard: View {
             .frame(minHeight: 34)
 
             if displayedItems.isEmpty {
-                ContentUnavailableView.search(text: query)
+                if maximumGridHeight != nil {
+                    Text(query.isEmpty ? "No recent emoji" : "No matching emoji")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 88)
+                } else {
+                    ContentUnavailableView.search(text: query)
+                }
             } else {
                 ScrollView {
                     LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 40, maximum: 46), spacing: 0)],
+                        columns: [GridItem(.adaptive(minimum: maximumGridHeight == nil ? 40 : 44, maximum: 46), spacing: 0)],
                         spacing: 0
                     ) {
                         ForEach(displayedItems) { item in
@@ -455,13 +466,24 @@ struct EmojiSelectionBoard: View {
                     .padding(.bottom, 6)
                 }
                 .scrollDismissesKeyboard(.never)
+                .frame(height: gridHeight)
             }
 
             Divider()
             categoryBar
         }
         .background(Color(uiColor: .systemGray6))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+            if maximumGridHeight != nil, width > 0 { availableWidth = width }
+        }
         .accessibilityElement(children: .contain)
+    }
+
+    private var gridHeight: CGFloat? {
+        guard let maximumGridHeight else { return nil }
+        let columns = max(1, Int((availableWidth - 16) / 44))
+        let rows = (displayedItems.count + columns - 1) / columns
+        return min(CGFloat(rows) * 44 + 6, maximumGridHeight)
     }
 
     private var categoryBar: some View {

@@ -3,6 +3,32 @@ import QuickLook
 import UniformTypeIdentifiers
 import UIKit
 
+private struct ConversationTitleSurface: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content.background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+        } else if #available(iOS 26.0, *) {
+            content.glassEffect(.regular.interactive(), in: .capsule)
+        } else {
+            content.background(.regularMaterial, in: Capsule())
+        }
+    }
+}
+
+private struct ConversationTopScrollEdge: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            content
+        }
+    }
+}
+
 private struct ConversationTimelineRow: Identifiable {
     let id: String
     let offset: Int
@@ -139,13 +165,11 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
     }
 
     private func threadDestination(rootID: String) -> some View {
-        ConversationView(
+        ConversationThreadView(
             conversation: conversation,
+            rootMessageID: rootID,
             initialMessageID: firstMessageID,
             showsThreadUnreadDivider: showsUnreadDivider,
-            allowsCompanionPanel: false,
-            showsNavigationChrome: false,
-            scopedThreadRootMessageID: rootID,
             onNavigateThread: onNavigateThread,
             onReplyInConversation: { source in
                 onReplyInConversation(source)
@@ -153,16 +177,64 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
             }
         )
         .id(rootID)
+    }
+}
+
+struct ConversationThreadView: View {
+    @EnvironmentObject private var model: AppModel
+    let conversation: ConversationSummary
+    let rootMessageID: String
+    var initialMessageID: String? = nil
+    var showsThreadUnreadDivider = false
+    var onNavigateThread: ((String, String?) -> Void)? = nil
+    var onReplyInConversation: ((MessageActionSource) -> Void)? = nil
+
+    var body: some View {
+        ConversationView(
+            conversation: conversation,
+            initialMessageID: initialMessageID,
+            showsThreadUnreadDivider: showsThreadUnreadDivider,
+            allowsCompanionPanel: false,
+            showsNavigationChrome: false,
+            scopedThreadRootMessageID: rootMessageID,
+            onNavigateThread: onNavigateThread,
+            onReplyInConversation: onReplyInConversation
+        )
         .navigationTitle("Discussion")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Discussion")
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .principal) { title }
+                    .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .principal) { title }
             }
         }
+    }
+
+    private var title: some View {
+        VStack(spacing: 1) {
+            Text("Discussion").font(.headline)
+            Text(context)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 7)
+        .frame(minHeight: 44)
+        .modifier(ConversationTitleSurface())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityIdentifier("thread-title")
+    }
+
+    private var context: String {
+        let count = MessageThreadProjection(messages: model.messages(for: conversation))
+            .thread(rootID: rootMessageID)?.replies.count ?? 0
+        return "\(conversation.displayName) · \(count) \(count == 1 ? "reply" : "replies")"
     }
 }
 
@@ -275,6 +347,7 @@ struct ConversationView: View {
     @State private var deleteReflowOffsets: [String: CGFloat] = [:]
     @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
+    @State private var pendingThreadMessageAction: (() -> Void)?
     @State private var messageActionImage: UIImage?
     @State private var messageActionFrame = CGRect.zero
     @State private var messageActionPreviewFrame = CGRect.zero
@@ -284,6 +357,7 @@ struct ConversationView: View {
     @State private var messageActionPreviewScroll = MessageActionPreviewScroll()
     @State private var messageActionFeedback = 0
     @State private var messageActionHitTestRegions = WindowOverlayHitTestRegions()
+    @State private var navigationContentWidth: CGFloat = 0
 
     private var navigationBarVisibility: Visibility {
         showsNavigationChrome ? .visible : .automatic
@@ -682,13 +756,15 @@ struct ConversationView: View {
                                         0,
                                         viewport.size.height - timelineVerticalInset
                                     ),
-                                    alignment: timeline.isEmpty || trajectoryViewport.isPinned ? .top : .bottom
+                                    alignment: timeline.isEmpty || trajectoryViewport.isPinned
+                                        || scopedThreadRootMessageID != nil ? .top : .bottom
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy(preservesTrajectoryPosition: trajectoryViewport.isPinned))
+                            .modifier(ConversationTopScrollEdge())
                             // A pushed destination can lay out before onAppear
                             // prepares its history. Geometry readiness must not
                             // depend on the state captured by that first layout.
@@ -765,10 +841,8 @@ struct ConversationView: View {
                         }
                     }
                 }
-                // This viewport already starts below navigation chrome. Its native
-                // scroll view can extend above it; clip to these bounds without
-                // applying the inherited safe-area inset a second time.
-                .clipped()
+                // Let the native scroll view extend into the top safe area so
+                // messages can pass behind the separate glass controls.
                 .contentShape(Rectangle())
 
                 if selectedMessageIDs.isEmpty {
@@ -847,7 +921,7 @@ struct ConversationView: View {
             let presentedTimeline = timelineContent
             .background(
                 KordiChatWallpaper(theme: chatTheme)
-                    .ignoresSafeArea(edges: .bottom)
+                    .ignoresSafeArea(edges: [.top, .bottom])
             )
             .overlay {
                 ForEach(activeDeleteSnapshots) { snapshot in
@@ -904,13 +978,21 @@ struct ConversationView: View {
                 }
             }
             .overlay {
-                if let messageActionMessage, !messageActionFrame.isEmpty {
+                if messageLayout == .chat, let messageActionMessage, !messageActionFrame.isEmpty {
                     messageActionsOverlay(
                         for: messageActionMessage,
                         pinnedMessageIDs: pinnedMessageIDs,
                         timeline: timeline
                     )
                 }
+            }
+            .sheet(item: threadMessageActions, onDismiss: finishThreadMessageActions) { message in
+                messageActionsContent(
+                    for: message,
+                    pinnedMessageIDs: pinnedMessageIDs,
+                    timeline: timeline,
+                    usableFrame: .zero
+                )
             }
             .overlay {
                 // Driven by the gesture, not the recorder phase, so it appears as the
@@ -1076,54 +1158,18 @@ struct ConversationView: View {
                 if conversation.subsessionId == nil { await model.refreshActiveCall(in: conversation) }
             }
         }
-        return conversationTimeline
+        let conversationLifecycle = conversationTimeline
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.width
+        } action: { width in
+            navigationContentWidth = width
+        }
         .navigationTitle(showsNavigationChrome ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .tint(chatTheme.accent)
-        .toolbarBackground(.regularMaterial, for: .navigationBar)
-        .toolbarBackground(showsNavigationChrome ? .visible : .automatic, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(navigationBarVisibility, for: .navigationBar)
-        .toolbar {
-            if showsNavigationChrome {
-                if canOpenCompanionPanel {
-                    if #available(iOS 26.0, *) {
-                        ToolbarItem(placement: .topBarLeading) {
-                            headerBalanceSpacer
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    } else {
-                        ToolbarItem(placement: .topBarLeading) {
-                            headerBalanceSpacer
-                        }
-                    }
-                }
-                ToolbarItem(placement: .principal) {
-                    conversationHeader
-                        .accessibilityElement(children: .combine)
-                }
-                if #available(iOS 26.0, *) {
-                    if canOpenCompanionPanel {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            askAgentButton
-                        }
-                        .sharedBackgroundVisibility(.hidden)
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if conversation.subsessionId == nil { sessionActionsButton }
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                } else {
-                    if canOpenCompanionPanel {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            askAgentButton
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if conversation.subsessionId == nil { sessionActionsButton }
-                    }
-                }
-            }
-        }
+        .toolbar { conversationToolbar }
         .task(id: scopedThreadRootMessageID) {
             guard scopedThreadRootMessageID != nil, !cachedThreadRevealDeadlinePassed else { return }
             // Fallback only: positioning normally reveals a cached discussion within a few frames.
@@ -1264,6 +1310,7 @@ struct ConversationView: View {
             fullScreenVideoAttachmentID = nil
             synchronizeReadPresentation()
         }
+        let conversationPresentations = conversationLifecycle
         .fileImporter(
             isPresented: $showFileImporter,
             allowedContentTypes: [.item],
@@ -1354,6 +1401,7 @@ struct ConversationView: View {
                 )
             )
         }
+        return conversationPresentations
         .alert(
             "Message action failed",
             isPresented: messageMutationErrorPresented
@@ -1365,7 +1413,7 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
-        .alert("Could not open discussion", isPresented: Binding(get: { threadNavigationError != nil }, set: { if !$0 { threadNavigationError = nil } })) {
+        .alert("Could not open discussion", isPresented: Binding<Bool>(get: { threadNavigationError != nil }, set: { if !$0 { threadNavigationError = nil } })) {
             Button("Retry") {
                 if let root = scopedThreadRootMessageID, let sequence = threadPageRetrySequence {
                     Task { await loadMoreThreadReplies(root: root, after: sequence) }
@@ -1465,10 +1513,10 @@ struct ConversationView: View {
                     showAvatar: presentation.showsAvatar,
                     replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
                     isHighlighted: highlightedMessageID == message.id,
-                    isActionPresented: messageActionMessage?.id == message.id && messageActionImage == nil,
+                    isActionPresented: messageLayout == .chat && messageActionMessage?.id == message.id && messageActionImage == nil,
                     pendingSendEntrance: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
                     outgoingAvatarGroupID: presentation.outgoingAvatarGroupID,
-                    actionPlacement: messageActionMessage?.id == message.id && messageActionImage == nil && !messageActionPreviewFrame.isEmpty
+                    actionPlacement: messageLayout == .chat && messageActionMessage?.id == message.id && messageActionImage == nil && !messageActionPreviewFrame.isEmpty
                         ? MessageActionBubblePlacement(sourceFrame: messageActionFrame, previewFrame: messageActionPreviewFrame)
                         : nil,
                     actionViewportFrame: viewportFrame,
@@ -1527,7 +1575,7 @@ struct ConversationView: View {
                     onUpdateActionFrame: { frame in
                         updateMessageActionFrame(for: message.id, frame: frame, viewportFrame: viewportFrame)
                     },
-                    actionPreviewScroll: messageActionMessage?.id == message.id ? messageActionPreviewScroll : nil,
+                    actionPreviewScroll: messageLayout == .chat && messageActionMessage?.id == message.id ? messageActionPreviewScroll : nil,
                     onReactToAttachment: { attachment, reaction in
                         Task { _ = await model.toggleAttachmentReaction(reaction, on: attachment, message: message, in: conversation) }
                     },
@@ -1597,7 +1645,7 @@ struct ConversationView: View {
                     onContentExpansionChange: { expanded in
                         updateTrajectoryExpansion(row.id, expanded: expanded, viewportHeight: viewportFrame.height)
                     },
-                    usesOverlayPhotoPreview: messageActionMessage?.id == message.id && messageActionImage != nil,
+                    usesOverlayPhotoPreview: messageLayout == .chat && messageActionMessage?.id == message.id && messageActionImage != nil,
                     presentedActionAttachmentID: messageActionMessage?.id == message.id ? messageActionAttachment?.id : nil,
                     onPrepareActionImage: { messageActionImage = $0 },
                     deletingAttachmentID: pendingMessageDeletion?.message.id == message.id ? pendingMessageDeletion?.attachmentID : nil,
@@ -1665,10 +1713,6 @@ struct ConversationView: View {
         pinnedMessageIDs: Set<String>,
         timeline: [ChatMessage]
     ) -> some View {
-        let readReceiptReaders = MessageReadReceiptPresentation.readers(
-            for: message,
-            in: conversation
-        )
         let selectionFrame = messageActionPreviewFrame.isEmpty ? messageActionFrame : messageActionPreviewFrame
         let visibleSelectionFrame = messageActionViewportFrame.isEmpty
             ? selectionFrame : selectionFrame.intersection(messageActionViewportFrame)
@@ -1688,13 +1732,46 @@ struct ConversationView: View {
                 }
             }
         ) { usableFrame in
+            messageActionsContent(
+                for: message,
+                pinnedMessageIDs: pinnedMessageIDs,
+                timeline: timeline,
+                usableFrame: messageActionViewportFrame.isEmpty ? usableFrame : messageActionViewportFrame
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var threadMessageActions: Binding<ChatMessage?> {
+        Binding(
+            get: { messageLayout == .threads ? messageActionMessage : nil },
+            set: { messageActionMessage = $0 }
+        )
+    }
+
+    private func finishThreadMessageActions() {
+        let action = pendingThreadMessageAction
+        pendingThreadMessageAction = nil
+        if let action { action() }
+        else { dismissMessageActions() }
+    }
+
+    private func messageActionsContent(
+        for message: ChatMessage,
+        pinnedMessageIDs: Set<String>,
+        timeline: [ChatMessage],
+        usableFrame: CGRect
+    ) -> some View {
+        let readReceiptReaders = MessageReadReceiptPresentation.readers(for: message, in: conversation)
+        return
             MessageActionOverlay(
                 message: message,
+                layout: messageLayout,
                 sourceFrame: messageActionFrame,
                 photoPreview: messageActionImage,
                 hitTestRegions: messageActionHitTestRegions,
                 previewScroll: messageActionPreviewScroll,
-                usableFrame: messageActionViewportFrame.isEmpty ? usableFrame : messageActionViewportFrame,
+                usableFrame: usableFrame,
                 onPreviewFrameChange: { frame, allowsTextSelection in
                     // Floating photos animate entirely in the menu host. Feeding
                     // their animation back into the lazy chat layout is unnecessary.
@@ -1736,6 +1813,7 @@ struct ConversationView: View {
                     readers: readReceiptReaders
                 ),
                 readReceiptReaders: readReceiptReaders,
+                onSheetAction: { action in pendingThreadMessageAction = action },
                 onDismiss: dismissMessageActions,
                 onReviewAttachment: {
                     guard let attachment = messageActionAttachment else { return }
@@ -1832,8 +1910,6 @@ struct ConversationView: View {
                     dismissMessageActions()
                 }
             )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func joinCall(_ call: CloudCall) {
@@ -2585,6 +2661,55 @@ struct ConversationView: View {
         )
     }
 
+    @ToolbarContentBuilder
+    private var conversationToolbar: some ToolbarContent {
+        if showsNavigationChrome {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .principal) { conversationTitleButton }
+                    .sharedBackgroundVisibility(.hidden)
+                ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 0) {
+                        if canOpenCompanionPanel { askAgentButton }
+                        if conversation.subsessionId == nil { sessionActionsButton }
+                    }
+                }
+            } else {
+                ToolbarItem(placement: .principal) { conversationTitleButton }
+                if canOpenCompanionPanel {
+                    ToolbarItem(placement: .topBarTrailing) { askAgentButton }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if conversation.subsessionId == nil { sessionActionsButton }
+                }
+            }
+        }
+    }
+
+    private var conversationTitleButton: some View {
+        Button(action: openSessionDetails) {
+            conversationHeader
+            .padding(.horizontal, 15)
+            .padding(.vertical, 7)
+            .frame(width: conversationTitleWidth)
+            .frame(minHeight: 44)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .modifier(ConversationTitleSurface())
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityLabel("\(conversation.displayName), \(conversationHeaderStatus)")
+        .accessibilityHint("Opens conversation details")
+        .accessibilityIdentifier("conversation-title")
+    }
+
+    private var conversationTitleWidth: CGFloat {
+        let actionCount = (canOpenCompanionPanel ? 1 : 0) + (conversation.subsessionId == nil ? 1 : 0)
+        // Reserve the wider control group on both sides so the native title
+        // stays on the screen's centerline, including long presence labels.
+        let controlWidth = CGFloat(max(1, actionCount)) * 44 + 36
+        return min(220, max(44, (navigationContentWidth > 0 ? navigationContentWidth : 402) - controlWidth * 2))
+    }
+
     private var conversationHeader: some View {
         VStack(spacing: 1) {
             Text(conversation.displayName)
@@ -2592,10 +2717,7 @@ struct ConversationView: View {
                 .lineLimit(1)
 
             if let id = conversation.subsessionId {
-                let snapshot = model.subsessions[id]
-                let status = model.stoppingSubsessionIDs.contains(id) ? "Stopping…"
-                    : snapshot?.statusNotice ?? snapshot?.state.label ?? "Loading…"
-                Text("Shared thread · \(status)")
+                Text(sharedThreadHeaderStatus(id: id))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -2626,12 +2748,7 @@ struct ConversationView: View {
                     .lineLimit(1)
             }
         }
-    }
-
-    private var headerBalanceSpacer: some View {
-        Color.clear
-            .frame(width: 44, height: 44)
-            .accessibilityHidden(true)
+        .multilineTextAlignment(.center)
     }
 
     private var agentActivity: AgentActivity {
@@ -2649,9 +2766,13 @@ struct ConversationView: View {
         .contentShape(Rectangle())
         .accessibilityLabel("Open info for \(conversation.displayName)")
         .accessibilityHint("Shows media, files, tasks, and session details")
+        .accessibilityIdentifier("conversation-details")
     }
 
     private var conversationHeaderStatus: String {
+        if let id = conversation.subsessionId {
+            return sharedThreadHeaderStatus(id: id)
+        }
         return switch conversation.kind {
         case .agent:
             agentHeaderStatus
@@ -2666,6 +2787,13 @@ struct ConversationView: View {
                 )
             }
         }
+    }
+
+    private func sharedThreadHeaderStatus(id: String) -> String {
+        let snapshot = model.subsessions[id]
+        let status = model.stoppingSubsessionIDs.contains(id) ? "Stopping…"
+            : snapshot?.statusNotice ?? snapshot?.state.label ?? "Loading…"
+        return "Shared thread · \(status)"
     }
 
     private func openSessionDetails() {

@@ -18,7 +18,7 @@ struct ChatProjectPicker: View {
                 }
                 ForEach(model.projectDevices) { device in
                     Section {
-                        ForEach(device.projects.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { project in
+                        ForEach(device.projects.filter { conversation != nil && (search.isEmpty || $0.name.localizedCaseInsensitiveContains(search)) }) { project in
                             Button { assign(project, device: device) } label: {
                                 HStack(spacing: 10) {
                                     Image(systemName: "folder").foregroundStyle(.secondary)
@@ -54,7 +54,7 @@ struct ChatProjectPicker: View {
             }
             .listStyle(.insetGrouped)
             .searchable(text: $search, prompt: "Search projects")
-            .navigationTitle("Choose project")
+            .navigationTitle(conversation == nil ? "New project" : "Choose project")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() }.disabled(busy) } }
             .disabled(busy)
@@ -79,30 +79,6 @@ struct ChatProjectPicker: View {
                 dismiss()
             } catch { self.error = error.localizedDescription }
             busy = false
-        }
-    }
-}
-
-struct ChatProjectComposerControl: View {
-    @EnvironmentObject private var model: AppModel
-    let conversation: ConversationSummary
-    @State private var presented = false
-
-    var body: some View {
-        if model.canChooseProject(conversation) {
-            Button { presented = true } label: {
-                Label(model.project(for: conversation.sessionId)?.name ?? "Choose project", systemImage: "folder")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(conversation.agentActivity == .replying)
-            .accessibilityHint("Choose the workspace on your Mac for this session")
-            .sheet(isPresented: $presented) { ChatProjectPicker(conversation: conversation) }
         }
     }
 }

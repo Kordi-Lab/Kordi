@@ -5,7 +5,7 @@ import UIKit
 enum MainTab: String, CaseIterable, Identifiable {
     case contacts = "Contacts"
     case chats = "Chats"
-    case agents = "Agent Chats"
+    case agents = "Agents"
     case digest = "Digest"
     case account = "Account"
 

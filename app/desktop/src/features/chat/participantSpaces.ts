@@ -207,7 +207,7 @@ function selfParticipant(participants: ConversationParticipant[]) {
   return participants.find((participant) => isSelfParticipant(participant));
 }
 
-function spaceKindForConversation(conversation: Conversation, nonSelf: ConversationParticipant[]): ParticipantSpaceKind {
+export function spaceKindForConversation(conversation: Conversation, nonSelf = nonSelfParticipants(conversation)): ParticipantSpaceKind {
   const humanCount = nonSelfHumans(nonSelf).length;
   if (conversation.participantSpaceId || humanCount > 1) {
     return 'group';
@@ -219,11 +219,6 @@ function spaceKindForConversation(conversation: Conversation, nonSelf: Conversat
     return 'self';
   }
   return 'self';
-}
-
-export function chatChannelForConversation(conversation: Conversation): ChatChannel {
-  const kind = spaceKindForConversation(conversation, nonSelfParticipants(conversation));
-  return kind === 'direct-human' || kind === 'group' ? 'contact' : 'agent';
 }
 
 function primaryParticipantForKind(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
