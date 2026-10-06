@@ -48,7 +48,8 @@ test('split chat panes share one header, tab, and content geometry contract', ()
   assert.match(titleGeometry, /width:\s*100%/);
   assert.match(titleGeometry, /min-width:\s*0/);
   assert.match(companionHeader, /className="flex min-w-0 flex-1 items-center gap-2"/);
-  assert.match(companionHeader, /app-chat-pane-title-row min-w-0 w-full truncate/);
+  assert.match(companionHeader, /app-page-header-title-row app-chat-pane-title-row flex min-w-0 w-full items-center/);
+  assert.match(companionHeader, /<h2\s+className="app-companion-pane-title min-w-0 w-full truncate text-\[17px\] font-semibold leading-6"/);
   assert.doesNotMatch(companionHeader, /app-chat-pane-title-row[^"\n]*max-w-/);
   assert.doesNotMatch(mainHeader, /<h2 className="[^"]*max-w-/);
 

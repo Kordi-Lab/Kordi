@@ -110,7 +110,8 @@
   color: var(--utility-foreground);
 }
 .app-native-companion-titlebar h2 { display: flex; align-items: center; }
-.app-native-companion-titlebar :is([data-chat-session-subtitle], .app-companion-overview-header p) { display: none; }
+.app-native-companion-titlebar .app-companion-header-controls { align-self: center; margin-top: 0; }
+.app-native-companion-titlebar :is(.app-chat-pane-metadata-row, .app-companion-overview-header p) { display: none; }
 html.kordi-native-shell .app-native-titlebar-workspace { margin-right: calc(var(--app-native-detail-width, 0px) + 6px); }
 
 .app-native-titlebar-actions {
