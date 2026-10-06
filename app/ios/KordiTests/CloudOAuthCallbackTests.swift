@@ -54,9 +54,12 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         )
         let uploadedAsset = "data:image/jpeg;base64,YXZhdGFy"
 
+        let challenge = try await client.requestSignupCode(email: "avatar@example.com")
         _ = try await client.signup(
             email: "avatar@example.com",
             password: "password123",
+            verificationId: challenge.verificationId,
+            verificationCode: "123456",
             displayName: "Avatar",
             avatarSeed: "signup_seed",
             avatarMutation: .upload(uploadedAsset, expectedVersion: nil)
@@ -64,15 +67,16 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
 
         let requests = SignupAvatarURLProtocol.requests
         XCTAssertEqual(requests.map(\.url?.path), [
+            "/v1/cloud/auth/signup/code",
             "/v1/cloud/auth/signup",
             "/v1/cloud/avatar-assets",
             "/v1/cloud/auth/me"
         ])
         XCTAssertEqual(
-            requests[1].value(forHTTPHeaderField: "Content-Type"),
+            requests[2].value(forHTTPHeaderField: "Content-Type"),
             "image/jpeg"
         )
-        XCTAssertEqual(requests[2].httpMethod, "PATCH")
+        XCTAssertEqual(requests[3].httpMethod, "PATCH")
     }
 
     func testOAuthAccountActivationAllowsReliableChatBootstrap() async throws {
@@ -462,6 +466,9 @@ private final class SignupAvatarURLProtocol: URLProtocol {
         let payload: Data
         let status: Int
         switch request.url?.path {
+        case "/v1/cloud/auth/signup/code":
+            payload = Data(#"{"verificationId":"test_challenge","expiresAt":"2099-01-01T00:00:00Z","retryAfterSeconds":60}"#.utf8)
+            status = 200
         case "/v1/cloud/avatar-assets":
             payload = Data(#"{"uploadedAsset":"\#(uploadedAsset)"}"#.utf8)
             status = 200

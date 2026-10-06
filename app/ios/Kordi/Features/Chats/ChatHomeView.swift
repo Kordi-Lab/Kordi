@@ -5,6 +5,17 @@ enum ChatChannel: Hashable {
     case agent
 }
 
+private struct ProjectPickerPresentation: Identifiable {
+    let id: String
+    let conversation: ConversationSummary?
+
+    static let newProject = ProjectPickerPresentation(id: "new-project", conversation: nil)
+
+    static func move(_ conversation: ConversationSummary) -> ProjectPickerPresentation {
+        ProjectPickerPresentation(id: "move:\(conversation.sessionId)", conversation: conversation)
+    }
+}
+
 struct ChatHomeView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var model: AppModel
@@ -12,8 +23,7 @@ struct ChatHomeView: View {
     let channel: ChatChannel
     @State private var searchText = ""
     @State private var collapsedProjectIDs = Set<String>()
-    @State private var projectTarget: ConversationSummary?
-    @State private var showingProjectPicker = false
+    @State private var projectPicker: ProjectPickerPresentation?
     @State private var newChatMode: NewChatMode?
     @State private var composedConversation: ConversationSummary?
     @State private var expandedGroupSpaceIds = Set<String>()
@@ -176,7 +186,7 @@ struct ChatHomeView: View {
                 )
             }
         }
-        .sheet(isPresented: $showingProjectPicker) { ChatProjectPicker(conversation: projectTarget) }
+        .sheet(item: $projectPicker) { presentation in ChatProjectPicker(conversation: presentation.conversation) }
         .task(id: model.account?.accountId) {
             guard channel == .agent else { return }
             while !Task.isCancelled {
@@ -528,8 +538,7 @@ struct ChatHomeView: View {
             HStack(spacing: 0) {
                 agentSectionToggle("Projects", id: "projects")
                 Button {
-                    projectTarget = nil
-                    showingProjectPicker = true
+                    projectPicker = .newProject
                 } label: {
                     Image(systemName: "plus")
                         .frame(width: 44, height: dynamicTypeSize.isAccessibilitySize ? 44 : 32)
@@ -811,7 +820,7 @@ struct ChatHomeView: View {
     @ViewBuilder
     private func sessionContextMenu(for conversation: ConversationSummary) -> some View {
         if model.canChooseProject(conversation) {
-            Button("Move to project", systemImage: "folder") { projectTarget = conversation; showingProjectPicker = true }
+            Button("Move to project", systemImage: "folder") { projectPicker = .move(conversation) }
                 .disabled(conversation.agentActivity == .replying)
         }
         if conversation.kind != .group
@@ -1312,21 +1321,26 @@ private struct ChatPullToRefreshScrollView<Content: View>: View {
 
     private func list(includeLegacyOffsetProbe: Bool) -> some View {
         List {
-            if includeLegacyOffsetProbe {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: ChatPullOffsetPreferenceKey.self,
-                        value: proxy.frame(in: .named(coordinateSpaceName)).minY
-                    )
+            Section {
+                if includeLegacyOffsetProbe {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ChatPullOffsetPreferenceKey.self,
+                            value: proxy.frame(in: .named(coordinateSpaceName)).minY
+                        )
+                    }
+                    .frame(height: 0)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .accessibilityHidden(true)
                 }
-                .frame(height: 0)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .accessibilityHidden(true)
-            }
 
-            content
+                content
+                    .listRowSeparator(.hidden)
+            }
+            // Rows provide their own dividers; empty states need no trailing rule.
+            .listSectionSeparator(.hidden)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)

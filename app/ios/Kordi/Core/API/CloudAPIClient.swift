@@ -114,9 +114,20 @@ actor CloudAPIClient {
         return response
     }
 
+    func requestSignupCode(email: String) async throws -> CloudSignupCodeChallenge {
+        try await send(
+            path: "/v1/cloud/auth/signup/code",
+            method: "POST",
+            body: SignupCodeRequest(email: email),
+            fallback: "Could not send verification code."
+        )
+    }
+
     func signup(
         email: String,
         password: String,
+        verificationId: String,
+        verificationCode: String,
         displayName: String?,
         avatarSeed: String,
         avatarMutation: CanonicalAvatarMutation? = nil
@@ -136,6 +147,8 @@ actor CloudAPIClient {
             body: SignupRequest(
                 email: email,
                 password: password,
+                verificationId: verificationId,
+                verificationCode: verificationCode,
                 displayName: displayName,
                 avatarSeed: avatarSeed,
                 avatarMutation: pendingAvatar == nil ? avatarMutation : nil,
@@ -3044,10 +3057,20 @@ private struct UpdateProfileRequest: Encodable {
 private struct SignupRequest: Encodable {
     let email: String
     let password: String
+    let verificationId: String
+    let verificationCode: String
     let displayName: String?
     let avatarSeed: String
     let avatarMutation: CanonicalAvatarMutation?
     let device: CloudDeviceRegistration
+}
+struct CloudSignupCodeChallenge: Decodable {
+    let verificationId: String
+    let expiresAt: String
+    let retryAfterSeconds: Int
+}
+private struct SignupCodeRequest: Encodable {
+    let email: String
 }
 private struct DeviceMetadataUpdateRequest: Encodable {
     let displayName: String

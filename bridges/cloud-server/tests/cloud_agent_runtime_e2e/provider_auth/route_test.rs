@@ -149,7 +149,7 @@ async fn omp_test_route_uses_only_the_exact_saved_codex_choice() {
         "test-provider-auth-key-that-is-long-enough",
     );
     let (worker, _worker_env) = mock_worker().await;
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "omp-route-test-owner", "Owner").await;
     let own_credentials = [
         "synthetic-work",
@@ -255,7 +255,7 @@ async fn omp_test_route_rejects_mismatched_models_and_maps_worker_failures() {
         "test-provider-auth-key-that-is-long-enough",
     );
     let (worker, _worker_env) = mock_worker().await;
-    let router = test_router(Arc::new(ServerState::new(pool, EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool)));
     let owner = signup(&router, "omp-route-failure-owner", "Owner").await;
     let credential = "synthetic-failure-probe";
     let snapshot_id =
@@ -335,7 +335,7 @@ async fn omp_test_route_rejects_mismatched_models_and_maps_worker_failures() {
 async fn omp_route_endpoints_keep_the_catalog_public_and_runs_authenticated() {
     let Some(pool) = try_pool().await else { return };
     let (worker, _worker_env) = mock_worker().await;
-    let router = test_router(Arc::new(ServerState::new(pool, EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool)));
 
     let catalog = router
         .clone()

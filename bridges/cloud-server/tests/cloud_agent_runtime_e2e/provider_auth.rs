@@ -35,7 +35,7 @@ async fn provider_auth_snapshot_create_current_revoke_and_audit() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "provider-auth-owner", "Owner").await;
 
@@ -177,7 +177,7 @@ async fn provider_auth_snapshot_is_account_scoped() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = test_router(state);
     let owner = signup(&router, "provider-auth-owner-scope", "Owner").await;
     let other = signup(&router, "provider-auth-other-scope", "Other").await;
@@ -218,7 +218,7 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "provider-material-owner", "Owner").await;
     let requester = signup(&router, "provider-material-requester", "Requester").await;
@@ -347,7 +347,7 @@ async fn provider_auth_material_missing_snapshot_returns_not_found() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "provider-material-missing-owner", "Owner").await;
     let requester = signup(&router, "provider-material-missing-requester", "Requester").await;

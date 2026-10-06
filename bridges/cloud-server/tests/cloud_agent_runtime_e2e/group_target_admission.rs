@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn legacy_and_structured_group_requests_reject_unrelated_executors() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let sender = signup(&router, "group-target-sender", "Sender").await;
     let peer = signup(&router, "group-target-peer", "Peer").await;
     accept_contacts(&router, &sender, &peer).await;
@@ -118,7 +118,7 @@ async fn legacy_and_structured_group_requests_reject_unrelated_executors() {
 async fn sender_group_alias_can_read_only_the_admitted_owners_calendar() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "group-calendar-owner", "Owner").await;
     let peer = signup(&router, "group-calendar-peer", "Peer").await;
     accept_contacts(&router, &owner, &peer).await;

@@ -3547,6 +3547,7 @@ dependencies = [
  "sqlx-postgres",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
  "tower",
  "tower-http 0.5.2",
  "unicode-normalization",

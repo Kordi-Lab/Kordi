@@ -30,6 +30,7 @@ pub struct ServerState {
     pip: Option<PipService>,
     call_media: Option<CallMediaConfig>,
     notifications: Option<PushNotificationService>,
+    signup_email: Option<crate::auth::signup_email::SignupEmailService>,
 }
 
 impl ServerState {
@@ -44,12 +45,25 @@ impl ServerState {
             pip: None,
             call_media: None,
             notifications: None,
+            signup_email: None,
         }
     }
 
     pub fn with_s3(mut self, s3: S3Config) -> Self {
         self.s3 = Some(s3);
         self
+    }
+
+    pub fn with_signup_email(
+        mut self,
+        service: crate::auth::signup_email::SignupEmailService,
+    ) -> Self {
+        self.signup_email = Some(service);
+        self
+    }
+
+    pub fn signup_email(&self) -> Option<&crate::auth::signup_email::SignupEmailService> {
+        self.signup_email.as_ref()
     }
 
     pub fn with_release_store(mut self, release_store: ReleaseCatalogStore) -> Self {
@@ -154,14 +168,20 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
             crate::auth::password::PasswordHasherConfig::production(),
             rate_limiter.clone(),
         ))
-        .merge(crate::chat_sync::routes::routes(state.clone()))
+        .merge(
+            crate::chat_sync::routes::routes(state.clone())
+                .layer(axum::Extension(rate_limiter.clone())),
+        )
         .merge(crate::calls::routes(state.clone()))
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(
             crate::cloud_agent_runtime::routes::routes(state.clone())
+                .layer(axum::Extension(rate_limiter.clone())),
+        )
+        .merge(
+            crate::scheduled_tasks::routes::routes(state.clone())
                 .layer(axum::Extension(rate_limiter)),
         )
-        .merge(crate::scheduled_tasks::routes::routes(state.clone()))
         .merge(crate::digest::routes(state.clone()))
         .merge(crate::plan_cards::routes(state.clone()))
         .merge(crate::projects::routes(state.clone()))
@@ -268,6 +288,12 @@ pub async fn run(
         }
     };
     let mut state = ServerState::new(pool, events);
+    if let Some(service) = crate::auth::signup_email::SignupEmailService::from_env() {
+        state = state.with_signup_email(service);
+        println!("Kordi signup email verification is configured");
+    } else {
+        println!("Kordi password signup is unavailable until signup email delivery is configured");
+    }
     if let Some(call_media) = CallMediaConfig::from_env().map_err(RunError::CallMedia)? {
         println!("Kordi call media is configured");
         state = state.with_call_media(call_media);

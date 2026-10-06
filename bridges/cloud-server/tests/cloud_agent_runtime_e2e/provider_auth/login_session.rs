@@ -100,7 +100,7 @@ pub(super) fn login_router(pool: &sqlx_postgres::PgPool) -> axum::Router {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())))
+    test_router(Arc::new(signup_email_fixture::state(pool.clone())))
 }
 
 #[tokio::test]

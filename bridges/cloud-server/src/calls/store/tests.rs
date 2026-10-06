@@ -34,13 +34,16 @@ async fn concurrent_end_and_join_leave_a_terminal_call() {
     for account_id in [&caller, &callee] {
         query(
             "INSERT INTO cloud_accounts \
-             (account_id, display_name, primary_email, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $4)",
+             (account_id, display_name, primary_email, created_at, updated_at, \
+              avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at) \
+             VALUES ($1, $2, $3, $4, $4, 'generated', $5, $1, $6, 1, $4)",
         )
         .bind(account_id)
         .bind(account_id)
         .bind(format!("{account_id}@e2e.local"))
         .bind(&now)
+        .bind(crate::avatars::HUMAN_AVATAR_STYLE)
+        .bind(crate::avatars::AVATAR_RENDERER_VERSION)
         .execute(&pool)
         .await
         .unwrap();

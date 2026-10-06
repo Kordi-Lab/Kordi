@@ -8,7 +8,7 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "runner-owner", "Owner").await;
     let requester = signup(&router, "runner-requester", "Requester").await;
@@ -111,7 +111,7 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
 async fn runner_canary_lease_only_claims_requested_run_id() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "runner-canary-owner", "Owner").await;
     let requester = signup(&router, "runner-canary-requester", "Requester").await;
@@ -193,7 +193,7 @@ async fn runner_canary_lease_only_claims_requested_run_id() {
 async fn expired_runner_lease_is_reclaimed_by_exactly_one_runtime() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "runner-expiry-owner", "Owner").await;
     let requester = signup(&router, "runner-expiry-requester", "Requester").await;
@@ -275,7 +275,7 @@ async fn expired_runner_lease_is_reclaimed_by_exactly_one_runtime() {
 async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "runner-missing-provider-owner", "Owner").await;
     let requester = signup(&router, "runner-missing-provider-requester", "Requester").await;
@@ -358,7 +358,7 @@ async fn runner_lease_reports_missing_provider_auth_and_fail_marks_run_failed() 
 async fn runner_endpoints_reject_user_tokens_and_bad_runner_tokens() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = test_router(state);
     let account = signup(&router, "runner-auth-user", "User").await;
 

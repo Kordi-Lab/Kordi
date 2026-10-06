@@ -35,7 +35,7 @@ use chrono::Utc;
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 
-use crate::auth::session::{device_is_active, lookup_session};
+use crate::auth::session::{lookup_session, session_is_active};
 use crate::server::ServerState;
 
 #[derive(Debug, Deserialize)]
@@ -60,9 +60,39 @@ pub async fn ws_handler(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let account_id = session.account_id;
-    let device_id = session.device_id;
-    ws.on_upgrade(move |socket| run_ws(socket, account_id, device_id, state))
+    let connection = WsConnection {
+        account_id: session.account_id,
+        device_id: session.device_id,
+        token_id: session.token_id,
+    };
+    ws.on_upgrade(move |socket| run_ws(socket, connection, state))
+}
+
+/// The authenticated identity behind one gateway socket. The socket stays
+/// open only while `token_id` remains a live session for this device.
+struct WsConnection {
+    account_id: String,
+    device_id: String,
+    token_id: String,
+}
+
+impl WsConnection {
+    async fn is_active(&self, state: &ServerState) -> bool {
+        match session_is_active(
+            state.db_pool(),
+            &self.account_id,
+            &self.device_id,
+            &self.token_id,
+        )
+        .await
+        {
+            Ok(active) => active,
+            Err(error) => {
+                eprintln!("[ws] revalidate session: {error}");
+                false
+            }
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -83,14 +113,16 @@ struct ConnectedFrame<'a> {
     account_id: &'a str,
 }
 
-async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state: Arc<ServerState>) {
+async fn run_ws(socket: WebSocket, connection: WsConnection, state: Arc<ServerState>) {
+    let account_id = connection.account_id.clone();
+    let device_id = connection.device_id.clone();
     let bus = state.events().clone();
     let Some(client) = bus.nats_client() else {
         // Bus is in noop mode (no NATS_URL). Send a one-shot hello so
         // clients can tell the difference between "connected" and
         // "actually receiving events," then idle until close.
         mark_presence_online_on_websocket_connect(&state, &account_id, &device_id).await;
-        idle_without_nats(socket, &state, &account_id, &device_id).await;
+        idle_without_nats(socket, &state, &connection).await;
         let disconnected_at = Utc::now();
         mark_presence_offline_on_websocket_disconnect(
             &state,
@@ -155,8 +187,8 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
         return;
     }
     mark_presence_online_on_websocket_connect(&state, &account_id, &device_id).await;
-    let mut device_revalidation = tokio::time::interval(Duration::from_secs(2));
-    device_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut session_revalidation = tokio::time::interval(SESSION_REVALIDATION_INTERVAL);
+    session_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
@@ -209,18 +241,10 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
                 break;
             },
 
-            _ = device_revalidation.tick() => {
-                match device_is_active(state.db_pool(), &account_id, &device_id).await {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        let _ = sender.send(Message::Close(None)).await;
-                        break;
-                    }
-                    Err(error) => {
-                        eprintln!("[ws] revalidate device: {error}");
-                        let _ = sender.send(Message::Close(None)).await;
-                        break;
-                    }
+            _ = session_revalidation.tick() => {
+                if !connection.is_active(&state).await {
+                    let _ = sender.send(Message::Close(None)).await;
+                    break;
                 }
             },
         }
@@ -238,6 +262,9 @@ async fn run_ws(socket: WebSocket, account_id: String, device_id: String, state:
 }
 
 const WS_DISCONNECT_OFFLINE_GRACE: Duration = Duration::from_secs(2);
+/// How often an open socket re-checks that its session and device are live,
+/// so sign-out and device revocation both close it within this interval.
+const SESSION_REVALIDATION_INTERVAL: Duration = Duration::from_secs(2);
 
 fn should_mark_presence_offline_on_websocket_disconnect(account_id: &str, device_id: &str) -> bool {
     !account_id.trim().is_empty() && !device_id.trim().is_empty()
@@ -348,29 +375,25 @@ fn envelope_body(subject: &str, payload_bytes: &[u8]) -> Option<String> {
 async fn idle_without_nats(
     mut socket: WebSocket,
     state: &Arc<ServerState>,
-    account_id: &str,
-    device_id: &str,
+    connection: &WsConnection,
 ) {
     let frame = serde_json::to_string(&ConnectedFrame {
         event: "connected_no_events",
-        account_id,
+        account_id: &connection.account_id,
     })
     .unwrap_or_else(|_| String::from(r#"{"event":"connected_no_events"}"#));
     let _ = socket.send(Message::Text(frame)).await;
-    let mut device_revalidation = tokio::time::interval(Duration::from_secs(2));
+    let mut session_revalidation = tokio::time::interval(SESSION_REVALIDATION_INTERVAL);
     loop {
         tokio::select! {
             message = socket.recv() => match message {
                 Some(Ok(Message::Close(_))) | Some(Err(_)) | None => break,
                 _ => {}
             },
-            _ = device_revalidation.tick() => {
-                match device_is_active(state.db_pool(), account_id, device_id).await {
-                    Ok(true) => {}
-                    Ok(false) | Err(_) => {
-                        let _ = socket.send(Message::Close(None)).await;
-                        break;
-                    }
+            _ = session_revalidation.tick() => {
+                if !connection.is_active(state).await {
+                    let _ = socket.send(Message::Close(None)).await;
+                    break;
                 }
             }
         }

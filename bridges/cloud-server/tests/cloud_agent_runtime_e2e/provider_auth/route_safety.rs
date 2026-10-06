@@ -111,7 +111,7 @@ pub(super) async fn run_provider_auth(
 async fn a_route_without_an_account_choice_needs_exactly_one_live_account() {
     let Some(pool) = try_pool().await else { return };
     set_provider_auth_env();
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "route-safety-choice-owner", "Owner").await;
     let far_future = 4_102_444_800_000;
     let work = publish_codex(
@@ -171,7 +171,7 @@ async fn concurrent_route_tests_refresh_an_expiring_codex_token_once() {
     let Some(pool) = try_pool().await else { return };
     set_provider_auth_env();
     let (worker, _worker_env) = mock_worker().await;
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "route-safety-refresh-owner", "Owner").await;
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let refresh_token = format!("synthetic-refresh-{suffix}");
@@ -227,7 +227,7 @@ async fn concurrent_route_tests_refresh_an_expiring_codex_token_once() {
 async fn provider_checks_are_limited_per_account_and_labels_are_shortened() {
     let Some(pool) = try_pool().await else { return };
     set_provider_auth_env();
-    let router = test_router(Arc::new(ServerState::new(pool, EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool)));
     let owner = signup(&router, "route-safety-limit-owner", "Owner").await;
     let other = signup(&router, "route-safety-limit-other", "Other").await;
     // Both calls are rejected before any worker is contacted, and still count.
@@ -319,7 +319,7 @@ async fn listed_status(router: &axum::Router, owner: &TestAccount, snapshot_id: 
 async fn an_expired_access_only_account_needs_reconnecting_and_is_never_used() {
     let Some(pool) = try_pool().await else { return };
     set_provider_auth_env();
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "route-safety-reconnect-owner", "Owner").await;
     let expired = chrono::Utc::now().timestamp_millis() - 60_000;
     let stale = publish(

@@ -31,6 +31,9 @@ pub(super) struct ConsumedRealtimeTicket {
     pub(super) account_id: String,
     pub(super) device_id: String,
     pub(super) allowed_origin: Option<String>,
+    /// The session that issued the ticket. `None` only for tickets issued by
+    /// an older replica during a rolling update.
+    pub(super) session_token_id: Option<String>,
 }
 
 fn allowed_origins() -> Vec<String> {
@@ -94,9 +97,13 @@ pub async fn issue_ticket(
     pool: &PgPool,
     account_id: &str,
     device_id: &str,
+    session_token_id: &str,
     origin: Option<&str>,
 ) -> Result<IssuedRealtimeTicket, TicketError> {
-    if account_id.trim().is_empty() || device_id.trim().is_empty() {
+    if account_id.trim().is_empty()
+        || device_id.trim().is_empty()
+        || session_token_id.trim().is_empty()
+    {
         return Err(TicketError::InvalidTicket);
     }
     let allowed_origin = bind_origin(origin, &allowed_origins())?;
@@ -105,16 +112,20 @@ pub async fn issue_ticket(
     let expires_at = Utc::now() + chrono::Duration::seconds(TICKET_LIFETIME_SECONDS);
     query(
         "INSERT INTO cloud_chat_realtime_tickets \
-         (ticket_hash, account_id, device_id, allowed_origin, expires_at) \
-         SELECT $1, $2, $3, $4, $5 \
-         FROM cloud_devices \
-         WHERE device_id = $3 AND account_id = $2 AND revoked_at IS NULL",
+         (ticket_hash, account_id, device_id, allowed_origin, expires_at, session_token_id) \
+         SELECT $1, $2, $3, $4, $5, token.token_id \
+         FROM cloud_devices device \
+         JOIN cloud_refresh_tokens token \
+           ON token.device_id = device.device_id AND token.account_id = device.account_id \
+         WHERE device.device_id = $3 AND device.account_id = $2 AND device.revoked_at IS NULL \
+           AND token.token_id = $6 AND token.revoked_at IS NULL",
     )
     .bind(hash)
     .bind(account_id)
     .bind(device_id)
     .bind(allowed_origin)
     .bind(expires_at)
+    .bind(session_token_id)
     .execute(pool)
     .await?
     .rows_affected()
@@ -132,7 +143,7 @@ pub(super) async fn consume_ticket(
     plaintext: &str,
 ) -> Result<ConsumedRealtimeTicket, TicketError> {
     let hash = ticket_hash(plaintext)?;
-    let row: Option<(String, String, Option<String>)> = query_as(
+    let row: Option<(String, String, Option<String>, Option<String>)> = query_as(
         "UPDATE cloud_chat_realtime_tickets AS ticket \
          SET consumed_at = now() \
          FROM cloud_devices AS device \
@@ -142,16 +153,18 @@ pub(super) async fn consume_ticket(
            AND device.device_id = ticket.device_id \
            AND device.account_id = ticket.account_id \
            AND device.revoked_at IS NULL \
-         RETURNING ticket.account_id, ticket.device_id, ticket.allowed_origin",
+         RETURNING ticket.account_id, ticket.device_id, ticket.allowed_origin, \
+                   ticket.session_token_id",
     )
     .bind(hash)
     .fetch_optional(pool)
     .await?;
     row.map(
-        |(account_id, device_id, allowed_origin)| ConsumedRealtimeTicket {
+        |(account_id, device_id, allowed_origin, session_token_id)| ConsumedRealtimeTicket {
             account_id,
             device_id,
             allowed_origin,
+            session_token_id,
         },
     )
     .ok_or(TicketError::InvalidTicket)

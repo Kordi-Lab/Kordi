@@ -7,7 +7,7 @@ async fn concurrent_provider_auth_publishes_leave_exactly_one_active_snapshot() 
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "provider-auth-concurrent-owner", "Owner").await;
     let publish = || {
@@ -53,7 +53,7 @@ async fn publishing_a_provider_alias_preserves_other_auth_choices() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "provider-auth-alias-owner", "Owner").await;
     for (provider, auth_choice) in [
@@ -127,7 +127,7 @@ async fn two_codex_accounts_are_selected_by_auth_choice_for_runner() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "two-codex-owner", "Owner").await;
     let requester = owner.clone();
@@ -257,7 +257,7 @@ async fn provider_auth_removal_falls_back_then_becomes_unconfigured() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = test_router(state);
     let owner = signup(&router, "provider-auth-fallback-owner", "Owner").await;
     let publish = |provider: &str, secret: &str| {
@@ -322,7 +322,7 @@ async fn provider_auth_material_accepts_canonical_route_provider_alias() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "provider-alias-owner", "Owner").await;
     let requester = signup(&router, "provider-alias-requester", "Requester").await;

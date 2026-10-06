@@ -221,7 +221,7 @@ async fn rows_saved_before_readiness_columns_are_judged_by_their_payload() {
 async fn a_route_without_a_provider_never_chooses_between_providers() {
     let Some(pool) = try_pool().await else { return };
     set_provider_auth_env();
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "readiness-provider-owner", "Owner").await;
     let anthropic = publish(
         &router,

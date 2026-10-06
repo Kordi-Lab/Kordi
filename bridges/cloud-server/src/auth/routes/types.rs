@@ -15,6 +15,10 @@ pub struct CloudSession {
 pub struct SignupRequest {
     pub email: String,
     pub password: String,
+    #[serde(rename = "verificationId")]
+    pub verification_id: Option<String>,
+    #[serde(rename = "verificationCode")]
+    pub verification_code: Option<String>,
     #[serde(rename = "displayName")]
     pub display_name: Option<String>,
     #[serde(rename = "avatarSeed")]

@@ -4,7 +4,7 @@ use super::*;
 async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_parent() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "subsession-runner-test");
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "cloud-sub-owner", "Owner").await;
     let peer = signup(&router, "cloud-sub-peer", "Requester").await;
     let outsider = signup(&router, "cloud-sub-outsider", "Outsider").await;

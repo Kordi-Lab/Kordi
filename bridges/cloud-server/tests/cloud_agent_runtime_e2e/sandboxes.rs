@@ -29,7 +29,7 @@ async fn insert_group_request(
 #[tokio::test]
 async fn sandbox_group_sessions_reuse_shared_session_sandbox() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "sandbox-group-owner", "Owner").await;
     let requester_a = signup(&router, "sandbox-group-a", "Requester A").await;
@@ -117,7 +117,7 @@ async fn sandbox_group_sessions_reuse_shared_session_sandbox() {
 #[tokio::test]
 async fn sandbox_direct_sessions_are_requester_isolated() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "sandbox-direct-owner", "Owner").await;
     let requester_a = signup(&router, "sandbox-direct-a", "Requester A").await;
@@ -177,7 +177,7 @@ async fn sandbox_direct_sessions_are_requester_isolated() {
 async fn sandbox_expired_rows_are_not_reused_and_runner_lease_includes_sandbox_id() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "sandbox-expiry-owner", "Owner").await;
     let requester = signup(&router, "sandbox-expiry-requester", "Requester").await;
@@ -275,7 +275,7 @@ async fn sandbox_expired_rows_are_not_reused_and_runner_lease_includes_sandbox_i
 #[tokio::test]
 async fn sandbox_rejected_claim_does_not_create_sandbox_for_unauthorized_requester() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "sandbox-unauth-owner", "Owner").await;
     let intruder = signup(&router, "sandbox-unauth-intruder", "Intruder").await;
