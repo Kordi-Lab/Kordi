@@ -199,6 +199,10 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
 mod abuse_limits;
 #[path = "cloud_auth_e2e/account_auth.rs"]
 mod account_auth;
+#[path = "cloud_auth_e2e/account_email.rs"]
+mod account_email;
+#[path = "cloud_auth_e2e/account_email_limits.rs"]
+mod account_email_limits;
 #[path = "cloud_auth_e2e/devices.rs"]
 mod devices;
 #[path = "cloud_auth_e2e/expressive_media.rs"]

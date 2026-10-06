@@ -3,10 +3,12 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { CreateChatGroupRequest } from '@/app/kordiShellSlots.types';
 import type {
   CloudAccount,
+  CloudAccountEmailVerificationInput,
   CloudGroupInvitation,
   CloudGroupInvitationCreateInput,
   CloudGroupInvitationSummary,
   CloudProfileUpdateInput,
+  CloudSignupCodeChallenge,
 } from '@/features/cloud/authClient';
 import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
 import type {
@@ -171,6 +173,9 @@ export type WorkspaceSidebarAccount = {
   setCloudAccountDialogTab?: Dispatch<SetStateAction<CloudAccountSettingsTabId | null>>;
   cloudSettings?: CloudAccountSettingsConfig;
   onUpdateCloudProfile?: (input: CloudProfileUpdateInput) => Promise<void>;
+  onRequestCloudEmailCode?: () => Promise<CloudSignupCodeChallenge>;
+  onVerifyCloudEmail?: (input: CloudAccountEmailVerificationInput) => Promise<void>;
+  onCloudEmailAlreadyVerified?: () => Promise<void>;
   onCloudSignOut?: () => Promise<void> | void;
   onCreateAppInvite?: () => Promise<string>;
   onCreateGroupInvite?: (

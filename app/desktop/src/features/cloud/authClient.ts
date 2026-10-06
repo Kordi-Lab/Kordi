@@ -35,7 +35,7 @@ import { CloudDeviceClient } from './cloudDeviceClient';
 import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
 import { CloudIdentityAuthClient } from './cloudIdentityAuthClient';
 import type { CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
-export type { CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
+export type { CloudAccountEmailVerificationInput, CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
 import type {
   CloudAccount,
   CloudAppInvitation,
@@ -354,7 +354,7 @@ export class CloudAuthClient {
     }
     const body = await readJsonSafe(response);
     if (!response.ok) {
-      throw buildCloudAuthError(response.status, body, fallbackMessage);
+      throw buildCloudAuthError(response.status, body, fallbackMessage, response.headers.get('retry-after'));
     }
     return body as TResponse;
   }

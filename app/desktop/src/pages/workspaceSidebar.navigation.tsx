@@ -102,6 +102,9 @@ export function WorkspaceNavigationRail({
           setCloudAccountDialogTab={account.setCloudAccountDialogTab}
           cloudSettings={account.cloudSettings}
           onUpdateCloudProfile={account.onUpdateCloudProfile}
+          onRequestCloudEmailCode={account.onRequestCloudEmailCode}
+          onVerifyCloudEmail={account.onVerifyCloudEmail}
+          onCloudEmailAlreadyVerified={account.onCloudEmailAlreadyVerified}
           onCloudSignOut={account.onCloudSignOut}
           onCreateAppInvite={account.onCreateAppInvite}
         />

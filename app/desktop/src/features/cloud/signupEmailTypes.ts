@@ -6,6 +6,11 @@ export type CloudSignupCodeChallenge = {
   retryAfterSeconds: number;
 };
 
+export type CloudAccountEmailVerificationInput = {
+  verificationId: string;
+  verificationCode: string;
+};
+
 export type CloudSignupInput = {
   email: string;
   password: string;

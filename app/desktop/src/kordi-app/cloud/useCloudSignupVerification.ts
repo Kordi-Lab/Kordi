@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CloudAuthError } from '@/features/cloud/cloudAuthError';
 import type { CloudSignupCodeChallenge } from '@/features/cloud/signupEmailTypes';
 
 export function useCloudSignupVerification(
@@ -10,14 +11,31 @@ export function useCloudSignupVerification(
   const [resendAt, setResendAt] = useState(0);
   const [clockNow, setClockNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!challenge) return;
-    const timer = setInterval(() => setClockNow(Date.now()), 1000);
+    // Keep counting after a reset so callers can hold back a new request until the cooldown ends.
+    if (!challenge && resendAt <= Date.now()) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setClockNow(now);
+      if (!challenge && now >= resendAt) clearInterval(timer);
+    }, 1000);
     return () => clearInterval(timer);
-  }, [challenge]);
+  }, [challenge, resendAt]);
 
   async function sendCode() {
     if (!requestCode) throw new Error('Email verification is unavailable. Try Google or GitHub.');
-    const next = await requestCode(email.trim());
+    let next: CloudSignupCodeChallenge;
+    try {
+      next = await requestCode(email.trim());
+    } catch (caught) {
+      // A cooldown answer arms the same countdown a sent code would, so the
+      // resend action waits instead of hitting the limit again.
+      if (caught instanceof CloudAuthError && caught.code === 'rate_limited' && caught.retryAfterSeconds) {
+        const now = Date.now();
+        setClockNow(now);
+        setResendAt(now + caught.retryAfterSeconds * 1000);
+      }
+      throw caught;
+    }
     setChallenge(next);
     setVerificationCode('');
     setClockNow(Date.now());
@@ -27,6 +45,7 @@ export function useCloudSignupVerification(
   function resetVerification() {
     setChallenge(null);
     setVerificationCode('');
+    setClockNow(Date.now());
   }
 
   return {

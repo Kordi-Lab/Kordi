@@ -200,6 +200,9 @@ export function SidebarProfileControl({
   setCloudAccountDialogTab: setControlledDialogTab,
   cloudSettings,
   onUpdateCloudProfile,
+  onRequestCloudEmailCode,
+  onVerifyCloudEmail,
+  onCloudEmailAlreadyVerified,
   onCloudSignOut,
   onCreateAppInvite,
 }: WorkspaceSidebarAccount) {
@@ -331,6 +334,9 @@ export function SidebarProfileControl({
           account={cloudAccount}
           onClose={() => setDialogTab(null)}
           onUpdateProfile={onUpdateCloudProfile}
+          onRequestEmailCode={onRequestCloudEmailCode}
+          onVerifyEmail={onVerifyCloudEmail}
+          onEmailAlreadyVerified={onCloudEmailAlreadyVerified}
           onSignOut={onCloudSignOut}
         />
       ) : null}

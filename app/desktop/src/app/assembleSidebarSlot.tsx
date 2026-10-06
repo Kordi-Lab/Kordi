@@ -258,6 +258,9 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
           setThemeMode: args.setThemeMode,
         },
         onUpdateCloudProfile: async (input) => { await cloudSession.updateProfile(input); },
+        onRequestCloudEmailCode: cloudSession.requestAccountEmailCode,
+        onVerifyCloudEmail: cloudSession.verifyAccountEmail,
+        onCloudEmailAlreadyVerified: cloudSession.refreshAccountEmailVerified,
         onCloudSignOut: async () => { await cloudSession.signOut(); },
         onCreateAppInvite: async () => {
           const session = await loadSession();

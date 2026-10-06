@@ -304,6 +304,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastMessageSyncAt: Date?
     @Published private(set) var loadingConversationIDs = Set<String>()
     @Published var errorMessage: String?
+    @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
 
     private let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -458,7 +459,7 @@ final class AppModel: ObservableObject {
                     : nil
             ))
             token = savedToken
-            account = restoredAccount
+            account = restoredAccount.preservingEmailVerification(from: account)
             conversations = []
             projectDevices = []
             projectError = nil
@@ -568,6 +569,141 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = userFacing(error, fallback: "Could not create account.")
             return false
+        }
+    }
+
+    /// The pending code request for the signed-in account, if any.
+    var currentAccountEmailCodeState: AccountEmailCodeState? {
+        guard let state = accountEmailCodeState, state.accountId == account?.accountId else { return nil }
+        return state
+    }
+
+    /// Sends a six-digit code to the signed-in account's primary email. A rate
+    /// limit records the server's delay so the resend countdown can show it.
+    func requestAccountEmailCode(now: Date = Date()) async -> CloudSignupCodeChallenge? {
+        errorMessage = nil
+        if previewMode {
+            let challenge = CloudSignupCodeChallenge(
+                verificationId: "preview_account_email",
+                expiresAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(600)),
+                retryAfterSeconds: 60
+            )
+            if let accountId = account?.accountId {
+                recordAccountEmailCode(accountId: accountId, challenge: challenge, retryAfter: 60, now: now)
+            }
+            return challenge
+        }
+        guard let token, let accountId = account?.accountId else {
+            errorMessage = Self.accountEmailSignInRequired
+            return nil
+        }
+        do {
+            let challenge = try await api.requestAccountEmailCode(token: token)
+            guard self.token == token, account?.accountId == accountId else { return nil }
+            recordAccountEmailCode(
+                accountId: accountId,
+                challenge: challenge,
+                retryAfter: challenge.retryAfterSeconds,
+                now: now
+            )
+            return challenge
+        } catch {
+            let apiError = error as? CloudAPIError
+            if apiError?.code == "email_already_verified" {
+                await refreshAccountAfterEmailVerification(token: token, accountId: accountId)
+                return nil
+            }
+            if apiError?.code == "rate_limited", let retryAfter = apiError?.retryAfterSeconds, retryAfter > 0 {
+                recordAccountEmailCode(
+                    accountId: accountId,
+                    challenge: currentAccountEmailCodeState?.challenge,
+                    retryAfter: retryAfter,
+                    now: now
+                )
+                return nil
+            }
+            errorMessage = accountEmailUserFacing(error, fallback: "Could not send verification code.")
+            return nil
+        }
+    }
+
+    /// Confirms the code and refreshes the account so the verified state shows.
+    func verifyAccountEmail(verificationId: String, verificationCode: String) async -> Bool {
+        let code = verificationCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.utf8.count == 6, code.utf8.allSatisfy({ (48...57).contains($0) }) else {
+            errorMessage = "Enter the 6-digit code from your email."
+            return false
+        }
+        errorMessage = nil
+        if previewMode {
+            // `000000` exercises the rejected-code state offline.
+            guard code != "000000" else {
+                errorMessage = "The email code is invalid or expired. Request a new code and try again."
+                return false
+            }
+            accountEmailCodeState = nil
+            markPrimaryEmailVerified(accountId: account?.accountId)
+            return true
+        }
+        guard let token, let accountId = account?.accountId else {
+            errorMessage = Self.accountEmailSignInRequired
+            return false
+        }
+        do {
+            try await api.verifyAccountEmail(
+                token: token,
+                verificationId: verificationId,
+                verificationCode: code
+            )
+        } catch {
+            guard (error as? CloudAPIError)?.code == "email_already_verified" else {
+                errorMessage = accountEmailUserFacing(error, fallback: "Could not verify your email.")
+                return false
+            }
+        }
+        accountEmailCodeState = nil
+        await refreshAccountAfterEmailVerification(token: token, accountId: accountId)
+        return true
+    }
+
+    private static let accountEmailSignInRequired = "Sign in again to verify your email."
+
+    private func recordAccountEmailCode(
+        accountId: String,
+        challenge: CloudSignupCodeChallenge?,
+        retryAfter: Int,
+        now: Date
+    ) {
+        accountEmailCodeState = AccountEmailCodeState(
+            accountId: accountId,
+            challenge: challenge,
+            resendAt: now.addingTimeInterval(TimeInterval(retryAfter))
+        )
+    }
+
+    private func refreshAccountAfterEmailVerification(token: String, accountId: String) async {
+        let refreshed = try? await api.me(token: token)
+        guard self.token == token, account?.accountId == accountId else { return }
+        if let refreshed, refreshed.accountId == accountId, refreshed.primaryEmailVerified == true {
+            account = refreshed
+        } else {
+            // The server confirmed the code; keep the row accurate even if the
+            // follow-up profile read failed or came from an older replica.
+            markPrimaryEmailVerified(accountId: accountId)
+        }
+    }
+
+    private func markPrimaryEmailVerified(accountId: String?) {
+        guard var current = account, current.accountId == accountId else { return }
+        current.primaryEmailVerified = true
+        account = current
+    }
+
+    private func accountEmailUserFacing(_ error: Error, fallback: String) -> String {
+        switch (error as? CloudAPIError)?.code {
+        case "email_missing": return "This account has no email address to verify."
+        case "email_delivery_unavailable": return "Email verification is temporarily unavailable. Try again later."
+        default: return userFacing(error, fallback: fallback)
         }
     }
 
@@ -734,7 +870,7 @@ final class AppModel: ObservableObject {
             async let fetchedActiveCalls = try? api.activeCalls(token: token)
             let (canonicalAccount, contactList) = try await (refreshedAccount, fetchedContacts)
             guard self.token == token, self.account?.accountId == canonicalAccount.accountId else { return }
-            self.account = canonicalAccount
+            self.account = canonicalAccount.preservingEmailVerification(from: self.account)
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             // Profile updates must not be discarded if unrelated workspace data fails.
             let (presence, requests, owned, visibility, authProfiles, deviceList, latestCanonical, activeCalls) = try await (
@@ -893,11 +1029,12 @@ final class AppModel: ObservableObject {
             return false
         }
         do {
-            account = try await api.updateProfile(
+            let updated = try await api.updateProfile(
                 token: token,
                 displayName: cleanName,
                 avatarMutation: avatarMutation
             )
+            account = updated.preservingEmailVerification(from: account)
             errorMessage = nil
             await rebuildConversationCatalog()
             return true
@@ -7712,7 +7849,7 @@ final class AppModel: ObservableObject {
         await api.activateAccount(response.account.accountId)
         token = response.session.token
         currentDeviceId = response.session.deviceId
-        account = response.account
+        account = response.account.preservingEmailVerification(from: account)
         devices = []
         deviceOperationIds = [:]
         deviceErrorMessage = nil

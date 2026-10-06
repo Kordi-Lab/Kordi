@@ -51,6 +51,7 @@ pub(super) async fn send_signup_code(
 
 pub(super) fn signup_code_error(error: SignupCodeError) -> Response {
     match error {
+        SignupCodeError::AlreadyVerified => err("email_already_verified", "This account's email is already verified.", StatusCode::CONFLICT),
         SignupCodeError::Invalid => err("invalid_verification_code", "The email code is invalid or expired. Request a new code and try again.", StatusCode::BAD_REQUEST),
         SignupCodeError::Limited(seconds) => limited_response(std::time::Duration::from_secs(seconds)),
         SignupCodeError::Unavailable => err("email_delivery_unavailable", "Email verification is temporarily unavailable. Try again later or continue with Google or GitHub.", StatusCode::SERVICE_UNAVAILABLE),

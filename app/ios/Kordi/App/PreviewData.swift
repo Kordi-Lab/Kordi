@@ -16,7 +16,10 @@ enum PreviewData {
         return arguments.contains("--preview-data") && arguments.contains("--preview-link-showcase")
     }
 
-    static func make(now: Date = Date()) -> PreviewFixture {
+    static func make(
+        now: Date = Date(),
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> PreviewFixture {
         let previewAvatarSource = ProcessInfo.processInfo.environment["KORDI_PREVIEW_AVATAR_SOURCE"]?.nonEmpty
         let avatarSeed = "preview_account"
         let account = CloudAccount(
@@ -24,6 +27,9 @@ enum PreviewData {
             kordiId: "482731906",
             displayName: "Alex",
             primaryEmail: "preview@kordi.ai",
+            // Opening the verification sheet implies an unverified address.
+            primaryEmailVerified: !arguments.contains("--preview-email-unverified")
+                && !arguments.contains("--preview-email-verification"),
             avatarUrl: previewAvatarSource ?? CanonicalAvatarSystem.marker(
                 style: CanonicalAvatarSystem.humanStyle,
                 seed: avatarSeed,

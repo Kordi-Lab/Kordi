@@ -83,6 +83,37 @@ pub(super) async fn account_response_row(
     Ok(row.map(|row| account_response_from_rows(row, default_agent)))
 }
 
+/// Like [`account_response_row`], with the state only the signed-in owner of
+/// `account_id` may see. Never use it for payloads about another account.
+pub(super) async fn owner_account_response_row(
+    pool: &PgPool,
+    account_id: &str,
+) -> Result<Option<AccountResponse>, sqlx_core::Error> {
+    let row: Option<OwnerAccountRecordRow> = query_as(
+        "SELECT account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
+            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, \
+            primary_email_verified_at IS NOT NULL \
+             FROM cloud_accounts WHERE account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let default_agent = default_agent_profile_row(pool, account_id).await?;
+    Ok(row.map(|row| owner_account_response_from_rows(row, default_agent)))
+}
+
+pub(super) fn owner_account_response_from_rows(
+    row: OwnerAccountRecordRow,
+    default_agent_row: Option<DefaultAgentProfileRow>,
+) -> AccountResponse {
+    let (a, b, c, d, e, f, g, h, i, j, k, l, primary_email_verified) = row;
+    AccountResponse {
+        primary_email_verified: Some(primary_email_verified),
+        ..account_response_from_rows((a, b, c, d, e, f, g, h, i, j, k, l), default_agent_row)
+    }
+}
+
 pub(super) fn default_agent_id(account_id: &str) -> String {
     format!("cloud-agent:{}", account_id.trim())
 }
@@ -170,6 +201,7 @@ pub(super) fn account_response_from_rows(
         default_agent,
         node_id: None,
         password_set: row.5.is_some(),
+        primary_email_verified: None,
     }
 }
 

@@ -2,6 +2,7 @@
 //! limiting, and HTTP routes mounted under `/v1/cloud/auth/*` and
 //! `/v1/cloud/contacts`.
 
+mod account_email;
 pub mod accounts;
 pub mod devices;
 mod oauth;

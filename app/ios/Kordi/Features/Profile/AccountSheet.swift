@@ -701,6 +701,11 @@ private struct ProfileSettingsView: View {
     @State private var didLoad = false
     @State private var saved = false
     @State private var copiedKordiID = false
+    @State private var isVerifyingEmail: Bool
+
+    init(openingEmailVerification: Bool = false) {
+        _isVerifyingEmail = State(initialValue: openingEmailVerification)
+    }
 
     var body: some View {
         Form {
@@ -766,9 +771,14 @@ private struct ProfileSettingsView: View {
             Section("Account") {
                 if let email = model.account?.primaryEmail.nonEmpty {
                     LabeledContent {
-                        Text(email)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(email)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            if let verified = model.account?.primaryEmailVerified {
+                                AccountEmailVerificationStatus(verified: verified)
+                            }
+                        }
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "envelope")
@@ -776,6 +786,22 @@ private struct ProfileSettingsView: View {
                                 .frame(width: 22)
                             Text("Email")
                         }
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("profile-email")
+                    if model.account?.primaryEmailVerified == false {
+                        Button {
+                            model.errorMessage = nil
+                            isVerifyingEmail = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "checkmark.shield")
+                                    .frame(width: 22)
+                                Text("Verify email")
+                            }
+                            .frame(minHeight: 30)
+                        }
+                        .accessibilityIdentifier("profile-verify-email")
                     }
                 }
                 if let kordiId = model.account?.kordiId.nonEmpty {
@@ -836,6 +862,10 @@ private struct ProfileSettingsView: View {
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isVerifyingEmail) {
+            AccountEmailVerificationSheet(email: model.account?.primaryEmail.nonEmpty ?? "")
+                .environmentObject(model)
+        }
         .onAppear { loadOnce() }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
@@ -1346,7 +1376,9 @@ struct AppearanceSettingsPreview: View {
 struct ProfileSettingsPreview: View {
     var body: some View {
         NavigationStack {
-            ProfileSettingsView()
+            ProfileSettingsView(
+                openingEmailVerification: ProcessInfo.processInfo.arguments.contains("--preview-email-verification")
+            )
         }
         .tint(KordiTheme.signalBlue)
     }

@@ -19,11 +19,15 @@ import {
   type CloudSignupCodeChallenge,
   type CloudSignupInput,
 } from './authClient';
-import { cloudAccountsEqual } from './cloudAccountState';
+import { carryCloudAccountEmailVerification, cloudAccountsEqual } from './cloudAccountState';
 import {
   isCloudOAuthCancelled,
 } from './cloudOAuthCancellation';
 import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
+import {
+  useCloudAccountEmailVerification,
+  type CloudAccountEmailVerificationActions,
+} from './useCloudAccountEmailVerification';
 import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
@@ -39,7 +43,7 @@ export { cloudAccountsEqual } from './cloudAccountState';
 
 export type CloudSessionStatus = 'loading' | 'signed-out' | 'authenticated';
 
-export type UseCloudSessionResult = {
+export type UseCloudSessionResult = CloudAccountEmailVerificationActions & {
   status: CloudSessionStatus;
   account: CloudAccount | null;
   error: CloudAuthError | null;
@@ -119,7 +123,8 @@ export function useCloudSession({
   const accountIdRef = useRef<string | null>(null);
   const accountRef = useRef<CloudAccount | null>(null);
 
-  const setAuthenticated = useCallback((next: CloudAccount) => {
+  const setAuthenticated = useCallback((incoming: CloudAccount) => {
+    const next = carryCloudAccountEmailVerification(accountRef.current, incoming);
     const stableAccount = cloudAccountsEqual(accountRef.current, next)
       ? accountRef.current ?? next
       : next;
@@ -442,6 +447,8 @@ export function useCloudSession({
     [authClient, setAuthenticated],
   );
 
+  const accountEmailVerification = useCloudAccountEmailVerification({ authClient, accountRef, setAuthenticated });
+
   const signOut = useCallback(async () => {
     try {
       const stored = await loadSession();
@@ -477,6 +484,7 @@ export function useCloudSession({
     requestSignupCode,
     signInWithProvider,
     updateProfile,
+    ...accountEmailVerification,
     signOut,
     clearError,
   };
