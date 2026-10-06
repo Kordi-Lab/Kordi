@@ -22,7 +22,7 @@ import { canonicalMentions } from './mentionMapping';
 import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
 import { canonicalReadReceiptSummary, contentRecord, numberValue, stringValue } from "./messageContent";
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
-import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice, RETIRED_BY_RETRY_CONTENT_KEY } from './messageVisibility';
 
 export { ownerScopedAgentName } from './agentMessagePresentation';
 
@@ -319,7 +319,7 @@ export function mapCanonicalMessage(
     : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(contentText || stringValue(content.error) || stringValue(content.detail));
-  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
+  const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure; if (failed && storedContent[RETIRED_BY_RETRY_CONTENT_KEY] === true) return null;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();
