@@ -85,20 +85,22 @@ test('full workspace groups sessions, preserves drafts and moves a session betwe
   await expect(kordiGroup).toHaveAttribute('aria-expanded', 'true');
   await expect(page.locator('[data-session-sidebar-section="pinned"]')).toHaveCount(2);
   await expect(projectRows).toHaveCount(7);
-  await expect(recentRows).toHaveCount(8);
-  await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="recent"]')).toHaveCSS('padding-left', '12px');
+  await expect(recentRows).toHaveCount(1);
+  await expect(page.locator('[data-agent-session-row="chat-8"][data-session-sidebar-section="recent"]')).toHaveCSS('padding-left', '12px');
+  await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="recent"]')).toHaveCount(0);
   await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="project"]')).toHaveCSS('padding-left', '28px');
   await recents.click();
   await expect(recentRows).toHaveCount(0);
   await recents.click();
   await kordiGroup.click();
   await expect(projectRows).toHaveCount(2);
-  await expect(recentRows).toHaveCount(8);
+  await expect(recentRows).toHaveCount(1);
   await kordiGroup.click();
   await page.getByRole('textbox', { name: 'Ask your agent…', exact: true }).fill('Keep my project draft');
   await page.getByRole('button', { name: 'Project: kordi', exact: true }).click();
   await page.getByRole('dialog', { name: 'Choose project' }).getByRole('button', { name: 'website', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Project: website', exact: true })).toBeVisible();
+  await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="recent"]')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'Ask your agent…', exact: true })).toHaveText('Keep my project draft');
   await kordiGroup.click();
   await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="project"]')).toBeVisible();
@@ -109,6 +111,7 @@ test('full workspace groups sessions, preserves drafts and moves a session betwe
   await expect(page.getByRole('button', { name: 'Choose project', exact: true })).toBeVisible();
   await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="project"]')).toHaveCount(0);
   await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="recent"]')).toBeVisible();
+  await expect(recentRows).toHaveCount(2);
   expect(errors).toEqual([]);
 });
 
@@ -117,7 +120,7 @@ test('project preview, pinning, header controls and search remain usable', async
   const kordiRows = page.locator('[data-chat-sidebar-row^="project:kordi:"]');
   await expect(kordiRows).toHaveCount(5);
   await page.getByRole('button', { name: 'Show more in kordi', exact: true }).click();
-  await expect(kordiRows).toHaveCount(7);
+  await expect(kordiRows).toHaveCount(6);
   await page.getByRole('button', { name: 'Show less in kordi', exact: true }).click();
   await expect(kordiRows).toHaveCount(5);
   const projectsHeading = page.getByRole('button', { name: 'Projects', exact: true });
@@ -127,7 +130,7 @@ test('project preview, pinning, header controls and search remain usable', async
   await expect(projectsHeading).toHaveAttribute('aria-expanded', 'false');
   await expect(page.locator('.chat-project-group')).toHaveCount(0);
   await expect(page.locator('[data-session-sidebar-section="project"]')).toHaveCount(0);
-  await expect(page.locator('[data-session-sidebar-section="recent"]')).toHaveCount(8);
+  await expect(page.locator('[data-session-sidebar-section="recent"]')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'Project options', exact: true })).toHaveCount(0);
   await projectsHeading.press('Enter');
   await expect(projectsHeading).toHaveAttribute('aria-expanded', 'true');
@@ -138,10 +141,11 @@ test('project preview, pinning, header controls and search remain usable', async
   await projectsHeading.press('Space');
   await expect(projectsHeading).toHaveAttribute('aria-expanded', 'false');
   await expect(projectsHeading).toBeFocused();
-  await page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="recent"]').click({ button: 'right' });
+  await page.locator('[data-agent-session-row="chat-8"][data-session-sidebar-section="recent"]').click({ button: 'right' });
   await page.getByRole('button', { name: 'Pin', exact: true }).click();
   await expect(page.locator('[data-session-sidebar-section="pinned"]')).toHaveCount(3);
-  await expect(page.locator('[data-agent-session-row="chat-2"][data-session-sidebar-section="recent"]')).toHaveCount(0);
+  await expect(page.locator('[data-agent-session-row="chat-8"][data-session-sidebar-section="recent"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Recents', exact: true })).toHaveCount(0);
   await projectsHeading.click();
   await expect(projectsHeading).toHaveAttribute('aria-expanded', 'true');
   await page.getByPlaceholder('Search agent conversations').fill('long conversation');
@@ -170,6 +174,9 @@ for (const theme of ['light', 'dark']) {
     await row.click();
     await expect(page.getByRole('button', { name: 'Project: kordi', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`sidebar-${theme}-compact.png`) });
+    await row.click({ button: 'right' });
+    await page.locator('.app-modal-panel').filter({ has: page.getByRole('button', { name: 'Move to project', exact: true }) })
+      .screenshot({ path: testInfo.outputPath(`session-menu-${theme}.png`) });
   });
 }
 

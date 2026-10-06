@@ -50,7 +50,7 @@ export function useKordiCollaborationNavigationActions({
         await unsupportedAction();
         return;
       }
-      setActiveNav('chats');
+      setActiveNav(peerRuntime && peerRuntime !== 'person' ? 'agent-chats' : 'chats');
       setActiveConversationId(
         cloudCollaborationConversationId(
           peerNodeId,

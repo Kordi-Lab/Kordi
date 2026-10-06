@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectChatGroups } from '@/features/projects/projectChatGroups';
 import { ChevronRight, Folder, FolderOpen, Plus } from 'lucide-react';
@@ -32,6 +32,8 @@ export function WorkspaceChatLists({
   onOpenAgentCreate: () => void;
 }) {
   const projects = useChatProjects();
+  const scrollOffsets = useRef(new Map<string, number>());
+  const scrollPositionKey = `${model.chatChannel}:${model.showArchived ? 'archived' : 'active'}`;
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlySet<string>>(new Set());
   const [creatingProjectIds, setCreatingProjectIds] = useState<ReadonlySet<string>>(new Set());
@@ -99,6 +101,8 @@ export function WorkspaceChatLists({
         activeSessionId={model.activeSidebarRowSessionId}
         scrollClassName="app-workspace-session-scroll min-h-0 flex-1"
         dataMode="participant-spaces-inline"
+        scrollOffsets={scrollOffsets}
+        scrollPositionKey={scrollPositionKey}
         renderRow={(descriptor) => (
           <ContactSidebarRow
             descriptor={descriptor}
@@ -141,6 +145,8 @@ export function WorkspaceChatLists({
         activeSessionId={model.activeSidebarRowSessionId}
         scrollClassName="app-workspace-session-scroll chat-project-session-list min-h-0 flex-1"
         dataMode="agent-sessions-flat"
+        scrollOffsets={scrollOffsets}
+        scrollPositionKey={scrollPositionKey}
         renderRow={(descriptor) => descriptor.kind === 'space' ? (
           descriptor.spaceId.startsWith('section:') ? (
             <ProjectSidebarHeading

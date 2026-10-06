@@ -146,13 +146,13 @@ test('a live hosted message in a mirrored session reaches run admission; recover
 test('Start chat with a hosted-only account opens the chat with its route and never loads the model locally', async () => {
   const calls: string[] = [];
   const args = {
-    setActiveNav: (nav: 'chats') => { calls.push(`nav:${nav}`); },
+    setActiveNav: (nav: 'agent-chats') => { calls.push(`nav:${nav}`); },
     chatConversations: [],
     handleSelectChatSession: async (sessionId: string) => { calls.push(`select:${sessionId}`); },
     handleCreateChatSession: async () => { calls.push('create'); },
   };
   await openLocalAgentChatFromArgs(args, hostedRoute.model, hostedRoute);
-  assert.deepEqual(calls, ['nav:chats', 'create']);
+  assert.deepEqual(calls, ['nav:agent-chats', 'create']);
   const request = currentKordiCloudChatRequest();
   assert.deepEqual(request, { route: hostedRoute, sessionId: null });
   if (request) completeKordiCloudChatRequest(request);
@@ -160,6 +160,6 @@ test('Start chat with a hosted-only account opens the chat with its route and ne
 
   calls.length = 0;
   await openLocalAgentChatFromArgs(args);
-  assert.deepEqual(calls, ['nav:chats', 'create'], 'a local chat opens as before');
+  assert.deepEqual(calls, ['nav:agent-chats', 'create'], 'a local chat opens as before');
   assert.equal(currentKordiCloudChatRequest(), null);
 });

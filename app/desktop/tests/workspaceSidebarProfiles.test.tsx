@@ -159,9 +159,9 @@ test('WorkspaceSidebar renders direct human participant spaces as one flat chat 
   }) as never));
 
   assert.match(markup, /data-chat-sidebar-mode="participant-spaces-inline"/);
-  assert.match(markup, /app-filter-tab/);
-  assert.match(markup, />Contact</);
-  assert.match(markup, />Agent</);
+  assert.doesNotMatch(markup, /app-filter-tab/);
+  assert.match(markup, /title="Chats"/);
+  assert.match(markup, /title="Agent Chats"/);
   assert.doesNotMatch(markup, />People</);
   assert.match(markup, /Bob/);
   assert.match(markup, /New preview/);
@@ -211,7 +211,7 @@ test('WorkspaceSidebar renders an Agent tab shortcut for new My agent sessions',
     initialChatChannel: 'agent',
   }) as never));
 
-  assert.match(markup, />Agent</);
+  assert.match(markup, /title="Agent Chats"/);
   assert.match(markup, /aria-label="New session"/);
   assert.match(markup, /<span>New<\/span>/);
   assert.match(markup, /New session/);

@@ -7,7 +7,7 @@ import { createDesktopChatSession, updateDesktopChatSessionConfig, type DesktopC
 export { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 
 type LocalAgentChatNavigationArgs = {
-  setActiveNav: (nav: 'chats') => void;
+  setActiveNav: (nav: 'agent-chats') => void;
   chatConversations: Conversation[];
   handleSelectChatSession: (sessionId: string) => Promise<void>;
   handleCreateChatSession: () => Promise<void>;
@@ -18,7 +18,7 @@ export async function openLocalAgentChatFromArgs(
   preferredModelValue?: string,
   route?: DesktopChatMessageRoute | null,
 ) {
-  args.setActiveNav('chats');
+  args.setActiveNav('agent-chats');
   const existingLocalConversation = findOwnedAgentConversation(args.chatConversations);
 
   // A hosted-only account runs on Kordi Cloud: the chat opens with that route

@@ -89,8 +89,8 @@ export function useKordiChatStartActions({
   setDesktopError,
   setOpenComposerSelector,
 }: UseKordiChatStartActionsArgs) {
-  const selectNewSession = useCallback((sessionId: string) => {
-    setActiveNav('chats');
+  const selectNewSession = useCallback((sessionId: string, destination: 'chats' | 'agent-chats' = 'chats') => {
+    setActiveNav(destination);
     setActiveConversationId(sessionId);
     setComposerDrafts((current) => updateScopeDraft(
       current,
@@ -124,7 +124,7 @@ export function useKordiChatStartActions({
           accountId,
           contact.sourceParticipantId,
           contact.sourceAgentId,
-        ));
+        ), 'agent-chats');
         return;
       }
       selectNewSession(cloudCollaborationConversationId(
@@ -204,7 +204,7 @@ export function useKordiChatStartActions({
       openAgentAuthentication();
       return;
     }
-    setActiveNav('chats');
+    setActiveNav('agent-chats');
 
     if (agent.isOwned) {
       if (!isNativeShell) {
@@ -219,13 +219,13 @@ export function useKordiChatStartActions({
       const existingBlankSessionId =
         existingBlankSessionIdForAgentStart(agent, conversations);
       if (existingBlankSessionId) {
-        selectNewSession(existingBlankSessionId);
+        selectNewSession(existingBlankSessionId, 'agent-chats');
         return;
       }
       await startCanonicalAgentSession({
         agent,
         creatorIdentityId,
-        selectNewSession,
+        selectNewSession: (id) => selectNewSession(id, 'agent-chats'),
         setCanonicalState,
       });
       return;
@@ -238,7 +238,7 @@ export function useKordiChatStartActions({
       selectNewSession(cloudCollaborationConversationId(
         agent.sourceParticipantId,
         agent.sourceRuntime ?? 'kordi-desktop',
-      ));
+      ), 'agent-chats');
       return;
     }
 
@@ -251,7 +251,7 @@ export function useKordiChatStartActions({
     await startCanonicalAgentSession({
       agent,
       creatorIdentityId,
-      selectNewSession,
+      selectNewSession: (id) => selectNewSession(id, 'agent-chats'),
       setCanonicalState,
     });
   }, [

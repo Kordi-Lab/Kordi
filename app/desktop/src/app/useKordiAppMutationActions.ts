@@ -113,6 +113,7 @@ export function useKordiAppMutationActions({
     setGroupArchived: handleSetChatGroupArchived,
     deleteSession: handleDeleteChatSession,
   } = useKordiChatSessionActions({
+    conversations: chatConversations,
     account: cloudSession.account,
     activeConversationId: activeConvId,
     canonicalState: canonicalSessionState,

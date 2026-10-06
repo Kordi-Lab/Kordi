@@ -29,7 +29,7 @@ function makeConversation(id: string, name: string, index = 0): Conversation {
   };
 }
 const initialProjects: ChatProject[] = [
-  { id: 'kordi', name: 'kordi', root: '/preview/kordi', sessions: [0, 1, 2, 3, 7, 8, 9].map((n) => ({ id: `chat-${n}` })) },
+  { id: 'kordi', name: 'kordi', root: '/preview/kordi', sessions: [0, 1, 2, 3, 7, 9].map((n) => ({ id: `chat-${n}` })) },
   { id: 'website', name: 'website', root: '/preview/website', sessions: [4, 5].map((n) => ({ id: `chat-${n}` })) },
 ];
 

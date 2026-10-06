@@ -344,6 +344,7 @@ final class MessageActionPreviewScroll {
 }
 
 struct MessageActionOverlay: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
     @State private var hasPresented = false
@@ -351,7 +352,9 @@ struct MessageActionOverlay: View {
     @State private var showsAllReactions = false
     @State private var isConfirmingDelete = false
     @State private var didSchedulePreviewExpansion = false
+    @State private var threadSheetContentHeight: CGFloat = 398
     let message: ChatMessage
+    var layout: MessageLayout = .chat
     let sourceFrame: CGRect
     var photoPreview: UIImage? = nil
     var hitTestRegions: WindowOverlayHitTestRegions? = nil
@@ -369,6 +372,7 @@ struct MessageActionOverlay: View {
     let mediaAttachment: ChatAttachment?
     let readReceiptLabel: String?
     let readReceiptReaders: [CloudGroupParticipant]
+    var onSheetAction: (@escaping () -> Void) -> Void = { $0() }
     let onDismiss: () -> Void
     let onReviewAttachment: () -> Void
     let onShareAttachment: () -> Void
@@ -430,7 +434,175 @@ struct MessageActionOverlay: View {
         !EmojiRecentStore.items(from: storedRecentEmojiIDs).isEmpty
     }
 
+    @ViewBuilder
     var body: some View {
+        if layout == .threads {
+            threadsActionSheet
+        } else {
+            floatingActionOverlay
+        }
+    }
+
+    private var threadsActionSheet: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                if isConfirmingDelete {
+                    threadActionRow("Back to message actions", systemImage: "chevron.left", dismissesMenu: false) {
+                        isConfirmingDelete = false
+                    }
+                    Divider().padding(.vertical, 8)
+                    if message.author == .me && !message.isLocalFailedSend {
+                        deleteChoiceButton(deleteForEveryoneLabel) { onDelete(true) }
+                    }
+                    deleteChoiceButton(message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete for me" : "Delete photo for me") { onDelete(false) }
+                } else {
+                    if allowsReactions {
+                        threadReactionButtons
+                            .padding(.bottom, 4)
+                    }
+                    if showsAllReactions {
+                        EmojiSelectionBoard(initialCategory: initialThreadReactionCategory, maximumGridHeight: 200) { item in
+                            performAction { onReact(item.reactionValue) }
+                        }
+                    } else {
+                        if allowsThreadReply || allowsConversationReply {
+                            threadActionRow(
+                                allowsThreadReply ? "Reply" : "Quote",
+                                systemImage: allowsThreadReply ? "bubble.left.and.bubble.right" : "text.quote"
+                            ) {
+                                onReply(allowsThreadReply ? .thread : .conversation)
+                            }
+                            .accessibilityIdentifier("thread-action-reply")
+                        }
+                        if allowsConversationReply && allowsThreadReply {
+                            threadActionRow("Quote", systemImage: "text.quote") { onReply(.conversation) }
+                        }
+                        threadActionRow("Forward", systemImage: "arrowshape.turn.up.right", disabled: cannotForwardOrPin, action: onForward)
+                            .accessibilityIdentifier("thread-action-forward")
+                        threadActionRow(isPinned ? "Unpin" : "Pin", systemImage: "pin", disabled: cannotForwardOrPin, action: onPin)
+                            .accessibilityIdentifier("thread-action-pin")
+                        Divider().padding(.vertical, 4)
+                        if !message.text.isEmpty, mediaAttachment == nil {
+                            threadActionRow("Copy message", systemImage: "doc.on.doc", action: onCopy)
+                            threadActionRow("Share", systemImage: "square.and.arrow.up", action: onShareMessage)
+                        }
+                        if mediaAttachment != nil {
+                            threadActionRow("Review", systemImage: "eye", action: onReviewAttachment)
+                            threadActionRow("Download / Save to Files", systemImage: "arrow.down.circle", action: onShareAttachment)
+                            if let mediaKind {
+                                threadActionRow("Add to \(mediaKind.libraryName)", systemImage: "square.stack.3d.up", action: onAddAttachmentToMediaLibrary)
+                            }
+                        }
+                        Divider().padding(.vertical, 4)
+                        if allowsEdit { threadActionRow("Edit", systemImage: "pencil", action: onEdit) }
+                        if let stickerAttachment {
+                            threadActionRow("Save to My Stickers", systemImage: "square.stack.3d.up") { onSaveSticker(stickerAttachment) }
+                        }
+                        threadActionRow("Select", systemImage: "checkmark.circle", action: onSelect)
+                        if allowsDelete {
+                            threadActionRow(message.isLocalFailedSend ? "Remove failed message" : mediaAttachment == nil ? "Delete" : "Delete photo", systemImage: "trash", role: .destructive, dismissesMenu: false) {
+                                isConfirmingDelete = true
+                            }
+                        }
+                        MessageActionReadReceiptRow(label: readReceiptLabel, readers: readReceiptReaders)
+                    }
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                guard height > 0 else { return }
+                threadSheetContentHeight = min(ceil(height), 398)
+            }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .foregroundStyle(.primary)
+        .background(Color(uiColor: .systemBackground))
+        .presentationDetents([.height(threadSheetContentHeight)])
+        .presentationContentInteraction(.scrolls)
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(24)
+        .accessibilityIdentifier("thread-message-actions-sheet")
+        .accessibilityLabel("Actions for message from \(message.authorName)")
+        .accessibilityAction(.escape) { performAction(onDismiss) }
+        #if DEBUG
+        .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--preview-expanded-reactions") {
+                showsAllReactions = true
+            }
+        }
+        #endif
+    }
+
+    private var initialThreadReactionCategory: EmojiPickerCategory {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview-recent-reactions") { return .recent }
+        #endif
+        return .noto
+    }
+
+    private var cannotForwardOrPin: Bool {
+        message.deliveryState == .sending || message.deliveryState == .failed
+    }
+
+    private var threadReactionButtons: some View {
+        HStack(spacing: 4) {
+            ForEach(quickReactions.prefix(5)) { item in
+                Button {
+                    performAction {
+                        storedRecentEmojiIDs = EmojiRecentStore.recording(item, in: storedRecentEmojiIDs)
+                        onReact(item.reactionValue)
+                    }
+                } label: {
+                    reactionImage(item, size: 24)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(targetReactions.first(where: { $0.value == item.reactionValue })?.includes(accountId: ownAccountId) == true ? KordiTheme.agentViolet.opacity(0.14) : .clear, in: Circle())
+                        .contentShape(Circle())
+                }
+                .buttonStyle(MessageReactionButtonStyle())
+                .accessibilityLabel("React with \(item.accessibilityName)")
+            }
+            Button {
+                showsAllReactions.toggle()
+            } label: {
+                Image(systemName: showsAllReactions ? "chevron.up" : "face.smiling")
+                    .font(.title3)
+                    .overlay(alignment: .topTrailing) {
+                        if !showsAllReactions {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.caption2)
+                                .background(Color(uiColor: .systemBackground), in: Circle())
+                                .offset(x: 4, y: -4)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(showsAllReactions ? "Collapse reaction picker" : "Show all reactions")
+        }
+    }
+
+    private func threadActionRow(_ title: String, systemImage: String, role: ButtonRole? = nil, disabled: Bool = false, dismissesMenu: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(role: role) {
+            if dismissesMenu { performAction(action) }
+            else { action() }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage).frame(width: 20)
+                Text(title)
+            }
+            .font(.subheadline)
+            .foregroundStyle(role == .destructive ? Color.red : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+    }
+
+    private var floatingActionOverlay: some View {
         GeometryReader { geometry in
             let containerFrame = geometry.frame(in: .global)
             let layoutFrame = usableFrame.isEmpty ? containerFrame : usableFrame
@@ -634,6 +806,11 @@ struct MessageActionOverlay: View {
     private func performAction(_ action: @escaping () -> Void) {
         guard !isDismissing else { return }
         isDismissing = true
+        if layout == .threads {
+            onSheetAction(action)
+            dismiss()
+            return
+        }
         // Keep the overlay mounted while its cutout follows the live bubble home.
         // Composer changes, navigation and deletion must wait for that return.
         withAnimation(
@@ -754,12 +931,12 @@ struct MessageActionOverlay: View {
     }
 
     @ViewBuilder
-    private func reactionImage(_ item: EmojiPickerItem) -> some View {
+    private func reactionImage(_ item: EmojiPickerItem, size: CGFloat = 30) -> some View {
         switch item {
         case .noto(let emoji):
-            NotoEmojiView(emoji: emoji, size: 30)
+            NotoEmojiView(emoji: emoji, size: size)
         case .blob(let emoji):
-            BlobEmojiView(emoji: emoji, size: 30)
+            BlobEmojiView(emoji: emoji, size: size)
         }
     }
 

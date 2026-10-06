@@ -8,8 +8,9 @@ import { readKordiAppModelImplementationSource } from './helpers/appModelSource'
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('product navigation only exposes final Cloud pages', () => {
-  assert.deepEqual(navItems.map((item) => item.id), ['chats', 'contacts', 'agents', 'digest']);
+  assert.deepEqual(navItems.map((item) => item.id), ['chats', 'agent-chats', 'contacts', 'agents', 'digest']);
   assert.equal(normalizeNavIdForCloud('digest'), 'digest');
+  assert.equal(normalizeNavIdForCloud('agent-chats'), 'agent-chats');
   assert.equal(normalizeNavIdForCloud('projects'), 'chats');
   assert.equal(normalizeNavIdForCloud('settings'), 'chats');
   assert.equal(normalizeNavIdForCloud('bridge'), 'chats');

@@ -20,9 +20,9 @@ export function projectChatGroups(
   const recents: ChatSidebarRow[] = [];
   for (const row of rows) {
     if (row.kind !== 'session') continue;
-    if (options.pinnedSessionIds?.has(row.sessionId)) pinned.push(row);
-    else recents.push(row);
     const project = projectBySession.get(row.sessionId);
+    if (options.pinnedSessionIds?.has(row.sessionId)) pinned.push(row);
+    else if (!project) recents.push(row);
     if (!project) continue;
     const key = project.id;
     const group = groups.get(key) ?? { name: project.name, rows: [] };

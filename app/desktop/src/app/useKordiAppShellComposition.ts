@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { assembleKordiShellSlots } from '@/app/assembleKordiShellSlots';
 import { useCallback, useMemo } from 'react';
 import type { KordiAppActions } from '@/app/useKordiAppActions';
@@ -446,7 +447,7 @@ export function useKordiAppShellComposition({
 
   return {
     rootThemeClass,
-    windowTitle: navigation.activeNav === 'chats'
+    windowTitle: isChatNavigation(navigation.activeNav)
       ? conversations.activeConv?.name || 'Chats'
       : navigation.activeNav === 'projects'
         ? projects.activeProjectSession?.name || projects.activeProject?.name || 'Projects'
@@ -454,7 +455,7 @@ export function useKordiAppShellComposition({
     onToggleSessionPanel: layout.showSessionRail
       ? () => layout.setIsSessionPanelCollapsed(value => !value)
       : undefined,
-    onToggleDetailPanel: navigation.activeNav !== 'chats' && layout.showRightDetailRail
+    onToggleDetailPanel: !isChatNavigation(navigation.activeNav) && layout.showRightDetailRail
       ? () => layout.setIsDetailPanelCollapsed(value => !value)
       : undefined,
     isNativeShell: environment.isNativeShell,
@@ -465,7 +466,7 @@ export function useKordiAppShellComposition({
     showSessionRail: layout.showSessionRail,
     collapseChatSessions: layout.collapseChatSessions,
     showRightDetailRail:
-      navigation.activeNav === 'chats' ? false : layout.showRightDetailRail,
+      isChatNavigation(navigation.activeNav) ? false : layout.showRightDetailRail,
     isDetailPanelCollapsed: layout.isDetailPanelCollapsed,
     detailRailWidth: layout.detailRailWidth,
     onSessionResizeMouseDown: layout.startPanelResize('session'),

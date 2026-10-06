@@ -77,7 +77,7 @@ test('the sidebar New project button imports a local folder and opens a new proj
     assert.equal(calls[2].args?.projectRoot, '/fixture/project');
     assert.equal(active, 'new-project-session');
     assert.deepEqual(refreshed, ['new-project-session']);
-    assert.deepEqual(navigation, ['chats']);
+    assert.deepEqual(navigation, ['agent-chats']);
   } finally {
     await act(async () => root.unmount());
     dom.window.close();

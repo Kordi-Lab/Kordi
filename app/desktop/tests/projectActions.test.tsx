@@ -44,7 +44,7 @@ for (const target of ['draft:local-chat', 'background-session', '']) {
       assert.deepEqual(calls[0].args?.workspace, { worktree: true, branch: 'main' });
       assert.equal(active, target === 'background-session' ? 'draft:local-chat' : 'new-project-session');
       assert.equal(refreshed[0], active);
-      assert.deepEqual(navigation, ['chats']);
+      assert.deepEqual(navigation, ['agent-chats']);
       assert.equal(drafts.chat[target === 'draft:local-chat' ? 'new-project-session' : 'draft:local-chat']?.text, 'Keep my task');
     } finally {
       await act(async () => root.unmount());
