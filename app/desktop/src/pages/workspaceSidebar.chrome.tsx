@@ -3,7 +3,6 @@ import { Plus, Search } from 'lucide-react';
 
 import type { ChatChannel } from '@/kordi-app/types';
 import type { CollaborationSyncStatus } from '@/pages/workspaceSidebar.chatModel';
-import { SidebarUnreadBadge } from '@/pages/workspaceSidebar.shared';
 
 function CollaborationSyncIndicator({ status, ariaLabel }: {
   status: CollaborationSyncStatus;
@@ -52,31 +51,25 @@ function CollaborationSyncIndicator({ status, ariaLabel }: {
 }
 
 export function ChatSidebarChrome({
-  agentUnread,
   chatChannel,
   chatSearch,
   collaborationSyncAriaLabel,
   collaborationSyncStatus,
-  contactUnread,
   onOpenCreate,
-  setChatChannel,
   setChatSearch,
 }: {
-  agentUnread: number;
   chatChannel: ChatChannel;
   chatSearch: string;
   collaborationSyncAriaLabel: string | null;
   collaborationSyncStatus: CollaborationSyncStatus;
-  contactUnread: number;
   onOpenCreate: (event: ReactMouseEvent<HTMLElement>) => void;
-  setChatChannel: (channel: ChatChannel) => void;
   setChatSearch: Dispatch<SetStateAction<string>>;
 }) {
   return (
     <>
       <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
         <div className="flex min-w-0 items-center gap-1">
-          <div className="shrink-0 text-[15px] font-semibold text-white">Chats</div>
+          <div className="shrink-0 text-[15px] font-semibold text-white">{chatChannel === 'agent' ? 'Agent Chats' : 'Chats'}</div>
           <CollaborationSyncIndicator
             status={collaborationSyncStatus}
             ariaLabel={collaborationSyncAriaLabel}
@@ -107,30 +100,6 @@ export function ChatSidebarChrome({
         />
       </div>
 
-      <div className="mb-2 space-y-1.5">
-        <div className="app-filter-tabs w-full">
-          {([
-            { id: 'contact', label: 'Contact', unread: contactUnread },
-            { id: 'agent', label: 'Agent', unread: agentUnread },
-          ] as Array<{ id: ChatChannel; label: string; unread: number }>).map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setChatChannel(tab.id)}
-              className={chatChannel === tab.id
-                ? 'app-filter-tab app-filter-tab-active'
-                : 'app-filter-tab'}
-            >
-              <span>{tab.label}</span>
-              {tab.unread > 0 ? (
-                <span className="ml-1.5 inline-flex">
-                  <SidebarUnreadBadge count={tab.unread} scope="channel-tab" />
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      </div>
     </>
   );
 }

@@ -86,7 +86,16 @@ enum ChatProjectSections {
                 }
             }
         }
-        let recents = AgentSessionTimelineCatalog.build(conversations: conversations.filter { !assigned.contains($0.sessionId) }, searchText: search, collapsedForkParentIds: collapsedForks, pinnedSessionIds: pinned)
+        // Pinned sessions remain reachable even when their project or parent is collapsed.
+        let pinnedSessions = AgentSessionTimelineCatalog.build(
+            conversations: conversations.filter { pinned.contains($0.sessionId) },
+            searchText: search,
+            retainedSessionIds: assigned
+        ).map { AgentSessionListItem(conversation: $0.conversation, depth: 0, childCount: 0) }
+        if !pinnedSessions.isEmpty {
+            sections.insert(.init(id: "pinned", project: nil, device: nil, sessions: pinnedSessions), at: 0)
+        }
+        let recents = AgentSessionTimelineCatalog.build(conversations: conversations.filter { !assigned.contains($0.sessionId) && !pinned.contains($0.sessionId) }, searchText: search, collapsedForkParentIds: collapsedForks, pinnedSessionIds: pinned)
         if !recents.isEmpty { sections.append(.init(id: "recents", project: nil, device: nil, sessions: recents)) }
         return sections
     }

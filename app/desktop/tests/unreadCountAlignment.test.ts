@@ -53,7 +53,7 @@ test('group, channel, navigation, and native totals ignore muted and archived ch
   }) as never));
 
   assert.equal(totalVisibleUnread(conversations, new Set([muted.id]), new Set()), 4);
-  assert.match(markup, /data-unread-scope="channel-tab" data-unread-count="4"/);
+  assert.match(markup, /aria-label="Chats, 4 unread messages"/);
   assert.match(markup, /data-unread-scope="participant-space" data-unread-count="4"/);
 });
 

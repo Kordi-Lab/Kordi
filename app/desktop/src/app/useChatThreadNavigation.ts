@@ -1,3 +1,4 @@
+import { chatNavigationForConversation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { requestThreadNavigation, useThreadNavigation } from '@/features/cloud/threadAttention';
 import type { Conversation, NavId } from '@/kordi-app/types';
@@ -16,13 +17,14 @@ export function useChatThreadNavigation(
   useEffect(() => {
     if (!threadNavigation || handledNonce.current === threadNavigation.nonce) return;
     handledNonce.current = threadNavigation.nonce;
-    setActiveNav('chats');
-    setActiveConvId(findConversation(threadNavigation.sessionId)?.id ?? threadNavigation.sessionId);
+    const conversation = findConversation(threadNavigation.sessionId);
+    setActiveNav(chatNavigationForConversation(conversation));
+    setActiveConvId(conversation?.id ?? threadNavigation.sessionId);
   }, [findConversation, setActiveConvId, setActiveNav, threadNavigation]);
 
   return useCallback((sessionId: string, messageId: string) => {
     const conversation = findConversation(sessionId);
-    setActiveNav('chats');
+    setActiveNav(chatNavigationForConversation(conversation));
     setActiveConvId(conversation?.id ?? sessionId);
     requestThreadNavigation(conversation?.canonicalSessionId ?? sessionId, messageId);
   }, [findConversation, setActiveConvId, setActiveNav]);

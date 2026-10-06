@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
@@ -51,7 +52,7 @@ export function useActiveConversationReadPresentation({
     };
   }, []);
 
-  const isTranscriptPresented = activeNav === 'chats'
+  const isTranscriptPresented = isChatNavigation(activeNav)
     && Boolean(activeConversationId.trim());
   const isTranscriptAtLatest = transcriptPosition.presentationKey === presentationKey
     && transcriptPosition.isAtLatest;

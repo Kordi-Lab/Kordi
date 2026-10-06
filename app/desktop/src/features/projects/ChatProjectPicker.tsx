@@ -55,7 +55,9 @@ export function ChatProjectPicker({
 
   return <>
     <button ref={trigger} type="button" disabled={disabled || busy}
-      className={menuLabel ? 'chat-project-context-action' : 'chat-project-trigger'}
+      className={menuLabel
+        ? 'app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition'
+        : 'chat-project-trigger'}
       aria-label={menuLabel ? 'Move to project' : selected ? `Project: ${selected.name}` : 'Choose project'}
       aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog"
       onClick={() => {
@@ -65,8 +67,8 @@ export function ChatProjectPicker({
         setLight(Boolean(trigger.current?.closest('.theme-light')));
         setQuery(''); setError(null); setCreating(false); setOpen(true);
       }}>
-      <Folder size={13} aria-hidden="true" />
-      <span>{menuLabel ? 'Move to project…' : selected?.name ?? 'Choose project'}</span>
+      <Folder size={13} className={menuLabel ? 'app-transient-action-icon' : undefined} aria-hidden="true" />
+      <span>{menuLabel ? 'Move to project' : selected?.name ?? 'Choose project'}</span>
     </button>
     {open ? createPortal(<div ref={surface} id={id} role="dialog" aria-label="Choose project"
       aria-busy={busy} className={`chat-project-menu app-composer-model-menu-layer${light ? ' app-compact-model-menu-light' : ''}`} style={position}

@@ -35,6 +35,7 @@ enum KordiPreviewModePersistence {
     /// never runs against the scheme's backend.
     private static let launchArguments: Set<String> = [
         "--preview-launching", "--preview-data", "--preview-background-stop", "--preview-markdown",
+        "--preview-native-design", "--preview-native-agent", "--preview-native-thread", "--preview-native-samples",
         "--preview-login", "--preview-signup", "--preview-account", "--preview-devices",
         "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
         "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
@@ -7556,6 +7557,17 @@ final class AppModel: ObservableObject {
         })
         conversations = fixture.conversations
         messagesByConversation = fixture.messagesByConversation
+        if ProcessInfo.processInfo.arguments.contains("--preview-projects"),
+           let template = conversations.first(where: { $0.kind == .agent && !$0.isAgentLaunchTemplate }) {
+            for (index, title) in ["Review homepage", "Update typography", "Improve project discovery", "Review sidebar navigation"].enumerated() {
+                var session = AgentSessionFactory.make(from: template, ownAccountId: fixture.account.accountId, randomId: "sidebar-preview-\(index)")
+                session.displayName = title
+                session.lastMessage = "Preview conversation"
+                session.lastActivityAt = now.addingTimeInterval(Double(-index * 60))
+                conversations.append(session)
+                if index == 0 { pinnedSessionIds.insert(session.sessionId) }
+            }
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-incoming-message"),
            let index = conversations.firstIndex(where: { $0.id == "person:acct_maya" }),

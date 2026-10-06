@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useEffect, useMemo, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
@@ -66,7 +67,7 @@ export function visibleLocalSessionIdForActivity({
   if (activeNav === 'projects') {
     return isProjectDraftSessionId(activeProjectSessionId) ? null : activeProjectSessionId || null;
   }
-  if (activeNav !== 'chats') return null;
+  if (!isChatNavigation(activeNav)) return null;
   const canonicalSessionId = activeChatCanonicalSessionId?.trim();
   const visibleSessionId = canonicalSessionId || activeChatSessionId.trim();
   if (!visibleSessionId) return null;
@@ -156,7 +157,7 @@ export function useKordiDesktopActivity({
   const activeProjectArtifactLiveTurn = useArtifactLiveTurn(activeProjectLiveTurn);
   const isDesktopChatSending = activeNav === 'projects'
     ? Boolean(activeProjectLiveTurn && !activeProjectLiveTurn.completed)
-    : activeNav === 'chats' && activeConversationUsesCollaboration
+    : isChatNavigation(activeNav) && activeConversationUsesCollaboration
       ? isDesktopCollaborationSending || Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed)
       : Boolean(activeChatLiveTurn && !activeChatLiveTurn.completed);
 
@@ -218,7 +219,7 @@ export function useKordiDesktopActivity({
   }, [activeConv.canonicalSessionId, activeConv.id, activeNav, activeProjectSessionId, setVisibleLocalSessionId]);
 
   useEffect(() => {
-    if ((activeNav !== 'chats' && activeNav !== 'projects') || (activeNav === 'chats' && activeConversationUsesCollaboration)) {
+    if ((!isChatNavigation(activeNav) && activeNav !== 'projects') || (isChatNavigation(activeNav) && activeConversationUsesCollaboration)) {
       return;
     }
 

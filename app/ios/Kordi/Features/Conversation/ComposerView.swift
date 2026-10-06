@@ -210,11 +210,7 @@ struct ComposerView: View {
     @ScaledMetric(relativeTo: .caption) private var mentionPickerChromeHeight: CGFloat = 44
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            composerBody
-            ChatProjectComposerControl(conversation: conversation)
-                .padding(.horizontal, 8)
-        }
+        composerBody
     }
 
     private var composerBody: some View {

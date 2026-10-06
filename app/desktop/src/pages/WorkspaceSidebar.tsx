@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Archive, ChevronLeft } from 'lucide-react';
@@ -140,6 +141,7 @@ export function WorkspaceSidebar({
   } = account;
   const isBrowserOnline = useBrowserOnlineStatus();
   const chatModel = useWorkspaceChatSidebarModel(chats, {
+    chatChannel: activeNav === 'agent-chats' ? 'agent' : 'contact',
     isCollaborationSyncUnavailable:
       chats.isCollaborationSyncUnavailable === true || !isBrowserOnline,
   });
@@ -149,7 +151,6 @@ export function WorkspaceSidebar({
     collaborationSyncAriaLabel,
     collaborationSyncStatus,
     contactUnread,
-    setChatChannel,
   } = chatModel;
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
 
@@ -176,8 +177,7 @@ export function WorkspaceSidebar({
 
   const openChatCreateDialog = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    setActiveNav('chats');
-    setChatCreateInitialMode('menu');
+    setChatCreateInitialMode(activeNav === 'agent-chats' ? 'agent' : 'menu');
     setChatCreateAnchor({
       left: rect.left,
       top: rect.top,
@@ -185,7 +185,7 @@ export function WorkspaceSidebar({
       height: rect.height,
     });
     setIsChatCreateDialogOpen(true);
-  }, [setActiveNav]);
+  }, [activeNav]);
 
   useEffect(() => {
     if (!sessionContextMenu && !groupContextMenu) return;
@@ -212,25 +212,19 @@ export function WorkspaceSidebar({
 
   const chatSidebarChrome = useMemo(() => (
     <ChatSidebarChrome
-      agentUnread={agentUnread}
       chatChannel={chatChannel}
       chatSearch={chatSearch}
       collaborationSyncAriaLabel={collaborationSyncAriaLabel}
       collaborationSyncStatus={collaborationSyncStatus}
-      contactUnread={contactUnread}
       onOpenCreate={openChatCreateDialog}
-      setChatChannel={setChatChannel}
       setChatSearch={setChatSearch}
     />
   ), [
-    agentUnread,
     chatChannel,
     collaborationSyncAriaLabel,
     collaborationSyncStatus,
-    contactUnread,
     chatSearch,
     openChatCreateDialog,
-    setChatChannel,
     setChatSearch,
   ]);
 
@@ -249,7 +243,8 @@ export function WorkspaceSidebar({
             isNativeShell={isNativeShell}
             activeNav={activeNav}
             setActiveNav={setActiveNav}
-            totalUnread={chatModel.totalUnread}
+            agentUnread={agentUnread}
+            contactUnread={contactUnread}
             pendingContactRequestCount={pendingContactRequestCount}
             account={account}
             updater={{
@@ -273,7 +268,7 @@ export function WorkspaceSidebar({
               style={{ width: `${sessionRailWidth}px` }}
             >
               <div className="h-full overflow-hidden">
-                {activeNav === 'chats' ? (
+                {isChatNavigation(activeNav) ? (
                   <div className="flex h-full flex-col p-2.5">
                     {chatSidebarChrome}
 

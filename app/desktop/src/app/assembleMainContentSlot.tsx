@@ -157,11 +157,11 @@ export function assembleMainContentSlot(args: MainContentShellArgs) {
           void args.handleStartChatWithAgent(agent);
         },
         onOpenAgentReachoutSession: (sessionId) => {
-          args.setActiveNav('chats');
+          args.setActiveNav('agent-chats');
           void args.handleSelectChatSession(sessionId);
         },
         onOpenAgentBuilderSession: (sessionId) => {
-          args.setActiveNav('chats');
+          args.setActiveNav('agent-chats');
           void args.handleSelectChatSession(sessionId);
         },
         onOpenAuthSettings: args.openCloudAccountAuthentication ?? args.openAuthSettings,
