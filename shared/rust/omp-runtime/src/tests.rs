@@ -27,6 +27,7 @@ fn request() -> RunRequest {
         message_entry_ids: Some(vec![]),
         prompt: Prompt {
             text: "Hello".into(),
+            resume: false,
             entry_id: Some("user-1".into()),
             images: vec![],
             trailing_messages: vec![],

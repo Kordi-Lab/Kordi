@@ -2,6 +2,12 @@ import { createInterface } from 'node:readline';
 import { parentPort } from 'node:worker_threads';
 import { declareWorkerHostEntry, installWorkerInbox } from '@oh-my-pi/pi-utils/worker-host';
 import { parseCommand, RuntimeError, type JsonObject, type RunRequest, type ToolResult } from './protocol';
+import runtimePackage from '../package.json';
+
+if (process.argv.includes('--version')) {
+  process.stdout.write(`kordi-omp ${runtimePackage.dependencies['@oh-my-pi/pi-coding-agent']}\n`);
+  process.exit(0);
+}
 
 if (Bun.isMainThread) declareWorkerHostEntry();
 const selectedWorker = process.argv.find(argument => [

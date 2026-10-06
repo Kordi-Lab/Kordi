@@ -1,5 +1,12 @@
 .git
 .worktrees
+.build
+**/.build
+.preview
+**/.preview
+.codex
+.agents
+.aws
 node_modules
 **/node_modules
 target
@@ -11,6 +18,7 @@ app/desktop/.multi-instance-logs
 app/desktop/.multi-instance-runtime
 deploy/dev/.env
 deploy/dev/.env.??????
+deploy/dev/operator-github-allowlist.txt
 *.key
 *.p8
 *.p12

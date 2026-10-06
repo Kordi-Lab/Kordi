@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use kordi_cli::desktop_runtime::{DesktopChatAgentProfile, DesktopChatSessionDetail};
+use kordi_cli::desktop_runtime::{
+    DesktopChatAgentProfile, DesktopChatProjectGroup, DesktopChatSessionDetail,
+};
 
 use super::{DesktopChatState, DesktopSessionHandle};
 
@@ -22,12 +24,13 @@ fn completed_desktop_session_state_for_canonical_sync(
     active_session_id: &str,
     active_session: DesktopChatSessionDetail,
     local_agent: DesktopChatAgentProfile,
+    projects: Vec<DesktopChatProjectGroup>,
 ) -> DesktopChatState {
     DesktopChatState {
         cwd: cwd.display().to_string(),
         active_session_id: active_session_id.to_string(),
         sessions: Vec::new(),
-        projects: Vec::new(),
+        projects,
         active_session,
         local_agent,
         model_options: Vec::new(),
@@ -63,11 +66,19 @@ pub(super) async fn sync_completed_desktop_session_to_canonical(
     let Some((active_session, local_agent)) = snapshot else {
         return;
     };
+    let projects = match kordi_cli::desktop_runtime::list_project_groups(cwd) {
+        Ok(projects) => projects,
+        Err(error) => {
+            eprintln!("Unable to load completed desktop project membership: {error}");
+            return;
+        }
+    };
     let state = completed_desktop_session_state_for_canonical_sync(
         cwd,
         active_session_id,
         active_session,
         local_agent,
+        projects,
     );
     if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&state) {
         eprintln!("Unable to sync completed desktop chat into canonical sessions: {error}");
@@ -233,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn completed_desktop_session_sync_state_preserves_agent_runtime_details() {
+    fn completed_desktop_session_sync_state_preserves_runtime_details_and_project_membership() {
         let detail = DesktopChatSessionDetail {
             id: "session:bridge:humans:test".to_string(),
             cwd: "/tmp/workspace".to_string(),
@@ -323,7 +334,32 @@ mod tests {
             "session:bridge:humans:test",
             detail,
             local_agent,
+            vec![DesktopChatProjectGroup {
+                id: "project:/tmp/workspace".to_string(),
+                name: "Workspace".to_string(),
+                root: "/tmp/workspace".to_string(),
+                summary: String::new(),
+                background_system: None,
+                shared_sources: Vec::new(),
+                sessions: vec![DesktopChatSessionSummary {
+                    id: "session:bridge:humans:test".to_string(),
+                    title: "Check repo".to_string(),
+                    subtitle: "Check repo".to_string(),
+                    updated_at_label: "Now".to_string(),
+                    updated_at_ms: 2,
+                    message_count: 2,
+                    draft: false,
+                    background_status: None,
+                    forked_from_session_id: None,
+                    forked_from_message_id: None,
+                }],
+            }],
         );
+
+        let project = &sync_state.projects[0];
+        assert_eq!(project.id, "project:/tmp/workspace");
+        assert_eq!(project.root, "/tmp/workspace");
+        assert_eq!(project.sessions[0].id, sync_state.active_session_id);
 
         let assistant = sync_state
             .active_session

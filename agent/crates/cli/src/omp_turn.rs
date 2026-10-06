@@ -1,5 +1,4 @@
-//! Development-only selection of the desktop turn engine. The Rust engine
-//! remains the default while OMP parity is validated one turn at a time.
+//! Shared OMP model loop for local desktop, CLI, TUI, and managed child turns.
 
 use std::collections::BTreeMap;
 #[cfg(debug_assertions)]
@@ -27,35 +26,7 @@ use tokio_util::sync::CancellationToken;
 use crate::login::ProviderAuthMethod;
 use crate::turn_runner::{self, TurnConfig, TurnEvent, get_leaf_raw};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum DesktopTurnEngine {
-    Rust,
-    Omp,
-}
-
-impl DesktopTurnEngine {
-    fn from_setting(value: &str) -> Self {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "omp" => Self::Omp,
-            _ => Self::Rust,
-        }
-    }
-}
-
-pub(super) fn selected_desktop_turn_engine() -> DesktopTurnEngine {
-    #[cfg(debug_assertions)]
-    {
-        DesktopTurnEngine::from_setting(
-            &std::env::var("KORDI_DESKTOP_TURN_ENGINE").unwrap_or_default(),
-        )
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        DesktopTurnEngine::Rust
-    }
-}
-
-/// Execute one already-admitted desktop turn with Kordi's exact model, auth,
+/// Execute one already-admitted local turn with Kordi's exact model, auth,
 /// workspace, and host-tool policy. The worker owns the model loop only.
 pub(super) async fn run_turn(
     config: TurnConfig,
@@ -92,7 +63,7 @@ pub(super) async fn run_turn(
     (config, result)
 }
 
-async fn run_turn_inner(
+pub(crate) async fn run_turn_inner(
     config: &TurnConfig,
     event_tx: &mpsc::UnboundedSender<TurnEvent>,
     prompt_text: String,
@@ -207,8 +178,12 @@ mod host;
 #[cfg(test)]
 mod tests;
 
-pub(super) use history::prepare_history;
-use history::{build_request, persist_result, route_scope};
+#[allow(
+    unused_imports,
+    reason = "the CLI binary has no desktop transcript projection"
+)]
+pub(crate) use history::RAW_OMP_MESSAGE;
+use history::{build_request, persist_result, prepare_history, route_scope};
 use host::{
     DesktopHost, map_event, owner_capabilities, private_computer_lock_path, worker_command,
 };

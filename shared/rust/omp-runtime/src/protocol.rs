@@ -74,6 +74,9 @@ pub struct AuthConfig {
 #[serde(rename_all = "camelCase")]
 pub struct Prompt {
     pub text: String,
+    /// Continue an admitted turn from completed message/tool history.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub resume: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

@@ -198,9 +198,9 @@ test('side Agent sends stay optimistic while materializing the target runtime', 
 
   assert.match(
     targetedBlock,
-    /await sendLocalAgentChatMessage\(\{[\s\S]*materializeTarget: \(\) => materializeLocalChatTarget\(targetConversation\.id\)/,
+    /await sendLocalAgentChatMessage\(\{[\s\S]*materializeTarget: \(\) => materializeLocalChatTarget\(targetRuntimeSessionId\)/,
   );
-  assert.doesNotMatch(targetedBlock, /await materializeLocalChatTarget\(targetConversation\.id\)/);
+  assert.doesNotMatch(targetedBlock, /await materializeLocalChatTarget\(targetRuntimeSessionId\)/);
   assert.ok(
     sharedSendBlock.indexOf('setCanonicalSessionState((current) => appendOptimisticCanonicalMessage')
       < sharedSendBlock.indexOf('await materializeTarget()'),
@@ -212,7 +212,10 @@ test('side Agent sends stay optimistic while materializing the target runtime', 
   );
   assert.match(materializer, /await fetchDesktopChatState\(sessionId\)/);
   assert.match(materializer, /materializedState\.activeSessionId !== sessionId[\s\S]*materializedState\.activeSession\.id !== sessionId/);
-  assert.match(chatMessages, /if \(materializedState\) setDesktopChatState\(materializedState\)/);
+  const materializerStart = chatMessages.indexOf('const materializeLocalChatTarget = useCallback');
+  const materializerBlock = chatMessages.slice(materializerStart, chatMessages.indexOf('const sendQueuedLocalMessage', materializerStart));
+  assert.match(materializerBlock, /mergeBackgroundDesktopChatState\(current, materializedState\)/);
+  assert.doesNotMatch(materializerBlock, /setDesktopChatState\(materializedState\)/);
 });
 
 test('opening Ask Agent reports and renders authoritative transcript hydration', () => {

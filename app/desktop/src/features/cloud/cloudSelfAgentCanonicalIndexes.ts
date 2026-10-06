@@ -2,8 +2,38 @@ import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { CloudSessionForkSummary } from './authClient';
 import type { CloudGroupReadCursor } from './cloudGroupMessages';
 import type { CloudSelfAgentRestoreMessage } from './cloudSelfAgentRestoreMessage';
+import type { CloudSelfAgentSyncLedger } from './cloudSelfAgentSyncLedger';
 
 const clean = (value?: string | null) => (value ?? '').trim();
+
+export function cloudSelfAgentSessionsNeedingReplyRecovery(state: CanonicalSessionState, ledger: CloudSelfAgentSyncLedger) {
+  const messagesById = new Map(state.messages.map((message) => [message.id, message]));
+  const requestsByWireId = new Map<string, CanonicalSessionState['messages'][number]>();
+  for (const message of state.messages) {
+    if (message.senderRole !== 'user') continue;
+    const content = message.content as Record<string, unknown> | null;
+    const aliases = [ledger[message.id]?.cloudMessageId,
+      message.sourceTransport === 'cloud-self-agent' ? message.sourceEventId : null,
+      typeof content?.desktopEntryId === 'string' ? content.desktopEntryId : null];
+    for (const alias of aliases) {
+      if (!alias) continue;
+      const key = `${message.sessionId}:${alias}`;
+      if (requestsByWireId.get(key)?.sourceTransport === 'desktop-chat-ui' && message.sourceTransport !== 'desktop-chat-ui') continue;
+      requestsByWireId.set(key, message);
+    }
+  }
+  return new Set(state.messages.flatMap((message) => {
+    if (message.sourceTransport !== 'cloud-self-agent' || message.senderRole !== 'owned-agent') return [];
+    const content = message.content as Record<string, unknown> | null;
+    const wireId = typeof content?.cloudRequestMessageId === 'string' ? content.cloudRequestMessageId : null;
+    if (!wireId) return [];
+    const knownParent = messagesById.get(message.parentMessageId ?? '');
+    const request = requestsByWireId.get(`${message.sessionId}:${wireId}`)
+      ?? (knownParent?.senderRole === 'user' && knownParent.sessionId === message.sessionId ? knownParent : null);
+    return request && (message.parentMessageId !== request.id || message.createdAtMs !== request.createdAtMs + 1)
+      ? [message.sessionId] : [];
+  }));
+}
 
 export function durableTerminalRequestIds(
   messages: readonly CloudSelfAgentRestoreMessage[],

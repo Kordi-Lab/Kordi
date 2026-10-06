@@ -200,7 +200,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     () => conversationWithHydratedSupportRoute(selectedActiveConv, cloudContacts),
     [cloudContacts, selectedActiveConv],
   );
-  useSelectedChatHistoryHydration(foundation, selectedActiveConv);
+  const setCompanionHistorySessionId = useSelectedChatHistoryHydration(foundation, selectedActiveConv);
 
   const {
     activeMessageSelection,
@@ -402,6 +402,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     conversations: {
       chatConversations,
       companionConversations,
+      setCompanionHistorySessionId,
       filteredConversations,
       participantSpaces,
       archivedParticipantSpaces,

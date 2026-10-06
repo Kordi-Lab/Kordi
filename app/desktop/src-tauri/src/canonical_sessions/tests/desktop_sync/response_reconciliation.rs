@@ -1,6 +1,116 @@
 use super::*;
 
 #[test]
+fn hosted_project_execution_reuses_the_original_request_after_delayed_admission() {
+    let conn = test_conn();
+    let seed = |id: &str, role: &str, transport: &str, parent: Option<&str>, content| {
+        append_message_in_db(
+            &conn,
+            AppendCanonicalMessageRequest {
+                id: Some(id.into()),
+                session_id: "project-session".into(),
+                sender_identity_id: if role == "user" {
+                    "human:local"
+                } else {
+                    "agent:local"
+                }
+                .into(),
+                sender_role: role.into(),
+                message_kind: if role == "user" { "text" } else { "agent-turn" }.into(),
+                content_text: if role == "user" {
+                    "hello"
+                } else {
+                    "Hello back"
+                }
+                .into(),
+                content: Some(content),
+                parent_message_id: parent.map(str::to_string),
+                delegated_exchange_id: None,
+                status: Some("sent".into()),
+                created_at_ms: Some(1_000),
+                source_transport: Some(transport.into()),
+                source_event_id: Some(id.into()),
+            },
+        )
+        .expect("seed hosted project message");
+    };
+    seed(
+        "local-request",
+        "user",
+        "desktop-chat-ui",
+        None,
+        serde_json::json!({}),
+    );
+    seed(
+        "early-native-copy",
+        "user",
+        "desktop-chat",
+        None,
+        serde_json::json!({ "desktopEntryId": "wire-request" }),
+    );
+    seed(
+        "cloud-reply",
+        "owned-agent",
+        "cloud-self-agent",
+        Some("local-request"),
+        serde_json::json!({ "cloudRequestMessageId": "wire-request" }),
+    );
+    assert!(
+        crate::canonical_sessions::commands::reconcile_canonical_message_mirror_in_db(
+            &conn,
+            "local-request",
+            "early-native-copy",
+        )
+        .is_err(),
+        "Equal text alone must not merge distinct local requests"
+    );
+
+    let native_request = kordi_cli::desktop_runtime::DesktopChatMessage {
+        role: "user".into(),
+        sender: Some("You".into()),
+        text: "hello".into(),
+        detail: None,
+        time_label: "Now".into(),
+        timestamp_ms: 20_000,
+        thinking_text: None,
+        tools: Vec::new(),
+        attachments: Vec::new(),
+        failed: false,
+        cancelled: false,
+        entry_id: Some("wire-request".into()),
+    };
+    for _ in 0..2 {
+        assert_eq!(
+            sync_desktop_chat_message(
+                &conn,
+                "project-session",
+                "human:local",
+                "agent:local",
+                0,
+                &native_request,
+                None,
+            )
+            .expect("sync admitted project request")
+            .as_deref(),
+            Some("local-request")
+        );
+    }
+    let user_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM session_messages WHERE session_id='project-session' AND sender_role='user'",
+        [], |row| row.get(0),
+    ).unwrap();
+    assert_eq!(
+        user_count, 1,
+        "Delayed execution must not add a second user bubble"
+    );
+    let entry_id: String = conn.query_row(
+        "SELECT json_extract(content_json,'$.desktopEntryId') FROM session_messages WHERE id='local-request'",
+        [], |row| row.get(0),
+    ).unwrap();
+    assert_eq!(entry_id, "wire-request");
+}
+
+#[test]
 fn desktop_sync_links_agent_turn_to_latest_user_request() {
     let conn = test_conn();
     let message = |role: &str, text: &str, timestamp_ms: i64| {

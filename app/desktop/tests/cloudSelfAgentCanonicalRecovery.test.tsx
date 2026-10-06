@@ -58,7 +58,7 @@ function initialState(): CanonicalSessionState {
   };
 }
 
-function nativeFixture(messages = [wireMessage(1), wireMessage(2, true)]) {
+function nativeFixture(messages = [wireMessage(1), wireMessage(2, true)], seed = initialState(), durable = false) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost' });
   const globals = { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true };
   const previous = new Map(Object.keys(globals).map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
@@ -70,8 +70,8 @@ function nativeFixture(messages = [wireMessage(1), wireMessage(2, true)]) {
   let coverageReads = 0;
   const warnings: unknown[] = [];
   const pageRequests: Array<{ afterSequence: number; limit: number }> = [];
-  const stored = new Map<string, CanonicalSessionMessage>();
-  let state = initialState();
+  const stored = new Map<string, CanonicalSessionMessage>(seed.messages.map((message) => [message.id, message]));
+  let state = seed;
   const currentConversation = { ...conversation, latest_message_sequence: messages.length };
   const latest = messages.length ? [cloudMessageFromChatSync(messages.at(-1)!, currentConversation, account.accountId)] : [];
   const head = { [account.accountId]: latest };
@@ -93,7 +93,8 @@ function nativeFixture(messages = [wireMessage(1), wireMessage(2, true)]) {
     if (command === 'desktop_chat_sync_recovery_message_ids') {
       return { conversationId: conversation.id, messageIds: messages.map(message => message.id) };
     }
-    if (command === 'desktop_canonical_existing_message_sources') return [];
+    if (command === 'desktop_canonical_existing_message_sources') return durable
+      ? messages.map((message) => ({ sourceTransport: 'cloud-self-agent', sourceEventId: message.id })) : [];
     if (command === 'desktop_chat_sync_messages_page') {
       const afterSequence = Number(payload?.afterSequence ?? 0);
       const limit = Number(payload?.limit);
@@ -129,7 +130,7 @@ function nativeFixture(messages = [wireMessage(1), wireMessage(2, true)]) {
   });
   const root = createRoot(document.getElementById('root')!);
   function Harness({ bootstrapped, showHead }: { bootstrapped: boolean; showHead: boolean }) {
-    const [current, setCurrent] = useState<CanonicalSessionState | null>(initialState);
+    const [current, setCurrent] = useState<CanonicalSessionState | null>(seed);
     state = current!;
     useCloudSelfAgentCanonicalSync({
       account, agentDisplayName: 'Kordi', canonicalState: current, setCanonicalState: setCurrent,
@@ -210,6 +211,26 @@ test('authoritative empty history settles without polling forever', async () => 
     assert.deepEqual(view.warnings, []);
     assert.equal(view.state.messages.length, 0);
     assert.equal(view.pageRequests.length, 0);
+  } finally { await view.close(); }
+});
+
+test('durable history still repairs a project reply whose request link was lost', async () => {
+  const seed = initialState();
+  seed.sessions = [{ id: sessionId, kind: 'project', title: 'Task', projectId: 'project', projectName: 'Project', status: 'active', createdAtMs: 1, updatedAtMs: 1 }];
+  seed.messages = [
+    { id: 'request-local', sessionId, senderIdentityId: 'human:recovery', senderRole: 'user', messageKind: 'text', contentText: 'Request 1', content: { desktopEntryId: 'wire-1' }, sourceTransport: 'desktop-chat-ui', status: 'sent', sequenceNum: 1, createdAtMs: 1000, updatedAtMs: 1000 },
+    { id: 'msg:cloud:self:response:wire-1', sessionId, senderIdentityId: `agent:cloud-self:${account.accountId}`, senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hello!', content: { cloudRequestMessageId: 'wire-1' }, sourceTransport: 'cloud-self-agent', sourceEventId: 'wire-2', parentMessageId: null, status: 'complete', sequenceNum: 2, createdAtMs: 2000, updatedAtMs: 2000 },
+  ];
+  const view = nativeFixture(undefined, seed, true);
+  try {
+    await view.render(true, false);
+    await waitForReactCondition(() => view.settled > 0, 'Durable reply recovery did not settle');
+    assert.deepEqual(view.warnings, []);
+    assert.equal(view.pageRequests.length, 1, 'Durability alone must not skip causal repair');
+    const reply = view.state.messages.find((message) => message.senderRole === 'owned-agent')!;
+    assert.equal(reply.parentMessageId, 'request-local');
+    assert.equal(reply.createdAtMs, 1001);
+    assert.equal(view.state.sessions[0].kind, 'project');
   } finally { await view.close(); }
 });
 

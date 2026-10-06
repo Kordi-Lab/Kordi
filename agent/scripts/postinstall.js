@@ -10,6 +10,7 @@ const https = require("https");
 const http = require("http");
 const zlib = require("zlib");
 const { pipeline } = require("stream/promises");
+const { installRuntime } = require("./install-omp-runtime");
 
 const packageJson = require("../package.json");
 const BINARY_RELEASE_TAG = `v${packageJson.version}`;
@@ -571,19 +572,17 @@ async function main() {
     return;
   }
 
-  if (hasBundledNativeBinary()) {
-    logLine(`Kordi ${packageJson.version} native binary already present; skipping download.`);
-    return;
-  }
-
   const target = getTarget();
   const platform = `${os.platform()}-${os.arch()}`;
 
   logLine(`Resolved install platform: ${platform}.`);
   if (target) {
     logLine(`Resolved native target: ${target}.`);
-    const result = await tryDownloadPrebuilt(target);
+    const result = hasBundledNativeBinary() ? { ok: true } : await tryDownloadPrebuilt(target);
     if (result.ok) {
+      await installRuntime({ target, version: packageJson.ompRuntimeVersion, directory: NATIVE_DIR,
+        releaseBase: `https://github.com/${REPO}/releases/download/${BINARY_RELEASE_TAG}`, download: requestBinary });
+      logLine("✓ Version-matched OMP runtime installed successfully.");
       return;
     }
     printFallbackHelp(platform, result);

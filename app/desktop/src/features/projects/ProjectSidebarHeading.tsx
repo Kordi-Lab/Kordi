@@ -16,7 +16,7 @@ export function ProjectSidebarHeading({
       <span>{label}</span><ChevronRight size={13} className="chat-project-collapse-indicator" aria-hidden="true" />
     </button> : <h3>{label}</h3>}
     {section === 'projects' ? <div className="chat-project-heading-actions">
-      {onCreateProject ? <button type="button" aria-label="New project" title="New project" onClick={onCreateProject}>
+      {onCreateProject ? <button type="button" aria-label="New project" title="New project" onClick={() => onCreateProject()}>
         <Plus size={18} aria-hidden="true" />
       </button> : null}
     </div> : null}

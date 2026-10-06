@@ -11,6 +11,8 @@ use crate::{
 use serde_json::{json, Value};
 
 mod fallback;
+mod omp;
+pub(crate) use omp::run as run_omp;
 
 pub const RUN_PREFIX: &str = "pip_";
 
@@ -46,6 +48,22 @@ pub fn normalize_output(text: &str) -> String {
 }
 
 pub async fn run<C, P>(
+    client: &C,
+    provider: &P,
+    run: &CloudAgentRun,
+    material: ProviderAuthMaterial,
+) -> Result<String, ModelLoopError>
+where
+    C: CloudAgentRunClient + Sync,
+    P: CloudModelProvider + Sync,
+{
+    match crate::runtime::cloud_model_engine_from_env()? {
+        crate::runtime::CloudModelEngine::Omp => run_omp(client, run, material).await,
+        crate::runtime::CloudModelEngine::Rust => run_legacy(client, provider, run, material).await,
+    }
+}
+
+pub(crate) async fn run_legacy<C, P>(
     client: &C,
     provider: &P,
     run: &CloudAgentRun,

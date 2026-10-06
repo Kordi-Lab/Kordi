@@ -12,6 +12,7 @@ use super::super::{
 use super::historical_turn::{
     HistoricalTurnBuilder, flush_historical_turn, tool_artifact_path, tool_detail_label, tool_layer,
 };
+use crate::omp_turn::RAW_OMP_MESSAGE;
 
 pub(in crate::desktop_runtime) fn load_session_messages(
     conn: &rusqlite::Connection,
@@ -448,8 +449,12 @@ fn append_session_metadata(
                 });
             }
         }
-        SessionEntry::Custom { .. } => {
-            flush_historical_turn(out, current_turn);
+        SessionEntry::Custom { custom_type, .. } => {
+            // OMP stores provider replay metadata after each assistant/tool
+            // message. It belongs to that message and is not a turn boundary.
+            if custom_type != RAW_OMP_MESSAGE {
+                flush_historical_turn(out, current_turn);
+            }
         }
     }
 }

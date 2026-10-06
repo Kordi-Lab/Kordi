@@ -172,6 +172,10 @@ body[data-kordi-chat-theme] .kordi-app:is(.theme-light, .theme-dark),
   --app-chat-meta-peer: var(--app-palette-meta);
   --app-chat-meta-own: var(--app-palette-message-ink);
   --app-chat-mention-own: var(--app-palette-message-ink);
+  --app-chat-mention-own-person: color-mix(in oklab, var(--app-palette-message-ink) 75%, #78EFB5);
+  --app-chat-mention-own-agent: color-mix(in oklab, var(--app-palette-message-ink) 75%, #99DFFF);
+  --app-chat-reply-own: color-mix(in oklab, var(--app-palette-message-ink) 75%, #FFF0A3);
+  --app-chat-mention-agent: color-mix(in oklab, var(--app-palette-accent) 88%, var(--app-palette-ink));
   --app-chat-mention-peer: var(--app-palette-accent);
   --app-markdown-link: var(--app-palette-accent);
   --app-markdown-link-hover: var(--app-palette-ink);

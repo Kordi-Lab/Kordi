@@ -40,6 +40,7 @@ import {
   shouldUseCloudSessionAction,
 } from './useKordiAppModelHelpers';
 import { appendCanonicalRenameNotice } from './canonicalRenameNotice';
+import { isDesktopRuntimeSessionId } from './desktopRuntimeSessionMembership';
 
 type UseKordiChatSessionActionsArgs = {
   conversations?: readonly Conversation[];
@@ -215,9 +216,7 @@ export function useKordiChatSessionActions({
     if (!nextTitle) return;
     const actorIdentityId =
       canonicalState?.profile.humanIdentityId?.trim() || undefined;
-    const isDesktopRuntimeSession = desktopSessions?.some(
-      (session) => session.id === sessionId,
-    ) ?? false;
+    const isDesktopRuntimeSession = isDesktopRuntimeSessionId(desktopSessions, desktopState?.projects, sessionId);
     try {
       setDesktopError(null);
       let nextCanonical = await renameCanonicalSession({
@@ -270,6 +269,7 @@ export function useKordiChatSessionActions({
   }, [
     canonicalState?.profile.humanIdentityId,
     desktopSessions,
+    desktopState?.projects,
     isNativeShell,
     refreshCanonicalState,
     refreshDesktopChat,

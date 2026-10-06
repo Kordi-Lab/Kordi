@@ -16,6 +16,7 @@ import { optimisticSessionTitle } from '../sessionTitlePolicy';
 import { optimisticAttachmentContent } from './optimisticAttachments';
 
 export { retryAttachmentItemsFromMessage, toOptimisticAttachments, voiceMessageDraftFromAttachments, voiceMessageSendFields, voiceMessageAgentText } from './optimisticAttachments';
+export { commitRetiredFailedCanonicalRequest, retiredFailedCanonicalRequest, retireFailedCanonicalRequest } from './retriedOwnedAgentRequest';
 export { appendOptimisticCollaborationMessage, markOptimisticCollaborationMessageFailed, markOptimisticCollaborationMessageSending, findCollaborationConversationForTarget } from './optimisticCollaboration';
 
 export function collaborationAttachmentTransportFields(attachments: AttachmentItem[]) {

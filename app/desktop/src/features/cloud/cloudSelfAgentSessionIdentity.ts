@@ -71,7 +71,7 @@ export function cloudSyncedLocalAgentSessionIds(state: CanonicalSessionState) {
   const identityById = new Map(state.identities.map((identity) => [identity.id, identity]));
   return new Set(state.sessions.filter((session) => (
     !session.id.startsWith(CLOUD_AGENT_RUNTIME_SESSION_PREFIX)
-    && (session.kind === 'self-agent' || (
+    && (session.kind === 'self-agent' || session.kind === 'project' || (
       session.kind === 'direct-agent'
       && (text(record(session.metadata).createdFrom) === 'chat-create-flow' || record(session.metadata).cloudSelfAgentTarget === true)
       && record(identityById.get(session.primaryIdentityId?.trim() ?? '')?.metadata).isOwned === true

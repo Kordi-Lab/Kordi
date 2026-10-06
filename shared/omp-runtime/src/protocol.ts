@@ -7,7 +7,7 @@ export type RunRequest = {
   auth: { kind: 'api_key' | 'oauth' | 'none'; credential?: string; headers?: Record<string, string> };
   systemPrompt: string; messages: JsonObject[];
   messageEntryIds?: (string | null)[];
-  prompt: { text: string; entryId?: string; trailingMessages?: JsonObject[]; images?: { type: 'image'; data: string; mimeType: string }[] };
+  prompt: { text: string; resume?: boolean; entryId?: string; trailingMessages?: JsonObject[]; images?: { type: 'image'; data: string; mimeType: string }[] };
   thinking?: string;
   tools: { name: string; description: string; inputSchema: JsonObject }[];
   hooks?: ('context' | 'before_provider_request')[];
@@ -49,6 +49,8 @@ export function parseCommand(line: string): WorkerCommand {
   }
   if (value.hooks && (!Array.isArray(value.hooks) || value.hooks.some((name: unknown) => !['context', 'before_provider_request'].includes(name as string)))) throw invalid();
   if (value.prompt.trailingMessages && (!Array.isArray(value.prompt.trailingMessages) || value.prompt.trailingMessages.some((message: any) => message?.role !== 'custom'))) throw invalid();
+  if (value.prompt.resume !== undefined && typeof value.prompt.resume !== 'boolean') throw invalid();
+  if (value.prompt.resume && (!value.messages.length || value.prompt.text || value.prompt.images?.length || value.prompt.trailingMessages?.length)) throw invalid();
   const names = new Set();
   if (value.messageEntryIds && (!Array.isArray(value.messageEntryIds) || value.messageEntryIds.length !== value.messages.length ||
       value.messageEntryIds.some((id: unknown) => id !== null && typeof id !== 'string'))) throw invalid();

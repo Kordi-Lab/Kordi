@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import type { CanonicalSessionState } from '@/kordi-app/types';
+import type { CanonicalSessionCatalog, CanonicalSessionState } from '@/kordi-app/types';
 import { createDesktopChatSession, fetchCanonicalSessionCatalog, openOrCreateCanonicalSessionFast } from '@/lib/desktop';
 import { ownedAgentIdentityId } from './agentMessageLifecycle';
 
@@ -30,16 +30,42 @@ export async function materializeLocalChatSession(
     session = created.session;
     participants = created.participants;
   }
-  const createdSession = session;
+  publishCatalogSession(setCanonicalState, catalog, session, participants);
+  return desktopState;
+}
+
+/**
+ * A side-panel chat is created natively (its canonical row is written by the
+ * side-session command), but the frontend catalog is not refreshed. The cloud
+ * forward sync only forwards messages of sessions in that catalog, so publish
+ * the row before the first send instead of waiting for a reload.
+ */
+export async function ensureLocalChatSessionInCanonicalState(
+  sessionId: string,
+  currentState: CanonicalSessionState | null,
+  setCanonicalState: Dispatch<SetStateAction<CanonicalSessionState | null>>,
+) {
+  if (currentState?.sessions.some(item => item.id === sessionId)) return;
+  const catalog = await fetchCanonicalSessionCatalog();
+  const session = catalog?.sessions.find(item => item.id === sessionId);
+  if (!catalog || !session) return;
+  publishCatalogSession(setCanonicalState, catalog, session, catalog.participants.filter(item => item.sessionId === sessionId));
+}
+
+function publishCatalogSession(
+  setCanonicalState: Dispatch<SetStateAction<CanonicalSessionState | null>>,
+  catalog: CanonicalSessionCatalog,
+  session: CanonicalSessionCatalog['sessions'][number],
+  participants: CanonicalSessionCatalog['participants'],
+) {
   setCanonicalState(current => {
     const base = current ?? { ...catalog, messages: [], contextSnapshots: [] };
     const identityIds = new Set(base.identities.map(identity => identity.id));
     return {
       ...base,
       identities: [...base.identities, ...catalog.identities.filter(identity => !identityIds.has(identity.id))],
-      sessions: [createdSession, ...base.sessions.filter(item => item.id !== createdSession.id)],
-      participants: [...base.participants.filter(item => item.sessionId !== createdSession.id), ...participants],
+      sessions: [session, ...base.sessions.filter(item => item.id !== session.id)],
+      participants: [...base.participants.filter(item => item.sessionId !== session.id), ...participants],
     };
   });
-  return desktopState;
 }

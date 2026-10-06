@@ -7,7 +7,6 @@ private enum AccountSettingsRoute: String, Hashable {
     case activeSessions = "active-sessions"
     case authentication
     case notifications
-    case appearance
     case colorMode = "color-mode"
     case messageDisplay = "message-display"
     case chatTheme = "chat-theme"
@@ -121,8 +120,6 @@ struct AccountSheet: View {
                 ProviderAuthenticationView()
             case .notifications:
                 NotificationSettingsView()
-            case .appearance:
-                AppearanceSettingsView()
             case .colorMode, .messageDisplay, .chatTheme:
                 CompactAppearanceSettingsView(route: route)
             }
@@ -691,23 +688,6 @@ private extension CloudDeviceAuthorization {
 
 private enum DeviceDateFormatting {
     static let iso8601 = ISO8601DateFormatter()
-}
-
-private struct SettingsNavigationLabel: View {
-    let title: String
-    let systemImage: String
-
-    var body: some View {
-        Label {
-            Text(title)
-                .foregroundStyle(.primary)
-        } icon: {
-            Image(systemName: systemImage)
-                .foregroundStyle(.secondary)
-                .frame(width: 22)
-        }
-        .frame(minHeight: 30)
-    }
 }
 
 private struct ProfileSettingsView: View {

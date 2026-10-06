@@ -1,5 +1,6 @@
+import type { KordiShellComposerRouteArgs } from './kordiShellComposerRoute.types';
 import type { Dispatch, MouseEvent as ReactMouseEvent, MutableRefObject, ReactNode, SetStateAction } from 'react';
-import type { ComposerAuthOption, ComposerMentionOption, ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
+import type { ComposerMentionOption } from '@/kordi-app/components';
 import type { CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
 import type { CloudSessionPin } from '@/features/cloud/authClient';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
@@ -11,7 +12,7 @@ import type { KordiShellAttachmentArgs } from './kordiShellAttachment.types';
 import type { RightDetailShellArgs } from './kordiShellRightDetail.types';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
-import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
+import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type {
   Agent,
   CollaborationAgentRequestControl,
@@ -45,7 +46,7 @@ export type ComposerSelectorState = { scope: 'chat' | 'project'; type: 'mode' | 
 export type AttachmentItem = ComposerAttachmentItem;
 import type { CreateChatGroupRequest } from './createChatGroup.types';
 export type { CreateChatGroupRequest } from './createChatGroup.types';
-export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./chatListShellArgs.types').ChatListShellArgs & {
+export type AssembleKordiShellSlotsArgs = KordiShellComposerRouteArgs & KordiShellAttachmentArgs & import('./chatListShellArgs.types').ChatListShellArgs & {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
@@ -222,6 +223,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   onProjectTranscriptScroll: () => void;
   onChatTranscriptScroll: () => void;
   onCompanionReadPresentationChange: (sessionId: string | null) => void;
+  onCompanionHistorySessionChange: (sessionId: string | null) => void;
   activeSourcePreview: EditFilePreview | null;
   setActiveSourcePreview: Dispatch<SetStateAction<EditFilePreview | null>>;
   activeArtifactId: string | null;
@@ -270,15 +272,6 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   openComposerSelector: ComposerSelectorState;
   toggleComposerSelector: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking') => void;
   selectComposerValue: (scope: 'chat' | 'project', type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking', value: string, configTargetOverride?: ComposerConfigTargetOverride) => void | Promise<void>;
-  composerAuthLabelProject: string;
-  composerAuthLabelChat: string;
-  composerAuthOptionsProject: ComposerAuthOption[];
-  composerAuthOptionsChat: ComposerAuthOption[];
-  selectComposerAuthChoice: (scope: 'chat' | 'project', providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => void;
-  selectComposerProviderChoice: (scope: 'chat' | 'project', option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => void;
-  composerProviderOptions: ComposerProviderOption[];
-  chatModelOptions: ComposerModelOption[] | undefined;
-  defaultCloudAgentRuntimeRoute: DesktopChatMessageRoute | null;
   isDesktopChatSending: boolean;
   handleStopDesktopChatTurn: () => void;
   handleStopCollaborationAgentRequest: (request: CollaborationAgentRequestControl) => void | Promise<void>;
@@ -533,7 +526,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showChatDetailRail'
   | 'activeConv'
   | 'activeConversationUsesCollaboration'
-  | 'onChatTranscriptScroll' | 'onCompanionReadPresentationChange'
+  | 'onChatTranscriptScroll' | 'onCompanionReadPresentationChange' | 'onCompanionHistorySessionChange'
   | 'filteredChatSlashCommands'
   | 'chatMentionTargetsForText'
   | 'acceptChatSlashCommand' | 'acceptChatMentionTarget'
@@ -561,6 +554,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'
+  | 'resolveChatRuntimeRoute'
   | 'handleSendChatMessage'
   | 'handleRetryChatMessage'
   | 'handleForkChatMessage'

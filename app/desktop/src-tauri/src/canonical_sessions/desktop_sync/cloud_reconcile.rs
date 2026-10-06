@@ -257,7 +257,7 @@ pub(super) fn request_uses_cloud_executor(
                 WHERE wire.message_id=parent.source_event_id
                   AND conversation.client_session_id=parent.session_id
                   AND wire.message_kind='canonical-history-user'))
-           OR (parent.source_transport='desktop-chat'
+           OR (parent.source_transport IN ('desktop-chat', 'desktop-chat-ui')
                AND json_valid(parent.content_json)
                AND EXISTS(SELECT 1 FROM chat_sync_messages wire
                    JOIN chat_sync_conversations conversation

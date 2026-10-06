@@ -1,4 +1,5 @@
-import { sortedCanonicalMessages, type CanonicalMessageSortPosition, type SortableCanonicalMessage } from './messageSort';
+import { messageSortPosition, buildMessageSortPositions, exchangeSortPosition } from './messageSortPositions';
+import { sortedCanonicalMessages, type SortableCanonicalMessage } from './messageSort';
 import { isPipIdentity } from '@/features/pip/pipIdentity';
 import { transcriptEntries } from './planCardEntries';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
@@ -40,6 +41,7 @@ export type CanonicalIndexes = {
   canonicalParticipantsBySessionId: Map<string, ConversationParticipant[]>;
   canonicalMessagesBySessionId: Map<string, Message[]>;
   rawMessagesBySessionId: Map<string, CanonicalSessionMessage[]>;
+  suppressedRuntimeReplyAliasesBySessionId: Map<string, ReadonlySet<string>>;
   latestReadableMessageBySessionId: Map<string, CanonicalSessionMessage>;
   latestActivityMessageBySessionId: Map<string, CanonicalSessionMessage>;
   rawMessageCountBySessionId: Map<string, number>;
@@ -61,6 +63,7 @@ function emptyIndexes(): CanonicalIndexes {
     canonicalParticipantsBySessionId: new Map(),
     canonicalMessagesBySessionId: new Map(),
     rawMessagesBySessionId: new Map(),
+    suppressedRuntimeReplyAliasesBySessionId: new Map(),
     latestReadableMessageBySessionId: new Map(),
     latestActivityMessageBySessionId: new Map(),
     rawMessageCountBySessionId: new Map(),
@@ -83,77 +86,6 @@ function inheritedDesktopForkSnapshot(session: CanonicalSessionState['sessions']
     : null;
   return stringValue(fork?.boundary) === 'inherited-history-reference-only'
     && Boolean(stringValue(fork?.forkedFromSessionId));
-}
-
-function messageSortPosition(message: CanonicalSessionMessage): CanonicalMessageSortPosition {
-  return { sortAtMs: message.createdAtMs, sequenceNum: message.sequenceNum };
-}
-
-const CHILD_MESSAGE_SEQUENCE_OFFSET = 0.5;
-
-function childMessageSortPosition(
-  message: CanonicalSessionMessage,
-  rawMessageById: ReadonlyMap<string, CanonicalSessionMessage>,
-  messageSortById: Map<string, CanonicalMessageSortPosition>,
-  visitingMessageIds: Set<string>,
-): CanonicalMessageSortPosition {
-  const cachedPosition = messageSortById.get(message.id);
-  if (cachedPosition) return cachedPosition;
-
-  const basePosition = messageSortPosition(message);
-  if (!message.parentMessageId || message.parentMessageId === message.id || visitingMessageIds.has(message.id)) {
-    messageSortById.set(message.id, basePosition);
-    return basePosition;
-  }
-
-  const parentMessage = rawMessageById.get(message.parentMessageId);
-  if (!parentMessage) {
-    messageSortById.set(message.id, basePosition);
-    return basePosition;
-  }
-
-  visitingMessageIds.add(message.id);
-  const parentPosition = childMessageSortPosition(parentMessage, rawMessageById, messageSortById, visitingMessageIds);
-  visitingMessageIds.delete(message.id);
-  const isAlreadyAfterParent = basePosition.sortAtMs > parentPosition.sortAtMs
-    || (
-      basePosition.sortAtMs === parentPosition.sortAtMs
-      && basePosition.sequenceNum > parentPosition.sequenceNum
-    );
-  // Parent links express causality, not transcript placement. Preserve real chronology;
-  // only clamp clock drift that would render a response before its request.
-  const position = isAlreadyAfterParent
-    ? basePosition
-    : {
-        sortAtMs: parentPosition.sortAtMs,
-        sequenceNum: parentPosition.sequenceNum + CHILD_MESSAGE_SEQUENCE_OFFSET,
-      };
-  messageSortById.set(message.id, position);
-  return position;
-}
-
-function buildMessageSortPositions(messages: CanonicalSessionMessage[]) {
-  const rawMessageById = new Map(messages.map((message) => [message.id, message]));
-  const messageSortById = new Map<string, CanonicalMessageSortPosition>();
-  for (const message of messages) {
-    childMessageSortPosition(message, rawMessageById, messageSortById, new Set());
-  }
-  return messageSortById;
-}
-
-function exchangeSortPosition(
-  exchange: CanonicalSessionState['delegatedExchanges'][number],
-  messageSortById: Map<string, CanonicalMessageSortPosition>,
-): CanonicalMessageSortPosition {
-  const parentMessageId = exchange.requestMessageId?.trim() || exchange.triggerMessageId?.trim();
-  const parentPosition = parentMessageId ? messageSortById.get(parentMessageId) : null;
-  if (parentPosition) {
-    return {
-      sortAtMs: parentPosition.sortAtMs,
-      sequenceNum: parentPosition.sequenceNum + 0.5,
-    };
-  }
-  return { sortAtMs: exchange.createdAtMs, sequenceNum: Number.MAX_SAFE_INTEGER };
 }
 
 function normalizedLeadingMentionText(value: string) {
@@ -787,6 +719,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
   }
 
   const rawMessagesBySessionId = new Map<string, CanonicalSessionMessage[]>();
+  const suppressedRuntimeReplyAliasesBySessionId = new Map<string, ReadonlySet<string>>();
   const latestReadableMessageBySessionId = new Map<string, CanonicalSessionMessage>();
   const latestActivityMessageBySessionId = new Map<string, CanonicalSessionMessage>();
   const readableMessageCountBySessionId = new Map<string, number>();
@@ -926,12 +859,28 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     const suppressedLegacyCollaborationRelayAgentFanoutDuplicateIds = legacyCollaborationRelayAgentFanoutDuplicateIds(sortedMessages);
     const suppressedNoProviderRuntimeDuplicateIds = noProviderRuntimeDuplicateIds(sortedMessages);
     const suppressedCloudGroupAgentResponseDuplicateIds = duplicateCloudGroupAgentResponseIds(sortedMessages);
+    const normalizesOwnedAgentIdentity = ['self-agent', 'project'].includes(sessionById.get(sessionId)?.kind ?? '')
+      || isChatCreatedDirectAgentSession(sessionById.get(sessionId));
     const suppressedSelfAgentMirrorDuplicateIds = selfAgentMirrorDuplicateIds(
       sortedMessages,
       identityById,
       canonicalState.profile.humanIdentityId,
-      sessionById.get(sessionId)?.kind === 'self-agent' || isChatCreatedDirectAgentSession(sessionById.get(sessionId)),
+      normalizesOwnedAgentIdentity,
     );
+    const suppressedRuntimeReplyAliases = new Set(normalizesOwnedAgentIdentity ? sortedMessages.flatMap((message) => {
+      if (message.senderRole !== 'owned-agent') return [];
+      const content = contentRecord(message.content);
+      const entryId = stringValue(content.desktopEntryId)?.trim();
+      const parent = rawMessageById.get(message.parentMessageId ?? '');
+      const wireId = stringValue(content.cloudRequestMessageId)?.trim();
+      const publishedNativeReply = entryId && wireId && message.sourceTransport === 'cloud-self-agent'
+        && message.status === 'complete' && parent?.senderRole === 'user'
+        && (stringValue(contentRecord(parent.content).desktopEntryId)?.trim() === wireId
+          || (parent.sourceTransport === 'cloud-self-agent' && parent.sourceEventId === wireId));
+      return publishedNativeReply || (message.sourceTransport === 'desktop-chat' && suppressedSelfAgentMirrorDuplicateIds.has(message.id))
+        ? [message.id, entryId].filter((alias): alias is string => Boolean(alias)) : [];
+    }) : []);
+    if (suppressedRuntimeReplyAliases.size) suppressedRuntimeReplyAliasesBySessionId.set(sessionId, suppressedRuntimeReplyAliases);
     const suppressedStaleProcessingPlaceholderIds = staleProcessingPlaceholderIds(sortedMessages);
     const suppressedAgedLegacyCollaborationProcessingPlaceholderIds = new Set(
       sortedMessages.filter(isAgedLegacyCollaborationProcessingPlaceholder).map((message) => message.id),
@@ -1083,6 +1032,7 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
     canonicalParticipantsBySessionId,
     canonicalMessagesBySessionId,
     rawMessagesBySessionId,
+    suppressedRuntimeReplyAliasesBySessionId,
     latestReadableMessageBySessionId,
     latestActivityMessageBySessionId,
     rawMessageCountBySessionId,

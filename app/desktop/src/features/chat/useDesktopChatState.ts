@@ -7,7 +7,7 @@ import {
 } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 
-import { mergeLatestDesktopChatState, pruneDesktopLiveTurnsByKnownSessions, pruneLocalSessionUnreadCounts, pruneQueuedDesktopMessagesByKnownSessions } from './desktopChatStateReducers';
+import { knownDesktopSessionIds, mergeBackgroundDesktopChatState, mergeLatestDesktopChatState, pruneDesktopLiveTurnsByKnownSessions, pruneLocalSessionUnreadCounts, pruneQueuedDesktopMessagesByKnownSessions } from './desktopChatStateReducers';
 import {
   buildCompletedDesktopAssistantMessage,
   desktopAssistantMessageMatchesTurn,
@@ -183,14 +183,9 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
   }, [clearUnreadForSession, desktopTurnRenderAliases]);
 
   const refreshCompletedDesktopTurnTranscript = useCallback(async (turn: DesktopChatTurnSnapshot) => {
-    const requestId = latestDesktopRefreshRequestRef.current + 1;
-    latestDesktopRefreshRequestRef.current = requestId;
     const nextState = desktopTurnRenderAliases.reconcile(await fetchDesktopChatState(turn.sessionId));
     if (!nextState) {
       throw new Error('Unable to load completed transcript');
-    }
-    if (latestDesktopRefreshRequestRef.current !== requestId) {
-      throw new Error('Completed transcript refresh was superseded');
     }
     if (nextState.activeSessionId !== turn.sessionId) {
       throw new Error('Completed transcript refresh returned another session');
@@ -198,8 +193,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
     if (!desktopStateIncludesCompletedTurn(nextState, turn)) {
       throw new Error('Completed transcript is not available yet');
     }
-    latestDesktopSessionIdRef.current = nextState.activeSessionId;
-    setDesktopChatState((current) => mergeLatestDesktopChatState(current, nextState, false));
+    setDesktopChatState((current) => mergeBackgroundDesktopChatState(current, nextState));
     replaceSessionTranscript(nextState.activeSessionId, nextState.activeSession.messages);
     if (visibleLocalSessionIdRef.current === nextState.activeSessionId) {
       clearUnreadForSession(nextState.activeSessionId);
@@ -214,11 +208,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
   useEffect(() => {
     if (!desktopChatState) return;
 
-    const knownSessionIds = new Set([
-      desktopChatState.activeSessionId,
-      ...desktopChatState.sessions.map((session) => session.id),
-      ...desktopChatState.projects.flatMap((project) => project.sessions.map((session) => session.id)),
-    ]);
+    const knownSessionIds = knownDesktopSessionIds(desktopChatState, desktopLiveTurnsBySessionRef.current, watchedDesktopTurnIdsRef.current);
     // Keep unread counts until the user actually views the session, not merely because
     // that session is the most recently loaded desktop transcript.
     const visibleLocalSessionId = visibleLocalSessionIdRef.current;
@@ -442,7 +432,8 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
 
         const turnFailed = !nextTurn.succeeded && nextTurn.status !== 'cancelled';
 
-        if (shouldConfirmCompletedDesktopTurnTranscript(nextTurn, isVisibleCompletedSession)) {
+        const hasHydratedTranscript = isDesktopSessionTranscriptCached(nextTurn.sessionId);
+        if (shouldConfirmCompletedDesktopTurnTranscript(nextTurn, isVisibleCompletedSession || hasHydratedTranscript)) {
           try {
             await refreshCompletedDesktopTurnTranscript(nextTurn);
             removeLiveTurnSnapshot(nextTurn.sessionId);
@@ -470,7 +461,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
         watchedDesktopTurnIdsRef.current.delete(turnId);
       }
     },
-    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, desktopTurnRenderAliases, mergeCompletedDesktopTurn, refreshCanonicalSession, refreshCompletedDesktopTurnTranscript, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
+    [clearScheduledLiveTurnSnapshot, clearUnreadForSession, desktopTurnRenderAliases, isDesktopSessionTranscriptCached, mergeCompletedDesktopTurn, refreshCanonicalSession, refreshCompletedDesktopTurnTranscript, removeLiveTurnSnapshot, scheduleLiveTurnSnapshot],
   );
 
   useEffect(() => {

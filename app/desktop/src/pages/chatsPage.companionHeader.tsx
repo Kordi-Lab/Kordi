@@ -10,6 +10,7 @@ import {
 import type { Conversation } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import type { ChatDestination } from '@/pages/chatsPage.destinationModel';
+import { SessionDestinationTabs } from '@/pages/chatsPage.destinations';
 import {
   companionLabel,
   type ChatCompanionSessionOption,
@@ -18,6 +19,7 @@ import {
 import { participantSpaceSessionRowTitle } from '@/pages/workspaceSidebar.chatHelpers';
 import { BackgroundSessionHeaderControl } from '@/kordi-app/components/backgroundSessionStopControl';
 import { CompanionTitlebar } from './CompanionTitlebar';
+import { useCompanionTitlebarPortal } from './companionTitlebarContext';
 
 type CompanionHeaderMenu = {
   actionsOpen: boolean;
@@ -51,9 +53,11 @@ export function CompanionHeader({
   conversation,
   sessionOptions,
   side,
+  destination,
   menu,
   actions,
 }: CompanionHeaderProps) {
+  const titlebarHosted = useCompanionTitlebarPortal();
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const actionsTriggerRef = useRef<HTMLButtonElement | null>(null);
   const sessionListRef = useRef<HTMLDivElement | null>(null);
@@ -96,31 +100,53 @@ export function CompanionHeader({
     });
   }, [menu.actionsOpen, menu.sessionListOpen]);
 
+  const contextLabel = conversation.agentSubsessionId ? 'Agent thread' : 'Ask Agent';
+  const subtitle = conversation.agentSubsessionId
+    ? `Shared with chat members · ${conversation.subtitle}`
+    : 'Only you · Agent session';
+  // The same destination row as the main chat. On the native title row the
+  // tabs stay in the panel, exactly like the main chat's metadata header.
+  const destinationTabs = (
+    <SessionDestinationTabs
+      scope="companion"
+      activeDestination={destination}
+      onSelect={actions.onSelectDestination}
+    />
+  );
+
   const header = (
     <div
-      className="app-page-header app-chat-pane-header relative z-40 flex shrink-0 cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
+      className="app-page-header app-chat-pane-header app-companion-pane-header relative z-40 flex shrink-0 cursor-grab items-start justify-between gap-3 active:cursor-grabbing"
       draggable
       onDragStart={actions.onDragStart}
       onDragEnd={actions.onDragEnd}
       title={`Drag to move ${companionLabel(conversation)} left or right`}
       data-companion-side={side}
+      data-has-destinations={titlebarHosted ? undefined : true}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 w-full flex-col text-white">
-            <span
-              className="app-chat-pane-title-row min-w-0 w-full truncate text-[17px] font-semibold leading-6"
-              title={`${conversation.agentSubsessionId ? 'Agent thread' : 'Ask Agent'} · ${conversation.name}`}
+          <div className="app-page-header-title-row app-chat-pane-title-row flex min-w-0 w-full items-center text-white">
+            <h2
+              className="app-companion-pane-title min-w-0 w-full truncate text-[17px] font-semibold leading-6"
+              title={`${contextLabel} · ${conversation.name}`}
             >
-              {conversation.agentSubsessionId ? 'Agent thread' : 'Ask Agent'} · {conversation.name}
-            </span>
-            <span data-chat-session-subtitle="true" className="app-chat-pane-metadata-row text-[11px] leading-5 text-slate-400">{conversation.agentSubsessionId ? `Shared with chat members · ${conversation.subtitle}` : 'Only you · Agent session'}</span>
+              <span className="app-companion-pane-title-context" data-companion-title-context="true">{contextLabel}</span>
+              <span className="app-companion-pane-title-separator" aria-hidden="true">{'\u00a0·\u00a0'}</span>
+              <span>{conversation.name}</span>
+            </h2>
+          </div>
+          <div
+            className="app-chat-pane-metadata-row flex min-w-0 items-center gap-1 text-[11px] leading-5 text-slate-400"
+            data-chat-session-metadata="true"
+          >
+            <span data-chat-session-subtitle="true" className="min-w-0 truncate" title={subtitle}>{subtitle}</span>
           </div>
         </div>
       </div>
       <div
         ref={controlsRef}
-        className="relative flex shrink-0 items-center gap-0.5"
+        className="app-companion-header-controls relative flex shrink-0 items-center self-start"
         draggable={false}
         onDragStart={(event) => event.preventDefault()}
         onPointerDown={(event) => event.stopPropagation()}
@@ -131,7 +157,7 @@ export function CompanionHeader({
         <button
           ref={actionsTriggerRef}
           type="button"
-          className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 opacity-70 hover:opacity-100"
+          className="app-companion-header-control"
           title="Side chat options"
           aria-label="Side chat options"
           aria-expanded={menu.actionsOpen}
@@ -253,15 +279,28 @@ export function CompanionHeader({
         <button
           type="button"
           onClick={actions.onClose}
-          className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-full p-0 opacity-70 hover:opacity-100"
+          className="app-companion-header-control"
           title="Close side chat"
           aria-label="Close side chat"
         >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-
+      {titlebarHosted ? null : destinationTabs}
     </div>
   );
-  return <CompanionTitlebar>{header}</CompanionTitlebar>;
+  return (
+    <>
+      <CompanionTitlebar>{header}</CompanionTitlebar>
+      {titlebarHosted ? (
+        <div
+          className="app-page-header app-chat-pane-header app-chat-native-metadata-header relative flex shrink-0"
+          data-has-destinations
+          data-companion-destination-header="true"
+        >
+          {destinationTabs}
+        </div>
+      ) : null}
+    </>
+  );
 }

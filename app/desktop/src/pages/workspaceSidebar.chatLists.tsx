@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatProjects } from '@/features/projects/chatProjects';
 import { projectChatGroups } from '@/features/projects/projectChatGroups';
 import { ChevronRight, Folder, FolderOpen, Plus } from 'lucide-react';
@@ -36,6 +36,19 @@ export function WorkspaceChatLists({
   const scrollPositionKey = `${model.chatChannel}:${model.showArchived ? 'archived' : 'active'}`;
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [expandedProjectIds, setExpandedProjectIds] = useState<ReadonlySet<string>>(new Set());
+  const [creatingProjectIds, setCreatingProjectIds] = useState<ReadonlySet<string>>(new Set());
+  const usesMacShortcuts = typeof navigator === 'undefined' || /Mac|iPhone|iPad/u.test(navigator.platform);
+  useEffect(() => {
+    if (model.chatChannel !== 'agent' || model.showArchived) return;
+    const handleNew = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat || event.isComposing || event.altKey || event.shiftKey
+        || !(usesMacShortcuts ? event.metaKey : event.ctrlKey) || event.key.toLowerCase() !== 'n') return;
+      event.preventDefault();
+      onOpenAgentCreate();
+    };
+    document.addEventListener('keydown', handleNew);
+    return () => document.removeEventListener('keydown', handleNew);
+  }, [model.chatChannel, model.showArchived, onOpenAgentCreate, usesMacShortcuts]);
   const pinnedSessionIds = useMemo(() => new Set(
     [...model.agentSessionRowsById.values()]
       .filter(({ session, space }) => model.pinnedSessionIds.has(participantSpaceSessionPreferenceId(session))
@@ -58,6 +71,28 @@ export function WorkspaceChatLists({
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
+  const createProjectSession = async (id: string) => {
+    const project = projects?.projects.find((candidate) => candidate.id === id);
+    if (!projects?.enabled || !project?.root || creatingProjectIds.has(id)) return;
+    setCreatingProjectIds((current) => new Set(current).add(id));
+    try {
+      await projects.assign('', project.root);
+      setCollapsed((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+      setExpandedProjectIds((current) => new Set(current).add(id));
+    } catch {
+      // The project action reports native errors in the workspace error state.
+    } finally {
+      setCreatingProjectIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
   if (model.chatChannel === 'contact') {
     return (
       <VirtualChatList
@@ -89,16 +124,18 @@ export function WorkspaceChatLists({
 
   return (
     <>
-      {!model.showArchived ? <div className="flex shrink-0 justify-start px-1">
+      {!model.showArchived ? <div className="chat-sidebar-new-session-row">
         <button
           type="button"
           onClick={onOpenAgentCreate}
-          className="app-participant-space-action app-participant-space-context-create inline-flex h-6 shrink-0 items-center gap-1.5 rounded-[9px] px-2 text-[11px] font-medium transition"
-          title="New My agent session"
-          aria-label="New My agent session"
+          className="chat-sidebar-new-session"
+          title="New session"
+          aria-label="New session"
+          aria-keyshortcuts={usesMacShortcuts ? 'Meta+N' : 'Control+N'}
         >
-          <Plus className="h-3.5 w-3.5" />
-          <span>New session</span>
+          <Plus size={17} aria-hidden="true" />
+          <span>New</span>
+          <kbd aria-hidden="true">{usesMacShortcuts ? '⌘ N' : 'Ctrl N'}</kbd>
         </button>
       </div> : null}
       <VirtualChatList
@@ -131,12 +168,24 @@ export function WorkspaceChatLists({
               {expandedProjectIds.has(descriptor.spaceId) ? 'Show less' : 'Show more'}
             </button>
           ) : (
-            <button type="button" className="chat-project-group" aria-expanded={!collapsed.has(descriptor.spaceId)}
-              onClick={() => toggle(descriptor.spaceId)}>
-              {collapsed.has(descriptor.spaceId) ? <Folder size={17} aria-hidden="true" /> : <FolderOpen size={17} aria-hidden="true" />}
-              <span>{grouped.groups.get(descriptor.spaceId)?.name}</span>
-              <ChevronRight size={13} className="chat-project-collapse-indicator app-participant-space-disclosure-icon" aria-hidden="true" />
-            </button>
+            <div className="chat-project-group-row">
+              <button type="button" className="chat-project-group" aria-expanded={!collapsed.has(descriptor.spaceId)}
+                onClick={() => toggle(descriptor.spaceId)}>
+                {collapsed.has(descriptor.spaceId) ? <Folder size={17} aria-hidden="true" /> : <FolderOpen size={17} aria-hidden="true" />}
+                <span>{grouped.groups.get(descriptor.spaceId)?.name}</span>
+                <ChevronRight size={13} className="chat-project-collapse-indicator app-participant-space-disclosure-icon" aria-hidden="true" />
+              </button>
+              {projects?.enabled && projects.projects.some((project) => project.id === descriptor.spaceId && project.root) ? (
+                <button type="button" className="chat-project-new-session"
+                  title={`New session in ${grouped.groups.get(descriptor.spaceId)?.name}`}
+                  aria-label={`New session in ${grouped.groups.get(descriptor.spaceId)?.name}`}
+                  disabled={creatingProjectIds.has(descriptor.spaceId)}
+                  aria-busy={creatingProjectIds.has(descriptor.spaceId)}
+                  onClick={() => { void createProjectSession(descriptor.spaceId); }}>
+                  <Plus size={15} aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
           )
         ) : (
           <AgentSidebarRow

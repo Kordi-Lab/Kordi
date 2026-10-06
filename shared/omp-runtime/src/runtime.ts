@@ -148,6 +148,11 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
           break;
         }
         case 'message_end':
+          // A host may continue after an explicitly configured provider failure.
+          // Journal completed actions, never failed/partial assistant output.
+          if (event.message.role !== 'assistant' || !['error', 'aborted'].includes(event.message.stopReason)) {
+            host.event({ kind: 'message_end', message: toKordiMessage(event.message) });
+          }
           if (event.message.role === 'assistant') {
             // Let the SDK complete its bounded retry policy before deciding the turn failed.
             providerFailed = event.message.stopReason === 'error';
@@ -172,7 +177,12 @@ export async function runTurn(request: RunRequest, host: RuntimeHost, signal: Ab
       }
     });
     if (terminalError || signal.aborted) throw terminalError ?? new RuntimeError('cancelled', 'Run cancelled.');
-    await session.prompt(request.prompt.text, { images: request.prompt.images, expandPromptTemplates: false });
+    if (request.prompt.resume) {
+      await session.agent.continue();
+      await session.waitForIdle();
+    } else {
+      await session.prompt(request.prompt.text, { images: request.prompt.images, expandPromptTemplates: false });
+    }
     if (terminalError) throw terminalError;
     if (providerFailed) throw new RuntimeError(providerFailureCode, 'The selected provider could not complete this request.');
     const entries = sessionManager.getEntries();

@@ -1,4 +1,5 @@
 import { useCompanionReadPresentation } from '@/pages/useCompanionReadPresentation';
+import { useCompanionHistorySession } from '@/pages/useCompanionHistorySession';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useEffect, useRef, useState } from 'react';
 import { GripVertical, RefreshCw } from 'lucide-react';
@@ -75,6 +76,7 @@ type ChatCompanionWorkspaceProps = {
   transcript: Pick<
     ChatsPageTranscript,
     | 'onCompanionReadPresentationChange'
+    | 'onCompanionHistorySessionChange'
     | 'canonicalHasOlderBySessionId'
     | 'onLoadOlderCanonicalSessionMessages'
     | 'queuedDesktopMessagesBySession'
@@ -100,6 +102,7 @@ export function ChatCompanionWorkspace({
   runtime,
 }: ChatCompanionWorkspaceProps) {
   const conversation = session.conversation;
+  useCompanionHistorySession(conversation, transcript.onCompanionHistorySessionChange);
   const onTranscriptScroll = useCompanionReadPresentation({
     sessionId: conversation?.agentSubsessionId ? null : conversation?.canonicalSessionId ?? conversation?.id ?? null,
     isPresented: layoutModel.isVisible && destinations.value === 'messages'
@@ -128,6 +131,8 @@ export function ChatCompanionWorkspace({
     fallbackMode: runtime.composerSelection.mode,
     modelOptions: runtime.chatModelOptions ?? [],
     authOptions: runtime.composerAuthOptions,
+    providerOptions: runtime.composerProviderOptions,
+    runtimeRoute: runtime.resolveChatRuntimeRoute?.(localConfigTargetSessionId),
   });
   if (!conversation) return null;
 
@@ -384,7 +389,7 @@ export function ChatCompanionWorkspace({
           isNativeShell={shell.isNativeShell}
           attachmentInputRef={session.refs.attachmentInput}
           composer={companionComposer}
-          runtime={runtime}
+          runtime={{ ...runtime, composerProviderOptions: localRuntime.providerOptions }}
           localRouting={{
             enabled: presentation.showsLocalAgentControls,
             selection: localRuntime.selection,
@@ -435,7 +440,7 @@ export function ChatCompanionSplitDivider({
   if (!layoutModel.isPresent) return null;
   return (
     <div
-      className="app-chat-split-divider group relative z-10 flex h-full w-2.5 cursor-col-resize touch-none items-center justify-center bg-transparent transition hover:bg-white/[0.035]"
+      className="app-chat-split-divider group relative z-10 h-full cursor-col-resize touch-none"
       data-split-layout-divider="true"
       tabIndex={layoutModel.isVisible ? 0 : -1}
       inert={!layoutModel.isVisible}
@@ -455,7 +460,7 @@ export function ChatCompanionSplitDivider({
       aria-orientation="vertical"
     >
       <span
-        className="pointer-events-none flex h-9 w-full items-center justify-center text-[color:var(--utility-muted-text)] opacity-45 transition group-hover:opacity-80"
+        className="app-chat-split-grip pointer-events-none flex h-9 items-center justify-center text-[color:var(--utility-muted-text)] opacity-45 transition group-hover:opacity-80"
         data-split-layout-grip="true"
         aria-hidden="true"
       >

@@ -388,7 +388,7 @@ async fn run_print_turn(
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
 
     // Run the turn loop directly (print mode is single-threaded, no need to spawn).
-    turn_runner::run_turn_inner(config, &event_tx, &prompt.text).await?;
+    crate::agent_runtime::run_print_turn(config, &event_tx, &prompt.text).await?;
     drop(event_tx);
 
     // Drain remaining events

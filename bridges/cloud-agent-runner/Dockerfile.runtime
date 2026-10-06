@@ -16,8 +16,8 @@ COPY shared ./shared
 
 RUN cargo build --release -p kordi-cloud-agent-runner
 
-# Build the same pinned standalone OMP worker used by the Mac sidecar. It is
-# packaged but remains dormant unless KORDI_CLOUD_AGENT_ENGINE=omp is selected.
+# Build the same pinned standalone OMP worker used by the Mac sidecar. OMP is
+# the default engine; KORDI_CLOUD_AGENT_ENGINE=rust is an explicit rollback.
 FROM docker.io/oven/bun:1.4.2 AS omp-builder
 ARG TARGETARCH
 WORKDIR /workspace/shared/omp-runtime
