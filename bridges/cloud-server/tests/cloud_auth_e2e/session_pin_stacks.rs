@@ -11,7 +11,7 @@ async fn pin_stacks_limit_concurrent_adds_and_unpin_one_without_leaking_private_
     let pool = try_pool()
         .await
         .expect("configured test database must initialize");
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let (owner_token, owner) = signup_account(&router, "pin-stack-owner").await;
     let (peer_token, peer) = signup_account(&router, "pin-stack-peer").await;
     let session_id = format!("session:group:{}", uuid::Uuid::now_v7());

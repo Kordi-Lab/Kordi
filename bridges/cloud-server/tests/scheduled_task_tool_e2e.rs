@@ -7,7 +7,6 @@ use std::sync::Arc;
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use chrono::{TimeZone, Utc};
-use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
 use kordi_cloud_server::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskTargetRuntime,
@@ -18,35 +17,35 @@ use kordi_cloud_server::scheduled_tasks::store::{
     list_scheduled_task_runs, list_scheduled_tasks, pause_scheduled_task, resume_scheduled_task,
     soft_delete_scheduled_task,
 };
-use kordi_cloud_server::server::{router, ServerState};
+use kordi_cloud_server::server::router;
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use tower::util::ServiceExt;
 
+#[path = "scheduled_task_tool_e2e/budgets.rs"]
+mod budgets;
+
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
-    match init_pool(&url).await {
-        Ok(pool) => Some(pool),
-        Err(err) => {
-            eprintln!("[scheduled_task_tool_e2e] init_pool failed, skipping: {err}");
-            None
-        }
-    }
+    Some(init_pool(&url).await.unwrap_or_else(|_| {
+        panic!("Could not initialize the configured disposable integration database")
+    }))
 }
 
 fn unique_email(prefix: &str) -> String {
     format!("{prefix}-{}@e2e.local", uuid::Uuid::new_v4().simple())
 }
 
-fn signup_body(email: &str, password: &str) -> Body {
+async fn signup_body(email: &str, password: &str) -> Body {
     Body::from(
-        serde_json::json!({
+        signup_email_fixture::with_proof(serde_json::json!({
             "email": email,
             "password": password,
             "displayName": "Scheduled Tool E2E",
             "avatarSeed": "scheduled_tool_avatar",
-        })
+        }))
+        .await
         .to_string(),
     )
 }
@@ -215,14 +214,14 @@ async fn scheduled_task_store_does_not_strand_new_once_tasks_at_or_before_creati
 async fn scheduled_task_tool_api_creates_local_required_task_and_run_now_waits_for_desktop() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("scheduled-tool-create");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let app = router(state);
 
     let signup_response = app
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse"),
+            signup_body(&email, "correct horse").await,
         ))
         .await
         .unwrap();
@@ -484,3 +483,6 @@ async fn run_now_and_due_claim_separate_cloud_and_local_required_runs() {
     assert_eq!(fallback.3, "queued");
     assert_eq!(fallback.4, "Check cloud status.");
 }
+
+#[path = "common/signup_email.rs"]
+mod signup_email_fixture;

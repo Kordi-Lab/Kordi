@@ -49,7 +49,7 @@ test('signup surfaces an invalid canonical avatar seed', async () => {
   });
 
   await assert.rejects(
-    () => client.signup({ email: 'a@b.com', password: 'correct horse', avatarSeed: ':' }),
+    () => client.signup({ verificationId: 'test_challenge', verificationCode: '123456', email: 'a@b.com', password: 'correct horse', avatarSeed: ':' }),
     (caught: unknown) => {
       assert.ok(caught instanceof CloudAuthError);
       assert.equal((caught as CloudAuthError).code, 'invalid_avatar_seed');
@@ -70,7 +70,7 @@ test('signup throws CloudAuthError with the server-supplied error code on 409', 
   });
 
   await assert.rejects(
-    () => client.signup({ email: 'a@b.com', password: 'correct horse', avatarSeed: 'signup_seed' }),
+    () => client.signup({ verificationId: 'test_challenge', verificationCode: '123456', email: 'a@b.com', password: 'correct horse', avatarSeed: 'signup_seed' }),
     (caught: unknown) => {
       assert.ok(caught instanceof CloudAuthError);
       assert.equal((caught as CloudAuthError).code, 'email_in_use');

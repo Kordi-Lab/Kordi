@@ -5,7 +5,58 @@
 
 use super::*;
 
+/// A per-account budget for one authenticated action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AccountActionLimit {
+    pub action: &'static str,
+    pub limit: u32,
+    pub window: Duration,
+}
+
+/// Message sends through the chat API. Five sends per second sustained for a
+/// minute is far above interactive use and bounds automated floods.
+pub const MESSAGE_SEND_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "message-send",
+    limit: 300,
+    window: Duration::from_secs(60),
+};
+
+/// Contact additions and contact requests, which share one budget.
+pub const CONTACT_ADD_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "contact-add",
+    limit: 100,
+    window: Duration::from_secs(60 * 60),
+};
+
+/// Agent runs a requester starts. Every user-triggered path that queues an
+/// agent run, now or on a schedule, charges this budget through
+/// [`CloudRateLimiter::observe_agent_run`]: run claims, subsession messages
+/// that run the agent, scheduled tasks started now, and new cloud scheduled
+/// tasks.
+pub const AGENT_RUN_CLAIM_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "agent-run-claim",
+    limit: 120,
+    window: Duration::from_secs(60),
+};
+
 impl CloudRateLimiter {
+    /// Charges one agent run started by `account_id` against
+    /// [`AGENT_RUN_CLAIM_LIMIT`]. Call it before queueing the run.
+    pub async fn observe_agent_run(&self, account_id: &str) -> RateLimitDecision {
+        self.observe_account_limit(AGENT_RUN_CLAIM_LIMIT, account_id)
+            .await
+    }
+
+    /// Records one action against `limit` for `account_id`.
+    pub async fn observe_account_limit(
+        &self,
+        limit: AccountActionLimit,
+        account_id: &str,
+    ) -> RateLimitDecision {
+        self.observe_account_action(limit.action, account_id, limit.limit, limit.window)
+            .await
+    }
+
     /// Records one `action` for `account_id`, allowing at most `limit` actions
     /// per `window`. Returns `Limited` without recording when the budget is
     /// already spent.
@@ -127,6 +178,72 @@ mod tests {
         assert_eq!(
             limiter
                 .observe_account_action("login", "acct_a", 2, window)
+                .await,
+            RateLimitDecision::Allowed
+        );
+    }
+
+    #[test]
+    fn product_action_limits_are_generous_and_separate() {
+        let per_hour = |limit: AccountActionLimit| {
+            f64::from(limit.limit) * 3600.0 / limit.window.as_secs_f64()
+        };
+        assert!(per_hour(MESSAGE_SEND_LIMIT) >= 18_000.0);
+        assert!(per_hour(CONTACT_ADD_LIMIT) >= 100.0);
+        assert!(per_hour(AGENT_RUN_CLAIM_LIMIT) >= 7_200.0);
+        assert_ne!(MESSAGE_SEND_LIMIT.action, CONTACT_ADD_LIMIT.action);
+        assert_ne!(CONTACT_ADD_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
+        assert_ne!(MESSAGE_SEND_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
+    }
+
+    #[tokio::test]
+    async fn agent_runs_draw_from_the_agent_run_claim_budget() {
+        let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::default());
+        for _ in 1..AGENT_RUN_CLAIM_LIMIT.limit {
+            limiter
+                .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, "acct_runs")
+                .await;
+        }
+        assert_eq!(
+            limiter.observe_agent_run("acct_runs").await,
+            RateLimitDecision::Allowed
+        );
+        assert!(matches!(
+            limiter.observe_agent_run("acct_runs").await,
+            RateLimitDecision::Limited { .. }
+        ));
+        assert!(matches!(
+            limiter
+                .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, "acct_runs")
+                .await,
+            RateLimitDecision::Limited { .. }
+        ));
+        assert_eq!(
+            limiter.observe_agent_run("acct_other_runs").await,
+            RateLimitDecision::Allowed
+        );
+    }
+
+    #[tokio::test]
+    async fn account_limits_stop_at_their_budget() {
+        let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::default());
+        for _ in 0..CONTACT_ADD_LIMIT.limit {
+            assert_eq!(
+                limiter
+                    .observe_account_limit(CONTACT_ADD_LIMIT, "acct_contacts")
+                    .await,
+                RateLimitDecision::Allowed
+            );
+        }
+        assert!(matches!(
+            limiter
+                .observe_account_limit(CONTACT_ADD_LIMIT, "acct_contacts")
+                .await,
+            RateLimitDecision::Limited { .. }
+        ));
+        assert_eq!(
+            limiter
+                .observe_account_limit(MESSAGE_SEND_LIMIT, "acct_contacts")
                 .await,
             RateLimitDecision::Allowed
         );

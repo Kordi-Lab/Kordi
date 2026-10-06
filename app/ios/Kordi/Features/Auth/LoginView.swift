@@ -15,6 +15,9 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
+    @State private var signupChallenge: CloudSignupCodeChallenge?
+    @State private var verificationCode = ""
+    @State private var resendAt = Date.distantPast
     @State private var activeSubmission: Submission?
     @State private var avatarSeed = CanonicalAvatarSystem.newSeed()
     @State private var selectedPhoto: PhotosPickerItem?
@@ -29,7 +32,7 @@ struct LoginView: View {
         var label: String { self == .login ? "Log in" : "Sign up" }
     }
 
-    private enum Field { case displayName, email, password, confirmPassword }
+    private enum Field { case displayName, email, password, confirmPassword, verificationCode }
     private enum Submission: Equatable { case form, social(CloudOAuthProvider) }
 
     init() {
@@ -75,6 +78,7 @@ struct LoginView: View {
     }
 
     private var isSignup: Bool { mode == .signup }
+    private var isVerifying: Bool { isSignup && signupChallenge != nil }
     private var isBusy: Bool { activeSubmission != nil }
     private var cleanEmail: String { email.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var emailIsValid: Bool {
@@ -83,6 +87,7 @@ struct LoginView: View {
     }
     private var canSubmit: Bool {
         !isBusy && emailIsValid && password.count >= 8 && (!isSignup || password == confirmPassword)
+            && (!isVerifying || (verificationCode.utf8.count == 6 && verificationCode.utf8.allSatisfy { (48...57).contains($0) }))
     }
     private var generatedAvatarPreviewURL: String? {
         CanonicalAvatarSystem.previewURL(
@@ -188,7 +193,7 @@ struct LoginView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if isSignup {
+            if isSignup && !isVerifying {
                 signupIdentity
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -202,8 +207,10 @@ struct LoginView: View {
                     .submitLabel(.next)
                     .focused($focusedField, equals: .email)
                     .onSubmit { focusedField = .password }
+                    .disabled(isBusy || isVerifying)
             }
 
+            if !isVerifying {
             authField(label: "Password", hint: passwordHint) {
                 SecureField("••••••••", text: $password)
                     .textContentType(isSignup ? .newPassword : .password)
@@ -213,17 +220,28 @@ struct LoginView: View {
                         if isSignup { focusedField = .confirmPassword }
                         else { Task { await submitForm() } }
                     }
+                    .disabled(isBusy)
+            }
             }
 
-            if isSignup {
+            if isSignup && !isVerifying {
                 authField(label: "Confirm Password", hint: confirmationHint) {
                     SecureField("••••••••", text: $confirmPassword)
                         .textContentType(.newPassword)
                         .submitLabel(.go)
                         .focused($focusedField, equals: .confirmPassword)
                         .onSubmit { Task { await submitForm() } }
+                        .disabled(isBusy)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if isVerifying {
+                verificationFields
+            } else if isSignup {
+                Text("We’ll email you a code to verify your address before creating your account.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
 
             if let error = model.errorMessage {
@@ -255,6 +273,43 @@ struct LoginView: View {
             .disabled(!canSubmit)
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.20), value: mode)
+    }
+
+    private var verificationFields: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Enter the 6-digit code sent to \(cleanEmail). It expires in 10 minutes. Check your spam folder too.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            authField(label: "Email verification code") {
+                TextField("123456", text: $verificationCode)
+                    .textContentType(.oneTimeCode)
+                    .keyboardType(.numberPad)
+                    .focused($focusedField, equals: .verificationCode)
+                    .disabled(isBusy)
+                    .onChange(of: verificationCode) { _, next in
+                        let digits = String(next.filter { $0.isASCII && $0.isNumber }.prefix(6))
+                        if digits != next { verificationCode = digits }
+                    }
+            }
+            HStack {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let seconds = max(0, Int(ceil(resendAt.timeIntervalSince(context.date))))
+                    Button(seconds > 0 ? "Resend in \(seconds)s" : "Resend code") {
+                        Task { await requestCode() }
+                    }
+                    .disabled(isBusy || seconds > 0)
+                }
+                Spacer()
+                Button("Change email") {
+                    signupChallenge = nil
+                    verificationCode = ""
+                    model.errorMessage = nil
+                    focusedField = .email
+                }
+                .disabled(isBusy)
+            }
+            .font(.footnote)
+        }
     }
 
     private var signupIdentity: some View {
@@ -299,8 +354,9 @@ struct LoginView: View {
     }
 
     private var submitLabel: String {
+        if isSignup && !isVerifying { return isBusy ? "Sending code…" : "Create account" }
         if activeSubmission == .form { return isSignup ? "Creating account…" : "Signing in…" }
-        return isSignup ? "Create account" : "Continue"
+        return isSignup ? "Verify and create account" : "Continue"
     }
 
     private func authField<Content: View>(
@@ -328,6 +384,7 @@ struct LoginView: View {
         case "Email": focusedField == .email
         case "Password": focusedField == .password
         case "Confirm Password": focusedField == .confirmPassword
+        case "Email verification code": focusedField == .verificationCode
         default: false
         }
     }
@@ -336,6 +393,8 @@ struct LoginView: View {
         guard mode != nextMode, !isBusy else { return }
         focusedField = nil
         model.errorMessage = nil
+        signupChallenge = nil
+        verificationCode = ""
         if reduceMotion { mode = nextMode }
         else {
             withAnimation(.easeOut(duration: 0.20)) { mode = nextMode }
@@ -344,15 +403,21 @@ struct LoginView: View {
 
     private func submitForm() async {
         guard canSubmit else { return }
+        if isSignup && signupChallenge == nil {
+            await requestCode()
+            return
+        }
         activeSubmission = .form
         model.errorMessage = nil
         defer { activeSubmission = nil }
 
         let succeeded: Bool
-        if isSignup {
+        if isSignup, let signupChallenge {
             succeeded = await model.signUp(
                 email: email,
                 password: password,
+                verificationId: signupChallenge.verificationId,
+                verificationCode: verificationCode,
                 displayName: displayName,
                 avatarSeed: avatarSeed,
                 avatarMutation: uploadedAvatarDataURL.map {
@@ -363,6 +428,18 @@ struct LoginView: View {
             succeeded = await model.signIn(email: email, password: password)
         }
         announceSuccess(succeeded)
+    }
+
+    private func requestCode() async {
+        guard !isBusy else { return }
+        activeSubmission = .form
+        defer { activeSubmission = nil }
+        if let challenge = await model.requestSignupCode(email: cleanEmail) {
+            signupChallenge = challenge
+            verificationCode = ""
+            resendAt = Date().addingTimeInterval(TimeInterval(challenge.retryAfterSeconds))
+            focusedField = .verificationCode
+        }
     }
 
     private func randomizeAvatar() {

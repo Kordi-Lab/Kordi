@@ -30,7 +30,7 @@ async fn login_with_device(
 async fn stable_installation_reauthentication_deduplicates_the_device() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-dedupe");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let first = read_json(
         router
@@ -41,7 +41,8 @@ async fn stable_installation_reauthentication_deduplicates_the_device() {
                     &email,
                     "correct horse",
                     device_registration(7, "Test iPhone", "ios"),
-                ),
+                )
+                .await,
             ))
             .await
             .unwrap(),
@@ -67,7 +68,7 @@ async fn stable_installation_reauthentication_deduplicates_the_device() {
 async fn current_device_metadata_upgrades_legacy_identity_and_preserves_coarse_location() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-metadata");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let signup = read_json(
         router
@@ -78,7 +79,8 @@ async fn current_device_metadata_upgrades_legacy_identity_and_preserves_coarse_l
                     &email,
                     "correct horse",
                     device_registration(31, "Owner Mac", "macos"),
-                ),
+                )
+                .await,
             ))
             .await
             .unwrap(),
@@ -132,7 +134,7 @@ async fn current_device_metadata_upgrades_legacy_identity_and_preserves_coarse_l
 async fn concurrent_distinct_installations_create_distinct_reviewable_devices() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-concurrent");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
     let signup = read_json(
         router
@@ -143,7 +145,8 @@ async fn concurrent_distinct_installations_create_distinct_reviewable_devices() 
                     &email,
                     "correct horse",
                     device_registration(1, "Original Mac", "macos"),
-                ),
+                )
+                .await,
             ))
             .await
             .unwrap(),
@@ -182,7 +185,7 @@ async fn concurrent_distinct_installations_create_distinct_reviewable_devices() 
 async fn pending_device_cannot_manage_other_authorizations() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-pending-guard");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
     let owner = read_json(
         router
@@ -193,7 +196,8 @@ async fn pending_device_cannot_manage_other_authorizations() {
                     &email,
                     "correct horse",
                     device_registration(21, "Owner Mac", "macos"),
-                ),
+                )
+                .await,
             ))
             .await
             .unwrap(),
@@ -262,7 +266,7 @@ async fn pending_device_cannot_manage_other_authorizations() {
 async fn remote_revoke_is_atomic_idempotent_and_invalidates_the_target_token() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-revoke");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let owner = read_json(
         router
@@ -273,7 +277,8 @@ async fn remote_revoke_is_atomic_idempotent_and_invalidates_the_target_token() {
                     &email,
                     "correct horse",
                     device_registration(4, "Owner Mac", "macos"),
-                ),
+                )
+                .await,
             ))
             .await
             .unwrap(),
@@ -335,7 +340,7 @@ async fn remote_revoke_is_atomic_idempotent_and_invalidates_the_target_token() {
 async fn revoke_all_others_preserves_only_the_authenticated_caller() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-revoke-others");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
     let owner = read_json(
         router
@@ -346,7 +351,8 @@ async fn revoke_all_others_preserves_only_the_authenticated_caller() {
                     &email,
                     "correct horse",
                     device_registration(8, "Owner Mac", "macos"),
-                ),
+                )
+                .await,
             ))
             .await
             .unwrap(),

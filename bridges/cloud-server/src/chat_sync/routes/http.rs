@@ -16,6 +16,19 @@ pub(super) fn error_response(
     (status, Json(json!({ "error": error }))).into_response()
 }
 
+pub(super) fn rate_limited_response(retry_after: std::time::Duration) -> Response {
+    let mut response = error_response(
+        StatusCode::TOO_MANY_REQUESTS,
+        "RATE_LIMITED",
+        "Too many requests. Try again shortly.",
+        None,
+    );
+    if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
+        response.headers_mut().insert("Retry-After", value);
+    }
+    response
+}
+
 pub(super) enum RuntimeRequirementError {
     CursorUnavailable,
 }

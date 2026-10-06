@@ -13,7 +13,7 @@ fn put(token: &str, path: &str, body: Value) -> Request<Body> {
 #[tokio::test]
 async fn projects_are_private_device_bound_and_operations_are_claimed_once() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "project-owner", "Owner").await;
     let stranger = signup(&router, "project-stranger", "Other").await;
     let project_id = "a".repeat(64);
@@ -217,7 +217,7 @@ async fn project_runs_cannot_fall_back_to_cloud_or_another_mac() {
         claim_run, claim_run_for_desktop, ClaimRunRequest,
     };
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "project-routing", "Owner").await;
     sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")
         .bind(&owner.account_id)

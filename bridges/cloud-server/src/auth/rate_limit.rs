@@ -19,18 +19,30 @@
 //!   the remaining TTL. Sliding-window behaviour would be more accurate
 //!   but a fixed window suffices for the abuse-prevention threshold and
 //!   keeps the implementation small.
-//! * **Per-email lockout**: a failure counter (`crl:email:fail:<email>`)
-//!   with TTL = `per_email_lockout`; once it reaches the failure limit
-//!   we set a separate lockout key (`crl:email:lock:<email>`) with the
-//!   same TTL. `check_email_lockout` reads PTTL on the lockout key.
-//!   `clear_email_failures` after a successful login deletes both keys.
+//! * **Per-email lockout**: failures are counted per email *and* client
+//!   address (`crl:email:client:<ip>:<email>:fail`) with TTL =
+//!   `per_email_lockout`; once that reaches `per_email_failure_limit` a
+//!   lockout key (`crl:email:client:<ip>:<email>:lock`) blocks that client.
+//!   A second counter covers the email across all clients
+//!   (`crl:email:all:<email>:fail` / `crl:email:all:<email>:lock`); once it
+//!   reaches `per_email_global_failure_limit`, every client that has not
+//!   signed in to that email recently is blocked, which bounds guessing
+//!   spread over many addresses. A successful sign-in or signup marks the
+//!   client as familiar for that email (`crl:email:client:<ip>:<email>:known`,
+//!   TTL [`FAMILIAR_CLIENT_TTL`]) and clears its failures. Familiar clients
+//!   keep their own per-client budget during an email-wide lock, so guesses
+//!   from elsewhere cannot lock the owner out of an address they already use.
+//!   The email-wide counter expires on its own.
+//! * **Client keys**: IPv4 addresses (including IPv4-mapped IPv6) count on
+//!   their own; other IPv6 addresses count by their /64 prefix, because one
+//!   host usually controls a whole /64.
 //!
 //! The memory backend mirrors these semantics in-process (with the
 //! original sliding-window IP behaviour, since there's no cost to
 //! tracking individual timestamps locally).
 
 use std::collections::{HashMap, VecDeque};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -38,14 +50,31 @@ use redis::aio::ConnectionManager;
 use redis::AsyncCommands;
 
 mod account_actions;
+mod email_lockout;
+
+pub use account_actions::{
+    AccountActionLimit, AGENT_RUN_CLAIM_LIMIT, CONTACT_ADD_LIMIT, MESSAGE_SEND_LIMIT,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct CloudRateLimitConfig {
     pub per_ip_limit: u32,
     pub per_ip_window: Duration,
+    /// Failed logins allowed for one email from one client address.
     pub per_email_failure_limit: u32,
     pub per_email_lockout: Duration,
+    /// Failed logins for one email across every client address after which
+    /// only familiar clients may still try.
+    pub per_email_global_failure_limit: u32,
 }
+
+/// How long a client that signed in to an email stays familiar for it. Matches
+/// the default session lifetime.
+pub const FAMILIAR_CLIENT_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// The in-process backend drops expired familiar clients once it holds this
+/// many, so a long-running single replica does not grow without bound.
+const MEMORY_FAMILIAR_CLIENT_PRUNE_THRESHOLD: usize = 10_000;
 
 impl CloudRateLimitConfig {
     pub const fn production() -> Self {
@@ -54,6 +83,7 @@ impl CloudRateLimitConfig {
             per_ip_window: Duration::from_secs(60),
             per_email_failure_limit: 5,
             per_email_lockout: Duration::from_secs(15 * 60),
+            per_email_global_failure_limit: 10,
         }
     }
 }
@@ -85,6 +115,22 @@ impl std::fmt::Display for RateLimiterError {
 
 impl std::error::Error for RateLimiterError {}
 
+/// The address a client is counted under for rate limits and lockouts.
+/// IPv4 and IPv4-mapped IPv6 addresses count on their own; other IPv6
+/// addresses count by their /64 prefix. Unknown clients share `0.0.0.0`, so
+/// hiding the address does not escape the limit.
+pub fn rate_limit_client_key(client: Option<IpAddr>) -> IpAddr {
+    match client.map(|address| address.to_canonical()) {
+        Some(IpAddr::V6(address)) => {
+            let mut octets = address.octets();
+            octets[8..].fill(0);
+            IpAddr::V6(Ipv6Addr::from(octets))
+        }
+        Some(address) => address,
+        None => IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+    }
+}
+
 #[derive(Debug)]
 struct EmailFailureWindow {
     attempts: u32,
@@ -96,6 +142,8 @@ struct EmailFailureWindow {
 struct MemoryStore {
     per_ip: Mutex<HashMap<IpAddr, VecDeque<Instant>>>,
     per_email: Mutex<HashMap<String, EmailFailureWindow>>,
+    /// Client scopes that signed in successfully, with their expiry.
+    familiar_clients: Mutex<HashMap<String, Instant>>,
     per_account_action: Mutex<HashMap<String, VecDeque<Instant>>>,
 }
 
@@ -134,6 +182,7 @@ impl CloudRateLimiter {
             backend: Backend::Memory(MemoryStore {
                 per_ip: Mutex::new(HashMap::new()),
                 per_email: Mutex::new(HashMap::new()),
+                familiar_clients: Mutex::new(HashMap::new()),
                 per_account_action: Mutex::new(HashMap::new()),
             }),
         }
@@ -163,37 +212,10 @@ impl CloudRateLimiter {
     /// the limiter still applies — keyed by `0.0.0.0` so unauthenticated
     /// scrapers can't bypass simply by hiding their address.
     pub async fn observe_ip(&self, peer: Option<IpAddr>) -> RateLimitDecision {
-        let key = peer.unwrap_or(IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED));
+        let key = rate_limit_client_key(peer);
         match &self.backend {
             Backend::Memory(store) => self.observe_ip_memory(store, key),
             Backend::Redis(store) => self.observe_ip_redis(store, key).await,
-        }
-    }
-
-    /// Read whether `email` is currently locked. Does not record an
-    /// attempt — call `record_email_failure` after an actual failure.
-    pub async fn check_email_lockout(&self, email: &str) -> RateLimitDecision {
-        match &self.backend {
-            Backend::Memory(store) => self.check_email_lockout_memory(store, email),
-            Backend::Redis(store) => self.check_email_lockout_redis(store, email).await,
-        }
-    }
-
-    /// Record a failed login. Once the running failure count reaches
-    /// `per_email_failure_limit`, the email is locked for
-    /// `per_email_lockout`.
-    pub async fn record_email_failure(&self, email: &str) {
-        match &self.backend {
-            Backend::Memory(store) => self.record_email_failure_memory(store, email),
-            Backend::Redis(store) => self.record_email_failure_redis(store, email).await,
-        }
-    }
-
-    /// Clear failure history after a successful login.
-    pub async fn clear_email_failures(&self, email: &str) {
-        match &self.backend {
-            Backend::Memory(store) => self.clear_email_failures_memory(store, email),
-            Backend::Redis(store) => self.clear_email_failures_redis(store, email).await,
         }
     }
 
@@ -222,54 +244,6 @@ impl CloudRateLimiter {
         }
         entry.push_back(now);
         RateLimitDecision::Allowed
-    }
-
-    fn check_email_lockout_memory(&self, store: &MemoryStore, email: &str) -> RateLimitDecision {
-        let buckets = store.per_email.lock().expect("rate limiter poisoned");
-        let Some(entry) = buckets.get(email) else {
-            return RateLimitDecision::Allowed;
-        };
-        if let Some(until) = entry.locked_until {
-            let now = Instant::now();
-            if now < until {
-                return RateLimitDecision::Limited {
-                    retry_after: until.duration_since(now),
-                };
-            }
-        }
-        RateLimitDecision::Allowed
-    }
-
-    fn record_email_failure_memory(&self, store: &MemoryStore, email: &str) {
-        let mut buckets = store.per_email.lock().expect("rate limiter poisoned");
-        let now = Instant::now();
-        let entry = buckets
-            .entry(email.to_string())
-            .or_insert_with(|| EmailFailureWindow {
-                attempts: 0,
-                locked_until: None,
-                first_attempt_at: now,
-            });
-        if let Some(until) = entry.locked_until {
-            if now >= until {
-                entry.attempts = 0;
-                entry.locked_until = None;
-                entry.first_attempt_at = now;
-            }
-        }
-        if now.duration_since(entry.first_attempt_at) > self.config.per_email_lockout {
-            entry.attempts = 0;
-            entry.first_attempt_at = now;
-        }
-        entry.attempts += 1;
-        if entry.attempts >= self.config.per_email_failure_limit {
-            entry.locked_until = Some(now + self.config.per_email_lockout);
-        }
-    }
-
-    fn clear_email_failures_memory(&self, store: &MemoryStore, email: &str) {
-        let mut buckets = store.per_email.lock().expect("rate limiter poisoned");
-        buckets.remove(email);
     }
 
     // ---- Redis backend ----
@@ -310,70 +284,12 @@ impl CloudRateLimiter {
         RateLimitDecision::Allowed
     }
 
-    async fn check_email_lockout_redis(
-        &self,
-        store: &RedisStore,
-        email: &str,
-    ) -> RateLimitDecision {
-        let mut conn = store.conn.clone();
-        let lock_key = format!("{}:email:lock:{}", store.key_prefix, email);
-        let pttl_ms: i64 = match conn.pttl(&lock_key).await {
-            Ok(value) => value,
-            Err(err) => {
-                eprintln!("[rate_limit] redis PTTL {lock_key}: {err}");
-                return RateLimitDecision::Allowed;
-            }
-        };
-        if pttl_ms > 0 {
-            return RateLimitDecision::Limited {
-                retry_after: Duration::from_millis(pttl_ms as u64),
-            };
-        }
-        RateLimitDecision::Allowed
-    }
-
-    async fn record_email_failure_redis(&self, store: &RedisStore, email: &str) {
-        let mut conn = store.conn.clone();
-        let fail_key = format!("{}:email:fail:{}", store.key_prefix, email);
-        let lock_key = format!("{}:email:lock:{}", store.key_prefix, email);
-        let lockout_secs = self.config.per_email_lockout.as_secs().max(1) as i64;
-
-        let count: i64 = match conn.incr(&fail_key, 1).await {
-            Ok(value) => value,
-            Err(err) => {
-                eprintln!("[rate_limit] redis INCR {fail_key}: {err}");
-                return;
-            }
-        };
-        if count == 1 {
-            if let Err(err) = conn.expire::<_, ()>(&fail_key, lockout_secs).await {
-                eprintln!("[rate_limit] redis EXPIRE {fail_key}: {err}");
-            }
-        }
-        if count >= self.config.per_email_failure_limit as i64 {
-            if let Err(err) = conn
-                .set_ex::<_, _, ()>(&lock_key, "1", lockout_secs as u64)
-                .await
-            {
-                eprintln!("[rate_limit] redis SETEX {lock_key}: {err}");
-            }
-        }
-    }
-
-    async fn clear_email_failures_redis(&self, store: &RedisStore, email: &str) {
-        let mut conn = store.conn.clone();
-        let fail_key = format!("{}:email:fail:{}", store.key_prefix, email);
-        let lock_key = format!("{}:email:lock:{}", store.key_prefix, email);
-        if let Err(err) = conn.del::<_, ()>(&[fail_key, lock_key]).await {
-            eprintln!("[rate_limit] redis DEL email keys: {err}");
-        }
-    }
-
     #[cfg(test)]
     pub fn reset_for_tests(&self) {
         if let Backend::Memory(store) = &self.backend {
             store.per_ip.lock().expect("poisoned").clear();
             store.per_email.lock().expect("poisoned").clear();
+            store.familiar_clients.lock().expect("poisoned").clear();
             store.per_account_action.lock().expect("poisoned").clear();
         }
     }
@@ -386,77 +302,4 @@ impl Default for CloudRateLimiter {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::Ipv4Addr;
-
-    fn fast_config() -> CloudRateLimitConfig {
-        CloudRateLimitConfig {
-            per_ip_limit: 3,
-            per_ip_window: Duration::from_millis(200),
-            per_email_failure_limit: 3,
-            per_email_lockout: Duration::from_millis(200),
-        }
-    }
-
-    #[tokio::test]
-    async fn ip_allows_then_limits_then_recovers() {
-        let limiter = CloudRateLimiter::memory(fast_config());
-        let ip = Some(IpAddr::V4(Ipv4Addr::LOCALHOST));
-
-        assert_eq!(limiter.observe_ip(ip).await, RateLimitDecision::Allowed);
-        assert_eq!(limiter.observe_ip(ip).await, RateLimitDecision::Allowed);
-        assert_eq!(limiter.observe_ip(ip).await, RateLimitDecision::Allowed);
-        assert!(matches!(
-            limiter.observe_ip(ip).await,
-            RateLimitDecision::Limited { .. }
-        ));
-
-        tokio::time::sleep(Duration::from_millis(220)).await;
-        assert_eq!(limiter.observe_ip(ip).await, RateLimitDecision::Allowed);
-    }
-
-    #[tokio::test]
-    async fn email_failures_lock_out_then_clear_on_success() {
-        let limiter = CloudRateLimiter::memory(fast_config());
-        for _ in 0..3 {
-            limiter.record_email_failure("alice@example.com").await;
-        }
-        assert!(matches!(
-            limiter.check_email_lockout("alice@example.com").await,
-            RateLimitDecision::Limited { .. }
-        ));
-
-        limiter.clear_email_failures("alice@example.com").await;
-        assert_eq!(
-            limiter.check_email_lockout("alice@example.com").await,
-            RateLimitDecision::Allowed
-        );
-    }
-
-    #[tokio::test]
-    async fn email_lockout_expires_after_window() {
-        let limiter = CloudRateLimiter::memory(fast_config());
-        for _ in 0..3 {
-            limiter.record_email_failure("bob@example.com").await;
-        }
-        tokio::time::sleep(Duration::from_millis(220)).await;
-        assert_eq!(
-            limiter.check_email_lockout("bob@example.com").await,
-            RateLimitDecision::Allowed
-        );
-    }
-
-    #[tokio::test]
-    async fn separate_ips_dont_interfere() {
-        let limiter = CloudRateLimiter::memory(fast_config());
-        let alice = Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)));
-        let bob = Some(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)));
-
-        for _ in 0..3 {
-            assert_eq!(limiter.observe_ip(alice).await, RateLimitDecision::Allowed);
-        }
-        // Alice exhausted, bob still has a budget.
-        assert_eq!(limiter.observe_ip(bob).await, RateLimitDecision::Allowed);
-    }
-}
+mod tests;

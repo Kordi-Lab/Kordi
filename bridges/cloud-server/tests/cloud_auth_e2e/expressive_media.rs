@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn saved_media_delete_is_account_scoped_and_cannot_be_resurrected() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let (owner_token, owner_id) = signup_account(&router, "media-delete-owner").await;
     let (stranger_token, _) = signup_account(&router, "media-delete-stranger").await;

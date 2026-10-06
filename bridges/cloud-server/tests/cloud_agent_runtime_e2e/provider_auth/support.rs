@@ -32,8 +32,7 @@ async fn support_runs_use_the_dedicated_service_api_key_without_an_owner_snapsho
         token: String::new(),
     };
     let state = Arc::new(
-        ServerState::new(pool.clone(), EventBus::noop())
-            .with_support(SupportService::new(support_config)),
+        signup_email_fixture::state(pool.clone()).with_support(SupportService::new(support_config)),
     );
     let router = test_router(state);
     let requester = signup(&router, "provider-support-requester", "Requester").await;

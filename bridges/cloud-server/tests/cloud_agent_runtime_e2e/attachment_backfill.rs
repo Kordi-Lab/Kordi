@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn missing_private_history_images_are_backfilled_once_without_new_messages() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "image-backfill-owner", "Owner").await;
     let stranger = signup(&router, "image-backfill-stranger", "Stranger").await;
     let conversation = create_test_conversation(

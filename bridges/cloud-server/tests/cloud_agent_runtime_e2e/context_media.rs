@@ -71,7 +71,7 @@ impl Fixture {
             secret_key: "test-secret".into(),
         };
         let router = test_router(Arc::new(
-            ServerState::new(pool.clone(), EventBus::noop()).with_s3(s3),
+            signup_email_fixture::state(pool.clone()).with_s3(s3),
         ));
         let owner = signup(&router, "context-owner", "Owner").await;
         let peer = signup(&router, "context-peer", "Requester").await;

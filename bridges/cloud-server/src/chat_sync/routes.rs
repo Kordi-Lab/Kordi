@@ -9,6 +9,7 @@ use axum::{Extension, Json, Router};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision, MESSAGE_SEND_LIMIT};
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::chat_sync::cursor::CursorCodec;
 use crate::chat_sync::models::{
@@ -163,6 +164,7 @@ async fn create_conversation(
 async fn send_message(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    rate_limiter: Option<Extension<Arc<CloudRateLimiter>>>,
     Path(conversation_id): Path<Uuid>,
     Json(mut request): Json<SendMessageRequest>,
 ) -> Response {
@@ -171,6 +173,14 @@ async fn send_message(
     }
     if let Err(error) = validate_message_request(&request) {
         return error.into_response();
+    }
+    if let Some(Extension(rate_limiter)) = rate_limiter {
+        if let RateLimitDecision::Limited { retry_after } = rate_limiter
+            .observe_account_limit(MESSAGE_SEND_LIMIT, &session.account_id)
+            .await
+        {
+            return rate_limited_response(retry_after);
+        }
     }
     match store::send_message(
         state.db_pool(),
@@ -411,6 +421,7 @@ async fn issue_realtime_ticket(
         state.db_pool(),
         &session.account_id,
         &session.device_id,
+        &session.token_id,
         origin,
     )
     .await
