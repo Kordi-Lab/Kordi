@@ -57,8 +57,18 @@ const nativeSelectors = {
 } as const;
 
 async function expectMatchingHeaders(page: Page, selectors: typeof inPaneSelectors | typeof nativeSelectors) {
-  const main = await headerStyle(page, ...selectors.main);
-  const side = await headerStyle(page, ...selectors.panel);
+  // A chat theme switch transitions the tab colors: read until two consecutive samples of both headers agree.
+  let previous = '';
+  let main = await headerStyle(page, ...selectors.main);
+  let side = await headerStyle(page, ...selectors.panel);
+  await expect.poll(async () => {
+    main = await headerStyle(page, ...selectors.main);
+    side = await headerStyle(page, ...selectors.panel);
+    const sample = JSON.stringify([main, side]);
+    const settled = sample === previous;
+    previous = sample;
+    return settled;
+  }, { timeout: 5000, intervals: [80] }).toBe(true);
   expect(main.tabLabels).toEqual(tabs);
   expect(side).toEqual(main);
   expect(side.activeUnderline).not.toBe(side.inactiveUnderline);

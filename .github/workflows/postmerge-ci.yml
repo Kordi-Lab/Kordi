@@ -154,6 +154,13 @@ jobs:
             fi
           fi
 
+      - name: Install pinned Bun runtime
+        run: npm install --global bun@1.4.2
+
+      - name: Install OMP runtime dependencies
+        working-directory: shared/omp-runtime
+        run: bun install --frozen-lockfile
+
       - name: Run workspace tests
         run: cargo test --workspace --locked --exclude kordi-cloud-server --exclude kordi-desktop
 
