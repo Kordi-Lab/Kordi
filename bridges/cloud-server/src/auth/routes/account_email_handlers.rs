@@ -26,24 +26,26 @@ async fn prepare<'state>(
     session: &CloudSession,
     headers: &HeaderMap,
     connect_info: Option<&ConnectInfo<SocketAddr>>,
-) -> Result<(&'state SignupEmailService, String), Response> {
+) -> Result<(&'state SignupEmailService, String), Box<Response>> {
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
         .observe_ip(client_ip(headers, connect_info))
         .await
     {
-        return Err(limited_response(retry_after));
+        return Err(Box::new(limited_response(retry_after)));
     }
     let email = account_email_to_verify(state.db_pool(), &session.account_id)
         .await
-        .map_err(account_email_error)?;
+        .map_err(|error| Box::new(account_email_error(error)))?;
     let service = state.signup_email().ok_or_else(|| {
-        account_email_error(AccountEmailError::Code(SignupCodeError::Unavailable))
+        Box::new(account_email_error(AccountEmailError::Code(
+            SignupCodeError::Unavailable,
+        )))
     })?;
     if let RateLimitDecision::Limited { retry_after } = rate_limiter
         .observe_account_limit(EMAIL_VERIFICATION_LIMIT, &session.account_id)
         .await
     {
-        return Err(limited_response(retry_after));
+        return Err(Box::new(limited_response(retry_after)));
     }
     Ok((service, email))
 }
@@ -86,7 +88,7 @@ pub(super) async fn send_account_email_verification_code(
     .await
     {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     match send_account_email_code(state.db_pool(), service, &session.account_id, &email).await {
         Ok(challenge) => (StatusCode::OK, Json(challenge)).into_response(),
@@ -112,7 +114,7 @@ pub(super) async fn verify_account_email_code(
     .await
     {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     // Guesses stay charged to the account budget; verification re-checks the
     // account under a row lock.
