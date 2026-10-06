@@ -22,7 +22,7 @@ import { canonicalMentions } from './mentionMapping';
 import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
 import { canonicalReadReceiptSummary, contentRecord, numberValue, stringValue } from "./messageContent";
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
-import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isRetiredFailedRequest, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 
 export { ownerScopedAgentName } from './agentMessagePresentation';
 
@@ -302,7 +302,7 @@ export function mapCanonicalMessage(
   profileHumanIdentityId?: string | null,
   context: MapCanonicalMessageContext = {},
 ): Message | null {
-  if (isPlaceholderSessionTitleNotice(message) || isSynchronizationOnlyCloudGroupTitleNotice(message) || isInternalCloudAgentControlMessage(message)) return null;
+  if (isPlaceholderSessionTitleNotice(message) || isSynchronizationOnlyCloudGroupTitleNotice(message) || isInternalCloudAgentControlMessage(message) || isRetiredFailedRequest(message)) return null;
   const contentText = message.contentText;
   const storedContent = contentRecord(message.content);
   const normalized = storedContent.schemaVersion === 1 && storedContent.kind === 'message';

@@ -9,6 +9,13 @@ function contentRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+/** Content marker on a failed request that was sent again; the retried send replaces it in the transcript. */
+export const RETIRED_BY_RETRY_CONTENT_KEY = 'retiredByRetry';
+
+export function isRetiredFailedRequest(message: CanonicalSessionMessage) {
+  return contentRecord(message.content)[RETIRED_BY_RETRY_CONTENT_KEY] === true;
+}
+
 export function isPlaceholderSessionTitleNotice(message: CanonicalSessionMessage) {
   if (message.messageKind !== 'status') return false;
   const content = contentRecord(message.content);
@@ -42,6 +49,7 @@ export function canonicalMessageCountsAsReadable(message: CanonicalSessionMessag
   if (message.sourceTransport === 'canonical-fork-snapshot') return false;
   if (['sending', 'processing'].includes(message.status.trim().toLowerCase())) return false;
   return !isPlaceholderSessionTitleNotice(message)
+    && !isRetiredFailedRequest(message)
     && !isSynchronizationOnlyCloudGroupTitleNotice(message)
     && !isInternalCloudAgentControlMessage(message);
 }
