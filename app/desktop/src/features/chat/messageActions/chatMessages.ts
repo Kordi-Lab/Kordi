@@ -2,7 +2,7 @@ import { chatSendShouldAutoFollowMain, composerQuoteFromMessageAction } from './
 export { chatSendShouldAutoFollowMain, chatSendIsBusy } from './chatSendState';
 import { mergeBackgroundDesktopChatState } from '../desktopChatStateReducers';
 import { appendCanonicalRequestToLocalState, mergeCanonicalSessionState } from './canonicalSendState';
-import { materializeLocalChatSession } from './localChatSessionCreation';
+import { ensureLocalChatSessionInCanonicalState, materializeLocalChatSession } from './localChatSessionCreation';
 import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
 import { ConversationSendQueue } from './conversationSendQueue';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
@@ -405,10 +405,11 @@ export function useChatMessageActions({
   }, [localChatSendInFlightRef, watchDesktopLiveTurn]);
 
   const materializeLocalChatTarget = useCallback(async (sessionId: string) => {
+    await ensureLocalChatSessionInCanonicalState(sessionId, canonicalSessionState, setCanonicalSessionState);
     const materializedState = await fetchMaterializedLocalChatTarget(sessionId, desktopChatState);
     if (materializedState) setDesktopChatState(current => mergeBackgroundDesktopChatState(current, materializedState));
     return materializedState;
-  }, [desktopChatState, setDesktopChatState]);
+  }, [canonicalSessionState, desktopChatState, setCanonicalSessionState, setDesktopChatState]);
 
   const sendQueuedLocalMessage = useCallback(async (message: QueuedDesktopChatMessage) => {
     const delayReason = localChatSendDelayReason({
