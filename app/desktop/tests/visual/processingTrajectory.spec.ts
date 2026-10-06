@@ -32,7 +32,7 @@ for (const count of [2, 50]) test(`record complete processing entry with ${count
     return frames;
   }, count);
   await writeFile(info.outputPath('trajectory.json'), JSON.stringify(frames, null, 2));
-  const changes = frames.slice(1).map((frame, i) => ({ phase: frame.phase, at: frame.elapsed, delta: Number(frame.historyTop) - Number(frames[i].historyTop), scrollDelta: Number(frame.scrollTop) - Number(frames[i].scrollTop), rows: frame.rows }));
+  const changes = frames.slice(1).map((frame, i) => ({ phase: frame.phase, at: frame.elapsed, gap: Number(frame.elapsed) - Number(frames[i].elapsed), delta: Number(frame.historyTop) - Number(frames[i].historyTop), scrollDelta: Number(frame.scrollTop) - Number(frames[i].scrollTop), rows: frame.rows }));
   await writeFile(info.outputPath('summary.json'), JSON.stringify({ count, largestMovements: [...changes].sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)).slice(0, 12) }));
   expect(frames.every(frame => frame.nodesMounted)).toBe(true);
   expect(errors).toEqual([]);
@@ -42,8 +42,13 @@ for (const count of [2, 50]) test(`record complete processing entry with ${count
     const processing = changes.filter(change => change.phase === 'processing');
     const displacement = Math.abs(processing.reduce((sum, change) => sum + change.delta, 0));
     expect(frames.some(frame => frame.phase === 'processing' && frame.historyAnimating)).toBe(true);
-    // At both 60 Hz and 120 Hz, no single paint should consume the whole move.
-    expect(Math.max(...processing.map(change => Math.abs(change.delta)))).toBeLessThan(displacement * 0.95);
+    // At both 60 Hz and 120 Hz, no single paint should consume the whole move. A dropped frame lets one
+    // tick absorb most of the motion, so only frames at roughly the regular cadence are judged.
+    const gaps = changes.map(change => change.gap).sort((a, b) => a - b);
+    const frameInterval = gaps[Math.floor(gaps.length / 2)];
+    const regular = processing.filter(change => change.gap <= frameInterval * 2);
+    expect(regular.filter(change => Math.abs(change.delta) >= 0.5).length).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...regular.map(change => Math.abs(change.delta)))).toBeLessThan(displacement * 0.95);
     const settledAnswer = frames.filter(frame => Number(frame.elapsed) >= 2050 && Number(frame.elapsed) <= 2150);
     expect(settledAnswer.length).toBeGreaterThan(0);
     for (const frame of settledAnswer) expect(Math.abs(Number(frame.scrollHeight) - Number(frame.viewportHeight) - Number(frame.scrollTop))).toBeLessThanOrEqual(1);

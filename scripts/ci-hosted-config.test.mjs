@@ -165,6 +165,20 @@ test("hosted caches replace the retired runner-local cache", async () => {
   }
 });
 
+test("workspace tests install the pinned OMP Bun worker before running", async () => {
+  const workflows = await parsedWorkflows();
+  const steps = jobSteps(workflows.get("postmerge-ci.yml").document.jobs.workspace);
+  const index = (pattern) => steps.findIndex((step) => pattern.test(step.run ?? ""));
+  const bun = index(/npm install --global bun@\d+\.\d+\.\d+/);
+  const deps = steps.findIndex(
+    (step) => step["working-directory"] === "shared/omp-runtime" && /bun install --frozen-lockfile/.test(step.run ?? ""),
+  );
+  const tests = index(/cargo test --workspace/);
+
+  assert.ok(bun >= 0 && bun < deps, "workspace job must install pinned Bun before OMP dependencies");
+  assert.ok(deps >= 0 && deps < tests, "workspace job must install OMP dependencies before cargo tests");
+});
+
 test("visual baselines use Chromium and transcript history also runs in WebKit", async () => {
   const workflows = await parsedWorkflows();
   const visualWorkflow = workflows.get("ci-visual.yml").source;
