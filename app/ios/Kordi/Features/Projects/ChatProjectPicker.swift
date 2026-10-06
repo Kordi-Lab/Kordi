@@ -110,6 +110,7 @@ struct ChatProjectPicker: View {
 
 /// Compact picker row with a custom inset divider in place of the native separator.
 private struct PickerRow: View {
+    @Environment(\.isEnabled) private var isEnabled
     let title: String
     let systemImage: String
     var isSelected = false
@@ -133,6 +134,8 @@ private struct PickerRow: View {
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
+            // Offline devices keep their rows visible but clearly unavailable.
+            .opacity(isEnabled ? 1 : 0.4)
         }
         .buttonStyle(.plain)
         .overlay(alignment: .bottom) {
