@@ -243,6 +243,16 @@ test('product origin serves desktop routes without redirects', async () => {
   assert.equal(caddyfile.match(/lb_try_interval 100ms/g)?.length, 2);
   assert.match(caddyfile, /@call_media path \/rtc \/rtc\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:7880/);
   assert.doesNotMatch(caddyfile, /reverse_proxy 10\.\d+\.\d+\.\d+:17081/);
+  // Sign-in limits key on the forwarded client address, so only the :8080
+  // load-balancer origin may trust proxy headers, and both routes must
+  // forward the resolved client rather than the TCP peer.
+  assert.equal(caddyfile.match(/header_up X-Real-IP \{client_ip\}/g)?.length, 2);
+  assert.doesNotMatch(caddyfile, /\{remote_host\}/);
+  assert.match(
+    caddyfile,
+    /servers :8080 \{[\s\S]*trusted_proxies static 130\.211\.0\.0\/22 35\.191\.0\.0\/16 \{\$KORDI_EDGE_LB_ADDRESS\}[\s\S]*trusted_proxies_strict/,
+  );
+  assert.doesNotMatch(caddyfile, /trusted_proxies static[^\n]*(10\.|172\.|192\.168\.)/);
   assert.match(manifest, /nodePort: 30081/);
   assert.match(manifest, /type: NodePort/);
   assert.match(manifest, /terminationGracePeriodSeconds: 10/);

@@ -41,6 +41,30 @@ impl<'row> sqlx_core::from_row::FromRow<'row, sqlx_postgres::PgRow> for CodeReco
     }
 }
 
+/// A charged send: whether it created the row, and the counters the row held
+/// before this request when it already existed.
+struct StoredCode {
+    inserted: bool,
+    previous: Option<SendBudget>,
+}
+
+struct SendBudget {
+    send_count: i32,
+    resend_after: DateTime<Utc>,
+    window_started_at: DateTime<Utc>,
+}
+
+impl<'row> sqlx_core::from_row::FromRow<'row, sqlx_postgres::PgRow> for SendBudget {
+    fn from_row(row: &'row sqlx_postgres::PgRow) -> Result<Self, sqlx_core::Error> {
+        use sqlx_core::row::Row;
+        Ok(Self {
+            send_count: row.try_get("send_count")?,
+            resend_after: row.try_get("resend_after")?,
+            window_started_at: row.try_get("window_started_at")?,
+        })
+    }
+}
+
 impl From<sqlx_core::Error> for SignupCodeError {
     fn from(_: sqlx_core::Error) -> Self {
         Self::Database
@@ -56,7 +80,19 @@ pub(crate) async fn request_signup_code(
     let id = format!("email_{}", uuid::Uuid::new_v4().simple());
     let code = new_code();
     let expires_at = now + Duration::minutes(10);
-    let stored: Option<(String,)> = query_as(
+    // The send budget is charged before delivery so concurrent requests cannot
+    // overspend it. The counters this request replaces are read under the same
+    // row lock so a failed delivery can hand the charge back. The transaction
+    // ends before the code is sent.
+    let mut tx = pool.begin().await?;
+    let previous: Option<SendBudget> = query_as(
+        "SELECT send_count, resend_after, window_started_at FROM cloud_signup_email_codes \
+         WHERE email = $1 FOR UPDATE",
+    )
+    .bind(email)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let inserted: Option<(bool,)> = query_as(
         "INSERT INTO cloud_signup_email_codes \
          (email, verification_id, code_mac, expires_at, resend_after, window_started_at, send_count, attempts_remaining) \
          VALUES ($1, $2, $3, $4, $5, $6, 1, 5) \
@@ -71,12 +107,14 @@ pub(crate) async fn request_signup_code(
          WHERE cloud_signup_email_codes.resend_after <= $6 \
            AND (cloud_signup_email_codes.window_started_at <= $6 - INTERVAL '1 hour' \
                 OR cloud_signup_email_codes.send_count < 5) \
-         RETURNING verification_id",
+         RETURNING (xmax = 0)",
     )
     .bind(email).bind(&id).bind(service.digest(&id, email, &code))
     .bind(expires_at).bind(now + Duration::seconds(60)).bind(now)
-    .fetch_optional(pool).await?;
-    if stored.is_none() {
+    .fetch_optional(&mut *tx).await?;
+    tx.commit().await?;
+    let stored = inserted.map(|(inserted,)| StoredCode { inserted, previous });
+    let Some(stored) = stored else {
         let (resend_after, window_started_at, send_count): (DateTime<Utc>, DateTime<Utc>, i32) = query_as(
             "SELECT resend_after, window_started_at, send_count FROM cloud_signup_email_codes WHERE email = $1",
         ).bind(email).fetch_one(pool).await?;
@@ -88,14 +126,32 @@ pub(crate) async fn request_signup_code(
         return Err(SignupCodeError::Limited(
             (next - now).num_seconds().max(1) as u64
         ));
-    }
+    };
     if service.sender.send_code(email, &code).await.is_err() {
-        query(
-            "UPDATE cloud_signup_email_codes SET attempts_remaining = 0 WHERE verification_id = $1",
-        )
-        .bind(&id)
-        .execute(pool)
-        .await?;
+        // Hand back the charge while keeping the undelivered challenge
+        // unusable. A first request removes its row, since `send_count` cannot
+        // be zero. If another request inserted the row between our locking read
+        // and the upsert, the counters it held are unknown and stay charged.
+        if stored.inserted {
+            query("DELETE FROM cloud_signup_email_codes WHERE verification_id = $1")
+                .bind(&id)
+                .execute(pool)
+                .await?;
+        } else {
+            let previous = stored.previous.as_ref();
+            query(
+                "UPDATE cloud_signup_email_codes SET attempts_remaining = 0, \
+                 send_count = COALESCE($2, send_count), resend_after = COALESCE($3, resend_after), \
+                 window_started_at = COALESCE($4, window_started_at) \
+                 WHERE verification_id = $1",
+            )
+            .bind(&id)
+            .bind(previous.map(|budget| budget.send_count))
+            .bind(previous.map(|budget| budget.resend_after))
+            .bind(previous.map(|budget| budget.window_started_at))
+            .execute(pool)
+            .await?;
+        }
         return Err(SignupCodeError::Unavailable);
     }
     query("UPDATE cloud_signup_email_codes SET delivered_at = NOW() WHERE verification_id = $1")
