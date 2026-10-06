@@ -53,7 +53,7 @@ test('signup uploads avatar bytes separately and activates the returned referenc
     }),
   });
 
-  const result = await client.signup({
+  const result = await client.signup({ verificationId: 'test_challenge', verificationCode: '123456',
     email: 'ada@example.com',
     password: 'correct horse',
     displayName: 'Ada',

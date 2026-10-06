@@ -157,6 +157,11 @@ spec:
               value: "https://kordi.ai"
             - name: KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST
               value: "http://127.0.0.1:,http://localhost:,https://kordi.ai,kordi://oauth/callback"
+            - name: KORDI_CLOUD_TRUSTED_PROXIES
+              # List only proxies that overwrite X-Real-IP with the client
+              # address. Follow the K3s README before adding the pod-network
+              # gateway.
+              value: "127.0.0.1/32,::1/128"
             - name: KORDI_CHAT_SYNC_CURSOR_SECRET
               valueFrom:
                 secretKeyRef:
@@ -226,6 +231,42 @@ spec:
                 secretKeyRef:
                   name: kordi-cloud-runner
                   key: runner-token
+                  optional: true
+            - name: KORDI_AUTH_SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-host
+                  optional: true
+            - name: KORDI_AUTH_SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-port
+                  optional: true
+            - name: KORDI_AUTH_SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-username
+                  optional: true
+            - name: KORDI_AUTH_SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-password
+                  optional: true
+            - name: KORDI_AUTH_SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: smtp-from
+                  optional: true
+            - name: KORDI_AUTH_EMAIL_CODE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kordi-auth-email
+                  key: code-secret
                   optional: true
             - name: KORDI_SUPPORT_ENABLED
               valueFrom:

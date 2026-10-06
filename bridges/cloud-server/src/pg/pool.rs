@@ -20,6 +20,7 @@ use sqlx_postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 
 mod embedded;
 mod migrate;
+mod migration_entry;
 use embedded::EMBEDDED_MIGRATIONS;
 
 pub(super) struct EmbeddedMigration {

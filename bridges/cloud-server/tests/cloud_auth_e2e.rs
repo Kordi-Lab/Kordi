@@ -30,13 +30,9 @@ use tower::util::ServiceExt;
 
 async fn try_pool() -> Option<sqlx_postgres::PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
-    match init_pool(&url).await {
-        Ok(pool) => Some(pool),
-        Err(err) => {
-            eprintln!("[cloud_auth_e2e] init_pool failed, skipping: {err}");
-            None
-        }
-    }
+    Some(init_pool(&url).await.unwrap_or_else(|_| {
+        panic!("Could not initialize the configured disposable integration database")
+    }))
 }
 
 fn fast_router(state: Arc<ServerState>) -> axum::Router {
@@ -45,6 +41,7 @@ fn fast_router(state: Arc<ServerState>) -> axum::Router {
         per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
+        per_email_global_failure_limit: 50,
     });
     routes_with_config(state.clone(), PasswordHasherConfig::for_tests(), limiter)
         .merge(kordi_cloud_server::avatars::routes(state))
@@ -54,14 +51,15 @@ fn unique_email(prefix: &str) -> String {
     format!("{prefix}-{}@e2e.local", uuid::Uuid::new_v4().simple())
 }
 
-fn signup_body(email: &str, password: &str) -> Body {
+async fn signup_body(email: &str, password: &str) -> Body {
     Body::from(
-        json!({
+        signup_email_fixture::with_proof(json!({
             "email": email,
             "password": password,
             "displayName": "E2E",
             "avatarSeed": "e2e_avatar_seed",
-        })
+        }))
+        .await
         .to_string(),
     )
 }
@@ -83,15 +81,16 @@ fn device_registration(seed: u8, name: &str, platform: &str) -> serde_json::Valu
     })
 }
 
-fn signup_body_with_device(email: &str, password: &str, device: serde_json::Value) -> Body {
+async fn signup_body_with_device(email: &str, password: &str, device: serde_json::Value) -> Body {
     Body::from(
-        json!({
+        signup_email_fixture::with_proof(json!({
             "email": email,
             "password": password,
             "displayName": "E2E",
             "avatarSeed": "e2e_avatar_seed",
             "device": device,
-        })
+        }))
+        .await
         .to_string(),
     )
 }
@@ -101,7 +100,7 @@ async fn signup_account(router: &axum::Router, prefix: &str) -> (String, String)
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&unique_email(prefix), "correct horse"),
+            signup_body(&unique_email(prefix), "correct horse").await,
         ))
         .await
         .unwrap();
@@ -196,6 +195,8 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&bytes).unwrap()
 }
 
+#[path = "cloud_auth_e2e/abuse_limits.rs"]
+mod abuse_limits;
 #[path = "cloud_auth_e2e/account_auth.rs"]
 mod account_auth;
 #[path = "cloud_auth_e2e/devices.rs"]
@@ -206,6 +207,8 @@ mod expressive_media;
 mod group_invitations;
 #[path = "cloud_auth_e2e/public_identity.rs"]
 mod public_identity;
+#[path = "cloud_auth_e2e/realtime_sign_out.rs"]
+mod realtime_sign_out;
 #[path = "cloud_auth_e2e/session_and_presence.rs"]
 mod session_and_presence;
 #[path = "cloud_auth_e2e/session_list_actions.rs"]
@@ -216,3 +219,8 @@ mod session_list_fixtures;
 mod session_pin_history;
 #[path = "cloud_auth_e2e/session_pin_stacks.rs"]
 mod session_pin_stacks;
+#[path = "cloud_auth_e2e/signup_email.rs"]
+mod signup_email;
+
+#[path = "common/signup_email.rs"]
+mod signup_email_fixture;

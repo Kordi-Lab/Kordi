@@ -21,14 +21,14 @@ async fn pool_init_runs_migrations() {
 async fn signup_happy_path_returns_session_and_persists_account() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("signup-happy");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
 
     let response = router
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse"),
+            signup_body(&email, "correct horse").await,
         ))
         .await
         .unwrap();
@@ -58,21 +58,21 @@ async fn signup_happy_path_returns_session_and_persists_account() {
 async fn signup_duplicate_email_returns_409() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("dupe-email");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
 
     let _ = router
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse"),
+            signup_body(&email, "correct horse").await,
         ))
         .await
         .unwrap();
     let second = router
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "another password"),
+            signup_body(&email, "another password").await,
         ))
         .await
         .unwrap();
@@ -85,7 +85,7 @@ async fn signup_duplicate_email_returns_409() {
 async fn login_with_correct_password_returns_session_and_me_works() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("login");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
 
     // signup
@@ -93,7 +93,7 @@ async fn login_with_correct_password_returns_session_and_me_works() {
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse"),
+            signup_body(&email, "correct horse").await,
         ))
         .await
         .unwrap();
@@ -125,14 +125,14 @@ async fn login_with_correct_password_returns_session_and_me_works() {
 async fn login_with_wrong_password_returns_401() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("wrong-pass");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
 
     let _ = router
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse"),
+            signup_body(&email, "correct horse").await,
         ))
         .await
         .unwrap();
@@ -152,7 +152,7 @@ async fn login_with_wrong_password_returns_401() {
 #[tokio::test]
 async fn default_agent_name_persists_in_the_account_profile() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
     let (token, account_id) = signup_account(&router, "default-agent-name").await;
 

@@ -16,7 +16,7 @@ fn put_with_token(uri: &str, token: &str) -> Request<Body> {
 #[tokio::test]
 async fn group_archive_includes_historical_members_without_changing_access() {
     let Some(pool) = try_pool().await else { return };
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let (token, account_id) = signup_account(&router, "stale-group-owner").await;
     let (other_token, other_id) = signup_account(&router, "stale-group-other").await;
     let space_id = format!("space:{}", uuid::Uuid::now_v7());
@@ -133,7 +133,7 @@ async fn group_archive_includes_historical_members_without_changing_access() {
 #[tokio::test]
 async fn groups_without_catalog_metadata_can_be_archived_by_session_identity() {
     let Some(pool) = try_pool().await else { return };
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let (token, account_id) = signup_account(&router, "legacy-group-owner").await;
     let (other_token, _) = signup_account(&router, "legacy-group-outsider").await;
     for membership in ["active", "left", "removed"] {
@@ -189,7 +189,7 @@ async fn groups_without_catalog_metadata_can_be_archived_by_session_identity() {
 #[tokio::test]
 async fn historical_members_can_archive_restore_and_delete_their_own_sessions() {
     let Some(pool) = try_pool().await else { return };
-    let router = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = fast_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let (token, account_id) = signup_account(&router, "historical-session-owner").await;
     let (other_token, _) = signup_account(&router, "historical-session-outsider").await;
     for membership in ["left", "removed"] {
@@ -242,7 +242,7 @@ async fn historical_members_can_archive_restore_and_delete_their_own_sessions() 
 #[tokio::test]
 async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let (token, account_id) = signup_account(&router, "session-list-actions").await;
     let session_id = format!("session:self-agent:{}", uuid::Uuid::now_v7());
@@ -384,7 +384,7 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
 #[tokio::test]
 async fn message_pin_updates_are_durable_and_idempotent() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let (token, account_id) = signup_account(&router, "message-pin-actions").await;
     let session_id = format!("session:self-agent:{}", uuid::Uuid::now_v7());
@@ -451,7 +451,7 @@ async fn message_pin_updates_are_durable_and_idempotent() {
 #[tokio::test]
 async fn chat_list_mutations_roll_back_when_sync_append_fails() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let (token, account_id) = signup_account(&router, "session-list-atomicity").await;
     let session_id = format!("session:self-agent:{}", uuid::Uuid::now_v7());

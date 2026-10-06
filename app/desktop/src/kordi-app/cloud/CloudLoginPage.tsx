@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { applyCloudLoginWindowSize, type CloudLoginMode } from '@/features/cloud/loginWindow';
 import { CLOUD_LOGIN_WINDOW_DRAG_STYLE } from '@/app/windowDrag';
-import { CloudAuthError, type CloudOAuthProvider } from '@/features/cloud/authClient';
+import { CloudAuthError, type CloudOAuthProvider, type CloudSignupCodeChallenge, type CloudSignupInput } from '@/features/cloud/authClient';
 import { isCloudOAuthCancelled } from '@/features/cloud/cloudOAuthCancellation';
 import {
   readLoginModePreference,
@@ -11,12 +11,13 @@ import {
   generatedAvatarPreviewUrl,
   HUMAN_CANONICAL_AVATAR_STYLE,
   newCanonicalAvatarSeed,
-  type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
 
 import { GitHubMark, GoogleMark } from './CloudLoginMarks';
 import { cloudLoginErrorMessage, PASSWORD_MIN_LENGTH } from './cloudLoginMessages';
 import { CloudSignupAvatarPicker } from './CloudSignupAvatarPicker';
+import { CloudSignupVerificationFields } from './CloudSignupVerificationFields';
+import { useCloudSignupVerification } from './useCloudSignupVerification';
 
 // Type scale — one place, applied everywhere. The whole page reads from these.
 const TYPE_DISPLAY = 'text-[34px] leading-[1.1] font-bold tracking-[-0.025em]';
@@ -81,6 +82,8 @@ function CloudField({
   validation,
   hint,
   disabled,
+  inputMode,
+  maxLength,
 }: {
   label?: string;
   ariaLabel?: string;
@@ -92,6 +95,8 @@ function CloudField({
   validation?: CloudFieldValidation;
   hint?: string;
   disabled?: boolean;
+  inputMode?: 'numeric';
+  maxLength?: number;
 }) {
   const baseInput = `${INPUT_BASE_CLASS} ${PAPER_INPUT} ${TYPE_INPUT} ${INK}`;
   const tone =
@@ -112,6 +117,8 @@ function CloudField({
         aria-label={ariaLabel ?? label}
         aria-invalid={validation === 'invalid' || undefined}
         disabled={disabled}
+        inputMode={inputMode}
+        maxLength={maxLength}
         className={`${baseInput} ${tone}`}
       />
       {hint ? (
@@ -133,13 +140,8 @@ export type CloudLoginPageProps = {
   onModeChange?: (mode: CloudLoginMode) => void;
   initialMode?: CloudLoginMode;
   onSignIn?: (email: string, password: string) => Promise<void>;
-  onSignUp?: (input: {
-    email: string;
-    password: string;
-    displayName?: string;
-    avatarSeed: string;
-    avatarMutation?: CanonicalAvatarMutation;
-  }) => Promise<void>;
+  onRequestSignupCode?: (email: string) => Promise<CloudSignupCodeChallenge>;
+  onSignUp?: (input: CloudSignupInput) => Promise<void>;
   onSocialSignIn?: (provider: CloudOAuthProvider) => Promise<void>;
   showDebugAuthDiagnostics?: boolean;
 };
@@ -153,6 +155,7 @@ export function CloudLoginPage({
   initialMode = 'login',
   onSignIn = noopSignIn,
   onSignUp = noopSignUp,
+  onRequestSignupCode,
   onSocialSignIn,
   showDebugAuthDiagnostics = false,
   onModeChange,
@@ -167,7 +170,10 @@ export function CloudLoginPage({
   const [submitting, setSubmitting] = useState(false);
   const [socialProvider, setSocialProvider] = useState<CloudOAuthProvider | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const { challenge, verificationCode, setVerificationCode, resendSeconds, sendCode, resetVerification } = useCloudSignupVerification(email, onRequestSignupCode);
   const isSignup = mode === 'signup';
+  const isVerifying = isSignup && challenge !== null;
+  const isBusy = submitting || socialProvider !== null;
   const enabledSocialProviders = onSocialSignIn ? ALL_SOCIAL_PROVIDER_IDS : [];
   const generatedSignupAvatarUrl = generatedAvatarPreviewUrl(
     HUMAN_CANONICAL_AVATAR_STYLE,
@@ -189,23 +195,24 @@ export function CloudLoginPage({
   const passwordTooShort = isSignup && password.length > 0 && password.length < PASSWORD_MIN_LENGTH;
   const passwordMismatch = isSignup && confirmPassword.length > 0 && password !== confirmPassword;
   const canSubmit = useMemo(() => {
-    if (submitting) return false;
+    if (isBusy) return false;
     if (!EMAIL_PATTERN.test(email)) return false;
     if (password.length === 0 || (isSignup && password.length < PASSWORD_MIN_LENGTH)) return false;
     if (isSignup && password !== confirmPassword) return false;
+    if (isVerifying && !/^\d{6}$/.test(verificationCode)) return false;
     return true;
-  }, [confirmPassword, email, isSignup, password, submitting]);
+  }, [confirmPassword, email, isSignup, password, isBusy, isVerifying, verificationCode]);
 
   const submitLabel = isSignup
     ? submitting
-      ? 'Creating account…'
-      : 'Create account'
+      ? isVerifying ? 'Creating account…' : 'Sending code…'
+      : isVerifying ? 'Verify and create account' : 'Create account'
     : submitting
       ? 'Signing in…'
       : 'Continue';
 
   async function handleSocialSignIn(provider: CloudOAuthProvider) {
-    if (!onSocialSignIn || socialProvider || !enabledSocialProviders.includes(provider)) return;
+    if (!onSocialSignIn || isBusy || !enabledSocialProviders.includes(provider)) return;
     setSocialProvider(provider);
     setSubmitError(null);
     try {
@@ -225,6 +232,22 @@ export function CloudLoginPage({
     }
   }
 
+  async function resendCode() {
+    if (isBusy || resendSeconds > 0) return;
+    setSubmitting(true);
+    setSubmitError(null);
+    try { await sendCode(); }
+    catch (caught) { setSubmitError(caught instanceof Error ? caught.message : 'Could not send code.'); }
+    finally { setSubmitting(false); }
+  }
+
+  function changeMode(next: CloudLoginMode) {
+    if (isBusy) return;
+    setMode(next);
+    resetVerification();
+    setSubmitError(null);
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
@@ -232,10 +255,13 @@ export function CloudLoginPage({
     setSubmitError(null);
     try {
       if (isSignup) {
+        if (!challenge) { await sendCode(); return; }
         const trimmedName = displayName.trim();
         await onSignUp({
           email,
           password,
+          verificationId: challenge.verificationId,
+          verificationCode,
           displayName: trimmedName.length > 0 ? trimmedName : undefined,
           avatarSeed,
           ...(uploadedAvatar ? { avatarMutation: { action: 'upload' as const, uploadedAsset: uploadedAvatar } } : {}),
@@ -304,7 +330,7 @@ export function CloudLoginPage({
               <button
                 key={provider.id}
                 type="button"
-                disabled={!isAvailable || Boolean(socialProvider)}
+                disabled={!isAvailable || isBusy}
                 title={accessibleLabel}
                 aria-label={accessibleLabel}
                 data-provider={provider.id}
@@ -344,7 +370,8 @@ export function CloudLoginPage({
           />
           <button
             type="button"
-            onClick={() => setMode('login')}
+            onClick={() => changeMode('login')}
+            disabled={isBusy}
             aria-pressed={!isSignup}
             className={`${tabBaseClass} ${!isSignup ? tabActiveText : tabInactiveText}`}
           >
@@ -352,7 +379,8 @@ export function CloudLoginPage({
           </button>
           <button
             type="button"
-            onClick={() => setMode('signup')}
+            onClick={() => changeMode('signup')}
+            disabled={isBusy}
             aria-pressed={isSignup}
             className={`${tabBaseClass} ${isSignup ? tabActiveText : tabInactiveText}`}
           >
@@ -366,15 +394,15 @@ export function CloudLoginPage({
         >
           <div
             className="app-cloud-login-signup-section"
-            data-cloud-login-signup-section={isSignup ? 'open' : 'closed'}
-            aria-hidden={!isSignup}
+            data-cloud-login-signup-section={isSignup && !isVerifying ? 'open' : 'closed'}
+            aria-hidden={!isSignup || isVerifying}
           >
             <div className="app-cloud-login-signup-field grid grid-cols-[5rem_minmax(0,1fr)] items-start gap-3">
               <CloudSignupAvatarPicker
                 imageUrl={uploadedAvatar ?? generatedSignupAvatarUrl}
                 onUpload={setUploadedAvatar}
                 onRegenerate={regenerateAvatar}
-                disabled={!isSignup}
+                disabled={!isSignup || isVerifying || isBusy}
               />
               <CloudField
                 ariaLabel="Display name"
@@ -383,7 +411,7 @@ export function CloudLoginPage({
                 placeholder="Display name"
                 value={displayName}
                 onChange={setDisplayName}
-                disabled={!isSignup}
+                disabled={!isSignup || isVerifying || isBusy}
               />
             </div>
           </div>
@@ -393,24 +421,26 @@ export function CloudLoginPage({
             autoComplete="email"
             placeholder="you@company.com"
             value={email}
-            onChange={setEmail}
+            onChange={(next) => { setEmail(next); resetVerification(); }}
+            disabled={isBusy || isVerifying}
             validation={emailInvalid ? 'invalid' : undefined}
             hint={emailInvalid ? 'Use a full email like name@example.com.' : undefined}
           />
-          <CloudField
+          {!isVerifying ? <CloudField
             label="Password"
             type="password"
             autoComplete={isSignup ? 'new-password' : 'current-password'}
             placeholder="••••••••"
             value={password}
             onChange={setPassword}
+            disabled={isBusy}
             validation={passwordTooShort ? 'hint' : undefined}
             hint={passwordTooShort ? `At least ${PASSWORD_MIN_LENGTH} characters.` : undefined}
-          />
+          /> : null}
           <div
             className="app-cloud-login-signup-section"
-            data-cloud-login-signup-section={isSignup ? 'open' : 'closed'}
-            aria-hidden={!isSignup}
+            data-cloud-login-signup-section={isSignup && !isVerifying ? 'open' : 'closed'}
+            aria-hidden={!isSignup || isVerifying}
           >
             <div className="app-cloud-login-signup-field">
               <CloudField
@@ -422,10 +452,18 @@ export function CloudLoginPage({
                 onChange={setConfirmPassword}
                 validation={passwordMismatch ? 'invalid' : undefined}
                 hint={passwordMismatch ? 'Passwords do not match.' : undefined}
-                disabled={!isSignup}
+                disabled={!isSignup || isVerifying || isBusy}
               />
             </div>
           </div>
+          {isVerifying ? (
+            <CloudSignupVerificationFields email={email} busy={isBusy} resendSeconds={resendSeconds}
+              onResend={() => void resendCode()} onChangeEmail={() => { resetVerification(); setSubmitError(null); }}>
+              <CloudField label="Email verification code" type="text" autoComplete="one-time-code"
+                inputMode="numeric" maxLength={6} placeholder="123456" value={verificationCode}
+                onChange={(next) => setVerificationCode(next.replace(/\D/g, '').slice(0, 6))} disabled={isBusy} />
+            </CloudSignupVerificationFields>
+          ) : isSignup ? <p className={`${TYPE_HINT} ${INK_MUTED}`}>We’ll email you a code to verify your address before creating your account.</p> : null}
           {submitError ? (
             <div
               role="alert"

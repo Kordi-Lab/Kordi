@@ -11,7 +11,7 @@ fn get(uri: &str) -> Request<Body> {
 #[tokio::test]
 async fn group_invitation_updates_canonical_membership_and_never_creates_contacts() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let (admin_token, admin_id) = signup_account(&router, "group-invite-admin").await;
     let (member_token, member_id) = signup_account(&router, "group-invite-member").await;

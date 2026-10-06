@@ -5,6 +5,8 @@ import type {
   CloudOAuthProvider,
   CloudOAuthStartResponse,
   CloudProfileUpdateInput,
+  CloudSignupCodeChallenge,
+  CloudSignupInput,
 } from './authClient';
 import { CloudAuthError } from './cloudAuthError';
 import { isProductionCloudOrigin } from './cloudApiEnvironment';
@@ -24,13 +26,7 @@ export class CloudIdentityAuthClient {
     private readonly deviceRegistration: () => Promise<CloudDeviceRegistration>,
   ) {}
 
-  async signup(input: {
-    email: string;
-    password: string;
-    displayName?: string;
-    avatarSeed: string;
-    avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
-  }): Promise<CloudAuthResult> {
+  async signup(input: CloudSignupInput): Promise<CloudAuthResult> {
     const device = await this.deviceRegistration();
     const pendingAvatar = input.avatarMutation?.action === 'upload'
       && input.avatarMutation.uploadedAsset?.startsWith('data:image/')
@@ -88,6 +84,14 @@ export class CloudIdentityAuthClient {
       }
       throw caught;
     }
+  }
+
+  requestSignupCode(email: string): Promise<CloudSignupCodeChallenge> {
+    return this.request<CloudSignupCodeChallenge>(
+      '/v1/cloud/auth/signup/code',
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) },
+      'Could not send verification code.',
+    );
   }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {

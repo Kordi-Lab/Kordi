@@ -95,7 +95,7 @@ import {
 appendOptimisticCanonicalMessage,appendOptimisticCollaborationMessage,appendOptimisticOutboundMessage,
 failedPreparedCanonicalUserMessage,markOptimisticCanonicalMessageFailed,
 markOptimisticCanonicalMessageSending,markOptimisticCollaborationMessageSending,optimisticSessionTitleFromMessage,persistCanonicalUserMessage,prepareCanonicalQueuedMessage,prepareCanonicalUserMessage,
-retryAttachmentItemsFromMessage,voiceMessageSendFields,voiceMessageAgentText,
+retryAttachmentItemsFromMessage,voiceMessageSendFields,voiceMessageAgentText,commitRetiredFailedCanonicalRequest,retiredFailedCanonicalRequest,
 type PreparedCanonicalUserMessage
 } from './optimistic';
 import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
@@ -358,7 +358,7 @@ export function useChatMessageActions({
     return message;
   }, [setQueuedDesktopMessagesBySessionNow]);
 
-  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments'], contextMessages: DesktopChatContextMessage[] = [], quote: ComposerQuoteState | null = null) => {
+  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments'], contextMessages: DesktopChatContextMessage[] = [], quote: ComposerQuoteState | null = null, preserveComposer = false) => {
     const queuedMessage = queuedDesktopChatMessageFromDraft({
       sessionId,
       text: draftText,
@@ -376,9 +376,8 @@ export function useChatMessageActions({
     }).catch((error) => setDesktopChatError(error instanceof Error ? error.message : 'Unable to synchronize queued message'));
     if (chatSendShouldAutoFollowMain(quote)) shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
-    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
-    setChatComposerAttachments([]);
-    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
+    if (preserveComposer) return;
+    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, '')); setChatComposerAttachments([]); resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
   }, [canonicalHumanIdentityId, enqueueLocalQueuedMessage, resolveChatRuntimeRoute, setCanonicalSessionState, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
 
   const watchLocalTurnAndFlushQueue = useCallback((
@@ -894,11 +893,11 @@ export function useChatMessageActions({
       return;
     }
     const rawText = retryMessage?.text ?? draftOverride ?? composerDrafts.chat;
-    const quoteForSend = quoteOverride ?? activeChatQuote;
+    let quoteForSend = quoteOverride ?? activeChatQuote;
     const followMainTranscript = chatSendShouldAutoFollowMain(quoteForSend, retryMessage);
     const text = rawText.trim();
     const attachmentsToSend = retryAttachments ?? attachmentOverride ?? chatComposerAttachments; const voiceFields = voiceMessageSendFields(attachmentsToSend);
-    const preserveComposer = attachmentOverride !== undefined;
+    const preserveComposer = attachmentOverride !== undefined || Boolean(retryMessage);
     const collaborationSendClaimId = JSON.stringify([
       activeCloudConversationId, text, attachmentsToSend.map((item) => item.id), quoteForSend,
     ]);
@@ -959,6 +958,7 @@ export function useChatMessageActions({
     const cloudAgentMentionSessionId = activeGroupSessionIsGroup
       ? cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId })
       : (activeConvCanonicalSessionId ?? activeConvId);
+    let retireRetriedRequest = () => {}; // An owned-agent retry reuses the normal dispatch below and retires its failed row once the new send is committed.
     if (retryMessage) {
       const retryMessageId = retryMessage.id?.trim();
       if (!retryMessageId || !retryAttachments) {
@@ -1087,9 +1087,9 @@ export function useChatMessageActions({
         }
         return;
       }
-
-      setDesktopChatError('Retry is unavailable for this conversation.');
-      return;
+      if (activeConversationUsesCollaborationRouting) { setDesktopChatError('Retry is unavailable for this conversation.'); return; }
+      const retiredRequest = retiredFailedCanonicalRequest(canonicalSessionState, retryMessageId); quoteForSend = composerQuoteFromMessageAction(retryMessage.messageAction);
+      retireRetriedRequest = () => commitRetiredFailedCanonicalRequest(retiredRequest, setCanonicalSessionState, setDesktopChatError);
     }
     if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesCollaborationRouting, activeConvId, desktopLiveTurn })) {
       const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
@@ -1097,7 +1097,7 @@ export function useChatMessageActions({
         setDesktopChatError('Commands are unavailable while this session is running. Your draft is preserved.');
         return;
       }
-      queueLocalDraftForSession(activeConvId, text, attachmentsToSend, [], quoteForSend);
+      retireRetriedRequest(); queueLocalDraftForSession(activeConvId, text, attachmentsToSend, [], quoteForSend, Boolean(retryMessage));
       return;
     }
 
@@ -1373,7 +1373,7 @@ export function useChatMessageActions({
         const activeTurn = await fetchDesktopChatSessionActiveTurn(localTargetSessionId);
         if (activeTurn) {
           waitForSessionQueue(localTargetSessionId, activeTurn);
-          queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend, [], quoteForSend);
+          retireRetriedRequest(); queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend, [], quoteForSend, Boolean(retryMessage));
           return;
         }
       } catch (error) {
@@ -1387,7 +1387,7 @@ export function useChatMessageActions({
       desktopLiveTurn,
     });
     if (localSendDelayReason === 'same-session-running' && localTargetSessionId) {
-      queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend, [], quoteForSend);
+      retireRetriedRequest(); queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend, [], quoteForSend, Boolean(retryMessage));
       return;
     }
     if (localSendDelayReason === 'session-starting') {
@@ -1461,7 +1461,7 @@ export function useChatMessageActions({
             text,
           })
         : null;
-      setPendingUserChatMessage(null);
+      setPendingUserChatMessage(null); retireRetriedRequest();
       localChatSendInFlightRef.current = { sessionId: noProviderShortcutSessionId };
       if (isTransientDraftConversation) setActiveConvId(noProviderShortcutSessionId);
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(
@@ -1552,7 +1552,7 @@ export function useChatMessageActions({
       if (isTransientDraftConversation) {
         setDesktopChatState((current) => appendOptimisticLocalDraftMessage(current, attachmentSummaryText(text, attachmentsToSend), text, attachmentsToSend, formatDesktopEventTime(), activeChatQuote));
       }
-      const resolvedSessionId = await ensureLocalSessionId();
+      const resolvedSessionId = await ensureLocalSessionId(); retireRetriedRequest();
       localChatSendInFlightRef.current = { sessionId: resolvedSessionId };
 
       const sentAt = formatDesktopEventTime();

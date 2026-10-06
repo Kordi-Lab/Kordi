@@ -50,8 +50,13 @@ pub(super) fn map_email_format(err_value: EmailFormatError) -> Response {
     )
 }
 
-pub(super) fn ip_from_extension(ip: Option<&ConnectInfo<SocketAddr>>) -> Option<IpAddr> {
-    ip.map(|info| info.0.ip())
+/// The requesting client's address: the TCP peer, or the forwarded address
+/// when the peer is a trusted reverse proxy (see [`crate::client_ip`]).
+pub(super) fn client_ip(
+    headers: &HeaderMap,
+    connect_info: Option<&ConnectInfo<SocketAddr>>,
+) -> Option<IpAddr> {
+    crate::client_ip::resolve_client_ip(headers, connect_info.map(|info| info.0.ip()))
 }
 
 pub(super) fn bearer_token_from_headers(headers: &HeaderMap) -> Option<&str> {

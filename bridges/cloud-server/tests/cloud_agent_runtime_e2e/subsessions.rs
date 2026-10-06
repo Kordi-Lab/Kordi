@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn thread_read_cursors_sync_per_account_without_reading_other_threads_or_parent() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "thread-reader", "Reader").await;
     let peer = signup(&router, "thread-peer", "Peer").await;
     let outsider = signup(&router, "thread-outsider", "Outsider").await;
@@ -141,7 +141,7 @@ async fn thread_read_cursors_sync_per_account_without_reading_other_threads_or_p
 #[tokio::test]
 async fn private_agent_session_is_not_readable_by_shared_subsession_members() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "private-panel-owner", "Owner").await;
     let peer = signup(&router, "private-panel-peer", "Peer").await;
     accept_contacts(&router, &owner, &peer).await;
@@ -183,7 +183,7 @@ async fn private_agent_session_is_not_readable_by_shared_subsession_members() {
 #[tokio::test]
 async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "subsession-owner", "Owner").await;
     let peer = signup(&router, "subsession-peer", "Requester").await;
     let outsider = signup(&router, "subsession-outsider", "Outsider").await;

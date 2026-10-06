@@ -59,6 +59,8 @@ pnpm dev:cloud:multi -- --users user1,user2,user3
 
 Kordi supports email/password plus OAuth sign-in for configured providers. The desktop login page calls `/v1/cloud/auth/oauth/:provider/start` and opens the provider in the user's default browser. In the native shell, Kordi uses a short-lived localhost loopback callback so the provider does not render inside the compact app webview; the browser callback hands the account session back to the desktop app.
 
+Email registration requires a six-digit code delivered to the supplied inbox before an account or session is created. See [Email verification for password signup](signup-email-verification.md) for the API flow, mail configuration, and rollout requirements.
+
 Google and GitHub are stable login entry points in Kordi-controlled development and product environments. Capability discovery may confirm server configuration, but a delayed, empty, or failed capability request must not hide or disable either entry point. A provider-start failure is reported through the normal login error surface.
 
 Required production server environment:

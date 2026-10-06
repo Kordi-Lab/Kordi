@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "offline-owner", "Owner").await;
     let requester = signup(&router, "offline-requester", "Requester").await;
@@ -56,7 +56,7 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 #[tokio::test]
 async fn cloud_agent_runtime_fallback_claim_does_not_wait_for_an_unready_online_mac() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "online-owner", "Owner").await;
     let requester = signup(&router, "online-requester", "Requester").await;
@@ -103,7 +103,7 @@ async fn cloud_agent_runtime_fallback_claim_does_not_wait_for_an_unready_online_
 #[tokio::test]
 async fn cloud_agent_runtime_fallback_claim_is_rejected_for_fresh_desktop_execution() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "processing-owner", "Owner").await;
     let request_message_id = format!("msg_processing_{}", uuid::Uuid::new_v4().simple());
@@ -147,7 +147,7 @@ async fn cloud_agent_runtime_fallback_claim_is_rejected_for_fresh_desktop_execut
 #[tokio::test]
 async fn cloud_agent_runtime_self_fallback_claim_has_one_durable_owner() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let account = signup(&router, "self-fallback", "Self").await;
     let request_message_id = format!("msg_self_{}", uuid::Uuid::new_v4().simple());
@@ -188,7 +188,7 @@ async fn cloud_agent_runtime_self_fallback_claim_has_one_durable_owner() {
 #[tokio::test]
 async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = test_router(state);
     let owner = signup(&router, "unauth-owner", "Owner").await;
     let requester = signup(&router, "unauth-requester", "Requester").await;
@@ -214,10 +214,60 @@ async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() 
 }
 
 #[tokio::test]
+async fn cloud_agent_runtime_claims_are_budgeted_per_requester() {
+    use kordi_cloud_server::auth::rate_limit::AGENT_RUN_CLAIM_LIMIT;
+
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(signup_email_fixture::state(pool));
+    let setup = test_router(state.clone());
+    let owner = signup(&setup, "budget-owner", "Owner").await;
+    let requester = signup(&setup, "budget-requester", "Requester").await;
+    accept_contacts(&setup, &requester, &owner).await;
+    let offline = setup
+        .clone()
+        .oneshot(post_with_token("/v1/cloud/presence/offline", &owner.token))
+        .await
+        .unwrap();
+    assert_eq!(offline.status(), StatusCode::OK);
+
+    let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::production());
+    for _ in 1..AGENT_RUN_CLAIM_LIMIT.limit {
+        limiter
+            .observe_account_limit(AGENT_RUN_CLAIM_LIMIT, &requester.account_id)
+            .await;
+    }
+    let router = router_with_rate_limiter(state, limiter);
+
+    let last_allowed = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_budget_last"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(last_allowed.status(), StatusCode::OK);
+
+    let limited = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-runs/claim",
+            &requester.token,
+            claim_body(&owner, &requester, "msg_budget_over"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(limited.headers().contains_key("retry-after"));
+    assert_eq!(read_json(limited).await["errorCode"], "rate_limited");
+}
+
+#[tokio::test]
 async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let source = signup(&router, "handoff-source", "Source").await;
     let target = signup(&router, "handoff-target", "Target").await;

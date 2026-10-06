@@ -79,7 +79,7 @@ fn hosted_route(auth_choice: &str) -> Value {
 async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = owner_with_ready_mac(&router, &pool, "hosted-only-owner").await;
     let session = format!("session:self-agent:{}", uuid::Uuid::new_v4());
     let conversation = create_test_conversation(
@@ -158,7 +158,7 @@ async fn hosted_account_waits_for_the_ready_owner_mac_then_falls_back() {
 #[tokio::test]
 async fn a_contacts_hosted_only_route_does_not_skip_the_owner_mac() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = owner_with_ready_mac(&router, &pool, "hosted-only-contact-owner").await;
     let contact = signup(&router, "hosted-only-contact", "Contact").await;
     accept_contacts(&router, &contact, &owner).await;
