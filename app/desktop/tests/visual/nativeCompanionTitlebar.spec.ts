@@ -33,7 +33,10 @@ test('native panel titles and controls follow the split through resizing, moving
   await chat.click();
   const header = page.locator('.app-native-companion-titlebar');
   await expect(header.getByRole('button', { name: 'Close side chat' })).toBeVisible();
-  await expect(page.locator('[data-chat-side-agent-panel] .app-chat-pane-header')).toHaveCount(0);
+  // Only the main-chat style tab row stays in the panel; the title and controls live on the title row.
+  await expect(page.locator('[data-chat-side-agent-panel] .app-chat-pane-header')).toHaveCount(1);
+  await expect(page.locator('[data-chat-side-agent-panel] .app-chat-pane-header.app-chat-native-metadata-header [data-chat-destination-tabs="companion"]')).toBeVisible();
+  await expect(page.locator('[data-chat-side-agent-panel] :is(.app-chat-pane-title-row, [data-side-chat-controls])')).toHaveCount(0);
   await expectAlignedHeaders(page);
   const divider = page.getByRole('separator', { name: 'Resize side-by-side chats' });
   await divider.focus();
