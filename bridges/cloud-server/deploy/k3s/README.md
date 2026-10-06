@@ -88,9 +88,44 @@ KORDI_OAUTH_GOOGLE_CLIENT_ID=...
 KORDI_OAUTH_GOOGLE_CLIENT_SECRET=...
 KORDI_OAUTH_GITHUB_CLIENT_ID=...
 KORDI_OAUTH_GITHUB_CLIENT_SECRET=...
+KORDI_CLOUD_TRUSTED_PROXIES=127.0.0.1/32,::1/128
 ```
 
 For test/self-hosted Cloud servers, use that server's public HTTPS origin for `KORDI_CLOUD_PUBLIC_BASE_URL` and provider callback URLs.
+
+`KORDI_CLOUD_TRUSTED_PROXIES` lists the peer addresses or CIDR ranges whose
+`X-Real-IP` (then `X-Forwarded-For`) header names the client for sign-in rate
+limits, login lockouts, and audit records. It defaults to loopback only, and
+headers from any other peer are ignored.
+
+List only proxies that overwrite `X-Real-IP` with the client address. Never
+add pod or service ranges that other workloads can originate from. Pods see
+host Caddy as the node's pod-network gateway (`10.42.0.1` with the default K3s
+pod CIDR). `bridges/cloud-server/deploy/Caddyfile.snippet` already forwards
+the client address: its global options trust the Google Front End ranges plus
+`KORDI_EDGE_LB_ADDRESS` on the `:8080` origin with strict `X-Forwarded-For`
+parsing, and both proxied routes send `header_up X-Real-IP {client_ip}`. Before
+adding the gateway, roll that configuration out on the product host:
+
+1. Confirm `caddy version` reports 2.7.0 or newer. `{client_ip}` and
+   `trusted_proxies_strict` are unknown to older releases, and the Ubuntu
+   24.04 package is 2.6.2; install Caddy from its official package repository
+   first if the host still runs the distribution package. `caddy validate`
+   fails closed on an older binary.
+2. If a proxy other than the Google Front Ends fronts `:8080`, put its address
+   in `KORDI_EDGE_LB_ADDRESS` in the Caddy service environment (for example a
+   `systemctl edit caddy` drop-in with `EnvironmentFile=-/etc/caddy/kordi-edge.env`).
+   Keep that value in operator configuration; do not commit it.
+3. Install the snippet as described in the cutover procedure, run
+   `sudo caddy validate --config /etc/caddy/Caddyfile`, and reload Caddy.
+4. Confirm that new `auth.login.*` audit rows record distinct client
+   addresses rather than proxy or load balancer addresses.
+5. Add `10.42.0.1/32` to `KORDI_CLOUD_TRUSTED_PROXIES` in the deployment
+   manifest and roll the cloud server. Until this step, every client shares one
+   rate-limit and lockout bucket, so do it promptly after step 4.
+
+Avatar rendering uses its own throttle, which follows a private proxy's
+`X-Real-IP`.
 
 Production provider callback URLs:
 

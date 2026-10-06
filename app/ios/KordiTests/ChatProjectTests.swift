@@ -19,6 +19,42 @@ struct ChatProjectTests {
         #expect(model.projectConversations.contains { $0.sessionId == emptySessionID })
     }
 
+    @Test func pinnedSessionsStayVisibleOutsideCollapsedProjectsAndRecents() {
+        let pinned = AgentSessionFactory.makeDefault(ownAccountId: "owner", randomId: "pinned")
+        let recent = AgentSessionFactory.makeDefault(ownAccountId: "owner", randomId: "recent")
+        let device = ChatProjectDevice(id: "mac", name: "My Mac", online: true, projects: [
+            .init(id: "project", name: "App", sessions: [pinned.sessionId]),
+        ])
+        let sections = ChatProjectSections.build(conversations: [pinned, recent], devices: [device], search: "", collapsedForks: [], pinned: [pinned.sessionId])
+        #expect(sections.map(\.id) == ["pinned", "mac:project", "recents"])
+        #expect(sections[0].sessions.map(\.id) == [pinned.id])
+        #expect(sections[1].sessions.map(\.id) == [pinned.id])
+        #expect(sections[2].sessions.map(\.id) == [recent.id])
+        let unassigned = ChatProjectSections.build(conversations: [pinned, recent], devices: [], search: "", collapsedForks: [], pinned: [pinned.sessionId])
+        #expect(unassigned.last?.sessions.map(\.id) == [recent.id])
+    }
+
+    @Test func pinnedForkRemainsReachableAndSearchFiltersPinnedRows() {
+        let parent = AgentSessionFactory.makeDefault(ownAccountId: "owner", randomId: "parent")
+        let fork = ConversationSummary(
+            id: "fork", kind: .agent, peerAccountId: "owner", agentId: parent.agentId,
+            ownerDisplayName: nil, displayName: "Investigate sidebar", lastMessage: "Review navigation",
+            lastActivityAt: parent.lastActivityAt, unreadCount: 0, avatarSource: nil,
+            agentActivity: .ready, sessionId: "fork-session", forkedFromSessionId: parent.sessionId
+        )
+        let sections = ChatProjectSections.build(conversations: [parent, fork], devices: [], search: "sidebar", collapsedForks: [parent.sessionId], pinned: [fork.sessionId])
+        #expect(sections.first?.id == "pinned")
+        #expect(sections.first?.sessions.first?.id == fork.id)
+        #expect(sections.first?.sessions.first?.depth == 0)
+        #expect(sections.first?.sessions.first?.childCount == 0)
+        let unmatched = ChatProjectSections.build(conversations: [parent, fork], devices: [], search: "unmatched", collapsedForks: [], pinned: [fork.sessionId])
+        #expect(unmatched.isEmpty)
+        let pinnedParent = ChatProjectSections.build(conversations: [parent, fork], devices: [], search: "", collapsedForks: [parent.sessionId], pinned: [parent.sessionId])
+        #expect(pinnedParent.last?.id == "recents")
+        #expect(pinnedParent.last?.sessions.first?.id == fork.id)
+        #expect(pinnedParent.last?.sessions.first?.depth == 0)
+    }
+
     @Test func validatesRepositoryInput() {
         #expect(ChatProjectRepositoryInput.normalize("https://github.com/example/app.git") == "example/app")
         #expect(ChatProjectRepositoryInput.normalize("git@github.com:example/app.git") == "example/app")

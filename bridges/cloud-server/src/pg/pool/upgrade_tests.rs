@@ -4,8 +4,10 @@ use crate::cloud_agent_runtime::runs::{claim_run, ClaimRunRequest};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
+mod email_verification_tests;
 mod pin_stack_tests;
 mod projection_tests;
+mod signup_email_tests;
 mod title_tests;
 
 async fn fixture(version: i64) -> PgPool {

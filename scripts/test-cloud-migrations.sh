@@ -38,6 +38,7 @@ else
   migration_database_url() { printf 'postgresql://postgres@127.0.0.1:%s/%s\n' "$port" "$1"; }
 fi
 tests=(
+  signup_email_tests::upgrade_from_109_preserves_existing_accounts_without_certifying_email
   pin_stack_tests::upgrade_from_107_preserves_pins_and_rolling_writes
   projection_tests::upgrade_from_98_backfills_projection_and_pip_context_boundaries
   upgrade_from_91_retains_pin_actions_and_captures_rolling_writes
@@ -47,6 +48,7 @@ tests=(
   multiple_live_executors_require_drain_without_losing_history
   title_tests::upgrade_from_75_preserves_shared_and_private_group_names
   title_tests::upgrade_from_89_repairs_only_proven_defaults_and_authenticated_titles
+  email_verification_tests::upgrade_from_110_marks_only_provider_verified_primary_emails
 )
 index=0
 for test_name in "${tests[@]}"; do

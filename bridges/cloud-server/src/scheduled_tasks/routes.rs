@@ -1,6 +1,8 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::{Path, State};
+use axum::http::header::RETRY_AFTER;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
@@ -9,10 +11,12 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
 use crate::cloud_agent_runtime::routes::runner_authorized_for_scheduled_tasks;
 use crate::scheduled_tasks::models::{
     CreateScheduledTaskRequest, ScheduledTaskResponse, ScheduledTaskRunResponse,
+    ScheduledTaskTargetRuntime,
 };
 use crate::scheduled_tasks::store::{
     claim_due_scheduled_task_runs, create_scheduled_task, create_scheduled_task_run_now,
@@ -96,6 +100,29 @@ fn error_response(error_code: &'static str, message: &'static str, status: Statu
         .into_response()
 }
 
+/// Charges one agent run to `account_id`. Returns the 429 response to send when
+/// the account's agent run budget is spent.
+async fn charge_agent_run(rate_limiter: &CloudRateLimiter, account_id: &str) -> Option<Response> {
+    let RateLimitDecision::Limited { retry_after } =
+        rate_limiter.observe_agent_run(account_id).await
+    else {
+        return None;
+    };
+    Some(rate_limited(retry_after))
+}
+
+fn rate_limited(retry_after: Duration) -> Response {
+    let mut response = error_response(
+        "rate_limited",
+        "Too many agent requests. Try again shortly.",
+        StatusCode::TOO_MANY_REQUESTS,
+    );
+    if let Ok(value) = retry_after.as_secs().max(1).to_string().parse() {
+        response.headers_mut().insert(RETRY_AFTER, value);
+    }
+    response
+}
+
 async fn list_tasks(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -113,9 +140,12 @@ async fn list_tasks(
     }
 }
 
+/// Creates a task. A new cloud task counts as one agent run, because it queues
+/// runs on the shared runner without a further request.
 async fn create_task(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Json(input): Json<CreateScheduledTaskRequest>,
 ) -> Response {
     if !input.is_well_formed() {
@@ -124,6 +154,11 @@ async fn create_task(
             "title and prompt are required.",
             StatusCode::BAD_REQUEST,
         );
+    }
+    if input.target_runtime == ScheduledTaskTargetRuntime::Cloud {
+        if let Some(response) = charge_agent_run(&rate_limiter, &session.account_id).await {
+            return response;
+        }
     }
     match create_scheduled_task(
         state.db_pool(),
@@ -215,11 +250,17 @@ async fn delete_task(
     }
 }
 
+/// Starts a run now. Every run started this way counts as one agent run,
+/// whichever runtime runs it.
 async fn run_task_now(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Path(task_id): Path<String>,
 ) -> Response {
+    if let Some(response) = charge_agent_run(&rate_limiter, &session.account_id).await {
+        return response;
+    }
     match create_scheduled_task_run_now(state.db_pool(), &session.account_id, &task_id, Utc::now())
         .await
     {

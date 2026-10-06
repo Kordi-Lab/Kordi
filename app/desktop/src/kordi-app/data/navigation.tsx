@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import { MessageSquare, Users, NotebookPen } from 'lucide-react';
 
+import { AgentChatIcon } from '../components/AgentChatIcon';
 import { FactoryRobotIcon } from '../components/FactoryRobotIcon';
 import type { NavId } from '../types';
 
@@ -8,6 +9,7 @@ type NavItem = { id: NavId; label: string; icon: ComponentType<{ className?: str
 
 export const navItems: NavItem[] = [
   { id: 'chats', label: 'Chats', icon: MessageSquare },
+  { id: 'agent-chats', label: 'Agent Chats', icon: AgentChatIcon },
   { id: 'contacts', label: 'Contacts', icon: Users },
   { id: 'agents', label: 'Factory', icon: FactoryRobotIcon },
   { id: 'digest', label: 'Digest', icon: NotebookPen },
@@ -19,6 +21,7 @@ export function normalizeNavIdForCloud(navId: NavId): NavId {
 
 export const navAccentClasses: Record<NavId, string> = {
   chats: 'text-cyan-50',
+  'agent-chats': 'text-cyan-50',
   contacts: 'text-emerald-300',
   projects: 'text-cyan-50',
   agents: 'text-violet-50',

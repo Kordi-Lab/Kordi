@@ -366,6 +366,10 @@ async fn render_and_cache_avatar(style: &str, seed: &str, cache_key: String) -> 
     avatar_png_response(bytes)
 }
 
+/// Keys the render throttle only. Unlike the sign-in limits, which trust
+/// forwarded addresses only from `KORDI_CLOUD_TRUSTED_PROXIES`, this follows
+/// any private proxy's `X-Real-IP` so the product edge's forwarded address
+/// spreads render load instead of sharing one in-cluster bucket.
 fn avatar_request_ip(
     headers: &HeaderMap,
     connect_info: Option<&ConnectInfo<SocketAddr>>,

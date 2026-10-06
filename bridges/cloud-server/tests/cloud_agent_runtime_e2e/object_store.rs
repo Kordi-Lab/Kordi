@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::signup_email_fixture;
 use axum::body::{to_bytes, Body};
 use axum::extract::OriginalUri;
 use axum::http::{Method, StatusCode};
 use axum::response::IntoResponse;
 use kordi_cloud_server::attachments::S3Config;
-use kordi_cloud_server::events::EventBus;
-use kordi_cloud_server::server::ServerState;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use url::Url;
@@ -150,6 +149,6 @@ pub(super) fn test_router_with_s3(
     pool: sqlx_postgres::PgPool,
     store: &TestObjectStore,
 ) -> axum::Router {
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()).with_s3(store.s3_config()));
+    let state = Arc::new(signup_email_fixture::state(pool).with_s3(store.s3_config()));
     test_router(state)
 }

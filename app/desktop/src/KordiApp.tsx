@@ -296,6 +296,7 @@ function CloudEditionRoot({
               onModeChange={setLoginMode}
               onSignIn={signIn}
               onSignUp={signUp}
+              onRequestSignupCode={liveSession.requestSignupCode}
               onSocialSignIn={socialSignIn}
               showDebugAuthDiagnostics={SHOW_DEBUG_AUTH_DIAGNOSTICS}
             />

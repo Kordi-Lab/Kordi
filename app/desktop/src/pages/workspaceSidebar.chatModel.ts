@@ -20,6 +20,7 @@ import type {
 export type CollaborationSyncStatus = 'idle' | 'syncing' | 'unavailable';
 
 type WorkspaceChatSidebarModelOptions = {
+  chatChannel?: ChatChannel;
   isCollaborationSyncUnavailable?: boolean;
 };
 
@@ -86,12 +87,16 @@ export function useWorkspaceChatSidebarModel(
   const [collapsedParticipantSpaceIds, setCollapsedParticipantSpaceIds] = useState<Set<string>>(
     new Set(),
   );
-  const [chatChannel, setChatChannel] = useState<ChatChannel>(initialChatChannel);
+  const [uncontrolledChatChannel, setChatChannel] = useState<ChatChannel>(initialChatChannel);
+  const chatChannel = options.chatChannel ?? uncontrolledChatChannel;
   const [collapsedForkParents, setCollapsedForkParents] = useState<Set<string>>(
     new Set(),
   );
-  const [showArchived, setShowArchivedState] = useState(false);
-  const [activeUnreadCounts, setActiveUnreadCounts] = useState({ contact: 0, agent: 0 });
+  const [archivedByChannel, setArchivedByChannel] = useState({ contact: false, agent: false });
+  const showArchived = archivedByChannel[chatChannel];
+  const setShowArchivedState = useCallback((next: boolean) => {
+    setArchivedByChannel(current => ({ ...current, [chatChannel]: next }));
+  }, [chatChannel]);
   const orderedParticipantSpaces = useMemo(
     () => orderPinnedSessions(participantSpaces, pinnedSessionIds, pinnedGroupSpaceIds),
     [participantSpaces, pinnedGroupSpaceIds, pinnedSessionIds],
@@ -260,15 +265,6 @@ export function useWorkspaceChatSidebarModel(
     visibleParticipantSpaces,
     unreadSessionIds,
   ]);
-  const currentContactUnread = visibleContactParticipantSpaces.reduce(
-    (sum, space) =>
-      sum
-      + Math.max(
-        0,
-        unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread,
-      ),
-    0,
-  );
   const flatAgentSessions = useMemo(
     () =>
       projectScopedSidebarSessions(visibleAgentParticipantSpaces
@@ -305,33 +301,7 @@ export function useWorkspaceChatSidebarModel(
     () => new Map(flatAgentSessions.map((row) => [row.session.id, row])),
     [flatAgentSessions],
   );
-  const renderableAgentSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    const visit = (sessionId: string) => {
-      if (ids.has(sessionId)) return;
-      ids.add(sessionId);
-      for (const fork of agentForkLineage.forksByParentSessionId.get(sessionId) ?? []) {
-        visit(fork.id);
-      }
-    };
-    for (const { session } of topLevelAgentSessions) visit(session.id);
-    return ids;
-  }, [agentForkLineage, topLevelAgentSessions]);
-  const currentAgentUnread = flatAgentSessions.reduce(
-    (sum, { session }) =>
-      renderableAgentSessionIds.has(session.id)
-        ? sum + effectiveSessionUnread(session, mutedSessionIds, unreadSessionIds)
-        : sum,
-    0,
-  );
-  const setShowArchived = useCallback((next: boolean) => {
-    if (next) {
-      setActiveUnreadCounts({ contact: currentContactUnread, agent: currentAgentUnread });
-    }
-    setShowArchivedState(next);
-  }, [currentAgentUnread, currentContactUnread]);
-  const contactUnread = showArchived ? activeUnreadCounts.contact : currentContactUnread;
-  const agentUnread = showArchived ? activeUnreadCounts.agent : currentAgentUnread;
+  const setShowArchived = setShowArchivedState;
   const toggleForkParent = useCallback((parentSessionId: string) => {
     setCollapsedForkParents((current) => {
       const next = new Set(current);
@@ -427,6 +397,26 @@ export function useWorkspaceChatSidebarModel(
         .filter((id): id is string => Boolean(id))
     ))),
   ), [archivedParticipantSpaces]);
+  const unreadByChannel = useMemo(() => {
+    const counts = { contact: 0, agent: 0 };
+    const channels = new Map<string, ChatChannel>();
+    for (const space of participantSpaces) {
+      const channel = spaceMatchesChannel(space, 'agent') ? 'agent' : 'contact';
+      for (const session of space.sessions) {
+        channels.set(session.id, channel);
+        if (session.canonicalSessionId) channels.set(session.canonicalSessionId, channel);
+      }
+    }
+    for (const session of sessionsForGlobalAttention(chatConversations, archivedSessionIds)) {
+      const channel = channels.get(session.canonicalSessionId ?? session.id)
+        ?? channels.get(session.id)
+        ?? (session.type === 'owned-agent' || session.type === 'external-agent' ? 'agent' : 'contact');
+      counts[channel] += effectiveSessionUnread(session, mutedSessionIds, unreadSessionIds);
+    }
+    return counts;
+  }, [archivedSessionIds, chatConversations, mutedSessionIds, participantSpaces, unreadSessionIds]);
+  const contactUnread = unreadByChannel.contact;
+  const agentUnread = unreadByChannel.agent;
   const totalUnread = totalVisibleUnread(
     sessionsForGlobalAttention(chatConversations, archivedSessionIds),
     mutedSessionIds,

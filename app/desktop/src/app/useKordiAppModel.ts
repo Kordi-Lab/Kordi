@@ -4,6 +4,8 @@ import { useKordiAppShellComposition } from '@/app/useKordiAppShellComposition';
 import { useKordiWorkspaceState } from '@/app/useKordiWorkspaceState';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { useCloudCalls } from '@/features/cloud/useCloudCalls';
+import { useEffect, useMemo } from 'react';
+import { chatNavigationIndex } from '@/features/chat/chatNavigation';
 
 export function useKordiAppModel({
   cloudSessionOverride,
@@ -22,6 +24,13 @@ export function useKordiAppModel({
     agentDisplayName: foundation.profile.localAgentDisplayName,
   });
   const workspace = useKordiWorkspaceState(foundation);
+  const { chatConversations, archivedParticipantSpaces } = workspace.conversations;
+  const chatDestinations = useMemo(() => chatNavigationIndex([
+    ...chatConversations,
+    ...archivedParticipantSpaces.flatMap(space => space.sessions.map(session => session.conversation)),
+  ]), [archivedParticipantSpaces, chatConversations]);
+  const updateChatNavigationIndex = foundation.navigation.updateChatNavigationIndex;
+  useEffect(() => updateChatNavigationIndex(chatDestinations), [chatDestinations, updateChatNavigationIndex]);
   const actions = useKordiAppActions({ foundation, workspace });
   const cloudCalls = useCloudCalls({
     account: foundation.environment.cloudSession.account,

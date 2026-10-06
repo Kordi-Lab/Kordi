@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn desktop_and_cloud_share_one_run_and_preserve_queue_during_takeover() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "execution-owner", "Execution Owner").await;
     sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")
         .bind(&owner.account_id)

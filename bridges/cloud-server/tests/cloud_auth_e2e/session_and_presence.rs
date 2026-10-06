@@ -4,14 +4,14 @@ use super::*;
 async fn logout_invalidates_session_token() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("logout");
-    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool));
     let router = fast_router(state);
 
     let signup_resp = router
         .clone()
         .oneshot(post(
             "/v1/cloud/auth/signup",
-            signup_body(&email, "correct horse"),
+            signup_body(&email, "correct horse").await,
         ))
         .await
         .unwrap();
@@ -37,7 +37,7 @@ async fn logout_invalidates_session_token() {
 #[tokio::test]
 async fn presence_contacts_returns_self_and_accepted_contacts_only() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
 
     let a_email = unique_email("presence-a");
@@ -49,7 +49,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&a_email, "correct horse"),
+                signup_body(&a_email, "correct horse").await,
             ))
             .await
             .unwrap(),
@@ -60,7 +60,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&b_email, "correct horse"),
+                signup_body(&b_email, "correct horse").await,
             ))
             .await
             .unwrap(),
@@ -71,7 +71,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&c_email, "correct horse"),
+                signup_body(&c_email, "correct horse").await,
             ))
             .await
             .unwrap(),
@@ -191,7 +191,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
 #[tokio::test]
 async fn presence_separates_frontend_and_desktop_runtime_activity() {
     let Some(pool) = try_pool().await else { return };
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = fast_router(state);
     let email = unique_email("presence-rollup");
     let signup = read_json(
@@ -203,7 +203,8 @@ async fn presence_separates_frontend_and_desktop_runtime_activity() {
                     &email,
                     "correct horse",
                     device_registration(41, "Test iPhone", "ios"),
-                ),
+                )
+                .await,
             ))
             .await
             .unwrap(),

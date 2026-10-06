@@ -205,6 +205,7 @@ export function baseSidebarProps(overrides: Record<string, unknown> = {}) {
     onCreateBridgeDraft: () => {},
     ...overrides,
   };
+  if (!overrides.activeNav && overrides.initialChatChannel === 'agent') props.activeNav = 'agent-chats';
   return { layout: props, chats: props, projects: props, directory: props, account: props };
 }
 

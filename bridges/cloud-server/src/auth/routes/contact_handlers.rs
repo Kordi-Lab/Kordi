@@ -3,6 +3,7 @@ use super::*;
 pub(super) async fn add_contact(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Extension(rate_limiter): Extension<Arc<CloudRateLimiter>>,
     Json(req): Json<AddContactRequest>,
 ) -> Response {
     let peer = req.peer_account_id.trim().to_string();
@@ -19,6 +20,12 @@ pub(super) async fn add_contact(
             "You cannot add yourself as a contact.",
             StatusCode::BAD_REQUEST,
         );
+    }
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(CONTACT_ADD_LIMIT, &session.account_id)
+        .await
+    {
+        return limited_response(retry_after);
     }
 
     let pool = state.db_pool();

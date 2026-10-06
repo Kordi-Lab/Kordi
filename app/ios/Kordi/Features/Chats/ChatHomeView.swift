@@ -477,14 +477,11 @@ struct ChatHomeView: View {
             if model.isPreviewMode && ProcessInfo.processInfo.arguments.contains("--preview-projects") {
                 Text("Design preview · Demo data").font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 16)
             }
-            if !model.projectDevices.flatMap(\.projects).isEmpty {
-                Text("Projects").font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-            }
             if let error = model.projectError {
                 Text(error).font(.footnote).foregroundStyle(KordiTheme.destructiveText).padding(.horizontal, 16)
             }
+            newAgentSessionButton
+            projectSessionList
             if agentSessions.isEmpty && model.projectDevices.flatMap(\.projects).isEmpty {
                 ContentUnavailableView(
                     searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
@@ -492,46 +489,117 @@ struct ChatHomeView: View {
                     description: Text(searchQuery.isEmpty ? "Use + to start a session with an available agent." : "Try another agent, session, owner, or message.")
                 )
                 .frame(maxWidth: .infinity, minHeight: 360)
-            } else {
-                projectSessionList
             }
         }
         .id(pinLayoutIdentity)
         .accessibilityLabel("Agent chats")
     }
 
+    private var newAgentSessionButton: some View {
+        Button {
+            if let onOpenNewChat { onOpenNewChat(.agent) }
+            else { newChatMode = .agent }
+        } label: {
+            Label("New session", systemImage: "plus")
+                .font(.footnote)
+                .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
+                .padding(.horizontal, 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets())
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+    }
+
     private var projectSessionList: some View {
         let sections = ChatProjectSections.build(conversations: model.projectConversations, devices: model.projectDevices, search: searchQuery, collapsedForks: collapsedAgentForkParentIds, pinned: model.pinnedSessionIds)
-        return ForEach(sections) { section in
-            VStack(alignment: .leading, spacing: 0) {
+        return Group {
+            if let pinned = sections.first(where: { $0.id == "pinned" }) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Pinned")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
+                        .padding(.horizontal, 16)
+                    ForEach(pinned.sessions) { agentSessionActionRow($0) }
+                }
+            }
+            HStack(spacing: 0) {
+                agentSectionToggle("Projects", id: "projects")
+                Button {
+                    projectTarget = nil
+                    showingProjectPicker = true
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 44, height: dynamicTypeSize.isAccessibilitySize ? 44 : 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("New project")
+                .padding(.trailing, 6)
+            }
+            if !collapsedProjectIDs.contains("projects") || !searchQuery.isEmpty {
+                ForEach(sections.filter { $0.project != nil }) { section in
+                    projectSessionSection(section)
+                }
+            }
+            if let recents = sections.first(where: { $0.id == "recents" }) {
+                projectSessionSection(recents)
+            }
+        }
+        .listRowInsets(EdgeInsets())
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+    }
+
+    private func agentSectionToggle(_ title: String, id: String) -> some View {
+        Button {
+            if !collapsedProjectIDs.insert(id).inserted { collapsedProjectIDs.remove(id) }
+        } label: {
+            HStack(spacing: 7) {
+                Text(title)
+                Image(systemName: collapsedProjectIDs.contains(id) ? "chevron.right" : "chevron.down")
+                    .font(.caption2)
+            }
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(collapsedProjectIDs.contains(id) ? "Collapsed" : "Expanded")
+    }
+
+    private func projectSessionSection(_ section: ChatProjectSessionSection) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let project = section.project {
                 Button {
                     if !collapsedProjectIDs.insert(section.id).inserted { collapsedProjectIDs.remove(section.id) }
                 } label: {
                     HStack(spacing: 7) {
-                        if let project = section.project {
-                            Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down").font(.caption2)
-                            Image(systemName: "folder")
-                            Text(project.name)
-                            Spacer()
-                            if section.device?.online == false { Text("Offline").font(.caption2).foregroundStyle(.secondary) }
-                        } else {
-                            Text("Recents")
-                            Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down").font(.caption2)
-                        }
+                        Image(systemName: collapsedProjectIDs.contains(section.id) ? "chevron.right" : "chevron.down").font(.caption2)
+                        Image(systemName: "folder")
+                        Text(project.name)
+                        Spacer()
+                        if section.device?.online == false { Text("Offline").font(.caption2).foregroundStyle(.secondary) }
                     }
-                    .font(.subheadline)
-                    .foregroundStyle(section.project == nil ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .font(.footnote)
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 32, alignment: .leading)
                     .padding(.horizontal, 16)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityValue(collapsedProjectIDs.contains(section.id) ? "Collapsed" : "Expanded")
-                if !collapsedProjectIDs.contains(section.id) {
-                    ForEach(section.sessions) { item in
-                        agentSessionActionRow(item)
-                            .padding(.leading, section.project == nil ? 0 : 20)
-                    }
+            } else {
+                agentSectionToggle("Recents", id: section.id)
+            }
+            if !collapsedProjectIDs.contains(section.id) || !searchQuery.isEmpty {
+                ForEach(section.sessions) { item in
+                    agentSessionActionRow(item)
+                        .padding(.leading, section.project == nil ? 0 : 20)
                 }
             }
         }
@@ -630,7 +698,7 @@ struct ChatHomeView: View {
             requestDelete(item.conversation)
         }
         .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, delete, or archive.")
-        .chatHomeRow(separatorLeading: 16)
+        .chatHomeRow(separatorLeading: 16, verticalPadding: 0)
     }
 
     private func agentSessionButton(_ item: AgentSessionListItem) -> some View {
@@ -666,7 +734,7 @@ struct ChatHomeView: View {
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
             .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : 56)
-            .frame(minHeight: 44)
+            .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 44 : 36)
             .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
             .contentShape(Rectangle())
         }
@@ -1244,21 +1312,26 @@ private struct ChatPullToRefreshScrollView<Content: View>: View {
 
     private func list(includeLegacyOffsetProbe: Bool) -> some View {
         List {
-            if includeLegacyOffsetProbe {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: ChatPullOffsetPreferenceKey.self,
-                        value: proxy.frame(in: .named(coordinateSpaceName)).minY
-                    )
+            Section {
+                if includeLegacyOffsetProbe {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ChatPullOffsetPreferenceKey.self,
+                            value: proxy.frame(in: .named(coordinateSpaceName)).minY
+                        )
+                    }
+                    .frame(height: 0)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .accessibilityHidden(true)
                 }
-                .frame(height: 0)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .accessibilityHidden(true)
-            }
 
-            content
+                content
+                    .listRowSeparator(.hidden)
+            }
+            // Rows provide their own dividers; empty states need no trailing rule.
+            .listSectionSeparator(.hidden)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -1529,10 +1602,10 @@ private extension View {
         ))
     }
 
-    func chatHomeRow(separatorLeading: CGFloat) -> some View {
+    func chatHomeRow(separatorLeading: CGFloat, verticalPadding: CGFloat = 4) -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.vertical, verticalPadding)
             .listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)

@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn owner_can_stop_from_another_device_but_members_and_stale_executions_cannot() {
     let Some(pool) = try_pool().await else { return };
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "stop-owner", "Owner").await;
     let peer = signup(&router, "stop-peer", "Peer").await;
     let outsider = signup(&router, "stop-outsider", "Outsider").await;

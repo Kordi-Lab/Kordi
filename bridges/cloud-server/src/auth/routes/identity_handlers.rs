@@ -1,5 +1,11 @@
 use super::*;
 
+mod email_linking;
+use email_linking::{
+    existing_email_account_message, linkable_email_account, mark_primary_email_verified,
+    OAuthLoginError, OAUTH_EMAIL_REQUIRES_SIGN_IN,
+};
+
 type OAuthStateRow = (
     String,
     String,
@@ -296,7 +302,28 @@ pub(super) async fn oauth_callback(
             url.push_str(&encode_oauth_fragment(&body));
             Redirect::to(&url).into_response()
         }
-        Err(_) => redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login."),
+        Err(OAuthLoginError::ExistingEmailAccount {
+            account_id,
+            password_sign_in,
+        }) => {
+            let _ = write_audit(
+                pool,
+                Some(&account_id),
+                None,
+                "auth.oauth.link_refused",
+                serde_json::json!({"provider": provider.id()}),
+            )
+            .await;
+            redirect_with_oauth_error_code(
+                &redirect_after,
+                OAUTH_EMAIL_REQUIRES_SIGN_IN,
+                existing_email_account_message(password_sign_in),
+            )
+        }
+        Err(OAuthLoginError::Database(error)) => {
+            eprintln!("[oauth] finish {} login: {error}", provider.id());
+            redirect_with_oauth_error(&redirect_after, "Could not finish OAuth login.")
+        }
     }
 }
 
@@ -305,7 +332,7 @@ pub(super) async fn complete_oauth_login(
     provider: OAuthProvider,
     profile: OAuthProfile,
     registration: &NormalizedDeviceRegistration,
-) -> Result<(AuthResponse, bool), sqlx_core::Error> {
+) -> Result<(AuthResponse, bool), OAuthLoginError> {
     let now = Utc::now().to_rfc3339();
     let normalized_email = profile
         .email
@@ -318,22 +345,13 @@ pub(super) async fn complete_oauth_login(
     .bind(&profile.provider_subject)
     .fetch_optional(pool)
     .await?;
-    let linked_email_account: Option<(String,)> =
-        if existing_identity.is_none() && profile.email_verified {
-            if let Some(email) = normalized_email.as_deref() {
-                query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
-                    .bind(email)
-                    .fetch_optional(pool)
-                    .await?
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+    let linked_email_account = match (&existing_identity, normalized_email.as_deref()) {
+        (None, Some(email)) => linkable_email_account(pool, email, profile.email_verified).await?,
+        _ => None,
+    };
     let account_id = existing_identity
-        .or(linked_email_account)
         .map(|row| row.0)
+        .or(linked_email_account)
         .unwrap_or_else(|| format!("acct_{}", uuid::Uuid::new_v4().simple()));
     let display_name = clean_profile_display_name(profile.display_name.as_deref())
         .or_else(|| profile.username.clone());
@@ -400,6 +418,12 @@ pub(super) async fn complete_oauth_login(
     .execute(&mut *tx)
     .await?;
 
+    if profile.email_verified {
+        if let Some(email) = normalized_email.as_deref() {
+            mark_primary_email_verified(&mut tx, &account_id, email, &now).await?;
+        }
+    }
+
     let authorization_state = if is_new_account {
         "confirmed"
     } else {
@@ -446,3 +470,6 @@ pub(super) async fn complete_oauth_login(
         is_new_authorization,
     ))
 }
+
+#[cfg(test)]
+mod tests;

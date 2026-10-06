@@ -7,7 +7,7 @@ async fn desktop_provider_auth_requires_the_live_owner_mac_claim() {
         "KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY",
         "test-provider-auth-key-that-is-long-enough",
     );
-    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let router = test_router(Arc::new(signup_email_fixture::state(pool.clone())));
     let owner = signup(&router, "desktop-provider-owner", "Owner").await;
     let other = signup(&router, "desktop-provider-other", "Other").await;
     sqlx_core::query::query("UPDATE cloud_devices SET device_platform='macos' WHERE account_id=$1")

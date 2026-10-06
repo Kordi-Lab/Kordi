@@ -50,7 +50,7 @@ test('Agent ancestry never adds an Agent session or its unread count to group or
       assert.equal(model.allSidebarSessionRowsById.get(child.id)?.session.conversation.forkedFromSessionId, parent.id);
       return null;
     }));
-    const agentProps = { ...props, chats: { ...props.chats, initialChatChannel: 'agent' } };
+    const agentProps = { ...props, layout: { ...props.layout, activeNav: 'agent-chats' }, chats: { ...props.chats, initialChatChannel: 'agent' } };
     const agentMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, agentProps as never));
     assert.match(agentMarkup, /data-agent-session-row="legacy-agent-task"/);
     assert.match(agentMarkup, /data-agent-session-row="contact-agent-task"/);

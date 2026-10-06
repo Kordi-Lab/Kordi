@@ -15,7 +15,6 @@ use kordi_cloud_server::chat_sync::models::{
     ConversationKind, CreateConversationRequest, SendMessageRequest,
 };
 use kordi_cloud_server::chat_sync::store as chat_store;
-use kordi_cloud_server::events::EventBus;
 use kordi_cloud_server::pg::init_pool;
 use kordi_cloud_server::server::{router_with_rate_limiter, ServerState};
 use serde_json::{json, Value};
@@ -45,6 +44,7 @@ fn test_router(state: Arc<ServerState>) -> axum::Router {
         per_ip_window: Duration::from_secs(60),
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
+        per_email_global_failure_limit: 50,
     });
     router_with_rate_limiter(state, limiter)
 }
@@ -141,12 +141,13 @@ async fn signup(router: &axum::Router, prefix: &str, display_name: &str) -> Test
         .oneshot(post(
             "/v1/cloud/auth/signup",
             Body::from(
-                json!({
+                signup_email_fixture::with_proof(json!({
                     "email": email,
                     "password": "correct horse",
                     "displayName": display_name,
                     "avatarSeed": "agent_runtime_avatar",
-                })
+                }))
+                .await
                 .to_string(),
             ),
         ))
@@ -410,6 +411,8 @@ mod sandboxes;
 mod scheduled_runs;
 #[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]
 mod shared_desktop_lease;
+#[path = "cloud_agent_runtime_e2e/subsession_budgets.rs"]
+mod subsession_budgets;
 #[path = "cloud_agent_runtime_e2e/subsession_follow.rs"]
 mod subsession_follow;
 #[path = "cloud_agent_runtime_e2e/subsession_stop.rs"]
@@ -422,3 +425,6 @@ mod attachment_backfill;
 
 #[path = "cloud_agent_runtime_e2e/projects.rs"]
 mod projects;
+
+#[path = "common/signup_email.rs"]
+mod signup_email_fixture;

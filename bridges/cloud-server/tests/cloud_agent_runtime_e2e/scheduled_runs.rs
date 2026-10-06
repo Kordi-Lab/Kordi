@@ -4,7 +4,7 @@ use super::*;
 async fn scheduled_direct_contact_completion_routes_back_to_originating_contact_session() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "scheduled-direct-owner", "Owner").await;
     let peer = signup(&router, "scheduled-direct-peer", "Peer").await;
@@ -71,7 +71,7 @@ async fn scheduled_direct_contact_completion_routes_back_to_originating_contact_
 async fn scheduled_group_completion_routes_back_to_originating_group_session() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
-    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let state = Arc::new(signup_email_fixture::state(pool.clone()));
     let router = test_router(state);
     let owner = signup(&router, "scheduled-group-owner", "Owner").await;
     let peer = signup(&router, "scheduled-group-peer", "Peer").await;
