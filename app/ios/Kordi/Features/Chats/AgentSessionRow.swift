@@ -41,23 +41,14 @@ struct AgentSessionRow: View {
 
     var body: some View {
         Group {
-            if compact {
-                HStack(spacing: 10) {
-                    title
-                    Spacer(minLength: 4)
-                    if conversation.hasUnreadAttention { attentionBadge }
-                    else if let activity = conversation.agentActivity, activity != .ready {
-                        AgentSessionActivityLabel(activity: activity, compact: true)
-                    }
-                }
-                .padding(.vertical, 6)
-            } else if dynamicTypeSize.isAccessibilitySize {
+            if dynamicTypeSize.isAccessibilitySize {
                 accessibilityLayout
             } else {
                 regularLayout
+                    .padding(.vertical, compact ? 4 : 0)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : (compact ? 44 : 46), alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
@@ -86,7 +77,7 @@ struct AgentSessionRow: View {
     }
 
     private var regularLayout: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: compact ? .top : .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 title
                 preview
@@ -94,7 +85,7 @@ struct AgentSessionRow: View {
 
             Spacer(minLength: 8)
 
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: compact ? 2 : 4) {
                 timestamp
 
                 if conversation.hasUnreadAttention {
@@ -116,7 +107,7 @@ struct AgentSessionRow: View {
                     .accessibilityHidden(true)
             }
             Text(sessionTitle)
-                .font(compact ? .subheadline : .headline)
+                .font(compact ? .subheadline.weight(.semibold) : .headline)
                 .foregroundStyle(.primary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 .layoutPriority(1)
@@ -133,13 +124,14 @@ struct AgentSessionRow: View {
             BlobEmojiPreviewText(text: conversation.lastMessage.nonEmpty ?? "No messages yet")
                 .foregroundStyle(.secondary)
         }
-        .font(.subheadline)
+        .font(compact ? .caption : .subheadline)
         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
     }
 
     private var timestamp: some View {
         Text(relativeTimestamp)
-            .font(.caption)
+            .font(compact ? .caption2 : .caption)
+            .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(conversation.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary)
             .lineLimit(1)
     }

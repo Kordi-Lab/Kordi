@@ -242,3 +242,38 @@ test('ordinary session lists stay fully mounted while scrolling', async () => {
 
   assert.equal(host.querySelectorAll('[data-chat-sidebar-row]').length, rows.length);
 });
+
+test('switching between chat destinations restores their scroll positions after remounting', async () => {
+  const rows: ChatSidebarRow[] = Array.from({ length: 100 }, (_, index) => ({
+    kind: 'session', key: `session:s${index}`, sessionId: `s${index}`,
+    spaceId: 'space:scroll', depth: 0, activePath: false,
+  }));
+  const scrollOffsets = { current: new Map<string, number>() };
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  const renderDestination = async (destination: string) => {
+    await act(async () => root?.render(
+      <VirtualChatList
+        key={destination}
+        rows={rows}
+        activeSessionId="s0"
+        scrollOffsets={scrollOffsets}
+        scrollPositionKey={destination}
+        scrollStyle={{ height: 200 }}
+        renderRow={(row) => <div data-test-row-height="48">{row.key}</div>}
+      />,
+    ));
+    await flush();
+    return host.querySelector<HTMLElement>('[data-virtual-chat-list="true"]')!;
+  };
+
+  const agentsViewport = await renderDestination('agent:active');
+  await act(async () => agentsViewport.scrollTo({ top: 600 }));
+  await flush();
+  const contactsViewport = await renderDestination('contact:active');
+  await act(async () => contactsViewport.scrollTo({ top: 240 }));
+  await flush();
+  assert.equal((await renderDestination('agent:active')).scrollTop, 600);
+  assert.equal((await renderDestination('contact:active')).scrollTop, 240);
+});

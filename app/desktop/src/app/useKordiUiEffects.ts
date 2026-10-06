@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
@@ -136,11 +137,11 @@ export function useKordiUiEffects({
   const transcriptScrollMetricsRef = useRef<{ scrollHeight: number; scrollTop: number; clientHeight: number } | null>(null);
 
   useEffect(() => {
-    if (!isNativeShell || !desktopChatState?.activeSessionId) return;
+    if (!isNativeShell || activeNav !== 'agent-chats' || !desktopChatState?.activeSessionId) return;
     if (isCloudAgentRuntimeSessionId(desktopChatState.activeSessionId)) return;
     if (isUnmaterializedDesktopAgentSession(desktopChatState.activeSession)) return;
     setActiveConvId((current) => (!current || current === 'my-agent' ? desktopChatState.activeSessionId : current));
-  }, [desktopChatState, isNativeShell, setActiveConvId]);
+  }, [activeNav, desktopChatState, isNativeShell, setActiveConvId]);
 
   useEffect(() => {
     if (!isNativeShell || !isCloudAgentRuntimeSessionId(activeConvId)) return;
@@ -250,7 +251,7 @@ export function useKordiUiEffects({
   ]);
 
   useLayoutEffect(() => {
-    if (activeNav !== 'chats' && activeNav !== 'projects') return;
+    if (!isChatNavigation(activeNav) && activeNav !== 'projects') return;
 
     shouldAutoFollowChatRef.current = true;
     setChatTranscriptAtLatest(true);
@@ -263,7 +264,7 @@ export function useKordiUiEffects({
   }, [activeConvId, activeNav, activeProjectSessionId, chatTranscriptScrollRef, setChatTranscriptAtLatest, shouldAutoFollowChatRef]);
 
   useLayoutEffect(() => {
-    if (activeNav !== 'chats' && activeNav !== 'projects') return;
+    if (!isChatNavigation(activeNav) && activeNav !== 'projects') return;
 
     const container = chatTranscriptScrollRef.current;
     if (!container) return;

@@ -18,9 +18,11 @@ import {
 import type { ComposerDraftState } from '@/features/chat/composerDrafts';
 import { updateScopeDraft } from '@/features/chat/composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
+import { conversationIdAfterRemoval } from '@/features/chat/chatNavigation';
 import type {
   CanonicalSessionState,
   DesktopChatState,
+  Conversation,
 } from '@/kordi-app/types';
 import {
   archiveDesktopChatSession,
@@ -40,6 +42,7 @@ import {
 import { appendCanonicalRenameNotice } from './canonicalRenameNotice';
 
 type UseKordiChatSessionActionsArgs = {
+  conversations?: readonly Conversation[];
   account: CloudAccount | null;
   activeConversationId: string;
   canonicalState: CanonicalSessionState | null;
@@ -79,6 +82,7 @@ type UseKordiChatSessionActionsArgs = {
 };
 
 export function useKordiChatSessionActions({
+  conversations = [],
   account,
   activeConversationId,
   canonicalState,
@@ -106,11 +110,12 @@ export function useKordiChatSessionActions({
 }: UseKordiChatSessionActionsArgs) {
   const desktopActiveSessionId = desktopState?.activeSessionId;
   const desktopSessions = desktopState?.sessions;
+  const fallbackChatSessionId = useCallback((removedId: string) => (
+    conversationIdAfterRemoval(conversations, removedId, desktopSessions?.find(session => session.id !== removedId)?.id ?? LOCAL_DRAFT_CHAT_CONVERSATION_ID)
+  ), [conversations, desktopSessions]);
 
   const optimisticallyRemoveSession = useCallback((sessionId: string, hideLocally = true) => {
-    const fallbackSessionId = desktopSessions?.find(
-      (session) => session.id !== sessionId,
-    )?.id ?? LOCAL_DRAFT_CHAT_CONVERSATION_ID;
+    const fallbackSessionId = fallbackChatSessionId(sessionId);
     if (hideLocally) {
       setLocallyHiddenSessionIds((current) => new Set(current).add(sessionId));
     }
@@ -137,7 +142,7 @@ export function useKordiChatSessionActions({
   }, [
     activeConversationId,
     desktopActiveSessionId,
-    desktopSessions,
+    fallbackChatSessionId,
     setActiveConversationId,
     setCanonicalState,
     setComposerDrafts,
@@ -297,7 +302,7 @@ export function useKordiChatSessionActions({
         activeConversationId === trimmedSessionId
         || desktopActiveSessionId === trimmedSessionId
       ) {
-        setActiveConversationId(nextState.activeSessionId);
+        setActiveConversationId(fallbackChatSessionId(trimmedSessionId));
       }
       await refreshCanonicalState();
     } catch (error) {
@@ -311,6 +316,7 @@ export function useKordiChatSessionActions({
     canonicalState,
     desktopActiveSessionId,
     hideCloudSession,
+    fallbackChatSessionId,
     isNativeShell,
     optimisticallyRemoveSession,
     refreshCanonicalState,
@@ -338,7 +344,7 @@ export function useKordiChatSessionActions({
             activeConversationId === trimmedSessionId
             || desktopActiveSessionId === trimmedSessionId
           ) {
-            setActiveConversationId(nextState.activeSessionId);
+            setActiveConversationId(fallbackChatSessionId(trimmedSessionId));
           }
         } catch (localError) {
           const localMessage = localError instanceof Error
@@ -360,7 +366,7 @@ export function useKordiChatSessionActions({
         activeConversationId === trimmedSessionId
         || desktopActiveSessionId === trimmedSessionId
       ) {
-        setActiveConversationId(nextState.activeSessionId);
+        setActiveConversationId(fallbackChatSessionId(trimmedSessionId));
       }
       await refreshCanonicalState();
     } catch (error) {
@@ -375,6 +381,7 @@ export function useKordiChatSessionActions({
     canonicalState,
     deleteCloudSession,
     desktopActiveSessionId,
+    fallbackChatSessionId,
     isNativeShell,
     optimisticallyRemoveSession,
     refreshCanonicalState,

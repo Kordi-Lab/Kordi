@@ -7543,6 +7543,17 @@ final class AppModel: ObservableObject {
         })
         conversations = fixture.conversations
         messagesByConversation = fixture.messagesByConversation
+        if ProcessInfo.processInfo.arguments.contains("--preview-projects"),
+           let template = conversations.first(where: { $0.kind == .agent && !$0.isAgentLaunchTemplate }) {
+            for (index, title) in ["Review homepage", "Update typography", "Improve project discovery", "Review sidebar navigation"].enumerated() {
+                var session = AgentSessionFactory.make(from: template, ownAccountId: fixture.account.accountId, randomId: "sidebar-preview-\(index)")
+                session.displayName = title
+                session.lastMessage = "Preview conversation"
+                session.lastActivityAt = now.addingTimeInterval(Double(-index * 60))
+                conversations.append(session)
+                if index == 0 { pinnedSessionIds.insert(session.sessionId) }
+            }
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-incoming-message"),
            let index = conversations.firstIndex(where: { $0.id == "person:acct_maya" }),

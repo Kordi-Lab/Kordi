@@ -45,6 +45,7 @@ export function MainContentSwitch({
           <AgentsPage {...agentsPageProps} />
         </Suspense>
       );
+    case 'agent-chats':
     case 'chats':
     default:
       return <ChatsPage {...chatsPageProps} />;

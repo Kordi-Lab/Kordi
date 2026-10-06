@@ -207,7 +207,7 @@ function selfParticipant(participants: ConversationParticipant[]) {
   return participants.find((participant) => isSelfParticipant(participant));
 }
 
-function spaceKindForConversation(conversation: Conversation, nonSelf: ConversationParticipant[]): ParticipantSpaceKind {
+export function spaceKindForConversation(conversation: Conversation, nonSelf = nonSelfParticipants(conversation)): ParticipantSpaceKind {
   const humanCount = nonSelfHumans(nonSelf).length;
   if (conversation.participantSpaceId || humanCount > 1) {
     return 'group';

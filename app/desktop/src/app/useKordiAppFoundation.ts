@@ -1,3 +1,4 @@
+import { isChatNavigation } from '@/features/chat/chatNavigation';
 import { useMemo, useRef, useState } from 'react';
 import { useCompanionSessionRead } from '@/app/useCompanionSessionRead';
 import { useAppLayoutState } from '@/app/useAppLayoutState';
@@ -89,17 +90,6 @@ export function useKordiAppFoundation({
   const [participantSpaceDrafts, setParticipantSpaceDrafts] =
     useState<ParticipantSpaceDraft[]>([]);
 
-  const localUi = useKordiLocalUiState();
-  const {
-    contactsUi,
-    agentsUi,
-    projectsUi,
-    settingsUi,
-    sessionUi,
-    composerUi,
-    chatsUi,
-  } = localUi;
-
   const {
     desktopAuthState,
     isDesktopAuthLoading,
@@ -161,6 +151,7 @@ export function useKordiAppFoundation({
     setActiveNav,
     activeConvId,
     setActiveConvId,
+    updateChatNavigationIndex,
     activeProjectId,
     activeProjectSessionId,
     projectSelectedSessionIds,
@@ -173,6 +164,17 @@ export function useKordiAppFoundation({
     projectRoutingGroups,
     isNativeShell,
   });
+  const localUi = useKordiLocalUiState(activeNav);
+  const {
+    contactsUi,
+    agentsUi,
+    projectsUi,
+    settingsUi,
+    sessionUi,
+    composerUi,
+    chatsUi,
+  } = localUi;
+
   const { canMarkRead, setIsTranscriptAtLatest } = useActiveConversationReadPresentation({ activeNav, activeConversationId: activeConvId });
   const {
     visibleSettingsSections,
@@ -313,7 +315,7 @@ export function useKordiAppFoundation({
     desktopAuthState, providerAuthSyncIntent,
   });
   const setReadableCompanionSessionId = useCompanionSessionRead({
-    enabled: activeNav === 'chats', account: cloudSession.account,
+    enabled: isChatNavigation(activeNav), account: cloudSession.account,
     canonicalState: canonicalSessionState, setCanonicalState: setCanonicalSessionState,
     markRead: markCloudSessionsRead, localSessionUnreadCounts, clearUnreadForSession,
   });
@@ -428,7 +430,7 @@ export function useKordiAppFoundation({
       refreshDesktopChat, watchDesktopLiveTurn, mapDesktopMessages,
     },
     navigation: {
-      activeNav, setActiveNav, activeConvId, setActiveConvId,
+      activeNav, setActiveNav, activeConvId, setActiveConvId, updateChatNavigationIndex,
       activeProjectId, activeProjectSessionId, projectSelectedSessionIds,
       activeDetailTab, setActiveDetailTab, selectProject, selectProjectSession,
     },
