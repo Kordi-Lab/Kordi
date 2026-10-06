@@ -142,6 +142,26 @@ export function pruneLocalSessionUnreadCounts(
   return changed ? next : current;
 }
 
+/**
+ * Sessions whose refresh-scoped stores must survive a desktop state update.
+ * A new side session stays unlisted until its first turn persists, so a
+ * session with a running, watched turn counts as known while that turn runs.
+ */
+export function knownDesktopSessionIds(
+  state: DesktopChatState,
+  liveTurns: Readonly<Record<string, DesktopChatTurnSnapshot>>,
+  watchedTurnIds: ReadonlySet<string>,
+) {
+  return new Set([
+    state.activeSessionId,
+    ...state.sessions.map((session) => session.id),
+    ...state.projects.flatMap((project) => project.sessions.map((session) => session.id)),
+    ...Object.values(liveTurns)
+      .filter((turn) => !turn.completed && watchedTurnIds.has(turn.id))
+      .map((turn) => turn.sessionId),
+  ]);
+}
+
 export function pruneDesktopLiveTurnsByKnownSessions(
   current: Record<string, DesktopChatTurnSnapshot>,
   knownSessionIds: ReadonlySet<string>,

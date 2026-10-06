@@ -7,7 +7,7 @@ import {
 } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 
-import { mergeBackgroundDesktopChatState, mergeLatestDesktopChatState, pruneDesktopLiveTurnsByKnownSessions, pruneLocalSessionUnreadCounts, pruneQueuedDesktopMessagesByKnownSessions } from './desktopChatStateReducers';
+import { knownDesktopSessionIds, mergeBackgroundDesktopChatState, mergeLatestDesktopChatState, pruneDesktopLiveTurnsByKnownSessions, pruneLocalSessionUnreadCounts, pruneQueuedDesktopMessagesByKnownSessions } from './desktopChatStateReducers';
 import {
   buildCompletedDesktopAssistantMessage,
   desktopAssistantMessageMatchesTurn,
@@ -208,11 +208,7 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
   useEffect(() => {
     if (!desktopChatState) return;
 
-    const knownSessionIds = new Set([
-      desktopChatState.activeSessionId,
-      ...desktopChatState.sessions.map((session) => session.id),
-      ...desktopChatState.projects.flatMap((project) => project.sessions.map((session) => session.id)),
-    ]);
+    const knownSessionIds = knownDesktopSessionIds(desktopChatState, desktopLiveTurnsBySessionRef.current, watchedDesktopTurnIdsRef.current);
     // Keep unread counts until the user actually views the session, not merely because
     // that session is the most recently loaded desktop transcript.
     const visibleLocalSessionId = visibleLocalSessionIdRef.current;
