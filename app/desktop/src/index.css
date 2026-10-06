@@ -24,6 +24,7 @@
 @import './styles/shell-image-groups.css';
 @import './styles/shell-transcript.css';
 @import './styles/markdown-code.css';
+@import './styles/markdown-links.css';
 @import './styles/message-link-preview.css';
 @import './styles/shell-media-lightbox.css';
 @import './styles/shell-transcript-timeline.css';
