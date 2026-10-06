@@ -24,6 +24,9 @@ type UseChatCompanionLayoutInput = {
   onHide?: () => void;
 };
 
+/** The split track is one hairline; the divider's hit area extends over both panes. */
+const SPLIT_DIVIDER_WIDTH = 1;
+
 export function useChatCompanionLayout({
   pageConversationId,
   activePaneKind,
@@ -138,9 +141,9 @@ export function useChatCompanionLayout({
     // Keep all three tracks, including the zero-width closed track, so the
     // browser can interpolate space continuously and reverse mid-transition.
     gridColumns: side === 'right'
-      ? `minmax(280px, 1fr) ${isVisible ? 10 : 0}px minmax(${isVisible ? 280 : 0}px, ${isVisible ? (1 - splitLeftFraction) / splitLeftFraction : 0}fr)`
-      : `minmax(${isVisible ? 280 : 0}px, ${isVisible ? splitLeftFraction / (1 - splitLeftFraction) : 0}fr) ${isVisible ? 10 : 0}px minmax(280px, 1fr)`,
-    panelWidth: `clamp(280px, calc((100cqw - 10px) * ${side === 'right' ? 1 - splitLeftFraction : splitLeftFraction}), calc(100cqw - 290px))`,
+      ? `minmax(280px, 1fr) ${isVisible ? SPLIT_DIVIDER_WIDTH : 0}px minmax(${isVisible ? 280 : 0}px, ${isVisible ? (1 - splitLeftFraction) / splitLeftFraction : 0}fr)`
+      : `minmax(${isVisible ? 280 : 0}px, ${isVisible ? splitLeftFraction / (1 - splitLeftFraction) : 0}fr) ${isVisible ? SPLIT_DIVIDER_WIDTH : 0}px minmax(280px, 1fr)`,
+    panelWidth: `clamp(280px, calc((100cqw - ${SPLIT_DIVIDER_WIDTH}px) * ${side === 'right' ? 1 - splitLeftFraction : splitLeftFraction}), calc(100cqw - ${280 + SPLIT_DIVIDER_WIDTH}px))`,
     setFolded: (value: boolean) => {
       if (value) {
         focusCompanionToggleFromPanel();

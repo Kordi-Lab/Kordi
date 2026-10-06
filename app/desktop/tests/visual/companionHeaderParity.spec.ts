@@ -65,6 +65,77 @@ async function expectMatchingHeaders(page: Page, selectors: typeof inPaneSelecto
   return side;
 }
 
+/** The tab rows meet at the shared hairline divider with no body background between them. */
+async function expectContinuousDivider(page: Page, headerSelector: string) {
+  const measure = () => page.evaluate((headerSelector) => {
+    const box = (selector: string) => {
+      const { left, right, top, bottom } = document.querySelector(selector)!.getBoundingClientRect();
+      return { left, right, top, bottom };
+    };
+    const mainHeader = document.querySelector(`.app-chat-main-workspace ${headerSelector}`)!;
+    const divider = document.querySelector('.app-chat-split-divider')!;
+    return {
+      main: box(`.app-chat-main-workspace ${headerSelector}`),
+      panel: box(`[data-chat-side-agent-panel] ${headerSelector}`),
+      divider: box('.app-chat-split-divider'),
+      borderColor: getComputedStyle(mainHeader).borderBottomColor,
+      panelBorderColor: getComputedStyle(document.querySelector(`[data-chat-side-agent-panel] ${headerSelector}`)!).borderBottomColor,
+      borderWidth: getComputedStyle(mainHeader).borderBottomWidth,
+      dividerColor: getComputedStyle(divider).backgroundColor,
+    };
+  }, headerSelector);
+  // Let the panel's opening motion settle before comparing edges.
+  await expect.poll(async () => {
+    const { main, panel, divider } = await measure();
+    return Math.abs(divider.left - main.right) < 0.5 && Math.abs(panel.left - divider.right) < 0.5
+      && divider.right - divider.left > 0.5;
+  }, { timeout: 5000 }).toBe(true);
+  const seam = await measure();
+  expect(seam.borderWidth).toBe('1px');
+  expect(seam.panelBorderColor).toBe(seam.borderColor);
+  // The main row's border ends exactly where the hairline starts, and the panel's begins where it ends.
+  expect(Math.abs(seam.divider.left - seam.main.right)).toBeLessThan(0.5);
+  expect(Math.abs(seam.panel.left - seam.divider.right)).toBeLessThan(0.5);
+  expect(seam.divider.right - seam.divider.left).toBeLessThanOrEqual(1);
+  expect(seam.panel.left - seam.main.right).toBeLessThanOrEqual(1);
+  expect(Math.abs(seam.main.bottom - seam.panel.bottom)).toBeLessThan(0.5);
+  expect(seam.divider.top).toBeLessThanOrEqual(seam.main.top);
+  expect(seam.dividerColor).toBe(seam.borderColor);
+  return seam;
+}
+
+/** Inactive tabs carry no pill unless hovered, and hover matches the main chat. */
+async function expectTabHoverParity(page: Page) {
+  await page.mouse.move(0, 0);
+  const resting = await page.evaluate(() => Array.from(
+    document.querySelectorAll('[data-chat-destination-tabs] [role="tab"][aria-selected="false"]'),
+    (tab) => getComputedStyle(tab).backgroundColor,
+  ));
+  expect(new Set(resting)).toEqual(new Set(['rgba(0, 0, 0, 0)']));
+  const hoverBackground = async (scope: string) => {
+    await page.locator(`${scope} [data-chat-destination-tab="tasks"]`).hover();
+    // Wait out the 140ms color transition: read until two samples agree.
+    return page.evaluate(async (scope) => {
+      const tab = document.querySelector(`${scope} [data-chat-destination-tab="tasks"]`)!;
+      const read = () => getComputedStyle(tab).backgroundColor;
+      const pause = () => new Promise((resolve) => setTimeout(resolve, 80));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      let previous = read();
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await pause();
+        const next = read();
+        if (next === previous) return next;
+        previous = next;
+      }
+      return previous;
+    }, scope);
+  };
+  const mainHover = await hoverBackground(mainPane);
+  expect(mainHover).not.toMatch(/^(rgba\(0, 0, 0, 0\)|oklab\(0 0 0 \/ 0\))$/);
+  expect(await hoverBackground(panel)).toBe(mainHover);
+  await page.mouse.move(0, 0);
+}
+
 for (const appearance of ['light', 'dark'] as const) {
   test(`${appearance}: Ask Agent header and tabs match the main chat`, async ({ page }, testInfo) => {
     const errors = await openPanel(page, `theme=${appearance}&native=0`);
@@ -73,6 +144,8 @@ for (const appearance of ['light', 'dark'] as const) {
     await expect(header.getByRole('button', { name: 'Side chat options' })).toBeVisible();
     await expect(header.getByRole('button', { name: 'Close side chat' })).toBeVisible();
     await expectMatchingHeaders(page, inPaneSelectors);
+    await expectContinuousDivider(page, '.app-chat-pane-header');
+    await expectTabHoverParity(page);
     await page.screenshot({ path: testInfo.outputPath(`companion-header-parity-${appearance}.png`) });
 
     for (const theme of chatThemes) {
@@ -126,6 +199,25 @@ for (const appearance of ['light', 'dark'] as const) {
     });
     expect(rows.tabs).toBeLessThan(1);
     expect(rows.titles).toBeLessThan(1);
+    // Both title rows are painted by the one native title bar, at the same height.
+    const titleRows = await page.evaluate(() => {
+      const describe = (selector: string) => {
+        const row = document.querySelector<HTMLElement>(selector)!;
+        let painter: HTMLElement | null = row;
+        while (painter && getComputedStyle(painter).backgroundColor === 'rgba(0, 0, 0, 0)') painter = painter.parentElement;
+        const { top, height } = row.getBoundingClientRect();
+        return { own: getComputedStyle(row).backgroundColor, top, height, painter: painter?.className, paint: painter ? getComputedStyle(painter).backgroundColor : null };
+      };
+      return {
+        main: describe('.app-native-titlebar-main'),
+        panel: describe('.app-native-companion-titlebar .app-chat-pane-header'),
+      };
+    });
+    expect(titleRows.panel).toEqual(titleRows.main);
+    expect(titleRows.main.painter).toBe('app-native-titlebar');
+    expect(titleRows.main.own).toBe('rgba(0, 0, 0, 0)');
+    await expectContinuousDivider(page, '.app-chat-native-metadata-header');
+    await expectTabHoverParity(page);
     await page.getByRole('navigation', { name: 'Ask Agent destinations' }).getByRole('tab', { name: 'Tasks', exact: true }).click();
     await expect(page.locator('#chat-companion-tasks-panel')).toBeVisible();
     await page.mouse.move(0, 0);

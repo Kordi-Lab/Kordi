@@ -435,7 +435,7 @@ export function ChatCompanionSplitDivider({
   if (!layoutModel.isPresent) return null;
   return (
     <div
-      className="app-chat-split-divider group relative z-10 flex h-full w-2.5 cursor-col-resize touch-none items-center justify-center bg-transparent transition hover:bg-white/[0.035]"
+      className="app-chat-split-divider group relative z-10 h-full cursor-col-resize touch-none"
       data-split-layout-divider="true"
       tabIndex={layoutModel.isVisible ? 0 : -1}
       inert={!layoutModel.isVisible}
@@ -455,7 +455,7 @@ export function ChatCompanionSplitDivider({
       aria-orientation="vertical"
     >
       <span
-        className="pointer-events-none flex h-9 w-full items-center justify-center text-[color:var(--utility-muted-text)] opacity-45 transition group-hover:opacity-80"
+        className="app-chat-split-grip pointer-events-none flex h-9 items-center justify-center text-[color:var(--utility-muted-text)] opacity-45 transition group-hover:opacity-80"
         data-split-layout-grip="true"
         aria-hidden="true"
       >
