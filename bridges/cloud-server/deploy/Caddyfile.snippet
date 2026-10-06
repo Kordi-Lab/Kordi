@@ -7,6 +7,20 @@
 # a long-running kubectl transport process or an embedded cluster IP. Port 8080
 # is the private load-balancer origin and must accept traffic only from Google
 # Front End proxy ranges.
+#
+# Sign-in rate limits, login lockouts, and audit records key on the client
+# address that this file forwards in X-Real-IP. Only the load balancer may
+# name the client, so the :8080 server trusts the Google Front End ranges plus
+# the operator-supplied KORDI_EDGE_LB_ADDRESS (set in the caddy service
+# environment, never committed) and parses X-Forwarded-For strictly. Every
+# other peer is treated as the client itself. This needs Caddy 2.7 or newer.
+
+{
+	servers :8080 {
+		trusted_proxies static 130.211.0.0/22 35.191.0.0/16 {$KORDI_EDGE_LB_ADDRESS}
+		trusted_proxies_strict
+	}
+}
 
 (kordi_product_site) {
 	encode zstd gzip
@@ -15,7 +29,7 @@
 	@cloud_product_routes path /v1/cloud/* /assets/blob-emoji/* /health /updates/*
 	handle @cloud_product_routes {
 		reverse_proxy 127.0.0.1:30081 {
-			header_up X-Real-IP {remote_host}
+			header_up X-Real-IP {client_ip}
 			lb_try_duration 5s
 			lb_try_interval 100ms
 			transport http {
@@ -90,7 +104,7 @@
 
 	handle {
 		reverse_proxy 127.0.0.1:30081 {
-			header_up X-Real-IP {remote_host}
+			header_up X-Real-IP {client_ip}
 			lb_try_duration 5s
 			lb_try_interval 100ms
 			transport http {
