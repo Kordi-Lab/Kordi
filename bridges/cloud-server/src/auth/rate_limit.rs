@@ -14,11 +14,11 @@
 //! # Algorithm
 //!
 //! * **Per-IP rate limit**: a fixed-window counter (`crl:ip:<ip>`) with
-//!   TTL = `per_ip_window`. INCR + EXPIRE on first hit. If the counter
-//!   exceeds the configured limit, the caller is told to retry after
-//!   the remaining TTL. Sliding-window behaviour would be more accurate
-//!   but a fixed window suffices for the abuse-prevention threshold and
-//!   keeps the implementation small.
+//!   TTL = `per_ip_window`. INCR and `EXPIRE NX` run atomically on every
+//!   hit. If the counter exceeds the configured limit, the caller is told
+//!   to retry after the remaining TTL. Sliding-window behaviour would be
+//!   more accurate but a fixed window suffices for the abuse-prevention
+//!   threshold and keeps the implementation small.
 //! * **Per-email lockout**: failures are counted per email *and* client
 //!   address (`crl:email:client:<ip>:<email>:fail`) with TTL =
 //!   `per_email_lockout`; once that reaches `per_email_failure_limit` a
@@ -257,21 +257,25 @@ impl CloudRateLimiter {
         let redis_key = format!("{}:ip:{}", store.key_prefix, key);
         let window_secs = self.config.per_ip_window.as_secs().max(1) as i64;
 
-        let count: i64 = match conn.incr(&redis_key, 1).await {
+        // INCR and EXPIRE NX run in one MULTI/EXEC, so the window counter can
+        // never outlive its window, and a counter left without a TTL gets one.
+        let (count,): (i64,) = match redis::pipe()
+            .atomic()
+            .incr(&redis_key, 1)
+            .cmd("EXPIRE")
+            .arg(&redis_key)
+            .arg(window_secs)
+            .arg("NX")
+            .ignore()
+            .query_async(&mut conn)
+            .await
+        {
             Ok(value) => value,
             Err(err) => {
-                eprintln!("[rate_limit] redis INCR {redis_key}: {err}");
+                eprintln!("[rate_limit] redis INCR/EXPIRE {redis_key}: {err}");
                 return RateLimitDecision::Allowed;
             }
         };
-        if count == 1 {
-            // Best-effort EXPIRE; if it fails the key gets stuck — but the
-            // next bump on a stale counter still works correctly because
-            // we read PTTL below to decide retry_after.
-            if let Err(err) = conn.expire::<_, ()>(&redis_key, window_secs).await {
-                eprintln!("[rate_limit] redis EXPIRE {redis_key}: {err}");
-            }
-        }
         if count > self.config.per_ip_limit as i64 {
             let pttl_ms: i64 = conn.pttl(&redis_key).await.unwrap_or(window_secs * 1000);
             let retry_after = if pttl_ms > 0 {

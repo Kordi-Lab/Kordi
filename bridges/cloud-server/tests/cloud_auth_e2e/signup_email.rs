@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -9,13 +10,13 @@ use super::*;
 #[derive(Default)]
 struct Inbox {
     codes: Mutex<HashMap<String, String>>,
-    fail: bool,
+    fail: AtomicBool,
 }
 
 #[async_trait]
 impl SignupCodeSender for Inbox {
     async fn send_code(&self, email: &str, code: &str) -> Result<(), &'static str> {
-        if self.fail {
+        if self.fail.load(Ordering::SeqCst) {
             return Err("Synthetic delivery failure");
         }
         self.codes
@@ -235,6 +236,28 @@ async fn resend_is_limited_replaces_old_proof_and_has_hourly_budget() {
     );
 }
 
+async fn send_budget(
+    pool: &sqlx_postgres::PgPool,
+    email: &str,
+) -> (
+    i32,
+    chrono::DateTime<chrono::Utc>,
+    chrono::DateTime<chrono::Utc>,
+) {
+    sqlx_core::query_as::query_as(
+        "SELECT send_count, resend_after, window_started_at FROM cloud_signup_email_codes WHERE email = $1",
+    )
+    .bind(email)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn allow_resend(pool: &sqlx_postgres::PgPool, email: &str) {
+    sqlx_core::query::query("UPDATE cloud_signup_email_codes SET resend_after = NOW() - INTERVAL '1 second' WHERE email = $1")
+        .bind(email).execute(pool).await.unwrap();
+}
+
 #[tokio::test]
 async fn missing_mail_configuration_and_failed_delivery_fail_closed() {
     let Some(pool) = try_pool().await else { return };
@@ -245,18 +268,109 @@ async fn missing_mail_configuration_and_failed_delivery_fail_closed() {
         StatusCode::SERVICE_UNAVAILABLE
     );
     let inbox = Arc::new(Inbox {
-        fail: true,
+        fail: AtomicBool::new(true),
         ..Inbox::default()
     });
-    let router = email_router(pool.clone(), inbox);
+    let router = email_router(pool.clone(), inbox.clone());
     assert_eq!(
         send_code(&router, &email).await.status(),
         StatusCode::SERVICE_UNAVAILABLE
     );
-    let (attempts, delivered): (i32, bool) = sqlx_core::query_as::query_as(
-        "SELECT attempts_remaining, delivered_at IS NOT NULL FROM cloud_signup_email_codes WHERE email = $1",
-    ).bind(&email).fetch_one(&pool).await.unwrap();
+    let (rows,): (i64,) = sqlx_core::query_as::query_as(
+        "SELECT COUNT(*)::BIGINT FROM cloud_signup_email_codes WHERE email = $1",
+    )
+    .bind(&email)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        rows, 0,
+        "a first failed delivery leaves no challenge behind"
+    );
+    assert_eq!(account_count(&pool, &email).await, 0);
+
+    // The failure did not start a cooldown or spend a send.
+    inbox.fail.store(false, Ordering::SeqCst);
+    challenge(&router, &inbox, &email).await;
+    let (send_count, resend_after, window_started_at) = send_budget(&pool, &email).await;
+    assert_eq!(send_count, 1);
+
+    // A failed resend restores the budget and leaves an unusable challenge.
+    allow_resend(&pool, &email).await;
+    let before = send_budget(&pool, &email).await;
+    assert!(before.1 < resend_after);
+    assert_eq!(before.2, window_started_at);
+    inbox.fail.store(true, Ordering::SeqCst);
+    assert_eq!(
+        send_code(&router, &email).await.status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(send_budget(&pool, &email).await, before);
+    let (failed_id, attempts, delivered, consumed): (String, i32, bool, bool) =
+        sqlx_core::query_as::query_as(
+            "SELECT verification_id, attempts_remaining, delivered_at IS NOT NULL, consumed_at IS NOT NULL \
+             FROM cloud_signup_email_codes WHERE email = $1",
+        )
+        .bind(&email)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(attempts, 0);
     assert!(!delivered);
+    assert!(!consumed);
+    for guess in ["000000", "123456", "999999"] {
+        assert_eq!(
+            finish(&router, &email, &failed_id, guess).await.status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
     assert_eq!(account_count(&pool, &email).await, 0);
+}
+
+#[tokio::test]
+async fn failed_deliveries_do_not_spend_the_hourly_send_budget() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("flapping-mailer");
+    let inbox = Arc::new(Inbox {
+        fail: AtomicBool::new(true),
+        ..Inbox::default()
+    });
+    let router = email_router(pool.clone(), inbox.clone());
+    for _ in 0..5 {
+        assert_eq!(
+            send_code(&router, &email).await.status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+    inbox.fail.store(false, Ordering::SeqCst);
+    challenge(&router, &inbox, &email).await;
+    assert_eq!(send_budget(&pool, &email).await.0, 1);
+
+    inbox.fail.store(true, Ordering::SeqCst);
+    for _ in 0..5 {
+        allow_resend(&pool, &email).await;
+        assert_eq!(
+            send_code(&router, &email).await.status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+    assert_eq!(send_budget(&pool, &email).await.0, 1);
+
+    inbox.fail.store(false, Ordering::SeqCst);
+    let mut latest = None;
+    for sent in 2..=5 {
+        allow_resend(&pool, &email).await;
+        latest = Some(challenge(&router, &inbox, &email).await);
+        assert_eq!(send_budget(&pool, &email).await.0, sent);
+    }
+    allow_resend(&pool, &email).await;
+    assert_eq!(
+        send_code(&router, &email).await.status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    let (id, code) = latest.unwrap();
+    assert_eq!(
+        finish(&router, &email, &id, &code).await.status(),
+        StatusCode::CREATED
+    );
 }
