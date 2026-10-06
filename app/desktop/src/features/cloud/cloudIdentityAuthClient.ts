@@ -1,6 +1,5 @@
 import type {
   CloudAccount,
-  CloudAccountEmailVerificationInput,
   CloudAuthCapabilities,
   CloudAuthResult,
   CloudOAuthProvider,
@@ -92,33 +91,6 @@ export class CloudIdentityAuthClient {
       '/v1/cloud/auth/signup/code',
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) },
       'Could not send verification code.',
-    );
-  }
-
-  requestAccountEmailCode(token: string): Promise<CloudSignupCodeChallenge> {
-    return this.request<CloudSignupCodeChallenge>(
-      '/v1/cloud/auth/email/verification/code',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({}),
-      },
-      'Could not send verification code.',
-    );
-  }
-
-  async verifyAccountEmail(token: string, input: CloudAccountEmailVerificationInput): Promise<void> {
-    await this.request<void>(
-      '/v1/cloud/auth/email/verification',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          verificationId: input.verificationId,
-          verificationCode: input.verificationCode,
-        }),
-      },
-      'Could not verify email.',
     );
   }
 

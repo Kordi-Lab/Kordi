@@ -19,6 +19,25 @@ function cloudAvatarsEqual(
   );
 }
 
+/**
+ * Keeps the known email verification state when an incoming payload for the
+ * same account omits it, as older servers do on PATCH /me responses.
+ */
+export function carryCloudAccountEmailVerification(
+  previous: CloudAccount | null,
+  next: CloudAccount,
+): CloudAccount {
+  if (
+    next.primaryEmailVerified !== undefined
+    || previous?.primaryEmailVerified === undefined
+    || previous.accountId !== next.accountId
+    || previous.primaryEmail !== next.primaryEmail
+  ) {
+    return next;
+  }
+  return { ...next, primaryEmailVerified: previous.primaryEmailVerified };
+}
+
 export function cloudAccountsEqual(left: CloudAccount | null, right: CloudAccount | null): boolean {
   return left === right || Boolean(
     left

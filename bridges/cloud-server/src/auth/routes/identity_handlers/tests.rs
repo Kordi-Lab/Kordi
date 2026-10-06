@@ -152,7 +152,9 @@ impl crate::auth::signup_email::SignupCodeSender for CapturingSender {
 
 #[tokio::test]
 async fn provider_email_joins_a_password_account_after_inbox_verification() {
-    use crate::auth::account_email::{send_account_email_code, verify_account_email};
+    use crate::auth::account_email::{
+        account_email_to_verify, send_account_email_code, verify_account_email,
+    };
     let Some(pool) = pool().await else { return };
     let email = unique_email("verified-later");
     let existing = insert_account(&pool, &email.to_uppercase(), true, false).await;
@@ -160,14 +162,18 @@ async fn provider_email_joins_a_password_account_after_inbox_verification() {
     let service =
         crate::auth::signup_email::SignupEmailService::new(sender.clone(), vec![9; 32]).unwrap();
 
-    let challenge = send_account_email_code(&pool, Some(&service), &existing)
+    let target = account_email_to_verify(&pool, &existing)
+        .await
+        .unwrap_or_else(|_| panic!("email needs verification"));
+    assert_eq!(target, email);
+    let challenge = send_account_email_code(&pool, &service, &existing, &target)
         .await
         .unwrap_or_else(|_| panic!("code is sent"));
     let (recipient, code) = sender.0.lock().unwrap().clone().unwrap();
     assert_eq!(recipient, email);
     assert!(verify_account_email(
         &pool,
-        Some(&service),
+        &service,
         &existing,
         &challenge.verification_id,
         &code
@@ -184,8 +190,13 @@ async fn provider_email_joins_a_password_account_after_inbox_verification() {
     .await
     .expect("an inbox-verified account accepts a provider-verified email");
     assert_eq!(body.account.account_id, existing);
+    assert_eq!(body.account.primary_email_verified, Some(true));
     assert_eq!(identities_for(&pool, &existing).await, 1);
     assert_eq!(accounts_with_email(&pool, &email).await, 1);
+    assert!(matches!(
+        send_account_email_code(&pool, &service, &existing, &target).await,
+        Err(crate::auth::account_email::AccountEmailError::AlreadyVerified)
+    ));
 }
 
 #[tokio::test]

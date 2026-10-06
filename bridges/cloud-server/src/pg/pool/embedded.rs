@@ -6,71 +6,59 @@ use super::EmbeddedMigration;
 pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(1, "initial cloud schema", "0001_initial.sql"),
     migration!(2, "cloud_attachments table", "0002_attachments.sql"),
-    EmbeddedMigration {
-        version: 3,
-        description: "cloud_contact_requests + approval flow",
-        sql: include_str!("../../../migrations/0003_contact_requests.sql"),
-    },
-    EmbeddedMigration {
-        version: 4,
-        description: "cloud_messages table",
-        sql: include_str!("../../../migrations/0004_cloud_messages.sql"),
-    },
-    EmbeddedMigration {
-        version: 5,
-        description: "cloud OAuth state table",
-        sql: include_str!("../../../migrations/0005_oauth_states.sql"),
-    },
-    EmbeddedMigration {
-        version: 6,
-        description: "allow self cloud messages",
-        sql: include_str!("../../../migrations/0006_allow_self_cloud_messages.sql"),
-    },
-    EmbeddedMigration {
-        version: 7,
-        description: "cloud message session ids",
-        sql: include_str!("../../../migrations/0007_cloud_message_session_ids.sql"),
-    },
-    EmbeddedMigration {
-        version: 8,
-        description: "cloud message attachment links",
-        sql: include_str!("../../../migrations/0008_cloud_message_attachments.sql"),
-    },
-    EmbeddedMigration {
-        version: 9,
-        description: "cloud sync events",
-        sql: include_str!("../../../migrations/0009_cloud_sync_events.sql"),
-    },
-    EmbeddedMigration {
-        version: 10,
-        description: "cloud session forks lineage",
-        sql: include_str!("../../../migrations/0010_cloud_session_forks.sql"),
-    },
-    EmbeddedMigration {
-        version: 11,
-        description: "direct person cloud session ids",
-        sql: include_str!("../../../migrations/0011_direct_person_session_ids.sql"),
-    },
+    migration!(
+        3,
+        "cloud_contact_requests + approval flow",
+        "0003_contact_requests.sql"
+    ),
+    migration!(4, "cloud_messages table", "0004_cloud_messages.sql"),
+    migration!(5, "cloud OAuth state table", "0005_oauth_states.sql"),
+    migration!(
+        6,
+        "allow self cloud messages",
+        "0006_allow_self_cloud_messages.sql"
+    ),
+    migration!(
+        7,
+        "cloud message session ids",
+        "0007_cloud_message_session_ids.sql"
+    ),
+    migration!(
+        8,
+        "cloud message attachment links",
+        "0008_cloud_message_attachments.sql"
+    ),
+    migration!(9, "cloud sync events", "0009_cloud_sync_events.sql"),
+    migration!(
+        10,
+        "cloud session forks lineage",
+        "0010_cloud_session_forks.sql"
+    ),
+    migration!(
+        11,
+        "direct person cloud session ids",
+        "0011_direct_person_session_ids.sql"
+    ),
     EmbeddedMigration {
         version: 12,
         description: "cloud sync event session payloads",
         sql: include_str!("../../../migrations/0012_cloud_sync_event_session_payloads.sql"),
     },
-    EmbeddedMigration {
-        version: 13,
-        description: "cloud session activity",
-        sql: include_str!("../../../migrations/0013_cloud_session_activity.sql"),
-    },
-    EmbeddedMigration {
-        version: 14,
-        description: "cloud session visibility",
-        sql: include_str!("../../../migrations/0014_cloud_session_visibility.sql"),
-    },
-    EmbeddedMigration {
-        version: 17,
-        description: "cloud device presence",
-        sql: include_str!("../../../migrations/0017_cloud_device_presence.sql"),
-    },
+    migration!(
+        13,
+        "cloud session activity",
+        "0013_cloud_session_activity.sql"
+    ),
+    migration!(
+        14,
+        "cloud session visibility",
+        "0014_cloud_session_visibility.sql"
+    ),
+    migration!(
+        17,
+        "cloud device presence",
+        "0017_cloud_device_presence.sql"
+    ),
     EmbeddedMigration {
         version: 18,
         description: "cloud agent fallback runs",

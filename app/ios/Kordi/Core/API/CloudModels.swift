@@ -183,6 +183,26 @@ struct CloudAccount: Codable, Hashable {
     var preferredName: String {
         displayName?.nonEmpty ?? primaryEmail?.nonEmpty ?? "Kordi user"
     }
+
+    /// Keeps a known email verification state when a response omits it, as
+    /// older servers and some account responses do.
+    func preservingEmailVerification(from previous: CloudAccount?) -> CloudAccount {
+        guard primaryEmailVerified == nil,
+              let previous,
+              previous.accountId == accountId,
+              previous.primaryEmail == primaryEmail else { return self }
+        var merged = self
+        merged.primaryEmailVerified = previous.primaryEmailVerified
+        return merged
+    }
+}
+
+/// The latest account email code request, so reopening the sheet during the
+/// resend cooldown reuses the code already sent instead of requesting another.
+struct AccountEmailCodeState {
+    let accountId: String
+    let challenge: CloudSignupCodeChallenge?
+    let resendAt: Date
 }
 
 struct CloudSession: Codable, Hashable {

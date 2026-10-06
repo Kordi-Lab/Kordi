@@ -455,7 +455,7 @@ pub(super) async fn complete_oauth_login(
     .map_err(|_| sqlx_core::Error::Protocol("Could not issue OAuth session.".into()))?;
     tx.commit().await?;
 
-    let account = account_response_row(pool, &account_id)
+    let account = owner_account_response_row(pool, &account_id)
         .await?
         .ok_or(sqlx_core::Error::RowNotFound)?;
     Ok((

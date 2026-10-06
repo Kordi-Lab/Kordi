@@ -22,6 +22,32 @@ final class AccountEmailVerificationModelTests: XCTestCase {
         XCTAssertEqual(account.primaryEmail, "maya@example.com")
     }
 
+    func testResponsesWithoutTheFlagKeepTheKnownVerificationState() throws {
+        let previous = try JSONDecoder().decode(CloudAccount.self, from: accountJSON(verifiedField: #""primaryEmailVerified":true,"#))
+        let omitted = try JSONDecoder().decode(CloudAccount.self, from: accountJSON(verifiedField: ""))
+        let unverified = try JSONDecoder().decode(CloudAccount.self, from: accountJSON(verifiedField: #""primaryEmailVerified":false,"#))
+
+        XCTAssertEqual(omitted.preservingEmailVerification(from: previous).primaryEmailVerified, true)
+        XCTAssertEqual(unverified.preservingEmailVerification(from: previous).primaryEmailVerified, false)
+        XCTAssertNil(omitted.preservingEmailVerification(from: nil).primaryEmailVerified)
+        XCTAssertNil(omitted.preservingEmailVerification(from: omitted).primaryEmailVerified)
+    }
+
+    func testVerificationStateDoesNotCarryAcrossAccountsOrEmailChanges() throws {
+        let previous = try JSONDecoder().decode(CloudAccount.self, from: accountJSON(verifiedField: #""primaryEmailVerified":true,"#))
+        let otherAccount = try JSONDecoder().decode(CloudAccount.self, from: Data(
+            String(decoding: accountJSON(verifiedField: ""), as: UTF8.self)
+                .replacingOccurrences(of: #""accountId":"acct_1""#, with: #""accountId":"acct_2""#).utf8
+        ))
+        let changedEmail = try JSONDecoder().decode(CloudAccount.self, from: Data(
+            String(decoding: accountJSON(verifiedField: ""), as: UTF8.self)
+                .replacingOccurrences(of: "maya@example.com", with: "maya@new.example").utf8
+        ))
+
+        XCTAssertNil(otherAccount.preservingEmailVerification(from: previous).primaryEmailVerified)
+        XCTAssertNil(changedEmail.preservingEmailVerification(from: previous).primaryEmailVerified)
+    }
+
     func testCodeRequestEncodesAnEmptyObject() throws {
         let body = try JSONEncoder().encode(CloudAccountEmailCodeRequest())
         XCTAssertEqual(String(decoding: body, as: UTF8.self), "{}")
@@ -80,6 +106,20 @@ final class AccountEmailVerificationClientTests: XCTestCase {
         XCTAssertEqual(verifyBody, ["verificationId": "account_challenge", "verificationCode": "123456"])
     }
 
+    func testRateLimitCarriesTheRetryAfterDelay() async throws {
+        let client = client()
+        AccountEmailURLProtocol.rateLimitCodeRequests = true
+
+        do {
+            _ = try await client.requestAccountEmailCode(token: "session_secret")
+            XCTFail("Expected the rate-limited request to throw.")
+        } catch let error as CloudAPIError {
+            XCTAssertEqual(error.code, "rate_limited")
+            XCTAssertEqual(error.statusCode, 429)
+            XCTAssertEqual(error.retryAfterSeconds, 42)
+        }
+    }
+
     func testRejectedCodeSurfacesTheServerErrorCode() async throws {
         let client = client()
         AccountEmailURLProtocol.rejectVerification = true
@@ -110,6 +150,34 @@ final class AccountEmailVerificationAppModelTests: XCTestCase {
             PreviewData.make(arguments: ["--preview-email-verification"]).account.primaryEmailVerified,
             false
         )
+    }
+
+    func testSignedOutActionsAskThePersonToSignInAgain() async throws {
+        let model = AppModel(cache: try LocalMessageStore(inMemory: true), previewMode: false)
+        XCTAssertNil(model.account)
+
+        let challenge = await model.requestAccountEmailCode()
+        XCTAssertNil(challenge)
+        XCTAssertEqual(model.errorMessage, "Sign in again to verify your email.")
+
+        model.errorMessage = nil
+        let verified = await model.verifyAccountEmail(verificationId: "challenge_1", verificationCode: "123456")
+        XCTAssertFalse(verified)
+        XCTAssertEqual(model.errorMessage, "Sign in again to verify your email.")
+    }
+
+    func testSentCodeRecordsTheResendCooldownForReopening() async throws {
+        let model = AppModel(previewMode: true, previewLaunchFlow: false)
+        let now = Date(timeIntervalSince1970: 1_000)
+
+        let requested = await model.requestAccountEmailCode(now: now)
+        let challenge = try XCTUnwrap(requested)
+        let pending = try XCTUnwrap(model.currentAccountEmailCodeState)
+        XCTAssertEqual(pending.challenge?.verificationId, challenge.verificationId)
+        XCTAssertEqual(pending.resendAt, now.addingTimeInterval(60))
+
+        _ = await model.verifyAccountEmail(verificationId: challenge.verificationId, verificationCode: "123456")
+        XCTAssertNil(model.currentAccountEmailCodeState)
     }
 
     func testPreviewVerificationRejectsInvalidCodesAndKeepsTheAccountVerified() async throws {
@@ -145,11 +213,13 @@ private final class AccountEmailURLProtocol: URLProtocol {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var requests: [RecordedAccountEmailRequest] = []
     nonisolated(unsafe) static var rejectVerification = false
+    nonisolated(unsafe) static var rateLimitCodeRequests = false
 
     static func reset() {
         lock.withLock {
             requests = []
             rejectVerification = false
+            rateLimitCodeRequests = false
         }
     }
 
@@ -168,13 +238,18 @@ private final class AccountEmailURLProtocol: URLProtocol {
             authorization: request.value(forHTTPHeaderField: "Authorization"),
             body: Self.body(of: request)
         )
-        let reject = Self.lock.withLock {
+        let (reject, rateLimit) = Self.lock.withLock {
             Self.requests.append(recorded)
-            return Self.rejectVerification
+            return (Self.rejectVerification, Self.rateLimitCodeRequests)
         }
         let status: Int
         let payload: Data
+        var headers = ["Content-Type": "application/json"]
         switch path {
+        case "/v1/cloud/auth/email/verification/code" where rateLimit:
+            status = 429
+            payload = Data(#"{"errorCode":"rate_limited","message":"Too many requests."}"#.utf8)
+            headers["Retry-After"] = "42"
         case "/v1/cloud/auth/email/verification/code":
             status = 200
             payload = Data(#"{"verificationId":"account_challenge","expiresAt":"2099-01-01T00:00:00Z","retryAfterSeconds":60}"#.utf8)
@@ -192,7 +267,7 @@ private final class AccountEmailURLProtocol: URLProtocol {
             url: request.url!,
             statusCode: status,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: headers
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: payload)

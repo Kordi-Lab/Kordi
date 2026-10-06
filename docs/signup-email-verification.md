@@ -34,8 +34,11 @@ unverified primary email. Such an account can prove ownership while signed in:
    `verificationCode` consumes the code and sets `primary_email_verified_at` in
    one transaction. It returns `204 No Content`.
 
-Both routes require a session. `GET /v1/cloud/auth/me` reports the state as
-`primaryEmailVerified`. Error codes:
+Both routes require a session. Account payloads addressed to the signed-in
+owner report the state as `primaryEmailVerified`: `GET` and `PATCH
+/v1/cloud/auth/me`, and the `account` in signup, login, and OAuth sign-in
+responses. Payloads describing other accounts, such as profiles and contacts,
+omit it. Error codes:
 
 | Status | `errorCode` | Meaning |
 | --- | --- | --- |
@@ -49,9 +52,12 @@ Codes follow the signup rules: ten-minute expiry, five guesses, single use, one
 send per minute and five per rolling hour, and a failed delivery refunds the send
 budget. Challenges are stored per account in `cloud_account_email_codes` and are
 bound to the challenge and the primary email it was sent to, so a code stops
-working if the primary email changes. The client address request limiter
-applies, and each account may make ten requests or guesses per hour across both
-routes.
+working if the primary email changes. A send re-checks the account inside the
+transaction that charges the send budget, so an account verified concurrently
+gets `email_already_verified` and is not charged. The client address request
+limiter applies first. Each account may then make ten requests or guesses per
+hour across both routes; requests rejected by the address limiter or as
+`email_missing`, `email_already_verified`, or unconfigured mail are not charged.
 
 After verification, the existing provider-by-email linking applies: a Google or
 GitHub sign-in whose provider-verified email matches the primary email joins

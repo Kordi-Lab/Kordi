@@ -3,9 +3,10 @@
 //! can read its primary email.
 
 use crate::auth::account_email::{
-    send_account_email_code, verify_account_email, AccountEmailError,
+    account_email_to_verify, send_account_email_code, verify_account_email, AccountEmailError,
 };
 use crate::auth::rate_limit::EMAIL_VERIFICATION_LIMIT;
+use crate::auth::signup_email::{SignupCodeError, SignupEmailService};
 
 use super::signup_email_handlers::signup_code_error;
 use super::*;
@@ -17,26 +18,34 @@ pub(super) struct AccountEmailVerificationRequest {
     verification_code: String,
 }
 
-/// Charges the client address and the account before any code work.
-async fn observe_limits(
+/// Resolves the email to verify after the cheap checks, charging the client
+/// address first and the account only for requests that will do code work.
+async fn prepare<'state>(
+    state: &'state ServerState,
     rate_limiter: &CloudRateLimiter,
     session: &CloudSession,
     headers: &HeaderMap,
     connect_info: Option<&ConnectInfo<SocketAddr>>,
-) -> Option<Response> {
-    for decision in [
-        rate_limiter
-            .observe_ip(client_ip(headers, connect_info))
-            .await,
-        rate_limiter
-            .observe_account_limit(EMAIL_VERIFICATION_LIMIT, &session.account_id)
-            .await,
-    ] {
-        if let RateLimitDecision::Limited { retry_after } = decision {
-            return Some(limited_response(retry_after));
-        }
+) -> Result<(&'state SignupEmailService, String), Response> {
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_ip(client_ip(headers, connect_info))
+        .await
+    {
+        return Err(limited_response(retry_after));
     }
-    None
+    let email = account_email_to_verify(state.db_pool(), &session.account_id)
+        .await
+        .map_err(account_email_error)?;
+    let service = state.signup_email().ok_or_else(|| {
+        account_email_error(AccountEmailError::Code(SignupCodeError::Unavailable))
+    })?;
+    if let RateLimitDecision::Limited { retry_after } = rate_limiter
+        .observe_account_limit(EMAIL_VERIFICATION_LIMIT, &session.account_id)
+        .await
+    {
+        return Err(limited_response(retry_after));
+    }
+    Ok((service, email))
 }
 
 fn account_email_error(error: AccountEmailError) -> Response {
@@ -51,6 +60,11 @@ fn account_email_error(error: AccountEmailError) -> Response {
             "This account's email is already verified.",
             StatusCode::CONFLICT,
         ),
+        AccountEmailError::Code(SignupCodeError::Unavailable) => err(
+            "email_delivery_unavailable",
+            "Email verification is temporarily unavailable. Try again later.",
+            StatusCode::SERVICE_UNAVAILABLE,
+        ),
         AccountEmailError::Code(error) => signup_code_error(error),
     }
 }
@@ -62,13 +76,19 @@ pub(super) async fn send_account_email_verification_code(
     connect_info: Option<ConnectInfo<SocketAddr>>,
     headers: HeaderMap,
 ) -> Response {
-    if let Some(limited) =
-        observe_limits(&rate_limiter, &session, &headers, connect_info.as_ref()).await
+    let (service, email) = match prepare(
+        &state,
+        &rate_limiter,
+        &session,
+        &headers,
+        connect_info.as_ref(),
+    )
+    .await
     {
-        return limited;
-    }
-    match send_account_email_code(state.db_pool(), state.signup_email(), &session.account_id).await
-    {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    match send_account_email_code(state.db_pool(), service, &session.account_id, &email).await {
         Ok(challenge) => (StatusCode::OK, Json(challenge)).into_response(),
         Err(error) => account_email_error(error),
     }
@@ -82,14 +102,23 @@ pub(super) async fn verify_account_email_code(
     headers: HeaderMap,
     Json(req): Json<AccountEmailVerificationRequest>,
 ) -> Response {
-    if let Some(limited) =
-        observe_limits(&rate_limiter, &session, &headers, connect_info.as_ref()).await
+    let (service, _) = match prepare(
+        &state,
+        &rate_limiter,
+        &session,
+        &headers,
+        connect_info.as_ref(),
+    )
+    .await
     {
-        return limited;
-    }
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    // Guesses stay charged to the account budget; verification re-checks the
+    // account under a row lock.
     if let Err(error) = verify_account_email(
         state.db_pool(),
-        state.signup_email(),
+        service,
         &session.account_id,
         &req.verification_id,
         &req.verification_code,

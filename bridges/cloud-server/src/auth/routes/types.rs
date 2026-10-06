@@ -117,15 +117,12 @@ pub struct AccountResponse {
     pub node_id: Option<String>,
     #[serde(rename = "passwordSet")]
     pub password_set: bool,
-}
-
-/// `GET /v1/cloud/auth/me`: the account plus state only its owner sees.
-#[derive(Debug, Serialize)]
-pub struct MeResponse {
-    #[serde(flatten)]
-    pub account: AccountResponse,
-    #[serde(rename = "primaryEmailVerified")]
-    pub primary_email_verified: bool,
+    /// Set only on payloads for the signed-in owner; never describes others.
+    #[serde(
+        rename = "primaryEmailVerified",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub primary_email_verified: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]

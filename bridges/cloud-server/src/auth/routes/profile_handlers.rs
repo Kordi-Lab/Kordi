@@ -146,14 +146,15 @@ pub(super) async fn update_me(
         Err(response) => return *response,
     };
     let avatar_url = next_avatar.image_url();
-    let row: Option<AccountRecordRow> = match query_as(
+    let row: Option<OwnerAccountRecordRow> = match query_as(
         "UPDATE cloud_accounts SET \
             display_name = COALESCE($1, display_name), avatar_url = $2, avatar_source = $3, \
             avatar_style = $4, avatar_seed = $5, avatar_renderer_version = $6, avatar_version = $7, \
             avatar_updated_at = $8, updated_at = $9 \
          WHERE account_id = $10 \
          RETURNING account_id, public_account_number, display_name, primary_email, avatar_url, password_hash, \
-            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at",
+            avatar_source, avatar_style, avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at, \
+            primary_email_verified_at IS NOT NULL",
     )
     .bind(display_name.as_deref())
     .bind(&avatar_url)
@@ -178,7 +179,7 @@ pub(super) async fn update_me(
             StatusCode::NOT_FOUND,
         );
     };
-    let account = account_response_from_rows(row, Some(updated_agent_row));
+    let account = owner_account_response_from_rows(row, Some(updated_agent_row));
     let recipients = match crate::chat_sync::store::identity_sync_recipient_ids(
         &mut tx,
         &session.account_id,
@@ -276,22 +277,8 @@ pub(super) async fn me(
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let pool = state.db_pool();
-    let response = match account_response_row(pool, &session.account_id).await {
-        Ok(Some(account)) => {
-            crate::auth::account_email::primary_email_verified(pool, &session.account_id)
-                .await
-                .map(|verified| {
-                    verified.map(|primary_email_verified| MeResponse {
-                        account,
-                        primary_email_verified,
-                    })
-                })
-        }
-        Ok(None) => Ok(None),
-        Err(error) => Err(error),
-    };
-    match response {
-        Ok(Some(body)) => Json(body).into_response(),
+    match owner_account_response_row(pool, &session.account_id).await {
+        Ok(Some(account)) => Json(account).into_response(),
         Ok(None) => err(
             "account_missing",
             "Account no longer exists.",

@@ -71,10 +71,6 @@ function cloudProfileRows(account: CloudAccount | null) {
   const kordiHandle = formatKordiHandle(account.kordiId);
   return [
     kordiHandle ? { label: 'Kordi ID', value: kordiHandle } : null,
-    // Servers that report verification state get the dedicated email row instead.
-    account.primaryEmail?.trim() && account.primaryEmailVerified === undefined
-      ? { label: 'Email', value: account.primaryEmail.trim() }
-      : null,
   ].filter((row): row is { label: string; value: string } => Boolean(row));
 }
 

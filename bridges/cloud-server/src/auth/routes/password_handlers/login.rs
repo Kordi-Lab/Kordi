@@ -211,7 +211,7 @@ pub(in crate::auth::routes) async fn login(
         });
     }
 
-    let account = match account_response_row(pool, &account_id).await {
+    let account = match owner_account_response_row(pool, &account_id).await {
         Ok(Some(account)) => account,
         _ => {
             return err(

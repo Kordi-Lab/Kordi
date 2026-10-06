@@ -14,6 +14,9 @@ pub struct SignupCodeChallenge {
 }
 
 pub(crate) enum SignupCodeError {
+    /// The account's primary email was verified before a code could be sent.
+    /// Only account challenges report it.
+    AlreadyVerified,
     Invalid,
     Limited(u64),
     Unavailable,
@@ -185,6 +188,21 @@ async fn request_code(
     // row lock so a failed delivery can hand the charge back. The transaction
     // ends before the code is sent.
     let mut tx = pool.begin().await?;
+    if let CodeScope::Account { account_id, .. } = scope {
+        // Serializes with verification, which holds this row for update, so no
+        // send is charged for an account that has just been verified. The
+        // lock ends with this transaction, before the code is sent.
+        let unverified: Option<(i32,)> = query_as(
+            "SELECT 1 FROM cloud_accounts \
+             WHERE account_id = $1 AND primary_email_verified_at IS NULL FOR SHARE",
+        )
+        .bind(account_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if unverified.is_none() {
+            return Err(SignupCodeError::AlreadyVerified);
+        }
+    }
     let previous: Option<SendBudget> = query_as(&format!(
         "SELECT send_count, resend_after, window_started_at FROM {table} \
          WHERE {key_column} = $1 FOR UPDATE"

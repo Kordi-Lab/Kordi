@@ -9,13 +9,13 @@ use kordi_cloud_server::auth::signup_email::{SignupCodeSender, SignupEmailServic
 
 use super::*;
 
-const SEND: &str = "/v1/cloud/auth/email/verification/code";
-const VERIFY: &str = "/v1/cloud/auth/email/verification";
+pub(super) const SEND: &str = "/v1/cloud/auth/email/verification/code";
+pub(super) const VERIFY: &str = "/v1/cloud/auth/email/verification";
 
 #[derive(Default)]
-struct Inbox {
-    codes: Mutex<HashMap<String, String>>,
-    fail: AtomicBool,
+pub(super) struct Inbox {
+    pub(super) codes: Mutex<HashMap<String, String>>,
+    pub(super) fail: AtomicBool,
 }
 
 #[async_trait]
@@ -32,7 +32,7 @@ impl SignupCodeSender for Inbox {
     }
 }
 
-fn email_router(pool: sqlx_postgres::PgPool, inbox: Arc<Inbox>) -> axum::Router {
+pub(super) fn email_router(pool: sqlx_postgres::PgPool, inbox: Arc<Inbox>) -> axum::Router {
     let state = ServerState::new(pool, EventBus::noop()).with_signup_email(
         SignupEmailService::new(inbox, signup_email_fixture::KEY.to_vec()).unwrap(),
     );
@@ -41,7 +41,7 @@ fn email_router(pool: sqlx_postgres::PgPool, inbox: Arc<Inbox>) -> axum::Router 
 
 /// A password account whose email was never verified, as created before signup
 /// required an inbox code. Returns its session token, id, and email.
-async fn legacy_account(
+pub(super) async fn legacy_account(
     router: &axum::Router,
     pool: &sqlx_postgres::PgPool,
     prefix: &str,
@@ -69,7 +69,7 @@ async fn legacy_account(
     (token, account_id, email)
 }
 
-async fn send(router: &axum::Router, token: &str) -> axum::response::Response {
+pub(super) async fn send(router: &axum::Router, token: &str) -> axum::response::Response {
     router
         .clone()
         .oneshot(post_json_with_token(SEND, token, json!({})))
@@ -77,7 +77,7 @@ async fn send(router: &axum::Router, token: &str) -> axum::response::Response {
         .unwrap()
 }
 
-async fn verify(router: &axum::Router, token: &str, id: &str, code: &str) -> StatusCode {
+pub(super) async fn verify(router: &axum::Router, token: &str, id: &str, code: &str) -> StatusCode {
     let response = router
         .clone()
         .oneshot(post_json_with_token(
@@ -113,7 +113,7 @@ async fn me_verified(router: &axum::Router, token: &str) -> bool {
     body["primaryEmailVerified"].as_bool().unwrap()
 }
 
-async fn error_code(response: axum::response::Response) -> serde_json::Value {
+pub(super) async fn error_code(response: axum::response::Response) -> serde_json::Value {
     read_json(response).await["errorCode"].clone()
 }
 
@@ -216,77 +216,126 @@ async fn codes_for_another_account_do_not_verify() {
     );
 }
 
-#[tokio::test]
-async fn resend_within_cooldown_is_limited() {
-    let Some(pool) = try_pool().await else { return };
-    let inbox = Arc::new(Inbox::default());
-    let router = email_router(pool.clone(), inbox);
-    let (token, _, _) = legacy_account(&router, &pool, "legacy-resend").await;
-    assert_eq!(send(&router, &token).await.status(), StatusCode::OK);
-    let limited = send(&router, &token).await;
-    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
-    let retry_after: u64 = limited.headers()["retry-after"]
-        .to_str()
-        .unwrap()
-        .parse()
-        .unwrap();
-    assert!((1..=60).contains(&retry_after));
+fn mentions_verification(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .any(|(key, value)| key == "primaryEmailVerified" || mentions_verification(value)),
+        serde_json::Value::Array(items) => items.iter().any(mentions_verification),
+        _ => false,
+    }
 }
 
 #[tokio::test]
-async fn account_budget_bounds_requests_and_guesses() {
+async fn owner_account_payloads_report_verification() {
     let Some(pool) = try_pool().await else { return };
     let router = email_router(pool.clone(), Arc::new(Inbox::default()));
-    let (token, _, _) = legacy_account(&router, &pool, "legacy-budget").await;
-    for _ in 0..kordi_cloud_server::auth::rate_limit::EMAIL_VERIFICATION_LIMIT.limit {
-        assert_eq!(
-            verify(&router, &token, "email_unknown", "000000").await,
-            StatusCode::BAD_REQUEST
-        );
-    }
-    let limited = send(&router, &token).await;
-    assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
-    assert!(limited.headers().contains_key("retry-after"));
+    let email = unique_email("owner-payloads");
+    let signup = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/signup",
+            signup_body(&email, "correct horse").await,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(signup.status(), StatusCode::CREATED);
+    let signup = read_json(signup).await;
+    assert_eq!(signup["account"]["primaryEmailVerified"], true);
+    let token = signup["session"]["token"].as_str().unwrap().to_string();
+    let account_id = signup["account"]["accountId"].as_str().unwrap().to_string();
+    assert!(me_verified(&router, &token).await);
+
+    sqlx_core::query::query(
+        "UPDATE cloud_accounts SET primary_email_verified_at = NULL WHERE account_id = $1",
+    )
+    .bind(&account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let login = router
+        .clone()
+        .oneshot(post(
+            "/v1/cloud/auth/login",
+            Body::from(json!({ "email": &email, "password": "correct horse" }).to_string()),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(login.status(), StatusCode::OK);
+    assert_eq!(
+        read_json(login).await["account"]["primaryEmailVerified"],
+        false
+    );
+    let patch = router
+        .clone()
+        .oneshot(patch_json_with_token(
+            "/v1/cloud/auth/me",
+            &token,
+            json!({ "displayName": "Owner Payloads" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(patch.status(), StatusCode::OK);
+    let patch = read_json(patch).await;
+    assert_eq!(patch["displayName"], "Owner Payloads");
+    assert_eq!(patch["primaryEmailVerified"], false);
 }
 
 #[tokio::test]
-async fn unavailable_mail_and_missing_email_fail_closed() {
+async fn payloads_about_other_accounts_omit_verification() {
     let Some(pool) = try_pool().await else { return };
-    let inbox = Arc::new(Inbox::default());
-    let router = email_router(pool.clone(), inbox.clone());
-    let (token, account_id, _) = legacy_account(&router, &pool, "legacy-unavailable").await;
-
-    let unconfigured = fast_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
-    let response = send(&unconfigured, &token).await;
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(error_code(response).await, "email_delivery_unavailable");
-
-    inbox.fail.store(true, Ordering::SeqCst);
-    let response = send(&router, &token).await;
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(error_code(response).await, "email_delivery_unavailable");
-    let (rows,): (i64,) = sqlx_core::query_as::query_as(
-        "SELECT COUNT(*)::BIGINT FROM cloud_account_email_codes WHERE account_id = $1",
+    let router = email_router(pool, Arc::new(Inbox::default()));
+    let (viewer_token, _) = signup_account(&router, "viewer").await;
+    let (peer_token, peer_id) = signup_account(&router, "peer").await;
+    let peer = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/auth/me", &peer_token))
+            .await
+            .unwrap(),
     )
-    .bind(&account_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(
-        rows, 0,
-        "a failed first delivery leaves no challenge or charge"
-    );
-    inbox.fail.store(false, Ordering::SeqCst);
-    assert_eq!(send(&router, &token).await.status(), StatusCode::OK);
+    .await;
+    let kordi_id = peer["kordiId"].as_str().unwrap();
 
-    sqlx_core::query::query("UPDATE cloud_accounts SET primary_email = NULL WHERE account_id = $1")
-        .bind(&account_id)
-        .execute(&pool)
+    let profile = router
+        .clone()
+        .oneshot(get_with_token(
+            &format!("/v1/cloud/accounts/{kordi_id}/profile"),
+            &viewer_token,
+        ))
         .await
         .unwrap();
-    let response = send(&router, &token).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(error_code(response).await, "email_missing");
+    assert_eq!(profile.status(), StatusCode::OK);
+    let profile = read_json(profile).await;
+    assert_eq!(profile["accountId"], peer_id);
+    assert!(!mentions_verification(&profile));
+
+    let request = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/contacts/requests",
+            &viewer_token,
+            json!({ "peerAccountId": &peer_id }),
+        ))
+        .await
+        .unwrap();
+    assert!(request.status().is_success());
+    let request = read_json(request).await;
+    assert!(request.to_string().contains(&peer_id));
+    assert!(!mentions_verification(&request));
+    for (path, token) in [
+        ("/v1/cloud/contacts/requests", &peer_token),
+        ("/v1/cloud/contacts/requests", &viewer_token),
+        ("/v1/cloud/contacts", &viewer_token),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(get_with_token(path, token))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(!mentions_verification(&read_json(response).await));
+    }
 }
 
 #[tokio::test]

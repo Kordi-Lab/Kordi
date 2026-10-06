@@ -44,13 +44,26 @@ export type CloudAuthErrorCode =
 export class CloudAuthError extends Error {
   readonly code: CloudAuthErrorCode;
   readonly status: number;
+  /** Seconds the server asked the client to wait, from a 429 Retry-After header. */
+  readonly retryAfterSeconds?: number;
 
-  constructor(code: CloudAuthErrorCode, message: string, status: number) {
+  constructor(code: CloudAuthErrorCode, message: string, status: number, retryAfterSeconds?: number) {
     super(message);
     this.code = code;
     this.status = status;
+    if (retryAfterSeconds !== undefined) this.retryAfterSeconds = retryAfterSeconds;
     this.name = 'CloudAuthError';
   }
+}
+
+/** Reads a Retry-After header given as delta seconds or an HTTP date. */
+export function parseRetryAfterSeconds(value: string | null | undefined, now = Date.now()): number | undefined {
+  const text = value?.trim();
+  if (!text) return undefined;
+  if (/^\d+$/.test(text)) return Number(text);
+  const at = Date.parse(text);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, Math.ceil((at - now) / 1000));
 }
 
 export function isRetryableCloudDeliveryError(error: unknown): boolean {
@@ -97,6 +110,7 @@ export function buildCloudAuthError(
   status: number,
   body: unknown,
   fallbackMessage: string,
+  retryAfter?: string | null,
 ): CloudAuthError {
   const data = (body as ServerErrorBody) ?? {};
   const codeValue = data.errorCode ?? data.error?.code;
@@ -105,5 +119,5 @@ export function buildCloudAuthError(
   const message = typeof messageValue === 'string' && messageValue.length > 0
     ? messageValue
     : fallbackMessage;
-  return new CloudAuthError(code, message, status);
+  return new CloudAuthError(code, message, status, parseRetryAfterSeconds(retryAfter));
 }

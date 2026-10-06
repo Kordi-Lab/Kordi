@@ -2,8 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { act, createElement, useState } from 'react';
 
+import { requestAccountEmailCode, verifyAccountEmail } from '../src/features/cloud/accountEmailVerificationClient';
 import { CloudAuthClient, CloudAuthError } from '../src/features/cloud/authClient';
-import { cloudAccountsEqual } from '../src/features/cloud/cloudAccountState';
+import { carryCloudAccountEmailVerification, cloudAccountsEqual } from '../src/features/cloud/cloudAccountState';
+import type { CloudAccount } from '../src/features/cloud/cloudIdentityTypes';
+import { parseRetryAfterSeconds } from '../src/features/cloud/cloudAuthError';
+import { CloudAccountSettingsDialog } from '../src/pages/CloudAccountSettingsDialog';
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import { CloudAccountEmailRow, type CloudAccountEmailRowProps } from '../src/kordi-app/cloud/CloudAccountEmailRow';
 import { cloudLoginErrorMessage } from '../src/kordi-app/cloud/cloudLoginMessages';
 import { installDom } from './helpers/transcriptAttachmentDom';
@@ -16,7 +21,7 @@ test('requesting an account email code sends an empty body with the session toke
     calls.push({ url: String(url), init });
     return Response.json(challenge);
   } });
-  assert.deepEqual(await client.requestAccountEmailCode('session-token'), challenge);
+  assert.deepEqual(await requestAccountEmailCode(client, 'session-token'), challenge);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/email/verification/code');
   assert.equal(calls[0].init?.method, 'POST');
@@ -34,10 +39,28 @@ test('requesting an account email code sends an empty body with the session toke
       fetchImpl: async () => Response.json({ errorCode: code, message: 'Server text.' }, { status }),
     });
     await assert.rejects(
-      failing.requestAccountEmailCode('session-token'),
+      requestAccountEmailCode(failing, 'session-token'),
       (error: unknown) => error instanceof CloudAuthError && error.code === code && error.status === status,
     );
   }
+});
+
+test('rate limit answers carry the Retry-After header as seconds', async () => {
+  const client = new CloudAuthClient({
+    baseUrl: 'http://srv',
+    fetchImpl: async () => Response.json(
+      { errorCode: 'rate_limited', message: 'Slow down.' },
+      { status: 429, headers: { 'retry-after': '42' } },
+    ),
+  });
+  await assert.rejects(
+    requestAccountEmailCode(client, 'session-token'),
+    (error: unknown) => error instanceof CloudAuthError && error.code === 'rate_limited' && error.retryAfterSeconds === 42,
+  );
+  const now = Date.parse('2026-10-06T00:00:00Z');
+  assert.equal(parseRetryAfterSeconds('Tue, 06 Oct 2026 00:00:30 GMT', now), 30);
+  assert.equal(parseRetryAfterSeconds(null, now), undefined);
+  assert.equal(parseRetryAfterSeconds('soon', now), undefined);
 });
 
 test('verifying the account email sends the challenge fields and resolves on 204', async () => {
@@ -47,7 +70,7 @@ test('verifying the account email sends the challenge fields and resolves on 204
     return new Response(null, { status: 204 });
   } });
   assert.equal(
-    await client.verifyAccountEmail('session-token', { verificationId: 'acct_email_1', verificationCode: '123456' }),
+    await verifyAccountEmail(client, 'session-token', { verificationId: 'acct_email_1', verificationCode: '123456' }),
     undefined,
   );
   assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/email/verification');
@@ -60,7 +83,7 @@ test('verifying the account email sends the challenge fields and resolves on 204
     fetchImpl: async () => Response.json({ errorCode: 'invalid_verification_code', message: 'The email code is invalid or expired.' }, { status: 400 }),
   });
   await assert.rejects(
-    failing.verifyAccountEmail('session-token', { verificationId: 'acct_email_1', verificationCode: '000000' }),
+    verifyAccountEmail(failing, 'session-token', { verificationId: 'acct_email_1', verificationCode: '000000' }),
     (error: unknown) => error instanceof CloudAuthError && error.code === 'invalid_verification_code',
   );
 });
@@ -77,12 +100,23 @@ test('account email errors have readable messages and verification state changes
     assert.equal(cloudLoginErrorMessage(new CloudAuthError(code, serverText, 400), false), serverText);
   }
 
-  const account = {
-    accountId: 'acct_1', displayName: 'Ada', primaryEmail: 'ada@example.com', primaryEmailVerified: false,
-    avatarUrl: null, avatar: { entityType: 'human', entityId: 'acct_1', source: 'generated', style: 'x', seed: 's', rendererVersion: 1, uploadedAsset: null, version: 1, updatedAt: 't' },
-    nodeId: null, passwordSet: true,
-  } as unknown as Parameters<typeof cloudAccountsEqual>[0];
-  assert.equal(cloudAccountsEqual(account, { ...account!, primaryEmailVerified: true }), false);
+  assert.equal(cloudAccountsEqual(baseAccount, { ...baseAccount, primaryEmailVerified: true }), false);
+});
+
+const baseAccount: CloudAccount = {
+  accountId: 'acct_1', displayName: 'Ada', primaryEmail: 'ada@example.com', primaryEmailVerified: false,
+  avatarUrl: null, avatar: cloudAccountAvatarFixture, nodeId: null, passwordSet: true,
+};
+
+test('an account payload without the verification flag keeps the known state', () => {
+  const verified = { ...baseAccount, primaryEmailVerified: true };
+  const { primaryEmailVerified: _omitted, ...patched } = { ...verified, displayName: 'Ada L.' };
+  assert.equal(carryCloudAccountEmailVerification(verified, patched).primaryEmailVerified, true);
+  assert.equal(carryCloudAccountEmailVerification(verified, patched).displayName, 'Ada L.');
+  assert.equal(carryCloudAccountEmailVerification(verified, { ...patched, primaryEmailVerified: false }).primaryEmailVerified, false);
+  assert.equal(carryCloudAccountEmailVerification(null, patched).primaryEmailVerified, undefined);
+  assert.equal(carryCloudAccountEmailVerification(verified, { ...patched, accountId: 'acct_2' }).primaryEmailVerified, undefined);
+  assert.equal(carryCloudAccountEmailVerification(verified, { ...patched, primaryEmail: 'new@example.com' }).primaryEmailVerified, undefined);
 });
 
 async function renderRow(props: Omit<CloudAccountEmailRowProps, 'verified'> & { verified: boolean | undefined }) {
@@ -126,10 +160,11 @@ async function renderRow(props: Omit<CloudAccountEmailRowProps, 'verified'> & { 
   };
 }
 
-test('email row is hidden when the server does not report verification state', async () => {
+test('email row shows only the address when the server does not report verification state', async () => {
   const view = await renderRow({ email: 'ada@example.com', verified: undefined, onRequestCode: async () => challenge, onVerify: async () => {} });
   try {
-    assert.equal(view.host.innerHTML, '');
+    assert.match(view.host.textContent!, /^Emailada@example\.com$/);
+    assert.equal(view.host.querySelector('button'), null);
   } finally {
     await view.cleanup();
   }
@@ -273,5 +308,65 @@ test('email row shows the server delivery message and falls back to readable tex
     } finally {
       await view.cleanup();
     }
+  }
+});
+
+test('a rate limited request arms the countdown from Retry-After', async () => {
+  let requests = 0;
+  const view = await renderRow({
+    email: 'ada@example.com',
+    verified: false,
+    onRequestCode: async () => {
+      requests += 1;
+      throw new CloudAuthError('rate_limited', 'Slow down.', 429, 42);
+    },
+    onVerify: async () => {},
+  });
+  try {
+    await act(async () => view.button('Verify email')!.click());
+    assert.match(view.host.querySelector('.app-error-text')!.textContent!, /Too many attempts/);
+    const held = view.button('Verify email (42s)');
+    assert.ok(held);
+    assert.equal(held.disabled, true);
+    await act(async () => held.click());
+    assert.equal(requests, 1);
+  } finally {
+    await view.cleanup();
+  }
+});
+
+test('account settings shows exactly one email row with and without verification state', async () => {
+  const installed = installDom();
+  const { createRoot } = await import('react-dom/client');
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  const noop = () => {};
+  const asyncNoop = async () => {};
+  const render = (account: CloudAccount) => createElement(CloudAccountSettingsDialog, {
+    isOpen: true, account, onClose: noop, onUpdateProfile: asyncNoop,
+    onRequestEmailCode: async () => challenge, onVerifyEmail: asyncNoop,
+    settingsSections: [], activeSettingsSectionId: 'appearance', setActiveSettingsSectionId: noop,
+    authSettingsLayoutWidth: 600, isNativeShell: false, desktopAuthState: null, isDesktopAuthLoading: false,
+    desktopAuthError: null, activeLoginProviderId: null, selectAuthProvider: noop, openLoginFlow: noop,
+    refreshDesktopAuth: asyncNoop, handleSelectAuthChoice: asyncNoop, handleRemoveAuthProfile: asyncNoop,
+    handleLogoutProvider: asyncNoop, themeMode: 'dark', setThemeMode: noop,
+  });
+  const emailRows = () => Array.from(document.querySelectorAll('.app-settings-row'))
+    .filter((row) => row.textContent?.startsWith('Email'));
+  try {
+    const { primaryEmailVerified: _omitted, ...legacy } = baseAccount;
+    await act(async () => root.render(render(legacy)));
+    assert.equal(emailRows().length, 1);
+    assert.doesNotMatch(emailRows()[0].textContent!, /verified|Verify/i);
+    await act(async () => root.render(render(baseAccount)));
+    assert.equal(emailRows().length, 1);
+    assert.match(emailRows()[0].textContent!, /Not verified/);
+    await act(async () => root.render(render({ ...baseAccount, primaryEmailVerified: true })));
+    assert.equal(emailRows().length, 1);
+    assert.match(emailRows()[0].textContent!, /Verified/);
+  } finally {
+    await act(async () => root.unmount());
+    installed.restore();
   }
 });

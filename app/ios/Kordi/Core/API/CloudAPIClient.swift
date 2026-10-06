@@ -8,6 +8,8 @@ struct CloudAPIError: LocalizedError, Equatable {
     let statusCode: Int
     /// Optional server detail, such as why an OMP login failed.
     var reason: String? = nil
+    /// The server's `Retry-After` delay in seconds, when it sent one.
+    var retryAfterSeconds: Int? = nil
 
     var errorDescription: String? { message }
 }
@@ -3037,7 +3039,10 @@ actor CloudAPIClient {
                 code: server?.errorCode ?? "server_error",
                 message: server?.message.nonEmpty ?? fallback,
                 statusCode: http.statusCode,
-                reason: server?.reason
+                reason: server?.reason,
+                retryAfterSeconds: http.value(forHTTPHeaderField: "Retry-After")
+                    .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+                    .flatMap { $0 >= 0 ? $0 : nil }
             )
         }
     }

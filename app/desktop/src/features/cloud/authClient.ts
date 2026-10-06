@@ -34,7 +34,7 @@ import type {
 import { CloudDeviceClient } from './cloudDeviceClient';
 import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
 import { CloudIdentityAuthClient } from './cloudIdentityAuthClient';
-import type { CloudAccountEmailVerificationInput, CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
+import type { CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
 export type { CloudAccountEmailVerificationInput, CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
 import type {
   CloudAccount,
@@ -354,7 +354,7 @@ export class CloudAuthClient {
     }
     const body = await readJsonSafe(response);
     if (!response.ok) {
-      throw buildCloudAuthError(response.status, body, fallbackMessage);
+      throw buildCloudAuthError(response.status, body, fallbackMessage, response.headers.get('retry-after'));
     }
     return body as TResponse;
   }
@@ -374,12 +374,6 @@ export class CloudAuthClient {
   }
 
   requestSignupCode(email: string): Promise<CloudSignupCodeChallenge> { return this.identity.requestSignupCode(email); }
-
-  requestAccountEmailCode(token: string): Promise<CloudSignupCodeChallenge> { return this.identity.requestAccountEmailCode(token); }
-
-  verifyAccountEmail(token: string, input: CloudAccountEmailVerificationInput): Promise<void> {
-    return this.identity.verifyAccountEmail(token, input);
-  }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {
     const result = await this.identity.login(input);

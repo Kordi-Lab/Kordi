@@ -12,6 +12,23 @@ pub(super) type AccountRecordRow = (
     i64,
     String,
 );
+/// [`AccountRecordRow`] followed by whether the primary email is verified,
+/// for payloads addressed to the account's owner.
+pub(super) type OwnerAccountRecordRow = (
+    String,
+    i64,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    String,
+    String,
+    i64,
+    String,
+    bool,
+);
 pub(super) type ContactListRow = (
     String,
     i64,

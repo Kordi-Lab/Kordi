@@ -124,7 +124,12 @@ struct AccountEmailVerificationSheet: View {
         .task {
             guard !didRequestInitialCode else { return }
             didRequestInitialCode = true
-            await requestCode()
+            // Reopening during the cooldown reuses the code already sent.
+            if let pending = model.currentAccountEmailCodeState, pending.resendAt > Date() {
+                apply(pending)
+            } else {
+                await requestCode()
+            }
         }
         .onChange(of: model.account?.primaryEmailVerified) { _, verified in
             // The server can report that another device already verified it.
@@ -134,6 +139,9 @@ struct AccountEmailVerificationSheet: View {
 
     private var instructions: String {
         guard challenge != nil else {
+            if resendAt > Date() {
+                return "Too many code requests. You can send a new code to \(email) when the timer ends."
+            }
             return isSending
                 ? "Sending a 6-digit code to \(email)…"
                 : "We’ll email a 6-digit code to \(email)."
@@ -151,12 +159,19 @@ struct AccountEmailVerificationSheet: View {
         guard !isBusy else { return }
         isSending = true
         defer { isSending = false }
-        if let next = await model.requestAccountEmailCode() {
-            challenge = next
-            verificationCode = ""
-            resendAt = Date().addingTimeInterval(TimeInterval(next.retryAfterSeconds))
-            codeFieldFocused = true
+        let previousId = challenge?.verificationId
+        _ = await model.requestAccountEmailCode()
+        // A sent code and a rate limit both record the resend time.
+        if let pending = model.currentAccountEmailCodeState {
+            if pending.challenge?.verificationId != previousId { verificationCode = "" }
+            apply(pending)
         }
+    }
+
+    private func apply(_ pending: AccountEmailCodeState) {
+        challenge = pending.challenge
+        resendAt = pending.resendAt
+        if pending.challenge != nil { codeFieldFocused = true }
     }
 
     private func verify() async {

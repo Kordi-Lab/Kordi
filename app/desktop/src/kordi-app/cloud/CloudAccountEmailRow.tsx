@@ -15,7 +15,7 @@ import { useCloudSignupVerification } from './useCloudSignupVerification';
 
 export type CloudAccountEmailRowProps = {
   email: string;
-  /** Undefined when the server predates email verification; the row is hidden then. */
+  /** Undefined when the server predates email verification; only the address is shown then. */
   verified: boolean | undefined;
   onRequestCode?: () => Promise<CloudSignupCodeChallenge>;
   onVerify?: (input: CloudAccountEmailVerificationInput) => Promise<void>;
@@ -43,7 +43,14 @@ export function CloudAccountEmailRow({
     challenge, verificationCode, setVerificationCode, resendSeconds, sendCode, resetVerification,
   } = useCloudSignupVerification(email, onRequestCode ? () => onRequestCode() : undefined);
 
-  if (verified === undefined) return null;
+  if (verified === undefined) {
+    return (
+      <SettingsRow
+        title="Email"
+        control={<span className="max-w-[280px] truncate text-[13px] text-slate-300" title={email}>{email}</span>}
+      />
+    );
+  }
 
   const canVerify = Boolean(onRequestCode && onVerify);
   const isEnteringCode = !verified && challenge !== null;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CloudAuthError } from '@/features/cloud/cloudAuthError';
 import type { CloudSignupCodeChallenge } from '@/features/cloud/signupEmailTypes';
 
 export function useCloudSignupVerification(
@@ -22,7 +23,19 @@ export function useCloudSignupVerification(
 
   async function sendCode() {
     if (!requestCode) throw new Error('Email verification is unavailable. Try Google or GitHub.');
-    const next = await requestCode(email.trim());
+    let next: CloudSignupCodeChallenge;
+    try {
+      next = await requestCode(email.trim());
+    } catch (caught) {
+      // A cooldown answer arms the same countdown a sent code would, so the
+      // resend action waits instead of hitting the limit again.
+      if (caught instanceof CloudAuthError && caught.code === 'rate_limited' && caught.retryAfterSeconds) {
+        const now = Date.now();
+        setClockNow(now);
+        setResendAt(now + caught.retryAfterSeconds * 1000);
+      }
+      throw caught;
+    }
     setChallenge(next);
     setVerificationCode('');
     setClockNow(Date.now());

@@ -13,18 +13,21 @@ import {
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
   type CloudAccount,
-  type CloudAccountEmailVerificationInput,
   type CloudAuthResult,
   type CloudOAuthProvider,
   type CloudProfileUpdateInput,
   type CloudSignupCodeChallenge,
   type CloudSignupInput,
 } from './authClient';
-import { cloudAccountsEqual } from './cloudAccountState';
+import { carryCloudAccountEmailVerification, cloudAccountsEqual } from './cloudAccountState';
 import {
   isCloudOAuthCancelled,
 } from './cloudOAuthCancellation';
 import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
+import {
+  useCloudAccountEmailVerification,
+  type CloudAccountEmailVerificationActions,
+} from './useCloudAccountEmailVerification';
 import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
@@ -40,7 +43,7 @@ export { cloudAccountsEqual } from './cloudAccountState';
 
 export type CloudSessionStatus = 'loading' | 'signed-out' | 'authenticated';
 
-export type UseCloudSessionResult = {
+export type UseCloudSessionResult = CloudAccountEmailVerificationActions & {
   status: CloudSessionStatus;
   account: CloudAccount | null;
   error: CloudAuthError | null;
@@ -50,10 +53,6 @@ export type UseCloudSessionResult = {
   signUp(input: CloudSignupInput): Promise<void>;
   signInWithProvider(provider: CloudOAuthProvider, signal?: AbortSignal): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
-  requestAccountEmailCode(this: void): Promise<CloudSignupCodeChallenge>;
-  verifyAccountEmail(this: void, input: CloudAccountEmailVerificationInput): Promise<void>;
-  /** Reloads the account after the server reports its email as verified. */
-  refreshAccountEmailVerified(this: void): Promise<void>;
   signOut(this: void): Promise<void>;
   clearError(): void;
 };
@@ -124,7 +123,8 @@ export function useCloudSession({
   const accountIdRef = useRef<string | null>(null);
   const accountRef = useRef<CloudAccount | null>(null);
 
-  const setAuthenticated = useCallback((next: CloudAccount) => {
+  const setAuthenticated = useCallback((incoming: CloudAccount) => {
+    const next = carryCloudAccountEmailVerification(accountRef.current, incoming);
     const stableAccount = cloudAccountsEqual(accountRef.current, next)
       ? accountRef.current ?? next
       : next;
@@ -447,31 +447,7 @@ export function useCloudSession({
     [authClient, setAuthenticated],
   );
 
-  const requestAccountEmailCode = useCallback(async () => {
-    const stored = await loadSession();
-    if (!stored?.token) throw new CloudAuthError('invalid_session', 'Not signed in.', 401);
-    return authClient.requestAccountEmailCode(stored.token);
-  }, [authClient]);
-
-  const refreshAccountEmailVerified = useCallback(async () => {
-    const stored = await loadSession();
-    let next: CloudAccount | null = null;
-    try {
-      if (stored?.token) next = await authClient.me(stored.token);
-    } catch {
-      // The server already confirmed the email; the periodic profile refresh repairs anything else.
-    }
-    const current = accountRef.current;
-    if (next && next.accountId === current?.accountId) setAuthenticated(next);
-    else if (current) setAuthenticated({ ...current, primaryEmailVerified: true });
-  }, [authClient, setAuthenticated]);
-
-  const verifyAccountEmail = useCallback(async (input: CloudAccountEmailVerificationInput) => {
-    const stored = await loadSession();
-    if (!stored?.token) throw new CloudAuthError('invalid_session', 'Not signed in.', 401);
-    await authClient.verifyAccountEmail(stored.token, input);
-    await refreshAccountEmailVerified();
-  }, [authClient, refreshAccountEmailVerified]);
+  const accountEmailVerification = useCloudAccountEmailVerification({ authClient, accountRef, setAuthenticated });
 
   const signOut = useCallback(async () => {
     try {
@@ -508,9 +484,7 @@ export function useCloudSession({
     requestSignupCode,
     signInWithProvider,
     updateProfile,
-    requestAccountEmailCode,
-    verifyAccountEmail,
-    refreshAccountEmailVerified,
+    ...accountEmailVerification,
     signOut,
     clearError,
   };

@@ -25,19 +25,13 @@ impl From<sqlx_core::Error> for AccountEmailError {
     }
 }
 
-/// Whether the account's primary email is verified, or `None` when the account
-/// does not exist.
-pub(crate) async fn primary_email_verified(
-    pool: &PgPool,
-    account_id: &str,
-) -> Result<Option<bool>, sqlx_core::Error> {
-    let row: Option<(bool,)> = query_as(
-        "SELECT primary_email_verified_at IS NOT NULL FROM cloud_accounts WHERE account_id = $1",
-    )
-    .bind(account_id)
-    .fetch_optional(pool)
-    .await?;
-    Ok(row.map(|(verified,)| verified))
+impl From<SignupCodeError> for AccountEmailError {
+    fn from(error: SignupCodeError) -> Self {
+        match error {
+            SignupCodeError::AlreadyVerified => Self::AlreadyVerified,
+            error => Self::Code(error),
+        }
+    }
 }
 
 /// The normalized primary email that still needs verification.
@@ -51,12 +45,13 @@ fn unverified_email(row: Option<(Option<String>, bool)>) -> Result<String, Accou
     }
 }
 
-/// Sends a code to the account's unverified primary email.
-pub(crate) async fn send_account_email_code(
+/// The account's normalized primary email when it still needs verification.
+/// This is an unlocked read for cheap request checks; sending and verifying
+/// re-check the account under a row lock.
+pub(crate) async fn account_email_to_verify(
     pool: &PgPool,
-    service: Option<&SignupEmailService>,
     account_id: &str,
-) -> Result<SignupCodeChallenge, AccountEmailError> {
+) -> Result<String, AccountEmailError> {
     let row: Option<(Option<String>, bool)> = query_as(
         "SELECT primary_email, primary_email_verified_at IS NOT NULL \
          FROM cloud_accounts WHERE account_id = $1",
@@ -64,25 +59,33 @@ pub(crate) async fn send_account_email_code(
     .bind(account_id)
     .fetch_optional(pool)
     .await?;
-    let email = unverified_email(row)?;
-    let service = service.ok_or(AccountEmailError::Code(SignupCodeError::Unavailable))?;
-    request_account_email_code(pool, service, account_id, &email)
-        .await
-        .map_err(AccountEmailError::Code)
+    unverified_email(row)
+}
+
+/// Sends a code to `email`, the account's primary email as returned by
+/// [`account_email_to_verify`]. Fails with `AlreadyVerified` when the account
+/// was verified in the meantime.
+pub(crate) async fn send_account_email_code(
+    pool: &PgPool,
+    service: &SignupEmailService,
+    account_id: &str,
+    email: &str,
+) -> Result<SignupCodeChallenge, AccountEmailError> {
+    Ok(request_account_email_code(pool, service, account_id, email).await?)
 }
 
 /// Consumes the code and marks the primary email verified in one transaction.
 /// Failed guesses are committed so they count against the code.
 pub(crate) async fn verify_account_email(
     pool: &PgPool,
-    service: Option<&SignupEmailService>,
+    service: &SignupEmailService,
     account_id: &str,
     verification_id: &str,
     verification_code: &str,
 ) -> Result<(), AccountEmailError> {
     let mut tx = pool.begin().await?;
-    // The account row lock serializes concurrent confirmations and primary
-    // email changes against this one.
+    // The account row lock serializes concurrent confirmations, code sends,
+    // and primary email changes against this one.
     let row: Option<(Option<String>, bool)> = query_as(
         "SELECT primary_email, primary_email_verified_at IS NOT NULL \
          FROM cloud_accounts WHERE account_id = $1 FOR UPDATE",
@@ -91,7 +94,6 @@ pub(crate) async fn verify_account_email(
     .fetch_optional(&mut *tx)
     .await?;
     let email = unverified_email(row)?;
-    let service = service.ok_or(AccountEmailError::Code(SignupCodeError::Unavailable))?;
     if let Err(error) = consume_account_email_code(
         &mut tx,
         service,
@@ -103,7 +105,7 @@ pub(crate) async fn verify_account_email(
     .await
     {
         tx.commit().await?;
-        return Err(AccountEmailError::Code(error));
+        return Err(error.into());
     }
     query(
         "UPDATE cloud_accounts SET primary_email_verified_at = $2 \
