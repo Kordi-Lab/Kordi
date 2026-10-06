@@ -34,8 +34,8 @@ import type {
 import { CloudDeviceClient } from './cloudDeviceClient';
 import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
 import { CloudIdentityAuthClient } from './cloudIdentityAuthClient';
-import type { CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
-export type { CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
+import type { CloudAccountEmailVerificationInput, CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
+export type { CloudAccountEmailVerificationInput, CloudSignupInput, CloudSignupCodeChallenge } from './signupEmailTypes';
 import type {
   CloudAccount,
   CloudAppInvitation,
@@ -374,6 +374,12 @@ export class CloudAuthClient {
   }
 
   requestSignupCode(email: string): Promise<CloudSignupCodeChallenge> { return this.identity.requestSignupCode(email); }
+
+  requestAccountEmailCode(token: string): Promise<CloudSignupCodeChallenge> { return this.identity.requestAccountEmailCode(token); }
+
+  verifyAccountEmail(token: string, input: CloudAccountEmailVerificationInput): Promise<void> {
+    return this.identity.verifyAccountEmail(token, input);
+  }
 
   async login(input: { email: string; password: string }): Promise<CloudAuthResult> {
     const result = await this.identity.login(input);

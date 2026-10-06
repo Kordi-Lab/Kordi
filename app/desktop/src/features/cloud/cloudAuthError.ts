@@ -3,6 +3,8 @@ export type CloudAuthErrorCode =
   | 'email_verification_required'
   | 'invalid_verification_code'
   | 'email_delivery_unavailable'
+  | 'email_missing'
+  | 'email_already_verified'
   | 'weak_password'
   | 'email_in_use'
   | 'invalid_credentials'
@@ -68,6 +70,7 @@ type ServerErrorBody = {
 
 const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'email_verification_required', 'invalid_verification_code', 'email_delivery_unavailable',
+  'email_missing', 'email_already_verified',
   'invalid_email', 'weak_password', 'email_in_use', 'invalid_credentials',
   'invalid_avatar', 'invalid_avatar_seed', 'invalid_avatar_version', 'avatar_conflict',
   'invalid_session', 'invalid_session_id',

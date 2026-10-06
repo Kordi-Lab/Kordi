@@ -13,6 +13,8 @@ export type CloudAccount = {
   kordiId?: string | null;
   displayName: string | null;
   primaryEmail: string | null;
+  /** Whether the account has proved it can read its primary email. Undefined on older servers. */
+  primaryEmailVerified?: boolean;
   avatarUrl: string | null;
   avatar: CanonicalAvatarDescriptor;
   /** Optional while cached sessions from before default-agent profiles refresh. */

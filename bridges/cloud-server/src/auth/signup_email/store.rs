@@ -71,11 +71,111 @@ impl From<sqlx_core::Error> for SignupCodeError {
     }
 }
 
+/// Which code table a challenge lives in. Signup challenges are keyed by the
+/// email being claimed; account challenges are keyed by the signed-in account
+/// and also record the primary email the code was sent to. Both share every
+/// expiry, guess, cooldown, and send budget rule.
+#[derive(Clone, Copy)]
+enum CodeScope<'a> {
+    Signup { email: &'a str },
+    Account { account_id: &'a str, email: &'a str },
+}
+
+impl<'a> CodeScope<'a> {
+    fn table(self) -> &'static str {
+        match self {
+            Self::Signup { .. } => "cloud_signup_email_codes",
+            Self::Account { .. } => "cloud_account_email_codes",
+        }
+    }
+
+    fn key_column(self) -> &'static str {
+        match self {
+            Self::Signup { .. } => "email",
+            Self::Account { .. } => "account_id",
+        }
+    }
+
+    fn key(self) -> &'a str {
+        match self {
+            Self::Signup { email } => email,
+            Self::Account { account_id, .. } => account_id,
+        }
+    }
+
+    fn email(self) -> &'a str {
+        match self {
+            Self::Signup { email } | Self::Account { email, .. } => email,
+        }
+    }
+}
+
 pub(crate) async fn request_signup_code(
     pool: &PgPool,
     service: &SignupEmailService,
     email: &str,
 ) -> Result<SignupCodeChallenge, SignupCodeError> {
+    request_code(pool, service, CodeScope::Signup { email }).await
+}
+
+/// Sends a code proving that the signed-in account can read `email`, its
+/// normalized primary email.
+pub(crate) async fn request_account_email_code(
+    pool: &PgPool,
+    service: &SignupEmailService,
+    account_id: &str,
+    email: &str,
+) -> Result<SignupCodeChallenge, SignupCodeError> {
+    request_code(pool, service, CodeScope::Account { account_id, email }).await
+}
+
+/// The caller commits failed guesses and consumes successful codes with account creation.
+pub(crate) async fn consume_signup_code(
+    tx: &mut Transaction<'_, Postgres>,
+    service: &SignupEmailService,
+    email: &str,
+    id: &str,
+    code: &str,
+) -> Result<(), SignupCodeError> {
+    consume_code(tx, service, CodeScope::Signup { email }, id, code).await
+}
+
+/// The caller commits failed guesses and consumes successful codes together
+/// with marking the account's primary email verified.
+pub(crate) async fn consume_account_email_code(
+    tx: &mut Transaction<'_, Postgres>,
+    service: &SignupEmailService,
+    account_id: &str,
+    email: &str,
+    id: &str,
+    code: &str,
+) -> Result<(), SignupCodeError> {
+    consume_code(
+        tx,
+        service,
+        CodeScope::Account { account_id, email },
+        id,
+        code,
+    )
+    .await
+}
+
+async fn request_code(
+    pool: &PgPool,
+    service: &SignupEmailService,
+    scope: CodeScope<'_>,
+) -> Result<SignupCodeChallenge, SignupCodeError> {
+    let (table, key_column, key, email) = (
+        scope.table(),
+        scope.key_column(),
+        scope.key(),
+        scope.email(),
+    );
+    // Account challenges also record the recipient, which a resend replaces.
+    let (recipient_column, recipient_value, recipient_update) = match scope {
+        CodeScope::Signup { .. } => ("", "", ""),
+        CodeScope::Account { .. } => (", email", ", $7", "email = EXCLUDED.email, "),
+    };
     let now = Utc::now();
     let id = format!("email_{}", uuid::Uuid::new_v4().simple());
     let code = new_code();
@@ -85,39 +185,47 @@ pub(crate) async fn request_signup_code(
     // row lock so a failed delivery can hand the charge back. The transaction
     // ends before the code is sent.
     let mut tx = pool.begin().await?;
-    let previous: Option<SendBudget> = query_as(
-        "SELECT send_count, resend_after, window_started_at FROM cloud_signup_email_codes \
-         WHERE email = $1 FOR UPDATE",
-    )
-    .bind(email)
+    let previous: Option<SendBudget> = query_as(&format!(
+        "SELECT send_count, resend_after, window_started_at FROM {table} \
+         WHERE {key_column} = $1 FOR UPDATE"
+    ))
+    .bind(key)
     .fetch_optional(&mut *tx)
     .await?;
-    let inserted: Option<(bool,)> = query_as(
-        "INSERT INTO cloud_signup_email_codes \
-         (email, verification_id, code_mac, expires_at, resend_after, window_started_at, send_count, attempts_remaining) \
-         VALUES ($1, $2, $3, $4, $5, $6, 1, 5) \
-         ON CONFLICT (email) DO UPDATE SET \
+    let upsert = format!(
+        "INSERT INTO {table} \
+         ({key_column}{recipient_column}, verification_id, code_mac, expires_at, resend_after, window_started_at, send_count, attempts_remaining) \
+         VALUES ($1{recipient_value}, $2, $3, $4, $5, $6, 1, 5) \
+         ON CONFLICT ({key_column}) DO UPDATE SET {recipient_update}\
            verification_id = EXCLUDED.verification_id, code_mac = EXCLUDED.code_mac, \
            expires_at = EXCLUDED.expires_at, resend_after = EXCLUDED.resend_after, \
-           window_started_at = CASE WHEN cloud_signup_email_codes.window_started_at <= $6 - INTERVAL '1 hour' \
-             THEN $6 ELSE cloud_signup_email_codes.window_started_at END, \
-           send_count = CASE WHEN cloud_signup_email_codes.window_started_at <= $6 - INTERVAL '1 hour' \
-             THEN 1 ELSE cloud_signup_email_codes.send_count + 1 END, \
+           window_started_at = CASE WHEN {table}.window_started_at <= $6 - INTERVAL '1 hour' \
+             THEN $6 ELSE {table}.window_started_at END, \
+           send_count = CASE WHEN {table}.window_started_at <= $6 - INTERVAL '1 hour' \
+             THEN 1 ELSE {table}.send_count + 1 END, \
            attempts_remaining = 5, delivered_at = NULL, consumed_at = NULL \
-         WHERE cloud_signup_email_codes.resend_after <= $6 \
-           AND (cloud_signup_email_codes.window_started_at <= $6 - INTERVAL '1 hour' \
-                OR cloud_signup_email_codes.send_count < 5) \
-         RETURNING (xmax = 0)",
-    )
-    .bind(email).bind(&id).bind(service.digest(&id, email, &code))
-    .bind(expires_at).bind(now + Duration::seconds(60)).bind(now)
-    .fetch_optional(&mut *tx).await?;
+         WHERE {table}.resend_after <= $6 \
+           AND ({table}.window_started_at <= $6 - INTERVAL '1 hour' \
+                OR {table}.send_count < 5) \
+         RETURNING (xmax = 0)"
+    );
+    let mut upsert = query_as(&upsert)
+        .bind(key)
+        .bind(&id)
+        .bind(service.digest(&id, email, &code))
+        .bind(expires_at)
+        .bind(now + Duration::seconds(60))
+        .bind(now);
+    if let CodeScope::Account { .. } = scope {
+        upsert = upsert.bind(email);
+    }
+    let inserted: Option<(bool,)> = upsert.fetch_optional(&mut *tx).await?;
     tx.commit().await?;
     let stored = inserted.map(|(inserted,)| StoredCode { inserted, previous });
     let Some(stored) = stored else {
-        let (resend_after, window_started_at, send_count): (DateTime<Utc>, DateTime<Utc>, i32) = query_as(
-            "SELECT resend_after, window_started_at, send_count FROM cloud_signup_email_codes WHERE email = $1",
-        ).bind(email).fetch_one(pool).await?;
+        let (resend_after, window_started_at, send_count): (DateTime<Utc>, DateTime<Utc>, i32) = query_as(&format!(
+            "SELECT resend_after, window_started_at, send_count FROM {table} WHERE {key_column} = $1",
+        )).bind(key).fetch_one(pool).await?;
         let next = if send_count >= 5 {
             resend_after.max(window_started_at + Duration::hours(1))
         } else {
@@ -133,18 +241,18 @@ pub(crate) async fn request_signup_code(
         // be zero. If another request inserted the row between our locking read
         // and the upsert, the counters it held are unknown and stay charged.
         if stored.inserted {
-            query("DELETE FROM cloud_signup_email_codes WHERE verification_id = $1")
+            query(&format!("DELETE FROM {table} WHERE verification_id = $1"))
                 .bind(&id)
                 .execute(pool)
                 .await?;
         } else {
             let previous = stored.previous.as_ref();
-            query(
-                "UPDATE cloud_signup_email_codes SET attempts_remaining = 0, \
+            query(&format!(
+                "UPDATE {table} SET attempts_remaining = 0, \
                  send_count = COALESCE($2, send_count), resend_after = COALESCE($3, resend_after), \
                  window_started_at = COALESCE($4, window_started_at) \
-                 WHERE verification_id = $1",
-            )
+                 WHERE verification_id = $1"
+            ))
             .bind(&id)
             .bind(previous.map(|budget| budget.send_count))
             .bind(previous.map(|budget| budget.resend_after))
@@ -154,10 +262,12 @@ pub(crate) async fn request_signup_code(
         }
         return Err(SignupCodeError::Unavailable);
     }
-    query("UPDATE cloud_signup_email_codes SET delivered_at = NOW() WHERE verification_id = $1")
-        .bind(&id)
-        .execute(pool)
-        .await?;
+    query(&format!(
+        "UPDATE {table} SET delivered_at = NOW() WHERE verification_id = $1"
+    ))
+    .bind(&id)
+    .execute(pool)
+    .await?;
     Ok(SignupCodeChallenge {
         verification_id: id,
         expires_at: expires_at.to_rfc3339(),
@@ -165,20 +275,24 @@ pub(crate) async fn request_signup_code(
     })
 }
 
-/// The caller commits failed guesses and consumes successful codes with account creation.
-pub(crate) async fn consume_signup_code(
+async fn consume_code(
     tx: &mut Transaction<'_, Postgres>,
     service: &SignupEmailService,
-    email: &str,
+    scope: CodeScope<'_>,
     id: &str,
     code: &str,
 ) -> Result<(), SignupCodeError> {
-    let row: Option<CodeRecord> = query_as(
+    let (table, key_column, email) = (scope.table(), scope.key_column(), scope.email());
+    // A challenge sent to another email is not found, so a proof for a
+    // different recipient cannot spend the owner's guesses. For signup the key
+    // column is the email itself and the extra condition is redundant.
+    let row: Option<CodeRecord> = query_as(&format!(
         "SELECT code_mac, expires_at, attempts_remaining, delivered_at, consumed_at \
-         FROM cloud_signup_email_codes WHERE email = $1 AND verification_id = $2 FOR UPDATE",
-    )
-    .bind(email)
+         FROM {table} WHERE {key_column} = $1 AND verification_id = $2 AND email = $3 FOR UPDATE"
+    ))
+    .bind(scope.key())
     .bind(id)
+    .bind(email)
     .fetch_optional(&mut **tx)
     .await?;
     let Some(row) = row else {
@@ -195,11 +309,15 @@ pub(crate) async fn consume_signup_code(
         || !code.bytes().all(|byte| byte.is_ascii_digit())
         || !service.matches(id, email, code, &row.code_mac)
     {
-        query("UPDATE cloud_signup_email_codes SET attempts_remaining = attempts_remaining - 1 WHERE verification_id = $1")
+        query(&format!("UPDATE {table} SET attempts_remaining = attempts_remaining - 1 WHERE verification_id = $1"))
             .bind(id).execute(&mut **tx).await?;
         return Err(SignupCodeError::Invalid);
     }
-    query("UPDATE cloud_signup_email_codes SET consumed_at = NOW(), attempts_remaining = 0 WHERE verification_id = $1")
-        .bind(id).execute(&mut **tx).await?;
+    query(&format!(
+        "UPDATE {table} SET consumed_at = NOW(), attempts_remaining = 0 WHERE verification_id = $1"
+    ))
+    .bind(id)
+    .execute(&mut **tx)
+    .await?;
     Ok(())
 }

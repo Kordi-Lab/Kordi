@@ -15,6 +15,12 @@ export function cloudLoginErrorMessage(
       return 'An account with that email already exists. Try signing in instead.';
     case 'invalid_credentials':
       return 'Email or password is incorrect.';
+    case 'email_already_verified':
+      return error.message || 'This email is already verified.';
+    case 'email_delivery_unavailable':
+      return error.message || 'Email verification is temporarily unavailable. Try again later.';
+    case 'email_missing':
+      return error.message || 'This account has no email address to verify.';
     case 'rate_limited':
       return 'Too many attempts. Wait a moment, then try again.';
     case 'invalid_session':

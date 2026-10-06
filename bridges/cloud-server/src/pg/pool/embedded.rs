@@ -491,4 +491,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         "session-bound realtime tickets",
         "0112_realtime_ticket_sessions.sql"
     ),
+    migration!(
+        113,
+        "account email verification codes",
+        "0113_account_email_codes.sql"
+    ),
 ];

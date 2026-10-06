@@ -119,6 +119,15 @@ pub struct AccountResponse {
     pub password_set: bool,
 }
 
+/// `GET /v1/cloud/auth/me`: the account plus state only its owner sees.
+#[derive(Debug, Serialize)]
+pub struct MeResponse {
+    #[serde(flatten)]
+    pub account: AccountResponse,
+    #[serde(rename = "primaryEmailVerified")]
+    pub primary_email_verified: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SessionResponse {
     pub token: String,

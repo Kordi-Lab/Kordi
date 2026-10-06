@@ -27,6 +27,7 @@ export function cloudAccountsEqual(left: CloudAccount | null, right: CloudAccoun
     && left.kordiId === right.kordiId
     && left.displayName === right.displayName
     && left.primaryEmail === right.primaryEmail
+    && left.primaryEmailVerified === right.primaryEmailVerified
     && left.avatarUrl === right.avatarUrl
     && cloudAvatarsEqual(left.avatar, right.avatar)
     && left.defaultAgent?.agentId === right.defaultAgent?.agentId

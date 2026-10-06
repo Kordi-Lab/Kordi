@@ -1,11 +1,14 @@
 import type { ReactNode } from 'react';
 
-export function CloudSignupVerificationFields({ email, busy, resendSeconds, onResend, onChangeEmail, children }: {
+export function CloudSignupVerificationFields({
+  email, busy, resendSeconds, onResend, onChangeEmail, changeEmailLabel = 'Change email', children,
+}: {
   email: string;
   busy: boolean;
   resendSeconds: number;
   onResend: () => void;
   onChangeEmail: () => void;
+  changeEmailLabel?: string;
   children: ReactNode;
 }) {
   return (
@@ -18,7 +21,7 @@ export function CloudSignupVerificationFields({ email, busy, resendSeconds, onRe
         <button type="button" disabled={busy || resendSeconds > 0} onClick={onResend}>
           {resendSeconds > 0 ? `Resend in ${resendSeconds}s` : 'Resend code'}
         </button>
-        <button type="button" disabled={busy} onClick={onChangeEmail}>Change email</button>
+        <button type="button" disabled={busy} onClick={onChangeEmail}>{changeEmailLabel}</button>
       </div>
     </div>
   );

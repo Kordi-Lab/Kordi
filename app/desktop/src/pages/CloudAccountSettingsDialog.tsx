@@ -10,7 +10,13 @@ import { SettingsNav, SettingsRow, SettingsSection, SettingsValueControl, type S
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import type { SettingsSection as SettingsSectionData, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
-import type { CloudAccount, CloudProfileUpdateInput } from '@/features/cloud/authClient';
+import type {
+  CloudAccount,
+  CloudAccountEmailVerificationInput,
+  CloudProfileUpdateInput,
+  CloudSignupCodeChallenge,
+} from '@/features/cloud/authClient';
+import { CloudAccountEmailRow } from '@/kordi-app/cloud/CloudAccountEmailRow';
 import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
@@ -50,6 +56,9 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   account: CloudAccount | null;
   onClose: () => void;
   onUpdateProfile: (input: CloudProfileUpdateInput) => Promise<void>;
+  onRequestEmailCode?: () => Promise<CloudSignupCodeChallenge>;
+  onVerifyEmail?: (input: CloudAccountEmailVerificationInput) => Promise<void>;
+  onEmailAlreadyVerified?: () => Promise<void>;
   onSignOut?: () => Promise<void> | void;
 };
 
@@ -62,7 +71,10 @@ function cloudProfileRows(account: CloudAccount | null) {
   const kordiHandle = formatKordiHandle(account.kordiId);
   return [
     kordiHandle ? { label: 'Kordi ID', value: kordiHandle } : null,
-    account.primaryEmail?.trim() ? { label: 'Email', value: account.primaryEmail.trim() } : null,
+    // Servers that report verification state get the dedicated email row instead.
+    account.primaryEmail?.trim() && account.primaryEmailVerified === undefined
+      ? { label: 'Email', value: account.primaryEmail.trim() }
+      : null,
   ].filter((row): row is { label: string; value: string } => Boolean(row));
 }
 
@@ -84,6 +96,9 @@ export function CloudAccountSettingsDialog({
   account,
   onClose,
   onUpdateProfile,
+  onRequestEmailCode,
+  onVerifyEmail,
+  onEmailAlreadyVerified,
   onSignOut,
   settingsSections,
   setActiveSettingsSectionId,
@@ -283,6 +298,16 @@ export function CloudAccountSettingsDialog({
             control={<span className="max-w-[280px] truncate text-[13px] text-slate-300" title={row.value}>{row.value}</span>}
           />
         ))}
+        {account.primaryEmail?.trim() ? (
+          <CloudAccountEmailRow
+            key={account.accountId}
+            email={account.primaryEmail.trim()}
+            verified={account.primaryEmailVerified}
+            onRequestCode={onRequestEmailCode}
+            onVerify={onVerifyEmail}
+            onAlreadyVerified={onEmailAlreadyVerified}
+          />
+        ) : null}
         <SettingsRow
           title="Save changes"
           description={profileError

@@ -571,6 +571,89 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Sends a six-digit code to the signed-in account's primary email.
+    func requestAccountEmailCode() async -> CloudSignupCodeChallenge? {
+        errorMessage = nil
+        if previewMode {
+            return CloudSignupCodeChallenge(
+                verificationId: "preview_account_email",
+                expiresAt: ISO8601DateFormatter().string(from: Date().addingTimeInterval(600)),
+                retryAfterSeconds: 60
+            )
+        }
+        guard let token, let accountId = account?.accountId else { return nil }
+        do {
+            return try await api.requestAccountEmailCode(token: token)
+        } catch {
+            if (error as? CloudAPIError)?.code == "email_already_verified" {
+                await refreshAccountAfterEmailVerification(token: token, accountId: accountId)
+                return nil
+            }
+            errorMessage = accountEmailUserFacing(error, fallback: "Could not send verification code.")
+            return nil
+        }
+    }
+
+    /// Confirms the code and refreshes the account so the verified state shows.
+    func verifyAccountEmail(verificationId: String, verificationCode: String) async -> Bool {
+        let code = verificationCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.utf8.count == 6, code.utf8.allSatisfy({ (48...57).contains($0) }) else {
+            errorMessage = "Enter the 6-digit code from your email."
+            return false
+        }
+        errorMessage = nil
+        if previewMode {
+            // `000000` exercises the rejected-code state offline.
+            guard code != "000000" else {
+                errorMessage = "The email code is invalid or expired. Request a new code and try again."
+                return false
+            }
+            markPrimaryEmailVerified(accountId: account?.accountId)
+            return true
+        }
+        guard let token, let accountId = account?.accountId else { return false }
+        do {
+            try await api.verifyAccountEmail(
+                token: token,
+                verificationId: verificationId,
+                verificationCode: code
+            )
+        } catch {
+            guard (error as? CloudAPIError)?.code == "email_already_verified" else {
+                errorMessage = accountEmailUserFacing(error, fallback: "Could not verify your email.")
+                return false
+            }
+        }
+        await refreshAccountAfterEmailVerification(token: token, accountId: accountId)
+        return true
+    }
+
+    private func refreshAccountAfterEmailVerification(token: String, accountId: String) async {
+        let refreshed = try? await api.me(token: token)
+        guard self.token == token, account?.accountId == accountId else { return }
+        if let refreshed, refreshed.accountId == accountId, refreshed.primaryEmailVerified == true {
+            account = refreshed
+        } else {
+            // The server confirmed the code; keep the row accurate even if the
+            // follow-up profile read failed or came from an older replica.
+            markPrimaryEmailVerified(accountId: accountId)
+        }
+    }
+
+    private func markPrimaryEmailVerified(accountId: String?) {
+        guard var current = account, current.accountId == accountId else { return }
+        current.primaryEmailVerified = true
+        account = current
+    }
+
+    private func accountEmailUserFacing(_ error: Error, fallback: String) -> String {
+        switch (error as? CloudAPIError)?.code {
+        case "email_missing": return "This account has no email address to verify."
+        case "email_delivery_unavailable": return "Email verification is temporarily unavailable. Try again later."
+        default: return userFacing(error, fallback: fallback)
+        }
+    }
+
     func signIn(with provider: CloudOAuthProvider) async -> Bool {
         errorMessage = nil
         do {

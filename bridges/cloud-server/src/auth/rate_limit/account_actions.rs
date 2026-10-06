@@ -28,6 +28,15 @@ pub const CONTACT_ADD_LIMIT: AccountActionLimit = AccountActionLimit {
     window: Duration::from_secs(60 * 60),
 };
 
+/// Requests for and guesses at codes that verify the signed-in account's
+/// primary email. The code store separately allows one send per minute, five
+/// per hour, and five guesses per code; this bounds the account as a whole.
+pub const EMAIL_VERIFICATION_LIMIT: AccountActionLimit = AccountActionLimit {
+    action: "email-verification",
+    limit: 10,
+    window: Duration::from_secs(60 * 60),
+};
+
 /// Agent runs a requester starts. Every user-triggered path that queues an
 /// agent run, now or on a schedule, charges this budget through
 /// [`CloudRateLimiter::observe_agent_run`]: run claims, subsession messages
@@ -194,6 +203,37 @@ mod tests {
         assert_ne!(MESSAGE_SEND_LIMIT.action, CONTACT_ADD_LIMIT.action);
         assert_ne!(CONTACT_ADD_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
         assert_ne!(MESSAGE_SEND_LIMIT.action, AGENT_RUN_CLAIM_LIMIT.action);
+        for limit in [MESSAGE_SEND_LIMIT, CONTACT_ADD_LIMIT, AGENT_RUN_CLAIM_LIMIT] {
+            assert_ne!(EMAIL_VERIFICATION_LIMIT.action, limit.action);
+        }
+    }
+
+    #[tokio::test]
+    async fn email_verification_allows_a_full_code_cycle_then_stops() {
+        let limiter = CloudRateLimiter::memory(CloudRateLimitConfig::default());
+        // One send plus five guesses for one code must fit the hourly budget.
+        const { assert!(EMAIL_VERIFICATION_LIMIT.limit >= 6) };
+        assert_eq!(EMAIL_VERIFICATION_LIMIT.window, Duration::from_secs(3600));
+        for _ in 0..EMAIL_VERIFICATION_LIMIT.limit {
+            assert_eq!(
+                limiter
+                    .observe_account_limit(EMAIL_VERIFICATION_LIMIT, "acct_email")
+                    .await,
+                RateLimitDecision::Allowed
+            );
+        }
+        assert!(matches!(
+            limiter
+                .observe_account_limit(EMAIL_VERIFICATION_LIMIT, "acct_email")
+                .await,
+            RateLimitDecision::Limited { .. }
+        ));
+        assert_eq!(
+            limiter
+                .observe_account_limit(EMAIL_VERIFICATION_LIMIT, "acct_other_email")
+                .await,
+            RateLimitDecision::Allowed
+        );
     }
 
     #[tokio::test]

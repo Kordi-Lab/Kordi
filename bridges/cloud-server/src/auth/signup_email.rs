@@ -11,7 +11,10 @@ mod smtp;
 mod store;
 
 pub use store::SignupCodeChallenge;
-pub(crate) use store::{consume_signup_code, request_signup_code, SignupCodeError};
+pub(crate) use store::{
+    consume_account_email_code, consume_signup_code, request_account_email_code,
+    request_signup_code, SignupCodeError,
+};
 
 /// Injectable delivery boundary; production uses SMTP, tests use a private inbox.
 #[async_trait]

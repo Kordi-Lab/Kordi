@@ -162,6 +162,8 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-codex-device-login` | Alias for `--preview-login-steps=openai-codex-device`; also turns on preview data by itself |
 | `--preview-appearance` | Appearance settings |
 | `--preview-profile` | Profile settings |
+| `--preview-email-unverified` | Combine with `--preview-data --preview-profile`: the account email shows Not verified with a Verify email row |
+| `--preview-email-verification` | Combine with `--preview-data --preview-profile`: opens the Verify email sheet for an unverified account. The offline simulator accepts any six-digit code except `000000`, which shows the rejected-code error |
 
 Focused arguments that require conversation fixtures should be combined with `--preview-data` unless their preview root installs data itself.
 

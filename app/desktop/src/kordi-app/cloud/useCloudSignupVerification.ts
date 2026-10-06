@@ -10,10 +10,15 @@ export function useCloudSignupVerification(
   const [resendAt, setResendAt] = useState(0);
   const [clockNow, setClockNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!challenge) return;
-    const timer = setInterval(() => setClockNow(Date.now()), 1000);
+    // Keep counting after a reset so callers can hold back a new request until the cooldown ends.
+    if (!challenge && resendAt <= Date.now()) return;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      setClockNow(now);
+      if (!challenge && now >= resendAt) clearInterval(timer);
+    }, 1000);
     return () => clearInterval(timer);
-  }, [challenge]);
+  }, [challenge, resendAt]);
 
   async function sendCode() {
     if (!requestCode) throw new Error('Email verification is unavailable. Try Google or GitHub.');
@@ -27,6 +32,7 @@ export function useCloudSignupVerification(
   function resetVerification() {
     setChallenge(null);
     setVerificationCode('');
+    setClockNow(Date.now());
   }
 
   return {

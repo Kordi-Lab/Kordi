@@ -57,6 +57,7 @@ use crate::avatars::{
 };
 use crate::server::ServerState;
 
+mod account_email_handlers;
 mod app_invitation_handlers;
 mod contact_acceptance;
 mod contact_handlers;
@@ -157,6 +158,14 @@ pub fn routes_with_shared_rate_limiter(
 
     let protected = Router::new()
         .route("/v1/cloud/auth/me", get(me).patch(update_me))
+        .route(
+            "/v1/cloud/auth/email/verification/code",
+            post(account_email_handlers::send_account_email_verification_code),
+        )
+        .route(
+            "/v1/cloud/auth/email/verification",
+            post(account_email_handlers::verify_account_email_code),
+        )
         .route("/v1/cloud/auth/logout", post(logout))
         .route("/v1/cloud/auth/devices", get(list_devices))
         .route(

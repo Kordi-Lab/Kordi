@@ -172,6 +172,8 @@ struct CloudAccount: Codable, Hashable {
     let kordiId: String?
     let displayName: String?
     let primaryEmail: String?
+    /// Nil when the server predates email verification for existing accounts.
+    var primaryEmailVerified: Bool? = nil
     let avatarUrl: String?
     var avatar: CanonicalAvatarDescriptor
     var defaultAgent: CloudDefaultAgentProfile? = nil

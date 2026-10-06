@@ -13,6 +13,7 @@ import {
   defaultCloudAuthClient,
   parseCloudOAuthHashResult,
   type CloudAccount,
+  type CloudAccountEmailVerificationInput,
   type CloudAuthResult,
   type CloudOAuthProvider,
   type CloudProfileUpdateInput,
@@ -49,6 +50,10 @@ export type UseCloudSessionResult = {
   signUp(input: CloudSignupInput): Promise<void>;
   signInWithProvider(provider: CloudOAuthProvider, signal?: AbortSignal): Promise<void>;
   updateProfile(input: CloudProfileUpdateInput): Promise<CloudAccount>;
+  requestAccountEmailCode(this: void): Promise<CloudSignupCodeChallenge>;
+  verifyAccountEmail(this: void, input: CloudAccountEmailVerificationInput): Promise<void>;
+  /** Reloads the account after the server reports its email as verified. */
+  refreshAccountEmailVerified(this: void): Promise<void>;
   signOut(this: void): Promise<void>;
   clearError(): void;
 };
@@ -442,6 +447,32 @@ export function useCloudSession({
     [authClient, setAuthenticated],
   );
 
+  const requestAccountEmailCode = useCallback(async () => {
+    const stored = await loadSession();
+    if (!stored?.token) throw new CloudAuthError('invalid_session', 'Not signed in.', 401);
+    return authClient.requestAccountEmailCode(stored.token);
+  }, [authClient]);
+
+  const refreshAccountEmailVerified = useCallback(async () => {
+    const stored = await loadSession();
+    let next: CloudAccount | null = null;
+    try {
+      if (stored?.token) next = await authClient.me(stored.token);
+    } catch {
+      // The server already confirmed the email; the periodic profile refresh repairs anything else.
+    }
+    const current = accountRef.current;
+    if (next && next.accountId === current?.accountId) setAuthenticated(next);
+    else if (current) setAuthenticated({ ...current, primaryEmailVerified: true });
+  }, [authClient, setAuthenticated]);
+
+  const verifyAccountEmail = useCallback(async (input: CloudAccountEmailVerificationInput) => {
+    const stored = await loadSession();
+    if (!stored?.token) throw new CloudAuthError('invalid_session', 'Not signed in.', 401);
+    await authClient.verifyAccountEmail(stored.token, input);
+    await refreshAccountEmailVerified();
+  }, [authClient, refreshAccountEmailVerified]);
+
   const signOut = useCallback(async () => {
     try {
       const stored = await loadSession();
@@ -477,6 +508,9 @@ export function useCloudSession({
     requestSignupCode,
     signInWithProvider,
     updateProfile,
+    requestAccountEmailCode,
+    verifyAccountEmail,
+    refreshAccountEmailVerified,
     signOut,
     clearError,
   };

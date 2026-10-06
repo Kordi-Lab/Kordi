@@ -140,6 +140,54 @@ async fn provider_email_joins_a_verified_account() {
     assert_eq!(accounts_with_email(&pool, &email).await, 1);
 }
 
+struct CapturingSender(std::sync::Mutex<Option<(String, String)>>);
+
+#[async_trait::async_trait]
+impl crate::auth::signup_email::SignupCodeSender for CapturingSender {
+    async fn send_code(&self, email: &str, code: &str) -> Result<(), &'static str> {
+        *self.0.lock().unwrap() = Some((email.to_string(), code.to_string()));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn provider_email_joins_a_password_account_after_inbox_verification() {
+    use crate::auth::account_email::{send_account_email_code, verify_account_email};
+    let Some(pool) = pool().await else { return };
+    let email = unique_email("verified-later");
+    let existing = insert_account(&pool, &email.to_uppercase(), true, false).await;
+    let sender = std::sync::Arc::new(CapturingSender(std::sync::Mutex::new(None)));
+    let service =
+        crate::auth::signup_email::SignupEmailService::new(sender.clone(), vec![9; 32]).unwrap();
+
+    let challenge = send_account_email_code(&pool, Some(&service), &existing)
+        .await
+        .unwrap_or_else(|_| panic!("code is sent"));
+    let (recipient, code) = sender.0.lock().unwrap().clone().unwrap();
+    assert_eq!(recipient, email);
+    assert!(verify_account_email(
+        &pool,
+        Some(&service),
+        &existing,
+        &challenge.verification_id,
+        &code
+    )
+    .await
+    .is_ok());
+    assert!(email_verified_at(&pool, &existing).await.is_some());
+
+    let (body, _) = login(
+        &pool,
+        OAuthProvider::Google,
+        profile(&unique_subject(), Some(&email), true),
+    )
+    .await
+    .expect("an inbox-verified account accepts a provider-verified email");
+    assert_eq!(body.account.account_id, existing);
+    assert_eq!(identities_for(&pool, &existing).await, 1);
+    assert_eq!(accounts_with_email(&pool, &email).await, 1);
+}
+
 #[tokio::test]
 async fn unverified_provider_email_never_joins_an_existing_account() {
     let Some(pool) = pool().await else { return };

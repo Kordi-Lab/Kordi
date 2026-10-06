@@ -276,8 +276,22 @@ pub(super) async fn me(
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let pool = state.db_pool();
-    match account_response_row(pool, &session.account_id).await {
-        Ok(Some(account)) => Json(account).into_response(),
+    let response = match account_response_row(pool, &session.account_id).await {
+        Ok(Some(account)) => {
+            crate::auth::account_email::primary_email_verified(pool, &session.account_id)
+                .await
+                .map(|verified| {
+                    verified.map(|primary_email_verified| MeResponse {
+                        account,
+                        primary_email_verified,
+                    })
+                })
+        }
+        Ok(None) => Ok(None),
+        Err(error) => Err(error),
+    };
+    match response {
+        Ok(Some(body)) => Json(body).into_response(),
         Ok(None) => err(
             "account_missing",
             "Account no longer exists.",
