@@ -1,12 +1,14 @@
 .app-companion-toolbar { display: flex; align-items: center; gap: 2px; margin-top: 2px; }
 .app-companion-toolbar > button,
+.app-companion-header-controls > .app-companion-header-control,
 .app-companion-overview-header > button, .app-companion-month-heading button {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   height: 28px; min-width: 28px; padding: 4px; border-radius: 7px;
   color: var(--utility-muted-text); background: transparent; cursor: pointer;
 }
-.app-companion-toolbar svg { width: 15px; height: 15px; stroke-width: 1.6; }
+.app-companion-toolbar svg, .app-companion-header-control svg { width: 15px; height: 15px; stroke-width: 1.6; }
 .app-companion-toolbar button:hover,
+.app-companion-header-controls > .app-companion-header-control:hover,
 .app-companion-overview button:hover { background: var(--app-control-hover); color: var(--utility-foreground); }
 .app-companion-toolbar button[aria-pressed="true"] { background: var(--app-control-active); color: var(--utility-foreground); }
 .app-companion-toolbar button:disabled { opacity: .4; cursor: default; }
@@ -15,6 +17,11 @@
 }
 .app-chat-pane-header:has(.app-companion-toolbar) { z-index: 45; gap: 4px; }
 .app-chat-pane-header:has(.app-companion-toolbar) > div:last-of-type { gap: 4px; }
+/* Ask Agent header: the main chat title, controls and tab row with a quiet context label. */
+.app-companion-header-controls { gap: 2px; margin-top: 2px; }
+.app-companion-header-controls > .app-companion-header-control[aria-expanded="true"] { background: var(--app-control-active); color: var(--utility-foreground); }
+.app-companion-header-controls > .app-companion-header-control:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: 2px; }
+.app-companion-pane-title-context, .app-companion-pane-title-separator { color: var(--utility-muted-text); font-weight: 500; }
 .app-companion-overview { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; color: var(--utility-foreground); background: var(--app-main-bg); }
 .app-companion-overview-header { display: flex; justify-content: space-between; align-items: flex-start; flex-shrink: 0; }
 .app-companion-overview-header h2 { font-size: 17px; font-weight: 600; line-height: 24px; }
@@ -50,7 +57,15 @@
 .app-chat-split-workspace[data-chat-companion-side="left"] > :is(.app-chat-main-workspace, .app-chat-pane-layout),
 .app-chat-split-workspace[data-chat-companion-side="right"] > :is(.app-chat-companion-pane, .app-companion-overview, .app-companion-panel-motion) { grid-column: 3; grid-row: 1; }
 .app-chat-split-workspace > .app-chat-split-divider { grid-column: 2; grid-row: 1; }
-.app-chat-split-divider:focus-visible { outline: 2px solid var(--app-nav-rail-focus-ring); outline-offset: -2px; }
+/* One continuous hairline between the panes, in the header divider color; the
+   resize hit area extends 5px over each pane without exposing the body. */
+.app-chat-split-workspace { --app-chat-pane-divider: var(--app-chat-bubble-peer-border); }
+.kordi-app .app-chat-split-workspace { --app-chat-pane-divider: var(--app-palette-divider); }
+.app-chat-split-divider { width: 100%; min-width: 0; background: var(--app-chat-pane-divider); transition: background-color 140ms ease; }
+.app-chat-split-divider::before { content: ''; position: absolute; inset-block: 0; inset-inline: -5px; }
+.app-chat-split-divider:is(:hover, :focus-visible) { background: color-mix(in oklab, var(--app-chat-accent) 45%, var(--app-chat-pane-divider)); }
+.app-chat-split-divider:focus-visible { outline: none; }
+.app-chat-split-grip { position: absolute; top: 50%; left: 50%; width: 10px; transform: translate(-50%, -50%); }
 
 .digest-page.digest-companion-page { padding: 0; container-type: normal; overflow: hidden; }
 .digest-companion-page > .digest-notices:empty { display: none; }

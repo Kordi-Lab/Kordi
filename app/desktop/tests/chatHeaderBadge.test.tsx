@@ -99,7 +99,7 @@ test('chat headers reserve a compact second row for quiet metadata', () => {
 
   assert.doesNotMatch(source, /min-h-\[112px\]/);
   assert.doesNotMatch(source, /min-h-\[100px\]/);
-  assert.equal((source.match(/app-page-header app-chat-pane-header/g) ?? []).length, 2, 'main and Ask Agent headers should share one geometry contract');
+  assert.equal((source.match(/app-page-header app-chat-pane-header/g) ?? []).length, 3, 'main and Ask Agent headers (plus the Ask Agent native-titlebar tab row) should share one geometry contract');
   assert.match(shell, /\.app-chat-split-workspace\s*{[^}]*--app-chat-pane-header-height:\s*5\.75rem;/s);
   assert.match(shell, /\.app-right-detail-page-content\s*{[^}]*padding:\s*var\(--app-chat-pane-detail-top\) var\(--app-chat-pane-detail-inline\) 2\.5rem;/s);
   assert.match(source, /data-chat-session-metadata="true"/);
@@ -351,7 +351,8 @@ test('ask agent opens an explicit side session with neutral copy and clean heade
   assert.match(sidePanelHeader, /data-side-chat-controls="true"/);
   assert.doesNotMatch(sidePanelHeader, /rounded-full border border-white\/10 bg-white\/\[0\.035\] p-1 shadow/);
   assert.doesNotMatch(sidePanelHeader, /app-icon-button app-utility-button h-7 w-7 rounded-full p-0 text-slate-100/);
-  assert.equal((sidePanelHeader.match(/app-button-quiet/g) ?? []).length, 2);
+  assert.doesNotMatch(sidePanelHeader, /app-button-quiet/);
+  assert.equal((sidePanelHeader.match(/className="app-companion-header-control"/g) ?? []).length, 2);
   assert.match(source, /data-side-chat-root-menu="true"/);
   assert.match(source, /app-page-header[^"`]*z-40/);
   assert.match(source, /data-side-chat-options-menu="true"/);

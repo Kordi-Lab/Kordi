@@ -34,7 +34,11 @@ const initialProjects: ChatProject[] = [
 ];
 
 function ProjectWorkspacePreview() {
-  const appearance = new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light';
+  const params = new URLSearchParams(location.search);
+  const appearance = params.get('theme') === 'dark' ? 'dark' : 'light';
+  // `destinations=1` shows the chat section tabs; `native=0` renders the in-pane (non-native) headers.
+  const showDestinations = params.get('destinations') === '1';
+  const nativeShell = params.get('native') !== '0';
   const [projects, setProjects] = useState(initialProjects);
   const [worktrees, setWorktrees] = useState<Record<string, { path: string; branch: string | null }[]>>({});
   const [conversations, setConversations] = useState(() => initialTitles.map((title, index) => makeConversation(`chat-${index}`, title, index)));
@@ -46,6 +50,8 @@ function ProjectWorkspacePreview() {
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [notice, setNotice] = useState('');
+  const [detailCollapsed, setDetailCollapsed] = useState(true);
+  const [detailTab, setDetailTab] = useState('info');
   const transcriptRef = useRef<HTMLDivElement>(null);
   const active = conversations.find((conversation) => conversation.id === activeId)!;
   const selected = projectForChat(projects, activeId);
@@ -111,11 +117,11 @@ function ProjectWorkspacePreview() {
     showChatDetailRail: false,
     collapseChatSessions: !sidebarVisible,
     setIsSessionPanelCollapsed: (collapsed: boolean) => setSidebarVisible(!collapsed),
-    showRightDetailRail: false,
-    isDetailPanelCollapsed: true,
-    setIsDetailPanelCollapsed: () => undefined,
-    activeDetailTab: 'messages',
-    setActiveDetailTab: () => undefined,
+    showRightDetailRail: showDestinations,
+    isDetailPanelCollapsed: detailCollapsed,
+    setIsDetailPanelCollapsed: setDetailCollapsed,
+    activeDetailTab: detailTab,
+    setActiveDetailTab: setDetailTab,
     activeArtifactId: null,
     setActiveArtifactId: () => undefined,
     activeConv: active,
@@ -199,7 +205,7 @@ function ProjectWorkspacePreview() {
   });
   return <div className={`project-workspace-review theme-${appearance}`}>
     <ChatProjectsContext value={{ enabled: true, projects, assign, gitWorkspace, openImporter: (sessionId) => setImportSessionId(sessionId || activeId), create: async (_sessionId, name, folder) => importProject({ name, root: folder || `/preview/${name}`, source: 'local' }) }}>
-      <AppShellFrame rootThemeClass={`theme-${appearance}`} isNativeShell isLayoutResizing={false}
+      <AppShellFrame rootThemeClass={`theme-${appearance}`} isNativeShell={nativeShell} isLayoutResizing={false}
         windowTitle={active.name} onToggleSessionPanel={() => setSidebarVisible((current) => !current)}
         windowSize={{ width: viewport.width, height: viewport.height }} leftWorkspaceWidth={LEFT_RAIL_WIDTH + (sidebarVisible ? sidebar.layout.sessionRailWidth : 0)}
         isSingleWorkspacePage={false} showSessionRail={sidebarVisible} collapseChatSessions={!sidebarVisible}
