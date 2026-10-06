@@ -40,6 +40,7 @@ import {
   shouldUseCloudSessionAction,
 } from './useKordiAppModelHelpers';
 import { appendCanonicalRenameNotice } from './canonicalRenameNotice';
+import { isDesktopRuntimeSessionId } from './desktopRuntimeSessionMembership';
 
 type UseKordiChatSessionActionsArgs = {
   conversations?: readonly Conversation[];
@@ -110,7 +111,6 @@ export function useKordiChatSessionActions({
 }: UseKordiChatSessionActionsArgs) {
   const desktopActiveSessionId = desktopState?.activeSessionId;
   const desktopSessions = desktopState?.sessions;
-  const desktopProjects = desktopState?.projects;
   const fallbackChatSessionId = useCallback((removedId: string) => (
     conversationIdAfterRemoval(conversations, removedId, desktopSessions?.find(session => session.id !== removedId)?.id ?? LOCAL_DRAFT_CHAT_CONVERSATION_ID)
   ), [conversations, desktopSessions]);
@@ -216,11 +216,7 @@ export function useKordiChatSessionActions({
     if (!nextTitle) return;
     const actorIdentityId =
       canonicalState?.profile.humanIdentityId?.trim() || undefined;
-    const isDesktopRuntimeSession = (desktopSessions?.some(
-      (session) => session.id === sessionId,
-    ) ?? false) || (desktopProjects?.some((project) => (
-      project.sessions.some((session) => session.id === sessionId)
-    )) ?? false);
+    const isDesktopRuntimeSession = isDesktopRuntimeSessionId(desktopSessions, desktopState?.projects, sessionId);
     try {
       setDesktopError(null);
       let nextCanonical = await renameCanonicalSession({
@@ -273,7 +269,7 @@ export function useKordiChatSessionActions({
   }, [
     canonicalState?.profile.humanIdentityId,
     desktopSessions,
-    desktopProjects,
+    desktopState?.projects,
     isNativeShell,
     refreshCanonicalState,
     refreshDesktopChat,
