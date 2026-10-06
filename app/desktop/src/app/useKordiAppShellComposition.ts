@@ -299,6 +299,7 @@ export function useKordiAppShellComposition({
       onProjectTranscriptScroll,
       onChatTranscriptScroll,
       onCompanionReadPresentationChange: refs.setReadableCompanionSessionId,
+      onCompanionHistorySessionChange: conversations.setCompanionHistorySessionId,
       activeSourcePreview: ui.settingsUi.activeSourcePreview,
       setActiveSourcePreview: ui.settingsUi.setActiveSourcePreview,
       activeArtifactId: ui.settingsUi.activeArtifactId,
@@ -380,6 +381,7 @@ export function useKordiAppShellComposition({
         composer.composerAuthByScope.optionsByScope.project,
       composerAuthOptionsChat:
         composer.composerAuthByScope.optionsByScope.chat,
+      resolveChatRuntimeRoute: cloud.resolveChatRuntimeRoute,
       selectComposerAuthChoice: wrappedSelectComposerAuthChoice,
       selectComposerProviderChoice: wrappedSelectComposerProviderChoice,
       composerProviderOptions: composer.composerProviderOptions,

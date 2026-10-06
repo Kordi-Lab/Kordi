@@ -15,6 +15,7 @@ import {
   appendDesktopSessionSourceMessageToCache,
   appendMappedSessionMessageToCache,
   mergeDesktopSessionSourceMessagesCache,
+  mergeBackgroundDesktopChatState,
   mergeLatestDesktopChatState,
   mergeMappedSessionMessagesCache,
   recentDesktopSessionIds,
@@ -315,4 +316,19 @@ test('raw desktop transcript cache stays stable during a shorter live snapshot a
 
   const deduped = appendDesktopSessionSourceMessageToCache(appended, 'session-a', structuredClone(completed));
   assert.equal(deduped, appended);
+});
+
+
+test('side-session materialization and completion preserve the main selection and transcript', () => {
+  const main = desktopState();
+  const side = desktopState({activeSessionId:'side-session',activeSession:activeSession({id:'side-session',messages:[desktopMessage('Side answer')]}),sessions:[session({id:'side-session'})]});
+  const updated = mergeBackgroundDesktopChatState(main, side)!;
+  assert.equal(updated.activeSessionId, main.activeSessionId);
+  assert.equal(updated.activeSession, main.activeSession);
+  assert.equal(updated.activeSession.messages, main.activeSession.messages);
+  assert.deepEqual(updated.sessions.map(item=>item.id), ['side-session','session-a']);
+  const changedMain = desktopState({activeSessionId:'different-main',activeSession:activeSession({id:'different-main'})});
+  const lateCompletion = mergeBackgroundDesktopChatState(changedMain, side)!;
+  assert.equal(lateCompletion.activeSessionId, 'different-main');
+  assert.equal(lateCompletion.activeSession, changedMain.activeSession);
 });

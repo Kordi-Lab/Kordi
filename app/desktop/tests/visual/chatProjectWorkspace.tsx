@@ -72,7 +72,9 @@ function ProjectWorkspacePreview() {
     if (workspace?.worktree) setWorktrees((current) => ({ ...current, [root]: [
       ...(current[root] ?? []).filter((tree) => tree.path !== cwd), { path: cwd, branch: workspace.branch ?? `kordi/chat-${sessionId}` },
     ] }));
-    setConversations((current) => current.map((conversation) => conversation.id === sessionId ? { ...conversation, localSessionCwd: cwd } : conversation));
+    setConversations((current) => current.map((conversation) => conversation.id === sessionId ? {
+      ...conversation, localSessionCwd: cwd, metadata: { ...conversation.metadata, projectRoot: root, workspaceRoot: cwd },
+    } : conversation));
     if (!sessionId) { newSession(root); return; }
     setProjects((current) => current.map((project) => ({ ...project, sessions: [
       ...project.sessions.filter((session) => session.id !== sessionId),

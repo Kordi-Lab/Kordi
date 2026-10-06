@@ -6,18 +6,19 @@ import { createRoot } from 'react-dom/client';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { useChatMessageActions } from '../src/features/chat/messageActions/chatMessages';
 import type { UseChatMessageActionsArgs } from '../src/features/chat/messageActions/types';
-import type { CanonicalSessionState, DesktopChatState } from '../src/kordi-app/types';
+import type { CanonicalSessionState, Conversation, DesktopChatState } from '../src/kordi-app/types';
 import type { ChatSyncConversation, CloudAccount, CloudAuthClient } from '../src/features/cloud/authClient';
 import { __setSessionBackendForTests } from '../src/features/cloud/session';
 import { useCloudSelfAgentForwardSync } from '../src/features/cloud/useCloudSelfAgentForwardSync';
 import { saveCloudSelfAgentForwardCutoff } from '../src/features/cloud/cloudSelfAgentForwardSync';
 import { cloudDirectMessageDisplayText, cloudDirectMessageAgentRuntimeRoute } from '../src/features/cloud/cloudDirectMessages';
+import { cloudCollaborationConversationId } from '../src/features/collaboration/conversationIds';
 
 const sessionId = 'synthetic-new-chat';
 const route = { model: 'openai/gpt-6-sol', thinking: 'medium', authProvider: 'openai-codex', authChoice: 'cloud-login:synthetic' };
 const noop = () => undefined;
 
-async function sendFirstMessage(existingSession = false, blankNativeSession = false, missingCatalog = false) {
+async function sendFirstMessage(existingSession = false, blankNativeSession = false, missingCatalog = false, sideTarget?: Conversation) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost', pretendToBeVisual: true });
   const globals = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
     requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), IS_REACT_ACT_ENVIRONMENT: true, __TAURI_INTERNALS__: {} };
@@ -41,12 +42,15 @@ async function sendFirstMessage(existingSession = false, blankNativeSession = fa
   const errors: string[] = [];
   const commands: string[] = [];
   const sent: string[] = [];
+  const directSends: string[] = [];
+  const followMain = { current: false };
   const conversation = { id: 'synthetic-conversation', kind: 'ai', legacy_session_id: sessionId,
     latest_message_sequence: 1, created_at: new Date().toISOString() } as ChatSyncConversation;
   mockIPC((command, payload) => {
     commands.push(command);
     if (command === 'desktop_chat_new_session') return desktop;
     if (command === 'desktop_chat_session_active_turn') return null;
+    if (command === 'desktop_chat_state') return desktop;
     if (command === 'desktop_canonical_session_catalog') return missingCatalog ? null : { ...canonical,
       sessions: blankNativeSession ? [] : [session], participants: [{ sessionId, identityId: 'human:me', state: 'active' }], summaries: [] };
     if (command === 'desktop_canonical_open_or_create_session_fast') {
@@ -69,12 +73,14 @@ async function sendFirstMessage(existingSession = false, blankNativeSession = fa
   const args = {
     activeConvId: existingSession ? sessionId : 'draft:local-chat', activeConvCanonicalSessionId: existingSession ? sessionId : null,
     activeConversationUsesCollaboration: false, activeConvCollaborationTarget: null, activeConvMentionScope: null,
-    activeConvMessages: [], chatConversations: [], isNativeShell: true, hasAnyDesktopAuth: true, hasConfiguredProviderAuth: true,
+    activeConvMessages: [], chatConversations: sideTarget ? [sideTarget] : [], isNativeShell: true, hasAnyDesktopAuth: true, hasConfiguredProviderAuth: true,
     canonicalHumanIdentityId: 'human:me', canonicalSessionState: canonical, desktopChatState: existingSession ? desktop : null,
     desktopCollaborationState: null, desktopLiveTurn: null, queuedDesktopMessagesBySession: {},
     composerDrafts: { chat: 'Which model are you using?', project: '' }, composerSelections: { chat: { mode: 'agent', model: route.model, thinking: route.thinking } },
     chatComposerAttachments: [], selectedChatAgentMentionRef: { current: null }, localChatSendInFlightRef: { current: null },
-    shouldAutoFollowChatRef: { current: false }, attachmentSummaryText: (text: string) => text, resolveChatRuntimeRoute: () => route,
+    shouldAutoFollowChatRef: followMain, attachmentSummaryText: (text: string) => text,
+    resolveChatRuntimeRoute: (id: string) => { assert.equal(id, sideTarget ? sessionId : id); return route; },
+    sendCloudCollaborationMessage: async (_id: string, body: string) => { directSends.push(body); return { messageId: 'synthetic-direct' }; },
     handleLocalSlashCommand: async () => false, setComposerDrafts: noop, setActiveConvId: noop,
     setCanonicalSessionState: (update: React.SetStateAction<CanonicalSessionState | null>) => { canonical = (typeof update === 'function' ? update(canonical) : update) ?? canonical; },
     setChatComposerAttachments: noop, setCloudCollaborationState: noop, setDesktopChatError: (error: string | null) => { if (error) errors.push(error); },
@@ -96,16 +102,16 @@ async function sendFirstMessage(existingSession = false, blankNativeSession = fa
   }
   try {
     await act(async () => root.render(<SendHarness />));
-    await act(async () => { await actions.handleSendChatMessage(); });
+    await act(async () => { await actions.handleSendChatMessage(sideTarget ? 'Which model are you using?' : undefined, sideTarget?.id); });
     await act(async () => { root.render(<ForwardHarness />); });
     // Commit the forwarding effect before waiting for its asynchronous IPC.
     // CI may still be loading modules after a fixed-duration delay expires.
     const deadline = Date.now() + 5_000;
     while (!sent.some(body => cloudDirectMessageDisplayText(body) === 'Which model are you using?')
-      && errors.length === 0 && Date.now() < deadline) {
+      && directSends.length === 0 && errors.length === 0 && Date.now() < deadline) {
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
     }
-    return { canonical, sent, errors, commands };
+    return { canonical, sent, errors, commands, directSends, followsMain: followMain.current };
   } finally {
     await act(async () => root.unmount());
     clearMocks(); __setSessionBackendForTests(null); dom.window.close();
@@ -143,4 +149,32 @@ test('a blank native chat creates its canonical shell on the first send and forw
   assert.equal(result.commands.filter(command => command === 'desktop_canonical_open_or_create_session_fast').length, 1);
   assert.equal(result.canonical.sessions.some(session => session.id === sessionId), true);
   assert.equal(result.sent.filter(body => cloudDirectMessageDisplayText(body) === 'Which model are you using?').length, 1);
+});
+
+test('a mirrored project chat in the side panel uses shared agent admission with its selected account', async () => {
+  const target = {
+    id: cloudCollaborationConversationId('me', 'agent', sessionId), canonicalSessionId: sessionId,
+    type: 'owned-agent', name: 'Project task', trust: 'Owned', messages: [],
+  } as unknown as Conversation;
+  const result = await sendFirstMessage(true, false, false, target);
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.directSends, [], 'A cloud mirror identifier must not turn a self-agent send into a plain cloud message');
+  const requests = result.sent.filter(body => cloudDirectMessageDisplayText(body) === 'Which model are you using?');
+  assert.equal(requests.length, 1);
+  assert.deepEqual(cloudDirectMessageAgentRuntimeRoute(requests[0]), route);
+  assert.equal(result.commands.includes('desktop_chat_start_message'), false, 'Hosted accounts use leased admission');
+});
+
+test('a published cloud agent in the panel receives the selected route without moving the main transcript', async () => {
+  const target = {
+    id: cloudCollaborationConversationId('me', 'agent', sessionId), canonicalSessionId: sessionId,
+    type: 'owned-agent', name: 'Agent', trust: 'Owned', messages: [],
+    collaborationTarget: { hostId: 'cloud', nodeId: 'me', runtime: 'agent', agentId: 'cloud_agent_synthetic' },
+  } as unknown as Conversation;
+  const result = await sendFirstMessage(true, false, false, target);
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.directSends.length, 1);
+  assert.equal(cloudDirectMessageDisplayText(result.directSends[0]), 'Which model are you using?');
+  assert.deepEqual(cloudDirectMessageAgentRuntimeRoute(result.directSends[0]), route);
+  assert.equal(result.followsMain, false);
 });

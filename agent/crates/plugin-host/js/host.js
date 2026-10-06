@@ -212,6 +212,12 @@ rl.on('line', async (line) => {
                             result.text = r.text;
                         }
                         if (r.action === 'handled') break;
+                    } else if (event.type === 'tool_call') {
+                        if (r.input !== undefined) event.input = r.input;
+                    } else if (event.type === 'context') {
+                        if (r.messages !== undefined) event.messages = r.messages;
+                    } else if (event.type === 'before_provider_request') {
+                        if (r.payload !== undefined) event.payload = r.payload;
                     } else if (event.type === 'before_agent_start') {
                         if (typeof r.system_prompt === 'string') {
                             event.system_prompt = r.system_prompt;
@@ -244,6 +250,10 @@ rl.on('line', async (line) => {
 
             if (event.type === 'tool_call') {
                 result.input = event.input;
+            } else if (event.type === 'context') {
+                if (event.messages !== undefined) result.messages = event.messages;
+            } else if (event.type === 'before_provider_request') {
+                if (event.payload !== undefined) result.payload = event.payload;
             } else if (event.type === 'tool_result') {
                 result.content = event.content;
                 if (event.details !== undefined) result.details = event.details;

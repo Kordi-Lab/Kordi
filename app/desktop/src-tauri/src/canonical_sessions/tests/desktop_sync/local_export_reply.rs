@@ -88,7 +88,12 @@ fn mirrored_local_history_requests_keep_their_native_terminal_reply() {
 
 #[test]
 fn native_request_with_exact_live_cloud_wire_id_does_not_export_second_reply() {
-    for (kind, should_suppress) in [("text", true), ("canonical-history-user", false)] {
+    for (kind, transport, should_suppress) in [
+        ("text", "desktop-chat", true),
+        ("text", "desktop-chat-ui", true),
+        ("canonical-history-user", "desktop-chat", false),
+        ("canonical-history-user", "desktop-chat-ui", false),
+    ] {
         let conn = test_conn();
         append_message_in_db(
             &conn,
@@ -104,7 +109,7 @@ fn native_request_with_exact_live_cloud_wire_id_does_not_export_second_reply() {
                 delegated_exchange_id: None,
                 status: Some("sent".into()),
                 created_at_ms: Some(1000),
-                source_transport: Some("desktop-chat".into()),
+                source_transport: Some(transport.into()),
                 source_event_id: Some("native-event".into()),
             },
         )

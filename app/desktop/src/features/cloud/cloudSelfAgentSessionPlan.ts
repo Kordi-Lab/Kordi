@@ -306,7 +306,13 @@ export function createCloudSelfAgentSessionPlanner({
     const primaryIdentityId = configuredIdentityId ?? agentIdentityId;
     requestsById.set(sessionId, {
       id: sessionId,
-      kind: configuredIdentityId ? 'direct-agent' : 'self-agent',
+      kind: existingSession?.kind === 'project'
+        ? 'project'
+        : configuredIdentityId ? 'direct-agent' : 'self-agent',
+      ...(existingSession?.kind === 'project' ? {
+        projectId: existingSession.projectId,
+        projectName: existingSession.projectName,
+      } : {}),
       title: shouldResetInheritedForkTitle
         ? 'New fork'
         : shouldUpdateExistingTitle

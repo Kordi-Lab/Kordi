@@ -6,8 +6,9 @@ import { hostedAccountsState } from '@/features/cloud/hostedAccounts';
 import type { OmpCatalogEntry } from '@/kordi-app/auth/ompCatalog';
 import type { ComposerScope } from '@/kordi-app/types';
 import { updateDesktopChatSessionConfig, type DesktopChatMessageRoute } from '@/lib/desktop';
-import type { ComposerSelectionState } from './composerController.types';
+import type { ComposerConfigTargetOverride, ComposerSelectionState } from './composerController.types';
 import { hostedRouteAccounts, hostedRouteForChoice, hostedRouteForModel, type HostedRouteAccount } from './hostedComposerOptions';
+import { normalizeComposerProviderId } from '@/kordi-app/components/composerModelSelection';
 
 /** The route a composer change applies; `leavesCloud` moves the session back to this Mac's runtime. */
 export type ComposerRouteDecision = { route: DesktopChatMessageRoute; leavesCloud: boolean };
@@ -33,6 +34,7 @@ export function composerRouteDecision(
     currentRoute: DesktopChatMessageRoute | null;
     localProviderIds?: ReadonlySet<string>;
     catalog?: OmpCatalogEntry[];
+    pinLocalAccount?: boolean;
   },
 ): ComposerRouteDecision | null {
   const onCloud = routeRunsOnKordiCloud(context.currentRoute);
@@ -43,12 +45,12 @@ export function composerRouteDecision(
       const route = hostedRouteForChoice(hosted, { model: change.model, thinking: change.thinking, catalog: context.catalog });
       return route ? { route, leavesCloud: false } : null;
     }
-    return onCloud && change.model
-      ? { route: { model: change.model, authProvider: choice.providerId, authChoice: choice.authChoice, thinking: change.thinking }, leavesCloud: true }
+    return (onCloud || context.pinLocalAccount) && change.model
+      ? { route: { model: change.model, authProvider: choice.providerId, authChoice: choice.authChoice, thinking: change.thinking }, leavesCloud: onCloud }
       : null;
   }
   if (!change.model) {
-    return onCloud && context.currentRoute && change.thinking
+    return (onCloud || context.pinLocalAccount) && context.currentRoute && change.thinking
       ? { route: { ...context.currentRoute, thinking: change.thinking }, leavesCloud: false }
       : null;
   }
@@ -57,6 +59,11 @@ export function composerRouteDecision(
     currentRoute: context.currentRoute, localProviderIds: context.localProviderIds,
   });
   if (hosted) return { route: hosted, leavesCloud: false };
+  if (context.pinLocalAccount && context.currentRoute?.authChoice
+    && normalizeComposerProviderId(change.model.split('/')[0])
+      === normalizeComposerProviderId(context.currentRoute.authProvider ?? context.currentRoute.model?.split('/')[0] ?? '')) {
+    return { route: { ...context.currentRoute, model: change.model, thinking: change.thinking }, leavesCloud: false };
+  }
   return onCloud ? { route: { model: change.model, thinking: change.thinking }, leavesCloud: true } : null;
 }
 
@@ -78,13 +85,18 @@ export function useHostedComposerRouting({
 }) {
   // A route applied moments ago wins until the session state catches up, so
   // an account choice followed by a model choice keeps the chosen account.
-  const appliedRef = useRef<{ sessionId: string; route: DesktopChatMessageRoute; atMs: number } | null>(null);
+  const appliedRef = useRef(new Map<string, { route: DesktopChatMessageRoute; atMs: number }>());
 
-  return useCallback(async (scope: ComposerScope, sessionId: string | null | undefined, change: ComposerRouteChange) => {
+  return useCallback(async (
+    scope: ComposerScope,
+    sessionId: string | null | undefined,
+    change: ComposerRouteChange,
+    isolatedTarget?: Exclude<ComposerConfigTargetOverride, string | null> | null,
+  ) => {
     if (!isNativeShell || scope !== 'chat' || !sessionId || !publishCloudAgentRuntimeRouteChange) return false;
     const stored = resolveChatRuntimeRoute?.(sessionId) ?? null;
-    const applied = appliedRef.current;
-    const currentRoute = applied?.sessionId === sessionId && Date.now() - applied.atMs < APPLIED_ROUTE_FRESH_MS
+    const applied = appliedRef.current.get(sessionId);
+    const currentRoute = applied && Date.now() - applied.atMs < APPLIED_ROUTE_FRESH_MS
       && !runtimeRoutesMatch(stored ?? undefined, applied.route) ? applied.route : stored;
     const { accounts, catalog } = hostedAccountsState();
     const registry = registeredAccountChoices();
@@ -93,15 +105,21 @@ export function useHostedComposerRouting({
       currentRoute,
       localProviderIds: registry.localProviderIds,
       catalog,
+      pinLocalAccount: Boolean(isolatedTarget),
     });
     const model = decision?.route.model?.trim();
     if (!decision || !model) return false;
     let previous: ComposerSelectionState | null = null;
-    setComposerSelections((current) => {
+    if (isolatedTarget) isolatedTarget.onSelectionChange({
+      ...isolatedTarget.selection, model,
+      ...(decision.route.thinking ? { thinking: decision.route.thinking } : {}),
+    });
+    else setComposerSelections((current) => {
       previous = current;
       return { ...current, chat: { ...current.chat, model, ...(decision.route.thinking ? { thinking: decision.route.thinking } : {}) } };
     });
-    appliedRef.current = { sessionId, route: decision.route, atMs: Date.now() };
+    const pending = { route: decision.route, atMs: Date.now() };
+    appliedRef.current.set(sessionId, pending);
     try {
       setDesktopChatError(null);
       if (decision.leavesCloud) await updateDesktopChatSessionConfig(sessionId, model, decision.route.thinking ?? undefined);
@@ -113,10 +131,15 @@ export function useHostedComposerRouting({
         thinking: decision.route.thinking,
       });
     } catch (error) {
-      appliedRef.current = null;
-      if (previous) {
+      if (appliedRef.current.get(sessionId) !== pending) return true;
+      appliedRef.current.delete(sessionId);
+      if (isolatedTarget) isolatedTarget.onSelectionChange(isolatedTarget.selection);
+      else if (previous) {
         const restored: ComposerSelectionState = previous;
-        setComposerSelections(() => restored);
+        setComposerSelections((current) => current.chat.model === model
+          && current.chat.thinking === (decision.route.thinking ?? restored.chat.thinking)
+          ? { ...current, chat: restored.chat }
+          : current);
       }
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to update session');
     }

@@ -488,7 +488,7 @@ impl TuiController {
         let turn_config = self.build_turn_config()?;
         let (turn_event_tx, mut turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
         let turn_handle = tokio::spawn(async move {
-            turn_runner::run_turn(turn_config, turn_event_tx, user_prompt).await
+            crate::agent_runtime::run_turn(turn_config, turn_event_tx, user_prompt).await
         });
 
         let mut aborted = false;

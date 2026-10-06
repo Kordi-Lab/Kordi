@@ -134,6 +134,15 @@ fn cloud_reply_echo_merge_rejects_unrelated_direct_request() {
 
 #[test]
 fn cloud_reply_echo_accepts_exact_original_ui_request_client_identity() {
+    assert_ui_request_reply_echo(false);
+}
+
+#[test]
+fn cloud_reply_echo_accepts_restored_history_identity_via_exact_wire_source() {
+    assert_ui_request_reply_echo(true);
+}
+
+fn assert_ui_request_reply_echo(restored_history_identity: bool) {
     assert_eq!(
         super::super::message_mirror::cloud_request_client_message_id(
             "session:self",
@@ -185,6 +194,15 @@ fn cloud_reply_echo_accepts_exact_original_ui_request_client_identity() {
               'conversation', 3, 1, '{}', 3);",
     )
     .expect("seed UI request lineage");
+    if restored_history_identity {
+        conn.execute(
+            "UPDATE chat_sync_messages SET snapshot_json =
+             '{\"content\":{\"canonical_history\":{\"local_message_id\":\"original:exported-reply\"}}}'
+             WHERE message_id = 'wire:echo'",
+            [],
+        )
+        .expect("simulate a historical reply restored under its Cloud identity");
+    }
     assert!(
         reconcile_canonical_message_mirror_in_db(&conn, "message:echo", "message:direct")
             .expect("merge response via UI request client identity")

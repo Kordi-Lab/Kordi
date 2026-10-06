@@ -1,6 +1,6 @@
 # Unified OMP runtime
 
-Kordi can run desktop and cloud turns through the same pinned OMP worker. The worker owns the model/tool loop, retries, and compaction. Kordi continues to own admission, account selection, conversation history, permissions, tool execution, and delivery.
+Kordi runs desktop, CLI, TUI, managed child, cloud chat, PiP, and digest turns through the same pinned OMP worker by default. The worker owns the model/tool loop, retries, and compaction. Kordi continues to own admission, account selection, conversation history, permissions, tool execution, and delivery.
 
 ## Execution boundary
 
@@ -21,7 +21,7 @@ A busy Mac retains its queue. Changing the model engine does not change the exis
 
 - `shared/omp-runtime` pins `@oh-my-pi/pi-coding-agent` and the matching catalog/native dependency family to `18.2.11`. It has a separate Bun 1.4.2 lockfile.
 - `shared/rust/omp-runtime` supervises one JSONL worker per turn. Credentials travel through stdin, never process arguments or logs. Ambient provider credentials are not inherited.
-- The desktop adapter lives in `agent/crates/cli/src/desktop_runtime/omp_turn.rs`; the cloud adapter lives in `bridges/cloud-agent-runner/src/model_loop/omp.rs`.
+- The desktop adapter lives in `agent/crates/cli/src/omp_turn.rs`; the cloud adapter lives in `bridges/cloud-agent-runner/src/model_loop/omp.rs`.
 - A request freezes provider, model, account material, history, tools, and capability scope. Model fallback is disabled. Plugins cannot redirect the selected model.
 - Frames carry run and attempt IDs plus monotonic output sequence numbers. Output size, execution time, model steps, and tool calls are bounded. Cancellation or supervisor shutdown terminates the worker process group, including its Eval subprocess.
 
@@ -37,7 +37,7 @@ Cloud processing continues to use the durable run lifecycle; subsession tools re
 
 ## Plugins and permissions
 
-Kordi supplies explicit tools and hooks; the worker does not discover ambient plugins, MCP servers, skills, rules, or project instructions. Existing plugin tools retain their call IDs, working directory, output callbacks, cancellation, mutation scheduling, and Kordi permission checks. The host bridge also preserves context and provider-request hooks on each model step.
+Kordi supplies explicit tools and hooks; the worker does not discover ambient plugins, MCP servers, skills, rules, or project instructions. Existing plugin tools retain their call IDs, working directory, output callbacks, cancellation, mutation scheduling, and Kordi permission checks. The host bridge also preserves context and provider-request hooks on each model step. Context handlers receive the full structured messages. Returned context, tool-input, and provider-payload changes are chained through subsequent plugins rather than overwritten by the original event.
 
 The OMP `before_provider_request` hook receives the provider's wire payload. Plugins that previously assumed Kordi's normalized `CompletionRequest` shape must adapt to the selected provider's payload. Context hooks continue to use Kordi's structured message representation. Opaque replay fields survive unchanged context.
 
@@ -48,13 +48,15 @@ Native computer/browser Eval is admitted only for an owner-local macOS turn with
 1. Install the pinned worker dependencies with `cd shared/omp-runtime && bun install --frozen-lockfile`.
 2. Run worker tests and type checks: `bun test` and `bun run typecheck`.
 3. Run the desktop runtime integration tests against synthetic loopback provider responses. They cover host tool execution, continuation, durable history, cancellation, and lifecycle events without using account credentials.
-4. Use the supported isolated desktop launcher with `KORDI_DESKTOP_TURN_ENGINE=omp`. The current selector is debug-only; release desktop builds retain the Rust engine during staged rollout. The packaged `kordi-omp` sibling is preferred; source debug runs can use Bun.
-5. Apply backend migration tests only to a task-owned database, then validate the cloud adapter and lease-fenced replay tests. Configure an isolated runner with `KORDI_CLOUD_AGENT_ENGINE=omp` and an absolute `KORDI_OMP_WORKER_ENTRY` pointing to the packaged executable.
-6. Enable cloud OMP only after Mac parity is accepted. The development container includes the worker but defaults to the Rust engine unless explicitly selected.
+4. Use the supported isolated desktop launcher. The shared local selector applies to debug and release desktop, CLI, TUI, and child turns. `KORDI_AGENT_ENGINE=omp` is the default; `rust` is an explicit rollback for new turns. The legacy `KORDI_DESKTOP_TURN_ENGINE` alias remains supported when the common setting is absent. Unknown values fail closed.
+5. Apply backend migration tests only to a task-owned database, then validate the cloud adapter and lease-fenced replay tests. `KORDI_CLOUD_AGENT_ENGINE=omp` is the default, including the development container. Supply an absolute `KORDI_OMP_WORKER_ENTRY` pointing to the packaged executable. `rust` explicitly selects the legacy loops for new jobs; unknown values fail closed.
+6. PiP and digest jobs use the same supervisor without a filesystem sandbox. PiP receives only its server-bound `plan_card` tool; digest receives only bounded `search_sessions` and `read_session` observation. If the configured PiP provider fallback is needed, the second worker continues from completed messages and tool results, with the remaining shared step/tool budget. Incomplete tool actions and supervisor/cancellation failures cannot restart the job on another provider.
 
-The legacy loops remain available for rollback during this staged migration. Selecting `rust` affects new turns; it must not move an active turn between engines. Deployment, release-default changes, and removal of the legacy loops are separate rollout steps after acceptance.
+The legacy loops remain available for explicit rollback. An engine change never moves an active turn between engines. Source defaults do not prove a deployed service has been updated; verify the running worker and its artifact before accepting the rollout.
 
-Before changing defaults, verify the signed-in Mac preview with a configured account: send two requests while the first is active, observe processing and queue states, cancel a tool, and confirm one synchronized response per request. Repeat from iOS while the Mac is online and confirm a local tool runs on the Mac. Then take the Mac offline in an isolated environment and verify cloud fallback, lease expiry, and reconnect without duplicate completion. Synthetic worker tests cover the adapter boundary but do not replace these signed-in device checks. Browser extension attachment and macOS permission prompts also require interactive validation; the automated native checks use a capability query and an isolated blank browser only.
+CLI packages must ship `kordi-omp` (or `kordi-omp.exe`) and the version-matched native addon beside the Kordi binary. After installing the pinned Bun dependencies, run `node agent/scripts/build-runtime-assets.mjs <output-directory> <native-target-triple>` on each target platform. Upload the target-suffixed worker and addon with the native CLI release assets. The npm installer downloads both, verifies the pinned runtime version and an actual worker startup, then installs them together. A source/cargo installation must copy these two files beside its executable or provide an absolute `KORDI_OMP_WORKER_ENTRY`. A release build does not silently fall back to the Rust loop when the worker is missing.
+
+For live rollout acceptance, verify the signed-in Mac preview with a configured account: send two requests while the first is active, observe processing and queue states, cancel a tool, and confirm one synchronized response per request. Repeat from iOS while the Mac is online and confirm a local tool runs on the Mac. Then take the Mac offline in an isolated environment and verify cloud fallback, lease expiry, and reconnect without duplicate completion. Synthetic worker tests cover the adapter boundary but do not replace these signed-in device checks. Browser extension attachment and macOS permission prompts also require interactive validation; the automated native checks use a capability query and an isolated blank browser only.
 
 Desktop packaging builds the executable and matching native addon on the target platform and writes a target-specific Tauri overlay. Do not reuse a native addon from another architecture. Use the normal desktop preparation/build scripts so the sidecar and native dependency stay together.
 

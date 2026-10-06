@@ -68,6 +68,11 @@ pub(crate) fn validate_request(request: &RunRequest) -> Result<(), RuntimeError>
     ]
     .iter()
     .any(|value| value.trim().is_empty() || value.len() > 4096)
+        || (request.prompt.resume
+            && (request.messages.is_empty()
+                || !request.prompt.text.is_empty()
+                || !request.prompt.images.is_empty()
+                || !request.prompt.trailing_messages.is_empty()))
         || request
             .message_entry_ids
             .as_ref()

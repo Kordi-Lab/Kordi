@@ -258,6 +258,28 @@ test('canonical agent mirrors match runtime replies across request and completio
   assert.deepEqual(merged.map((message) => message.id), ['runtime-1', 'runtime-2']);
 });
 
+test('imported canonical replies stay below their request when native anchors cross', () => {
+  const older: Message = { id: 'canonical-old', entryId: 'native-old', role: 'user', text: 'first request', time: '09:00' };
+  const newer: Message = { id: 'canonical-new', entryId: 'native-new', role: 'user', text: 'second request', time: '09:01' };
+  const reply: Message = { id: 'canonical-reply', role: 'owned-agent', text: 'first response', time: '09:02', replyToMessageId: older.id };
+  const runtime: Message[] = [{ ...newer, id: 'native-new' }, { ...older, id: 'native-old' }];
+
+  const merged = mergeCanonicalHistoryIntoRuntime([older, reply, newer], runtime);
+
+  assert.deepEqual(merged.map((message) => message.id), ['native-new', 'native-old', 'canonical-reply']);
+});
+
+test('a side-session reply resolves the canonical request alias before overlay insertion', () => {
+  const request: Message = { id: 'canonical-request', entryId: 'native-request', role: 'user', text: 'continue', time: '09:01' };
+  const reply: Message = { id: 'canonical-reply', role: 'owned-agent', text: 'response', time: '09:02', replyToMessageId: request.id };
+  const earlyAnchor: Message = { id: 'canonical-later', entryId: 'native-earlier', role: 'system', text: 'model changed', time: '09:03' };
+  const merged = mergeCanonicalHistoryIntoRuntime([request, reply, earlyAnchor], [
+    { ...earlyAnchor, id: 'native-earlier' }, { ...request, id: 'native-request' },
+  ]);
+
+  assert.deepEqual(merged.map((message) => message.id), ['native-earlier', 'native-request', 'canonical-reply']);
+});
+
 test('restored Cloud self-agent messages are sent as native context for continued local turns', () => {
   const contextMessages = restoredSelfAgentContextMessages([
     {

@@ -11,6 +11,9 @@ import { CompanionCalendar, CompanionOverviewContent } from '../src/pages/chatsP
 import { companionAgendaDays } from '../src/pages/chatsPage.companionCalendarModel';
 import { useChatCompanionLayout } from '../src/pages/useChatCompanionLayout';
 import { useChatCompanionSession } from '../src/pages/useChatCompanionSession';
+import { mergeBackgroundDesktopChatState } from '../src/features/chat/desktopChatStateReducers';
+import { useDesktopChatState } from '../src/features/chat/useDesktopChatState';
+import type { DesktopChatState, DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
 import type { Conversation } from '../src/kordi-app/types';
 import type { CalendarEvent } from '../src/features/digest/types';
 import type { DigestState } from '../src/features/digest/store';
@@ -84,6 +87,62 @@ test('panel switching and hiding retain the agent session, draft, and mounted in
     assert.equal(layout.isVisible, false);
     await click('Chat');
     assert.equal(chat.draftText, 'Keep this draft');
+  } finally { await cleanup(); }
+});
+
+test('sending and hydrating a completed side chat preserve its open panel and main selection', async () => {
+  const { root, dom, cleanup } = installDom();
+  const detail = (id: string, complete = false) => ({
+    id, title: id, provider: 'openai', model: 'fixture', thinking: 'high', messageCount: complete ? 2 : 1,
+    messages: [{ entryId: 'request', role: 'user', text: 'side request', timestampMs: 1, timeLabel: '10:00' },
+      ...(complete ? [{ entryId: 'response', role: 'assistant', text: 'side response', timestampMs: 2, timeLabel: '10:00' }] : [])],
+  });
+  const state = (id: string, complete = false) => ({ activeSessionId: id, activeSession: detail(id, complete),
+    sessions: [{ id: human.id, messageCount: 1 }, { id: agent.id, messageCount: complete ? 2 : 1 }], projects: [],
+  }) as unknown as DesktopChatState;
+  let complete = false;
+  Object.assign(dom.window, { __TAURI_INTERNALS__: { invoke: async (command: string, args: { activeSessionId?: string; sessionId?: string }) => {
+    if (command === 'cloud_session_load') return null;
+    if (command === 'desktop_chat_state') return state(args.activeSessionId ?? human.id, complete);
+    if (command === 'desktop_chat_session_detail') return detail(args.sessionId!, complete);
+    return [];
+  } } });
+  const map = (_id: string, messages: DesktopChatState['activeSession']['messages']) => messages.map(message => ({
+    id: message.entryId, role: message.role === 'assistant' ? 'owned-agent' : 'user', text: message.text, time: message.timeLabel,
+  } as Message));
+  let runtime!: ReturnType<typeof useDesktopChatState>;
+  let chat!: ReturnType<typeof useChatCompanionSession>;
+  let layout!: ReturnType<typeof useChatCompanionLayout>;
+  let send!: Promise<void>;
+  function Harness() {
+    runtime = useDesktopChatState({ isNativeShell: true, mapDesktopMessages: map });
+    const active = runtime.desktopChatState?.activeSessionId === agent.id ? agent : human;
+    chat = useChatCompanionSession({ activeConversation: active, conversations: [human, agent], activePaneKind: 'human',
+      setComposerTextForSession: () => {}, onCreateAgentSession: undefined, onPrefetchChatSession: undefined,
+      onSendChatMessage: (_text, id) => { send = (async () => {
+        runtime.setDesktopChatState(current => mergeBackgroundDesktopChatState(current, state(id!)));
+        await runtime.preloadDesktopSessionTranscript(id!);
+      })(); },
+    });
+    layout = useChatCompanionLayout({ pageConversationId: active.id, activePaneKind: 'human', companionConversation: chat.conversation });
+    return <div data-panel-open={layout.isVisible} data-main={active.id}>{chat.conversation?.name}</div>;
+  }
+  try {
+    await act(async () => root.render(<Harness />));
+    await act(async () => { await chat.actions.open(); });
+    await act(() => chat.actions.updateDraft(agent.id, 'side request'));
+    await act(async () => { assert.equal(chat.actions.sendDraft(agent, []), true); await send; });
+    assert.equal(layout.isVisible, true);
+    assert.equal(chat.conversation?.id, agent.id);
+    assert.equal(runtime.desktopChatState?.activeSessionId, human.id);
+    complete = true;
+    const turn = { id: 'side-turn', sessionId: agent.id, prompt: 'side request', status: 'complete', message: 'Complete',
+      assistantText: 'side response', thinkingText: '', tools: [], completed: true, succeeded: true, transcriptEntryId: 'response',
+    } as DesktopChatTurnSnapshot;
+    await act(async () => { await runtime.watchDesktopLiveTurn(turn); });
+    assert.equal(layout.isVisible, true, 'The panel stays open after persisted transcript hydration');
+    assert.equal(runtime.desktopChatState?.activeSessionId, human.id);
+    assert.deepEqual(runtime.cachedChatSessionMessages[agent.id]?.map(message => message.text), ['side request', 'side response']);
   } finally { await cleanup(); }
 });
 

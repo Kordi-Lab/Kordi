@@ -137,11 +137,6 @@
       "count": 1
     }
   },
-  "src/features/chat/messageActions/chatMessages.ts": {
-    "react-hooks/exhaustive-deps": {
-      "count": 2
-    }
-  },
   "src/features/chat/messageActions/projectMessages.ts": {
     "react-hooks/exhaustive-deps": {
       "count": 1

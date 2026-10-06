@@ -1,8 +1,10 @@
+import { desktopChatStateAfterConfigUpdate, composerConfigTargetSessionId } from './composerConfigTarget';
+export { desktopChatStateAfterConfigUpdate, composerConfigTargetSessionId } from './composerConfigTarget';
 import { importLivePhotos } from '@/features/chat/importLivePhotos';
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
-import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isHostedOnlyAccountChoice } from '@/features/cloud/routeAccountChoice';
+import { registeredAccountChoices } from '@/features/cloud/hostedAccountRegistry';
 import { useHostedComposerRouting } from './useHostedComposerRouting';
 import { isLocalProvider, normalizeSelectedProviderId } from '@/kordi-app/auth/model';
 import { fallbackComposerThinkingValue } from '@/kordi-app/components';
@@ -21,7 +23,7 @@ export { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
 import { appendOptimisticSessionConfigMessage } from './composerSessionConfigState';
 
-import { isLocalDraftChatConversationId, isProjectDraftSessionId } from './draftSessions';
+import { isProjectDraftSessionId } from './draftSessions';
 
 import {
   CHAT_COMPOSER_TEXTAREA_SELECTOR,
@@ -39,37 +41,6 @@ import type {
   MinimalProviderOption,
   UseComposerInputActionsArgs,
 } from './composerController.types';
-
-export function desktopChatStateAfterConfigUpdate<T>(current: T, next: T, isolated: boolean): T {
-  return isolated ? current : next;
-}
-
-export function composerConfigTargetSessionId({
-  scope,
-  activeConversationUsesCollaboration = false,
-  activeConvId,
-  activeConvCanonicalSessionId,
-  activeProjectSessionId,
-  desktopActiveSessionId,
-}: {
-  scope: ComposerScope;
-  activeConversationUsesCollaboration?: boolean;
-  activeConvId: string;
-  activeConvCanonicalSessionId?: string | null;
-  activeProjectSessionId: string;
-  desktopActiveSessionId?: string | null;
-}) {
-  if (scope === 'project') return activeProjectSessionId;
-  if (activeConversationUsesCollaboration) return null;
-  if (isLocalDraftChatConversationId(activeConvId)) return activeConvId;
-
-  const sessionId = activeConvCanonicalSessionId?.trim() || activeConvId.trim();
-  if (!sessionId) return desktopActiveSessionId ?? null;
-  if (activeConvId.startsWith('bridge:') || isLegacyCanonicalCollaborationSessionId(sessionId) || isCanonicalCloudSessionId(sessionId)) {
-    return null;
-  }
-  return activeConvId;
-}
 
 function attachmentSummaryTextValue(text: string, attachments: AttachmentItem[]) {
   const trimmedText = text.trim();
@@ -120,20 +91,22 @@ export function useComposerInputActions({
   const {
     setDesktopChatState,
     setDesktopChatError,
-    shouldAutoFollowChatRef,
     publishCloudAgentRuntimeRouteChange,
     resolveChatRuntimeRoute,
   } = messageRuntime;
+  const configRequestsRef = useRef(new Map<string, symbol>());
   // Hosted accounts run on Kordi Cloud: their choices apply a session route instead of this Mac's runtime.
   const routeComposerChange = useHostedComposerRouting({
     isNativeShell, setComposerSelections, setDesktopChatError, publishCloudAgentRuntimeRouteChange, resolveChatRuntimeRoute,
   });
   const desktopActiveSessionId = desktopChatState?.activeSessionId;
-  const routeTargetSessionId = useCallback((scope: ComposerScope) => (scope === 'chat' && activeConversationUsesCollaboration
+  const routeTargetSessionId = useCallback((scope: ComposerScope, override?: ComposerConfigTargetOverride) => (
+    (typeof override === 'string' ? override.trim() : override?.sessionId?.trim())
+    || (scope === 'chat' && activeConversationUsesCollaboration
     ? activeConvCanonicalSessionId?.trim() || activeConvId.trim()
     : composerConfigTargetSessionId({
       scope, activeConversationUsesCollaboration, activeConvId, activeConvCanonicalSessionId, activeProjectSessionId, desktopActiveSessionId,
-    })), [activeConvCanonicalSessionId, activeConvId, activeConversationUsesCollaboration, activeProjectSessionId, desktopActiveSessionId]);
+    }))), [activeConvCanonicalSessionId, activeConvId, activeConversationUsesCollaboration, activeProjectSessionId, desktopActiveSessionId]);
   const toggleComposerSelector = useCallback((scope: ComposerScope, type: ComposerSelectorType) => {
     setOpenComposerSelector((current) => (current?.scope === scope && current.type === type ? null : { scope, type }));
   }, [setOpenComposerSelector]);
@@ -142,6 +115,8 @@ export function useComposerInputActions({
     const isolatedTarget = typeof configTargetOverride === 'object' && configTargetOverride !== null
       ? configTargetOverride
       : null;
+    const routeSessionId = routeTargetSessionId(scope, configTargetOverride);
+    if (routeSessionId && type !== 'mode') configRequestsRef.current.delete(routeSessionId);
     const resolvedModelValue = type === 'provider'
       ? preferredModelValueForProvider(value)
       : type === 'model'
@@ -158,10 +133,10 @@ export function useComposerInputActions({
     const nextThinkingValue = type === 'thinking' ? value : nextModelThinkingValue;
     const modelChanged = Boolean(nextModelValue && nextModelValue !== currentSelection.model);
     const thinkingChanged = Boolean(nextThinkingValue && nextThinkingValue !== currentSelection.thinking);
-    if (!isolatedTarget && (type === 'model' || type === 'thinking') && await routeComposerChange(scope, routeTargetSessionId(scope), {
+    if ((type === 'model' || type === 'thinking') && await routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
       model: type === 'model' ? value : null,
       thinking: nextThinkingValue ?? currentSelection.thinking,
-    })) {
+    }, isolatedTarget)) {
       setOpenComposerSelector(null);
       return;
     }
@@ -200,7 +175,7 @@ export function useComposerInputActions({
     const overrideSessionId = typeof configTargetOverride === 'string'
       ? configTargetOverride
       : isolatedTarget?.sessionId;
-    const cloudRuntimeSessionId = activeConvCanonicalSessionId?.trim()
+    const cloudRuntimeSessionId = overrideSessionId?.trim() || activeConvCanonicalSessionId?.trim()
       || activeConvId.trim();
     if (
       isNativeShell
@@ -243,11 +218,12 @@ export function useComposerInputActions({
       desktopActiveSessionId: desktopChatState?.activeSessionId,
     });
     if (isNativeShell && targetSessionId && !isProjectDraftSessionId(targetSessionId)) {
+      const request = Symbol(targetSessionId);
+      configRequestsRef.current.set(targetSessionId, request);
       try {
         setDesktopChatError(null);
 
         if (!isolatedTarget && (modelChanged || thinkingChanged) && desktopChatState?.activeSessionId === targetSessionId) {
-          shouldAutoFollowChatRef.current = true;
           setDesktopChatState((current) => {
             if (!current || current.activeSessionId !== targetSessionId) return current;
             return appendOptimisticSessionConfigMessage({
@@ -265,6 +241,7 @@ export function useComposerInputActions({
           nextModelValue,
           nextThinkingValue,
         );
+        if (configRequestsRef.current.get(targetSessionId) !== request) return;
         if (isolatedTarget) {
           const matchingModelValue = chatModelOptions.find((option) => (
             option.provider === nextState.activeSession.provider
@@ -280,12 +257,17 @@ export function useComposerInputActions({
           desktopChatStateAfterConfigUpdate(current, nextState, Boolean(isolatedTarget))
         ));
       } catch (error) {
+        if (configRequestsRef.current.get(targetSessionId) !== request) return;
         if (isolatedTarget) {
           isolatedTarget.onSelectionChange(currentSelection);
         } else {
-          await refreshDesktopChat(targetSessionId);
+          await refreshDesktopChat();
         }
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to update session');
+      } finally {
+        if (configRequestsRef.current.get(targetSessionId) === request) {
+          configRequestsRef.current.delete(targetSessionId);
+        }
       }
     }
   }, [
@@ -306,23 +288,24 @@ export function useComposerInputActions({
     setDesktopChatError,
     setDesktopChatState,
     setOpenComposerSelector,
-    shouldAutoFollowChatRef,
   ]);
 
   const selectComposerAuthChoice = useCallback(async (scope: ComposerScope, providerId: string, choice: string, configTargetOverride?: ComposerConfigTargetOverride) => {
-    // Hosted accounts have no active flag on this device; the route carries them.
-    if (!isHostedOnlyAccountChoice(choice)) await handleSelectAuthChoice(providerId, choice);
-
     const isolatedTarget = typeof configTargetOverride === 'object' && configTargetOverride !== null
       ? configTargetOverride
       : null;
+    const routeSessionId = routeTargetSessionId(scope, configTargetOverride);
+    if (routeSessionId) configRequestsRef.current.delete(routeSessionId);
+    // A panel pins its account on the session route, without changing this
+    // device's active account for the main composer.
+    if (!isolatedTarget && !isHostedOnlyAccountChoice(choice, registeredAccountChoices())) await handleSelectAuthChoice(providerId, choice);
     const currentSelection = isolatedTarget?.selection ?? composerSelections[scope];
     const currentProviderId = resolveComposerProviderId(scope, currentSelection.model);
     const normalizedProviderId = normalizeSelectedProviderId(providerId) ?? providerId;
     const nextModelValue = preferredModelValueForProvider(providerId) ?? preferredModelValueForProvider(normalizedProviderId);
-    if (!isolatedTarget && await routeComposerChange(scope, routeTargetSessionId(scope), {
+    if (await routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
       model: nextModelValue, thinking: currentSelection.thinking, choice: { providerId, authChoice: choice },
-    })) {
+    }, isolatedTarget)) {
       setOpenComposerSelector(null);
       return;
     }
@@ -341,17 +324,21 @@ export function useComposerInputActions({
   const selectComposerProviderChoice = useCallback(async (scope: ComposerScope, option: MinimalProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => {
     const normalizedProviderId = normalizeSelectedProviderId(option.providerId) ?? option.providerId;
     const choice = option.value.includes('::') ? option.value.split('::').slice(1).join('::') : null;
+    const isolatedTarget = typeof configTargetOverride === 'object' && configTargetOverride !== null
+      ? configTargetOverride : null;
+    const routeSessionId = routeTargetSessionId(scope, configTargetOverride);
+    if (routeSessionId) configRequestsRef.current.delete(routeSessionId);
 
-    if (choice && !isHostedOnlyAccountChoice(choice)) {
+    if (choice && !isolatedTarget && !isHostedOnlyAccountChoice(choice, registeredAccountChoices())) {
       await handleSelectAuthChoice(option.providerId, choice);
     }
 
     const nextModelValue = preferredModelValueForProvider(option.providerId) ?? preferredModelValueForProvider(normalizedProviderId);
     // A hosted account opens its own model on Kordi Cloud; a local account leaves Kordi Cloud.
-    const isolated = typeof configTargetOverride === 'object' && configTargetOverride !== null;
-    if (!isolated && choice && await routeComposerChange(scope, routeTargetSessionId(scope), {
-      model: nextModelValue, thinking: composerSelections[scope].thinking, choice: { providerId: option.providerId, authChoice: choice },
-    })) {
+    if (choice && await routeComposerChange(scope, routeTargetSessionId(scope, configTargetOverride), {
+      model: nextModelValue, thinking: (isolatedTarget?.selection ?? composerSelections[scope]).thinking,
+      choice: { providerId: option.providerId, authChoice: choice },
+    }, isolatedTarget)) {
       setOpenComposerSelector(null);
       return;
     }

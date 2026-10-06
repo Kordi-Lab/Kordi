@@ -380,6 +380,7 @@ export function useKordiCanonicalPageHydration({
   activeConversationId,
   activeConversation,
   activeProjectSessionId,
+  companionSessionId = null,
   collaborationState,
   hydrateSessionPage,
   store,
@@ -387,6 +388,12 @@ export function useKordiCanonicalPageHydration({
   activeConversationId: string;
   activeConversation?: Pick<Conversation, 'id' | 'canonicalSessionId'> | null;
   activeProjectSessionId: string;
+  /**
+   * The Ask Agent side panel's session. It is loaded and kept with the main
+   * pane's page, because a session outside the retained page window keeps only
+   * its catalog head: the panel would neither show nor forward its own sends.
+   */
+  companionSessionId?: string | null;
   collaborationState: DesktopCollaborationState | null;
   hydrateSessionPage: (
     sessionId: string,
@@ -418,9 +425,11 @@ export function useKordiCanonicalPageHydration({
     return uniqueStrings([
       resolve(activeConversationId) ?? '',
       resolve(activeProjectSessionId) ?? '',
+      resolve(companionSessionId) ?? '',
     ]);
   }, [
     activeConversationId,
+    companionSessionId,
     selectedConversationId,
     selectedCanonicalSessionId,
     activeProjectSessionId,

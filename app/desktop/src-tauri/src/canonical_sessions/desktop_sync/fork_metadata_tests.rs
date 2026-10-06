@@ -99,7 +99,7 @@ fn cloud_request_identity_reconciles_without_matching_message_text() {
     conn.execute_batch(
         "CREATE TABLE session_messages (
         id TEXT PRIMARY KEY, session_id TEXT, sender_role TEXT,
-        source_transport TEXT, source_event_id TEXT, content_json TEXT,
+        source_transport TEXT, source_event_id TEXT, content_json TEXT, parent_message_id TEXT,
         content_text TEXT NOT NULL DEFAULT 'Identical repeated text',
         content_hash TEXT NOT NULL DEFAULT 'old-hash', updated_at_ms INTEGER NOT NULL DEFAULT 1
     ); INSERT INTO session_messages (id, session_id, sender_role, source_transport, source_event_id, content_json) VALUES

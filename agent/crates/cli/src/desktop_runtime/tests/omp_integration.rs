@@ -4,6 +4,16 @@
 )]
 #[tokio::test]
 async fn omp_desktop_turn_uses_real_worker_host_tool_and_persisted_history() -> Result<()> {
+    omp_real_worker_fixture(false).await
+}
+
+#[tokio::test]
+async fn omp_desktop_turn_transfers_registered_plugin_tools_and_hooks() -> Result<()> {
+    omp_real_worker_fixture(true).await
+}
+
+#[allow(clippy::await_holding_lock, reason = "serializes test-only environment changes")]
+async fn omp_real_worker_fixture(plugin: bool) -> Result<()> {
     use anyhow::Context;
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -13,11 +23,25 @@ async fn omp_desktop_turn_uses_real_worker_host_tool_and_persisted_history() -> 
     let cwd = tempfile::tempdir()?;
     std::fs::write(cwd.path().join("sample.txt"), "synthetic tool output")?;
     let _home = EnvVarGuard::set_path("HOME", home.path());
-    let _engine = EnvVarGuard::set_value("KORDI_DESKTOP_TURN_ENGINE", "omp");
+    let _engine = EnvVarGuard::unset("KORDI_DESKTOP_TURN_ENGINE");
+    let _generic_engine = EnvVarGuard::unset("KORDI_AGENT_ENGINE");
+    let plugin_path = cwd.path().join("probe.js");
+    if plugin {
+        std::fs::write(&plugin_path, r#"module.exports = kordi => {
+          kordi.registerTool({ name: 'probe', description: 'Synthetic probe', parameters: {type:'object',properties:{path:{type:'string'}}},
+            execute: async (id, input) => ({content:[{type:'text',text:`${id}:${input.path}`} ]}) });
+          kordi.on('tool_call', event => event.tool_name === 'probe' ? {input:{path:'modified-by-plugin'}} : undefined);
+          kordi.on('tool_result', event => event.tool_name === 'probe' ? {content:[{type:'text',text:'synthetic tool output: plugin result:' + event.content[0].text}]} : undefined);
+          kordi.on('before_agent_start', () => ({system_prompt:'OMP plugin system instruction'}));
+          kordi.on('context', event => ({messages:[...event.messages,{role:'user',content:[{type:'text',text:'OMP plugin context instruction'}],timestamp:0}]}));
+          kordi.on('before_provider_request', event => ({payload:{...event.payload,temperature:0.125}}));
+        };"#)?;
+    }
     let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "synthetic-bootstrap-key");
     Settings {
         default_provider: Some("openai".into()),
         default_model: Some("gpt-5.5".into()),
+        extensions: if plugin { vec![plugin_path.display().to_string()] } else { vec![] },
         ..Settings::default()
     }
     .save_global()?;
@@ -68,7 +92,7 @@ async fn omp_desktop_turn_uses_real_worker_host_tool_and_persisted_history() -> 
             let tool_first = sequence == 1;
             let chunks = if tool_first {
                 vec![
-                    serde_json::json!({"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"synthetic-call","type":"function","function":{"name":"read","arguments":"{\"path\":\"sample.txt\"}"}}]},"finish_reason":null}]}),
+                    serde_json::json!({"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"synthetic-call","type":"function","function":{"name":if plugin {"probe"} else {"read"},"arguments":"{\"path\":\"sample.txt\"}"}}]},"finish_reason":null}]}),
                     serde_json::json!({"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}),
                 ]
             } else {
@@ -137,6 +161,22 @@ async fn omp_desktop_turn_uses_real_worker_host_tool_and_persisted_history() -> 
             .any(|event| matches!(event, crate::turn_runner::TurnEvent::TurnEnd))
     );
 
+    let messages = load_session_messages(&runtime.setup.conn, &runtime.setup.session_id)?;
+    assert_eq!(messages.len(), 2, "a tool-using OMP reply stays one turn");
+    let reply = &messages[1];
+    assert_eq!(reply.text, "First answer.");
+    assert!(!reply.failed);
+    assert_eq!(reply.tools.len(), 1);
+    assert_eq!(reply.tools[0].id, "synthetic-call");
+    assert_eq!(reply.tools[0].status, "done");
+    assert!(
+        reply.tools[0]
+            .result_text
+            .as_deref()
+            .unwrap_or_default()
+            .contains("synthetic tool output")
+    );
+
     // Simulate a provider replay signature on the raw OMP sidecar. The visible
     // Kordi assistant schema omits this field, but the next OMP context keeps it.
     let (assistant_id, route_scope, mut raw) =
@@ -194,6 +234,13 @@ async fn omp_desktop_turn_uses_real_worker_host_tool_and_persisted_history() -> 
         .await?;
     let captured = requests.lock().unwrap();
     assert_eq!(captured.len(), 3);
+    if plugin {
+        assert!(captured.iter().all(|request| request["temperature"] == 0.125));
+        assert!(captured.iter().all(|request| request.to_string().contains("OMP plugin system instruction")));
+        assert!(captured.iter().all(|request| request.to_string().contains("OMP plugin context instruction")));
+        assert!(captured[0]["tools"].as_array().unwrap().iter().any(|tool| tool["function"]["name"] == "probe"));
+        assert!(captured[1].to_string().contains("synthetic tool output: plugin result:synthetic-call:modified-by-plugin"));
+    }
     let second = captured[2].to_string();
     assert!(second.contains("First answer."));
     assert!(second.contains("synthetic tool output"));
@@ -202,6 +249,12 @@ async fn omp_desktop_turn_uses_real_worker_host_tool_and_persisted_history() -> 
         [&runtime.setup.session_id], |row| row.get(0),
     )?;
     assert_eq!(count, 2);
+    let messages = load_session_messages(&runtime.setup.conn, &runtime.setup.session_id)?;
+    assert_eq!(messages.len(), 4, "reloading retains one reply per request");
+    assert_eq!(messages[1].text, "First answer.");
+    assert_eq!(messages[1].tools.len(), 1);
+    assert_eq!(messages[3].text, "Second answer.");
+    assert!(messages.iter().all(|message| !message.failed));
     server.abort();
     Ok(())
 }

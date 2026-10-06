@@ -212,6 +212,7 @@ test('WorkspaceSidebar renders an Agent tab shortcut for new My agent sessions',
   }) as never));
 
   assert.match(markup, /title="Agent Chats"/);
-  assert.match(markup, /New My agent session/);
+  assert.match(markup, /aria-label="New session"/);
+  assert.match(markup, /<span>New<\/span>/);
   assert.match(markup, /New session/);
 });

@@ -1,6 +1,62 @@
 use super::*;
 
 #[tokio::test]
+async fn plugin_context_and_tool_input_changes_chain_between_handlers() {
+    let directory = tempfile::tempdir().unwrap();
+    let plugin = directory.path().join("chain.js");
+    std::fs::write(&plugin, r#"
+      module.exports = kordi => {
+        kordi.on('context', event => ({ messages: [...event.messages, { role: 'user', content: [{ type: 'text', text: 'first hook' }], timestamp: 1 }] }));
+        kordi.on('context', event => {
+          if (event.messages.length !== 2) throw Error('previous context missing');
+          return { messages: [...event.messages, { role: 'user', content: [{ type: 'text', text: 'second hook' }], timestamp: 2 }] };
+        });
+        kordi.on('tool_call', event => ({ input: { ...event.input, first: true } }));
+        kordi.on('tool_call', event => {
+          if (!event.input.first) throw Error('previous input missing');
+          return { input: { ...event.input, second: true } };
+        });
+        kordi.on('before_provider_request', event => ({ payload: { ...event.payload, temperature: 0.125 } }));
+        kordi.on('before_provider_request', event => {
+          if (event.payload.temperature !== 0.125) throw Error('previous payload missing');
+          return { payload: { ...event.payload, top_p: 0.9 } };
+        });
+      };
+    "#).unwrap();
+    let mut host = PluginHost::load_plugins(&[plugin]).await.unwrap();
+    let message = serde_json::from_value(serde_json::json!({"role":"user","content":[{"type":"text","text":"request"}],"timestamp":0})).unwrap();
+    let context = host
+        .send_event(&kordi_hooks::Event::Context(
+            kordi_hooks::events::ContextEvent::new(vec![message]),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(context.messages.unwrap().len(), 3);
+    let input = host
+        .send_event(&kordi_hooks::Event::ToolCall(
+            kordi_hooks::ToolCallEvent::new("call", "probe", serde_json::json!({"original":true})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        input.input.unwrap(),
+        serde_json::json!({"original":true,"first":true,"second":true})
+    );
+    let request = host
+        .send_event(&kordi_hooks::Event::BeforeProviderRequest {
+            payload: serde_json::json!({"model":"fixture"}),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        request.payload.unwrap(),
+        serde_json::json!({"model":"fixture","temperature":0.125,"top_p":0.9})
+    );
+    drop(host);
+    directory.close().unwrap();
+}
+
+#[tokio::test]
 async fn test_load_plugins_with_sample() {
     if std::process::Command::new("node")
         .arg("--version")

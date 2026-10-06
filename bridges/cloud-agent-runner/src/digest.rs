@@ -8,6 +8,9 @@ use crate::{
 };
 use serde_json::{json, Value};
 
+mod omp;
+pub(crate) use omp::run_omp;
+
 fn model_context(input: &Value) -> Result<Value, ModelLoopError> {
     let Some(changes) = input.get("changes").filter(|value| value.is_object()) else {
         return Ok(input.clone());
@@ -239,6 +242,17 @@ pub async fn run<P: CloudModelProvider + Sync>(
     run: &CloudAgentRun,
     material: ProviderAuthMaterial,
 ) -> Result<String, ModelLoopError> {
+    match crate::runtime::cloud_model_engine_from_env()? {
+        crate::runtime::CloudModelEngine::Omp => run_omp(run, material).await,
+        crate::runtime::CloudModelEngine::Rust => run_legacy(provider, run, material).await,
+    }
+}
+
+pub(crate) async fn run_legacy<P: CloudModelProvider + Sync>(
+    provider: &P,
+    run: &CloudAgentRun,
+    material: ProviderAuthMaterial,
+) -> Result<String, ModelLoopError> {
     let input: Value = serde_json::from_str(&run.prompt)
         .map_err(|_| ModelLoopError::Provider("Invalid digest observation snapshot".into()))?;
     if input.get("sources").and_then(Value::as_array).is_none() {
@@ -377,7 +391,7 @@ mod tests {
             payload: json!({"apiKey":"test-key","model":"test-model"}),
         };
         assert_eq!(
-            super::run(&Provider, &run, material).await.unwrap(),
+            super::run_legacy(&Provider, &run, material).await.unwrap(),
             EMPTY_OUTPUT
         );
     }

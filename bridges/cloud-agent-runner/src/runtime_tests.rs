@@ -181,7 +181,7 @@ async fn k8s_backend_requires_sandbox_id() {
         response: ModelProviderResponse::FinalText("unused".to_string()),
     };
 
-    let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+    let outcome = legacy_fixture_run(&client, &provider, temp_sandbox())
         .await
         .unwrap();
 
@@ -230,7 +230,7 @@ async fn scheduled_reminder_runs_complete_without_model_or_provider_auth() {
         response: ModelProviderResponse::FinalText("wrong model answer".to_string()),
     };
 
-    let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+    let outcome = legacy_fixture_run(&client, &provider, temp_sandbox())
         .await
         .unwrap();
 
@@ -257,7 +257,7 @@ async fn uses_model_loop_text_instead_of_placeholder() {
         response: ModelProviderResponse::FinalText("real model answer".to_string()),
     };
 
-    let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+    let outcome = legacy_fixture_run(&client, &provider, temp_sandbox())
         .await
         .unwrap();
 
@@ -286,7 +286,7 @@ async fn marks_failed_when_provider_auth_fetch_fails() {
         response: ModelProviderResponse::FinalText("unused".to_string()),
     };
 
-    let outcome = process_one_run_with_provider(&client, &provider, temp_sandbox())
+    let outcome = legacy_fixture_run(&client, &provider, temp_sandbox())
         .await
         .unwrap();
 
@@ -394,7 +394,7 @@ async fn digest_observes_simulated_chat_without_creating_a_sandbox() {
         ..leased_run("digest_fixture", true)
     });
     let root = temp_sandbox();
-    let outcome = process_one_run_with_provider(&client, &DigestProvider, root.clone())
+    let outcome = legacy_fixture_run(&client, &DigestProvider, root.clone())
         .await
         .unwrap();
     assert_eq!(
@@ -440,10 +440,9 @@ async fn long_digest_renews_its_lease_and_has_a_wall_clock_limit() {
         });
         client.stall_renewal = stall_renewal;
         let started = tokio::time::Instant::now();
-        let result =
-            process_one_run_with_provider(&client, &DelayedProvider(seconds), temp_sandbox())
-                .await
-                .unwrap();
+        let result = legacy_fixture_run(&client, &DelayedProvider(seconds), temp_sandbox())
+            .await
+            .unwrap();
         assert_eq!(
             matches!(result, RunnerStepOutcome::Completed { .. }),
             completes
@@ -464,4 +463,33 @@ async fn long_digest_renews_its_lease_and_has_a_wall_clock_limit() {
                 .any(|call| call == "fail:digest_slow:digest_generation_failed"));
         }
     }
+}
+
+async fn legacy_fixture_run<C, P>(
+    client: &C,
+    provider: &P,
+    root: PathBuf,
+) -> Result<RunnerStepOutcome, RunnerClientError>
+where
+    C: CloudAgentRunClient + Sync,
+    P: CloudModelProvider + Sync,
+{
+    process_one_run_with_engine(client, provider, root, CloudModelEngine::Rust).await
+}
+
+#[test]
+fn omp_is_default_and_bad_cloud_engine_configuration_fails_closed() {
+    assert_eq!(
+        cloud_model_engine_from_setting("").unwrap(),
+        CloudModelEngine::Omp
+    );
+    assert_eq!(
+        cloud_model_engine_from_setting(" OMP ").unwrap(),
+        CloudModelEngine::Omp
+    );
+    assert_eq!(
+        cloud_model_engine_from_setting("rust").unwrap(),
+        CloudModelEngine::Rust
+    );
+    assert!(cloud_model_engine_from_setting("other").is_err());
 }

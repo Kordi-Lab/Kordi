@@ -88,6 +88,8 @@ fn exact_cloud_history_reply_echo(
     };
     let expected_request_client_id = (parent_transport == Some("desktop-chat-ui"))
         .then(|| cloud_request_client_message_id(&preferred.session_id, &parent.id));
+    // Older history imports can restore the reply under a Cloud-derived ID.
+    // Its exact source wire still proves the export, independent of that ID.
     let wire_proof = conn
         .query_row(
             "SELECT 1 FROM chat_sync_messages echo
@@ -101,7 +103,8 @@ fn exact_cloud_history_reply_echo(
            ON conversation.account_id = echo.account_id
           AND conversation.conversation_id = echo.conversation_id
          WHERE echo.message_kind = 'canonical-history-agent'
-           AND json_extract(echo.snapshot_json, '$.content.canonical_history.local_message_id') = ?1
+           AND (json_extract(echo.snapshot_json, '$.content.canonical_history.local_message_id') = ?1
+                OR echo.message_id = ?6)
            AND direct.message_id = ?2
            AND direct.message_kind = 'text'
            AND conversation.client_session_id = ?3
@@ -115,6 +118,7 @@ fn exact_cloud_history_reply_echo(
                 preferred.session_id,
                 request_wire_id,
                 expected_request_client_id,
+                preferred.source_event_id,
             ],
             |_| Ok(()),
         )
@@ -257,6 +261,22 @@ pub(crate) fn reconcile_canonical_message_mirror_in_db(
     );
     let preferred_is_cloud = preferred.source_transport.as_deref() == Some("cloud-self-agent");
     let duplicate_is_cloud = duplicate.source_transport.as_deref() == Some("cloud-self-agent");
+    let runtime_entry_id = preferred
+        .content
+        .as_ref()
+        .and_then(|content| content.get("desktopEntryId"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.trim().is_empty());
+    let native_request_echo = preferred.source_transport.as_deref() == Some("desktop-chat-ui")
+        && duplicate.source_transport.as_deref() == Some("desktop-chat")
+        && preferred.sender_role == "user"
+        && runtime_entry_id.is_some()
+        && runtime_entry_id
+            == duplicate
+                .content
+                .as_ref()
+                .and_then(|content| content.get("desktopEntryId"))
+                .and_then(Value::as_str);
     let cloud_reply_request_id =
         exact_cloud_history_reply_echo(&transaction, &preferred, &duplicate)?;
     let cloud_reply_echo = cloud_reply_request_id.is_some();
@@ -272,6 +292,8 @@ pub(crate) fn reconcile_canonical_message_mirror_in_db(
         (&preferred, &duplicate)
     } else if preferred_is_cloud && duplicate_is_local {
         (&duplicate, &preferred)
+    } else if native_request_echo {
+        (&preferred, &duplicate)
     } else {
         return Err(
             "Canonical mirror reconciliation requires one local and one Cloud self-agent message"

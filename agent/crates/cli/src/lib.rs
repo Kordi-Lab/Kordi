@@ -1,9 +1,11 @@
+mod agent_runtime;
 mod agents_md;
 mod compaction_exec;
 #[allow(dead_code, unused_imports)]
 mod extensions;
 mod input_files;
 mod live_models;
+mod omp_turn;
 #[allow(dead_code)]
 mod reflection_runtime;
 mod runtime_model;

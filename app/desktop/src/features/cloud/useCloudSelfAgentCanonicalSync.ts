@@ -35,6 +35,8 @@ import {
 } from '@/features/canonical/canonicalMessageSources';
 import type { ChatSyncConversation } from './chatSyncTypes';
 import { isNativeDesktopShell } from '@/lib/desktop';
+import { loadCloudSelfAgentSyncLedger } from './cloudSelfAgentSyncLedger';
+import { cloudSelfAgentSessionsNeedingReplyRecovery } from './cloudSelfAgentCanonicalIndexes';
 
 const NATIVE_SELF_AGENT_RECOVERY_PAGE_SIZE = 200;
 
@@ -173,6 +175,7 @@ export function useCloudSelfAgentCanonicalSync({
       groupRowByWireMessageId:
         messageIndex.groupRowByWireMessageId,
       cloudTitlesBySessionId: titlesBySessionId,
+      requestSyncLedger: loadCloudSelfAgentSyncLedger(account.accountId),
     });
     const currentAgentIdentity = canonicalState.identities.find((identity) => (
       identity.id === headPlan.agentIdentityRequest.id
@@ -260,6 +263,9 @@ export function useCloudSelfAgentCanonicalSync({
         const initialState = latestInputRef.current.canonicalState;
         if (!initialState) return;
         let workingState: CanonicalSessionState = initialState;
+        const sessionsNeedingReplyRecovery = cloudSelfAgentSessionsNeedingReplyRecovery(
+          workingState, loadCloudSelfAgentSyncLedger(accountId),
+        );
         const persistMessages = async (
           messages: CloudMessage[],
           durableSourceEventIds: ReadonlySet<string>,
@@ -276,6 +282,7 @@ export function useCloudSelfAgentCanonicalSync({
               current.messageIndex.groupRowByWireMessageId,
             cloudTitlesBySessionId: current.titlesBySessionId,
             durableSourceEventIds,
+            requestSyncLedger: loadCloudSelfAgentSyncLedger(accountId),
           });
           if (
             plan.sessionRequests.length === 0
@@ -332,6 +339,7 @@ export function useCloudSelfAgentCanonicalSync({
           );
           if (
             recoveryIds
+            && !sessionsNeedingReplyRecovery.has(conversation.legacy_session_id ?? conversation.id)
             && recoveryIds.messageIds.every((messageId) => (
               durableSourceEventIds.has(messageId)
             ))

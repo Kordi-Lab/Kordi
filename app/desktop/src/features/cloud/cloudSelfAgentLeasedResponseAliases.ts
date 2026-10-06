@@ -46,7 +46,9 @@ export function leasedResponseEchoes(
               )
             ))?.message.messageId
             ?? (routeRunsOnKordiCloud(parentContent.agentRuntimeRoute as DesktopChatMessageRoute | null)
-              && retainedContent.execution ? cleanText(retainedContent.cloudRequestMessageId as string) : '')
+              ? typeof parentContent.desktopEntryId === 'string' ? cleanText(parentContent.desktopEntryId)
+                : retainedContent.execution ? cleanText(retainedContent.cloudRequestMessageId as string) : ''
+              : '')
         : '';
     if (!originalWireId) continue;
     const originalRequest = messages.find((candidate) => (
@@ -60,12 +62,15 @@ export function leasedResponseEchoes(
         || parent.sourceTransport === 'desktop-chat'
         || routeRunsOnKordiCloud(parentContent.agentRuntimeRoute as DesktopChatMessageRoute | null);
     if (!provenHostedRequest) continue;
+    const explicitHostedRoute = originalRequest
+      ? routeRunsOnKordiCloud(cloudDirectMessageAgentRuntimeRoute(originalRequest.message.body))
+      : routeRunsOnKordiCloud(parentContent.agentRuntimeRoute as DesktopChatMessageRoute | null);
     const originalResponse = messages.find((candidate) => (
       candidate.sessionId === retained.sessionId
       && candidate.message.messageId !== echo?.message.messageId
       && candidate.message.messageKind !== 'canonical-history-agent'
       && candidate.responseRequestId === originalWireId
-      && candidate.responseExecution
+      && (candidate.responseExecution || explicitHostedRoute)
       && candidate.responseDeliveryState === 'complete'
     ));
     const persistedResponse = canonicalMessages.find((candidate) => {
@@ -76,7 +81,7 @@ export function leasedResponseEchoes(
         && candidate.senderRole === 'owned-agent'
         && candidate.status === 'complete'
         && content.cloudRequestMessageId === originalWireId
-        && Boolean(content.execution);
+        && (Boolean(content.execution) || explicitHostedRoute);
     });
     if (!originalResponse && !persistedResponse) continue;
     const echoWireId = echo?.responseRequestId

@@ -1,3 +1,4 @@
+import { comparableToolSignature, sameOwnedAgentTurn } from './runtimeTurnMatching';
 import { mergeCanonicalPlanCards, preferTranscriptWithCanonicalPlanCards } from './readModel/planCardEntries';
 import { localRuntimeProgressForCanonicalPlaceholder } from './localRuntimeProgress';
 import {
@@ -45,36 +46,12 @@ import { presentCanonicalParticipants,presentLocalAgentMessages } from './readMo
 import { mergeCanonicalReadReceipts } from './readModel/messageReactionMetadata';
 import {
 comparableAgentResponseText,
-messageResponseText,
-sameAgentResponseText
+messageResponseText
 } from './readModel/runtimeMessageMatching';
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 import { mergeCanonicalHistoryIntoRuntime } from "./runtimeHistoryMerge";
 export { presentLocalAgentMessages } from './readModel/localAgentPresentation';
 const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map(); const EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS: ReadonlySet<string> = new Set(); const EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY: ReadonlyMap<string, number> = new Map();
-
-function comparableToolSignature(message: Message) {
-  const tools = message.turn?.tools ?? [];
-  if (tools.length === 0) return null;
-  return tools
-    .map((tool) => [tool.id ?? '', tool.name ?? '', tool.status ?? ''].join(''))
-    .sort()
-    .join('');
-}
-
-function sameOwnedAgentTurn(canonical: Message, local: Message) {
-  if (canonical.role !== 'owned-agent' || local.role !== 'owned-agent') return false;
-  const canonicalText = messageResponseText(canonical);
-  const localText = messageResponseText(local);
-  if (canonicalText && localText && sameAgentResponseText(canonicalText, localText)) return true;
-  const canonicalTools = comparableToolSignature(canonical);
-  const localTools = comparableToolSignature(local);
-  if (canonicalTools && localTools && canonicalTools === localTools) return true;
-  const canonicalThinking = canonical.turn?.thinkingText?.trim() ?? '';
-  const localThinking = local.turn?.thinkingText?.trim() ?? '';
-  if (canonicalThinking && localThinking && sameAgentResponseText(canonicalThinking, localThinking)) return true;
-  return false;
-}
 
 function isLegacyCollaborationProcessingOnlyRuntimePlaceholder(message: Message) {
   if (!isCollaborationLiveTurnId(message.id) || !message.turn) return false;
@@ -338,9 +315,14 @@ export function createCanonicalSessionReadModel(
       const isLegacyCollaborationSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
+      const suppressedRuntimeAliases = indexes.suppressedRuntimeReplyAliasesBySessionId.get(sessionId);
+      const runtimeMessages = suppressedRuntimeAliases?.size ? conversation.messages.filter((message) => (
+        message.role !== 'owned-agent'
+        || ![message.id, message.entryId].some((alias) => Boolean(alias && suppressedRuntimeAliases.has(alias)))
+      )) : conversation.messages;
       const hydratedMessages = (conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
         || isSupportContact || isCanonicalCloudDirectPersonSession) && canonicalMessages.length > 0
-        ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
+        ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, runtimeMessages)
         : (isLegacyCollaborationPersonSession || isLegacyCollaborationSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
           ? canonicalMessages
