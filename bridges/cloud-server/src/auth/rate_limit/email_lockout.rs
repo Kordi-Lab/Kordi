@@ -195,18 +195,26 @@ impl CloudRateLimiter {
         ] {
             let fail_key = format!("{}:email:{scope}:fail", store.key_prefix);
             let lock_key = format!("{}:email:{scope}:lock", store.key_prefix);
-            let count: i64 = match conn.incr(&fail_key, 1).await {
+            // INCR and EXPIRE NX run in one MULTI/EXEC, so a counter can never
+            // outlive its window, and a counter left without a TTL gets one.
+            // `EXPIRE ... NX` needs Redis 7.0 or later.
+            let (count,): (i64,) = match redis::pipe()
+                .atomic()
+                .incr(&fail_key, 1)
+                .cmd("EXPIRE")
+                .arg(&fail_key)
+                .arg(lockout_secs)
+                .arg("NX")
+                .ignore()
+                .query_async(&mut conn)
+                .await
+            {
                 Ok(value) => value,
                 Err(err) => {
-                    eprintln!("[rate_limit] redis INCR {fail_key}: {err}");
+                    eprintln!("[rate_limit] redis INCR/EXPIRE {fail_key}: {err}");
                     return;
                 }
             };
-            if count == 1 {
-                if let Err(err) = conn.expire::<_, ()>(&fail_key, lockout_secs).await {
-                    eprintln!("[rate_limit] redis EXPIRE {fail_key}: {err}");
-                }
-            }
             if count >= limit as i64 {
                 if let Err(err) = conn
                     .set_ex::<_, _, ()>(&lock_key, "1", lockout_secs as u64)
