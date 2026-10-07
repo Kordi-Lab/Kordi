@@ -10,13 +10,8 @@ const TURN_RUNNER_JOIN_TIMEOUT: std::time::Duration = std::time::Duration::from_
 
 use super::controller::{QueuedPrompt, TuiController};
 
-fn is_auto_compaction_status(message: &str) -> bool {
-    message.starts_with("Auto-compacted session:")
-}
-
-fn is_auto_compaction_terminal_status(message: &str) -> bool {
-    is_auto_compaction_status(message) || message.starts_with("Auto-compaction failed:")
-}
+mod compaction_status;
+use compaction_status::{is_auto_compaction_status, is_auto_compaction_terminal_status};
 
 enum TurnJoinPoll<T> {
     Completed(T),
