@@ -6,7 +6,8 @@ import type {
   CanonicalSessionState,
 } from '@/kordi-app/types';
 import type { ChatSyncConversation } from './authClient';
-import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
+import { boundedRequestContextMessages } from './cloudAgentRequestContext';
 import { routeRunsOnKordiCloud } from './cloudAgentRuntimeRoute';
 import { cloudSelfAgentOperationClientMessageId,cloudSelfAgentProcessingLedgerKey } from './cloudSelfAgentIdentity';
 import { cloudAgentTargetsBySessionId,cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
@@ -33,6 +34,8 @@ export type CloudSelfAgentSyncOperation = {
   targetAgentId?: string; targetAgentName?: string;
   /** A request that runs on Kordi Cloud: the cloud message carries this route to the runner. */
   agentRuntimeRoute?: DesktopChatMessageRoute;
+  /** Bounded reference context a Kordi Cloud request carries to whichever executor claims it. */
+  contextMessages?: DesktopChatContextMessage[];
   /** Recovered transcript content that must not start another hosted turn. */
   historyOnly?: boolean;
 };
@@ -366,6 +369,8 @@ export function planCloudSelfAgentSync(
         const liveHostedRequest = message.sourceTransport === 'desktop-chat-ui'
           && options.createdAfterMs != null && forwardEligibilityAtMs(message) > options.createdAfterMs
           && !ledger[message.id]?.cloudMessageId;
+        const historyOnly = Boolean(kordiCloudRoute && options.recoverSessionIds?.has(message.sessionId) && !liveHostedRequest);
+        const contextMessages = kordiCloudRoute && !historyOnly ? boundedRequestContextMessages(content.agentContextMessages) : [];
         if (
           options.recoverSessionIds?.has(message.sessionId)
           || !ledger[message.id]
@@ -387,8 +392,8 @@ export function planCloudSelfAgentSync(
               cancelledAtMs: typeof content.queueUpdatedAtMs === 'number' ? content.queueUpdatedAtMs : message.updatedAtMs,
             } : {}),
             ...(kordiCloudRoute ? { agentRuntimeRoute: kordiCloudRoute } : {}),
-            ...(kordiCloudRoute && options.recoverSessionIds?.has(message.sessionId)
-              && !liveHostedRequest ? { historyOnly: true } : {}),
+            ...(contextMessages.length ? { contextMessages } : {}),
+            ...(historyOnly ? { historyOnly: true } : {}),
             ...target,
           };
           if (queuedState === 'queued' || cancelledWhileQueued || !options.remoteClientMessageIds?.has(

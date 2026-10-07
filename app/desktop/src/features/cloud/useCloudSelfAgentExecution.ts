@@ -7,7 +7,7 @@ import {
   useEffect,
   useRef,
 } from 'react';
-import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
+import { cloudSelfAgentExecutionContextMessages } from './cloudSelfAgentExecutionContext';
 import {
   cancelDesktopChatTurn,
   startDesktopChatMessage,
@@ -26,10 +26,7 @@ import {
   cloudAgentLocalFailureMessage,
   waitForCloudAgentTurn,
 } from './cloudAgentLocalExecution';
-import {
-  cloudAgentNativeContextMessagesFromDirectCloudSession,
-  encodeCloudAgentResponse,
-} from './cloudAgentMessages';
+import { encodeCloudAgentResponse } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteAfterModelChange,
   cloudAgentRuntimeSessionId,
@@ -39,6 +36,7 @@ import {
 import { cloudAgentRuntimeRouteForTargetCloudAgent } from './cloudAgentTargetRuntimeRoute';
 import {
   cloudDirectMessageAgentRuntimeRoute,
+  cloudDirectMessageContextMessages,
   cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
 } from './cloudDirectMessages';
@@ -263,11 +261,9 @@ export function useCloudSelfAgentExecution({
           }
           const ownerName =
             account.displayName || account.primaryEmail || 'Me';
-          const contextMessages = [
-            ...cloudAgentContextMessagesFromDefinition(
-              cloudAgentDefinitionsById?.[targetCloudAgentId ?? ''] ?? null,
-            ),
-            ...cloudAgentNativeContextMessagesFromDirectCloudSession({
+          const contextMessages = cloudSelfAgentExecutionContextMessages({
+            definition: cloudAgentDefinitionsById?.[targetCloudAgentId ?? ''] ?? null,
+            session: {
               messages: selfMessages,
               requestMessage: request,
               localAccountId: account.accountId,
@@ -275,8 +271,9 @@ export function useCloudSelfAgentExecution({
               peerHumanName: ownerName,
               localAgentName: account.defaultAgent?.displayName || 'Kordi',
               peerAgentName: account.defaultAgent?.displayName || 'Kordi',
-            }),
-          ];
+            },
+            requestContextMessages: cloudDirectMessageContextMessages(request.body),
+          });
 
           let publishChain = Promise.resolve();
           let lastPublishedAtMs = 0;
