@@ -236,7 +236,7 @@ test('panel lists each connector as a navigation row with a status value', async
   try {
     const client = createPreviewConnectorsClient({ latencyMs: 0 });
     await act(async () => {
-      root.render(<ConnectorsSettingsPanel accountId="account-1" client={client} isNativeShell />);
+      root.render(<ConnectorsSettingsPanel accountId="account-1" client={client} isNativeShell isPreview />);
     });
     await flush();
 
@@ -329,6 +329,25 @@ test('panel hides Mac-local connectors outside the native shell', async () => {
     assert.match(text, /Google Calendar/);
     assert.doesNotMatch(text, /On this Mac/);
     assert.doesNotMatch(text, /Notification Center/);
+  } finally {
+    await act(async () => root.unmount());
+    installed.restore();
+  }
+});
+
+test('the sample notice shows only for the preview client', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    const client = createPreviewConnectorsClient({ latencyMs: 0 });
+    await act(async () => {
+      root.render(<ConnectorsSettingsPanel accountId="account-1" client={client} isNativeShell={false} />);
+    });
+    await flush();
+    assert.match(host.textContent ?? '', /Google Calendar/);
+    assert.doesNotMatch(host.textContent ?? '', /Showing sample connectors/);
   } finally {
     await act(async () => root.unmount());
     installed.restore();

@@ -22,6 +22,7 @@ import { SettingsRow, SettingsSection, SettingsSwitch } from '@/kordi-app/compon
 import { cn } from '@/lib/utils';
 
 import type { ConnectorsClient } from './connectorsClient';
+import { ConnectorsPreviewNotice } from './ConnectorsPreviewNotice';
 import {
   connectorCatalog,
   connectorDefinition,
@@ -57,6 +58,7 @@ const outcomeLabels: Record<ConnectorAuditOutcome, string> = {
   approved: 'Approved by you',
   denied: 'Denied by you',
   blocked_background: 'Background run, read only',
+  failed: 'Failed',
 };
 
 const auditDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -142,11 +144,11 @@ function Badge({ children, tone, inDialog = false }: { children: ReactNode; tone
 export function ConnectorsSettingsPanel({
   accountId,
   client,
-  isNativeShell,
+  isNativeShell, isPreview = false,
 }: {
   accountId: string;
   client: ConnectorsClient;
-  isNativeShell: boolean;
+  isNativeShell: boolean; isPreview?: boolean; // isPreview: `client` serves sample data.
 }) {
   const [states, setStates] = useState<Partial<Record<ConnectorProviderId, ConnectorState>>>({});
   const [agents, setAgents] = useState<ConnectorAgent[]>([]);
@@ -555,9 +557,7 @@ export function ConnectorsSettingsPanel({
         title="Connectors"
         description="Connect the services you use so your agent can read updates from them and, with your approval, act in them. Kordi keeps each sign-in on its servers and only shares results with your agent."
       >
-        <p className="m-0 py-1 text-[12px] leading-5 text-slate-500">
-          Showing sample connectors. Nothing here is connected to a real account.
-        </p>
+        <ConnectorsPreviewNotice show={isPreview} />
       </SettingsSection>
       )}
 
@@ -704,7 +704,7 @@ export function ConnectorsSettingsPanel({
                     <Badge inDialog tone={entry.group === 'act' ? 'amber' : 'muted'}>{entry.group === 'act' ? 'Act' : 'Read'}</Badge>
                     <span className={cn(
                       'text-[11px]',
-                      entry.outcome === 'denied' || entry.outcome === 'blocked_background' ? dialogDanger : dialogMuted,
+                      entry.outcome === 'denied' || entry.outcome === 'blocked_background' || entry.outcome === 'failed' ? dialogDanger : dialogMuted,
                     )}
                     >
                       {outcomeLabels[entry.outcome]}
