@@ -46,13 +46,15 @@ jobs:
           sha="${REQUESTED_SHA:-$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)}"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           test "$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$sha" --jq .merge_base_commit.sha)" = "$sha"
+          # Post-merge CI usually finishes before the Blocking CI run on the same main push,
+          # which takes 25 to 30 minutes, so wait up to 45 minutes for both required checks.
           ready=false
-          for _attempt in $(seq 1 20); do
+          for _attempt in $(seq 1 90); do
             if node scripts/check-sha-readiness.mjs --sha "$sha" --branch main --check 'CI required' --check 'Post-merge CI required'; then
               ready=true
               break
             fi
-            sleep 15
+            sleep 30
           done
           test "$ready" = true
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
