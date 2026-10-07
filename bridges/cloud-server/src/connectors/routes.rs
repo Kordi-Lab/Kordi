@@ -172,11 +172,11 @@ async fn load_live(
     state: &ServerState,
     account_id: &str,
     connector_id: &str,
-) -> Result<super::models::ConnectorRecord, Response> {
+) -> Result<super::models::ConnectorRecord, Box<Response>> {
     match store::load_account_connector(state.db_pool(), account_id, connector_id).await {
         Ok(Some(record)) if record.status != ConnectorStatus::Revoked => Ok(record),
-        Ok(_) => Err(not_found()),
-        Err(err) => Err(server_error("load connector", err)),
+        Ok(_) => Err(Box::new(not_found())),
+        Err(err) => Err(Box::new(server_error("load connector", err))),
     }
 }
 
@@ -188,7 +188,7 @@ async fn set_act(
 ) -> Response {
     let record = match load_live(&state, &session.account_id, &connector_id).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     if input.enabled && record.act_scopes.is_empty() {
         return error(
@@ -244,7 +244,7 @@ async fn set_agents(
 ) -> Response {
     let record = match load_live(&state, &session.account_id, &connector_id).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let mut seen = HashSet::new();
     let mut agent_ids = Vec::new();
@@ -343,7 +343,7 @@ async fn disconnect(
 ) -> Response {
     let record = match load_live(&state, &session.account_id, &connector_id).await {
         Ok(record) => record,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     match oauth::disconnect_connector(state.db_pool(), state.connectors(), &record).await {
         Ok(deleted_events) => Json(DisconnectResponse { deleted_events }).into_response(),
