@@ -198,3 +198,117 @@ test('a lost claim never writes to the device, and a failed server call cannot d
   assert.deepEqual(retry.recorded.writes, [], 'no second device copy');
   assert.deepEqual(retry.recorded.syncs.map(batch => batch.upserts.map(event => [event.id, event.externalUid])), [[['digest-1', 'device:new-digest-1']]]);
 });
+
+function manyDeviceEvents(count: number): DeviceCalendarEvent[] {
+  return Array.from({ length: count }, (_, i) => deviceEvent({ id: `calendar-${i}`, externalUid: `device:${i}`, deviceId: `ek-${i}` }));
+}
+for (const count of [500, 501, 1000, 1001, 2501]) {
+  test(`initial sync settles all ${count} events in bounded batches and the next pass is quiet`, async () => {
+    const device = manyDeviceEvents(count);
+    const { deps, recorded, baseline } = fakeDeps({ device });
+    const saved: CalendarEvent[] = [];
+    const original = deps.serverSync;
+    deps.serverSync = async (account, changes) => {
+      assert.ok(changes.upserts.length <= 500 && changes.deletes.length <= 500);
+      const result = await original(account, changes); saved.push(...result.saved); return result;
+    };
+    assert.equal((await syncDeviceCalendarOnce('large', deps)).syncedCount, count);
+    assert.equal(saved.length, count);
+    assert.equal(Object.keys(baseline()).length, count);
+    deps.serverEvents = async () => saved;
+    const calls = recorded.syncs.length;
+    assert.equal((await syncDeviceCalendarOnce('large', deps)).changed, false);
+    assert.equal(recorded.syncs.length, calls);
+  });
+}
+
+test('large notes are split by encoded bytes as well as event count', async () => {
+  const device = manyDeviceEvents(500).map(event => ({ ...event, description: 'x'.repeat(5000) }));
+  const { deps, recorded } = fakeDeps({ device });
+  await syncDeviceCalendarOnce('large', deps);
+  assert.ok(recorded.syncs.length > 1);
+  for (const batch of recorded.syncs) assert.ok(new TextEncoder().encode(JSON.stringify(batch)).length < 600 * 1024);
+  assert.equal(recorded.syncs.reduce((sum, batch) => sum + batch.upserts.length, 0), 500);
+});
+
+test('a failed second deletion batch preserves pending revisions and retries only remaining removals', async () => {
+  const server = manyDeviceEvents(1001).map(event => ({ ...event, revision: 1 }));
+  const baseline = Object.fromEntries(server.map(event => [event.externalUid, { serverId: event.id, fingerprint: contentFingerprint(event), revision: 1, calendarId: 'work' }]));
+  const { deps, recorded, baseline: savedBaseline } = fakeDeps({ server, baseline });
+  let remaining: CalendarEvent[] = server;
+  let calls = 0;
+  const original = deps.serverSync;
+  deps.serverSync = async (account, changes) => {
+    if (++calls === 2) throw new Error('Temporary outage');
+    const result = await original(account, changes);
+    remaining = remaining.filter(event => !result.deleted.includes(event.id));
+    return result;
+  };
+  await assert.rejects(() => syncDeviceCalendarOnce('large', deps), /Temporary outage/);
+  assert.equal(Object.keys(savedBaseline()).length, 501);
+  assert.equal(recorded.refreshed, 1);
+  deps.serverEvents = async () => remaining;
+  await syncDeviceCalendarOnce('large', deps);
+  assert.deepEqual(savedBaseline(), {});
+  assert.equal(remaining.length, 0);
+  assert.equal(recorded.syncs.reduce((sum, batch) => sum + batch.deletes.length, 0), 1001);
+});
+
+test('a failed second upload retains confirmed baselines and retries without duplicate device writes', async () => {
+  const device = manyDeviceEvents(1001);
+  const { deps, baseline } = fakeDeps({ device });
+  const saved: CalendarEvent[] = [];
+  const original = deps.serverSync;
+  let calls = 0;
+  deps.serverSync = async (account, changes) => {
+    if (++calls === 2) throw new Error('Temporary outage');
+    const result = await original(account, changes); saved.push(...result.saved); return result;
+  };
+  await assert.rejects(() => syncDeviceCalendarOnce('large', deps), /Temporary outage/);
+  assert.equal(Object.keys(baseline()).length, 500);
+  deps.serverEvents = async () => saved;
+  assert.equal((await syncDeviceCalendarOnce('large', deps)).syncedCount, 1001);
+  assert.equal(new Set(saved.map(event => event.id)).size, 1001);
+  assert.equal(saved.length, 1001);
+});
+
+test('claims and adopted device identities are both batched', async () => {
+  const server = Array.from({ length: 1001 }, (_, i) => ({ ...kordiEvent, id: `outbound-${i}` }));
+  const { deps, recorded } = fakeDeps({ server });
+  const result = await syncDeviceCalendarOnce('large', deps);
+  assert.equal(result.syncedCount, 1001);
+  assert.equal(recorded.writes.length, 1001);
+  assert.ok(recorded.syncs.every(batch => batch.upserts.length <= 500));
+  assert.equal(recorded.syncs.flatMap(batch => batch.upserts).filter(event => event.externalUid?.startsWith('claim:')).length, 1001);
+});
+
+test('excluded calendars are not read, and their settled server copies are removed before new uploads', async () => {
+  const old = { ...deviceEvent({ id: 'old', externalUid: 'device:old', calendarId: 'holidays' }), revision: 1 };
+  const { deps, recorded } = fakeDeps({ device: [deviceEvent()], server: [old], baseline: { 'device:old': { serverId: 'old', fingerprint: contentFingerprint(old), revision: 1, calendarId: 'holidays' } } });
+  deps.preferences = () => ({ excludedCalendarIds: ['holidays'], targetCalendarId: 'work', outbound: false });
+  await syncDeviceCalendarOnce('large', deps);
+  assert.deepEqual(recorded.reads, [['work']]);
+  assert.deepEqual(recorded.deletes, [], 'source calendar stays intact');
+  assert.deepEqual(recorded.syncs[0].deletes, [{ id: 'old', revision: 1 }]);
+  assert.equal(recorded.syncs[1].upserts.length, 1);
+  deps.preferences = () => ({ excludedCalendarIds: ['work', 'holidays'], targetCalendarId: null, outbound: false });
+  recorded.reads.length = 0;
+  await syncDeviceCalendarOnce('large', deps);
+  assert.deepEqual(recorded.reads, []);
+});
+
+test('first read failure still exposes calendars and permission in settings', async t => {
+  const { cleanup } = environment();
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const { deps } = fakeDeps();
+  deps.readEvents = async () => { throw new Error('Device read failed'); };
+  const stop = scheduleCalendarSync('first-failure', deps);
+  try {
+    t.mock.timers.tick(CALENDAR_SYNC_DEBOUNCE_MS);
+    for (let i = 0; i < 6; i++) await new Promise(resolve => setImmediate(resolve));
+    const status = calendarSyncStoreFor('first-failure').getSnapshot();
+    assert.equal(status.phase, 'error');
+    assert.equal(status.permission, 'granted');
+    assert.deepEqual(status.calendars.map(calendar => calendar.id), ['work', 'holidays']);
+  } finally { stop(); cleanup(); }
+});

@@ -206,10 +206,10 @@ pub(super) async fn save(
             Ok(row) => row,
             Err(_) => return failed(),
         };
-    if count.0 + events.len() as i64 > 1000 {
+    if count.0 + events.len() as i64 > super::sync_routes::CALENDAR_CAPACITY {
         return error(
             "calendar_full",
-            "This series exceeds your calendar's 1,000-event capacity. Choose fewer occurrences.",
+            "This series exceeds your calendar's 10,000-event capacity. Choose fewer occurrences.",
             StatusCode::UNPROCESSABLE_ENTITY,
         );
     }
