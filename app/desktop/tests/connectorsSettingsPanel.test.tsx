@@ -8,7 +8,10 @@ import { ConnectorsSettingsPanel } from '../src/features/connectors/ConnectorsSe
 import {
   connectorsClientForEnvironment,
   connectorsClientForFlag,
+  createDesktopMacLocalConnectorsClient,
   createPreviewConnectorsClient,
+  type DesktopInvoke,
+  type MacLocalConnectorsState,
 } from '../src/features/connectors/connectorsClient';
 import {
   connectorCatalog,
@@ -141,6 +144,56 @@ test('preview client grants act on purpose and disconnect clears audit entries',
 
   const notifications = await client.recheckPermission('mac_notification_center');
   assert.equal(notifications.status, 'connected');
+});
+
+test('desktop client merges Mac-local command state with the service rows', async () => {
+  let macLocal: MacLocalConnectorsState = {
+    calendar: { enabled: true, permission: 'granted' },
+    contacts: { enabled: false, permission: 'not_determined' },
+    notification_center: { enabled: false, permission: 'full_disk_access_missing' },
+  };
+  const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+  const invoke: DesktopInvoke = async <T,>(command: string, args?: Record<string, unknown>) => {
+    calls.push({ command, args });
+    if (command === 'desktop_mac_local_connectors_set_enabled') {
+      const source = args?.source as keyof MacLocalConnectorsState;
+      if (source === 'notification_center' && args?.enabled) throw new Error('Notification Center needs Full Disk Access.');
+      macLocal = { ...macLocal, [source]: { enabled: Boolean(args?.enabled), permission: source === 'contacts' ? 'denied' : macLocal[source].permission } };
+    }
+    return macLocal as T;
+  };
+  const services = createPreviewConnectorsClient({ latencyMs: 0 });
+  const client = createDesktopMacLocalConnectorsClient(invoke, services);
+
+  const listed = await client.list();
+  const byId = new Map(listed.states.map((state) => [state.providerId, state]));
+  assert.equal(listed.states.length, connectorCatalog.length);
+  assert.equal(byId.get('mac_calendar')?.status, 'connected');
+  assert.equal(byId.get('mac_calendar')?.actEnabled, false);
+  assert.deepEqual(byId.get('mac_calendar')?.grantedScopeIds, connectorDefinition('mac_calendar').readScopes.map((scope) => scope.id));
+  assert.equal(byId.get('mac_contacts')?.status, 'not_connected');
+  assert.equal(byId.get('mac_notification_center')?.status, 'permission_missing');
+  assert.equal(byId.get('github')?.status, 'connected', 'service rows still come from the preview client');
+  assert.ok(listed.agents.length > 0);
+
+  const contacts = await client.connect('mac_contacts', { scopeIds: [] });
+  assert.equal(contacts.status, 'permission_missing');
+  assert.deepEqual(calls.at(-1), { command: 'desktop_mac_local_connectors_set_enabled', args: { source: 'contacts', enabled: true } });
+
+  const notifications = await client.connect('mac_notification_center', { scopeIds: [] });
+  assert.equal(notifications.status, 'permission_missing');
+  assert.equal(calls.at(-1)?.command, 'desktop_mac_local_connectors_recheck');
+
+  await client.disconnect('mac_calendar');
+  assert.deepEqual(calls.at(-1), { command: 'desktop_mac_local_connectors_set_enabled', args: { source: 'calendar', enabled: false } });
+  assert.equal((await client.recheckPermission('mac_calendar')).status, 'not_connected');
+  assert.equal(calls.at(-1)?.command, 'desktop_mac_local_connectors_recheck');
+  await assert.rejects(client.grantAct('mac_calendar'), /not available yet/);
+
+  const withoutServices = createDesktopMacLocalConnectorsClient(invoke, null);
+  const bare = await withoutServices.list();
+  assert.equal(bare.states.find((state) => state.providerId === 'github')?.status, 'not_connected');
+  await assert.rejects(withoutServices.connect('github', { scopeIds: [] }), /not available yet/);
 });
 
 test('connectors stay hidden unless the preview flag is set', () => {

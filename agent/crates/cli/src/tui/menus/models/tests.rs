@@ -82,6 +82,7 @@ fn build_test_controller(
         session_observation: None,
         task_operator: None,
         schedule_task: None,
+        mac_local: None,
         execution_mode: ToolExecutionMode::Interactive,
         request_approval: None,
     };

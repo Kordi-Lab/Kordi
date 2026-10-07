@@ -184,13 +184,9 @@ pub async fn clear_reminders(account_id: Option<String>) {
 #[cfg(target_os = "macos")]
 pub(crate) mod native {
     use super::*;
-    use objc2::{rc::Retained, runtime::Bool, sel, AnyThread};
+    pub(crate) use crate::mac_local::eventkit::store;
     use objc2_event_kit::{EKAuthorizationStatus, EKEntityType, EKEvent, EKEventStore};
-    use objc2_foundation::{NSArray, NSDate, NSError, NSObjectProtocol};
-    use std::time::Duration;
-    pub(crate) fn store() -> Retained<EKEventStore> {
-        unsafe { EKEventStore::init(EKEventStore::alloc()) }
-    }
+    use objc2_foundation::{NSArray, NSDate};
     /// Stable identity for a device event. Occurrences of a repeating event share the item
     /// identifier, so the original occurrence date tells them apart and survives a reschedule.
     pub(crate) fn external_uid(event: &EKEvent) -> String {
@@ -273,29 +269,8 @@ pub(crate) mod native {
         }
     }
     pub(crate) fn access(store: &EKEventStore) -> Result<(), String> {
-        unsafe {
-            if EKEventStore::authorizationStatusForEntityType(EKEntityType::Event)
-                == EKAuthorizationStatus::FullAccess
-            {
-                return Ok(());
-            }
-            if !store.respondsToSelector(sel!(requestFullAccessToEventsWithCompletion:)) {
-                return Err(
-                    "Calendar connection requires macOS 14 or later. You can import ICS instead."
-                        .into(),
-                );
-            }
-            let (tx, rx) = std::sync::mpsc::channel();
-            let callback = block2::RcBlock::new(move |granted: Bool, _error: *mut NSError| {
-                let _ = tx.send(granted.as_bool());
-            });
-            store.requestFullAccessToEventsWithCompletion(&*callback as *const _ as *mut _);
-            if !rx
-                .recv_timeout(Duration::from_secs(120))
-                .map_err(|_| "Calendar permission request timed out.")?
-            {
-                return Err("Calendar access is off. Allow Kordi in Privacy & Security → Calendars, or import ICS.".into());
-            }
+        if !crate::mac_local::eventkit::request_full_access(store, EKEntityType::Event)? {
+            return Err("Calendar access is off. Allow Kordi in Privacy & Security → Calendars, or import ICS.".into());
         }
         Ok(())
     }

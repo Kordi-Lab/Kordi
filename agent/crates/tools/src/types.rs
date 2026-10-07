@@ -355,6 +355,9 @@ pub struct ToolContext {
     pub session_observation: Option<SessionObservationRuntime>,
     pub task_operator: Option<TaskOperatorRuntime>,
     pub schedule_task: Option<ScheduleTaskRuntime>,
+    /// Owner-local macOS sources (Calendar, Reminders, Contacts, Notification Center).
+    /// `None` on cloud, shared, and non-macOS runs; the tools then fail closed.
+    pub mac_local: Option<crate::mac_local::MacLocalRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
 }

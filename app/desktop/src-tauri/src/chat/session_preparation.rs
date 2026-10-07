@@ -1,5 +1,7 @@
 #[path = "calendar_runtime.rs"]
 mod calendar_runtime;
+#[path = "mac_local_runtime.rs"]
+mod mac_local_runtime;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -175,6 +177,18 @@ pub(super) async fn prepare_desktop_session_for_send(
         kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
     )));
     let calendar = calendar_runtime::build(runtime, context_session_id);
+    // Mac-local sources are the owner's: never on a cloud-lease turn or for
+    // a request that another account made through the owner's agent.
+    let owner_local = cloud_lease.is_none()
+        && match runtime.runtime_identity_context() {
+            Ok(None) => true,
+            Ok(Some(context)) => serde_json::from_str::<kordi_core::types::RuntimeIdentity>(
+                &context.text,
+            )
+            .is_ok_and(|identity| identity.requester_account_id == identity.owner_account_id),
+            Err(_) => false,
+        };
+    runtime.set_mac_local_runtime(mac_local_runtime::build(owner_local));
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

@@ -4,6 +4,10 @@
 <dict>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>Kordi reads calendars you select to import events into your private digest. It does not send invitations.</string>
+  <key>NSRemindersFullAccessUsageDescription</key>
+  <string>When you turn on Calendar and Reminders in Connectors, your agent can read your reminders on this Mac when you ask. Kordi does not store them.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>When you turn on Contacts in Connectors, Kordi asks Contacts for the people that match your agent's search on this Mac. Kordi does not store them.</string>
   <key>NSCameraUsageDescription</key>
   <string>Kordi uses your camera when you record a video message or join a video call.</string>
   <key>NSMicrophoneUsageDescription</key>

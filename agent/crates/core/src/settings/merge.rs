@@ -63,6 +63,7 @@ pub(super) fn merge_settings(global: &Settings, project: &Settings) -> Settings 
         ),
         update_check: merge_update_check(&global.update_check, &project.update_check),
         storage: merge_storage(&global.storage, &project.storage),
+        connectors: global.connectors.clone(),
     }
 }
 

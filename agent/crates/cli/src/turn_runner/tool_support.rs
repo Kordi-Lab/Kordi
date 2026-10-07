@@ -30,6 +30,7 @@ pub(super) fn tool_context_with_output_forwarding(
         session_observation: env.tool_ctx.session_observation.clone(),
         task_operator: env.tool_ctx.task_operator.clone(),
         schedule_task: env.tool_ctx.schedule_task.clone(),
+        mac_local: env.tool_ctx.mac_local.clone(),
         execution_mode: env.tool_ctx.execution_mode,
         request_approval: env.tool_ctx.request_approval.clone(),
     }
