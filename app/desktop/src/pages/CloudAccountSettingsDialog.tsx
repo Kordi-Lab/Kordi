@@ -1,7 +1,7 @@
 import { MessageLayoutSetting } from '@/kordi-app/components/MessageLayoutSetting';
 import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
-import { Bell, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
+import { Bell, Brain, KeyRound, Laptop, Palette, User, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -21,6 +21,8 @@ import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
+import { MemorySettingsPanel } from '@/features/memory/MemorySettingsPanel';
+import { memoryClientForEnvironment, type MemoryClient } from '@/features/memory/memoryClient';
 import {
   canonicalAvatarImageSource,
   generatedAvatarPreviewUrl,
@@ -28,7 +30,10 @@ import {
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
 
-export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'appearance';
+export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'memory' | 'appearance';
+
+// Created once per app load so preview state survives closing the dialog.
+const environmentMemoryClient = memoryClientForEnvironment();
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -60,6 +65,8 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   onVerifyEmail?: (input: CloudAccountEmailVerificationInput) => Promise<void>;
   onEmailAlreadyVerified?: () => Promise<void>;
   onSignOut?: () => Promise<void> | void;
+  /** Memory client; null hides the Memory section. Defaults to the build environment. */
+  memoryClient?: MemoryClient | null;
 };
 
 function profileDisplayName(account: CloudAccount | null) {
@@ -96,6 +103,7 @@ export function CloudAccountSettingsDialog({
   onVerifyEmail,
   onEmailAlreadyVerified,
   onSignOut,
+  memoryClient = environmentMemoryClient,
   settingsSections,
   setActiveSettingsSectionId,
   authSettingsLayoutWidth,
@@ -177,10 +185,14 @@ export function CloudAccountSettingsDialog({
       items: [
         { id: 'auth', label: 'Authentication', icon: KeyRound, keywords: ['providers', 'accounts', 'api key', 'omp'] },
         { id: 'notifications', label: 'Notifications', icon: Bell, keywords: ['alerts', 'sound', 'badge'] },
+        ...(memoryClient
+          ? [{ id: 'memory' as const, label: 'Memory', icon: Brain, keywords: ['lessons', 'remember', 'forget', 'replay', 'privacy'] }]
+          : []),
         { id: 'appearance', label: 'Appearance', icon: Palette, keywords: ['theme', 'dark', 'light', 'chat', 'threads', 'message layout'] },
       ],
     },
   ];
+  const visibleTab: CloudAccountSettingsTabId = activeTab === 'memory' && !memoryClient ? 'profile' : activeTab;
 
   const selectTab = (tabId: CloudAccountSettingsTabId) => {
     setActiveTab(tabId);
@@ -386,6 +398,12 @@ export function CloudAccountSettingsDialog({
 
   const devicesPanel = <CloudDevicesPanel key={account.accountId} accountId={account.accountId} />;
 
+  const memoryPanel = memoryClient ? (
+    <div className="app-cloud-account-settings-section max-w-[680px]">
+      <MemorySettingsPanel key={account.accountId} accountId={account.accountId} client={memoryClient} isNativeShell={isNativeShell} />
+    </div>
+  ) : null;
+
   return createPortal(
     <div
       className="app-transient-overlay app-cloud-account-settings-overlay fixed inset-0 z-[180] flex items-center justify-center px-6 py-6 backdrop-blur-sm"
@@ -403,7 +421,7 @@ export function CloudAccountSettingsDialog({
           <SettingsNav
             className="app-cloud-account-settings-tabs"
             groups={navGroups}
-            activeId={activeTab}
+            activeId={visibleTab}
             onSelect={selectTab}
           />
         </div>
@@ -415,7 +433,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-10">
-              {activeTab === 'profile' ? profilePanel : activeTab === 'devices' ? devicesPanel : activeTab === 'auth' ? authPanel : activeTab === 'notifications' ? notificationsPanel : appearancePanel}
+              {visibleTab === 'profile' ? profilePanel : visibleTab === 'devices' ? devicesPanel : visibleTab === 'auth' ? authPanel : visibleTab === 'notifications' ? notificationsPanel : visibleTab === 'memory' ? memoryPanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>
