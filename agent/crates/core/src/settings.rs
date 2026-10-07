@@ -7,6 +7,8 @@ use crate::settings_defaults::{
 };
 pub use crate::settings_packages::{PackageEntry, PackageFilter};
 
+#[cfg(test)]
+mod connectors_tests;
 mod io;
 mod merge;
 #[cfg(test)]
