@@ -37,6 +37,7 @@ pub(super) fn test_tool_context() -> kordi_tools::ToolContext {
         task_operator: None,
         schedule_task: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
+        connector_tools: None,
         request_approval: None,
     }
 }

@@ -20,6 +20,7 @@ fn make_ctx(dir: &Path) -> ToolContext {
         task_operator: None,
         schedule_task: None,
         execution_mode: crate::ToolExecutionMode::Interactive,
+        connector_tools: None,
         request_approval: None,
     }
 }

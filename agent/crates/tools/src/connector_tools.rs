@@ -1,0 +1,208 @@
+//! Connector tools delivered by the server on a cloud lease (issue 1712).
+//!
+//! The server decides which connector tools a run may use and delivers them
+//! as descriptors. The host turns each descriptor into a [`ConnectorTool`];
+//! a call goes back to the server broker through the host-supplied
+//! [`ConnectorToolsRuntime::call`]. No credential ever reaches the tool.
+use std::{future::Future, pin::Pin, sync::Arc};
+
+use async_trait::async_trait;
+use kordi_core::error::{KordiError, KordiResult};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use tokio_util::sync::CancellationToken;
+
+use crate::{
+    Tool, ToolApprovalRequest, ToolContext, ToolExecutionMode, ToolLayer, ToolMetadata, ToolResult,
+    ToolRiskLevel,
+};
+
+pub const CONNECTOR_TOOLS_UNAVAILABLE: &str =
+    "Connector tools are not available in this run. Do not guess what the service contains.";
+
+/// `read` never changes anything at the provider; `act` does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorToolGroup {
+    Read,
+    Act,
+}
+
+fn open_object_schema() -> Value {
+    json!({ "type": "object" })
+}
+
+/// One connector tool as the server puts it on a lease (`connectorTools`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorToolDescriptor {
+    pub connector_id: String,
+    pub provider: String,
+    /// Namespaced, for example `gmail.search`.
+    pub name: String,
+    pub group: ConnectorToolGroup,
+    pub description: String,
+    #[serde(default = "open_object_schema")]
+    pub input_schema: Value,
+}
+
+impl ConnectorToolDescriptor {
+    pub fn is_act(&self) -> bool {
+        self.group == ConnectorToolGroup::Act
+    }
+}
+
+/// True for a namespaced connector tool name such as `gmail.search`: a
+/// lowercase provider prefix, a dot, and a tool name. Built-in tool names
+/// never contain a dot.
+pub fn is_connector_tool_name(name: &str) -> bool {
+    let Some((provider, tool)) = name.split_once('.') else {
+        return false;
+    };
+    let part = |value: &str| {
+        !value.is_empty()
+            && value
+                .chars()
+                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+    };
+    part(provider) && part(tool)
+}
+
+pub type ConnectorCallFuture = Pin<Box<dyn Future<Output = KordiResult<Value>> + Send>>;
+pub type ConnectorCallFn =
+    Arc<dyn Fn(ConnectorToolDescriptor, Value) -> ConnectorCallFuture + Send + Sync>;
+
+/// Host-supplied connector access for one turn: the descriptors from the
+/// lease and the call that reaches the server broker.
+#[derive(Clone)]
+pub struct ConnectorToolsRuntime {
+    pub descriptors: Vec<ConnectorToolDescriptor>,
+    pub call: ConnectorCallFn,
+}
+
+impl ConnectorToolsRuntime {
+    pub fn descriptor(&self, name: &str) -> Option<&ConnectorToolDescriptor> {
+        self.descriptors
+            .iter()
+            .find(|descriptor| descriptor.name == name)
+    }
+
+    /// One tool per descriptor, in lease order, skipping repeated names.
+    pub fn tools(&self) -> Vec<Box<dyn Tool>> {
+        let mut seen = std::collections::HashSet::new();
+        self.descriptors
+            .iter()
+            .filter(|descriptor| seen.insert(descriptor.name.clone()))
+            .map(|descriptor| Box::new(ConnectorTool::new(descriptor.clone())) as Box<dyn Tool>)
+            .collect()
+    }
+}
+
+/// A [`Tool`] built from a lease descriptor.
+pub struct ConnectorTool {
+    descriptor: ConnectorToolDescriptor,
+}
+
+impl ConnectorTool {
+    pub fn new(descriptor: ConnectorToolDescriptor) -> Self {
+        Self { descriptor }
+    }
+
+    pub fn descriptor(&self) -> &ConnectorToolDescriptor {
+        &self.descriptor
+    }
+}
+
+#[async_trait]
+impl Tool for ConnectorTool {
+    fn name(&self) -> &str {
+        &self.descriptor.name
+    }
+
+    fn description(&self) -> &str {
+        &self.descriptor.description
+    }
+
+    fn parameters_schema(&self) -> Value {
+        self.descriptor.input_schema.clone()
+    }
+
+    fn metadata(&self) -> ToolMetadata {
+        match self.descriptor.group {
+            ConnectorToolGroup::Read => {
+                ToolMetadata::new(ToolLayer::Observation, ToolRiskLevel::ReadOnly, true)
+            }
+            ConnectorToolGroup::Act => ToolMetadata::operator(ToolRiskLevel::High),
+        }
+    }
+
+    async fn execute(
+        &self,
+        params: Value,
+        ctx: &ToolContext,
+        cancel: CancellationToken,
+    ) -> KordiResult<ToolResult> {
+        crate::ensure_tool_allowed(self, ctx)?;
+        // Fail closed: the runtime must be present and must still list this
+        // exact tool for the current run.
+        let runtime = ctx
+            .connector_tools
+            .as_ref()
+            .ok_or_else(|| KordiError::Tool(CONNECTOR_TOOLS_UNAVAILABLE.into()))?;
+        let descriptor = runtime
+            .descriptor(&self.descriptor.name)
+            .filter(|descriptor| descriptor.connector_id == self.descriptor.connector_id)
+            .cloned()
+            .ok_or_else(|| KordiError::Tool(CONNECTOR_TOOLS_UNAVAILABLE.into()))?;
+        if descriptor.is_act() {
+            request_act_approval(&descriptor, &params, ctx).await?;
+        }
+        let value = tokio::select! {
+            _ = cancel.cancelled() => {
+                return Err(KordiError::Tool("Connector call cancelled".into()))
+            }
+            result = (runtime.call)(descriptor, params) => result?,
+        };
+        Ok(crate::support::text_result(value.to_string(), Some(value)))
+    }
+}
+
+/// Every `act` tool asks the person first ("Ask me before"). Without an
+/// interactive approval hook the call is refused.
+async fn request_act_approval(
+    descriptor: &ConnectorToolDescriptor,
+    params: &Value,
+    ctx: &ToolContext,
+) -> KordiResult<()> {
+    let refused = |reason: &str| {
+        KordiError::Tool(format!(
+            "{} was not run: {reason} Nothing was changed at {}.",
+            descriptor.name, descriptor.provider
+        ))
+    };
+    if ctx.execution_mode == ToolExecutionMode::NonInteractive {
+        return Err(refused("acting through a connector needs your approval."));
+    }
+    let Some(request_approval) = ctx.request_approval.as_ref() else {
+        return Err(refused("approval is not available here."));
+    };
+    let outcome = request_approval(ToolApprovalRequest {
+        tool_name: descriptor.name.clone(),
+        title: format!(
+            "Allow {} to act in {}",
+            descriptor.name, descriptor.provider
+        ),
+        command: params.to_string(),
+        reason: descriptor.description.clone(),
+    })
+    .await;
+    if outcome.approved() {
+        Ok(())
+    } else {
+        Err(refused("you declined."))
+    }
+}
+
+#[cfg(test)]
+#[path = "connector_tools_tests.rs"]
+mod tests;

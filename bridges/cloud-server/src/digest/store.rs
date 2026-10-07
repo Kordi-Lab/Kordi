@@ -292,7 +292,8 @@ pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
         return Ok(());
     }
     let now = Utc::now().to_rfc3339();
-    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,'{}',$6,$6)")
+    // Digest runs are background runs: connector tools are read only.
+    query("INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,runtime_route_json,created_at,updated_at,run_trigger) VALUES($1,$1,$1,$2,$3,$3,'queued',$4,$5,'{}',$6,$6,'background')")
         .bind(&run).bind(format!("digest:{account}")).bind(account).bind(serde_json::to_string(&input).unwrap()).bind(super::SYSTEM_PROMPT).bind(now).execute(&mut *tx).await?;
     tx.commit().await
 }

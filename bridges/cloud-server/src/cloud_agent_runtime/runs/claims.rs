@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 use crate::cloud_agent_runtime::sandboxes::ensure_sandbox_for_run;
 
+use crate::connectors::models::RunTrigger;
+
 use super::prompt_history::fallback_prompt_for_claim;
 use super::RunResult;
 
@@ -135,22 +137,40 @@ pub async fn lookup_run_for_request(
     })
 }
 
+/// Admits a run with no requesting person present, such as a scheduled task
+/// occurrence. The run is a background run and never receives `act` tools.
 pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<CloudAgentRunResponse> {
-    claim_run_with_executor(pool, input, None).await
+    claim_run_with_executor(pool, input, None, RunTrigger::Background).await
 }
 
+/// Admits a run for a message the signed-in requester just sent. It is
+/// person-started only when that person owns the agent.
+pub async fn claim_run_for_person_message(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+) -> RunResult<CloudAgentRunResponse> {
+    let trigger =
+        RunTrigger::for_person_message(&input.owner_account_id, &input.requester_account_id);
+    claim_run_with_executor(pool, input, None, trigger).await
+}
+
+/// Admits a run on the owner's desktop for a verified message in the
+/// conversation; the trigger follows [`RunTrigger::for_person_message`].
 pub async fn claim_run_for_desktop(
     pool: &PgPool,
     input: &ClaimRunRequest,
     executor: &str,
 ) -> RunResult<CloudAgentRunResponse> {
-    claim_run_with_executor(pool, input, Some(executor)).await
+    let trigger =
+        RunTrigger::for_person_message(&input.owner_account_id, &input.requester_account_id);
+    claim_run_with_executor(pool, input, Some(executor), trigger).await
 }
 
 async fn claim_run_with_executor(
     pool: &PgPool,
     input: &ClaimRunRequest,
     desktop_executor: Option<&str>,
+    trigger: RunTrigger,
 ) -> RunResult<CloudAgentRunResponse> {
     if let Some(device) =
         crate::projects::session_device(pool, &input.owner_account_id, &input.session_id).await?
@@ -200,8 +220,8 @@ async fn claim_run_with_executor(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
             requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at,
-            execution_backend, execution_agent_id, claimed_by, lease_expires_at, omp_input_json
-         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16, $17)
+            execution_backend, execution_agent_id, claimed_by, lease_expires_at, omp_input_json, run_trigger
+         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16, $17, $18)
          ON CONFLICT (owner_account_id, execution_agent_id, request_message_id) WHERE NOT legacy_duplicate DO UPDATE SET request_message_id = cloud_agent_fallback_runs.request_message_id
          RETURNING run_id, status, sandbox_id, created_at, updated_at, execution_backend",
     )
@@ -222,6 +242,7 @@ async fn claim_run_with_executor(
     .bind(desktop_executor)
     .bind(lease_expires_at)
     .bind(&prompt.omp_input)
+    .bind(trigger.as_str())
     .fetch_one(pool)
     .await?;
 

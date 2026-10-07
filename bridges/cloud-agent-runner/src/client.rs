@@ -35,6 +35,9 @@ pub struct CloudAgentRun {
     pub runtime_route: AgentRuntimeRoute,
     #[serde(rename = "providerAuthAvailable")]
     pub provider_auth_available: bool,
+    /// `trigger` and `connectorTools` from the lease; never a credential.
+    #[serde(flatten)]
+    pub connectors: crate::connectors::LeaseConnectors,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -222,6 +225,18 @@ pub trait CloudAgentRunClient {
         run_id: &str,
         input: ArtifactExportInput,
     ) -> Result<ArtifactExportResponse, RunnerClientError>;
+
+    /// Calls one connector tool on the lease through the server broker.
+    async fn call_connector_tool(
+        &self,
+        _run_id: &str,
+        _tool: &kordi_tools::connector_tools::ConnectorToolDescriptor,
+        _args: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "Connector tools are unavailable".into(),
+        ))
+    }
 }
 
 #[derive(Clone)]
@@ -439,6 +454,17 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             serde_json::json!({ "runnerId": self.runner_id, "request": request }),
         )
         .await
+    }
+
+    async fn call_connector_tool(
+        &self,
+        run_id: &str,
+        tool: &kordi_tools::connector_tools::ConnectorToolDescriptor,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        let body = crate::connectors::broker_call_body(&self.runner_id, run_id, tool, args);
+        crate::connectors::post_broker_call(&self.http, &self.base_url, &self.runner_token, body)
+            .await
     }
 
     async fn export_artifact(

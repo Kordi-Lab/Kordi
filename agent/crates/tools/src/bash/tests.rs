@@ -69,6 +69,7 @@ fn make_ctx(dir: &Path) -> ToolContext {
         task_operator: None,
         schedule_task: None,
         execution_mode: ToolExecutionMode::Interactive,
+        connector_tools: None,
         request_approval: Some(Arc::new(|_| {
             Box::pin(async {
                 crate::ToolApprovalOutcome {

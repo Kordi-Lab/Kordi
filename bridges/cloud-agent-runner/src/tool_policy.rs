@@ -2,6 +2,8 @@
 pub enum RunnerToolDecision {
     AllowSandbox,
     AllowRemoteWeb,
+    /// A connector tool delivered on this run's lease; executed by the broker.
+    AllowConnector,
     Block(RunnerToolBlockReason),
 }
 
@@ -44,6 +46,8 @@ pub struct RunnerToolRequest<'a> {
     pub requester_account_id: &'a str,
     pub owner_account_id: &'a str,
     pub data_owner_account_id: Option<&'a str>,
+    /// Connector tools on this run's lease.
+    pub connector_tools: &'a [kordi_tools::connector_tools::ConnectorToolDescriptor],
 }
 
 pub fn decide_runner_tool(request: &RunnerToolRequest<'_>) -> RunnerToolDecision {
@@ -60,6 +64,14 @@ pub fn decide_runner_tool(request: &RunnerToolRequest<'_>) -> RunnerToolDecision
         "web_search" | "web_fetch" | "browser_fetch" => decide_web_urls(&request.url_args),
         "reach_out" | "reflection" | "update_plan" | "task_operator" => {
             RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
+        }
+        // Connector tools (`gmail.search`, ...): only names on the lease.
+        name if kordi_tools::connector_tools::is_connector_tool_name(name) => {
+            if request.connector_tools.iter().any(|tool| tool.name == name) {
+                RunnerToolDecision::AllowConnector
+            } else {
+                RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
+            }
         }
         _ => RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool),
     }
@@ -162,6 +174,7 @@ mod tests {
             requester_account_id: "acct_requester",
             owner_account_id: "acct_owner",
             data_owner_account_id: None,
+            connector_tools: &[],
         }
     }
 

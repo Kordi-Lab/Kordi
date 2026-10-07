@@ -65,3 +65,37 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
             .unwrap();
     assert_eq!(requests, 1, "removal requests outlive the connector");
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_114_labels_existing_runs_as_background() {
+    let pool = fixture(114).await;
+    seed_history(&pool, "completed").await;
+    let before = historical_runs(&pool).await;
+    apply_migrations(&pool).await.unwrap();
+    latest_version(&pool).await;
+    assert_eq!(historical_runs(&pool).await, before);
+    let rows: Vec<(String, Value)> = query_as(
+        "SELECT run_trigger, connector_tools_json FROM cloud_agent_fallback_runs ORDER BY run_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert!(!rows.is_empty());
+    for (trigger, tools) in rows {
+        assert_eq!(trigger, "background", "existing runs never gain act tools");
+        assert_eq!(tools, serde_json::json!([]));
+    }
+    for invalid in [
+        "UPDATE cloud_agent_fallback_runs SET run_trigger='scheduled'",
+        "UPDATE cloud_agent_fallback_runs SET connector_tools_json='{}'::jsonb",
+    ] {
+        assert!(
+            sqlx_core::raw_sql::raw_sql(invalid)
+                .execute(&pool)
+                .await
+                .is_err(),
+            "{invalid}"
+        );
+    }
+}

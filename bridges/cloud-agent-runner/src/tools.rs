@@ -49,7 +49,9 @@ impl CloudToolExecutor {
                     reason.explanation().to_string(),
                 ));
             }
-            RunnerToolDecision::AllowRemoteWeb | RunnerToolDecision::AllowSandbox => {}
+            RunnerToolDecision::AllowRemoteWeb
+            | RunnerToolDecision::AllowSandbox
+            | RunnerToolDecision::AllowConnector => {}
         }
 
         match request.tool_name {
@@ -119,6 +121,7 @@ fn cloud_tool_context(sandbox: &SandboxBackendHandle) -> ToolContext {
         task_operator: None,
         schedule_task: None,
         execution_mode: ToolExecutionMode::NonInteractive,
+        connector_tools: None,
         request_approval: None,
     }
 }
@@ -161,6 +164,7 @@ mod tests {
             requester_account_id: "acct_requester",
             owner_account_id: "acct_owner",
             data_owner_account_id: None,
+            connector_tools: &[],
         }
     }
 

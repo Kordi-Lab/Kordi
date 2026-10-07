@@ -200,6 +200,7 @@ mod tests {
             task_operator: None,
             schedule_task: runtime,
             execution_mode: ToolExecutionMode::Interactive,
+            connector_tools: None,
             request_approval: None,
         }
     }

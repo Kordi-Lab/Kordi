@@ -32,6 +32,7 @@ pub(super) fn tool_context_with_output_forwarding(
         schedule_task: env.tool_ctx.schedule_task.clone(),
         execution_mode: env.tool_ctx.execution_mode,
         request_approval: env.tool_ctx.request_approval.clone(),
+        connector_tools: env.tool_ctx.connector_tools.clone(),
     }
 }
 

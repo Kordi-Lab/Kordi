@@ -60,12 +60,45 @@ impl ConnectorToolGroup {
     }
 }
 
-/// Who started the run that asks for a connector tool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Who started the run that asks for a connector tool. Stored on the run as
+/// `run_trigger` and delivered on its lease. Anything that is not a run a
+/// person started by sending a message is a background run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunTrigger {
     PersonStarted,
+    /// The default, so an unlabeled run fails closed to `read` tools.
+    #[default]
     Background,
+}
+
+impl RunTrigger {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PersonStarted => "person_started",
+            Self::Background => "background",
+        }
+    }
+
+    /// Unknown values are background runs.
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "person_started" => Self::PersonStarted,
+            _ => Self::Background,
+        }
+    }
+
+    /// Person-started only when the person who sent the message owns the
+    /// agent. A request from a contact or a shared-agent member never unlocks
+    /// the owner's `act` tools.
+    pub fn for_person_message(owner_account_id: &str, requester_account_id: &str) -> Self {
+        let owner = owner_account_id.trim();
+        if !owner.is_empty() && owner == requester_account_id.trim() {
+            Self::PersonStarted
+        } else {
+            Self::Background
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -270,14 +303,27 @@ pub struct DisconnectResponse {
     pub deleted_events: u64,
 }
 
-/// Body a cloud runner sends to the broker route.
+/// Body a runtime sends to the broker route.
+///
+/// `lease_id` is the run id of an active lease. The account, agent, and
+/// trigger are always taken from that lease; the body copies are accepted for
+/// compatibility, ignored, and logged when they disagree.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrokerCallRequest {
     pub lease_id: String,
-    pub account_id: String,
-    pub agent_id: String,
-    pub trigger: RunTrigger,
+    /// Cloud runner that holds the lease (runner-token path).
+    #[serde(default)]
+    pub runner_id: Option<String>,
+    /// Desktop claim that holds the lease (signed-in desktop path).
+    #[serde(default)]
+    pub claim_id: Option<String>,
+    #[serde(default)]
+    pub account_id: Option<String>,
+    #[serde(default)]
+    pub agent_id: Option<String>,
+    #[serde(default)]
+    pub trigger: Option<RunTrigger>,
     pub connector_id: String,
     pub tool: String,
     #[serde(default)]
