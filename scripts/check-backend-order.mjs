@@ -18,8 +18,11 @@ if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) 
     if (!/^(none|[0-9a-f]{40})$/.test(current ?? '') || !/^[0-9a-f]{40}$/.test(candidate ?? '')) throw new Error('Invalid deployment revision');
     const repo = process.env.GITHUB_REPOSITORY;
     if (!/^[\w.-]+\/[\w.-]+$/.test(repo ?? '')) throw new Error('GITHUB_REPOSITORY is required');
+    // The full comparison lists every changed file with its patch, which overflows the default
+    // child-process buffer once the deployed revision is days behind; request only the two fields used.
     const comparison = current === 'none' || current === candidate ? null : JSON.parse(execFileSync('gh',
-      ['api', `repos/${repo}/compare/${current}...${candidate}`], { encoding: 'utf8' }));
+      ['api', `repos/${repo}/compare/${current}...${candidate}`, '--jq', '{status: .status, merge_base_commit: {sha: .merge_base_commit.sha}}'],
+      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
     const result = deploymentOrder(current, candidate, comparison);
     console.log(result === 'deploy' ? 'Candidate advances the deployed backend revision' : 'A newer backend revision is already deployed');
     process.exitCode = result === 'superseded' ? 3 : 0;
