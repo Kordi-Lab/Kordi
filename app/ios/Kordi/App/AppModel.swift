@@ -306,6 +306,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var loadingConversationIDs = Set<String>()
     @Published var errorMessage: String?
     @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
+    /// `connectorsVersion` from `/v1/cloud/auth/capabilities`; nil hides Connectors.
+    @Published private(set) var connectorsVersion: Int?
 
     private let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -320,6 +322,8 @@ final class AppModel: ObservableObject {
     let conversationViewportMemory = ConversationViewportMemory()
     private var token: String?
     private var currentDeviceId: String?
+    private var isRefreshingConnectorsCapability = false
+    private var connectorsClientCache: CloudConnectorsClient?
     private var deviceOperationIds: [String: String] = [:]
     private var cloudSyncTask: Task<Void, Never>?
     private var cloudRealtimeTask: Task<Void, Never>?
@@ -483,6 +487,7 @@ final class AppModel: ObservableObject {
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
             phase = .signedIn
+            Task { await refreshConnectorsCapability() }
             scheduleDigestWarmup()
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -791,6 +796,7 @@ final class AppModel: ObservableObject {
         canonicalConversationIDBySessionID = [:]
         ownedCloudAgents = []
         sharedCloudAgents = []
+        connectorsClientCache = nil
         hiddenCloudSessionIds = []
         deletedCloudSessionIds = []
         sessionVisibilityMutationRevision = 0
@@ -1010,6 +1016,7 @@ final class AppModel: ObservableObject {
 
     func appDidBecomeActive() async {
         guard phase == .signedIn, !previewMode, let token else { return }
+        Task { await refreshConnectorsCapability() }
         scheduleDigestWarmup()
         presencePublisher.start(token: token)
         await refreshWorkspace()
@@ -1017,6 +1024,34 @@ final class AppModel: ObservableObject {
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage
         ))
+    }
+
+    /// Reads whether this server serves Connectors. Called on sign-in and on
+    /// foreground; a failed fetch keeps the last known value.
+    func refreshConnectorsCapability() async {
+        guard !previewMode, !isRefreshingConnectorsCapability else { return }
+        isRefreshingConnectorsCapability = true
+        defer { isRefreshingConnectorsCapability = false }
+        guard let capabilities = try? await api.authCapabilities() else { return }
+        if connectorsVersion != capabilities.connectorsVersion {
+            connectorsVersion = capabilities.connectorsVersion
+        }
+    }
+
+    /// The server-backed Connectors client for the signed-in account, shared
+    /// by every Settings screen so cached connector ids survive navigation.
+    func cloudConnectorsClient() -> (any ConnectorsClient)? {
+        guard !previewMode, token != nil else { return nil }
+        if let connectorsClientCache { return connectorsClientCache }
+        let oauth = oauth
+        let client = CloudConnectorsClient(
+            api: api,
+            token: { [weak self] in self?.token },
+            accountId: { [weak self] in self?.account?.accountId },
+            authenticate: { url in try await oauth.open(url) }
+        )
+        connectorsClientCache = client
+        return client
     }
 
     func updateProfile(
@@ -7869,6 +7904,8 @@ final class AppModel: ObservableObject {
                 && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }
         phase = .signedIn
+        connectorsClientCache = nil
+        Task { await refreshConnectorsCapability() }
         presencePublisher.start(token: response.session.token)
         scheduleDigestWarmup()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(

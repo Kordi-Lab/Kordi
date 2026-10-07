@@ -100,6 +100,8 @@ enum ConnectorAuditOutcome: String, Codable, Sendable {
     case approved
     case denied
     case blockedBackground = "blocked_background"
+    /// The provider call failed. Reported by the server's audit log.
+    case failed
 
     var label: String {
         switch self {
@@ -107,6 +109,7 @@ enum ConnectorAuditOutcome: String, Codable, Sendable {
         case .approved: "Approved by you"
         case .denied: "Denied by you"
         case .blockedBackground: "Background run, read only"
+        case .failed: "Failed"
         }
     }
 }
@@ -361,9 +364,9 @@ enum ConnectorsModel {
 }
 
 /// Decides whether the Connectors settings row exists. The server announces
-/// support with `connectorsVersion` in `/v1/cloud/auth/capabilities`; until the
-/// iPhone fetches that route and a server client exists, only the debug
-/// `--preview-connectors` launch argument shows the row.
+/// support with `connectorsVersion` in `/v1/cloud/auth/capabilities`, which the
+/// app model fetches on sign-in and on foreground; the debug
+/// `--preview-connectors` launch argument shows the row with sample data.
 enum ConnectorsAvailability {
     static let previewArgument = "--preview-connectors"
 
@@ -395,10 +398,16 @@ enum ConnectorsAvailability {
         isPreviewRequested(arguments: arguments) || connectorsVersion != nil
     }
 
-    /// The client for this build, or nil to hide the section. A server-backed
-    /// client replaces the preview once `/v1/cloud/connectors` exists.
+    /// The client for this build, or nil to hide the section: the sample
+    /// client for the preview argument, otherwise the server client once the
+    /// server reports `connectorsVersion`.
     @MainActor
-    static func makeClient(arguments: [String] = ProcessInfo.processInfo.arguments) -> (any ConnectorsClient)? {
-        isPreviewRequested(arguments: arguments) ? PreviewConnectorsClient() : nil
+    static func makeClient(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        connectorsVersion: Int? = nil,
+        cloudClient: () -> (any ConnectorsClient)? = { nil }
+    ) -> (any ConnectorsClient)? {
+        if isPreviewRequested(arguments: arguments) { return PreviewConnectorsClient() }
+        return connectorsVersion == nil ? nil : cloudClient()
     }
 }

@@ -20,10 +20,8 @@ struct AccountSheet: View {
     @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @State private var path: [AccountSettingsRoute]
-    // Present only when the server reports connectors or the preview argument is set.
-    @State private var connectorsClient: (any ConnectorsClient)? = ConnectorsAvailability.isAvailable()
-        ? ConnectorsAvailability.makeClient()
-        : nil
+    // Sample connectors for the debug preview argument; nil otherwise.
+    @State private var previewConnectorsClient: (any ConnectorsClient)? = ConnectorsAvailability.makeClient()
     private let embeddedInNavigationStack: Bool
 
     init(embeddedInNavigationStack: Bool = false) {
@@ -39,6 +37,15 @@ struct AccountSheet: View {
     fileprivate init(previewing route: AccountSettingsRoute) {
         _path = State(initialValue: [route])
         embeddedInNavigationStack = false
+    }
+
+    // Present only when the server reports connectors or the preview argument is set.
+    private var connectorsClient: (any ConnectorsClient)? {
+        previewConnectorsClient ?? ConnectorsAvailability.makeClient(
+            arguments: [],
+            connectorsVersion: model.connectorsVersion,
+            cloudClient: model.cloudConnectorsClient
+        )
     }
 
     @ViewBuilder
