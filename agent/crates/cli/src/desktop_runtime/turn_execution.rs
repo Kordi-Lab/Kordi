@@ -265,12 +265,17 @@ pub(super) fn build_turn_config(
         setup.sibling_conn = Some(conn.clone());
         conn
     };
-    let mut tool_registry = std::mem::take(&mut setup.tool_registry);
-    // Connector tools never serve a shared request from someone other than
-    // the owner; they are registered only for the owner's own turns.
-    let connector_tools = (execution_policy != kordi_tools::ExecutionPolicy::Shared)
+    // Owner-only tools (Mac-local sources and connector tools) never serve a
+    // shared request from someone other than the owner.
+    let owner_turn = execution_policy != kordi_tools::ExecutionPolicy::Shared;
+    let mac_local = owner_turn
+        .then(|| setup.tool_ctx.mac_local.clone())
+        .flatten();
+    let connector_tools = owner_turn
         .then(|| setup.tool_ctx.connector_tools.clone())
         .flatten();
+    let mut tool_registry = std::mem::take(&mut setup.tool_registry);
+    tool_registry.sync_mac_local_tools(mac_local.as_ref(), &setup.tool_selection);
     tool_registry.set_connector_tools(
         connector_tools.as_ref(),
         setup.tool_selection != crate::tool_registry::ToolSelection::None,
@@ -322,6 +327,7 @@ pub(super) fn build_turn_config(
                 .then(|| setup.tool_ctx.task_operator.clone())
                 .flatten(),
             schedule_task: setup.tool_ctx.schedule_task.clone(),
+            mac_local,
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
             connector_tools,

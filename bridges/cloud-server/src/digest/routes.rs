@@ -266,10 +266,10 @@ pub(super) async fn save_event(
                 .fetch_one(&mut *tx)
                 .await;
         match count {
-            Ok((count,)) if count >= 1000 => {
+            Ok((count,)) if count >= super::sync_routes::CALENDAR_CAPACITY => {
                 return error(
                     "calendar_full",
-                    "Your Kordi calendar has 1,000 events. Remove older events before adding more.",
+                    "Your Kordi calendar has 10,000 events. Turn off a calendar in Calendar settings or remove older events before adding more.",
                     StatusCode::UNPROCESSABLE_ENTITY,
                 )
             }

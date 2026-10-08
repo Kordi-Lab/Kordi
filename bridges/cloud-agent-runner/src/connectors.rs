@@ -28,7 +28,13 @@ pub struct LeaseConnectors {
     /// is treated as background.
     #[serde(default)]
     pub trigger: Option<String>,
-    #[serde(rename = "connectorTools", default)]
+    /// Read entry by entry: an entry that does not parse is dropped with a
+    /// warning, never the whole lease (fail closed per entry).
+    #[serde(
+        rename = "connectorTools",
+        default,
+        deserialize_with = "kordi_tools::connector_tools::deserialize_lease_descriptors"
+    )]
     pub tools: Vec<ConnectorToolDescriptor>,
     /// `owner_private` or `shared`. Anything else, or a missing value, is
     /// treated as shared.
@@ -63,6 +69,19 @@ pub fn is_builtin_tool(name: &str) -> bool {
         .any(|tool| tool["function"]["name"] == name)
 }
 
+/// The lease's connector tools the model is offered: names that pass the
+/// shape check, never a built-in cloud tool, and each name once (the first
+/// descriptor wins, as in [`LeaseConnectors::descriptor`]).
+fn offered_tools(run: &CloudAgentRun) -> Vec<&ConnectorToolDescriptor> {
+    let mut seen = std::collections::HashSet::new();
+    run.connectors
+        .tools
+        .iter()
+        .filter(|tool| is_connector_tool_name(&tool.name) && !is_builtin_tool(&tool.name))
+        .filter(|tool| seen.insert(tool.name.as_str()))
+        .collect()
+}
+
 /// Model tool definitions for the lease's connector tools, in the same
 /// function shape as the built-in cloud tools, plus
 /// `connectors_request_connect` on an owner-private run.
@@ -73,11 +92,8 @@ pub fn tool_definitions(run: &CloudAgentRun) -> Vec<Value> {
             "function": { "name": name, "description": description, "parameters": parameters }
         })
     };
-    let mut definitions = run
-        .connectors
-        .tools
-        .iter()
-        .filter(|tool| is_connector_tool_name(&tool.name) && !is_builtin_tool(&tool.name))
+    let mut definitions = offered_tools(run)
+        .into_iter()
         .map(|tool| function(&tool.name, &tool.description, &tool.input_schema))
         .collect::<Vec<_>>();
     if run.connectors.is_owner_private() {
@@ -90,9 +106,10 @@ pub fn tool_definitions(run: &CloudAgentRun) -> Vec<Value> {
     definitions
 }
 
-/// Prompt text listing the connector tools, or `None` when there are none.
+/// Prompt text listing the connector tools the model is offered, or `None`
+/// when there are none.
 pub fn prompt_section(run: &CloudAgentRun) -> Option<String> {
-    let tools = &run.connectors.tools;
+    let tools = offered_tools(run);
     if tools.is_empty() {
         return None;
     }

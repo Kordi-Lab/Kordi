@@ -14,14 +14,38 @@ pub(super) fn runner() -> LeaseHolder {
     }
 }
 
+pub(super) fn desktop(account_id: &str) -> LeaseHolder {
+    LeaseHolder::Desktop {
+        account_id: account_id.to_string(),
+        executor: "desktop-connectors-test".to_string(),
+    }
+}
+
 /// Inserts a cloud run leased by [`TEST_RUNNER`] for the account's built-in
 /// agent and delivers its connector tools, as the lease route does.
-async fn leased_run(
+pub(super) async fn leased_run(
     pool: &PgPool,
     runtime: &ConnectorRuntime,
     account_id: &str,
     trigger: RunTrigger,
 ) -> (String, Vec<LeaseConnectorTool>) {
+    lease_run_for(pool, runtime, account_id, account_id, trigger, &runner()).await
+}
+
+/// Inserts a run owned by `owner`, requested by `requester`, and leased by
+/// `holder`, then delivers its connector tools.
+pub(super) async fn lease_run_for(
+    pool: &PgPool,
+    runtime: &ConnectorRuntime,
+    owner: &str,
+    requester: &str,
+    trigger: RunTrigger,
+    holder: &LeaseHolder,
+) -> (String, Vec<LeaseConnectorTool>) {
+    let (backend, claimed_by) = match holder {
+        LeaseHolder::Runner { runner_id } => ("cloud", runner_id.as_str()),
+        LeaseHolder::Desktop { executor, .. } => ("desktop", executor.as_str()),
+    };
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let now = Utc::now();
     query(
@@ -29,14 +53,16 @@ async fn leased_run(
          session_id, owner_account_id, requester_account_id, status, prompt, created_at, \
          updated_at, execution_backend, claimed_by, lease_expires_at, run_trigger, \
          connector_audience) \
-         VALUES ($1, $1, $1, $2, $3, $3, 'leased', 'Prompt', $4, $4, 'cloud', $5, $6, $7, \
+         VALUES ($1, $1, $1, $2, $3, $4, 'leased', 'Prompt', $5, $5, $6, $7, $8, $9, \
          'owner_private')",
     )
     .bind(&run_id)
     .bind(format!("session:connectors:{run_id}"))
-    .bind(account_id)
+    .bind(owner)
+    .bind(requester)
     .bind(now.to_rfc3339())
-    .bind(TEST_RUNNER)
+    .bind(backend)
+    .bind(claimed_by)
     .bind((now + ChronoDuration::minutes(2)).to_rfc3339())
     .bind(trigger.as_str())
     .execute(pool)
@@ -50,7 +76,7 @@ fn tool_names(tools: &[LeaseConnectorTool]) -> Vec<&str> {
     tools.iter().map(|tool| tool.name.as_str()).collect()
 }
 
-fn call(lease_id: &str, connector_id: &str, tool: &str) -> BrokerCallRequest {
+pub(super) fn call(lease_id: &str, connector_id: &str, tool: &str) -> BrokerCallRequest {
     BrokerCallRequest {
         lease_id: lease_id.to_string(),
         runner_id: Some(TEST_RUNNER.to_string()),
@@ -72,10 +98,12 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
     let (owner, _) = signed_in_account(&pool, "broker_owner").await;
     let (stranger, _) = signed_in_account(&pool, "broker_stranger").await;
     let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
-    let broker_call = |request: BrokerCallRequest| {
+    let as_holder = |holder: LeaseHolder, request: BrokerCallRequest| {
         let (pool, runtime) = (pool.clone(), runtime.clone());
-        async move { broker::call_connector_tool(&pool, &runtime, &runner(), &request).await }
+        async move { broker::call_connector_tool(&pool, &runtime, &holder, &request).await }
     };
+    let broker_call = |request: BrokerCallRequest| as_holder(runner(), request);
+    let mac = desktop(&owner);
 
     // Agent without a grant: no descriptors on the lease, and denied.
     let (ungranted, tools) = leased_run(&pool, &runtime, &owner, RunTrigger::PersonStarted).await;
@@ -87,11 +115,22 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
         .await
         .unwrap();
 
-    // Act tool while act is off: not delivered and denied.
-    let (act_off_lease, tools) =
-        leased_run(&pool, &runtime, &owner, RunTrigger::PersonStarted).await;
+    // Act tool while act is off: not delivered and denied, even on the Mac.
+    let (act_off_lease, tools) = lease_run_for(
+        &pool,
+        &runtime,
+        &owner,
+        &owner,
+        RunTrigger::PersonStarted,
+        &mac,
+    )
+    .await;
     assert_eq!(tool_names(&tools), [STUB_READ_TOOL]);
-    let act_off = broker_call(call(&act_off_lease, &connector_id, STUB_ACT_TOOL)).await;
+    let act_off = as_holder(
+        mac.clone(),
+        call(&act_off_lease, &connector_id, STUB_ACT_TOOL),
+    )
+    .await;
     assert_eq!(act_off.error_code(), Some(codes::ACT_DISABLED));
 
     // Second OAuth grant for act turns act on and extends scopes.
@@ -109,27 +148,53 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
     let read = broker_call(call(&background, &connector_id, STUB_READ_TOOL)).await;
     assert!(read.ok, "{read:?}");
 
-    // Person-started lease with act on: both tools, and act executes.
+    // Person-started cloud lease with act on: read only, and an act call is
+    // refused until a cloud approval flow exists.
     let (person, tools) = leased_run(&pool, &runtime, &owner, RunTrigger::PersonStarted).await;
+    assert_eq!(tool_names(&tools), [STUB_READ_TOOL]);
+    let cloud_act = broker_call(call(&person, &connector_id, STUB_ACT_TOOL)).await;
+    assert_eq!(cloud_act.error_code(), Some(codes::ACT_REQUIRES_DESKTOP));
+    let act_prefix = format!("execute:{STUB_ACT_TOOL}");
+    assert!(!stub
+        .calls()
+        .iter()
+        .any(|call| call.starts_with(&act_prefix)));
+
+    // The same on a desktop claim: both tools, and act executes.
+    let (claim, tools) = lease_run_for(
+        &pool,
+        &runtime,
+        &owner,
+        &owner,
+        RunTrigger::PersonStarted,
+        &mac,
+    )
+    .await;
     assert_eq!(tool_names(&tools), [STUB_READ_TOOL, STUB_ACT_TOOL]);
-    let acted = broker_call(call(&person, &connector_id, STUB_ACT_TOOL)).await;
+    let acted = as_holder(mac.clone(), call(&claim, &connector_id, STUB_ACT_TOOL)).await;
     assert!(acted.ok, "{acted:?}");
     assert_eq!(acted.result.as_ref().unwrap()["tool"], STUB_ACT_TOOL);
     let serialized = serde_json::to_string(&acted).unwrap();
     assert!(!serialized.contains("stub-access") && !serialized.contains("stub-refresh"));
 
     // The owner declined on the Mac: audited as denied, never executed.
-    let mut declined = call(&person, &connector_id, STUB_ACT_TOOL);
+    let mut declined = call(&claim, &connector_id, STUB_ACT_TOOL);
     declined.declined_by_owner = true;
     let executed = stub.calls().len();
+    let recorded =
+        crate::connectors::declined::record_on_lease(&pool, &runtime, &mac, &declined).await;
     assert_eq!(
-        broker_call(declined).await.error_code(),
-        Some(codes::DECLINED_BY_OWNER)
+        recorded.error_code(),
+        Some(crate::connectors::declined::DECLINED_BY_OWNER)
     );
     assert_eq!(stub.calls().len(), executed);
 
     // The lease issued while act was off never gains the act tool.
-    let not_on_lease = broker_call(call(&act_off_lease, &connector_id, STUB_ACT_TOOL)).await;
+    let not_on_lease = as_holder(
+        mac.clone(),
+        call(&act_off_lease, &connector_id, STUB_ACT_TOOL),
+    )
+    .await;
     assert_eq!(not_on_lease.error_code(), Some(codes::NOT_ON_LEASE));
 
     // Expired credential: refreshed through the provider before executing.
@@ -220,7 +285,8 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
             "completed",          // oauth.grant act
             "blocked_background", // act from background
             "completed",          // background read
-            "completed",          // person-started act
+            "denied",             // act on a cloud lease
+            "completed",          // act on a desktop claim
             "denied",             // the owner declined
             "denied",             // act not on the earlier lease
             "completed",          // read after refresh
@@ -228,6 +294,7 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
         ]
     );
     assert_eq!(outcomes[4].0, STUB_ACT_TOOL);
+    assert_eq!(outcomes[6].0, STUB_ACT_TOOL);
     let runs: Vec<(Option<String>, Option<String>)> = query_as(
         "SELECT run_id, agent_id FROM cloud_connector_audit WHERE connector_id = $1 \
          AND outcome = 'blocked_background' ORDER BY created_at, audit_id",

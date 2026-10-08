@@ -173,12 +173,12 @@ async fn connector_tools_reach_only_runs_the_owner_alone_can_read() {
             .collect::<Vec<_>>();
         groups_by_label.push((label, lease["run"]["connectorAudience"].clone(), groups));
     }
-    let read_act = vec!["read".to_string(), "act".to_string()];
+    // A cloud lease never carries `act`: only a desktop claim does.
     let read = vec!["read".to_string()];
     assert_eq!(
         groups_by_label,
         [
-            ("person", json!("owner_private"), read_act),
+            ("person", json!("owner_private"), read.clone()),
             ("group", json!("shared"), Vec::new()),
             ("contact", json!("shared"), Vec::new()),
             ("scheduled", json!("owner_private"), read.clone()),
@@ -200,4 +200,17 @@ async fn connector_tools_reach_only_runs_the_owner_alone_can_read() {
         .unwrap();
     assert!(stored.has_tool(&connector_id, STUB_READ_TOOL));
     assert!(!stored.has_tool(&connector_id, STUB_ACT_TOOL));
+
+    // The broker refuses a contact's lease outright.
+    let refused = crate::connectors::broker::call_connector_tool(
+        &pool,
+        &runtime,
+        &runner(),
+        &super::broker_tests::call(&from_contact.run_id, &connector_id, STUB_READ_TOOL),
+    )
+    .await;
+    assert_eq!(
+        refused.error_code(),
+        Some(crate::connectors::broker::codes::REQUESTER_NOT_OWNER)
+    );
 }

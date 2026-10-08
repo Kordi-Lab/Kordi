@@ -45,9 +45,13 @@ pub struct NewConnectorEvent<'a> {
 
 /// Stores one event and returns its id, or `None` when an event with the
 /// same `external_id` is already stored for the connector (webhook retries,
-/// replays, and overlapping polls). A new event moves the connector's
-/// `last_event_at`. Events expire after the retention window and are deleted
-/// with their connector.
+/// replays, and overlapping polls), or when the connector is revoked. A new
+/// event moves the connector's `last_event_at`. Events expire after the
+/// retention window and are deleted with their connector.
+///
+/// The insert reads the connector row `FOR SHARE`. A disconnect holds that
+/// row `FOR UPDATE` while it deletes events, so an event arriving meanwhile
+/// waits, sees the connector revoked, and stores nothing.
 pub async fn record_event(
     pool: &PgPool,
     event: NewConnectorEvent<'_>,
@@ -58,7 +62,8 @@ pub async fn record_event(
         "WITH inserted AS ( \
            INSERT INTO cloud_connector_events \
            (event_id, connector_id, provider, kind, external_id, occurred_at, payload, expires_at) \
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+           SELECT $1, connector_id, $3, $4, $5, $6, $7, $8 FROM cloud_connectors \
+           WHERE connector_id = $2 AND status <> 'revoked' FOR SHARE \
            ON CONFLICT (connector_id, external_id) WHERE external_id IS NOT NULL DO NOTHING \
            RETURNING event_id, connector_id), \
          touched AS ( \
@@ -104,8 +109,8 @@ pub async fn sweep_expired_events(
 
 static LAST_SWEEP_EPOCH: AtomicI64 = AtomicI64::new(0);
 
-/// Periodic entry point for the scheduled-task worker: runs the retention
-/// sweep at most once an hour and logs failures.
+/// Periodic entry point for the scheduled-task worker: at most once an hour,
+/// deletes expired events and expired pending grants, and logs failures.
 pub async fn run_retention_sweep(pool: &PgPool) {
     let now = Utc::now();
     let last = LAST_SWEEP_EPOCH.load(Ordering::Relaxed);
@@ -117,5 +122,10 @@ pub async fn run_retention_sweep(pool: &PgPool) {
         Ok(0) => {}
         Ok(deleted) => println!("[connectors] retention removed {deleted} expired events"),
         Err(error) => eprintln!("[connectors] retention sweep: {error}"),
+    }
+    match super::store::sweep_expired_pending_grants(pool, now).await {
+        Ok(0) => {}
+        Ok(deleted) => println!("[connectors] retention removed {deleted} expired pending grants"),
+        Err(error) => eprintln!("[connectors] pending grant sweep: {error}"),
     }
 }

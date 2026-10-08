@@ -14,6 +14,7 @@ pub mod grep;
 pub mod image_input;
 pub mod local_app;
 pub mod ls;
+pub mod mac_local;
 pub mod metadata;
 pub(crate) mod path;
 pub mod plan_tool;

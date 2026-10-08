@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
+use super::store::default_agent_id;
+
 /// Events handed to one digest build, newest first.
 pub const MAX_DIGEST_EVENTS: i64 = 100;
 /// A payload larger than this is replaced by a marker.
@@ -24,7 +26,9 @@ pub struct ConnectorEventSummary {
 }
 
 /// Recent events from the account's live connectors since `since`, at most
-/// [`MAX_DIGEST_EVENTS`]. Revoked connectors and expired events are left out.
+/// [`MAX_DIGEST_EVENTS`]. The digest is built for the account's default
+/// agent, so only connectors granted to that agent contribute. Revoked
+/// connectors and expired events are left out.
 pub async fn recent_events(
     pool: &PgPool,
     account_id: &str,
@@ -34,6 +38,8 @@ pub async fn recent_events(
         "SELECT e.event_id, e.provider, e.kind, e.occurred_at, e.payload \
          FROM cloud_connector_events e \
          JOIN cloud_connectors c ON c.connector_id = e.connector_id \
+         JOIN cloud_connector_agent_grants g \
+           ON g.connector_id = c.connector_id AND g.agent_id = $4 \
          WHERE c.account_id = $1 AND c.status <> 'revoked' \
            AND e.occurred_at >= $2 AND e.expires_at > now() \
          ORDER BY e.occurred_at DESC, e.event_id DESC LIMIT $3",
@@ -41,6 +47,7 @@ pub async fn recent_events(
     .bind(account_id)
     .bind(since)
     .bind(MAX_DIGEST_EVENTS)
+    .bind(default_agent_id(account_id))
     .fetch_all(pool)
     .await?;
     Ok(rows

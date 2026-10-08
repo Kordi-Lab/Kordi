@@ -21,13 +21,13 @@ test('connector host tools do not turn on MCP or extension discovery', () => {
     { ownerLocal: true, computer: true, browser: true },
   ]) {
     const plain = ompCapabilityOptions(capabilities, ['kordi_read']);
-    const withConnectors = ompCapabilityOptions(capabilities, ['kordi_read', 'gmail.search', 'gmail.send']);
+    const withConnectors = ompCapabilityOptions(capabilities, ['kordi_read', 'gmail_search', 'gmail_send']);
     expect(withConnectors.enableMCP).toBe(false);
     expect(withConnectors.disableExtensionDiscovery).toBe(true);
     expect(withConnectors.enableLsp).toBe(false);
     expect(withConnectors.restrictToolNames).toBe(plain.restrictToolNames);
     expect(withConnectors.toolNames).toEqual(
-      capabilities.ownerLocal ? ['kordi_read', 'gmail.search', 'gmail.send', 'eval'] : ['kordi_read', 'gmail.search', 'gmail.send'],
+      capabilities.ownerLocal ? ['kordi_read', 'gmail_search', 'gmail_send', 'eval'] : ['kordi_read', 'gmail_search', 'gmail_send'],
     );
   }
 });

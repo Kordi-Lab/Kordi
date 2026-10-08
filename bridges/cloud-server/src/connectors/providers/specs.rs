@@ -49,7 +49,6 @@ pub static GOOGLE_CALENDAR: ProviderSpec = ProviderSpec {
 
 const GMAIL_READONLY: &str = "https://www.googleapis.com/auth/gmail.readonly";
 const GMAIL_SEND: &str = "https://www.googleapis.com/auth/gmail.send";
-const GMAIL_MODIFY: &str = "https://www.googleapis.com/auth/gmail.modify";
 
 pub static GMAIL: ProviderSpec = ProviderSpec {
     id: "gmail",
@@ -58,10 +57,10 @@ pub static GMAIL: ProviderSpec = ProviderSpec {
     auth_url: GOOGLE_AUTH_URL,
     token_url: GOOGLE_TOKEN_URL,
     revoke_url: Some(GOOGLE_REVOKE_URL),
-    // `gmail_search` and `gmail_read_message` read; `gmail_send` sends, and
-    // modify covers the users.watch push subscription and later labeling.
+    // `gmail_search` and `gmail_read_message` read, and readonly also
+    // covers the `users.watch` push subscription; `gmail_send` sends.
     read_scopes: &[GMAIL_READONLY],
-    act_scopes: &[GMAIL_SEND, GMAIL_MODIFY],
+    act_scopes: &[GMAIL_SEND],
     scope_param: ScopeParam::SpaceSeparated,
     supports_pkce: true,
     extra_auth_params: GOOGLE_AUTH_PARAMS,
@@ -71,7 +70,6 @@ pub static GMAIL: ProviderSpec = ProviderSpec {
             &["gmail.messages.read", "gmail.labels.read"],
         ),
         (GMAIL_SEND, &["gmail.messages.send"]),
-        (GMAIL_MODIFY, &["gmail.messages.modify"]),
     ],
 };
 
@@ -85,8 +83,10 @@ pub static GITHUB: ProviderSpec = ProviderSpec {
     // `DELETE /applications/{client_id}/grant`; see `oauth2.rs`.
     revoke_url: Some("https://api.github.com/applications"),
     // GitHub OAuth apps have no read-only repository scope. The read grant
-    // covers notifications and pull requests in public repositories; `repo`
-    // (the act grant) adds private repositories and commenting.
+    // covers notifications and pull requests in public repositories. `repo`
+    // (the act grant) gives full read and write access to every private
+    // repository the person can reach; the consent text says so, and the
+    // broker only runs the commenting tool with it.
     read_scopes: &["read:user", "notifications"],
     act_scopes: &["repo"],
     scope_param: ScopeParam::SpaceSeparated,
@@ -108,13 +108,9 @@ pub static SLACK: ProviderSpec = ProviderSpec {
     auth_url: "https://slack.com/oauth/v2/authorize",
     token_url: "https://slack.com/api/oauth.v2.access",
     revoke_url: Some("https://slack.com/api/auth.revoke"),
-    read_scopes: &[
-        "channels:read",
-        "channels:history",
-        "groups:read",
-        "groups:history",
-        "users:read",
-    ],
+    // `slack_read_channel` and polling read history in public and private
+    // channels. Channels are chosen by id, so no list or user scopes.
+    read_scopes: &["channels:history", "groups:history"],
     act_scopes: &["chat:write"],
     scope_param: ScopeParam::SlackUserScope,
     supports_pkce: false,

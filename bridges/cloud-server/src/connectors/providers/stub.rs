@@ -42,12 +42,35 @@ static STUB_TOOLS: [ConnectorToolDescriptor; 2] = [
     },
 ];
 
+/// Pauses the next refresh: the stub signals `entered`, then waits for
+/// `release` before returning the refreshed credential.
+#[derive(Clone, Default)]
+pub(crate) struct RefreshGate {
+    pub(crate) entered: Arc<tokio::sync::Notify>,
+    pub(crate) release: Arc<tokio::sync::Notify>,
+}
+
 #[derive(Default)]
 pub(crate) struct StubConnectorProvider {
     calls: Mutex<Vec<String>>,
+    refresh_gate: Mutex<Option<RefreshGate>>,
 }
 
 impl StubConnectorProvider {
+    /// Holds the next refresh until the returned gate is released.
+    pub(crate) fn pause_next_refresh(&self) -> RefreshGate {
+        let gate = RefreshGate::default();
+        *self.refresh_gate.lock().unwrap() = Some(gate.clone());
+        gate
+    }
+
+    pub(crate) fn refresh_count(&self) -> usize {
+        self.calls()
+            .iter()
+            .filter(|call| *call == "refresh")
+            .count()
+    }
+
     pub(crate) fn calls(&self) -> Vec<String> {
         self.calls.lock().unwrap().clone()
     }
@@ -99,6 +122,11 @@ impl ConnectorProvider for StubConnectorProvider {
         secret: &ConnectorSecret,
     ) -> Result<ConnectorSecret, ProviderError> {
         self.record("refresh".to_string());
+        let gate = self.refresh_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            gate.entered.notify_one();
+            gate.release.notified().await;
+        }
         Ok(ConnectorSecret {
             access_token: format!("{}-refreshed", secret.access_token),
             refresh_token: secret.refresh_token.clone(),
@@ -128,6 +156,13 @@ impl ConnectorProvider for StubConnectorProvider {
         // Record which credential was used so tests can check refresh, but
         // return only tool output, as real providers must.
         self.record(format!("execute:{tool}:{}", secret.access_token));
+        if args.get("fail").and_then(Value::as_bool) == Some(true) {
+            // Raw provider text that must never reach the audit log.
+            return Err(ProviderError::Rejected(format!(
+                "upstream said no to {}",
+                secret.access_token
+            )));
+        }
         Ok(json!({ "tool": tool, "echo": args }))
     }
 }

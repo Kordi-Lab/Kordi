@@ -178,15 +178,28 @@ fn consumed_state_is_checked_for_use_and_expiry() {
 fn callback_redirects_carry_the_result_in_the_fragment() {
     let ok = oauth::CallbackOutcome {
         redirect_after: Some("kordi-beta://oauth/callback".into()),
-        result: Ok(OAuthCompletedFragment {
-            connector_id: "conn_1".into(),
+        result: Ok(OAuthPendingFragment {
+            completion_code: "connector_completion_1".into(),
             provider: "github".into(),
             grant: ConnectorToolGroup::Read,
-            status: ConnectorStatus::Connected,
+            status: PENDING_GRANT_STATUS,
         }),
     };
     let url = oauth::callback_redirect_url("kordi-beta://oauth/callback", &ok);
-    assert!(url.starts_with("kordi-beta://oauth/callback#kordi_connector="));
+    let encoded = url
+        .strip_prefix("kordi-beta://oauth/callback#kordi_connector=")
+        .unwrap();
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    let payload: Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(encoded).unwrap()).unwrap();
+    assert_eq!(
+        payload,
+        json!({
+            "completionCode": "connector_completion_1",
+            "provider": "github",
+            "grant": "read",
+            "status": "pending"
+        })
+    );
     let failed = oauth::CallbackOutcome {
         redirect_after: None,
         result: Err(oauth::CallbackError {
@@ -226,7 +239,11 @@ async fn oauth_state_is_one_use_and_bound_to_the_account() {
     .unwrap();
     let state_id = state_from_auth_url(&auth_url);
     let first = oauth::complete_grant(&pool, &runtime, Some(&state_id), Some("c1"), None).await;
-    let connector_id = first.result.unwrap().connector_id;
+    let code = first.result.unwrap().completion_code;
+    let connector_id = oauth_complete::finish_grant(&pool, &runtime, &owner, &code)
+        .await
+        .unwrap()
+        .connector_id;
     let stored = store::load_account_connector(&pool, &owner, &connector_id)
         .await
         .unwrap()

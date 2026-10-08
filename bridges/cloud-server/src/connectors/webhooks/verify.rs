@@ -1,9 +1,13 @@
 //! Signature and token checks for connector webhooks.
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+
 use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use serde_json::Value;
-use sha2::Sha256;
+use sha2::{Digest, Sha256};
 
 use crate::connectors::ConnectorHooks;
 
@@ -64,7 +68,7 @@ pub fn slack_signature_check(
         .trim()
         .parse::<i64>()
         .map_err(|_| SlackSignatureError::Invalid)?;
-    if (now.timestamp() - seconds).abs() > SLACK_MAX_SKEW_SECONDS {
+    if now.timestamp().abs_diff(seconds) > SLACK_MAX_SKEW_SECONDS.unsigned_abs() {
         return Err(SlackSignatureError::Stale);
     }
     let hex = signature
@@ -116,8 +120,52 @@ fn tokeninfo_client() -> &'static reqwest::Client {
     })
 }
 
+/// A rejected push token is not looked up again for this long.
+const REJECTED_TOKEN_TTL: Duration = Duration::from_secs(60);
+/// Rejected tokens remembered at once; past this, expired entries are
+/// dropped and, if still full, the cache starts over.
+const MAX_REJECTED_TOKENS: usize = 4096;
+
+/// Hashes of push tokens Google's token info rejected recently, so a burst
+/// of bad pushes does not become a burst of lookups.
+#[derive(Default)]
+pub struct RejectedTokens {
+    entries: Mutex<HashMap<[u8; 32], Instant>>,
+}
+
+impl RejectedTokens {
+    fn key(token: &str) -> [u8; 32] {
+        Sha256::digest(token.as_bytes()).into()
+    }
+
+    pub fn is_rejected(&self, token: &str, now: Instant) -> bool {
+        let entries = self.entries.lock().expect("rejected token cache poisoned");
+        entries
+            .get(&Self::key(token))
+            .is_some_and(|until| *until > now)
+    }
+
+    pub fn reject(&self, token: &str, now: Instant) {
+        let mut entries = self.entries.lock().expect("rejected token cache poisoned");
+        if entries.len() >= MAX_REJECTED_TOKENS {
+            entries.retain(|_, until| *until > now);
+            if entries.len() >= MAX_REJECTED_TOKENS {
+                entries.clear();
+            }
+        }
+        entries.insert(Self::key(token), now + REJECTED_TOKEN_TTL);
+    }
+}
+
+fn rejected_tokens() -> &'static RejectedTokens {
+    static REJECTED: std::sync::OnceLock<RejectedTokens> = std::sync::OnceLock::new();
+    REJECTED.get_or_init(RejectedTokens::default)
+}
+
 /// Verifies the Pub/Sub push OIDC bearer through Google's token info
 /// endpoint. Fails closed when the audience or service account is unset.
+/// A token that fails is remembered for a minute and refused without a
+/// lookup.
 pub async fn google_push_authorized(hooks: &ConnectorHooks, authorization: Option<&str>) -> bool {
     let (Some(audience), Some(service_account)) = (
         hooks.google_push_audience.as_deref(),
@@ -132,19 +180,42 @@ pub async fn google_push_authorized(hooks: &ConnectorHooks, authorization: Optio
     else {
         return false;
     };
+    let rejected = rejected_tokens();
+    if rejected.is_rejected(token, Instant::now()) {
+        return false;
+    }
+    match token_info_valid(hooks, token, audience, service_account).await {
+        Some(true) => true,
+        Some(false) => {
+            rejected.reject(token, Instant::now());
+            false
+        }
+        // Google could not be reached: refuse, but let a retry look again.
+        None => false,
+    }
+}
+
+/// `None` when the token info endpoint could not be reached.
+async fn token_info_valid(
+    hooks: &ConnectorHooks,
+    token: &str,
+    audience: &str,
+    service_account: &str,
+) -> Option<bool> {
     let response = tokeninfo_client()
         .get(&hooks.google_tokeninfo_url)
         .query(&[("id_token", token)])
         .send()
-        .await;
-    let Ok(response) = response else {
-        return false;
-    };
-    if !response.status().is_success() {
-        return false;
+        .await
+        .ok()?;
+    if response.status().is_server_error() {
+        return None;
     }
-    match response.json::<Value>().await {
+    if !response.status().is_success() {
+        return Some(false);
+    }
+    Some(match response.json::<Value>().await {
         Ok(claims) => google_claims_valid(&claims, audience, service_account, Utc::now()),
         Err(_) => false,
-    }
+    })
 }

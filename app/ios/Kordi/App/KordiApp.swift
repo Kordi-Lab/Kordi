@@ -405,6 +405,8 @@ private struct RootView: View {
             AppearanceSettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-profile") {
             ProfileSettingsPreview()
+        } else if ConnectorsAvailability.isPreviewRequested() {
+            ConnectorsSettingsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-devices") {
             ActiveSessionsPreview()
         } else if ProcessInfo.processInfo.arguments.contains("--preview-account") {

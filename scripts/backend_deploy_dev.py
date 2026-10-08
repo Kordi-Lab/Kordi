@@ -59,7 +59,8 @@ def deploy(args):
                  "KORDI_CONNECTOR_SLACK_CLIENT_SECRET", "KORDI_CONNECTOR_EVENT_RETENTION_DAYS",
                  "KORDI_CONNECTOR_GITHUB_WEBHOOK_SECRET", "KORDI_CONNECTOR_SLACK_SIGNING_SECRET",
                  "KORDI_CONNECTOR_GOOGLE_PUSH_AUDIENCE", "KORDI_CONNECTOR_GOOGLE_PUSH_SERVICE_ACCOUNT",
-                 "KORDI_CONNECTOR_GMAIL_PUBSUB_TOPIC", "KORDI_CONNECTOR_POLL_MINUTES"):
+                 "KORDI_CONNECTOR_GMAIL_PUBSUB_TOPIC", "KORDI_CONNECTOR_POLL_MINUTES",
+                 "KORDI_CONNECTOR_CALLS_PER_HOUR"):
         os.environ.pop(name, None)
     compose = ["docker", "compose", "--project-name", args.project, "--env-file", str(args.env_file),
                "-f", str(args.compose), "-f", str(override)]

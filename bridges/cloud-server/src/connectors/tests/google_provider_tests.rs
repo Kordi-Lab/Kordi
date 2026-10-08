@@ -50,7 +50,7 @@ async fn calendar_lists_within_a_window_responds_and_creates() {
     stub.respond(
         "GET",
         "/calendars/primary/events/ev1",
-        json!({ "id": "ev1", "summary": "Design review", "attendees": [
+        json!({ "id": "ev1", "etag": "\"3181159875584000\"", "summary": "Design review", "attendees": [
             { "email": "lead@example.com", "responseStatus": "accepted" },
             { "email": "me@example.com", "self": true, "responseStatus": "needsAction" }
         ]}),
@@ -73,6 +73,7 @@ async fn calendar_lists_within_a_window_responds_and_creates() {
     assert_eq!(answered["myResponse"], "accepted");
     let patch = &stub.requests_to("PATCH", "/calendars/primary/events/ev1")[0];
     assert!(patch.query.contains("sendUpdates=all"));
+    assert_eq!(patch.if_match, "\"3181159875584000\"", "no lost update");
     let patched: Value = serde_json::from_str(&patch.body).unwrap();
     assert_eq!(patched["attendees"][1]["responseStatus"], "accepted");
     assert_eq!(patched["attendees"][0]["responseStatus"], "accepted");
@@ -101,6 +102,17 @@ async fn calendar_lists_within_a_window_responds_and_creates() {
     )
     .await;
     assert!(matches!(bad_attendee, Err(ProviderError::InvalidInput(_))));
+    for zone in ["E".repeat(65), "Europe/Paris\nX".to_string()] {
+        let bad_zone = run(
+            &provider,
+            "calendar_create_event",
+            json!({ "summary": "Focus", "start": "2026-10-09T10:00:00Z",
+                    "end": "2026-10-09T11:00:00Z", "timeZone": zone }),
+            &json!({}),
+        )
+        .await;
+        assert!(matches!(bad_zone, Err(ProviderError::InvalidInput(_))));
+    }
 }
 
 #[tokio::test]

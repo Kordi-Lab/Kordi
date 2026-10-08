@@ -56,7 +56,7 @@ struct DigestCalendarSettingsView: View {
         Form {
             Section {
                 if sync.status.calendars.isEmpty {
-                    Text("No device calendars were found yet. They appear here after the first sync.").font(.subheadline).foregroundStyle(.secondary)
+                    Text("No device calendars were found yet. They appear here when calendar access is available.").font(.subheadline).foregroundStyle(.secondary)
                 }
                 ForEach(sync.status.calendars) { calendar in
                     Toggle(calendar.title, isOn: Binding(

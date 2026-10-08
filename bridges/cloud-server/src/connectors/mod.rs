@@ -5,15 +5,19 @@
 
 pub mod audience;
 pub mod broker;
-mod credentials;
+pub(crate) mod broker_route;
+pub mod budget;
+pub mod declined;
 pub mod delivery;
 pub mod digest_input;
 pub mod events;
 pub mod hooks;
 pub mod models;
 pub mod oauth;
+pub mod oauth_complete;
 pub mod polling;
 pub mod providers;
+mod refresh;
 pub mod routes;
 mod settings;
 pub mod store;
@@ -42,6 +46,8 @@ pub struct ConnectorRuntime {
     pub providers: providers::ProviderRegistry,
     /// Webhook secrets, push verification, and polling interval.
     pub hooks: ConnectorHooks,
+    /// Tool executions each account may run per hour.
+    pub budget: budget::CallBudget,
 }
 
 impl ConnectorRuntime {
@@ -52,6 +58,7 @@ impl ConnectorRuntime {
                 .map(|cipher| Arc::new(cipher) as Arc<dyn ProviderAuthCipher>),
             providers: providers::ProviderRegistry::production(),
             hooks: ConnectorHooks::from_env(),
+            budget: budget::CallBudget::from_env(),
         }
     }
 
@@ -63,11 +70,17 @@ impl ConnectorRuntime {
             cipher,
             providers,
             hooks: ConnectorHooks::default(),
+            budget: budget::CallBudget::new(budget::DEFAULT_CALLS_PER_HOUR),
         }
     }
 
     pub fn with_hooks(mut self, hooks: ConnectorHooks) -> Self {
         self.hooks = hooks;
+        self
+    }
+
+    pub fn with_budget(mut self, budget: budget::CallBudget) -> Self {
+        self.budget = budget;
         self
     }
 }

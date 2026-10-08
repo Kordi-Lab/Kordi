@@ -61,7 +61,12 @@ pub struct DesktopCloudExecutionLease {
     pub claim_id: String,
     pub owner_account_id: String,
     /// Connector tool descriptors the server delivered with this lease.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Entries that do not parse are dropped one by one (fail closed).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "kordi_tools::connector_tools::deserialize_optional_lease_descriptors"
+    )]
     pub connector_tools: Option<Vec<kordi_tools::connector_tools::ConnectorToolDescriptor>>,
     /// `owner_private` or `shared`, from the server; missing means shared.
     #[serde(default, skip_serializing_if = "Option::is_none")]

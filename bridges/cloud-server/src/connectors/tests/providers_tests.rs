@@ -103,6 +103,36 @@ fn tool_tables_are_named_grouped_and_described() {
 }
 
 #[test]
+fn requested_scopes_are_only_what_the_tools_use() {
+    assert_eq!(
+        providers::GMAIL.act_scopes,
+        ["https://www.googleapis.com/auth/gmail.send"]
+    );
+    assert_eq!(
+        providers::SLACK.read_scopes,
+        ["channels:history", "groups:history"]
+    );
+    assert_eq!(providers::GITHUB.act_scopes, ["repo"]);
+    let all = |spec: &providers::ProviderSpec| {
+        spec.read_scopes
+            .iter()
+            .chain(spec.act_scopes)
+            .map(|scope| scope.to_string())
+            .collect::<Vec<_>>()
+    };
+    for spec in providers::PROVIDER_SPECS {
+        assert!(
+            all(spec)
+                .iter()
+                .all(|scope| !scope.ends_with("gmail.modify")
+                    && !["users:read", "channels:read", "groups:read"].contains(&scope.as_str())),
+            "{}",
+            spec.id
+        );
+    }
+}
+
+#[test]
 fn granted_scopes_map_to_catalog_ids() {
     let granted = |values: &[&str]| values.iter().map(|v| v.to_string()).collect::<Vec<_>>();
     assert_eq!(
@@ -249,6 +279,8 @@ fn slack_settings_accept_only_channel_ids() {
     );
     for bad in [
         json!({ "channels": ["general"] }),
+        // Direct messages need `im:history`, which is not requested.
+        json!({ "channels": ["D0123ABCD"] }),
         json!({ "channels": "C123" }),
         json!({ "channels": ["C1"], "extra": true }),
         json!(["C123"]),
@@ -323,12 +355,15 @@ async fn slack_reads_and_posts_only_in_chosen_channels() {
     let posted = run(
         &provider,
         "slack_post",
-        json!({ "channel": "C0CHOSEN", "text": "On it." }),
+        json!({ "channel": "C0CHOSEN", "text": "<!channel> On it." }),
         &settings,
     )
     .await
     .unwrap();
     assert_eq!(posted["ts"], "1759800001.000100");
+    let sent: Value =
+        serde_json::from_str(&stub.requests_to("POST", "/chat.postMessage")[0].body).unwrap();
+    assert_eq!(sent["text"], "&lt;!channel> On it.", "no broadcast mention");
 
     stub.respond(
         "GET",
@@ -371,6 +406,8 @@ async fn polling_hooks_report_compact_events() {
         github_webhook_secret: Some("whsec".into()),
         ..Default::default()
     };
-    assert!(provider.live_subscription(&hooks));
+    // The webhook needs no per-connector subscription, and polling runs
+    // with or without it.
+    assert!(!provider.live_subscription(&hooks));
     assert!(!provider.live_subscription(&Default::default()));
 }

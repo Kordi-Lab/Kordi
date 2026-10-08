@@ -228,6 +228,12 @@ pub fn input_schema(tool: &str) -> Option<Value> {
         .or_else(|| slack::input_schema(tool))
 }
 
+/// Most items one poll of one connector reads, across pages.
+pub const MAX_POLL_EVENTS: usize = 500;
+/// Items requested per page when polling. Equal to the list cap, so every
+/// item of a page is read.
+pub const POLL_PAGE_SIZE: usize = http::MAX_LIST_ITEMS;
+
 /// One event a provider reported through polling or a webhook.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolledEvent {
@@ -245,10 +251,17 @@ pub enum ProviderError {
     NotConfigured(String),
     #[error("unknown connector tool")]
     UnknownTool,
+    /// The credential is gone for good (`invalid_grant`, or a 401 from a
+    /// tool call). The connector needs a new sign-in.
     #[error("the provider rejected the credential")]
     Unauthorized,
+    /// The provider could not be reached. Retryable.
     #[error("provider request failed: {0}")]
     Request(String),
+    /// The provider answered with an error other than `invalid_grant`.
+    /// Retryable; the connector stays connected.
+    #[error("provider rejected the request: {0}")]
+    Rejected(String),
     #[error("provider response was not understood")]
     InvalidResponse,
     /// The tool arguments or settings were rejected before any provider
@@ -260,6 +273,21 @@ pub enum ProviderError {
 impl ProviderError {
     pub fn invalid(message: impl Into<String>) -> Self {
         Self::InvalidInput(message.into())
+    }
+}
+
+impl ProviderError {
+    /// Fixed wording for audit summaries. Raw provider text never reaches
+    /// the audit log, which the owner reads in settings.
+    pub fn audit_phrase(&self) -> &'static str {
+        match self {
+            Self::Unauthorized => "The connector needs a new sign-in.",
+            Self::Request(_) | Self::NotConfigured(_) => "The service was unreachable.",
+            Self::InvalidInput(_) => "The tool input was rejected.",
+            Self::Rejected(_) | Self::InvalidResponse | Self::UnknownTool => {
+                "The service rejected the request."
+            }
+        }
     }
 }
 
@@ -329,8 +357,9 @@ pub trait ConnectorProvider: Send + Sync {
         Ok(None)
     }
 
-    /// True when this server receives live events for the provider, so the
-    /// polling job skips it.
+    /// True when this server keeps a per-connector subscription with the
+    /// provider (Gmail push) that the polling job must renew. Polling runs
+    /// either way, because live delivery can miss events.
     fn live_subscription(&self, _hooks: &ConnectorHooks) -> bool {
         false
     }
@@ -344,7 +373,9 @@ pub trait ConnectorProvider: Send + Sync {
         Ok(())
     }
 
-    /// Events since `since`, for providers without a live subscription.
+    /// Events changed since `since`. Implementations page through the
+    /// provider's results up to [`MAX_POLL_EVENTS`] items, so a busy
+    /// interval is not cut at the first page.
     async fn poll(
         &self,
         _secret: &ConnectorSecret,
