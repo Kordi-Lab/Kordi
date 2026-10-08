@@ -28,7 +28,8 @@ import {
   type CanonicalAvatarMutation,
 } from '@/features/cloud/canonicalAvatar';
 
-export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'appearance';
+// `connectors` is opened by chat deep links; it shows Profile until the Connectors panel ships.
+export type CloudAccountSettingsTabId = 'profile' | 'devices' | 'auth' | 'notifications' | 'appearance' | 'connectors';
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -403,7 +404,7 @@ export function CloudAccountSettingsDialog({
           <SettingsNav
             className="app-cloud-account-settings-tabs"
             groups={navGroups}
-            activeId={activeTab}
+            activeId={activeTab === 'connectors' ? 'profile' : activeTab}
             onSelect={selectTab}
           />
         </div>
@@ -415,7 +416,7 @@ export function CloudAccountSettingsDialog({
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="px-8 pb-8 pt-10">
-              {activeTab === 'profile' ? profilePanel : activeTab === 'devices' ? devicesPanel : activeTab === 'auth' ? authPanel : activeTab === 'notifications' ? notificationsPanel : appearancePanel}
+              {activeTab === 'profile' || activeTab === 'connectors' ? profilePanel : activeTab === 'devices' ? devicesPanel : activeTab === 'auth' ? authPanel : activeTab === 'notifications' ? notificationsPanel : appearancePanel}
             </div>
           </ScrollArea>
         </div>

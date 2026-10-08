@@ -27,6 +27,7 @@ use crate::cloud_agent_runtime::provider_auth::{ProviderAuthCipher, ProviderAuth
 use crate::events::EventBus;
 use crate::server::ServerState;
 
+mod audience_tests;
 mod broker_tests;
 mod delivery_tests;
 mod lifecycle_tests;

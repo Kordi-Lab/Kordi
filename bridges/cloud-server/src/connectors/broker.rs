@@ -150,6 +150,7 @@ pub mod codes {
     pub const NOT_ON_LEASE: &str = "tool_not_on_lease";
     pub const ACT_DISABLED: &str = "act_disabled";
     pub const BLOCKED_BACKGROUND: &str = "blocked_background";
+    pub const DECLINED_BY_OWNER: &str = "declined_by_owner";
     pub const UNAVAILABLE: &str = "connector_unavailable";
     pub const PROVIDER_FAILED: &str = "provider_failed";
     pub const SERVER_ERROR: &str = "server_error";
@@ -340,6 +341,13 @@ async fn call_inner(
             codes::NOT_ON_LEASE,
             "This tool is not available to this run.",
         ));
+    }
+    if request.declined_by_owner {
+        let message = "You declined this in Kordi. Nothing was changed.";
+        audit
+            .write(group, AuditOutcome::Denied, &format!("Denied: {message}"))
+            .await;
+        return Err(reject(codes::DECLINED_BY_OWNER, message));
     }
 
     let Some(cipher) = runtime.cipher.as_deref() else {

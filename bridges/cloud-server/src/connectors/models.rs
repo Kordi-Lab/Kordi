@@ -101,6 +101,41 @@ impl RunTrigger {
     }
 }
 
+/// Who can read a run's output. Stored on the run as `connector_audience`
+/// and delivered on its lease as `connectorAudience`. Connector data about
+/// other people (senders, attendees, members) reaches a run only when the
+/// owner alone can read what it produces.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectorAudience {
+    /// The owner started the run in a conversation only they and their own
+    /// agent can read, or it is an owner-only background job.
+    OwnerPrivate,
+    /// Other accounts can read the output: group conversations, runs a
+    /// contact or shared-agent member started, PiP posts, and subsessions
+    /// of shared runs. The default, so an unlabeled run gets no connector
+    /// tools at all.
+    #[default]
+    Shared,
+}
+
+impl ConnectorAudience {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OwnerPrivate => "owner_private",
+            Self::Shared => "shared",
+        }
+    }
+
+    /// Unknown values are shared runs.
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "owner_private" => Self::OwnerPrivate,
+            _ => Self::Shared,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuditOutcome {
@@ -328,6 +363,10 @@ pub struct BrokerCallRequest {
     pub tool: String,
     #[serde(default)]
     pub args: Value,
+    /// The owner declined this `act` call on their Mac. The broker records a
+    /// `denied` audit row for a tool on the lease and never executes it.
+    #[serde(default)]
+    pub declined_by_owner: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

@@ -71,6 +71,8 @@ pub fn is_connector_tool_name(name: &str) -> bool {
 pub type ConnectorCallFuture = Pin<Box<dyn Future<Output = KordiResult<Value>> + Send>>;
 pub type ConnectorCallFn =
     Arc<dyn Fn(ConnectorToolDescriptor, Value) -> ConnectorCallFuture + Send + Sync>;
+pub type ConnectorDeclinedFn =
+    Arc<dyn Fn(ConnectorToolDescriptor) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 /// Host-supplied connector access for one turn: the descriptors from the
 /// lease and the call that reaches the server broker.
@@ -78,6 +80,10 @@ pub type ConnectorCallFn =
 pub struct ConnectorToolsRuntime {
     pub descriptors: Vec<ConnectorToolDescriptor>,
     pub call: ConnectorCallFn,
+    /// Records a `denied` audit row when the person declines an `act` call.
+    pub report_declined: Option<ConnectorDeclinedFn>,
+    /// Adds `connectors_request_connect`, for runs only the owner can read.
+    pub offer_request_connect: bool,
 }
 
 impl ConnectorToolsRuntime {
@@ -87,14 +93,22 @@ impl ConnectorToolsRuntime {
             .find(|descriptor| descriptor.name == name)
     }
 
-    /// One tool per descriptor, in lease order, skipping repeated names.
+    /// One tool per descriptor, in lease order, skipping repeated names,
+    /// then `connectors_request_connect` when the run may offer it.
     pub fn tools(&self) -> Vec<Box<dyn Tool>> {
         let mut seen = std::collections::HashSet::new();
-        self.descriptors
+        let mut tools = self
+            .descriptors
             .iter()
             .filter(|descriptor| seen.insert(descriptor.name.clone()))
             .map(|descriptor| Box::new(ConnectorTool::new(descriptor.clone())) as Box<dyn Tool>)
-            .collect()
+            .collect::<Vec<_>>();
+        if self.offer_request_connect {
+            tools.push(Box::new(
+                crate::connector_request_connect::ConnectorRequestConnectTool,
+            ));
+        }
+        tools
     }
 }
 
@@ -155,7 +169,7 @@ impl Tool for ConnectorTool {
             .cloned()
             .ok_or_else(|| KordiError::Tool(CONNECTOR_TOOLS_UNAVAILABLE.into()))?;
         if descriptor.is_act() {
-            request_act_approval(&descriptor, &params, ctx).await?;
+            request_act_approval(runtime, &descriptor, &params, ctx).await?;
         }
         let value = tokio::select! {
             _ = cancel.cancelled() => {
@@ -168,8 +182,10 @@ impl Tool for ConnectorTool {
 }
 
 /// Every `act` tool asks the person first ("Ask me before"). Without an
-/// interactive approval hook the call is refused.
+/// interactive approval hook the call is refused. When the person declines
+/// (or does not answer in time), the host records it through the broker.
 async fn request_act_approval(
+    runtime: &ConnectorToolsRuntime,
     descriptor: &ConnectorToolDescriptor,
     params: &Value,
     ctx: &ToolContext,
@@ -197,10 +213,12 @@ async fn request_act_approval(
     })
     .await;
     if outcome.approved() {
-        Ok(())
-    } else {
-        Err(refused("you declined."))
+        return Ok(());
     }
+    if let Some(report_declined) = runtime.report_declined.as_ref() {
+        report_declined(descriptor.clone()).await;
+    }
+    Err(refused("you declined."))
 }
 
 #[cfg(test)]

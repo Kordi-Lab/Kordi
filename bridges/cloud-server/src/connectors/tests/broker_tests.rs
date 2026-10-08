@@ -27,8 +27,10 @@ async fn leased_run(
     query(
         "INSERT INTO cloud_agent_fallback_runs (run_id, idempotency_key, request_message_id, \
          session_id, owner_account_id, requester_account_id, status, prompt, created_at, \
-         updated_at, execution_backend, claimed_by, lease_expires_at, run_trigger) \
-         VALUES ($1, $1, $1, $2, $3, $3, 'leased', 'Prompt', $4, $4, 'cloud', $5, $6, $7)",
+         updated_at, execution_backend, claimed_by, lease_expires_at, run_trigger, \
+         connector_audience) \
+         VALUES ($1, $1, $1, $2, $3, $3, 'leased', 'Prompt', $4, $4, 'cloud', $5, $6, $7, \
+         'owner_private')",
     )
     .bind(&run_id)
     .bind(format!("session:connectors:{run_id}"))
@@ -59,6 +61,7 @@ fn call(lease_id: &str, connector_id: &str, tool: &str) -> BrokerCallRequest {
         connector_id: connector_id.to_string(),
         tool: tool.to_string(),
         args: json!({ "q": "today" }),
+        declined_by_owner: false,
     }
 }
 
@@ -114,6 +117,16 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
     assert_eq!(acted.result.as_ref().unwrap()["tool"], STUB_ACT_TOOL);
     let serialized = serde_json::to_string(&acted).unwrap();
     assert!(!serialized.contains("stub-access") && !serialized.contains("stub-refresh"));
+
+    // The owner declined on the Mac: audited as denied, never executed.
+    let mut declined = call(&person, &connector_id, STUB_ACT_TOOL);
+    declined.declined_by_owner = true;
+    let executed = stub.calls().len();
+    assert_eq!(
+        broker_call(declined).await.error_code(),
+        Some(codes::DECLINED_BY_OWNER)
+    );
+    assert_eq!(stub.calls().len(), executed);
 
     // The lease issued while act was off never gains the act tool.
     let not_on_lease = broker_call(call(&act_off_lease, &connector_id, STUB_ACT_TOOL)).await;
@@ -208,6 +221,7 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
             "blocked_background", // act from background
             "completed",          // background read
             "completed",          // person-started act
+            "denied",             // the owner declined
             "denied",             // act not on the earlier lease
             "completed",          // read after refresh
             "blocked_background", // spoofed body fields

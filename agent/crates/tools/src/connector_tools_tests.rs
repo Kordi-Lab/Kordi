@@ -27,6 +27,8 @@ fn runtime(calls: Arc<Mutex<Vec<String>>>) -> ConnectorToolsRuntime {
                 .push(format!("{}:{args}", descriptor.name));
             Box::pin(async move { Ok(json!({"ok": true, "tool": descriptor.name})) })
         }),
+        report_declined: None,
+        offer_request_connect: false,
     }
 }
 
@@ -177,4 +179,60 @@ fn runtime_builds_one_tool_per_distinct_descriptor() {
         .map(|tool| tool.name().to_string())
         .collect::<Vec<_>>();
     assert_eq!(names, ["gmail.search", "gmail.send"]);
+}
+
+#[tokio::test]
+async fn declined_act_calls_are_reported_and_never_sent() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let reported = Arc::new(Mutex::new(Vec::new()));
+    let mut runtime = runtime(calls.clone());
+    let sink = reported.clone();
+    runtime.report_declined = Some(Arc::new(move |descriptor| {
+        sink.lock().unwrap().push(descriptor.name);
+        Box::pin(async {})
+    }));
+    let act = ConnectorTool::new(descriptor("gmail.send", ConnectorToolGroup::Act));
+    // No responder at all: refused before anyone was asked, nothing sent.
+    let error = act
+        .execute(
+            json!({}),
+            &context(Some(runtime.clone()), None),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("approval is not available"));
+    // The person declined.
+    let ctx = context(
+        Some(runtime.clone()),
+        Some((
+            Arc::new(Mutex::new(Vec::new())),
+            ToolApprovalDecision::Denied,
+        )),
+    );
+    let error = act
+        .execute(json!({}), &ctx, CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("you declined"));
+    assert_eq!(*reported.lock().unwrap(), ["gmail.send"]);
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn request_connect_is_offered_only_when_the_runtime_allows_it() {
+    let mut runtime = runtime(Arc::new(Mutex::new(Vec::new())));
+    let names = |runtime: &ConnectorToolsRuntime| {
+        runtime
+            .tools()
+            .iter()
+            .map(|tool| tool.name().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert!(!names(&runtime).contains(&"connectors_request_connect".to_string()));
+    runtime.offer_request_connect = true;
+    assert_eq!(
+        names(&runtime),
+        ["gmail.search", "gmail.send", "connectors_request_connect"]
+    );
 }

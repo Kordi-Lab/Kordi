@@ -177,12 +177,15 @@ pub(super) async fn prepare_desktop_session_for_send(
         kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
     )));
     let calendar = calendar_runtime::build(runtime, context_session_id);
-    // Only a cloud lease carries connector tools; local turns get none.
-    runtime.set_connector_tools_runtime(
-        cloud_lease
-            .as_ref()
-            .and_then(connector_tools_runtime::build),
-    );
+    // Only a cloud lease carries connector tools. The owner's own local turn
+    // (no lease, no shared conversation) gets the connect link only.
+    runtime.set_connector_tools_runtime(match cloud_lease.as_ref() {
+        Some(lease) => connector_tools_runtime::build(lease),
+        None => context_session_id
+            .is_none()
+            .then(connector_tools_runtime::owner_local),
+    });
+    runtime.set_tool_approval_hook(super::tool_approval::hook());
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

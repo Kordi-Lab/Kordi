@@ -214,14 +214,21 @@ async fn claim_run_with_executor(
     let prompt = fallback_prompt_for_claim(pool, input).await?;
     let runtime_route = serde_json::to_value(runtime_route_for_claim(pool, input).await?)
         .map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
+    let audience = crate::connectors::audience::audience_for_message(
+        pool,
+        &input.session_id,
+        &input.owner_account_id,
+        &input.requester_account_id,
+    )
+    .await?;
     let lease_expires_at =
         desktop_executor.map(|_| (Utc::now() + chrono::Duration::seconds(45)).to_rfc3339());
     let row: (String, String, Option<String>, String, String, String) = query_as(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
             requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at,
-            execution_backend, execution_agent_id, claimed_by, lease_expires_at, omp_input_json, run_trigger
-         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16, $17, $18)
+            execution_backend, execution_agent_id, claimed_by, lease_expires_at, omp_input_json, run_trigger, connector_audience
+         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16, $17, $18, $19)
          ON CONFLICT (owner_account_id, execution_agent_id, request_message_id) WHERE NOT legacy_duplicate DO UPDATE SET request_message_id = cloud_agent_fallback_runs.request_message_id
          RETURNING run_id, status, sandbox_id, created_at, updated_at, execution_backend",
     )
@@ -243,6 +250,7 @@ async fn claim_run_with_executor(
     .bind(lease_expires_at)
     .bind(&prompt.omp_input)
     .bind(trigger.as_str())
+    .bind(audience.as_str())
     .fetch_one(pool)
     .await?;
 

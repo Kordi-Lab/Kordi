@@ -82,6 +82,7 @@ struct KordiApp: App {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
+    @State private var connectorsSettingsLink: ConnectorsSettingsLink?
 
     init() {
 #if DEBUG
@@ -137,6 +138,21 @@ struct KordiApp: App {
                     .animation(reduceMotion ? .easeOut(duration: 0.15) : .snappy(duration: 0.28), value: callCoordinator.isMinimized)
                 }
                 .preferredColorScheme(preferredColorScheme)
+                // Agent-shared Connectors links open account settings in the app.
+                .environment(\.openURL, OpenURLAction { url in
+                    guard let link = ConnectorsSettingsLink.parse(url) else { return .systemAction }
+                    connectorsSettingsLink = link
+                    return .handled
+                })
+                .onOpenURL { url in
+                    if let link = ConnectorsSettingsLink.parse(url) { connectorsSettingsLink = link }
+                }
+                .sheet(item: $connectorsSettingsLink) { _ in
+                    // TODO(issue 1712): open the `.connectors` route and push the
+                    // link's provider once the Connectors screen lands on this branch.
+                    AccountSheet()
+                        .environmentObject(model)
+                }
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
                     KordiCallView(room: callCoordinator.room)
                         .environmentObject(callCoordinator)

@@ -70,7 +70,7 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
 async fn upgrade_from_114_labels_existing_runs_as_background() {
     let pool = fixture(114).await;
-    seed_history(&pool, "completed").await;
+    seed_runs(&pool).await;
     let before = historical_runs(&pool).await;
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
@@ -97,5 +97,51 @@ async fn upgrade_from_114_labels_existing_runs_as_background() {
                 .is_err(),
             "{invalid}"
         );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_115_labels_existing_runs_as_shared() {
+    let pool = fixture(115).await;
+    seed_runs(&pool).await;
+    let before = historical_runs(&pool).await;
+    apply_migrations(&pool).await.unwrap();
+    latest_version(&pool).await;
+    assert_eq!(historical_runs(&pool).await, before);
+    let rows: Vec<(String,)> =
+        query_as("SELECT connector_audience FROM cloud_agent_fallback_runs ORDER BY run_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert!(!rows.is_empty());
+    for (audience,) in rows {
+        assert_eq!(
+            audience, "shared",
+            "existing runs never gain connector tools"
+        );
+    }
+    assert!(sqlx_core::raw_sql::raw_sql(
+        "UPDATE cloud_agent_fallback_runs SET connector_audience='everyone'"
+    )
+    .execute(&pool)
+    .await
+    .is_err());
+}
+
+/// Historical runs for fixtures at 80 and later, where `seed_history`'s
+/// direct conversation no longer satisfies the direct session identity rule.
+/// Runs carry no foreign key to the conversation, so none is needed here.
+async fn seed_runs(pool: &PgPool) {
+    for (id, created) in [
+        ("old-run", "2026-01-01T00:00:00Z"),
+        ("new-run", "2026-01-02T00:00:00Z"),
+    ] {
+        query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,response_message_id,created_at,updated_at) VALUES($1,$1,$1,'old-direct-fixture','fixture-owner','fixture-peer','completed','Historical request',$1,$2,$2)")
+            .bind(id)
+            .bind(created)
+            .execute(pool)
+            .await
+            .unwrap();
     }
 }

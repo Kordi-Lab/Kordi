@@ -3,6 +3,7 @@
 //! The server holds each credential, encrypted, and executes connector tool
 //! calls through the broker. Runs receive tool results only, never a token.
 
+pub mod audience;
 pub mod broker;
 pub mod delivery;
 pub mod events;

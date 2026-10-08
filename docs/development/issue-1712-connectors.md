@@ -315,6 +315,73 @@ are a second wave.
   never performs the grant.
 - Every read and act call writes an audit row; the settings log reads it.
 
+### What shipped in PR 5
+
+Consent boundary (server, `bridges/cloud-server`):
+
+- Migration `0116_run_connector_audience.sql` adds `connector_audience`
+  (`owner_private` or `shared`, default `shared`) to
+  `cloud_agent_fallback_runs`. Existing runs become shared runs and get no
+  connector tools.
+- `connectors::audience::audience_for_message` decides the audience where the
+  trigger is decided. A run is `owner_private` only when the owner sent the
+  message and the session is a `kind = 'ai'` conversation the owner created
+  that has never had another member. Group conversations, contact-started and
+  shared-agent runs, sessions without a conversation row, and PiP runs are
+  `shared`. Digest runs are `owner_private` (background, so read only).
+  Scheduled occurrences follow their session and creator (a task in the
+  owner's private conversation is `owner_private`; the default
+  `session:scheduled:<owner>` session has no conversation row and stays
+  `shared`). Spawned subsessions inherit the parent run's audience;
+  subsession messages use the parent session.
+- `delivery::tools_for_run` returns no tools at all for a `shared` audience,
+  whatever the trigger. The lease (cloud runner and desktop claim) carries
+  `connectorAudience`. The source-scan test now requires every run insert to
+  name both `run_trigger` and `connector_audience`.
+- Broker: `declinedByOwner: true` on `POST /internal/connectors/call` writes a
+  `denied` audit row for a tool on the lease and returns `declined_by_owner`
+  without reaching the provider.
+
+Mac approval for `act` tools:
+
+- `DesktopRuntimeSession::set_tool_approval_hook` wires
+  `ToolContext.request_approval` from `chat/tool_approval.rs`. A connector
+  `act` call emits `desktop_tool_approval_request` (`{ requestId, tool,
+  summary, connector, args }`), waits for
+  `desktop_tool_approval_respond(requestId, approved)`, and denies after five
+  minutes; `desktop_tool_approval_resolved` clears the card. Other tools that
+  ask for approval are refused, as before.
+- The webview shows an inline card above the composer ("Your agent wants to
+  <summary> in <connector>." with Allow and Not now).
+- When the person declines, `ConnectorToolsRuntime.report_declined` posts the
+  `declinedByOwner` call so the settings log shows the denial.
+
+Chat affordance:
+
+- `connectors_request_connect` (`kordi_tools::connector_request_connect`) takes
+  `{ provider }` and returns `{ openUrl, message, instruction }` with
+  `kordi://settings/connectors?provider=<id>`. It performs no grant. The cloud
+  runner offers it on `owner_private` leases; the Mac offers it on
+  `owner_private` cloud leases and on the owner's own local turns.
+- Desktop: message Markdown renders the link as an in-app link that opens
+  account settings on the `connectors` tab and stores the provider for the
+  detail view (`takePendingConnectorsProvider`). This branch does not contain
+  the Connectors panel from PR 0, so the tab shows Profile until that branch
+  merges; the panel should read the pending provider into `selectedId`.
+- iPhone: `ConnectorsSettingsLink.parse` handles the URL from `onOpenURL` and
+  in-app links, and opens the account sheet. Opening the `.connectors` route and
+  pushing the provider detail waits for the iPhone Connectors screen.
+
+Still waiting:
+
+- #1686 and #1687: contact consent tables and the AI opt-out for people who
+  are also contacts. Until then the boundary above withholds connector data
+  from every run another account can read.
+- #1685: the content removal worker that drains
+  `cloud_connector_removal_requests` on disconnect.
+- #1711: the capability-profile intersection and the "Ask me before" list UI.
+  Every `act` tool asks today.
+
 ## Acceptance mapping
 
 | Criterion in #1712 | Where it is tested |

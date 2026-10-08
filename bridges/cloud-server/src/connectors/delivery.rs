@@ -13,7 +13,7 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::broker::tools_for_trigger;
-use super::models::{BrokerCallRequest, ConnectorToolGroup, RunTrigger};
+use super::models::{BrokerCallRequest, ConnectorAudience, ConnectorToolGroup, RunTrigger};
 use super::providers::ProviderRegistry;
 use super::store::{self, StoreResult};
 
@@ -36,13 +36,19 @@ pub struct LeaseConnectorTool {
 /// Built from the owner's connected connectors, filtered to those that grant
 /// `agent_id`, and to the tool groups `trigger` allows: background runs get
 /// `read` only, and `act` needs a person-started run and `act_enabled`.
+/// A `shared` audience gets nothing, whatever the trigger: connector data
+/// about other people never reaches output other accounts can read.
 pub async fn tools_for_run(
     pool: &PgPool,
     providers: &ProviderRegistry,
     account_id: &str,
     agent_id: &str,
     trigger: RunTrigger,
+    audience: ConnectorAudience,
 ) -> StoreResult<Vec<LeaseConnectorTool>> {
+    if audience != ConnectorAudience::OwnerPrivate {
+        return Ok(Vec::new());
+    }
     let connectors = store::list_live_connectors(pool, account_id).await?;
     if connectors.is_empty() {
         return Ok(Vec::new());
@@ -105,14 +111,14 @@ async fn compute_and_store(
     providers: &ProviderRegistry,
     run_id: &str,
 ) -> StoreResult<Vec<LeaseConnectorTool>> {
-    let row: Option<(String, String, String)> = query_as(
-        "SELECT owner_account_id, execution_agent_id, run_trigger \
+    let row: Option<(String, String, String, String)> = query_as(
+        "SELECT owner_account_id, execution_agent_id, run_trigger, connector_audience \
          FROM cloud_agent_fallback_runs WHERE run_id = $1",
     )
     .bind(run_id)
     .fetch_optional(pool)
     .await?;
-    let Some((account_id, agent_id, trigger)) = row else {
+    let Some((account_id, agent_id, trigger, audience)) = row else {
         return Ok(Vec::new());
     };
     let tools = tools_for_run(
@@ -121,6 +127,7 @@ async fn compute_and_store(
         &account_id,
         &agent_id,
         RunTrigger::parse(&trigger),
+        ConnectorAudience::parse(&audience),
     )
     .await?;
     let json = serde_json::to_value(&tools).unwrap_or_else(|_| Value::Array(Vec::new()));

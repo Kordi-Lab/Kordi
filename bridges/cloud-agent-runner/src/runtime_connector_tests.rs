@@ -67,6 +67,7 @@ fn run(trigger: &str, tools: Vec<ConnectorToolDescriptor>) -> CloudAgentRun {
         connectors: LeaseConnectors {
             trigger: Some(trigger.into()),
             tools,
+            audience: Some("owner_private".into()),
         },
     }
 }
@@ -214,7 +215,11 @@ fn descriptors_become_model_tools_and_the_prompt_lists_them() {
         vec![descriptor("gmail.search", ConnectorToolGroup::Read)],
     );
     let definitions = connectors::tool_definitions(&background);
-    assert_eq!(definitions.len(), 1);
+    assert_eq!(definitions.len(), 2);
+    assert_eq!(
+        definitions[1]["function"]["name"],
+        "connectors_request_connect"
+    );
     assert_eq!(definitions[0]["function"]["name"], "gmail.search");
     assert_eq!(
         definitions[0]["function"]["parameters"]["properties"]["q"]["type"],
@@ -346,4 +351,46 @@ fn broker_answers_become_results_or_clear_errors() {
         .unwrap_err()
         .to_string()
         .contains("HTTP 502"));
+}
+
+#[tokio::test]
+async fn request_connect_returns_a_settings_link_only_on_owner_private_runs() {
+    let client = BrokerClient::default();
+    let call = ModelToolCall {
+        id: "call_connect".into(),
+        name: "connectors_request_connect".into(),
+        arguments: json!({ "provider": "slack" }),
+    };
+    let private = run("person_started", Vec::new());
+    assert!(connectors::tool_definitions(&private)
+        .iter()
+        .any(|tool| tool["function"]["name"] == "connectors_request_connect"));
+    let output = connectors::execute_connector_call(&client, &private, &call)
+        .await
+        .unwrap();
+    let result: Value = serde_json::from_str(output.as_str().unwrap()).unwrap();
+    assert_eq!(
+        result["openUrl"],
+        "kordi://settings/connectors?provider=slack"
+    );
+    assert!(
+        client.calls.lock().unwrap().is_empty(),
+        "no grant, no broker"
+    );
+
+    let mut shared = run("person_started", Vec::new());
+    shared.connectors.audience = Some("shared".into());
+    assert!(connectors::tool_definitions(&shared).is_empty());
+    let refused = connectors::execute_connector_call(&client, &shared, &call)
+        .await
+        .unwrap();
+    assert!(refused.as_str().unwrap().contains("not available"));
+    let parsed: LeaseConnectors = serde_json::from_value(json!({
+        "trigger": "person_started",
+        "connectorTools": [],
+        "connectorAudience": "owner_private"
+    }))
+    .unwrap();
+    assert!(parsed.is_owner_private());
+    assert!(!LeaseConnectors::default().is_owner_private());
 }
