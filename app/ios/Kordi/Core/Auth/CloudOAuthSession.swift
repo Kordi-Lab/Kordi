@@ -95,7 +95,9 @@ final class CloudOAuthSession: NSObject, ASWebAuthenticationPresentationContextP
         return scenes.first?.windows.first ?? UIWindow(frame: .zero)
     }
 
-    private func open(_ url: URL) async throws -> URL {
+    /// Opens `url` in a web authentication session that finishes on the app's
+    /// OAuth callback scheme. Connector grants reuse it for their provider page.
+    func open(_ url: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             let completion: ASWebAuthenticationSession.CompletionHandler = { [weak self] callbackURL, error in
                 Task { @MainActor in
