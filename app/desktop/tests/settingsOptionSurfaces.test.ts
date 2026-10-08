@@ -11,6 +11,7 @@ function readSource(relativePath: string): string {
 test('settings pages render titled sections of divided rows without card shells', () => {
   const settingsPage = readSource('pages/SettingsPage.tsx');
   const cloudSettings = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const cloudSettingsNav = readSource('pages/cloudAccountSettingsNav.ts');
   const layout = readSource('kordi-app/components/settingsLayout.tsx');
   const shellCss = readDesktopShellCss();
 
@@ -42,7 +43,7 @@ test('settings navigation is one shared searchable rail with grouped items and a
     assert.match(source, /<SettingsNav/);
     assert.doesNotMatch(source, /app-list-item-active/);
   }
-  assert.match(cloudSettings, /label: 'Account',[\s\S]*id: 'profile'[\s\S]*id: 'devices'[\s\S]*label: 'Settings',[\s\S]*id: 'auth'[\s\S]*id: 'notifications'[\s\S]*id: 'appearance'/);
+  assert.match(cloudSettingsNav, /label: 'Account',[\s\S]*id: 'profile'[\s\S]*id: 'devices'[\s\S]*label: 'Settings',[\s\S]*id: 'auth'[\s\S]*id: 'notifications'[\s\S]*id: 'appearance'/);
   assert.match(layout, /aria-label="Search settings"/);
   assert.match(layout, /app-settings-nav-item/);
   assert.match(layout, /app-settings-nav-item-active/);
