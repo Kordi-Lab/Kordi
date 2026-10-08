@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Laptop, LogOut, Pencil, RefreshCw, ShieldAlert, Smartphone, X } from 'lucide-react';
+import { LogOut, Pencil, RefreshCw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import {
-  AppDialog,
-  AppDialogActions,
-  AppDialogDescription,
-  AppDialogTitle,
-} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 import {
@@ -15,73 +9,61 @@ import {
   type CloudAuthClient,
   type CloudDeviceAuthorization,
 } from './authClient';
+import {
+  appVersionLabel,
+  deviceTitle,
+  groupCloudDevices,
+  platformVersionLabel,
+  signInMethodLabel,
+} from './cloudDeviceGroups';
+import {
+  DeviceLogoutDialog,
+  DeviceRenameDialog,
+  type Confirmation,
+  type RenameRequest,
+} from './CloudDevicesPanelDialogs';
+import {
+  DeviceCard,
+  DeviceGroupCard,
+  DeviceIcon,
+  SessionRow,
+  StatusLine,
+} from './CloudDevicesPanelParts';
 import { loadSession } from './session';
 
 const cachedDevicesByAccount = new Map<string, CloudDeviceAuthorization[]>();
 export const CLOUD_DEVICES_CHANGED_EVENT = 'kordi-cloud-devices-changed';
-const sessionDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-});
 
-type Confirmation =
-  | { kind: 'one'; device: CloudDeviceAuthorization; operationId: string }
-  | { kind: 'others'; operationId: string };
+export type CloudDevicesClient = Pick<
+  CloudAuthClient,
+  'listDevices' | 'renameDevice' | 'confirmDevice' | 'revokeDevice' | 'revokeOtherDevices'
+>;
 
-type RenameRequest = {
-  device: CloudDeviceAuthorization;
-  displayName: string;
-  operationId: string;
-};
-
-function deviceTitle(device: CloudDeviceAuthorization): string {
-  return device.displayName?.trim()
-    || (device.platform === 'ios' ? 'iPhone' : device.platform === 'macos' ? 'Mac' : 'Kordi device');
+function operationIdsFor(devices: CloudDeviceAuthorization[]): Map<string, string> {
+  return new Map(devices.map((device) => [device.deviceId, crypto.randomUUID()]));
 }
 
-function deviceDetails(device: CloudDeviceAuthorization): string | null {
-  return [device.platform, device.osVersion, device.appVersion ? `Kordi ${device.appVersion}` : null]
-    .filter(Boolean)
-    .join(' · ') || null;
-}
+export type CloudDevicesSessionLoader = () => Promise<{ token: string; accountId: string } | null>;
 
-function lastActiveDescription(value: string | null): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  const elapsed = Math.max(0, Date.now() - date.getTime());
-  if (elapsed < 60_000) return 'Active just now';
-  if (elapsed < 3_600_000) return `Active ${Math.max(1, Math.floor(elapsed / 60_000))} min ago`;
-  if (elapsed < 86_400_000) return `Active ${Math.max(1, Math.floor(elapsed / 3_600_000))} hr ago`;
-  return `Last active ${sessionDateFormatter.format(date)}`;
-}
-
-function DeviceIcon({ platform }: { platform: string | null }) {
-  const Icon = platform === 'ios' ? Smartphone : Laptop;
-  return <Icon className="h-4 w-4" aria-hidden="true" />;
-}
-
-function DeviceSummary({ device }: { device: CloudDeviceAuthorization }) {
-  const details = deviceDetails(device);
-  const activity = [device.approximateLocation, lastActiveDescription(device.lastActiveAt)]
-    .filter((value): value is string => Boolean(value))
-    .join(' · ');
+function SectionHeading({ id, children }: { id: string; children: string }) {
   return (
-    <>
-      {details ? <p className="m-0 mt-1 text-[11px] leading-4 text-slate-400">{details}</p> : null}
-      {activity ? <p className="m-0 mt-1 text-[11px] leading-4 text-slate-400">{activity}</p> : null}
-    </>
+    <h2 id={id} className="m-0 text-[13px] font-semibold text-white">
+      {children}
+    </h2>
   );
 }
 
 export function CloudDevicesPanel({
   accountId,
   client,
+  sessionLoader = loadSession,
 }: {
   accountId: string;
-  client?: CloudAuthClient;
+  client?: CloudDevicesClient;
+  /** Resolves the signed-in session. Previews inject a synthetic session. */
+  sessionLoader?: CloudDevicesSessionLoader;
 }) {
-  const authClient = useMemo(() => client ?? defaultCloudAuthClient(), [client]);
+  const authClient = useMemo<CloudDevicesClient>(() => client ?? defaultCloudAuthClient(), [client]);
   const cached = cachedDevicesByAccount.get(accountId);
   const [devices, setDevices] = useState<CloudDeviceAuthorization[]>(cached ?? []);
   const [isLoading, setIsLoading] = useState(!cached);
@@ -94,7 +76,7 @@ export function CloudDevicesPanel({
   const refresh = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
     if (!quiet) setIsLoading(true);
     try {
-      const session = await loadSession();
+      const session = await sessionLoader();
       if (!session?.token || session.accountId !== accountId) {
         throw new Error('The active account session is unavailable. Sign in again.');
       }
@@ -107,7 +89,7 @@ export function CloudDevicesPanel({
     } finally {
       setIsLoading(false);
     }
-  }, [accountId, authClient]);
+  }, [accountId, authClient, sessionLoader]);
 
   useEffect(() => {
     let active = true;
@@ -149,7 +131,7 @@ export function CloudDevicesPanel({
   };
 
   const confirmDevice = async (device: CloudDeviceAuthorization) => {
-    const session = await loadSession();
+    const session = await sessionLoader();
     if (!session?.token || session.accountId !== accountId) {
       setError('The active account session is unavailable. Sign in again.');
       return;
@@ -170,26 +152,35 @@ export function CloudDevicesPanel({
   };
 
   const executeRevocation = async () => {
-    const session = await loadSession();
+    const session = await sessionLoader();
     if (!session?.token || session.accountId !== accountId || !confirmation) {
       setError('The active account session is unavailable. Sign in again.');
       return;
     }
+    const token = session.token;
     if (confirmation.kind === 'one') {
       const target = confirmation.device;
       await mutate(
-        () => authClient.revokeDevice(
-          session.token,
-          target.deviceId,
-          confirmation.operationId,
-        ),
+        () => authClient.revokeDevice(token, target.deviceId, confirmation.operationId),
         [target.deviceId],
       );
       return;
     }
+    if (confirmation.kind === 'group' || confirmation.kind === 'legacy') {
+      const targets = confirmation.kind === 'group' ? confirmation.group.devices : confirmation.devices;
+      const { operationIds } = confirmation;
+      await mutate(async () => {
+        for (const target of targets) {
+          const operationId = operationIds.get(target.deviceId) ?? crypto.randomUUID();
+          operationIds.set(target.deviceId, operationId);
+          await authClient.revokeDevice(token, target.deviceId, operationId);
+        }
+      }, targets.map((target) => target.deviceId));
+      return;
+    }
     const affectedIds = devices.filter((device) => !device.currentDevice).map((device) => device.deviceId);
     await mutate(
-      () => authClient.revokeOtherDevices(session.token, confirmation.operationId),
+      () => authClient.revokeOtherDevices(token, confirmation.operationId),
       affectedIds,
     );
   };
@@ -201,7 +192,7 @@ export function CloudDevicesPanel({
       setError('Enter a device name between 1 and 80 characters.');
       return;
     }
-    const session = await loadSession();
+    const session = await sessionLoader();
     if (!session?.token || session.accountId !== accountId) {
       setError('The active account session is unavailable. Sign in again.');
       return;
@@ -229,15 +220,13 @@ export function CloudDevicesPanel({
     }
   };
 
-  const currentDevice = devices.find((device) => device.currentDevice);
-  const otherDevices = devices.filter((device) => !device.currentDevice);
+  const { current: currentDevice, groups, legacy } = useMemo(() => groupCloudDevices(devices), [devices]);
+  const hasOtherSessions = groups.length > 0 || legacy.length > 0;
+  const actionsDisabled = busyDeviceId !== null;
 
   return (
     <div className="app-cloud-account-settings-section max-w-[680px] py-1">
-      <div className="flex items-start justify-between gap-4">
-        <p className="m-0 max-w-[60ch] text-[12px] leading-5 text-slate-400">
-          Review the installations that can access your Cloud account. Terminating a device revokes Kordi access, but cannot erase files already saved on it.
-        </p>
+      <div className="flex justify-end">
         <Button
           variant="quiet"
           size="icon"
@@ -258,13 +247,12 @@ export function CloudDevicesPanel({
 
       {isLoading && devices.length === 0 ? (
         <div className="grid min-h-32 place-items-center text-[12px] text-slate-400" role="status">
-          Loading active sessions…
+          Loading…
         </div>
       ) : devices.length === 0 ? (
         <div className="grid min-h-32 place-items-center text-center">
           <div>
-            <div className="text-[13px] font-medium text-white">No active sessions found</div>
-            <div className="mt-1 text-[12px] leading-5 text-slate-400">Refresh the list, or sign in again if this device is missing.</div>
+            <div className="text-[13px] font-medium text-white">No active sessions.</div>
           </div>
         </div>
       ) : (
@@ -272,13 +260,11 @@ export function CloudDevicesPanel({
           {currentDevice ? (
             <section aria-labelledby="current-device-heading">
               <div className="mb-2 flex min-h-8 items-center justify-between gap-3">
-                <h2 id="current-device-heading" className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                  This device
-                </h2>
+                <SectionHeading id="current-device-heading">This device</SectionHeading>
                 <Button
                   variant="quiet"
                   className="h-8 rounded-full px-3 text-[11px] text-sky-200 hover:text-sky-100"
-                  disabled={busyDeviceId !== null}
+                  disabled={actionsDisabled}
                   onClick={() => setRenameRequest({
                     device: currentDevice,
                     displayName: deviceTitle(currentDevice),
@@ -289,177 +275,115 @@ export function CloudDevicesPanel({
                   Rename
                 </Button>
               </div>
-              <div className="border-y border-white/10 py-4">
-                <div className="flex items-start gap-3">
-                  <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-sky-400/10 text-sky-200">
-                    <DeviceIcon platform={currentDevice.platform} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="m-0 truncate text-[13px] font-medium text-white">{deviceTitle(currentDevice)}</h3>
-                    <DeviceSummary device={currentDevice} />
-                  </div>
-                </div>
-              </div>
-              {otherDevices.length > 0 ? (
+              <DeviceCard
+                highlighted
+                icon={<DeviceIcon platform={currentDevice.platform} />}
+                title={deviceTitle(currentDevice)}
+                subtitle={[
+                  platformVersionLabel(currentDevice.platform, currentDevice.osVersion),
+                  appVersionLabel(currentDevice.appVersion),
+                ].filter(Boolean).join(' · ')}
+                status={<StatusLine online lastActiveAt={currentDevice.lastActiveAt} location={currentDevice.approximateLocation} />}
+              />
+              {hasOtherSessions ? (
                 <Button
                   variant="quiet"
                   className="mt-2 h-auto w-full justify-start rounded-[12px] px-3 py-3 text-left text-rose-100 hover:text-rose-50"
-                  disabled={busyDeviceId !== null}
+                  disabled={actionsDisabled}
                   onClick={() => setConfirmation({
                     kind: 'others',
                     operationId: crypto.randomUUID(),
                   })}
                 >
                   <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 whitespace-normal">
-                    <span className="block text-[12px] font-medium">Terminate all other sessions</span>
-                    <span className="mt-0.5 block text-[11px] font-normal leading-4 text-slate-400">Signs out every other device except this one.</span>
-                  </span>
+                  <span className="text-[12px] font-medium">Log out of all other devices</span>
                 </Button>
               ) : (
-                <p className="m-0 mt-3 text-[11px] leading-4 text-slate-400">No other active sessions are connected to this account.</p>
+                <p className="m-0 mt-3 text-[11px] leading-4 text-slate-400">No other devices.</p>
               )}
             </section>
           ) : (
             <div className="rounded-[12px] bg-amber-500/10 px-3 py-2 text-[12px] leading-5 text-amber-100" role="status">
-              Kordi could not identify this device in the active session list. Refresh before terminating another session.
+              This device is not in the list. Refresh and try again.
             </div>
           )}
 
-          <section className="mt-7" aria-labelledby="other-devices-heading">
-            <h2 id="other-devices-heading" className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-              Active devices
-            </h2>
-            {otherDevices.length === 0 ? (
-              <p className="m-0 mt-3 border-t border-white/10 pt-4 text-[12px] leading-5 text-slate-400">Your other devices will appear here after they sign in.</p>
-            ) : (
-              <div className="mt-2 divide-y divide-white/10 border-y border-white/10">
-                {otherDevices.map((device) => {
-                  const pending = device.authorizationState === 'pending_review';
-                  const busy = busyDeviceId === device.deviceId;
+          {groups.length > 0 ? (
+            <section className="mt-7" aria-labelledby="other-devices-heading">
+              <SectionHeading id="other-devices-heading">Other devices</SectionHeading>
+              <div className="mt-2 grid gap-2">
+                {groups.map((group) => (
+                  <DeviceGroupCard
+                    key={group.key}
+                    group={group}
+                    busyDeviceId={busyDeviceId}
+                    onConfirmDevice={(device) => { void confirmDevice(device); }}
+                    onLogOutDevice={(device) => setConfirmation({ kind: 'one', device, operationId: crypto.randomUUID() })}
+                    onLogOutGroup={() => setConfirmation({
+                      kind: 'group',
+                      group,
+                      operationIds: operationIdsFor(group.devices),
+                    })}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {legacy.length > 0 ? (
+            <section className="mt-7" aria-labelledby="older-sign-ins-heading">
+              <SectionHeading id="older-sign-ins-heading">Older sign-ins</SectionHeading>
+              <ul className="m-0 mt-2 list-none divide-y divide-white/10 border-y border-white/10 p-0">
+                {legacy.map((device) => {
+                  const title = `${signInMethodLabel(device.signInMethod)} sign-in`;
                   return (
-                    <article key={device.deviceId} className="py-4" aria-label={deviceTitle(device)}>
-                      <div className="flex items-start gap-3">
-                        <div className={cn(
-                          'mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.06] text-slate-300',
-                          pending && 'bg-amber-500/10 text-amber-200',
-                        )}>
-                          {pending ? <ShieldAlert className="h-4 w-4" aria-hidden="true" /> : <DeviceIcon platform={device.platform} />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <h3 className="m-0 truncate text-[13px] font-medium text-white">{deviceTitle(device)}</h3>
-                            {pending ? (
-                              <span className="rounded-full bg-amber-400/10 px-2 py-0.5 text-[10px] font-medium text-amber-100">Needs review</span>
-                            ) : null}
-                          </div>
-                          <DeviceSummary device={device} />
-                          {pending ? (
-                            <Button
-                              variant="secondary"
-                              className="mt-3 h-8 rounded-full px-3 text-[11px]"
-                              disabled={busy}
-                              onClick={() => { void confirmDevice(device); }}
-                            >
-                              <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                              This was me
-                            </Button>
-                          ) : null}
-                        </div>
-                        <Button
-                          variant="quiet"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 rounded-full text-slate-500 hover:text-rose-200"
-                          disabled={busy}
-                          aria-label={`Terminate ${deviceTitle(device)}`}
-                          onClick={() => setConfirmation({
-                            kind: 'one',
-                            device,
-                            operationId: crypto.randomUUID(),
-                          })}
-                        >
-                          <X className="h-4 w-4" aria-hidden="true" />
-                        </Button>
-                      </div>
-                    </article>
+                    <SessionRow
+                      key={device.deviceId}
+                      device={device}
+                      title={title}
+                      busy={busyDeviceId === device.deviceId}
+                      onConfirm={() => { void confirmDevice(device); }}
+                      logOutLabel={`Log out ${title}`}
+                      onLogOut={() => setConfirmation({ kind: 'one', device, operationId: crypto.randomUUID() })}
+                    />
                   );
                 })}
-              </div>
-            )}
-          </section>
-
-          <p className="m-0 mt-5 text-[11px] leading-4 text-slate-500">
-            Termination revokes Kordi Cloud access, but cannot erase files already saved on another device.
-          </p>
+              </ul>
+              <Button
+                variant="quiet"
+                className="mt-2 h-8 rounded-full px-3 text-[11px] text-rose-100 hover:text-rose-50"
+                disabled={actionsDisabled}
+                onClick={() => setConfirmation({
+                  kind: 'legacy',
+                  devices: legacy,
+                  operationIds: operationIdsFor(legacy),
+                })}
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                Log out of all older sign-ins
+              </Button>
+            </section>
+          ) : null}
         </div>
       )}
 
       {renameRequest ? (
-        <AppDialog
-          titleId="device-rename-title"
-          descriptionId="device-rename-description"
+        <DeviceRenameDialog
+          request={renameRequest}
+          busy={actionsDisabled}
+          onChange={(displayName) => setRenameRequest((current) => (current ? { ...current, displayName } : current))}
           onDismiss={() => setRenameRequest(null)}
-          dismissDisabled={busyDeviceId !== null}
-          busy={busyDeviceId !== null}
-          className="max-w-md rounded-[20px]"
-          backdropClassName="!z-[100000]"
-        >
-          <AppDialogTitle id="device-rename-title">Rename this device</AppDialogTitle>
-          <AppDialogDescription id="device-rename-description">
-            Use a name that helps you recognize this session in Kordi.
-          </AppDialogDescription>
-          <label className="mt-4 block text-[11px] font-medium text-slate-300" htmlFor="device-display-name">
-            Device name
-          </label>
-          <input
-            id="device-display-name"
-            className="app-input-shell mt-2 h-10 w-full rounded-[12px] px-3 text-[13px] text-white outline-none"
-            value={renameRequest.displayName}
-            maxLength={80}
-            autoFocus
-            disabled={busyDeviceId !== null}
-            onChange={(event) => setRenameRequest((current) => (
-              current ? { ...current, displayName: event.currentTarget.value } : current
-            ))}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                void executeRename();
-              }
-            }}
-          />
-          <AppDialogActions>
-            <Button variant="quiet" className="rounded-full px-4" disabled={busyDeviceId !== null} onClick={() => setRenameRequest(null)}>Cancel</Button>
-            <Button className="rounded-full px-4" disabled={busyDeviceId !== null || !renameRequest.displayName.trim()} onClick={() => { void executeRename(); }}>
-              {busyDeviceId !== null ? 'Saving…' : 'Save'}
-            </Button>
-          </AppDialogActions>
-        </AppDialog>
+          onSave={() => { void executeRename(); }}
+        />
       ) : null}
 
       {confirmation ? (
-        <AppDialog
-          titleId="device-revocation-title"
-          descriptionId="device-revocation-description"
+        <DeviceLogoutDialog
+          confirmation={confirmation}
+          busy={actionsDisabled}
           onDismiss={() => setConfirmation(null)}
-          dismissDisabled={busyDeviceId !== null}
-          busy={busyDeviceId !== null}
-          className="max-w-md rounded-[20px]"
-          backdropClassName="!z-[100000]"
-        >
-          <AppDialogTitle id="device-revocation-title">
-            {confirmation.kind === 'one' ? `Terminate ${deviceTitle(confirmation.device)}?` : 'Terminate all other sessions?'}
-          </AppDialogTitle>
-          <AppDialogDescription id="device-revocation-description">
-            Kordi will revoke every Cloud session on {confirmation.kind === 'one' ? 'this device' : 'the other devices'}. Local files already stored there will not be erased.
-          </AppDialogDescription>
-          <AppDialogActions>
-            <Button variant="quiet" className="rounded-full px-4" autoFocus disabled={busyDeviceId !== null} onClick={() => setConfirmation(null)}>Cancel</Button>
-            <Button className="rounded-full bg-rose-500 px-4 text-white hover:bg-rose-400" disabled={busyDeviceId !== null} onClick={() => { void executeRevocation(); }}>
-              {busyDeviceId !== null ? 'Terminating…' : 'Terminate access'}
-            </Button>
-          </AppDialogActions>
-        </AppDialog>
+          onConfirm={() => { void executeRevocation(); }}
+        />
       ) : null}
     </div>
   );
