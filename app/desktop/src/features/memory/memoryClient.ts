@@ -29,6 +29,9 @@ function ago(now: number, ms: number): string {
   return new Date(now - ms).toISOString();
 }
 
+/** Group uuid of the sample group memory; the cloud runner stores group memories under the bare uuid. */
+export const PREVIEW_GROUP_MEMORY_SCOPE_ID = '4f1c2a9e-7d3b-4e8a-9c61-2b5d8e0f3a17';
+
 export type PreviewMemoryClientOptions = {
   /** Simulated network latency in milliseconds. */
   latencyMs?: number;
@@ -80,7 +83,7 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
       'The site build fails when images are added without width and height. Set both before running the build again.', 5 * DAY),
     lesson('lesson-6', 'project', 'proj-kordi-plugins', '~/Projects/kordi-plugins', 'outcome',
       'Plugin tests pass only after the sample config is copied into the test folder. Copy it before the first run.', 21 * DAY),
-    lesson('lesson-7', 'group', 'group-design-review', 'Design review', 'repeated_failure',
+    lesson('lesson-7', 'group', PREVIEW_GROUP_MEMORY_SCOPE_ID, 'Design review', 'repeated_failure',
       'Share screenshots as attachments instead of links. Several members could not open the shared folder links.', 40 * DAY),
   ];
 

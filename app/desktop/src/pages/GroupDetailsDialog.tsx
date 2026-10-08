@@ -1,16 +1,6 @@
 import { filterGroupManagementMembers, normalizedSearch } from './groupManagementMembers';
 export { filterGroupManagementMembers } from './groupManagementMembers';
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import type {
-  FormEvent,
-} from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -32,6 +22,7 @@ import type {
   CloudGroupInvitationCreateInput,
   CloudGroupInvitationSummary,
 } from '@/features/cloud/authClient';
+import type { MemoryClient } from '@/features/memory/memoryClient';
 import { GroupAvatarEditor } from '@/kordi-app/components/GroupAvatarEditor';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
 import {
@@ -43,6 +34,7 @@ import {
 } from '@/features/chat/chatCreateFlows';
 import type { Contact, ConversationParticipant, ParticipantSpaceViewModel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import { GroupDetailsMemory } from '@/pages/groupDetailsMemory';
 import { GroupProfileHeader } from '@/pages/GroupProfileHeader';
 import { GroupInvitationSharePanel } from '@/pages/GroupInvitationSharePanel';
 import {
@@ -76,6 +68,8 @@ export type GroupDetailsDialogProps = {
   onRevokeGroupInvitation?: (invitationId: string) => Promise<void>;
   onMessageContact?: (contact: Contact) => Promise<void> | void;
   anchorRect?: GroupManagementPopoverAnchor | null;
+  /** Shows the group's Memory section; null hides it. */
+  memoryClient?: MemoryClient | null;
 };
 
 function isHumanMember(participant: ConversationParticipant) {
@@ -196,6 +190,7 @@ export function GroupDetailsDialog({
   onRevokeGroupInvitation,
   onMessageContact,
   anchorRect = null,
+  memoryClient = null,
 }: GroupDetailsDialogProps) {
   const memberSearchId = useId();
   const addSearchId = useId();
@@ -349,6 +344,7 @@ export function GroupDetailsDialog({
       : null;
     memberSearchRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (document.querySelector('[data-app-dialog-backdrop]')) return; // A confirmation dialog above owns the keys.
       if (event.key === 'Escape') {
         if (dialogRef.current?.querySelector('[data-group-avatar-menu]')) return;
         event.preventDefault();
@@ -903,6 +899,8 @@ export function GroupDetailsDialog({
                 )}
               </section>
             ) : null}
+
+            {memoryClient ? <GroupDetailsMemory client={memoryClient} space={space} /> : null}
 
             <section aria-label="Group settings" className="app-group-management-settings mt-3 border-t pt-1">
               <button

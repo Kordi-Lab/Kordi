@@ -43,9 +43,16 @@ export function lessonScopeGroupLabel(scope: MemoryLessonScope): string {
 
 export type MemoryLessonGroup = { scope: MemoryLessonScope; label: string; lessons: MemoryLesson[] };
 
+/** Personal memories: the settings page lists these; groups list theirs on the group info page. */
+export const PERSONAL_MEMORY_SCOPES: readonly MemoryLessonScope[] = ['conversation', 'project'];
+
 /** Groups memories by scope in a fixed order, newest first, without empty groups. */
-export function groupLessonsByScope(lessons: MemoryLesson[]): MemoryLessonGroup[] {
+export function groupLessonsByScope(
+  lessons: MemoryLesson[],
+  scopes: readonly MemoryLessonScope[] = scopeOrder,
+): MemoryLessonGroup[] {
   return scopeOrder
+    .filter((scope) => scopes.includes(scope))
     .map((scope) => ({
       scope,
       label: lessonScopeGroupLabel(scope),
@@ -80,6 +87,10 @@ export function validateLessonText(text: string): LessonTextValidation {
   if (!normalized) return { ok: false, reason: 'Enter a memory.' };
   if (normalized.length > LESSON_MAX_CHARS) return { ok: false, reason: `Memories are ${LESSON_MAX_CHARS} characters or fewer.` };
   return { ok: true, text: normalized };
+}
+
+export function memoryErrorMessage(caught: unknown, fallback: string): string {
+  return caught instanceof Error ? caught.message : fallback;
 }
 
 export function forgetConsequences(count: number): string {

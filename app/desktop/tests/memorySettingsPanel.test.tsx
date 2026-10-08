@@ -14,6 +14,7 @@ import {
 } from '../src/features/memory/memoryClient';
 import {
   LESSON_MAX_CHARS,
+  PERSONAL_MEMORY_SCOPES,
   forgetConsequences,
   groupLessonsByScope,
   lessonSourceLabel,
@@ -82,6 +83,16 @@ test('memories group by scope in a fixed order, newest first', () => {
   assert.deepEqual(groups.map((group) => group.label), ['Conversations', 'Groups']);
   assert.deepEqual(groups[0]?.lessons.map((lesson) => lesson.lessonId), ['c-new', 'c-old']);
   assert.deepEqual(groupLessonsByScope([]), []);
+});
+
+test('the scope filter keeps only the requested scopes', () => {
+  const lessons = [
+    sampleLesson({ lessonId: 'g1', scope: 'group' }),
+    sampleLesson({ lessonId: 'p1', scope: 'project' }),
+    sampleLesson({ lessonId: 'c1', scope: 'conversation' }),
+  ];
+  assert.deepEqual(groupLessonsByScope(lessons, PERSONAL_MEMORY_SCOPES).map((group) => group.label), ['Conversations', 'Projects']);
+  assert.deepEqual(groupLessonsByScope(lessons, ['group']).map((group) => group.label), ['Groups']);
 });
 
 test('memory text is normalized and limited', () => {
@@ -174,13 +185,15 @@ async function withPanel(
   }
 }
 
-test('panel lists memories in three scope groups', async () => {
+test('panel lists only personal memories and points to group info for the rest', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host) => {
     const headings = Array.from(host.querySelectorAll('h2')).map((heading) => heading.textContent);
-    assert.ok(headings.includes('Saved memories · 7'));
+    assert.ok(headings.includes('Saved memories · 6'));
     const groupHeadings = headings.filter((heading) => ['Conversations', 'Projects', 'Groups'].includes(heading ?? ''));
-    assert.deepEqual(groupHeadings, ['Conversations', 'Projects', 'Groups']);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 7);
+    assert.deepEqual(groupHeadings, ['Conversations', 'Projects']);
+    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 6);
+    assert.equal(host.querySelector('[data-memory-lesson="lesson-7"]'), null);
+    assert.match(host.textContent ?? '', /Group memories are managed from each group's info page\./);
     assert.match(host.textContent ?? '', /Replay state for this account/);
     assert.match(host.textContent ?? '', /6 runs/);
     assert.match(host.textContent ?? '', /Bridge conversation memory/);
@@ -240,14 +253,14 @@ test('editing past the limit shows the error without saving', async () => {
 
 test('deleting a memory asks first, then removes the row', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
-    await click(host.querySelector('[data-memory-lesson="lesson-7"] button[aria-label^="Delete memory"]'), window);
+    await click(host.querySelector('[data-memory-lesson="lesson-5"] button[aria-label^="Delete memory"]'), window);
     assert.match(document.body.textContent ?? '', /Delete this memory\?/);
     assert.match(document.body.textContent ?? '', /Kordi will not read it again on any device\. This cannot be undone\./);
     const dialog = document.body.querySelector('[role="dialog"], [role="alertdialog"]') ?? document.body;
     await click(buttonByText(dialog, 'Delete'), window);
-    assert.equal(host.querySelector('[data-memory-lesson="lesson-7"]'), null);
-    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 6);
-    assert.doesNotMatch(host.textContent ?? '', /Groups/);
+    assert.equal(host.querySelector('[data-memory-lesson="lesson-5"]'), null);
+    assert.equal(host.querySelectorAll('[data-memory-lesson]').length, 5);
+    assert.match(host.textContent ?? '', /Saved memories · 5/);
     assert.doesNotMatch(document.body.textContent ?? '', /Delete this memory\?/);
   });
 });
@@ -290,7 +303,7 @@ test('sync status names the account', async () => {
 
 test('replay state is hidden when the server does not offer it', async () => {
   await withPanel(createPreviewMemoryClient({ latencyMs: 0, replayAvailable: false }), async (host) => {
-    assert.match(host.textContent ?? '', /Saved memories · 7/);
+    assert.match(host.textContent ?? '', /Saved memories · 6/);
     assert.doesNotMatch(host.textContent ?? '', /Replay state/);
   });
 });
