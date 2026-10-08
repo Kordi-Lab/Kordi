@@ -1,5 +1,6 @@
 import { useCallback, type MutableRefObject } from 'react';
 
+import { cloudDefaultAgentAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { selfDisplayName, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
@@ -107,7 +108,7 @@ export function mapDesktopMessagesForTranscript(
 
     const assistantSenderLabel = cloudAgentIdentity?.name
       || assistantSenderLabelForTranscript(message.sender, avatarSeeds?.agentDisplayName);
-    const assistantAvatarSeed = cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed();
+    const assistantAvatarSeed = cloudDefaultAgentAvatarSeed(cloudAgentIdentity?.id) || cloudAgentIdentity?.id || avatarSeeds?.agent?.trim() || getLocalAgentAvatarSeed();
 
     return [{
       id: messageId,

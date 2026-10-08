@@ -1,6 +1,7 @@
 import type { CanonicalIdentity, CanonicalSessionState } from '@/kordi-app/types';
+import { getLocalAgentAvatar } from './localAgentAvatar';
 
-export const DEFAULT_LOCAL_AGENT_AVATAR_SEED = 'cloud-local-agent';
+export { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from './localAgentAvatar';
 
 const CLOUD_DEFAULT_AGENT_ID_PATTERN = /^cloud-(?:agent|self):([A-Za-z0-9_-]+)$/;
 
@@ -15,8 +16,9 @@ export function cloudDefaultAgentAvatarSeed(agentId: string | null | undefined) 
 
 export function canonicalIdentityAvatarSeed(identity: CanonicalIdentity | undefined) {
   if (!identity) return null;
+  // The local agent is the signed-in account's own default agent.
   if (identity.kind === 'agent' && identity.source === 'local') {
-    return DEFAULT_LOCAL_AGENT_AVATAR_SEED;
+    return getLocalAgentAvatar().seed;
   }
   if (identity.kind !== 'agent') return identity.avatarKey;
   const agentId = identity.agentId?.trim();
