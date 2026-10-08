@@ -14,6 +14,7 @@ mod prompt_history;
 pub(crate) mod route_fill;
 pub(crate) mod subsession_lifecycle;
 pub(crate) mod subsessions;
+pub mod terminal_backfill;
 
 pub use authorization::{
     claim_has_shared_cloud_agent_target, execution_agent_id, request_identity,

@@ -23,6 +23,9 @@ use uuid::Uuid;
 #[path = "desktop_claim.rs"]
 mod claim;
 pub(super) use claim::claim;
+#[path = "desktop_interrupted.rs"]
+mod interrupted;
+pub(super) use interrupted::interrupted;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -294,7 +297,10 @@ pub(super) async fn cancel(
     match query("UPDATE cloud_agent_fallback_runs SET status='cancelled',completed_at=$3,updated_at=$3 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")
         .bind(&run_id).bind(executor(&session,input.claim_id)).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await {
         Ok(value) if value.rows_affected()==1 => match super::subsession_execution::cancelled(state.db_pool(), &run_id).await {
-            Ok(()) => Json(json!({"ok":true})).into_response(),
+            Ok(()) => {
+                super::runs::terminal_backfill::publish_after_cancel(&state, &run_id).await;
+                Json(json!({"ok":true})).into_response()
+            }
             Err(e) => run_error_response("cancel follow-up", "Could not update the stopped session.", e),
         },
         Ok(_) => expired(),

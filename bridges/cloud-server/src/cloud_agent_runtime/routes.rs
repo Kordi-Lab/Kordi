@@ -66,6 +66,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             post(super::desktop::ready),
         )
         .route(
+            "/v1/cloud/agent-runs/desktop/interrupted",
+            post(super::desktop::interrupted),
+        )
+        .route(
             "/v1/cloud/agent-runs/desktop/claim",
             post(super::desktop::claim),
         )

@@ -74,6 +74,7 @@ export function useRecoveredCloudGroupReplay({
   onSettled?: () => void;
   reportWarning: (message: string, error: unknown) => void;
 }) {
+  const nativeShell = isNativeDesktopShell();
   const recoverySettled = useCloudAgentTurnRecovery({
     account,
     canonicalStateRef,
@@ -81,8 +82,8 @@ export function useRecoveredCloudGroupReplay({
     initialMessagesSettled,
     processedRequestIdsRef,
     reportWarning,
+    releaseClient: nativeShell ? client : null,
   });
-  const nativeShell = isNativeDesktopShell();
   const contextKey = account && (humanIdentityId || nativeShell)
     ? `${account.accountId}:${humanIdentityId || 'native'}`
     : null;

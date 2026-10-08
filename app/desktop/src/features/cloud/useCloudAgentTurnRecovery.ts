@@ -14,9 +14,10 @@ import type {
 } from '@/kordi-app/types';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { cloudAgentTurnLifecycleState } from '@/features/canonical/cloudAgentTurnLifecycle';
-import type { CloudAccount } from './authClient';
+import type { CloudAccount, CloudAuthClient } from './authClient';
 import { cloudGroupAgentConversationId } from './cloudGroupMessages';
 import { removeCloudGroupPendingRowsForTerminalResponse } from './cloudAgentRequestState';
+import { releaseInterruptedCloudAgentRequests } from './cloudInterruptedTurnRelease';
 
 export const CLOUD_AGENT_INTERRUPTED_TURN_NOTICE =
   'This reply was interrupted before it completed. Try again.';
@@ -131,6 +132,7 @@ export function useCloudAgentTurnRecovery({
   initialMessagesSettled,
   processedRequestIdsRef,
   reportWarning,
+  releaseClient = null,
 }: {
   account: CloudAccount | null;
   canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
@@ -140,16 +142,20 @@ export function useCloudAgentTurnRecovery({
   initialMessagesSettled: boolean;
   processedRequestIdsRef: MutableRefObject<Set<string>>;
   reportWarning: (message: string, error: unknown) => void;
+  /** Ends this desktop's lost runs on the server; set only where this app executes turns. */
+  releaseClient?: Pick<CloudAuthClient, 'desktopAgentExecution'> | null;
 }): boolean {
   const contextKey = account?.accountId ?? null;
   const [settledContextKey, setSettledContextKey] = useState<string | null>(
     null,
   );
   const reportWarningRef = useRef(reportWarning);
+  const releaseClientRef = useRef(releaseClient);
 
   useEffect(() => {
     reportWarningRef.current = reportWarning;
-  }, [reportWarning]);
+    releaseClientRef.current = releaseClient;
+  }, [releaseClient, reportWarning]);
 
   useEffect(() => {
     if (!contextKey) return;
@@ -171,6 +177,23 @@ export function useCloudAgentTurnRecovery({
         const persistedRows = await Promise.all(
           recoveries.map(({ request }) => upsertCanonicalMessageFast(request)),
         );
+        const releaseClient = releaseClientRef.current;
+        if (releaseClient) {
+          // The local row is terminal now; other devices still see the
+          // processing reply until the server ends this desktop's lost run.
+          void releaseInterruptedCloudAgentRequests(
+            releaseClient,
+            recoveries.map(({ request, requestId }) => ({
+              sessionId: request.sessionId,
+              requestId,
+            })),
+          ).then(({ failures }) => {
+            failures.forEach((error) => reportWarningRef.current(
+              '[cloud-group-agent] interrupted turn release failed',
+              error,
+            ));
+          });
+        }
         if (!active) return;
         recoveries.forEach(({ requestId }) => {
           processedRequestIdsRef.current.add(requestId);
