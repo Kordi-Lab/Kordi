@@ -48,7 +48,7 @@ pub(crate) async fn read(
     account: &str,
     input: CalendarReadInput,
 ) -> RunResult<Value> {
-    if input.offset > 1000 {
+    if input.offset > super::sync_routes::CALENDAR_CAPACITY as usize {
         return Err(RunError::NotFound);
     }
     let shared = match (&input.session_id, &input.request_message_id) {
