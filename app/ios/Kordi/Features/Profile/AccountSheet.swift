@@ -7,6 +7,7 @@ private enum AccountSettingsRoute: String, Hashable {
     case activeSessions = "active-sessions"
     case authentication
     case notifications
+    case memory
     case colorMode = "color-mode"
     case messageDisplay = "message-display"
     case chatTheme = "chat-theme"
@@ -57,15 +58,23 @@ struct AccountSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 settingsLink(.profile) { accountHeader }
-                settingsDivider
+                SettingsDivider()
 
-                settingsSectionTitle("Notifications")
+                SettingsSectionTitle("Notifications")
                 settingsLink(.notifications) {
                     CompactSettingsLabel(title: "Notifications", subtitle: "Messages, sounds, and previews", systemImage: "bell")
                 }
-                settingsDivider
+                SettingsDivider()
 
-                settingsSectionTitle("Appearance")
+                if model.isMemoryAvailable {
+                    SettingsSectionTitle("Memory")
+                    settingsLink(.memory) {
+                        CompactSettingsLabel(title: "Memory", subtitle: "What Kordi remembers across devices", systemImage: "brain")
+                    }
+                    SettingsDivider()
+                }
+
+                SettingsSectionTitle("Appearance")
                 settingsLink(.colorMode) {
                     CompactSettingsLabel(title: "Color mode", systemImage: "circle.lefthalf.filled", value: (AppAppearance(rawValue: appearanceRawValue) ?? .system).label)
                 }
@@ -75,9 +84,9 @@ struct AccountSheet: View {
                 settingsLink(.chatTheme) {
                     CompactSettingsLabel(title: "Chat theme", systemImage: "paintbrush", value: (KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet).label)
                 }
-                settingsDivider
+                SettingsDivider()
 
-                settingsSectionTitle("Account")
+                SettingsSectionTitle("Account")
                 settingsLink(.activeSessions) {
                     HStack {
                         CompactSettingsLabel(title: "Active sessions", subtitle: "Manage your connected devices", systemImage: "iphone.and.arrow.forward")
@@ -120,10 +129,19 @@ struct AccountSheet: View {
                 ProviderAuthenticationView()
             case .notifications:
                 NotificationSettingsView()
+            case .memory:
+                MemorySettingsView(
+                    service: model.makeMemoryService(),
+                    accountLabel: MemoryPresentation.accountLabel(
+                        email: model.account?.primaryEmail,
+                        kordiId: model.account?.kordiId
+                    )
+                )
             case .colorMode, .messageDisplay, .chatTheme:
                 CompactAppearanceSettingsView(route: route)
             }
         }
+        .task { await model.refreshMemoryCapabilities() }
         .toolbar {
             if !embeddedInNavigationStack {
                 ToolbarItem(placement: .cancellationAction) {
@@ -167,69 +185,18 @@ struct AccountSheet: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func settingsSectionTitle(_ title: String) -> some View {
-        Text(title)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.primary)
-            .textCase(nil)
-            .padding(.top, 6)
-            .padding(.bottom, 6)
-            .accessibilityAddTraits(.isHeader)
-    }
-
-    private var settingsDivider: some View {
-        Divider().padding(.vertical, 10)
-    }
-
     private func settingsLink<Content: View>(_ route: AccountSettingsRoute, @ViewBuilder content: () -> Content) -> some View {
         NavigationLink(value: route) {
             HStack(spacing: 10) {
                 content()
                 Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                SettingsChevron()
             }
             .frame(minHeight: 48)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("settings-\(route.rawValue)")
-    }
-}
-
-private struct CompactSettingsLabel: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    let title: String
-    var subtitle: String? = nil
-    let systemImage: String
-    var value: String? = nil
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body)
-                .frame(width: 22)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline)
-                if let subtitle {
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                }
-                if dynamicTypeSize.isAccessibilitySize, let value {
-                    Text(value).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            if !dynamicTypeSize.isAccessibilitySize, let value {
-                Spacer(minLength: 8)
-                Text(value).font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .foregroundStyle(.primary)
-        .padding(.vertical, 5)
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1337,6 +1304,12 @@ private extension AppAppearance {
         .environmentObject(AppModel(previewMode: true))
         .environmentObject(KordiCallCoordinator())
         .tint(KordiTheme.signalBlue)
+}
+
+struct MemorySettingsPreview: View {
+    var body: some View {
+        AccountSheet(previewing: .memory)
+    }
 }
 
 struct AccountAuthenticationPreview: View {

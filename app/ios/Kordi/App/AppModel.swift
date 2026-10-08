@@ -36,7 +36,7 @@ enum KordiPreviewModePersistence {
     private static let launchArguments: Set<String> = [
         "--preview-launching", "--preview-data", "--preview-background-stop", "--preview-markdown",
         "--preview-native-design", "--preview-native-agent", "--preview-native-thread", "--preview-native-samples",
-        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices",
+        "--preview-login", "--preview-signup", "--preview-account", "--preview-devices", "--preview-memory",
         "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
         "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
         "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
@@ -305,6 +305,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var loadingConversationIDs = Set<String>()
     @Published var errorMessage: String?
     @Published private(set) var accountEmailCodeState: AccountEmailCodeState?
+    /// Server capabilities for the Memory screen. Nil until loaded or when the
+    /// request fails, which keeps the Memory entry hidden.
+    @Published private(set) var memoryCapabilities: CloudAuthCapabilities?
 
     private let api: CloudAPIClient
     private let oauth: CloudOAuthSession
@@ -1062,6 +1065,27 @@ final class AppModel: ObservableObject {
         } catch {
             deviceErrorMessage = userFacing(error, fallback: "Could not load active devices.")
         }
+    }
+
+    var isMemoryAvailable: Bool { MemoryPresentation.isAvailable(memoryCapabilities) }
+
+    /// Loads the capability flag that shows the Memory settings entry.
+    func refreshMemoryCapabilities() async {
+        if previewMode {
+            memoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+            return
+        }
+        do {
+            memoryCapabilities = try await api.fetchCapabilities()
+        } catch {
+            // An unreachable server keeps the last known flag; without one the entry stays hidden.
+        }
+    }
+
+    /// The memory routes for the signed-in account, or the offline sample store in preview mode.
+    func makeMemoryService() -> any MemoryService {
+        if previewMode { return PreviewMemoryService() }
+        return CloudMemoryService(api: api) { [weak self] in self?.token }
     }
 
     func markDeviceReviewSeen() {
