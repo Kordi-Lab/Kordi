@@ -419,6 +419,7 @@ private struct RootView: View {
             || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
+            || ProcessInfo.processInfo.arguments.contains("--preview-group-memory")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
             || ProcessInfo.processInfo.arguments.contains("--preview-group-release-chat")
             || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
@@ -432,6 +433,7 @@ private struct RootView: View {
                }
                if ProcessInfo.processInfo.arguments.contains("--preview-group-chat")
                     || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
+                    || ProcessInfo.processInfo.arguments.contains("--preview-group-memory")
                     || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
                     || ProcessInfo.processInfo.arguments.contains("--preview-group-call") {
                    return $0.id == "group:mobile"
@@ -457,6 +459,8 @@ private struct RootView: View {
             NavigationStack {
                 if ProcessInfo.processInfo.arguments.contains("--preview-group-detail") {
                     SessionDetailView(conversation: conversation)
+                } else if ProcessInfo.processInfo.arguments.contains("--preview-group-memory") {
+                    SessionDetailView(conversation: conversation, opensMemory: true)
                 } else if ProcessInfo.processInfo.arguments.contains("--preview-group-invite"),
                           let space = GroupSpaceCatalog.build(
                               conversations: model.conversations,

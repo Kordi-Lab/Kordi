@@ -61,6 +61,38 @@ enum MemoryPresentation {
         }
     }
 
+    /// Personal memories for the Settings screen. Group memories live on each
+    /// group's info page, so they are left out here.
+    static func personalMemories(_ memories: [CloudMemory]) -> [CloudMemory] {
+        memories.filter { $0.scope != .group }
+    }
+
+    static let groupSessionPrefix = "session:group:"
+
+    /// The scope ids a group memory may carry for this conversation. The cloud
+    /// runner stores the group session id without its `session:group:` prefix,
+    /// so the group space id, the stripped session id, and the full session id
+    /// all match.
+    static func groupMemoryScopeIds(for conversation: ConversationSummary) -> Set<String> {
+        var ids = Set<String>()
+        if let space = conversation.groupSpaceId?.nonEmptyMemoryText { ids.insert(space) }
+        if let session = conversation.sessionId.nonEmptyMemoryText {
+            ids.insert(session)
+            if session.hasPrefix(groupSessionPrefix),
+               let stripped = String(session.dropFirst(groupSessionPrefix.count)).nonEmptyMemoryText {
+                ids.insert(stripped)
+            }
+        }
+        return ids
+    }
+
+    /// Group memories whose scope id matches, newest first.
+    static func memoriesForGroup(_ memories: [CloudMemory], scopeIds: Set<String>) -> [CloudMemory] {
+        memories
+            .filter { $0.scope == .group && scopeIds.contains($0.scopeId) }
+            .sorted(by: isNewer)
+    }
+
     private static func isNewer(_ lhs: CloudMemory, _ rhs: CloudMemory) -> Bool {
         let left = date(lhs.updatedAt) ?? .distantPast
         let right = date(rhs.updatedAt) ?? .distantPast

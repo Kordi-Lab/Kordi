@@ -100,7 +100,8 @@ final class PreviewMemoryService: MemoryService {
                    "The site build fails when images are added without width and height. Set both before running the build again.", hoursAgo: 5 * 24),
             memory("lesson-6", .project, "proj-kordi-plugins", "~/Projects/kordi-plugins", .outcome,
                    "Plugin tests pass only after the sample config is copied into the test folder. Copy it before the first run.", hoursAgo: 21 * 24),
-            memory("lesson-7", .group, "group-design-review", "Design review", .repeatedFailure,
+            // Matches the preview group conversation `group:mobile` (session id `session:group:mobile`).
+            memory("lesson-7", .group, "mobile", "Mobile builders", .repeatedFailure,
                    "Share screenshots as attachments instead of links. Several members could not open the shared folder links.", hoursAgo: 40 * 24),
         ]
     }
@@ -179,7 +180,13 @@ final class MemorySettingsModel: ObservableObject {
     }
 
     var hasLoaded: Bool { settings != nil }
-    var groups: [MemoryPresentation.Group] { MemoryPresentation.groups(memories) }
+    /// Conversation and project memories for the Settings screen.
+    var personalMemories: [CloudMemory] { MemoryPresentation.personalMemories(memories) }
+    var groups: [MemoryPresentation.Group] { MemoryPresentation.groups(personalMemories) }
+
+    func memories(forGroup scopeIds: Set<String>) -> [CloudMemory] {
+        MemoryPresentation.memoriesForGroup(memories, scopeIds: scopeIds)
+    }
 
     func syncCaption(now: Date = Date()) -> String? {
         guard let accountLabel else { return nil }

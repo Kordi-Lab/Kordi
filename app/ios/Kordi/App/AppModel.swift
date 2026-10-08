@@ -40,7 +40,7 @@ enum KordiPreviewModePersistence {
         "--preview-authentication", "--preview-authentication-detail", "--preview-codex-device-login",
         "--preview-contacts", "--preview-new-chat", "--preview-add-contact", "--preview-companion-panel",
         "--preview-companion-return", "--preview-contact-chat", "--preview-direct-call", "--preview-group-call",
-        "--preview-group-detail", "--preview-group-invite", "--preview-media", "--preview-media-messages",
+        "--preview-group-detail", "--preview-group-memory", "--preview-group-invite", "--preview-media", "--preview-media-messages",
         "--preview-media-expanded", "--preview-media-separated", "--preview-photo-send",
     ]
 
