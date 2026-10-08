@@ -39,7 +39,9 @@ There are two switches, both on by default.
 
 The switches are an account setting on the server. The Mac mirrors them into the global settings file as `memory.memory_enabled` and `memory.exclude_sensitive`, which is also what applies when you are signed out.
 
-On desktop, open account settings and choose the Memory tab. On iPhone, open the account sheet and choose Memory. Both screens list, edit, and delete memories, and both hide the Memory section when the server does not report `memoryVersion` in its capabilities.
+On desktop, open account settings and choose the Memory tab. On iPhone, open the account sheet and choose Memory. The Settings Memory page lists conversation and project memories. Group memories are listed on the group's info page instead (the desktop group details dialog, and the "Memory" tab of the iPhone group detail sheet), where they can be edited and deleted. These screens hide the Memory section when the server does not report `memoryVersion` in its capabilities.
+
+"Forget everything" in Settings still removes every memory, including group ones. A group memory's scope id is the group id (`session:group:<id>` stripped to `<id>`), and only the account that saved a memory sees it.
 
 ## What each control deletes
 
