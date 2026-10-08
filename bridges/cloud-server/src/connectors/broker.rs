@@ -6,8 +6,9 @@
 //! audits it, and returns only the result.
 
 use chrono::{DateTime, Utc};
+use sqlx_core::executor::Executor;
 use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
+use sqlx_postgres::{PgPool, Postgres};
 
 use crate::cloud_agent_runtime::provider_auth::ProviderAuthCipher;
 
@@ -16,6 +17,7 @@ use super::models::{
     ConnectorStatus, ConnectorToolGroup, RunTrigger,
 };
 use super::providers::{ConnectorProvider, ConnectorSecret, ProviderError};
+use super::refresh::{refresh_if_needed, RefreshFailure};
 use super::store::{self, NewAuditEntry, SealedSecret};
 use super::ConnectorRuntime;
 
@@ -101,19 +103,23 @@ type SecretRow = (
 
 /// The only function that reads `cloud_connector_secrets`.
 ///
-/// Callers are limited to this broker and to `connectors::oauth` (provider
-/// revoke on disconnect). Do not add other readers: every other module must
-/// go through the broker so tokens never leave the server.
-pub(super) async fn read_sealed_secret(
-    pool: &PgPool,
+/// Callers are limited to this broker, its refresh step
+/// (`connectors::refresh`), and `connectors::oauth` (provider revoke on
+/// disconnect). Do not add other readers: every other module must go through
+/// the broker so tokens never leave the server.
+pub(super) async fn read_sealed_secret<'e, E>(
+    executor: E,
     connector_id: &str,
-) -> Result<Option<SealedSecret>, sqlx_core::Error> {
+) -> Result<Option<SealedSecret>, sqlx_core::Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
     let row: Option<SecretRow> = query_as(
         "SELECT ciphertext, nonce, key_version, refresh_ciphertext, expires_at \
          FROM cloud_connector_secrets WHERE connector_id = $1",
     )
     .bind(connector_id)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await?;
     Ok(row.map(
         |(ciphertext, nonce, key_version, refresh_ciphertext, expires_at)| SealedSecret {
@@ -340,22 +346,20 @@ async fn call_inner(
             ));
         }
     };
-    let secret = refresh_if_needed(pool, cipher, provider.as_ref(), &connector, secret)
-        .await
-        .map_err(|message| reject(codes::NOT_CONNECTED, message));
-    let secret = match secret {
-        Ok(secret) => secret,
-        Err(response) => {
-            audit
-                .write(
-                    group,
-                    AuditOutcome::Failed,
-                    "Failed: the credential could not be refreshed.",
-                )
-                .await;
-            return Err(response);
-        }
-    };
+    let secret =
+        match refresh_if_needed(pool, cipher, provider.as_ref(), connector_id, secret).await {
+            Ok(secret) => secret,
+            Err(failure) => {
+                audit
+                    .write(
+                        group,
+                        AuditOutcome::Failed,
+                        &format!("Failed: {}", failure.audit_phrase()),
+                    )
+                    .await;
+                return Err(refresh_rejection(&failure));
+            }
+        };
 
     match provider.execute(tool, &request.args, &secret).await {
         Ok(result) => {
@@ -369,7 +373,11 @@ async fn call_inner(
                 let _ = store::mark_needs_reauth(pool, connector_id).await;
             }
             audit
-                .write(group, AuditOutcome::Failed, &format!("Failed: {error}."))
+                .write(
+                    group,
+                    AuditOutcome::Failed,
+                    &format!("Failed: {}", error.audit_phrase()),
+                )
                 .await;
             Err(reject(
                 codes::PROVIDER_FAILED,
@@ -399,40 +407,22 @@ fn provider_failure_message(error: &ProviderError) -> String {
     }
 }
 
-async fn refresh_if_needed(
-    pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
-    provider: &dyn ConnectorProvider,
-    connector: &ConnectorRecord,
-    secret: ConnectorSecret,
-) -> Result<ConnectorSecret, &'static str> {
-    if !secret.needs_refresh(Utc::now()) {
-        return Ok(secret);
+fn refresh_rejection(failure: &RefreshFailure) -> Box<BrokerCallResponse> {
+    match failure {
+        RefreshFailure::NeedsReauth => reject(
+            codes::NOT_CONNECTED,
+            "The connector credential expired. Reconnect it.",
+        ),
+        RefreshFailure::Disconnected => reject(codes::NOT_FOUND, "Connector not found."),
+        RefreshFailure::Provider(_) => reject(
+            codes::PROVIDER_FAILED,
+            "The provider could not refresh the connection. Try again.",
+        ),
+        RefreshFailure::Storage => reject(
+            codes::SERVER_ERROR,
+            "The refreshed credential could not be saved.",
+        ),
     }
-    let reconnect = "The connector credential expired. Reconnect it.";
-    if secret.refresh_token.is_none() {
-        let _ = store::mark_needs_reauth(pool, &connector.connector_id).await;
-        return Err(reconnect);
-    }
-    let client = provider.oauth_client().map_err(|_| reconnect)?;
-    let refreshed = match provider.refresh(&client, &secret).await {
-        Ok(refreshed) => refreshed,
-        Err(error) => {
-            eprintln!("[connectors] refresh {}: {error}", connector.connector_id);
-            if matches!(error, ProviderError::Unauthorized) {
-                let _ = store::mark_needs_reauth(pool, &connector.connector_id).await;
-            }
-            return Err(reconnect);
-        }
-    };
-    let sealed = seal_secret(cipher, &refreshed).map_err(|_| reconnect)?;
-    if let Err(error) = store::write_secret(pool, &connector.connector_id, &sealed).await {
-        eprintln!(
-            "[connectors] store refreshed secret {}: {error}",
-            connector.connector_id
-        );
-    }
-    Ok(refreshed)
 }
 
 /// Tool descriptors a run may receive for one connector. PR 2 calls this

@@ -1,5 +1,6 @@
 //! The connector audit log.
 
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Utc};
 use sqlx_core::executor::Executor;
 use sqlx_core::query::query;
@@ -56,22 +57,43 @@ type AuditRow = (
     DateTime<Utc>,
 );
 
-/// Newest first. `before` is exclusive.
+/// Opaque paging cursor for the entry at `(created_at, audit_id)`: the
+/// RFC 3339 time and the id joined by a space, base64url encoded.
+pub fn encode_audit_cursor(created_at: &str, audit_id: &str) -> String {
+    URL_SAFE_NO_PAD.encode(format!("{created_at} {audit_id}"))
+}
+
+pub fn decode_audit_cursor(cursor: &str) -> Option<(DateTime<Utc>, String)> {
+    let bytes = URL_SAFE_NO_PAD.decode(cursor.trim()).ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    let (time, audit_id) = text.split_once(' ')?;
+    if audit_id.is_empty() {
+        return None;
+    }
+    let time = DateTime::parse_from_rfc3339(time).ok()?;
+    Some((time.with_timezone(&Utc), audit_id.to_string()))
+}
+
+/// Newest first. `before` is an exclusive `(created_at, audit_id)` bound,
+/// so entries that share a timestamp are neither skipped nor repeated.
 pub async fn list_audit(
     pool: &PgPool,
     connector_id: &str,
     limit: i64,
-    before: Option<DateTime<Utc>>,
+    before: Option<(DateTime<Utc>, String)>,
 ) -> StoreResult<Vec<ConnectorAuditEntry>> {
+    let (before_at, before_id) = before.unzip();
     let rows: Vec<AuditRow> = query_as(
         "SELECT audit_id, connector_id, run_id, agent_id, tool, tool_group, outcome, summary, \
                 created_at \
          FROM cloud_connector_audit \
-         WHERE connector_id = $1 AND ($2::timestamptz IS NULL OR created_at < $2) \
-         ORDER BY created_at DESC, audit_id DESC LIMIT $3",
+         WHERE connector_id = $1 \
+           AND ($2::timestamptz IS NULL OR (created_at, audit_id) < ($2, $3::text)) \
+         ORDER BY created_at DESC, audit_id DESC LIMIT $4",
     )
     .bind(connector_id)
-    .bind(before)
+    .bind(before_at)
+    .bind(before_id)
     .bind(limit)
     .fetch_all(pool)
     .await?;

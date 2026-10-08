@@ -273,12 +273,33 @@ pub enum ProviderError {
     NotConfigured(String),
     #[error("unknown connector tool")]
     UnknownTool,
+    /// The credential is gone for good (`invalid_grant`, or a 401 from a
+    /// tool call). The connector needs a new sign-in.
     #[error("the provider rejected the credential")]
     Unauthorized,
+    /// The provider could not be reached. Retryable.
     #[error("provider request failed: {0}")]
     Request(String),
+    /// The provider answered with an error other than `invalid_grant`.
+    /// Retryable; the connector stays connected.
+    #[error("provider rejected the request: {0}")]
+    Rejected(String),
     #[error("provider response was not understood")]
     InvalidResponse,
+}
+
+impl ProviderError {
+    /// Fixed wording for audit summaries. Raw provider text never reaches
+    /// the audit log, which the owner reads in settings.
+    pub fn audit_phrase(&self) -> &'static str {
+        match self {
+            Self::Unauthorized => "The connector needs a new sign-in.",
+            Self::Request(_) | Self::NotConfigured(_) => "The service was unreachable.",
+            Self::Rejected(_) | Self::InvalidResponse | Self::UnknownTool => {
+                "The service rejected the request."
+            }
+        }
+    }
 }
 
 #[async_trait]

@@ -7,7 +7,9 @@ pub mod broker;
 pub mod events;
 pub mod models;
 pub mod oauth;
+pub mod oauth_complete;
 pub mod providers;
+mod refresh;
 pub mod routes;
 pub mod store;
 

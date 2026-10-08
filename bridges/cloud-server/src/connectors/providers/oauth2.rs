@@ -31,6 +31,16 @@ struct RawSlackUser {
     scope: Option<String>,
 }
 
+/// Maps a token endpoint error code. Only `invalid_grant` means the grant
+/// is gone; anything else is a retryable provider error.
+fn token_error(code: Option<&str>) -> ProviderError {
+    match code {
+        Some("invalid_grant") => ProviderError::Unauthorized,
+        Some(code) => ProviderError::Rejected(code.chars().take(80).collect()),
+        None => ProviderError::Rejected("provider error".to_string()),
+    }
+}
+
 /// Normalizes a token endpoint body into a [`TokenGrant`].
 pub(crate) fn token_grant_from_json(
     body: &Value,
@@ -40,9 +50,7 @@ pub(crate) fn token_grant_from_json(
     let raw: RawTokenResponse =
         serde_json::from_value(body.clone()).map_err(|_| ProviderError::InvalidResponse)?;
     if raw.ok == Some(false) || raw.error.is_some() {
-        return Err(ProviderError::Request(
-            raw.error.unwrap_or_else(|| "provider error".to_string()),
-        ));
+        return Err(token_error(raw.error.as_deref()));
     }
     let (access, refresh, expires_in, scope) = match raw.access_token {
         Some(access) => (access, raw.refresh_token, raw.expires_in, raw.scope),
@@ -89,12 +97,16 @@ impl OAuth2ConnectorProvider {
             .await
             .map_err(|error| ProviderError::Request(error.without_url().to_string()))?;
         let status = response.status();
-        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::BAD_REQUEST
-        {
-            return Err(ProviderError::Unauthorized);
-        }
         if !status.is_success() {
-            return Err(ProviderError::Request(format!("HTTP {}", status.as_u16())));
+            let body = response.json::<Value>().await.ok();
+            let code = body
+                .as_ref()
+                .and_then(|body| body.get("error"))
+                .and_then(Value::as_str);
+            return Err(match token_error(code) {
+                ProviderError::Unauthorized => ProviderError::Unauthorized,
+                _ => ProviderError::Rejected(format!("HTTP {}", status.as_u16())),
+            });
         }
         response
             .json::<Value>()
@@ -184,7 +196,7 @@ impl ConnectorProvider for OAuth2ConnectorProvider {
         if response.status().is_success() {
             Ok(())
         } else {
-            Err(ProviderError::Request(format!(
+            Err(ProviderError::Rejected(format!(
                 "HTTP {}",
                 response.status().as_u16()
             )))

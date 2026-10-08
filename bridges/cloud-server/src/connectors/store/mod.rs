@@ -1,7 +1,9 @@
 //! Postgres access for connectors.
 //!
 //! This module writes `cloud_connector_secrets` but never reads it. The one
-//! reader is `broker::read_sealed_secret`.
+//! reader is `broker::read_sealed_secret`. Parked grant credentials are read
+//! back only by `pending_grant::take_pending_grant`, which hands them to the
+//! grant transaction still sealed.
 
 use std::collections::HashMap;
 
@@ -16,10 +18,19 @@ use super::models::{ConnectorRecord, ConnectorStatus, ConnectorSummary, CONNECTO
 mod audit;
 mod grant;
 mod oauth_state;
+mod pending_grant;
 
-pub use audit::{insert_audit, list_audit, NewAuditEntry};
-pub use grant::{apply_grant, disconnect, merge_scopes, write_secret, GrantUpdate, SealedSecret};
+pub use audit::{
+    decode_audit_cursor, encode_audit_cursor, insert_audit, list_audit, NewAuditEntry,
+};
+pub use grant::{
+    apply_grant, disconnect, merge_scopes, update_refreshed_secret, write_secret, GrantUpdate,
+    SealedSecret,
+};
 pub use oauth_state::{consume_oauth_state, insert_oauth_state, ConnectorOAuthState};
+pub use pending_grant::{
+    insert_pending_grant, sweep_expired_pending_grants, take_pending_grant, PendingGrant,
+};
 
 pub type StoreResult<T> = Result<T, sqlx_core::Error>;
 
@@ -226,13 +237,16 @@ pub async fn set_act_enabled(
     row.map(record_from_row).transpose()
 }
 
-pub async fn mark_needs_reauth(pool: &PgPool, connector_id: &str) -> StoreResult<()> {
+pub async fn mark_needs_reauth<'e, E>(executor: E, connector_id: &str) -> StoreResult<()>
+where
+    E: Executor<'e, Database = Postgres>,
+{
     query(
         "UPDATE cloud_connectors SET status = 'needs_reauth', updated_at = now() \
          WHERE connector_id = $1 AND status = 'connected'",
     )
     .bind(connector_id)
-    .execute(pool)
+    .execute(executor)
     .await?;
     Ok(())
 }

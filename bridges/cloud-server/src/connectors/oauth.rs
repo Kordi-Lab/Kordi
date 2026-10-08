@@ -11,17 +11,20 @@ use sqlx_postgres::PgPool;
 use crate::auth::oauth::{is_allowed_oauth_redirect, pkce_challenge, random_url_token};
 
 use super::broker::{load_secret, seal_secret};
-use super::models::{ConnectorRecord, ConnectorToolGroup, OAuthCompletedFragment};
+use super::models::{ConnectorRecord, ConnectorToolGroup, OAuthPendingFragment};
+use super::oauth_complete::park_grant;
 use super::providers::{
     ConnectorOAuthClient, ProviderError, ProviderSpec, ScopeParam, NOT_YET_AVAILABLE_PROVIDERS,
 };
-use super::store::{self, ConnectorOAuthState, GrantUpdate};
+use super::store::{self, ConnectorOAuthState};
 use super::ConnectorRuntime;
 
 pub const OAUTH_STATE_TTL_MINUTES: i64 = 10;
 
 #[derive(Debug)]
 pub enum StartError {
+    /// The provider-auth cipher is not configured on this server.
+    Unavailable,
     UnknownProvider,
     NotYetAvailable,
     NotConfigured(String),
@@ -75,6 +78,9 @@ pub async fn start_grant(
     grant: ConnectorToolGroup,
     redirect_after: Option<&str>,
 ) -> Result<String, StartError> {
+    if runtime.cipher.is_none() {
+        return Err(StartError::Unavailable);
+    }
     let provider_id = provider_id.trim();
     if NOT_YET_AVAILABLE_PROVIDERS.contains(&provider_id) {
         return Err(StartError::NotYetAvailable);
@@ -141,7 +147,7 @@ pub fn check_consumed_state(
 #[derive(Debug)]
 pub struct CallbackOutcome {
     pub redirect_after: Option<String>,
-    pub result: Result<OAuthCompletedFragment, CallbackError>,
+    pub result: Result<OAuthPendingFragment, CallbackError>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,7 +157,7 @@ pub struct CallbackError {
 }
 
 impl CallbackError {
-    fn new(code: &'static str, message: impl Into<String>) -> Self {
+    pub(super) fn new(code: &'static str, message: impl Into<String>) -> Self {
         Self {
             code,
             message: message.into(),
@@ -186,7 +192,9 @@ pub fn classify_granted_scopes(
     (pick(spec.read_scopes), act)
 }
 
-/// Handles the provider redirect back to the server.
+/// Handles the provider redirect back to the server: exchanges the code and
+/// parks the sealed tokens as a pending grant. The grant is applied only when
+/// the account that started it completes it (`oauth_complete::finish_grant`).
 pub async fn complete_grant(
     pool: &PgPool,
     runtime: &ConnectorRuntime,
@@ -312,42 +320,10 @@ pub async fn complete_grant(
             );
         }
     };
-    let summary = format!(
-        "Granted {} access to {}.",
-        state.grant.as_str(),
-        spec.display_name
-    );
-    let applied = store::apply_grant(
-        pool,
-        GrantUpdate {
-            account_id: &state.account_id,
-            provider: spec.id,
-            read_scopes: &read_scopes,
-            act_scopes: &act_scopes,
-            enable_act: state.grant == ConnectorToolGroup::Act,
-            audit_tool_group: state.grant,
-            audit_summary: &summary,
-        },
-        &sealed,
-    )
-    .await;
-    match applied {
-        Ok(record) => CallbackOutcome {
-            redirect_after,
-            result: Ok(OAuthCompletedFragment {
-                connector_id: record.connector_id,
-                provider: record.provider,
-                grant: state.grant,
-                status: record.status,
-            }),
-        },
-        Err(error) => {
-            eprintln!("[connectors] store {} grant: {error}", spec.id);
-            fail(
-                redirect_after,
-                CallbackError::new("server_error", "Could not store the connection."),
-            )
-        }
+    let result = park_grant(pool, &state, spec.id, read_scopes, act_scopes, sealed).await;
+    CallbackOutcome {
+        redirect_after,
+        result,
     }
 }
 
