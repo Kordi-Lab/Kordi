@@ -435,7 +435,7 @@ async fn postgres_scope_and_atomic_publication() {
         revision: 0,
         updated_at: None,
     };
-    query("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,'capacity-'||i,jsonb_set($2,'{id}',to_jsonb('capacity-'||i)) FROM generate_series(1,1000) i").bind(&viewer).bind(serde_json::to_value(&event).unwrap()).execute(&pool).await.unwrap();
+    query("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,'capacity-'||i,jsonb_set($2,'{id}',to_jsonb('capacity-'||i)) FROM generate_series(1,$3) i").bind(&viewer).bind(serde_json::to_value(&event).unwrap()).bind(super::sync_routes::CALENDAR_CAPACITY).execute(&pool).await.unwrap();
     let state = std::sync::Arc::new(crate::server::ServerState::new(
         pool.clone(),
         crate::events::EventBus::noop(),
@@ -476,6 +476,7 @@ async fn postgres_scope_and_atomic_publication() {
     );
     super::calendar_tests::postgres_calendar_contract(&pool, &author).await;
     super::calendar_tests::postgres_sync_contract(&pool, &author).await;
+    super::calendar_capacity_tests::postgres_contract(&pool, &author).await;
     query("DELETE FROM cloud_chat_conversations WHERE conversation_id=ANY($1)")
         .bind(vec![public, private])
         .execute(&pool)

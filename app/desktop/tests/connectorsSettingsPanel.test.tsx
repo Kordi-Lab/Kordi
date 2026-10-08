@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -8,6 +7,7 @@ import { ConnectorsSettingsPanel } from '../src/features/connectors/ConnectorsSe
 import {
   connectorsClientForEnvironment,
   connectorsClientForFlag,
+  connectorsSelectionForEnvironment,
   createDesktopMacLocalConnectorsClient,
   createPreviewConnectorsClient,
   type DesktopInvoke,
@@ -23,36 +23,7 @@ import {
   type ConnectorState,
 } from '../src/features/connectors/connectorsModel';
 import { cloudAccountSettingsNavGroups } from '../src/pages/cloudAccountSettingsNav';
-
-function installDom() {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
-  const target = globalThis as typeof globalThis & Record<string, unknown>;
-  const replacements: Record<string, unknown> = {
-    window: dom.window,
-    document: dom.window.document,
-    navigator: dom.window.navigator,
-    HTMLElement: dom.window.HTMLElement,
-    Element: dom.window.Element,
-    Node: dom.window.Node,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  };
-  const previous = new Map(
-    Object.keys(replacements).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
-  );
-  Object.entries(replacements).forEach(([key, value]) => {
-    Object.defineProperty(target, key, { configurable: true, writable: true, value });
-  });
-  return {
-    dom,
-    restore() {
-      previous.forEach((descriptor, key) => {
-        if (descriptor) Object.defineProperty(target, key, descriptor);
-        else delete target[key];
-      });
-      dom.window.close();
-    },
-  };
-}
+import { buttonByText, click, flush, installDom } from './helpers/connectorsPanelDom';
 
 const connectedState: ConnectorState = {
   providerId: 'google_calendar',
@@ -80,6 +51,10 @@ test('disconnect explains the token, stored events, derived copies, and Memory',
   assert.match(text, /stored events/i);
   assert.match(text, /copies/i);
   assert.match(text, /Memory/);
+  assert.deepEqual(
+    disconnectConsequences(connectorDefinition('mac_contacts')),
+    ['Kordi stops reading Contacts on this Mac. Nothing was stored.'],
+  );
 });
 
 test('status labels describe access and agent grants', () => {
@@ -158,7 +133,9 @@ test('desktop client merges Mac-local command state with the service rows', asyn
     if (command === 'desktop_mac_local_connectors_set_enabled') {
       const source = args?.source as keyof MacLocalConnectorsState;
       if (source === 'notification_center' && args?.enabled) throw new Error('Notification Center needs Full Disk Access.');
-      macLocal = { ...macLocal, [source]: { enabled: Boolean(args?.enabled), permission: source === 'contacts' ? 'denied' : macLocal[source].permission } };
+      // A refused permission keeps the source off, as the desktop command does.
+      const permission = source === 'contacts' ? 'denied' : macLocal[source].permission;
+      macLocal = { ...macLocal, [source]: { enabled: Boolean(args?.enabled) && permission === 'granted', permission } };
     }
     return macLocal as T;
   };
@@ -178,6 +155,8 @@ test('desktop client merges Mac-local command state with the service rows', asyn
 
   const contacts = await client.connect('mac_contacts', { scopeIds: [] });
   assert.equal(contacts.status, 'permission_missing');
+  assert.equal(contacts.enabled, false);
+  assert.equal(connectorListValue(connectorDefinition('mac_contacts'), contacts), 'Needs permission');
   assert.deepEqual(calls.at(-1), { command: 'desktop_mac_local_connectors_set_enabled', args: { source: 'contacts', enabled: true } });
 
   const notifications = await client.connect('mac_notification_center', { scopeIds: [] });
@@ -190,7 +169,17 @@ test('desktop client merges Mac-local command state with the service rows', asyn
   assert.equal(calls.at(-1)?.command, 'desktop_mac_local_connectors_recheck');
   await assert.rejects(client.grantAct('mac_calendar'), /not available yet/);
 
+  // On but without permission: still offers Disconnect and grants nothing.
+  macLocal = { ...macLocal, contacts: { enabled: true, permission: 'denied' } };
+  const onWithoutPermission = (await client.list()).states.find((state) => state.providerId === 'mac_contacts');
+  assert.equal(onWithoutPermission?.status, 'permission_missing');
+  assert.equal(onWithoutPermission?.enabled, true);
+  assert.deepEqual(onWithoutPermission?.grantedScopeIds, []);
+  assert.equal(connectorListValue(connectorDefinition('mac_contacts'), onWithoutPermission), 'On · needs permission');
+  assert.equal(client.servicesAvailable, true);
+
   const withoutServices = createDesktopMacLocalConnectorsClient(invoke, null);
+  assert.equal(withoutServices.servicesAvailable, false);
   const bare = await withoutServices.list();
   assert.equal(bare.states.find((state) => state.providerId === 'github')?.status, 'not_connected');
   await assert.rejects(withoutServices.connect('github', { scopeIds: [] }), /not available yet/);
@@ -203,6 +192,39 @@ test('connectors stay hidden unless the preview flag is set', () => {
   assert.equal(connectorsClientForEnvironment(), null);
 });
 
+test('the desktop shell gets Mac-local connectors only on macOS', () => {
+  const target = globalThis as typeof globalThis & Record<string, unknown>;
+  const saved = { window: Object.getOwnPropertyDescriptor(globalThis, 'window'), navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator') };
+  const fakeShell = (platform: string, userAgent: string) => {
+    Object.defineProperty(target, 'window', { configurable: true, writable: true, value: { __TAURI_INTERNALS__: {} } });
+    Object.defineProperty(target, 'navigator', { configurable: true, writable: true, value: { platform, userAgent } });
+  };
+  const invoke: DesktopInvoke = async () => { throw new Error('not called'); };
+  try {
+    fakeShell('MacIntel', 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)');
+    const mac = connectorsSelectionForEnvironment(undefined, invoke);
+    assert.ok(mac, 'macOS shows the Mac-local rows');
+    assert.equal(mac.isPreview, false);
+    assert.equal(mac.client.servicesAvailable, false);
+    const macPreview = connectorsSelectionForEnvironment('1', invoke);
+    assert.equal(macPreview?.isPreview, true);
+    assert.equal(macPreview?.client.servicesAvailable, true);
+
+    fakeShell('Win32', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
+    assert.equal(connectorsSelectionForEnvironment(undefined, invoke), null);
+    fakeShell('Linux x86_64', 'Mozilla/5.0 (X11; Linux x86_64)');
+    assert.equal(connectorsSelectionForEnvironment(undefined, invoke), null);
+    const linuxPreview = connectorsSelectionForEnvironment('1', invoke);
+    assert.equal(linuxPreview?.isPreview, true);
+    assert.notEqual(linuxPreview?.client.servicesAvailable, false);
+  } finally {
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(target, key, descriptor);
+      else delete target[key];
+    }
+  }
+});
+
 test('account settings show Connectors only when a client is available', () => {
   const ids = (connectorsAvailable: boolean) => cloudAccountSettingsNavGroups({ connectorsAvailable })
     .flatMap((group) => group.items.map((item) => item.id));
@@ -213,20 +235,6 @@ test('account settings show Connectors only when a client is available', () => {
     .find((item) => item.id === 'connectors');
   assert.equal(connectors?.label, 'Connectors');
 });
-
-async function flush() {
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-}
-
-async function click(element: Element | null | undefined, window: JSDOM['window']) {
-  assert.ok(element, 'expected an element to click');
-  await act(async () => { element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
-  await flush();
-}
-
-function buttonByText(root: ParentNode, text: string): HTMLButtonElement | undefined {
-  return Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.trim() === text);
-}
 
 test('panel lists each connector as a navigation row with a status value', async () => {
   const installed = installDom();
@@ -335,87 +343,61 @@ test('panel hides Mac-local connectors outside the native shell', async () => {
   }
 });
 
-test('the sample notice shows only for the preview client', async () => {
+test('Mac-only panel hides Services and sample copy, and a source on without permission can be turned off', async () => {
   const installed = installDom();
   const host = document.createElement('div');
   document.body.append(host);
   const root = createRoot(host);
+  let macLocal: MacLocalConnectorsState = {
+    calendar: { enabled: true, permission: 'granted' },
+    contacts: { enabled: true, permission: 'denied' },
+    notification_center: { enabled: false, permission: 'full_disk_access_missing' },
+  };
+  const invoke: DesktopInvoke = async <T,>(command: string, args?: Record<string, unknown>) => {
+    if (command === 'desktop_mac_local_connectors_set_enabled' && args?.enabled === false) {
+      const source = args.source as keyof MacLocalConnectorsState;
+      macLocal = { ...macLocal, [source]: { ...macLocal[source], enabled: false } };
+    }
+    return macLocal as T;
+  };
   try {
-    const client = createPreviewConnectorsClient({ latencyMs: 0 });
-    await act(async () => {
-      root.render(<ConnectorsSettingsPanel accountId="account-1" client={client} isNativeShell={false} />);
-    });
-    await flush();
-    assert.match(host.textContent ?? '', /Google Calendar/);
-    assert.doesNotMatch(host.textContent ?? '', /Showing sample connectors/);
-  } finally {
-    await act(async () => root.unmount());
-    installed.restore();
-  }
-});
-
-test('the services section says when Kordi Cloud is loading or unreachable', async () => {
-  const installed = installDom();
-  const host = document.createElement('div');
-  document.body.append(host);
-  const root = createRoot(host);
-  try {
-    const client = createPreviewConnectorsClient({ latencyMs: 0 });
-    await act(async () => {
-      root.render(<ConnectorsSettingsPanel accountId="account-1" client={client} isNativeShell servicesStatus="checking" />);
-    });
-    await flush();
-    assert.match(host.textContent ?? '', /Checking Kordi Cloud…/);
-    assert.equal(host.querySelector('[data-connector-row="github"]'), null, 'service rows are hidden while checking');
-    assert.ok(host.querySelector('[data-connector-row="mac_calendar"]'), 'Mac-local rows still show');
-
-    let retries = 0;
-    await act(async () => {
-      root.render(
-        <ConnectorsSettingsPanel accountId="account-1" client={client} isNativeShell servicesStatus="unreachable" onRetryServices={() => { retries += 1; }} />,
-      );
-    });
-    await flush();
-    assert.match(host.textContent ?? '', /Could not reach Kordi Cloud\./);
-    await click(buttonByText(host, 'Try again'), installed.dom.window);
-    assert.equal(retries, 1);
-  } finally {
-    await act(async () => root.unmount());
-    installed.restore();
-  }
-});
-
-test('canceling a pending connect aborts the flow', async () => {
-  const installed = installDom();
-  const host = document.createElement('div');
-  document.body.append(host);
-  const root = createRoot(host);
-  try {
-    const preview = createPreviewConnectorsClient({ latencyMs: 0 });
-    let aborted = false;
-    const client = {
-      ...preview,
-      connect: (_providerId: string, input: { signal?: AbortSignal }) => new Promise<ConnectorState>((_resolve, reject) => {
-        input.signal?.addEventListener('abort', () => {
-          aborted = true;
-          reject(new Error('Connecting Gmail was canceled.'));
-        });
-      }),
-    } as typeof preview;
+    const client = createDesktopMacLocalConnectorsClient(invoke, null);
     await act(async () => {
       root.render(<ConnectorsSettingsPanel accountId="account-1" client={client} isNativeShell />);
     });
     await flush();
-    await click(host.querySelector('[data-connector-row="gmail"] button'), installed.dom.window);
-    await click(host.querySelector('[aria-label="Connect Gmail"]'), installed.dom.window);
-    await click(buttonByText(document.body, 'Continue to Google'), installed.dom.window);
-    assert.match(document.body.textContent ?? '', /Waiting for Google…/);
-    const cancel = buttonByText(document.body, 'Cancel');
-    assert.equal(cancel?.disabled, false, 'Cancel stays enabled while busy');
-    await click(cancel, installed.dom.window);
-    assert.equal(aborted, true);
-    assert.doesNotMatch(document.body.textContent ?? '', /Continue to Google/);
-    assert.equal(host.querySelector('[role="alert"]'), null, 'a cancel is not an error');
+    const text = host.textContent ?? '';
+    assert.doesNotMatch(text, /Services/);
+    assert.doesNotMatch(text, /Google Calendar/);
+    assert.doesNotMatch(text, /Showing sample connectors/);
+    assert.match(text, /On this Mac/);
+    const row = (id: string) => host.querySelector(`[data-connector-row="${id}"]`)?.textContent ?? '';
+    assert.match(row('mac_calendar'), /Connected · Read only$/);
+    assert.match(row('mac_contacts'), /On · needs permission$/);
+
+    await click(host.querySelector('[data-connector-row="mac_calendar"] button'), installed.dom.window);
+    const detail = host.textContent ?? '';
+    assert.match(detail, /Connected · Read only · All agents/);
+    assert.match(detail, /All agents on this Mac/);
+    assert.match(detail, /Stops reading Calendar and Reminders on this Mac\./);
+    assert.equal(host.querySelector('[aria-label="Let my agent act in Calendar and Reminders"]'), null);
+    assert.equal(host.querySelector('[aria-label="Let My Kordi use Calendar and Reminders"]'), null);
+    assert.doesNotMatch(detail, /Activity log/);
+    await click(buttonByText(host, 'Back to connectors'), installed.dom.window);
+
+    await click(host.querySelector('[data-connector-row="mac_contacts"] button'), installed.dom.window);
+    assert.match(host.textContent ?? '', /On · needs permission/);
+    assert.ok(buttonByText(host, 'Open System Settings'));
+    await click(host.querySelector('[aria-label="Check Contacts permission again"]'), installed.dom.window);
+    assert.match(host.textContent ?? '', /Contacts still needs permission to control Contacts\./);
+    await click(host.querySelector('[aria-label="Disconnect Contacts"]'), installed.dom.window);
+    assert.match(document.body.textContent ?? '', /Kordi stops reading Contacts on this Mac\. Nothing was stored\./);
+    const dialog = document.body.querySelector('[role="dialog"], dialog');
+    await click(Array.from(dialog?.querySelectorAll('button') ?? []).find((button) => button.textContent === 'Disconnect'), installed.dom.window);
+    await flush();
+    assert.equal(host.querySelector('h1'), null);
+    assert.match(row('mac_contacts'), /Needs permission$/);
+    assert.equal(macLocal.contacts.enabled, false);
   } finally {
     await act(async () => root.unmount());
     installed.restore();

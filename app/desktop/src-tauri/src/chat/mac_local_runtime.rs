@@ -21,6 +21,33 @@ pub(super) fn build(owner_local: bool) -> Option<MacLocalRuntime> {
     )
 }
 
+/// True when the turn may read this Mac: no cloud lease, and the requester is
+/// the non-empty owner. This turn's identity message decides; without one,
+/// the stored session identity (if any) must also be the owner's.
+pub(super) fn is_owner_local_turn(
+    has_cloud_lease: bool,
+    turn_identity: Option<&str>,
+    stored_identity: impl FnOnce() -> Result<Option<String>, ()>,
+) -> bool {
+    if has_cloud_lease {
+        return false;
+    }
+    let is_owner = |text: &str| {
+        serde_json::from_str::<kordi_core::types::RuntimeIdentity>(text).is_ok_and(|identity| {
+            let owner = identity.owner_account_id.trim();
+            !owner.is_empty() && identity.requester_account_id.trim() == owner
+        })
+    };
+    match turn_identity {
+        Some(text) => is_owner(text),
+        None => match stored_identity() {
+            Ok(None) => true,
+            Ok(Some(text)) => is_owner(&text),
+            Err(()) => false,
+        },
+    }
+}
+
 /// Settings are read when the turn starts and again inside every call, so a
 /// source turned off mid-turn stops answering immediately.
 pub(super) fn build_with(
@@ -193,5 +220,49 @@ mod tests {
                 kordi_tools::mac_local::MAC_CALENDAR_READ_REMINDERS,
             ]
         );
+    }
+
+    fn identity(owner: &str, requester: &str) -> String {
+        serde_json::to_string(&kordi_core::types::RuntimeIdentity {
+            request_id: "request-1".into(),
+            agent_id: "agent-1".into(),
+            agent_name: "Kordi".into(),
+            owner_account_id: owner.into(),
+            owner_name: "Owner".into(),
+            requester_account_id: requester.into(),
+            requester_name: "Requester".into(),
+            request_policy: None,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn mac_local_runtime_follows_this_turns_requester_not_the_stored_identity() {
+        let owner = identity("account-owner", "account-owner");
+        let member = identity("account-owner", "account-member");
+        let stored_owner = || Ok(Some(owner.clone()));
+        // A member's request after an owner's turn gets no Mac-local runtime.
+        assert!(!is_owner_local_turn(false, Some(&member), stored_owner));
+        let owner_local = is_owner_local_turn(false, Some(&member), stored_owner);
+        assert!(build_with(owner_local, &settings(true, false), None).is_none());
+        // The owner's own request after a member's turn does.
+        assert!(is_owner_local_turn(false, Some(&owner), || Ok(Some(
+            member.clone()
+        ))));
+        // An empty owner never counts, even when the ids match.
+        assert!(!is_owner_local_turn(
+            false,
+            Some(&identity(" ", " ")),
+            || Ok(None)
+        ));
+        assert!(!is_owner_local_turn(false, Some("not json"), || Ok(None)));
+        // Cloud-lease turns never read this Mac.
+        assert!(!is_owner_local_turn(true, Some(&owner), || Ok(None)));
+        // Without a turn identity the stored one must be the owner's.
+        assert!(is_owner_local_turn(false, None, || Ok(None)));
+        assert!(!is_owner_local_turn(false, None, || Ok(Some(
+            member.clone()
+        ))));
+        assert!(!is_owner_local_turn(false, None, || Err(())));
     }
 }

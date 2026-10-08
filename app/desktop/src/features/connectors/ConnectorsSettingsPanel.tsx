@@ -20,10 +20,8 @@ import {
   type ConnectorProviderId,
   type ConnectorState,
 } from './connectorsModel';
-import { connectorIcons, denseNavRowsClass, type ConnectorDialog } from './connectorsPanelConstants';
+import { connectorIcons, denseNavRowsClass, macPermissionHelp, type ConnectorDialog } from './connectorsPanelConstants';
 import { ConnectorBadge } from './connectorsPanelShared';
-
-const FULL_DISK_ACCESS_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles';
 
 function errorMessage(caught: unknown, fallback: string): string {
   return caught instanceof Error ? caught.message : fallback;
@@ -263,9 +261,10 @@ export function ConnectorsSettingsPanel({
     );
   };
 
-  const openSystemSettings = () => {
-    if (!isNativeShell) return;
-    void invoke('desktop_open_external_url', { url: FULL_DISK_ACCESS_SETTINGS_URL }).catch(() => {
+  const openSystemSettings = (definition: ConnectorDefinition) => {
+    const url = macPermissionHelp[definition.providerId]?.settingsUrl;
+    if (!isNativeShell || !url) return;
+    void invoke('desktop_open_external_url', { url }).catch(() => {
       setError('Could not open System Settings.');
     });
   };
@@ -276,7 +275,7 @@ export function ConnectorsSettingsPanel({
       () => client.recheckPermission(definition.providerId),
       (state) => (state.status === 'connected'
         ? `${definition.name} is connected.`
-        : `${definition.name} still needs Full Disk Access.`),
+        : `${definition.name} ${macPermissionHelp[definition.providerId]?.stillNeeds ?? 'still needs permission'}.`),
     );
   };
 
@@ -300,8 +299,8 @@ export function ConnectorsSettingsPanel({
     if (status === 'permission_missing') {
       return (
         <>
-          {isNativeShell ? (
-            <Button type="button" className="h-8 rounded-lg px-3.5 text-[12px]" disabled={busy} onClick={openSystemSettings}>
+          {isNativeShell && macPermissionHelp[definition.providerId] ? (
+            <Button type="button" className="h-8 rounded-lg px-3.5 text-[12px]" disabled={busy} onClick={() => openSystemSettings(definition)}>
               Open System Settings
             </Button>
           ) : null}
@@ -359,13 +358,16 @@ export function ConnectorsSettingsPanel({
   const services = connectorCatalog.filter((definition) => definition.kind === 'service');
   const macLocal = connectorCatalog.filter((definition) => definition.kind === 'mac_local');
   const selectedDefinition = selectedId ? connectorDefinition(selectedId) : null;
+  const servicesAvailable = client.servicesAvailable !== false;
 
   return (
     <div className="app-cloud-account-settings-section max-w-[760px]">
       {selectedDefinition ? null : (
       <SettingsSection
         title="Connectors"
-        description="Connect the services you use so your agent can read updates from them and, with your approval, act in them. Kordi keeps each sign-in on its servers and only shares results with your agent."
+        description={servicesAvailable
+          ? 'Connect the services you use so your agent can read updates from them and, with your approval, act in them. Kordi keeps each sign-in on its servers and only shares results with your agent.'
+          : 'Let your agent read sources on this Mac, with macOS permission. Results stay on this Mac.'}
       >
         <ConnectorsPreviewNotice show={isPreview} />
       </SettingsSection>
@@ -406,20 +408,22 @@ export function ConnectorsSettingsPanel({
         />
       ) : (
         <div ref={listRef} className={denseNavRowsClass}>
-          <SettingsSection title="Services" size="compact">
-            {servicesStatus === 'checking' ? (
-              <p className="m-0 py-2 text-[12px] text-slate-400" role="status">Checking Kordi Cloud…</p>
-            ) : servicesStatus === 'unreachable' ? (
-              <div className="flex items-center justify-between gap-3 py-2 text-[12px] text-slate-400" role="status">
-                <span>Could not reach Kordi Cloud.</span>
-                {onRetryServices ? (
-                  <Button type="button" variant="quiet" className="h-7 shrink-0 rounded-lg px-3 text-[12px]" onClick={onRetryServices}>
-                    Try again
-                  </Button>
-                ) : null}
-              </div>
-            ) : services.map(renderListRow)}
-          </SettingsSection>
+          {servicesAvailable ? (
+            <SettingsSection title="Services" size="compact">
+              {servicesStatus === 'checking' ? (
+                <p className="m-0 py-2 text-[12px] text-slate-400" role="status">Checking Kordi Cloud…</p>
+              ) : servicesStatus === 'unreachable' ? (
+                <div className="flex items-center justify-between gap-3 py-2 text-[12px] text-slate-400" role="status">
+                  <span>Could not reach Kordi Cloud.</span>
+                  {onRetryServices ? (
+                    <Button type="button" variant="quiet" className="h-7 shrink-0 rounded-lg px-3 text-[12px]" onClick={onRetryServices}>
+                      Try again
+                    </Button>
+                  ) : null}
+                </div>
+              ) : services.map(renderListRow)}
+            </SettingsSection>
+          ) : null}
           {isNativeShell ? (
             <SettingsSection
               title="On this Mac"

@@ -6,6 +6,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use kordi_tools::mac_local::{
     truncate_chars, MacNotificationsRequest, MAX_NOTIFICATIONS, MAX_NOTIFICATION_BODY_CHARS,
@@ -39,16 +40,46 @@ impl Drop for TempCopy {
     }
 }
 
-fn copy_to_private_temp(path: &Path) -> Result<(TempCopy, PathBuf), String> {
-    let dir = std::env::temp_dir().join(format!("kordi-nc-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir(&dir).map_err(|error| error.to_string())?;
-    let guard = TempCopy(dir.clone());
+const TEMP_PREFIX: &str = "kordi-nc-";
+/// Copies older than this are left over from a crash and are removed.
+const STALE_COPY_AGE: Duration = Duration::from_secs(10 * 60);
+
+/// Removes private copies a previous run could not clean up, for example
+/// after a crash. Recent copies may belong to a concurrent read and stay.
+fn sweep_stale_copies(temp_root: &Path) {
+    let Ok(entries) = std::fs::read_dir(temp_root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_name().to_string_lossy().starts_with(TEMP_PREFIX) {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+            .is_some_and(|age| age >= STALE_COPY_AGE);
+        if stale {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))
-            .map_err(|error| error.to_string())?;
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
     }
+    builder.create(dir)
+}
+
+fn copy_to_private_temp(path: &Path) -> Result<(TempCopy, PathBuf), String> {
+    let dir = std::env::temp_dir().join(format!("{TEMP_PREFIX}{}", uuid::Uuid::new_v4()));
+    create_private_dir(&dir).map_err(|error| error.to_string())?;
+    let guard = TempCopy(dir.clone());
     let target = dir.join("db");
     std::fs::copy(path, &target).map_err(|error| error.to_string())?;
     for suffix in ["-wal", "-shm"] {
@@ -139,6 +170,7 @@ fn decode(row: &Row) -> Option<Value> {
 
 pub(crate) fn read_recent(path: &Path, request: &MacNotificationsRequest) -> Result<Value, String> {
     request.validate().map_err(|error| error.to_string())?;
+    sweep_stale_copies(&std::env::temp_dir());
     if !is_readable(path) {
         return Err("Notification Center needs Full Disk Access. Allow Kordi in System Settings > Privacy & Security > Full Disk Access.".into());
     }
@@ -176,6 +208,29 @@ mod tests {
             .to_writer_binary(&mut bytes)
             .unwrap();
         bytes
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn notification_private_copy_dir_is_owner_only_and_stale_copies_are_swept() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_dir();
+        let fresh = root.join(format!("{TEMP_PREFIX}fresh"));
+        create_private_dir(&fresh).unwrap();
+        let mode = std::fs::metadata(&fresh).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+        let stale = root.join(format!("{TEMP_PREFIX}stale"));
+        create_private_dir(&stale).unwrap();
+        let old = SystemTime::now() - STALE_COPY_AGE - Duration::from_secs(60);
+        File::open(&stale).unwrap().set_modified(old).unwrap();
+        let other = root.join("other-stale");
+        std::fs::create_dir(&other).unwrap();
+        File::open(&other).unwrap().set_modified(old).unwrap();
+        sweep_stale_copies(&root);
+        assert!(fresh.exists());
+        assert!(!stale.exists());
+        assert!(other.exists());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -238,7 +293,7 @@ mod tests {
         assert_eq!(notifications[0]["title"], json!("New mail"));
         assert_eq!(
             notifications[0]["body"].as_str().unwrap().chars().count(),
-            MAX_NOTIFICATION_BODY_CHARS + 3
+            MAX_NOTIFICATION_BODY_CHARS
         );
         assert_eq!(value["skipped"], json!(1));
         assert!(read_recent(

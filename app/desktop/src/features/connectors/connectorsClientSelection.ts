@@ -7,14 +7,16 @@ import {
   connectorsClientForFlag,
   macLocalSourceFor,
   createDesktopMacLocalConnectorsClient,
+  isMacPlatform,
   type ConnectorsClient,
   type DesktopInvoke,
 } from './connectorsClient';
 import { createCloudConnectorsClient, type CloudConnectorsApi } from './connectorsCloudClient';
 import { connectorCatalog, type ConnectorProviderId, type ConnectorState } from './connectorsModel';
 
-function hasDesktopShell(): boolean {
-  return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
+/** The macOS desktop shell; only there do the Mac-local rows exist. */
+function hasMacDesktopShell(): boolean {
+  return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined' && isMacPlatform();
 }
 
 const desktopInvoke: DesktopInvoke = async <T,>(command: string, args?: Record<string, unknown>) => {
@@ -45,7 +47,7 @@ export type ConnectorsClientForAccountOptions = {
   defaultAgentName?: string;
   /** Defaults to `VITE_KORDI_CONNECTORS_PREVIEW`. */
   previewFlag?: string;
-  /** Defaults to whether this is the desktop shell. */
+  /** Defaults to whether this is the macOS desktop shell. */
   desktopShell?: boolean;
   invoke?: DesktopInvoke;
 };
@@ -132,7 +134,7 @@ export function connectorsClientForAccount(options: ConnectorsClientForAccountOp
     const preview = connectorsClientForFlag(options.previewFlag ?? previewFlagFromEnv());
     if (preview) services = { source: 'preview', servicesStatus: 'ready', client: preview };
   }
-  const desktopShell = options.desktopShell ?? hasDesktopShell();
+  const desktopShell = options.desktopShell ?? hasMacDesktopShell();
   if (!desktopShell) return services;
   const base = services ?? macLocalOnlyBase(capabilitiesStatus);
   return {

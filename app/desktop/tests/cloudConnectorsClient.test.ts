@@ -260,7 +260,13 @@ test('connect reports the callback error and times out after the limit', async (
 test('in the Tauri shell the gate always layers the Mac-local rows', async () => {
   const target = globalThis as typeof globalThis & Record<string, unknown>;
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   Object.defineProperty(target, 'window', { configurable: true, writable: true, value: { __TAURI_INTERNALS__: {} } });
+  Object.defineProperty(target, 'navigator', {
+    configurable: true,
+    writable: true,
+    value: { platform: 'MacIntel', userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },
+  });
   __setSessionBackendForTests({ load: async () => null, save: async () => {}, clear: async () => {} });
   try {
     const { calls, fetchImpl } = recordingFetch(() => jsonResponse(500, {}));
@@ -296,9 +302,19 @@ test('in the Tauri shell the gate always layers the Mac-local rows', async () =>
     assert.equal(previewListed.states.find((state) => state.providerId === 'mac_contacts')?.status, 'not_connected');
 
     assert.equal(connectorsClientForAccount({ ...base, capabilities: {}, previewFlag: '0', desktopShell: false }), null);
+
+    Object.defineProperty(target, 'navigator', {
+      configurable: true,
+      writable: true,
+      value: { platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+    });
+    assert.equal(connectorsClientForAccount({ ...base, capabilities: {}, previewFlag: '0' }), null, 'no Mac-local rows off macOS');
+    assert.equal(connectorsClientForAccount({ ...base, capabilities: { connectorsVersion: 1 } })?.source, 'cloud');
   } finally {
     __setSessionBackendForTests(null);
     if (previousWindow) Object.defineProperty(target, 'window', previousWindow);
     else delete target.window;
+    if (previousNavigator) Object.defineProperty(target, 'navigator', previousNavigator);
+    else delete target.navigator;
   }
 });

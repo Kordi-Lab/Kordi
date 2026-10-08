@@ -30,8 +30,13 @@ export function macLocalSourceFor(providerId: ConnectorProviderId): MacLocalSour
   return macLocalSources[providerId] ?? null;
 }
 
+/**
+ * A source that is on but lacks its macOS permission reports
+ * `permission_missing` (with `enabled` kept on the state) so the panel can
+ * show "On · needs permission" and still offer Disconnect.
+ */
 export function macLocalConnectorStatus(state: MacLocalSourceState): ConnectorStatus {
-  if (state.enabled && state.permission === 'granted') return 'connected';
+  if (state.enabled) return state.permission === 'granted' ? 'connected' : 'permission_missing';
   if (state.permission === 'denied' || state.permission === 'full_disk_access_missing') return 'permission_missing';
   return 'not_connected';
 }
@@ -50,6 +55,7 @@ export function macLocalConnectorState(
   return {
     ...emptyState(providerId),
     status,
+    enabled: source.enabled,
     grantedScopeIds: status === 'connected' ? readScopeIds(providerId) : [],
     agentIds: status === 'connected' ? agents.map((agent) => agent.agentId) : [],
   };
@@ -80,6 +86,7 @@ export function createDesktopMacLocalConnectorsClient(
   );
 
   return {
+    servicesAvailable: services !== null,
     async list() {
       const [macLocal, base] = await Promise.all([
         invoke<MacLocalConnectorsState>('desktop_mac_local_connectors_state'),

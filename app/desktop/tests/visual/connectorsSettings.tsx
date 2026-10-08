@@ -71,6 +71,7 @@ function Preview() {
         onClose={noop}
         onUpdateProfile={resolved}
         connectorsClient={connectorsClient}
+        connectorsIsPreview
         settingsSections={settingsSections}
         activeSettingsSectionId={activeSettingsSectionId}
         setActiveSettingsSectionId={setActiveSettingsSectionId}

@@ -79,7 +79,13 @@ fn default_contacts_limit() -> usize {
 
 impl MacContactsSearchRequest {
     pub fn validate(&self) -> KordiResult<()> {
-        let chars = self.query.trim().chars().count();
+        let query = self.query.trim();
+        // osascript treats a leading dash as an option, so a query must never
+        // start with one even though the host also passes `--`.
+        if query.starts_with('-') {
+            return Err(KordiError::Tool("query must not start with '-'".into()));
+        }
+        let chars = query.chars().count();
         if chars < MIN_CONTACT_QUERY_CHARS {
             return Err(KordiError::Tool(format!(
                 "query must have at least {MIN_CONTACT_QUERY_CHARS} characters; contacts cannot be listed in full"
@@ -143,12 +149,18 @@ pub fn cap_items(mut value: Value, key: &str, max: usize) -> Value {
     value
 }
 
-/// Shortens a string to at most `max` characters on a character boundary.
+/// Shortens a string to at most `max` characters, including the trailing
+/// ellipsis, on a character boundary.
 pub fn truncate_chars(text: &str, max: usize) -> String {
-    match text.char_indices().nth(max) {
-        Some((index, _)) => format!("{}...", &text[..index]),
-        None => text.to_string(),
+    if text.chars().count() <= max {
+        return text.to_string();
     }
+    let kept = max.saturating_sub(1);
+    let end = text
+        .char_indices()
+        .nth(kept)
+        .map_or(text.len(), |(index, _)| index);
+    format!("{}\u{2026}", &text[..end])
 }
 
 pub(super) fn cap_notification_bodies(mut value: Value) -> Value {

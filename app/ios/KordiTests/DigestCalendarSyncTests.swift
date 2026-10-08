@@ -157,7 +157,8 @@ private final class Recorder {
     func dependencies(device: [DigestDeviceEvent], server: [DigestCalendarEvent], preferences: DigestCalendarSyncPreferences = DigestCalendarSyncPreferences(targetCalendarId: "work")) -> DigestCalendarSyncDependencies {
         DigestCalendarSyncDependencies(
             accessStatus: { [self] request in self.access.append(request); return self.permissions.count > 1 ? self.permissions.removeFirst() : self.permissions[0] },
-            readDevice: { _, _ in ([DigestDeviceCalendar(id: "work", title: "Work"), DigestDeviceCalendar(id: "holidays", title: "Holidays", allowsModifications: false)], device) },
+            calendars: { [DigestDeviceCalendar(id: "work", title: "Work"), DigestDeviceCalendar(id: "holidays", title: "Holidays", allowsModifications: false)] },
+            readDevice: { _, _, ids in device.filter { ids.contains($0.calendarId) } },
             writeDevice: { [self] write in self.writes.append((write.event.id, write.deviceId, write.calendarId)); return (write.deviceId ?? "ek-\(write.event.id)", write.event.externalUid.flatMap { $0.hasPrefix("device:") ? $0 : nil } ?? "device:new-\(write.event.id)") },
             deleteDevice: { [self] in self.deletes.append($0.deviceId) },
             serverEvents: { server },
@@ -361,5 +362,96 @@ struct DigestMonthGridGroupingTests {
             #expect((grouped[DigestDate.key(day, calendar: calendar)] ?? []).map(\.id) == expected, "day \(DigestDate.key(day, calendar: calendar))")
         }
         #expect(DigestDate.parse("2026-09-19T10:00:00.250Z") != nil && DigestDate.parse("2026-09-19T10:00:00+03:00") != nil && DigestDate.parse("nope") == nil)
+    }
+}
+
+extension DigestCalendarSyncEngineTests {
+    private func manyEvents(_ count: Int) -> [DigestDeviceEvent] {
+        (0..<count).map { index in device { $0.event.id = "calendar-\(index)"; $0.event.externalUid = "device:\(index)"; $0.deviceId = "ek-\(index)" } }
+    }
+
+    @Test(arguments: [500, 501, 1000, 1001, 2501])
+    func largeCalendarsSyncInBatchesAndThenStayQuiet(count: Int) async throws {
+        let events = manyEvents(count), recorder = Recorder()
+        let outcome = try await DigestCalendarSyncEngine.syncOnce(recorder.dependencies(device: events, server: []))
+        #expect(outcome.syncedCount == count)
+        #expect(recorder.syncs.allSatisfy { $0.upserts.count <= 500 && $0.deletes.count <= 500 })
+        let saved = recorder.syncs.flatMap { $0.upserts }.map { event in var saved = event; saved.revision = 1; return saved }
+        #expect(saved.count == count)
+        let calls = recorder.syncs.count
+        let quiet = try await DigestCalendarSyncEngine.syncOnce(recorder.dependencies(device: events, server: saved))
+        #expect(!quiet.changed && recorder.syncs.count == calls)
+    }
+
+    @Test func batchesLargeNotesByBytes() async throws {
+        let events = manyEvents(500).map { item in var item = item; item.event.description = String(repeating: "x", count: 5000); return item }
+        let recorder = Recorder()
+        _ = try await DigestCalendarSyncEngine.syncOnce(recorder.dependencies(device: events, server: []))
+        #expect(recorder.syncs.count > 1)
+        for batch in recorder.syncs { #expect(try JSONEncoder().encode(batch.upserts).count < 600 * 1024) }
+        #expect(recorder.baseline.count == 500)
+    }
+
+    @Test func partialDeletesKeepUnsettledRevisionsForRetry() async throws {
+        let saved = manyEvents(1001).map { item in var event = item.event; event.revision = 1; return event }
+        let baseline = saved.reduce(into: DigestSyncBaseline()) { result, event in result.merge(settled(event)) { _, value in value } }
+        let recorder = Recorder(baseline: baseline)
+        var remaining = saved, calls = 0
+        var deps = recorder.dependencies(device: [], server: saved)
+        let original = deps.serverSync
+        deps.serverSync = { upserts, deletes in
+            calls += 1
+            if calls == 2 { throw DigestCalendarError(message: "Temporary outage") }
+            let result = try await original(upserts, deletes)
+            remaining.removeAll { result.deleted.contains($0.id) }
+            return result
+        }
+        await #expect(throws: DigestCalendarError.self) { try await DigestCalendarSyncEngine.syncOnce(deps) }
+        #expect(recorder.baseline.count == 501 && recorder.refreshed == 1)
+        deps.serverEvents = { remaining }
+        _ = try await DigestCalendarSyncEngine.syncOnce(deps)
+        #expect(remaining.isEmpty && recorder.baseline.isEmpty)
+        #expect(recorder.syncs.reduce(0) { $0 + $1.deletes.count } == 1001)
+    }
+
+    @Test func partialUploadsKeepConfirmedBaselinesForRetry() async throws {
+        let events = manyEvents(1001), recorder = Recorder()
+        var saved: [DigestCalendarEvent] = []
+        var deps = recorder.dependencies(device: events, server: [])
+        let original = deps.serverSync
+        var calls = 0
+        deps.serverSync = { upserts, deletes in
+            calls += 1
+            if calls == 2 { throw DigestCalendarError(message: "Temporary outage") }
+            let result = try await original(upserts, deletes); saved += result.saved; return result
+        }
+        await #expect(throws: DigestCalendarError.self) { try await DigestCalendarSyncEngine.syncOnce(deps) }
+        #expect(recorder.baseline.count == 500)
+        deps.serverEvents = { saved }
+        let outcome = try await DigestCalendarSyncEngine.syncOnce(deps)
+        #expect(outcome.syncedCount == 1001 && saved.count == 1001)
+        #expect(Set(saved.map(\.id)).count == 1001 && recorder.writes.isEmpty)
+    }
+
+    @Test func claimsAndAdoptionsAreBothBatched() async throws {
+        let events = (0..<1001).map { index in server { $0.id = "outbound-\(index)"; $0.externalUid = nil } }
+        let recorder = Recorder()
+        let outcome = try await DigestCalendarSyncEngine.syncOnce(recorder.dependencies(device: [], server: events))
+        #expect(outcome.syncedCount == 1001 && recorder.writes.count == 1001)
+        #expect(recorder.syncs.allSatisfy { $0.upserts.count <= 500 })
+    }
+
+    @Test func exclusionsApplyBeforeReadingAndFirstFailureKeepsSettingsAvailable() async throws {
+        let recorder = Recorder()
+        var deps = recorder.dependencies(device: [], server: [], preferences: DigestCalendarSyncPreferences(excludedCalendarIds: ["holidays"]))
+        var readIds: [String] = []
+        deps.readDevice = { _, _, ids in readIds = ids; throw DigestCalendarError(message: "Device read failed") }
+        let coordinator = DigestCalendarSyncCoordinator()
+        coordinator.start(scope: ["viewer", "token"], dependencies: deps, debounce: .milliseconds(1))
+        defer { coordinator.stop() }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(readIds == ["work"])
+        #expect(coordinator.status.phase == .error && coordinator.status.permission == .fullAccess)
+        #expect(coordinator.status.calendars.map(\.id) == ["work", "holidays"])
     }
 }
