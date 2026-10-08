@@ -16,27 +16,51 @@ function readSource(relativePath: string): string {
 
 test('device settings keep session details concise while covering review and revocation', () => {
   const panel = readSource('features/cloud/CloudDevicesPanel.tsx');
+  const groups = readSource('features/cloud/cloudDeviceGroups.ts');
+  const parts = readSource('features/cloud/CloudDevicesPanelParts.tsx');
+  const dialogs = readSource('features/cloud/CloudDevicesPanelDialogs.tsx');
   const settings = readSource('pages/cloudAccountSettingsNav.ts');
 
   assert.match(settings, /id: 'devices', label: 'Active sessions'/);
   assert.match(panel, /This device/);
-  assert.match(panel, /Active devices/);
-  assert.match(panel, /Rename this device/);
+  assert.match(panel, /Other devices/);
+  assert.match(panel, /Older sign-ins/);
+  assert.match(dialogs, /Rename this device/);
   assert.match(panel, /renameDevice/);
-  assert.match(panel, /Terminate all other sessions/);
-  assert.match(panel, /authorizationState === 'pending_review'/);
-  assert.doesNotMatch(panel, /Showing the last device list/);
-  assert.doesNotMatch(panel, /Device details unavailable/);
+  assert.match(panel, /Log out of all other devices/);
+  assert.match(parts, /Log out of this device/);
+  assert.match(panel, /Log out of all older sign-ins/);
+  for (const source of [panel, dialogs]) assert.doesNotMatch(source, /Terminate/);
+  assert.match(groups, /authorizationState === 'pending_review'/);
+  assert.match(parts, /Active now/);
+  assert.match(parts, /This was me/);
+  for (const source of [panel, parts, dialogs]) {
+    assert.doesNotMatch(source, /Showing the last device list/);
+    assert.doesNotMatch(source, /Device details unavailable/);
+    assert.doesNotMatch(source, /First signed in/);
+    assert.doesNotMatch(source, /Sync cursor/);
+    assert.doesNotMatch(source, /Last catch-up/);
+    assert.doesNotMatch(source, /Sync protocol/);
+    assert.doesNotMatch(source, /Session expires/);
+  }
   assert.match(panel, /lastActiveAt/);
   assert.match(panel, /approximateLocation/);
-  assert.doesNotMatch(panel, /First signed in/);
-  assert.doesNotMatch(panel, /Sync cursor/);
-  assert.doesNotMatch(panel, /Last catch-up/);
-  assert.doesNotMatch(panel, /Sync protocol/);
-  assert.doesNotMatch(panel, /Session expires/);
   assert.match(panel, /revokeOtherDevices/);
   assert.match(panel, /confirmation\.operationId/);
-  assert.match(panel, /cannot erase files already saved/);
+  assert.match(panel, /No other devices\./);
+  assert.match(dialogs, /Every device except this one will be signed out\./);
+  assert.match(dialogs, /will be signed out\./);
+  assert.match(panel, /This device is not in the list\. Refresh and try again\./);
+  for (const source of [panel, parts, dialogs]) {
+    assert.doesNotMatch(source, /cannot erase files/);
+    assert.doesNotMatch(source, /will not be erased/);
+    assert.doesNotMatch(source, /Review the installations/);
+    assert.doesNotMatch(source, /Signs out every other device/);
+    assert.doesNotMatch(source, /did not report device details/);
+    assert.doesNotMatch(source, /will appear here after they sign in/);
+    assert.doesNotMatch(source, /\buppercase\b/);
+    assert.doesNotMatch(source, /tracking-\[/);
+  }
 });
 
 test('the sidebar routes device review through settings instead of the profile menu', () => {
