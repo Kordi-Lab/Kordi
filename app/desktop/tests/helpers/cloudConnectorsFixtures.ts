@@ -141,4 +141,3 @@ export function pollingHandoff(opened: boolean) {
   };
   return handoff;
 }
-
