@@ -66,18 +66,17 @@ pub struct ProviderSpec {
 }
 
 impl ProviderSpec {
-    /// Scopes to request for `grant`. An `act` grant also asks for the read
-    /// scopes so a provider that replaces scopes keeps read working.
-    pub fn requested_scopes(&self, grant: ConnectorToolGroup) -> Vec<&'static str> {
-        match grant {
-            ConnectorToolGroup::Read => self.read_scopes.to_vec(),
-            ConnectorToolGroup::Act => self
-                .read_scopes
-                .iter()
-                .chain(self.act_scopes.iter())
-                .copied()
-                .collect(),
-        }
+    /// Scopes to request for `grant`. Both grant kinds ask for the read and
+    /// act scopes in one consent: `read` is the first connect, which makes
+    /// the service fully usable at once, and `act` is the re-grant for a
+    /// connector whose provider returned read-only scopes. Asking for read
+    /// again also keeps read working at providers that replace scopes.
+    pub fn requested_scopes(&self, _grant: ConnectorToolGroup) -> Vec<&'static str> {
+        self.read_scopes
+            .iter()
+            .chain(self.act_scopes.iter())
+            .copied()
+            .collect()
     }
 
     /// Catalog scope ids covered by `granted` provider-native scopes, in

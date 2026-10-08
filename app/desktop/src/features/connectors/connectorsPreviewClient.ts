@@ -1,6 +1,7 @@
 import {
   connectorCatalog,
   connectorDefinition,
+  connectScopes,
   type ConnectorAgent,
   type ConnectorAuditEntry,
   type ConnectorProviderId,
@@ -209,18 +210,20 @@ export function createPreviewConnectorsClient(options: PreviewConnectorsClientOp
       await wait();
       const definition = connectorDefinition(providerId);
       if (definition.availability !== 'available') throw new Error(`${definition.name} is not yet available.`);
-      const allowed = new Set(readScopeIds(providerId));
+      // A service connect grants read and act together and turns acting on.
+      const allowed = new Set(connectScopes(definition).map((scope) => scope.id));
       const scopeIds = input.scopeIds.filter((id) => allowed.has(id));
       const previous = current(providerId);
       if (definition.requiresFullDiskAccess) {
         // Full Disk Access cannot be requested in-app; the person grants it in System Settings.
         return update(providerId, { ...emptyState(providerId), status: 'permission_missing' });
       }
+      const granted = scopeIds.length > 0 ? scopeIds : [...allowed];
       return update(providerId, {
         status: 'connected',
         connectedAt: new Date(now()).toISOString(),
-        grantedScopeIds: scopeIds.length > 0 ? scopeIds : [...allowed],
-        actEnabled: false,
+        grantedScopeIds: granted,
+        actEnabled: definition.kind === 'service' && actScopeIds(providerId).some((id) => granted.includes(id)),
         agentIds: previous.agentIds.length > 0 ? previous.agentIds : defaultAgentIds(),
       });
     },

@@ -37,6 +37,7 @@ mod audience_tests;
 mod broker_tests;
 mod completion_tests;
 mod declined_tests;
+mod defaults_tests;
 mod delivery_tests;
 mod google_provider_tests;
 mod http_stub;

@@ -220,7 +220,8 @@ struct ConnectorDetailView: View {
     }
 }
 
-/// A consent step: the first read-only connection, or the separate act grant.
+/// A consent step: the connection, which grants read and act together for a
+/// service, or the act grant when a provider returned read-only access.
 struct ConnectorConsent: Identifiable {
     enum Kind { case connect, grant }
 
@@ -240,8 +241,8 @@ struct ConnectorConsent: Identifiable {
             return ConnectorConsent(
                 kind: .connect,
                 title: reauth ? "Sign in to \(definition.name) again" : "Connect \(definition.name)",
-                message: "Kordi asks \(definition.providerName) for read access only. You can let your agent act here later from this page.",
-                scopes: definition.readScopes,
+                message: "Kordi asks \(definition.providerName) for the access your agent needs to read and act here. You can turn acting off at any time from this page.",
+                scopes: ConnectorsModel.connectScopes(definition),
                 note: nil,
                 cancelTitle: "Cancel",
                 confirmTitle: "Continue to \(definition.providerName)",
@@ -264,7 +265,7 @@ struct ConnectorConsent: Identifiable {
         ConnectorConsent(
             kind: .grant,
             title: "Let your agent act in \(definition.name)",
-            message: "This is a second permission you grant on purpose. Your agent will be able to:",
+            message: "\(definition.providerName) did not grant this when you connected. Your agent will be able to:",
             scopes: definition.actScopes,
             note: "It still asks you first for anything on your Ask me before list, and background runs never get these tools.",
             cancelTitle: "Not now",

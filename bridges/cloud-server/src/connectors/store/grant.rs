@@ -7,7 +7,10 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::{PgPool, Postgres};
 
 use super::super::models::{AuditOutcome, ConnectorRecord, ConnectorToolGroup, CONNECTOR_COLUMNS};
-use super::{insert_audit, new_id, record_from_row, ConnectorRow, NewAuditEntry, StoreResult};
+use super::{
+    default_agent_id, insert_audit, new_id, record_from_row, ConnectorRow, NewAuditEntry,
+    StoreResult,
+};
 
 /// Encrypted credential as stored. `ciphertext` and `nonce` together are the
 /// provider-auth cipher output for the access token; `refresh_ciphertext`
@@ -98,8 +101,8 @@ pub struct GrantUpdate<'a> {
     pub account_id: &'a str,
     pub provider: &'a str,
     pub read_scopes: &'a [String],
+    /// Act scopes granted now. When any are present, acting is turned on.
     pub act_scopes: &'a [String],
-    pub enable_act: bool,
     /// The provider account behind the credential, when known.
     pub provider_account_id: Option<&'a str>,
     pub audit_tool_group: ConnectorToolGroup,
@@ -108,9 +111,12 @@ pub struct GrantUpdate<'a> {
 
 /// Records a completed OAuth grant: creates or updates the live connector,
 /// stores the sealed secret, and writes the `oauth.grant` audit row, all in
-/// one transaction. An advisory lock on (account, provider) serializes
-/// racing completions, so the second one updates the connector the first
-/// created instead of hitting the one-live-connector index.
+/// one transaction. Acting is turned on whenever the grant carries act
+/// scopes, and a newly created connector is granted to the account's
+/// default agent, so a connected service is usable at once. An advisory
+/// lock on (account, provider) serializes racing completions, so the second
+/// one updates the connector the first created instead of hitting the
+/// one-live-connector index.
 pub async fn apply_grant(
     pool: &PgPool,
     grant: GrantUpdate<'_>,
@@ -130,11 +136,13 @@ pub async fn apply_grant(
     .bind(grant.provider)
     .fetch_optional(&mut *tx)
     .await?;
-    let row: ConnectorRow = match existing.map(record_from_row).transpose()? {
+    let existing = existing.map(record_from_row).transpose()?;
+    let created = existing.is_none();
+    let row: ConnectorRow = match existing {
         Some(current) => {
             let read = merge_scopes(&current.read_scopes, grant.read_scopes);
             let act = merge_scopes(&current.act_scopes, grant.act_scopes);
-            let act_enabled = current.act_enabled || (grant.enable_act && !act.is_empty());
+            let act_enabled = current.act_enabled || !grant.act_scopes.is_empty();
             query_as(&format!(
                 "UPDATE cloud_connectors SET status = 'connected', read_scopes = $2, \
                  act_scopes = $3, act_enabled = $4, updated_at = now(), \
@@ -161,13 +169,16 @@ pub async fn apply_grant(
             .bind(grant.provider)
             .bind(grant.read_scopes)
             .bind(grant.act_scopes)
-            .bind(grant.enable_act && !grant.act_scopes.is_empty())
+            .bind(!grant.act_scopes.is_empty())
             .bind(grant.provider_account_id)
             .fetch_one(&mut *tx)
             .await?
         }
     };
     let record = record_from_row(row)?;
+    if created {
+        grant_default_agent_if_none(&mut *tx, &record.connector_id, grant.account_id).await?;
+    }
     write_secret(&mut *tx, &record.connector_id, sealed).await?;
     insert_audit(
         &mut *tx,
@@ -185,6 +196,30 @@ pub async fn apply_grant(
     .await?;
     tx.commit().await?;
     Ok(record)
+}
+
+/// Grants the connector to the account's default agent when no agent has
+/// it yet. Runs only for the first grant of a connector, so a person who
+/// later removes every agent keeps that choice across re-grants.
+async fn grant_default_agent_if_none<'e, E>(
+    executor: E,
+    connector_id: &str,
+    account_id: &str,
+) -> StoreResult<()>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    query(
+        "INSERT INTO cloud_connector_agent_grants (connector_id, agent_id) \
+         SELECT $1, $2 WHERE NOT EXISTS ( \
+           SELECT 1 FROM cloud_connector_agent_grants WHERE connector_id = $1) \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(connector_id)
+    .bind(default_agent_id(account_id))
+    .execute(executor)
+    .await?;
+    Ok(())
 }
 
 /// Removes the credential, the agent grants, and the stored events, queues

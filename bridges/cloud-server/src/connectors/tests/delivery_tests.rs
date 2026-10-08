@@ -194,8 +194,9 @@ fn connector_audiences_fail_closed() {
 #[tokio::test]
 async fn delivered_tools_are_fixed_at_first_lease() {
     let Some(pool) = pool().await else { return };
-    let (runtime, _) = stub_runtime();
+    let (runtime, stub) = stub_runtime();
     let (owner, _) = signed_in_account(&pool, "fixed_set").await;
+    stub.grant_only_read_scopes(true);
     let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
     store::replace_agent_grants(&pool, &connector_id, &[store::default_agent_id(&owner)])
         .await
@@ -213,6 +214,7 @@ async fn delivered_tools_are_fixed_at_first_lease() {
     assert_eq!(first.len(), 1);
     assert_eq!(first[0].group, ConnectorToolGroup::Read);
 
+    stub.grant_only_read_scopes(false);
     connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Act).await;
     let again = delivery::deliver_to_run(&pool, &runtime.providers, &run_id).await;
     assert_eq!(again, first, "re-lease reuses the first delivered set");

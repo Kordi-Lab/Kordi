@@ -60,14 +60,15 @@ fn auth_url_carries_grant_scopes_state_and_pkce() {
     assert!(scopes.contains(&"https://www.googleapis.com/auth/gmail.send"));
     assert!(!url.as_str().contains("csecret"));
 
-    let read_only = oauth::build_auth_url(
+    // The first connect (`read` grant) asks for read and act together.
+    let connect = oauth::build_auth_url(
         &providers::SLACK,
         &client,
         ConnectorToolGroup::Read,
         "state_2",
         "verifier",
     );
-    let slack = url::Url::parse(&read_only).unwrap();
+    let slack = url::Url::parse(&connect).unwrap();
     let user_scope = slack
         .query_pairs()
         .find(|(key, _)| key == "user_scope")
@@ -75,8 +76,8 @@ fn auth_url_carries_grant_scopes_state_and_pkce() {
         .1
         .to_string();
     assert_eq!(providers::SLACK.scope_param, ScopeParam::SlackUserScope);
-    assert!(user_scope.contains("channels:history") && !user_scope.contains("chat:write"));
-    assert!(!read_only.contains("code_challenge"));
+    assert!(user_scope.contains("channels:history") && user_scope.contains("chat:write"));
+    assert!(!connect.contains("code_challenge"));
 }
 
 #[test]
@@ -90,9 +91,11 @@ fn granted_scopes_are_split_into_read_and_act() {
         oauth::classify_granted_scopes(&providers::GITHUB, ConnectorToolGroup::Act, Some(&granted));
     assert_eq!(read, ["read:user"]);
     assert!(act.is_empty(), "act scopes the person unchecked stay off");
-    let (_, act) =
+    // The connect grant asks for act too, so its act scopes count.
+    let (read, act) =
         oauth::classify_granted_scopes(&providers::GITHUB, ConnectorToolGroup::Read, None);
-    assert!(act.is_empty());
+    assert_eq!(read, ["read:user", "notifications"]);
+    assert_eq!(act, ["repo"]);
 }
 
 #[test]
@@ -249,7 +252,8 @@ async fn oauth_state_is_one_use_and_bound_to_the_account() {
         .unwrap()
         .expect("the grant lands on the account that started it");
     assert_eq!(stored.read_scopes, ["stub.read"]);
-    assert!(stored.act_scopes.is_empty() && !stored.act_enabled);
+    assert_eq!(stored.act_scopes, ["stub.act"]);
+    assert!(stored.act_enabled, "connect grants read and act together");
 
     let replay = oauth::complete_grant(&pool, &runtime, Some(&state_id), Some("c2"), None).await;
     assert_eq!(replay.result.unwrap_err().code, "invalid_oauth_state");

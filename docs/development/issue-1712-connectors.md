@@ -32,10 +32,15 @@ product shape can be reviewed before any token is stored.
   through the desktop process for Mac-local sources. No route, lease, event, or
   tool result carries a token field. This mirrors the device-proof rule from
   #1680 for provider keys.
-- **Read first, act second.** A connector's first grant requests read scopes
-  only. `act` scopes are a separate OAuth grant the person starts from settings
-  ("Let my agent act here"). The settings copy states that background runs never
-  receive `act` tools.
+- **Connect grants read and act together; acting can be switched off;
+  background runs stay read-only.** The first connect asks the provider for the
+  read and act scopes in one consent, turns "Let my agent act here" on, and
+  grants the connector to the account's default agent, so a connected service
+  is usable at once. The person can turn acting off, and on again, from
+  settings without another OAuth round trip while act scopes are granted. A
+  provider that returns read-only scopes leaves acting off; the act toggle then
+  starts an `act` re-grant. Background runs never receive `act` tools, and
+  only the owner changes these settings.
 - **Policy lives at the server and harness, never in the prompt.** The server
   decides which tools a run may receive from its trigger (person-started or
   background), the owner's connector grants, and the agent's capability profile
@@ -138,7 +143,9 @@ Routes under `/v1/cloud/connectors`:
 
 - `GET /` list for the signed-in account, never including secrets.
 - `POST /:provider/oauth/start` with `{ "grant": "read" | "act",
-  "redirectAfter"? }`, returning the provider URL. Separate OAuth client
+  "redirectAfter"? }`, returning the provider URL. Both grant kinds request
+  the read and act scopes together: `read` is the first connect, and `act` is
+  the re-grant for a connector whose provider returned read-only scopes. Separate OAuth client
   registrations from the sign-in clients in `auth/oauth.rs`. Returns 503
   `connectors_unavailable` when the encryption key is not configured.
 - `GET /oauth/callback` (unauthenticated, called by the provider) exchanges
@@ -150,14 +157,17 @@ Routes under `/v1/cloud/connectors`:
   a redirect target the page says "Return to Kordi to finish connecting."
 - `POST /oauth/complete` with `{ "completionCode" }`, signed in. Takes the
   pending grant out (one use), requires it to belong to the signed-in account,
-  then stores the secret and granted scopes, marks `status`, and returns
+  then stores the secret and granted scopes, marks `status`, turns
+  `act_enabled` on when act scopes were granted, grants a newly created
+  connector to the account's default agent, and returns
   `{ "connector": ConnectorSummary }`. Errors: 404
   `connector_grant_not_found` (unknown or used), 403 `connector_grant_mismatch`
   (another account started it; the pending grant is discarded), 410
   `connector_grant_expired`, 503 `connectors_unavailable`. This step binds the
   grant to the account that started it, so a consent link sent to someone
   else cannot attach their account to the sender's Kordi account.
-- `POST /:id/act` to toggle `act_enabled` (requires granted act scopes).
+- `POST /:id/act` to toggle `act_enabled` (turning it on requires granted act
+  scopes; turning it off and on again needs no new grant).
 - `PUT /:id/agents` to replace the grant set.
 - `GET /:id/audit` paged, newest first. `nextBefore` is an opaque cursor over
   `(created_at, audit_id)`; pass it back as `before`.
@@ -374,10 +384,11 @@ are a second wave.
   `gmail.modify`. Slack asks for `channels:history` and `groups:history`
   (plus `chat:write` to post); channels are chosen by id, so no list or user
   scopes, and direct-message ids (`D...`) are refused because `im:history` is
-  not requested. GitHub's act grant is `repo`, which gives write access to
-  every private repository the person can reach; the consent text in the
-  desktop and iOS catalogs says so, and the broker only runs the commenting
-  tool with it.
+  not requested. GitHub's act scope is `repo`, requested with the read scopes
+  on connect, which gives write access to every private repository the person
+  can reach; the consent text in the desktop and iOS catalogs says the grant
+  includes commenting and private repository write, and the broker only runs
+  the commenting tool with it.
 - Migration 0116 adds `settings` (JSONB object), `provider_account_id`,
   `last_event_at`, `last_polled_at` (the last poll attempt), `poll_cursor`
   (the newest event time a successful poll stored), and `subscribed_at` to
@@ -389,7 +400,8 @@ are a second wave.
   `{ "channels": ["C0123ABCD"] }` (at most 50 channel ids); other providers
   accept only `{}`.
 - `GET /v1/cloud/connectors` also returns `agents` (the built-in agent named
-  from the account's agent profile, then active defined agents), and each
+  from the account's agent profile, listed once with `isDefault: true`, then
+  active defined agents), and each
   summary carries `grantedScopeIds` in the client catalog ids, `settings`, and
   `lastEventAt`.
 - The broker refreshes once and retries when a provider answers 401 to a live

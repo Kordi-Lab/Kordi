@@ -14,6 +14,7 @@ import {
   connectorCatalog,
   connectorDefinition,
   connectorListValue,
+  connectScopes,
   hasGrantedActScopes,
   type ConnectorAgent,
   type ConnectorDefinition,
@@ -221,10 +222,13 @@ export function ConnectorsSettingsPanel({
     const definition = connectorDefinition(providerId);
     return runFlow(
       definition,
-      (signal) => client.connect(providerId, { scopeIds: definition.readScopes.map((scope) => scope.id), signal }),
-      (state) => (state.status === 'connected'
-        ? `${definition.name} connected with read access.`
-        : `${definition.name} needs one more permission.`),
+      (signal) => client.connect(providerId, { scopeIds: connectScopes(definition).map((scope) => scope.id), signal }),
+      (state) => {
+        if (state.status !== 'connected') return `${definition.name} needs one more permission.`;
+        return state.actEnabled
+          ? `${definition.name} connected. Your agent can read and act here.`
+          : `${definition.name} connected with read access.`;
+      },
       `Could not connect ${definition.name}.`,
     );
   };
