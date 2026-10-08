@@ -53,10 +53,12 @@ struct AccountSheet: View {
         if embeddedInNavigationStack {
             settingsContent
                 .preferredColorScheme(preferredColorScheme)
+                .task { await model.refreshConnectorsCapabilityIfNeeded() }
         } else {
             NavigationStack(path: $path) {
                 settingsContent
             }
+            .task { await model.refreshConnectorsCapabilityIfNeeded() }
             .preferredColorScheme(preferredColorScheme)
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)

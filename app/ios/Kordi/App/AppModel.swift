@@ -323,6 +323,8 @@ final class AppModel: ObservableObject {
     private var token: String?
     private var currentDeviceId: String?
     private var isRefreshingConnectorsCapability = false
+    /// True until a capabilities fetch succeeds, so the account sheet retries.
+    private var connectorsCapabilityNeedsRetry = true
     private var connectorsClientCache: CloudConnectorsClient?
     private var deviceOperationIds: [String: String] = [:]
     private var cloudSyncTask: Task<Void, Never>?
@@ -797,6 +799,8 @@ final class AppModel: ObservableObject {
         ownedCloudAgents = []
         sharedCloudAgents = []
         connectorsClientCache = nil
+        connectorsVersion = nil
+        connectorsCapabilityNeedsRetry = true
         hiddenCloudSessionIds = []
         deletedCloudSessionIds = []
         sessionVisibilityMutationRevision = 0
@@ -1032,10 +1036,21 @@ final class AppModel: ObservableObject {
         guard !previewMode, !isRefreshingConnectorsCapability else { return }
         isRefreshingConnectorsCapability = true
         defer { isRefreshingConnectorsCapability = false }
-        guard let capabilities = try? await api.authCapabilities() else { return }
+        guard let capabilities = try? await api.authCapabilities() else {
+            connectorsCapabilityNeedsRetry = true
+            return
+        }
+        connectorsCapabilityNeedsRetry = false
         if connectorsVersion != capabilities.connectorsVersion {
             connectorsVersion = capabilities.connectorsVersion
         }
+    }
+
+    /// Called when the account sheet opens: retries the capabilities fetch
+    /// only when the last attempt failed or none has succeeded yet.
+    func refreshConnectorsCapabilityIfNeeded() async {
+        guard phase == .signedIn, connectorsCapabilityNeedsRetry else { return }
+        await refreshConnectorsCapability()
     }
 
     /// The server-backed Connectors client for the signed-in account, shared

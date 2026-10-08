@@ -48,12 +48,15 @@ struct CloudConnectorSummary: Decodable, Equatable {
     let revokedAt: String?
     /// Not sent by the first server version; read when a later one adds it.
     let connectedAt: String?
-    /// Not sent by the first server version; read when a later one adds it.
+    /// When the server last stored an event from this connector.
     let lastEventAt: String?
+    /// The granted scopes as catalog ids (`<provider>.<thing>.<access>`).
+    /// Nil from servers that only report the native scopes above.
+    let grantedScopeIds: [String]?
 
     private enum CodingKeys: String, CodingKey {
         case connectorId, provider, status, readScopes, actScopes, actEnabled, agentIds
-        case createdAt, updatedAt, revokedAt, connectedAt, lastEventAt
+        case createdAt, updatedAt, revokedAt, connectedAt, lastEventAt, grantedScopeIds
     }
 
     init(
@@ -68,7 +71,8 @@ struct CloudConnectorSummary: Decodable, Equatable {
         updatedAt: String? = nil,
         revokedAt: String? = nil,
         connectedAt: String? = nil,
-        lastEventAt: String? = nil
+        lastEventAt: String? = nil,
+        grantedScopeIds: [String]? = nil
     ) {
         self.connectorId = connectorId
         self.provider = provider
@@ -82,6 +86,7 @@ struct CloudConnectorSummary: Decodable, Equatable {
         self.revokedAt = revokedAt
         self.connectedAt = connectedAt
         self.lastEventAt = lastEventAt
+        self.grantedScopeIds = grantedScopeIds
     }
 
     init(from decoder: Decoder) throws {
@@ -98,6 +103,7 @@ struct CloudConnectorSummary: Decodable, Equatable {
         revokedAt = try container.decodeIfPresent(String.self, forKey: .revokedAt)
         connectedAt = try container.decodeIfPresent(String.self, forKey: .connectedAt)
         lastEventAt = try container.decodeIfPresent(String.self, forKey: .lastEventAt)
+        grantedScopeIds = try container.decodeIfPresent([String].self, forKey: .grantedScopeIds)
     }
 }
 
@@ -177,6 +183,10 @@ private struct CloudConnectorOAuthStartResponse: Decodable {
     let authUrl: String
 }
 
+private struct CloudConnectorOAuthCompleteRequest: Encodable {
+    let completionCode: String
+}
+
 private struct CloudConnectorSetActRequest: Encodable {
     let enabled: Bool
 }
@@ -232,6 +242,19 @@ extension CloudAPIClient {
             )
         }
         return authURL
+    }
+
+    /// Finishes a grant with the one-time code from the callback fragment.
+    /// The connector counts as connected only after this succeeds.
+    func completeConnectorOAuth(token: String, completionCode: String) async throws -> CloudConnectorSummary {
+        let response: CloudConnectorResponse = try await send(
+            path: "/v1/cloud/connectors/oauth/complete",
+            method: "POST",
+            token: token,
+            body: CloudConnectorOAuthCompleteRequest(completionCode: completionCode),
+            fallback: "Could not finish connecting."
+        )
+        return response.connector
     }
 
     func setConnectorAct(token: String, connectorId: String, enabled: Bool) async throws -> CloudConnectorSummary {

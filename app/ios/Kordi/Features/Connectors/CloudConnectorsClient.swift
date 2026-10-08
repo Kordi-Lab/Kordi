@@ -1,12 +1,24 @@
 import Foundation
 
 /// What a finished connector grant hands back to the app in the callback
-/// URL fragment (`kordi_connector`, base64url JSON).
+/// URL fragment (`kordi_connector`, base64url JSON). Current servers send a
+/// one-time `completionCode` with `status: "pending"`; the app redeems it at
+/// `POST /v1/cloud/connectors/oauth/complete`. Older servers sent the
+/// `connectorId` of an already connected row instead.
 struct CloudConnectorGrantResult: Decodable, Equatable {
-    let connectorId: String
+    let completionCode: String?
+    let connectorId: String?
     let provider: String
     let grant: String?
     let status: String?
+
+    init(completionCode: String? = nil, connectorId: String? = nil, provider: String, grant: String? = nil, status: String? = nil) {
+        self.completionCode = completionCode
+        self.connectorId = connectorId
+        self.provider = provider
+        self.grant = grant
+        self.status = status
+    }
 }
 
 /// Pure mapping between `/v1/cloud/connectors` wire models and the shared
@@ -38,6 +50,13 @@ enum CloudConnectorsMapping {
             .max { ($0.updatedAt ?? "") < ($1.updatedAt ?? "") }
     }
 
+    /// Catalog scope ids for a summary: the server's `grantedScopeIds` when
+    /// it sends them, otherwise the coarse mapping from native scopes.
+    static func grantedScopeIds(definition: ConnectorDefinition, summary: CloudConnectorSummary) -> [String] {
+        if let ids = summary.grantedScopeIds { return ids }
+        return grantedScopeIds(definition: definition, readScopes: summary.readScopes, actScopes: summary.actScopes)
+    }
+
     static func state(_ providerId: ConnectorProviderId, summary: CloudConnectorSummary?) -> ConnectorState {
         let definition = ConnectorsModel.definition(providerId)
         // Device-local sources never come from the server.
@@ -48,11 +67,7 @@ enum CloudConnectorsMapping {
             providerId: providerId,
             status: mapped,
             connectedAt: summary.connectedAt ?? summary.createdAt,
-            grantedScopeIds: grantedScopeIds(
-                definition: definition,
-                readScopes: summary.readScopes,
-                actScopes: summary.actScopes
-            ),
+            grantedScopeIds: grantedScopeIds(definition: definition, summary: summary),
             actEnabled: summary.actEnabled,
             agentIds: summary.agentIds,
             lastEventAt: summary.lastEventAt
@@ -120,25 +135,22 @@ enum CloudConnectorsMapping {
             throw ConnectorsClientError(message: invalidCallbackMessage)
         }
         let items = URLComponents(url: fragmentURL, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        if let message = items.first(where: { $0.name == "kordi_connector_error" })?.value?.nonEmpty {
-            throw ConnectorsClientError(message: message)
+        let errorMessage = items.first(where: { $0.name == "kordi_connector_error" })?.value?.nonEmpty
+        let errorCode = items.first(where: { $0.name == "kordi_connector_error_code" })?.value?.nonEmpty
+        if errorMessage != nil || errorCode != nil {
+            throw ConnectorsClientError(message: errorMessage ?? grantFailedMessage, code: errorCode)
         }
-        guard let encoded = items.first(where: { $0.name == "kordi_connector" })?.value?.nonEmpty else {
+        guard let encoded = items.first(where: { $0.name == "kordi_connector" })?.value?.nonEmpty,
+              let data = decodeBase64URL(encoded),
+              let result = try? JSONDecoder().decode(CloudConnectorGrantResult.self, from: data),
+              result.completionCode?.nonEmpty != nil || result.connectorId?.nonEmpty != nil else {
             throw ConnectorsClientError(message: invalidCallbackMessage)
         }
-        if let data = decodeBase64URL(encoded),
-           let result = try? JSONDecoder().decode(CloudConnectorGrantResult.self, from: data),
-           !result.connectorId.isEmpty {
-            return result
-        }
-        // A bare connector id, as an earlier draft of the contract described.
-        guard encoded.allSatisfy({ $0.isLetter || $0.isNumber || "-_:.".contains($0) }) else {
-            throw ConnectorsClientError(message: invalidCallbackMessage)
-        }
-        return CloudConnectorGrantResult(connectorId: encoded, provider: "", grant: nil, status: nil)
+        return result
     }
 
     static let invalidCallbackMessage = "Kordi did not receive a valid answer from the sign-in page. Try again."
+    static let grantFailedMessage = "The sign-in page did not grant access. Try again."
 
     private static func decodeBase64URL(_ value: String) -> Data? {
         var normalized = value
@@ -216,14 +228,14 @@ final class CloudConnectorsClient: ConnectorsClient {
 
     func list() async throws -> ConnectorsListResult {
         let token = try requireToken()
-        async let response = api.listConnectors(token: token)
-        async let owned = try? api.listAgents(token: token)
-        let (listed, ownedAgents) = try await (response, owned)
+        let listed = try await api.listConnectors(token: token)
         summaries = listed.connectors
         if let wireAgents = listed.agents {
             agents = CloudConnectorsMapping.agents(wireAgents)
         } else {
-            agents = CloudConnectorsMapping.agents(accountId: accountId(), owned: ownedAgents ?? [])
+            // Servers that predate the agents field: list them separately.
+            let owned = (try? await api.listAgents(token: token)) ?? []
+            agents = CloudConnectorsMapping.agents(accountId: accountId(), owned: owned)
         }
         return ConnectorsListResult(states: CloudConnectorsMapping.states(from: summaries), agents: agents)
     }
@@ -243,13 +255,50 @@ final class CloudConnectorsClient: ConnectorsClient {
         } catch CloudOAuthSessionError.cancelled {
             throw ConnectorsClientError(message: "Connecting \(definition.name) was canceled.")
         }
-        _ = try CloudConnectorsMapping.parseCallback(returnedURL, expectedCallbackURL: callbackURL)
+        let callback = try CloudConnectorsMapping.parseCallback(returnedURL, expectedCallbackURL: callbackURL)
+        if let completionCode = callback.completionCode?.nonEmpty {
+            // The grant is pending until the app redeems the one-time code.
+            let completed = try await api.completeConnectorOAuth(token: token, completionCode: completionCode)
+            _ = store(completed, for: providerId)
+        }
         let result = try await list()
-        guard let state = result.states.first(where: { $0.providerId == providerId }), state.status != .notConnected else {
-            throw ConnectorsClientError(message: "Kordi could not confirm the connection to \(definition.name). Try again.")
+        let state = result.states.first { $0.providerId == providerId } ?? .empty(providerId)
+        switch grant {
+        case .read:
+            guard state.status == .connected else {
+                throw ConnectorsClientError(message: "Kordi could not confirm the connection to \(definition.name). Try again.")
+            }
+        case .act:
+            guard state.status != .notConnected else {
+                throw ConnectorsClientError(message: "Kordi could not confirm the connection to \(definition.name). Try again.")
+            }
+            guard ConnectorsModel.hasGrantedActScopes(definition: definition, state: state) else {
+                throw ConnectorsClientError(message: "\(definition.name) did not grant act access.")
+            }
         }
         return state
     }
+
+    /// Runs a call against the provider's live connector. When the server no
+    /// longer knows the connector, drops the cached row, re-lists, and says so.
+    private func withLiveConnector<T>(
+        _ providerId: ConnectorProviderId,
+        _ body: (CloudConnectorSummary) async throws -> T
+    ) async throws -> T {
+        let summary = try await liveSummary(providerId)
+        do {
+            return try await body(summary)
+        } catch let error as CloudAPIError where error.code == Self.connectorNotFoundCode {
+            summaries.removeAll { $0.provider == providerId.rawValue }
+            _ = try? await list()
+            throw ConnectorsClientError(
+                message: "\(ConnectorsModel.definition(providerId).name) is no longer connected.",
+                code: Self.connectorNotFoundCode
+            )
+        }
+    }
+
+    static let connectorNotFoundCode = "connector_not_found"
 
     func connect(_ providerId: ConnectorProviderId, scopeIds: [String]) async throws -> ConnectorState {
         // The server requests the provider scopes for the read grant; the
@@ -264,32 +313,44 @@ final class CloudConnectorsClient: ConnectorsClient {
     func setActEnabled(_ providerId: ConnectorProviderId, enabled: Bool) async throws -> ConnectorState {
         _ = try service(providerId)
         let token = try requireToken()
-        let summary = try await liveSummary(providerId)
-        return store(try await api.setConnectorAct(token: token, connectorId: summary.connectorId, enabled: enabled), for: providerId)
+        let updated = try await withLiveConnector(providerId) { summary in
+            try await api.setConnectorAct(token: token, connectorId: summary.connectorId, enabled: enabled)
+        }
+        return store(updated, for: providerId)
     }
 
     func setAgentGrant(_ providerId: ConnectorProviderId, agentId: String, granted: Bool) async throws -> ConnectorState {
         _ = try service(providerId)
         let token = try requireToken()
-        let summary = try await liveSummary(providerId)
-        var ids = summary.agentIds.filter { $0 != agentId }
-        if granted { ids.append(agentId) }
-        return store(try await api.setConnectorAgents(token: token, connectorId: summary.connectorId, agentIds: ids), for: providerId)
+        if agents.isEmpty { _ = try await list() }
+        let updated = try await withLiveConnector(providerId) { summary in
+            // Only send agents that still exist, so a grant left on an
+            // archived agent cannot make every change fail validation.
+            let known = Set(agents.map(\.agentId))
+            var ids = summary.agentIds.filter { $0 != agentId && known.contains($0) }
+            if granted { ids.append(agentId) }
+            return try await api.setConnectorAgents(token: token, connectorId: summary.connectorId, agentIds: ids)
+        }
+        return store(updated, for: providerId)
     }
 
     func disconnect(_ providerId: ConnectorProviderId) async throws {
         _ = try service(providerId)
         let token = try requireToken()
-        let summary = try await liveSummary(providerId)
-        _ = try await api.disconnectConnector(token: token, connectorId: summary.connectorId)
-        summaries.removeAll { $0.connectorId == summary.connectorId }
+        let connectorId = try await withLiveConnector(providerId) { summary in
+            _ = try await api.disconnectConnector(token: token, connectorId: summary.connectorId)
+            return summary.connectorId
+        }
+        summaries.removeAll { $0.connectorId == connectorId }
     }
 
     func auditLog(_ providerId: ConnectorProviderId) async throws -> [ConnectorAuditEntry] {
         guard ConnectorsModel.definition(providerId).kind == .service else { return [] }
         let token = try requireToken()
-        guard let summary = try? await liveSummary(providerId) else { return [] }
-        let page = try await api.connectorAudit(token: token, connectorId: summary.connectorId, limit: 50)
+        guard (try? await liveSummary(providerId)) != nil else { return [] }
+        let page = try await withLiveConnector(providerId) { summary in
+            try await api.connectorAudit(token: token, connectorId: summary.connectorId, limit: 50)
+        }
         return CloudConnectorsMapping.auditEntries(page.entries, providerId: providerId, agents: agents)
             .sorted { $0.at > $1.at }
     }
