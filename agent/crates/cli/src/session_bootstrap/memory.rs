@@ -67,6 +67,15 @@ pub(crate) fn build_memory_aware_tools(
     (registry, selection, section)
 }
 
+/// The group id behind a group session id (`session:group:<id>`), which is
+/// the scope id of that group's memories.
+pub(crate) fn group_scope_id_for_session(session_id: &str) -> Option<String> {
+    session_id
+        .strip_prefix("session:group:")
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+}
+
 pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
     tools: &[Box<dyn Tool>],
     artifacts_dir: &std::path::Path,
@@ -103,6 +112,20 @@ pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
             "- Project scope `{project_scope_id}`: {}",
             project_path.display()
         ));
+    }
+
+    if let Some(group_scope_id) = group_scope_id_for_session(session_id) {
+        let group_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+            artifacts_dir,
+            "group",
+            &group_scope_id,
+        );
+        if group_path.exists() {
+            artifact_lines.push(format!(
+                "- Group scope `{group_scope_id}`: {}",
+                group_path.display()
+            ));
+        }
     }
 
     if artifact_lines.is_empty() {

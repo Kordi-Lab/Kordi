@@ -167,3 +167,58 @@ fn memory_off_removes_reflection_from_explicit_tool_lists() {
         ToolSelection::None
     );
 }
+
+#[test]
+fn group_scope_id_is_derived_only_from_group_sessions() {
+    assert_eq!(
+        crate::session_bootstrap::memory::group_scope_id_for_session("session:group:abc-123"),
+        Some("abc-123".to_string())
+    );
+    assert_eq!(
+        crate::session_bootstrap::memory::group_scope_id_for_session("session:group:"),
+        None
+    );
+    assert_eq!(
+        crate::session_bootstrap::memory::group_scope_id_for_session("session-123"),
+        None
+    );
+}
+
+#[test]
+fn scoped_lesson_artifact_prompt_lists_group_scope_when_file_exists() {
+    let tools: Vec<Box<dyn Tool>> = vec![Box::new(NamedTool {
+        name: "reflection",
+        description: "reflection",
+        schema: json!({"type": "object"}),
+    })];
+    let artifacts_dir = tempdir().expect("artifacts dir");
+    let cwd = tempdir().expect("cwd");
+    let session_id = "session:group:abc-123";
+
+    let without = super::build_reflection_lesson_artifacts_system_prompt_section(
+        &tools,
+        artifacts_dir.path(),
+        session_id,
+        cwd.path(),
+        true,
+    );
+    assert_eq!(without, "");
+
+    let group_path = crate::reflection_runtime::reflection_lesson_artifact_path(
+        artifacts_dir.path(),
+        "group",
+        "abc-123",
+    );
+    std::fs::create_dir_all(group_path.parent().expect("parent")).expect("mkdir");
+    std::fs::write(&group_path, "# lessons").expect("lesson file");
+
+    let section = super::build_reflection_lesson_artifacts_system_prompt_section(
+        &tools,
+        artifacts_dir.path(),
+        session_id,
+        cwd.path(),
+        true,
+    );
+    assert!(section.contains("- Group scope `abc-123`: "));
+    assert!(section.contains(group_path.to_str().expect("group path")));
+}
