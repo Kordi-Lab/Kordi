@@ -19,7 +19,8 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::models::{
-    allowed_tool_groups, BrokerCallRequest, ConnectorRecord, ConnectorToolGroup, RunTrigger,
+    allowed_tool_groups, BrokerCallRequest, ConnectorAudience, ConnectorRecord, ConnectorToolGroup,
+    RunTrigger,
 };
 use super::providers::{ConnectorProvider, ConnectorToolDescriptor, ProviderRegistry};
 use super::store::{self, StoreResult};
@@ -58,13 +59,19 @@ pub fn tools_for_trigger(
 /// Built from the owner's connected connectors, filtered to those that grant
 /// `agent_id`, and to the tool groups `trigger` allows: background runs get
 /// `read` only, and `act` needs a person-started run and `act_enabled`.
+/// A `shared` audience gets nothing, whatever the trigger: connector data
+/// about other people never reaches output other accounts can read.
 pub async fn tools_for_run(
     pool: &PgPool,
     providers: &ProviderRegistry,
     account_id: &str,
     agent_id: &str,
     trigger: RunTrigger,
+    audience: ConnectorAudience,
 ) -> StoreResult<Vec<LeaseConnectorTool>> {
+    if audience != ConnectorAudience::OwnerPrivate {
+        return Ok(Vec::new());
+    }
     let connectors = store::list_live_connectors(pool, account_id).await?;
     if connectors.is_empty() {
         return Ok(Vec::new());
@@ -124,7 +131,7 @@ pub async fn deliver_to_run(
     }
 }
 
-type DeliveryRow = (String, String, String, String, String, bool, Value);
+type DeliveryRow = (String, String, String, String, String, String, bool, Value);
 
 async fn compute_and_store(
     pool: &PgPool,
@@ -133,13 +140,15 @@ async fn compute_and_store(
 ) -> StoreResult<Vec<LeaseConnectorTool>> {
     let row: Option<DeliveryRow> = query_as(
         "SELECT owner_account_id, requester_account_id, execution_agent_id, run_trigger, \
-         execution_backend, connector_tools_delivered_at IS NOT NULL, connector_tools_json \
+         connector_audience, execution_backend, connector_tools_delivered_at IS NOT NULL, \
+         connector_tools_json \
          FROM cloud_agent_fallback_runs WHERE run_id = $1",
     )
     .bind(run_id)
     .fetch_optional(pool)
     .await?;
-    let Some((owner, requester, agent_id, trigger, backend, delivered, stored)) = row else {
+    let Some((owner, requester, agent_id, trigger, audience, backend, delivered, stored)) = row
+    else {
         return Ok(Vec::new());
     };
     if delivered {
@@ -152,6 +161,7 @@ async fn compute_and_store(
             &owner,
             &agent_id,
             RunTrigger::parse(&trigger),
+            ConnectorAudience::parse(&audience),
         )
         .await?
     } else {

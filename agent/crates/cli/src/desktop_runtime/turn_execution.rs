@@ -63,6 +63,12 @@ impl DesktopRuntimeSession {
         self.setup.tool_ctx.connector_tools = runtime;
     }
 
+    /// The host's interactive approval prompt, used by connector `act`
+    /// tools. `None` refuses every call that needs approval.
+    pub fn set_tool_approval_hook(&mut self, hook: Option<kordi_tools::RequestToolApprovalFn>) {
+        self.setup.tool_ctx.request_approval = hook;
+    }
+
     pub async fn send_message(
         &mut self,
         prompt: String,

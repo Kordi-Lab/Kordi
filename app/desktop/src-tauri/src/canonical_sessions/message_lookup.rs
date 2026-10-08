@@ -70,6 +70,16 @@ pub(crate) fn canonical_message_exists(
     .map_err(|err| err.to_string())
 }
 
+/// The stored title of `session_id`, when the session exists and has one.
+pub(crate) fn session_title(session_id: &str) -> Option<String> {
+    let conn = super::open_db().ok()?;
+    super::select_session(&conn, session_id.trim())
+        .ok()
+        .flatten()
+        .map(|session| session.title.trim().to_string())
+        .filter(|title| !title.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

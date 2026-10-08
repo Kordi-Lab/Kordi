@@ -5,6 +5,7 @@ pub mod bash;
 pub mod bash_policy;
 pub mod browser_fetch;
 pub mod calendar;
+pub mod connector_request_connect;
 pub mod connector_tools;
 mod diff;
 pub mod edit;

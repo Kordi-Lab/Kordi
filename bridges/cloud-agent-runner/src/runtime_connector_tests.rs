@@ -67,6 +67,7 @@ fn run(trigger: &str, tools: Vec<ConnectorToolDescriptor>) -> CloudAgentRun {
         connectors: LeaseConnectors {
             trigger: Some(trigger.into()),
             tools,
+            audience: Some("owner_private".into()),
         },
     }
 }
@@ -208,7 +209,8 @@ fn lease_membership_and_name_shape_decide_connector_tools() {
         .iter()
         .map(|tool| tool["function"]["name"].as_str().unwrap().to_string())
         .collect::<Vec<_>>();
-    assert_eq!(names, ["gmail_search"]);
+    // The owner-private test run also offers the connect link.
+    assert_eq!(names, ["gmail_search", "connectors_request_connect"]);
     assert!(run.connectors.descriptor("gmail.search").is_none());
     assert!(run.connectors.descriptor("read").is_none());
     assert!(kordi_tools::connector_tools::is_connector_tool_name(
@@ -267,7 +269,11 @@ fn descriptors_become_model_tools_and_the_prompt_lists_them() {
         vec![descriptor("gmail_search", ConnectorToolGroup::Read)],
     );
     let definitions = connectors::tool_definitions(&background);
-    assert_eq!(definitions.len(), 1);
+    assert_eq!(definitions.len(), 2);
+    assert_eq!(
+        definitions[1]["function"]["name"],
+        "connectors_request_connect"
+    );
     assert_eq!(definitions[0]["function"]["name"], "gmail_search");
     assert_eq!(
         definitions[0]["function"]["parameters"]["properties"]["q"]["type"],
@@ -401,56 +407,47 @@ fn broker_answers_become_results_or_clear_errors() {
         .contains("HTTP 502"));
 }
 
-#[test]
-fn offered_tools_skip_built_ins_bad_shapes_and_repeats() {
-    let mut repeat = descriptor("gmail_search", ConnectorToolGroup::Read);
-    repeat.description = "a second gmail_search".into();
-    let tools = vec![
-        descriptor("gmail.search", ConnectorToolGroup::Read),
-        descriptor("gmail_search", ConnectorToolGroup::Read),
-        repeat,
-        descriptor("export_artifact", ConnectorToolGroup::Read),
-    ];
-    // The policy itself refuses a lease name that is a built-in tool.
-    assert_eq!(
-        decide_runner_tool(&request("export_artifact", &tools)),
-        RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
-    );
-    let run = run("person_started", tools);
-    let names = connectors::tool_definitions(&run)
+#[tokio::test]
+async fn request_connect_returns_a_settings_link_only_on_owner_private_runs() {
+    let client = BrokerClient::default();
+    let call = ModelToolCall {
+        id: "call_connect".into(),
+        name: "connectors_request_connect".into(),
+        arguments: json!({ "provider": "slack" }),
+    };
+    let private = run("person_started", Vec::new());
+    assert!(connectors::tool_definitions(&private)
         .iter()
-        .map(|tool| tool["function"]["name"].as_str().unwrap().to_string())
-        .collect::<Vec<_>>();
-    assert_eq!(names, ["gmail_search"]);
-    let prompt = connectors::prompt_section(&run).unwrap();
-    assert_eq!(prompt.matches("\n- ").count(), 1, "{prompt}");
-    assert!(prompt.contains("- gmail_search: gmail_search description"));
-    assert!(!prompt.contains("export_artifact") && !prompt.contains("gmail.search"));
+        .any(|tool| tool["function"]["name"] == "connectors_request_connect"));
+    let output = connectors::execute_connector_call(&client, &private, &call)
+        .await
+        .unwrap();
+    let result: Value = serde_json::from_str(output.as_str().unwrap()).unwrap();
+    assert_eq!(
+        result["openUrl"],
+        "kordi://settings/connectors?provider=slack"
+    );
+    assert!(
+        client.calls.lock().unwrap().is_empty(),
+        "no grant, no broker"
+    );
+
+    let mut shared = run("person_started", Vec::new());
+    shared.connectors.audience = Some("shared".into());
+    assert!(connectors::tool_definitions(&shared).is_empty());
+    let refused = connectors::execute_connector_call(&client, &shared, &call)
+        .await
+        .unwrap();
+    assert!(refused.as_str().unwrap().contains("not available"));
+    let parsed: LeaseConnectors = serde_json::from_value(json!({
+        "trigger": "person_started",
+        "connectorTools": [],
+        "connectorAudience": "owner_private"
+    }))
+    .unwrap();
+    assert!(parsed.is_owner_private());
+    assert!(!LeaseConnectors::default().is_owner_private());
 }
 
-#[test]
-fn a_bad_lease_entry_drops_only_itself() {
-    let lease = json!({
-        "runId": "car_1", "status": "leased", "prompt": "p",
-        "ownerAccountId": "a", "requesterAccountId": "a", "sessionId": "s",
-        "sandboxId": null, "providerAuthAvailable": false,
-        "trigger": "person_started",
-        "connectorTools": [
-            {"connectorId": "conn_1", "provider": "gmail", "name": "gmail_search",
-             "group": "read", "description": "Search mail."},
-            {"connectorId": "conn_1", "provider": "gmail", "name": "gmail_watch",
-             "group": "stream", "description": "Unknown group."},
-            {"name": "missing_fields"},
-            {"connectorId": "conn_1", "provider": "gmail", "name": "gmail_send",
-             "group": "act", "description": "Send mail."}
-        ]
-    });
-    let run: CloudAgentRun = serde_json::from_value(lease).unwrap();
-    let names = run
-        .connectors
-        .tools
-        .iter()
-        .map(|tool| tool.name.as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(names, ["gmail_search", "gmail_send"]);
-}
+#[path = "runtime_connector_lease_tests.rs"]
+mod lease_tests;

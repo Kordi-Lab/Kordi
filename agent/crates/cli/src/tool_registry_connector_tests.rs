@@ -31,6 +31,8 @@ fn runtime() -> ConnectorToolsRuntime {
         call: Arc::new(|descriptor, _| {
             Box::pin(async move { Ok(json!({ "tool": descriptor.name })) })
         }),
+        report_declined: None,
+        offer_request_connect: false,
     }
 }
 
@@ -140,4 +142,41 @@ async fn act_tools_registered_from_a_lease_invoke_the_approval_hook() {
             .unwrap();
     }
     assert_eq!(*asked.lock().unwrap(), ["gmail_send"], "only act tools ask");
+}
+
+#[tokio::test]
+async fn act_tools_without_an_approval_responder_are_denied() {
+    let mut registry = ToolRegistry::from_tools(vec![]);
+    let runtime = runtime();
+    registry.set_connector_tools(Some(&runtime), true);
+    let ctx = ToolContext {
+        connector_tools: Some(runtime),
+        request_approval: None,
+        ..Default::default()
+    };
+    let send = registry
+        .active_tools()
+        .iter()
+        .find(|tool| tool.name() == "gmail_send")
+        .unwrap();
+    let error = send
+        .execute(json!({}), &ctx, CancellationToken::new())
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("Nothing was changed"), "{error}");
+}
+
+#[test]
+fn request_connect_registers_only_for_runtimes_that_offer_it() {
+    let mut registry = ToolRegistry::from_tools(vec![]);
+    let mut offered = runtime();
+    offered.descriptors.clear();
+    offered.offer_request_connect = true;
+    registry.set_connector_tools(Some(&offered), true);
+    assert_eq!(registry.active_names(), ["connectors_request_connect"]);
+    registry.set_connector_tools(Some(&runtime()), true);
+    assert_eq!(registry.active_names(), ["gmail_search", "gmail_send"]);
+    registry.set_connector_tools(None, true);
+    assert!(registry.active_names().is_empty());
 }

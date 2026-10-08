@@ -13,6 +13,7 @@ use crate::cloud_agent_runtime::routes::runner_authorized_for_connectors;
 use crate::server::ServerState;
 
 use super::broker::{self, codes};
+use super::declined;
 use super::delivery::LeaseHolder;
 use super::models::{BrokerCallRequest, BrokerCallResponse};
 use super::routes::{error, server_error};
@@ -22,6 +23,7 @@ pub fn broker_status(response: &BrokerCallResponse) -> StatusCode {
     match response.error_code() {
         None => StatusCode::OK,
         Some(codes::BUDGET_EXCEEDED) => StatusCode::TOO_MANY_REQUESTS,
+        Some(declined::DECLINED_BY_OWNER) => StatusCode::FORBIDDEN,
         Some(codes::INVALID_REQUEST) | Some(codes::UNKNOWN_TOOL) => StatusCode::BAD_REQUEST,
         Some(code) if codes::FORBIDDEN.contains(&code) => StatusCode::FORBIDDEN,
         Some(codes::NOT_FOUND) => StatusCode::NOT_FOUND,
@@ -95,7 +97,11 @@ pub(super) async fn broker_call(
         Ok(holder) => holder,
         Err(response) => return *response,
     };
-    let response =
-        broker::call_connector_tool(state.db_pool(), state.connectors(), &holder, &input).await;
+    // A decline only writes the audit row; the tool never runs.
+    let response = if input.declined_by_owner {
+        declined::record_on_lease(state.db_pool(), state.connectors(), &holder, &input).await
+    } else {
+        broker::call_connector_tool(state.db_pool(), state.connectors(), &holder, &input).await
+    };
     (broker_status(&response), Json(response)).into_response()
 }

@@ -10,6 +10,8 @@ import {
   safeExternalHttpHref,
   splitBareHttpUrl,
 } from './messageLinks';
+import { ConnectorsSettingsMessageLink } from '@/features/connectors/ConnectorsSettingsMessageLink';
+import { connectorsLinkStartPattern, connectorsSettingsLinkPrefix } from '@/features/connectors/connectorsSettingsLink';
 
 type MarkdownInlinePart =
   | { type: 'text'; value: string }
@@ -17,7 +19,8 @@ type MarkdownInlinePart =
   | { type: 'strong'; value: string }
   | { type: 'em'; value: string }
   | { type: 'strongEm'; value: string }
-  | { type: 'link'; label: string; href: string };
+  | { type: 'link'; label: string; href: string }
+  | { type: 'settingsLink'; label: string; href: string };
 
 export type MarkdownTone = 'default' | 'muted' | 'inherit';
 
@@ -29,7 +32,7 @@ export type MarkdownInlineOptions = {
 };
 
 function nextInlineTokenIndex(slice: string) {
-  return ['[', '`', '*', '_', '\\'].map((token) => slice.indexOf(token)).concat(slice.search(bareHttpUrlStartPattern))
+  return ['[', '`', '*', '_', '\\'].map((token) => slice.indexOf(token)).concat(slice.search(bareHttpUrlStartPattern), slice.search(connectorsLinkStartPattern))
     .filter((value) => value >= 0)
     .sort((left, right) => left - right)[0];
 }
@@ -121,6 +124,12 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
     if (escaped) {
       parts.push({ type: 'text', value: escaped[1] });
       index += escaped[0].length;
+      continue;
+    }
+    const settingsLink = connectorsSettingsLinkPrefix(slice);
+    if (settingsLink) {
+      parts.push({ type: 'settingsLink', label: settingsLink.label, href: settingsLink.href });
+      index += settingsLink.matchedLength;
       continue;
     }
     const markdownLink = markdownHttpLinkPrefix(slice);
@@ -217,6 +226,9 @@ export function MarkdownInlineContent({
           <MarkdownInlineContent text={part.value} tone={tone} mentions={mentions} onOpenMention={onOpenMention} showLinkIcons={showLinkIcons} />
         </em>
       );
+    }
+    if (part.type === 'settingsLink') {
+      return <ConnectorsSettingsMessageLink key={`settings-link-${index}`} href={part.href} tone={tone === 'muted' ? 'muted' : 'default'}>{part.label}</ConnectorsSettingsMessageLink>;
     }
     if (part.type === 'link') {
       const label = compactExternalLinkLabel(part.label, part.href);

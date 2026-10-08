@@ -68,6 +68,9 @@ pub struct DesktopCloudExecutionLease {
         deserialize_with = "kordi_tools::connector_tools::deserialize_optional_lease_descriptors"
     )]
     pub connector_tools: Option<Vec<kordi_tools::connector_tools::ConnectorToolDescriptor>>,
+    /// `owner_private` or `shared`, from the server; missing means shared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connector_audience: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -231,8 +231,8 @@ async fn enqueue(
         "INSERT INTO cloud_agent_fallback_runs (
              run_id, idempotency_key, request_message_id, session_id, owner_account_id,
              requester_account_id, status, prompt, system_prompt, runtime_route_json,
-             created_at, updated_at, run_trigger
-         ) VALUES ($1, $1, $1, $2, $3, $3, 'queued', $4, $5, $6, $7, $7, 'background')",
+             created_at, updated_at, run_trigger, connector_audience
+         ) VALUES ($1, $1, $1, $2, $3, $3, 'queued', $4, $5, $6, $7, $7, 'background', 'shared')",
     )
     .bind(&run_id)
     .bind(&candidate.legacy_session_id)

@@ -51,8 +51,10 @@ pub(super) async fn lease_run_for(
     query(
         "INSERT INTO cloud_agent_fallback_runs (run_id, idempotency_key, request_message_id, \
          session_id, owner_account_id, requester_account_id, status, prompt, created_at, \
-         updated_at, execution_backend, claimed_by, lease_expires_at, run_trigger) \
-         VALUES ($1, $1, $1, $2, $3, $4, 'leased', 'Prompt', $5, $5, $6, $7, $8, $9)",
+         updated_at, execution_backend, claimed_by, lease_expires_at, run_trigger, \
+         connector_audience) \
+         VALUES ($1, $1, $1, $2, $3, $4, 'leased', 'Prompt', $5, $5, $6, $7, $8, $9, \
+         'owner_private')",
     )
     .bind(&run_id)
     .bind(format!("session:connectors:{run_id}"))
@@ -85,6 +87,7 @@ pub(super) fn call(lease_id: &str, connector_id: &str, tool: &str) -> BrokerCall
         connector_id: connector_id.to_string(),
         tool: tool.to_string(),
         args: json!({ "q": "today" }),
+        declined_by_owner: false,
     }
 }
 
@@ -173,6 +176,18 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
     assert_eq!(acted.result.as_ref().unwrap()["tool"], STUB_ACT_TOOL);
     let serialized = serde_json::to_string(&acted).unwrap();
     assert!(!serialized.contains("stub-access") && !serialized.contains("stub-refresh"));
+
+    // The owner declined on the Mac: audited as denied, never executed.
+    let mut declined = call(&claim, &connector_id, STUB_ACT_TOOL);
+    declined.declined_by_owner = true;
+    let executed = stub.calls().len();
+    let recorded =
+        crate::connectors::declined::record_on_lease(&pool, &runtime, &mac, &declined).await;
+    assert_eq!(
+        recorded.error_code(),
+        Some(crate::connectors::declined::DECLINED_BY_OWNER)
+    );
+    assert_eq!(stub.calls().len(), executed);
 
     // The lease issued while act was off never gains the act tool.
     let not_on_lease = as_holder(
@@ -272,6 +287,7 @@ async fn broker_enforces_leases_grants_triggers_and_ownership() {
             "completed",          // background read
             "denied",             // act on a cloud lease
             "completed",          // act on a desktop claim
+            "denied",             // the owner declined
             "denied",             // act not on the earlier lease
             "completed",          // read after refresh
             "blocked_background", // spoofed body fields

@@ -28,6 +28,7 @@ pub(crate) mod project_actions;
 pub(crate) mod session_actions;
 mod session_commands;
 mod session_lifecycle;
+pub(crate) mod tool_approval;
 pub use session_commands::*;
 pub(crate) mod session_observation;
 pub(crate) mod session_preparation;

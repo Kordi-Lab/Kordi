@@ -184,6 +184,7 @@ pub fn run() {
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }
+            chat::tool_approval::install(app.handle().clone());
             if let Err(err) = menu_bar::setup(app) {
                 eprintln!("[kordi] Unable to create menu bar item: {err}");
             }
@@ -331,6 +332,8 @@ pub fn run() {
             chat::attachments::cloud_upload::desktop_cloud_attachment_cancel,
             chat::artifacts::desktop_chat_artifact_preview,
             chat::artifacts::desktop_chat_artifact_directory,
+            chat::tool_approval::desktop_tool_approval_respond,
+            chat::tool_approval::desktop_tool_approval_pending,
             chat::desktop_chat_state,
             chat::desktop_chat_session_detail,
             chat::agent_identity::desktop_chat_rename_agent,

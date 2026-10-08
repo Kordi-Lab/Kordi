@@ -6,6 +6,10 @@
 //! lease id. The runner never sees a provider credential: the lease carries
 //! descriptors only, and the broker returns only the tool result.
 
+use kordi_tools::connector_request_connect::{
+    request_connect_result, request_connect_schema, REQUEST_CONNECT_DESCRIPTION,
+    REQUEST_CONNECT_TOOL_NAME,
+};
 use kordi_tools::connector_tools::{is_connector_tool_name, lease_tool, ConnectorToolDescriptor};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -32,11 +36,20 @@ pub struct LeaseConnectors {
         deserialize_with = "kordi_tools::connector_tools::deserialize_lease_descriptors"
     )]
     pub tools: Vec<ConnectorToolDescriptor>,
+    /// `owner_private` or `shared`. Anything else, or a missing value, is
+    /// treated as shared.
+    #[serde(rename = "connectorAudience", default)]
+    pub audience: Option<String>,
 }
 
 impl LeaseConnectors {
     pub fn is_background(&self) -> bool {
         self.trigger.as_deref() != Some("person_started")
+    }
+
+    /// Only a run the owner alone can read may offer the connect link.
+    pub fn is_owner_private(&self) -> bool {
+        self.audience.as_deref() == Some("owner_private")
     }
 
     /// The descriptor for `name` when the lease lists it, the name passes
@@ -70,21 +83,27 @@ fn offered_tools(run: &CloudAgentRun) -> Vec<&ConnectorToolDescriptor> {
 }
 
 /// Model tool definitions for the lease's connector tools, in the same
-/// function shape as the built-in cloud tools.
+/// function shape as the built-in cloud tools, plus
+/// `connectors_request_connect` on an owner-private run.
 pub fn tool_definitions(run: &CloudAgentRun) -> Vec<Value> {
-    offered_tools(run)
-        .into_iter()
-        .map(|tool| {
-            json!({
-                "type": "function",
-                "function": {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "parameters": tool.input_schema,
-                }
-            })
+    let function = |name: &str, description: &str, parameters: &Value| {
+        json!({
+            "type": "function",
+            "function": { "name": name, "description": description, "parameters": parameters }
         })
-        .collect()
+    };
+    let mut definitions = offered_tools(run)
+        .into_iter()
+        .map(|tool| function(&tool.name, &tool.description, &tool.input_schema))
+        .collect::<Vec<_>>();
+    if run.connectors.is_owner_private() {
+        definitions.push(function(
+            REQUEST_CONNECT_TOOL_NAME,
+            REQUEST_CONNECT_DESCRIPTION,
+            &request_connect_schema(),
+        ));
+    }
+    definitions
 }
 
 /// Prompt text listing the connector tools the model is offered, or `None`
@@ -112,6 +131,16 @@ pub async fn execute_connector_call<C: CloudAgentRunClient + Sync>(
     run: &CloudAgentRun,
     call: &ModelToolCall,
 ) -> Option<Value> {
+    if call.name == REQUEST_CONNECT_TOOL_NAME {
+        if !run.connectors.is_owner_private() {
+            return Some(not_available(&call.name));
+        }
+        // Only a settings link: nothing is granted and no broker is called.
+        return Some(match request_connect_result(&call.arguments) {
+            Ok(result) => result.to_string().into(),
+            Err(message) => message.into(),
+        });
+    }
     run.connectors.descriptor(&call.name)?;
     let request = RunnerToolRequest {
         tool_name: &call.name,

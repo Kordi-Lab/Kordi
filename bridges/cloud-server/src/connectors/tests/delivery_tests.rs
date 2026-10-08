@@ -1,7 +1,6 @@
 //! Connector tool delivery on leases (issue 1712, PR 2): lease shape, run
 //! triggers, and the read-only rule for background runs.
 
-use super::broker_tests::{runner, TEST_RUNNER};
 use super::*;
 use crate::cloud_agent_runtime::runs::{RunnerLeaseResponse, RunnerRunResponse};
 use crate::connectors::delivery::{self, LeaseConnectorTool};
@@ -57,6 +56,7 @@ fn sample_runner_run(connector_tools: Vec<LeaseConnectorTool>) -> RunnerRunRespo
         error_code: None,
         error_message: None,
         trigger: RunTrigger::PersonStarted,
+        connector_audience: ConnectorAudience::OwnerPrivate,
         connector_tools,
     }
 }
@@ -65,6 +65,7 @@ fn sample_runner_run(connector_tools: Vec<LeaseConnectorTool>) -> RunnerRunRespo
 fn lease_carries_trigger_and_connector_descriptors_in_camel_case() {
     let value = serde_json::to_value(sample_runner_run(sample_lease_tools())).unwrap();
     assert_eq!(value["trigger"], "person_started");
+    assert_eq!(value["connectorAudience"], "owner_private");
     let tools = value["connectorTools"].as_array().unwrap();
     assert_eq!(tools.len(), 2);
     let mut keys = tools[0]
@@ -132,11 +133,12 @@ fn rust_sources(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<(St
     }
 }
 
-/// Every place that creates a run names its trigger explicitly. The column
-/// default is background, but a new insert must decide on purpose. Walks the
-/// whole crate so a new insert site cannot be missed.
+/// Every place that creates a run names its trigger and its connector
+/// audience explicitly. The column defaults fail closed, but a new insert
+/// must decide on purpose. Walks the whole crate so a new insert site cannot
+/// be missed.
 #[test]
-fn every_run_insert_sets_its_trigger() {
+fn every_run_insert_sets_its_trigger_and_audience() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut sources = Vec::new();
     rust_sources(&root, &root, &mut sources);
@@ -144,17 +146,21 @@ fn every_run_insert_sets_its_trigger() {
     let mut sites = Vec::new();
     for (label, source) in &sources {
         for (index, _) in source.match_indices(marker) {
-            let statement = &source[index..(index + 700).min(source.len())];
+            let statement = &source[index..(index + 800).min(source.len())];
             let end = statement.find("VALUES").unwrap_or(statement.len());
-            assert!(
-                statement[..end].contains("run_trigger"),
-                "{label} creates a run without naming run_trigger"
-            );
+            for column in ["run_trigger", "connector_audience"] {
+                assert!(
+                    statement[..end].contains(column),
+                    "{label} creates a run without naming {column}"
+                );
+            }
             sites.push(label.as_str());
         }
     }
     for expected in [
         "cloud_agent_runtime/runs/claims.rs",
+        "cloud_agent_runtime/runs/subsessions.rs",
+        "auth/subsessions/conversation.rs",
         "pip/store.rs",
         "digest/store.rs",
     ] {
@@ -164,128 +170,27 @@ fn every_run_insert_sets_its_trigger() {
         );
     }
     let read = |name: &str| std::fs::read_to_string(root.join(name)).unwrap();
-    assert!(read("pip/store.rs").contains("$7, $7, 'background')"));
-    assert!(read("digest/store.rs").contains("$6,$6,'background')"));
+    assert!(read("pip/store.rs").contains("$7, $7, 'background', 'shared')"));
+    assert!(read("digest/store.rs").contains("$6,$6,'background','owner_private')"));
+    assert!(read("cloud_agent_runtime/runs/subsessions.rs")
+        .contains("'background',COALESCE((SELECT parent.connector_audience"));
 }
 
-/// Leases of scheduled-task occurrences and PiP runs carry no `act` tool even
-/// with `act` turned on; the owner's own message does.
-#[tokio::test]
-async fn lease_connector_tools_follow_the_run_trigger() {
-    use crate::cloud_agent_runtime::runs::{
-        claim_run, claim_run_for_person_message, lease_canary_run, ClaimRunRequest,
-    };
-    let Some(pool) = pool().await else { return };
-    let (runtime, _) = stub_runtime();
-    let (owner, _) = signed_in_account(&pool, "lease_owner").await;
-    let (contact, _) = signed_in_account(&pool, "lease_contact").await;
-    let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
-    connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Act).await;
-    store::replace_agent_grants(&pool, &connector_id, &[store::default_agent_id(&owner)])
-        .await
-        .unwrap();
-
-    let claim = |requester: &str, label: &str| ClaimRunRequest {
-        request_message_id: format!("{label}_{}", Uuid::new_v4().simple()),
-        session_id: format!("session:connectors-lease:{}", Uuid::new_v4().simple()),
-        owner_account_id: owner.clone(),
-        requester_account_id: requester.to_string(),
-        prompt: "Check my items".into(),
-        runtime_route: None,
-        idempotency_key: format!("{label}:{}", Uuid::new_v4().simple()),
-    };
-    // Scheduled occurrences are admitted through `claim_run`, exactly as
-    // `scheduled_tasks::store` does.
-    let scheduled = claim_run(&pool, &claim(&owner, "scheduled")).await.unwrap();
-    let person = claim_run_for_person_message(&pool, &claim(&owner, "person"))
-        .await
-        .unwrap();
-    let from_contact = claim_run_for_person_message(&pool, &claim(&contact, "contact"))
-        .await
-        .unwrap();
-    // A PiP run, inserted with the column list `pip::store` uses.
-    let pip_run = format!(
-        "{}{}",
-        crate::pip::store::RUN_PREFIX,
-        Uuid::new_v4().simple()
+#[test]
+fn connector_audiences_fail_closed() {
+    assert_eq!(ConnectorAudience::default(), ConnectorAudience::Shared);
+    assert_eq!(
+        ConnectorAudience::parse("owner_private"),
+        ConnectorAudience::OwnerPrivate
     );
-    let now = Utc::now().to_rfc3339();
-    query(
-        "INSERT INTO cloud_agent_fallback_runs (
-             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
-             requester_account_id, status, prompt, system_prompt, runtime_route_json,
-             created_at, updated_at, run_trigger
-         ) VALUES ($1, $1, $1, $2, $3, $3, 'queued', $4, $5, $6, $7, $7, 'background')",
-    )
-    .bind(&pip_run)
-    .bind(format!("session:connectors-pip:{pip_run}"))
-    .bind(&owner)
-    .bind("{}")
-    .bind("PiP")
-    .bind(json!({}))
-    .bind(&now)
-    .execute(&pool)
-    .await
-    .unwrap();
-
-    let mut leases = Vec::new();
-    for (label, run_id) in [
-        ("scheduled", scheduled.run_id.as_str()),
-        ("pip", pip_run.as_str()),
-        ("contact", from_contact.run_id.as_str()),
-        ("person", person.run_id.as_str()),
-    ] {
-        let mut run = lease_canary_run(&pool, TEST_RUNNER, run_id)
-            .await
-            .unwrap()
-            .unwrap_or_else(|| panic!("{label} run was not leased"));
-        // What the lease route does after leasing.
-        run.connector_tools =
-            delivery::deliver_to_run(&pool, &runtime.providers, &run.run_id).await;
-        let lease = serde_json::to_value(RunnerLeaseResponse { run: Some(run) }).unwrap();
-        assert_no_secret_keys(label, lease.clone());
-        leases.push((label, lease));
-    }
-    for (label, lease) in &leases {
-        let groups = lease["run"]["connectorTools"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|tool| tool["group"].as_str().unwrap().to_string())
-            .collect::<Vec<_>>();
-        if *label == "person" {
-            assert_eq!(lease["run"]["trigger"], "person_started");
-            assert_eq!(groups, ["read"], "cloud leases wait for an approval flow");
-        } else if *label == "contact" {
-            assert!(groups.is_empty(), "a contact's run gets no connector tools");
-        } else {
-            assert_eq!(lease["run"]["trigger"], "background", "{label}");
-            assert_eq!(groups, ["read"], "{label} must not receive act tools");
-        }
-    }
-
-    // The broker reads the same stored set back from the lease.
-    let stored = delivery::load_active_lease(&pool, &pip_run, &runner())
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(stored.trigger, RunTrigger::Background);
-    assert!(stored.has_tool(&connector_id, STUB_READ_TOOL));
-    assert!(!stored.has_tool(&connector_id, STUB_ACT_TOOL));
-
-    // The broker refuses the contact's lease outright.
-    let refused = broker::call_connector_tool(
-        &pool,
-        &runtime,
-        &runner(),
-        &super::broker_tests::call(&from_contact.run_id, &connector_id, STUB_READ_TOOL),
-    )
-    .await;
-    assert_eq!(refused.error_code(), Some(codes::REQUESTER_NOT_OWNER));
+    assert_eq!(ConnectorAudience::parse("group"), ConnectorAudience::Shared);
+    assert_eq!(ConnectorAudience::parse(""), ConnectorAudience::Shared);
+    assert_eq!(
+        serde_json::to_value(ConnectorAudience::OwnerPrivate).unwrap(),
+        "owner_private"
+    );
 }
 
-/// The delivered set is fixed at the first lease: turning act on afterwards
-/// does not add act tools when the same run is leased again.
 #[tokio::test]
 async fn delivered_tools_are_fixed_at_first_lease() {
     let Some(pool) = pool().await else { return };

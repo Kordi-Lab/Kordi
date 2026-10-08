@@ -223,6 +223,21 @@ impl PipConfig {
     }
 }
 
+/// A PiP running as `account_id` with a synthetic key, for database tests
+/// that drive the real sweep.
+#[cfg(test)]
+pub(crate) fn test_config(account_id: &str) -> PipConfig {
+    PipConfig {
+        account_id: account_id.to_string(),
+        owner_email: "pip-test@example.invalid".to_string(),
+        agent_id: format!("pip-agent-{account_id}"),
+        name: DEFAULT_PIP_NAME.to_string(),
+        subtitle: DEFAULT_PIP_SUBTITLE.to_string(),
+        provider_auth: PipProviderAuth::openai_api_key("synthetic-key", "synthetic-model")
+            .expect("synthetic PiP key"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

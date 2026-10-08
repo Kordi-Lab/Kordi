@@ -27,6 +27,8 @@ fn runtime(calls: Arc<Mutex<Vec<String>>>) -> ConnectorToolsRuntime {
                 .push(format!("{}:{args}", descriptor.name));
             Box::pin(async move { Ok(json!({"ok": true, "tool": descriptor.name})) })
         }),
+        report_declined: None,
+        offer_request_connect: false,
     }
 }
 
@@ -179,6 +181,62 @@ fn runtime_builds_one_tool_per_distinct_descriptor() {
     assert_eq!(names, ["gmail_search", "gmail_send"]);
 }
 
+#[tokio::test]
+async fn declined_act_calls_are_reported_and_never_sent() {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let reported = Arc::new(Mutex::new(Vec::new()));
+    let mut runtime = runtime(calls.clone());
+    let sink = reported.clone();
+    runtime.report_declined = Some(Arc::new(move |descriptor| {
+        sink.lock().unwrap().push(descriptor.name);
+        Box::pin(async {})
+    }));
+    let act = ConnectorTool::new(descriptor("gmail_send", ConnectorToolGroup::Act));
+    // No responder at all: refused before anyone was asked, nothing sent.
+    let error = act
+        .execute(
+            json!({}),
+            &context(Some(runtime.clone()), None),
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("approval is not available"));
+    // The person declined.
+    let ctx = context(
+        Some(runtime.clone()),
+        Some((
+            Arc::new(Mutex::new(Vec::new())),
+            ToolApprovalDecision::Denied,
+        )),
+    );
+    let error = act
+        .execute(json!({}), &ctx, CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("you declined"));
+    assert_eq!(*reported.lock().unwrap(), ["gmail_send"]);
+    assert!(calls.lock().unwrap().is_empty());
+}
+
+#[test]
+fn request_connect_is_offered_only_when_the_runtime_allows_it() {
+    let mut runtime = runtime(Arc::new(Mutex::new(Vec::new())));
+    let names = |runtime: &ConnectorToolsRuntime| {
+        runtime
+            .tools()
+            .iter()
+            .map(|tool| tool.name().to_string())
+            .collect::<Vec<_>>()
+    };
+    assert!(!names(&runtime).contains(&"connectors_request_connect".to_string()));
+    runtime.offer_request_connect = true;
+    assert_eq!(
+        names(&runtime),
+        ["gmail_search", "gmail_send", "connectors_request_connect"]
+    );
+}
+
 #[test]
 fn connector_lease_parsing_drops_only_bad_entries() {
     let parsed = parse_lease_descriptors(json!([
@@ -194,4 +252,26 @@ fn connector_lease_parsing_drops_only_bad_entries() {
     assert_eq!(names, ["gmail_search", "gmail_send"]);
     assert!(parse_lease_descriptors(json!({"gmail_search": {}})).is_empty());
     assert!(parse_lease_descriptors(Value::Null).is_empty());
+}
+
+#[test]
+fn approval_map_skips_built_in_names_bad_shapes_and_read_tools() {
+    let mut shadow = descriptor("gmail_send", ConnectorToolGroup::Read);
+    shadow.provider = "slack".into();
+    let descriptors = vec![
+        descriptor("bash", ConnectorToolGroup::Act),
+        descriptor("web_fetch", ConnectorToolGroup::Act),
+        descriptor("connectors_request_connect", ConnectorToolGroup::Act),
+        descriptor("gmail.send", ConnectorToolGroup::Act),
+        descriptor("gmail_search", ConnectorToolGroup::Read),
+        descriptor("gmail_send", ConnectorToolGroup::Act),
+        shadow,
+    ];
+    let map = act_tool_providers(&descriptors);
+    assert_eq!(map.len(), 1, "{map:?}");
+    assert_eq!(map["gmail_send"], "gmail");
+    assert!(is_reserved_tool_name("bash") && is_reserved_tool_name("read"));
+    assert!(!is_reserved_tool_name("gmail_send"));
+    assert!(lease_tool(&descriptors, "bash").is_none());
+    assert!(lease_tool(&descriptors, "gmail_send").is_some());
 }
