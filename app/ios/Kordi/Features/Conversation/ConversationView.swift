@@ -3,7 +3,8 @@ import QuickLook
 import UniformTypeIdentifiers
 import UIKit
 
-private struct ConversationTitleSurface: ViewModifier {
+struct ConversationTitleSurface: ViewModifier {
+    var isInteractive = true
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @ViewBuilder
@@ -11,7 +12,7 @@ private struct ConversationTitleSurface: ViewModifier {
         if reduceTransparency {
             content.background(Color(uiColor: .secondarySystemBackground), in: Capsule())
         } else if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: .capsule)
+            content.glassEffect(isInteractive ? .regular.interactive() : .regular, in: .capsule)
         } else {
             content.background(.regularMaterial, in: Capsule())
         }
