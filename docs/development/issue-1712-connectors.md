@@ -108,8 +108,9 @@ gated by `ownerLocal`). The plan keeps that split explicit:
 ## PR 1: Server connector framework
 
 Crate: `bridges/cloud-server` (cloud-specific code stays out of `bridges/cli`).
-New module `bridges/cloud-server/src/connectors/` with `models.rs`, `store.rs`,
-`routes.rs`, `oauth.rs`, `broker.rs`, `events.rs`, and tests.
+New module `bridges/cloud-server/src/connectors/` with `models.rs`, `store/`,
+`routes.rs`, `oauth.rs`, `oauth_complete.rs`, `broker.rs`, `refresh.rs`,
+`events.rs`, `providers/`, and tests.
 
 Schema (one migration, Postgres path in `pg/`):
 
@@ -122,18 +123,44 @@ Schema (one migration, Postgres path in `pg/`):
 - `cloud_connector_events(event_id, connector_id, provider, kind, external_id,
   occurred_at, payload, received_at, expires_at)` with a retention job.
 - `cloud_connector_audit(audit_id, connector_id, run_id, agent_id, tool,
-  tool_group, outcome, summary, created_at)`.
+  tool_group, outcome, summary, created_at)`. Summaries use fixed wording and
+  never carry provider error text.
+- `cloud_connector_oauth_states(state_id, account_id, provider, grant_kind,
+  redirect_after, code_verifier, created_at, expires_at)`: one-use OAuth
+  state, ten minutes.
+- `cloud_connector_pending_grants(completion_code, state_id, account_id,
+  provider, grant_kind, read_scopes, act_scopes, sealed credential columns,
+  expires_at, created_at)`: tokens the callback exchanged, sealed with the
+  same cipher, waiting for the authenticated completion step; ten minutes,
+  swept by the retention job.
 
 Routes under `/v1/cloud/connectors`:
 
 - `GET /` list for the signed-in account, never including secrets.
-- `POST /:provider/oauth/start` with `{ "grant": "read" | "act" }`, returning
-  the provider URL. Separate OAuth client registrations from the sign-in clients
-  in `auth/oauth.rs`; the callback handler stores the secret and the granted
-  scopes and marks `status`.
+- `POST /:provider/oauth/start` with `{ "grant": "read" | "act",
+  "redirectAfter"? }`, returning the provider URL. Separate OAuth client
+  registrations from the sign-in clients in `auth/oauth.rs`. Returns 503
+  `connectors_unavailable` when the encryption key is not configured.
+- `GET /oauth/callback` (unauthenticated, called by the provider) exchanges
+  the code but does not connect anything: it parks the sealed tokens as a
+  pending grant and redirects to `redirectAfter` with the fragment
+  `kordi_connector=<base64url JSON>`, where the JSON is
+  `{ "completionCode", "provider", "grant", "status": "pending" }`. Errors keep
+  the `kordi_connector_error` and `kordi_connector_error_code` fragment. Without
+  a redirect target the page says "Return to Kordi to finish connecting."
+- `POST /oauth/complete` with `{ "completionCode" }`, signed in. Takes the
+  pending grant out (one use), requires it to belong to the signed-in account,
+  then stores the secret and granted scopes, marks `status`, and returns
+  `{ "connector": ConnectorSummary }`. Errors: 404
+  `connector_grant_not_found` (unknown or used), 403 `connector_grant_mismatch`
+  (another account started it; the pending grant is discarded), 410
+  `connector_grant_expired`, 503 `connectors_unavailable`. This step binds the
+  grant to the account that started it, so a consent link sent to someone
+  else cannot attach their account to the sender's Kordi account.
 - `POST /:id/act` to toggle `act_enabled` (requires granted act scopes).
 - `PUT /:id/agents` to replace the grant set.
-- `GET /:id/audit` paged.
+- `GET /:id/audit` paged, newest first. `nextBefore` is an opaque cursor over
+  `(created_at, audit_id)`; pass it back as `before`.
 - `DELETE /:id` revokes at the provider where supported, deletes the secret row,
   deletes `cloud_connector_events` for it, enqueues derived-copy removal, and
   writes an audit row.
@@ -142,10 +169,57 @@ Routes under `/v1/cloud/connectors`:
   The server checks the lease, the account, the grant set, the tool group
   against the run trigger, and executes the provider call.
 
+Broker refresh: a refresh holds `pg_advisory_xact_lock(hashtext(connector_id))`
+in a transaction, re-reads the secret after the lock, and skips the provider
+call when another call already refreshed. The refreshed secret is written with
+an update that only matches a live connector, so a disconnect during a refresh
+stays final. Only `invalid_grant` marks the connector `needs_reauth`; other
+provider errors are retryable. A failed write after a successful refresh fails
+the call. Racing first grants for one account and provider are serialized by
+an advisory lock on (account, provider).
+
 Tests: response-shape scan that fails if any serialized connector type contains
-a key matching `token`, `secret`, `refresh`, or `ciphertext`; broker rejects an
-`act` tool for a background lease; disconnect removes the secret and events and
-enqueues removal (database-backed); `connectorsVersion` appears in capabilities.
+a key matching `token`, `secret`, `refresh`, or `ciphertext`, plus a value scan
+for the stub credentials across list, audit, broker, and completion responses;
+broker rejects an `act` tool for a background lease; disconnect removes the
+secret and events and enqueues removal; completion by the starting account
+connects, by another account is refused and leaves nothing, works once, and
+expires; concurrent calls refresh once; a disconnect during a refresh leaves no
+secret; other accounts get 404 from act, agents, audit, and delete;
+`connectorsVersion` appears in capabilities only with the encryption key. The
+database-backed tests run in `scripts/test-cloud-migrations.sh`; in CI they fail
+rather than skip when `DATABASE_URL` is missing, and the server job opts out
+with `KORDI_CONNECTOR_DB_TESTS=skip`.
+
+### Connectors
+
+Environment variables introduced by PR 1. Each provider pair is a separate
+OAuth client registration from the sign-in clients (`KORDI_OAUTH_*`); never
+reuse the sign-in apps. When a pair is missing,
+`POST /v1/cloud/connectors/:provider/oauth/start` returns 503
+`connector_not_configured` for that provider, and
+`/v1/cloud/auth/capabilities` still reports `connectorsVersion`.
+
+| Variable | Used for |
+|---|---|
+| `KORDI_CONNECTOR_GOOGLE_CLIENT_ID`, `KORDI_CONNECTOR_GOOGLE_CLIENT_SECRET` | `google_calendar` and `gmail` |
+| `KORDI_CONNECTOR_GITHUB_CLIENT_ID`, `KORDI_CONNECTOR_GITHUB_CLIENT_SECRET` | `github` |
+| `KORDI_CONNECTOR_SLACK_CLIENT_ID`, `KORDI_CONNECTOR_SLACK_CLIENT_SECRET` | `slack` (user-token scopes) |
+| `KORDI_CONNECTOR_EVENT_RETENTION_DAYS` | Event retention, default 30, accepted range 1 to 365 |
+
+Existing variables the connectors reuse: `KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY`
+and `KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID` (secret encryption; without
+the key, `/v1/cloud/auth/capabilities` omits `connectorsVersion`, connecting
+returns 503 `connectors_unavailable`, and broker calls fail closed), `KORDI_CLOUD_RUNNER_TOKEN`
+(broker route), `KORDI_CLOUD_PUBLIC_BASE_URL` (callback URL), and
+`KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST` (app redirect after the grant).
+
+Each provider app must register the callback
+`<KORDI_CLOUD_PUBLIC_BASE_URL>/v1/cloud/connectors/oauth/callback`.
+
+The broker route is `POST /internal/connectors/call`. In PR 1 it accepts the
+lease id without looking it up; PR 2 adds the lease check (see the TODO in
+`connectors/broker.rs`) and takes the trigger from the lease.
 
 ## PR 2: Tool delivery to the runtimes
 

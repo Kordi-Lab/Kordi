@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 mod account_email_tests;
+mod connectors_tests;
 mod email_verification_tests;
 mod pin_stack_tests;
 mod projection_tests;

@@ -171,6 +171,10 @@ pub fn runner_authorized_for_scheduled_tasks(headers: &HeaderMap) -> bool {
     runner_authorized(headers)
 }
 
+pub fn runner_authorized_for_connectors(headers: &HeaderMap) -> bool {
+    runner_authorized(headers)
+}
+
 async fn lease_runner_run(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,

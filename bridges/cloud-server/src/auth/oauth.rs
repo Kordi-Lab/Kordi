@@ -113,14 +113,14 @@ pub(super) fn oauth_config(provider: OAuthProvider) -> Result<OAuthConfig, Strin
     })
 }
 
-fn public_base_url() -> String {
+pub(crate) fn public_base_url() -> String {
     std::env::var("KORDI_CLOUD_PUBLIC_BASE_URL")
         .unwrap_or_else(|_| DEFAULT_PUBLIC_BASE_URL.to_string())
         .trim_end_matches('/')
         .to_string()
 }
 
-pub(super) fn is_allowed_oauth_redirect(target: &str) -> bool {
+pub(crate) fn is_allowed_oauth_redirect(target: &str) -> bool {
     let allowlist = std::env::var("KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST").ok();
     is_allowed_oauth_redirect_with_config(target, allowlist.as_deref(), &public_base_url())
 }
@@ -175,11 +175,11 @@ fn same_origin_or_loopback_prefix(target: &url::Url, allowed: &url::Url) -> bool
         && target.path().starts_with(allowed.path())
 }
 
-pub(super) fn random_url_token(prefix: &str) -> String {
+pub(crate) fn random_url_token(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4().simple())
 }
 
-pub(super) fn pkce_challenge(verifier: &str) -> String {
+pub(crate) fn pkce_challenge(verifier: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
 

@@ -1,0 +1,71 @@
+use super::*;
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
+    let pool = fixture(113).await;
+    let before: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(a) FROM cloud_accounts a ORDER BY account_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    apply_migrations(&pool).await.unwrap();
+    latest_version(&pool).await;
+    let after: Vec<(Value,)> =
+        query_as("SELECT to_jsonb(a) FROM cloud_accounts a ORDER BY account_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(before, after);
+
+    execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_live','fixture-owner','github','connected')").await;
+    execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status,revoked_at) VALUES('conn_old','fixture-owner','github','revoked',now())").await;
+    execute(&pool, "INSERT INTO cloud_connector_secrets(connector_id,ciphertext,nonce,key_version) VALUES('conn_live','\\x01','\\x02',1)").await;
+    execute(&pool, "INSERT INTO cloud_connector_agent_grants(connector_id,agent_id) VALUES('conn_live','cloud-agent:fixture-owner')").await;
+    execute(&pool, "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,occurred_at,expires_at) VALUES('evt','conn_live','github','notification',now(),now())").await;
+    execute(&pool, "INSERT INTO cloud_connector_audit(audit_id,connector_id,account_id,tool,tool_group,outcome,summary) VALUES('aud','conn_live','fixture-owner','oauth.grant','read','completed','Granted.')").await;
+    execute(&pool, "INSERT INTO cloud_connector_removal_requests(request_id,account_id,connector_id) VALUES('req','fixture-owner','conn_old')").await;
+    execute(&pool, "INSERT INTO cloud_connector_oauth_states(state_id,account_id,provider,grant_kind,code_verifier,expires_at) VALUES('st','fixture-owner','github','act','v',now())").await;
+    execute(&pool, "INSERT INTO cloud_connector_pending_grants(completion_code,state_id,account_id,provider,grant_kind,ciphertext,nonce,key_version,expires_at) VALUES('cc','st','fixture-owner','github','read','\\x01','\\x02',1,now())").await;
+    for invalid in [
+        // A second live connector for the same account and provider.
+        "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_dup','fixture-owner','github','needs_reauth')",
+        "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_bad','fixture-owner','slack','paused')",
+        "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_rev','fixture-owner','slack','revoked')",
+        "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_x','missing-account','slack','connected')",
+        "INSERT INTO cloud_connector_audit(audit_id,connector_id,account_id,tool,tool_group,outcome,summary) VALUES('aud2','conn_live','fixture-owner','t','write','completed','s')",
+        "INSERT INTO cloud_connector_audit(audit_id,connector_id,account_id,tool,tool_group,outcome,summary) VALUES('aud3','conn_live','fixture-owner','t','act','skipped','s')",
+        "INSERT INTO cloud_connector_oauth_states(state_id,account_id,provider,grant_kind,code_verifier,expires_at) VALUES('st2','fixture-owner','github','admin','v',now())",
+        "INSERT INTO cloud_connector_pending_grants(completion_code,state_id,account_id,provider,grant_kind,ciphertext,nonce,key_version,expires_at) VALUES('cc2','st','fixture-owner','github','write','\\x01','\\x02',1,now())",
+        "INSERT INTO cloud_connector_pending_grants(completion_code,state_id,account_id,provider,grant_kind,ciphertext,nonce,key_version,expires_at) VALUES('cc','st','fixture-owner','github','read','\\x01','\\x02',1,now())",
+    ] {
+        assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
+    }
+
+    execute(
+        &pool,
+        "DELETE FROM cloud_accounts WHERE account_id='fixture-owner'",
+    )
+    .await;
+    for table in [
+        "cloud_connectors",
+        "cloud_connector_secrets",
+        "cloud_connector_agent_grants",
+        "cloud_connector_events",
+        "cloud_connector_audit",
+        "cloud_connector_oauth_states",
+        "cloud_connector_pending_grants",
+    ] {
+        let (rows,): (i64,) = query_as(&format!("SELECT COUNT(*)::BIGINT FROM {table}"))
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(rows, 0, "{table} rows go with their account");
+    }
+    let (requests,): (i64,) =
+        query_as("SELECT COUNT(*)::BIGINT FROM cloud_connector_removal_requests")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(requests, 1, "removal requests outlive the connector");
+}
