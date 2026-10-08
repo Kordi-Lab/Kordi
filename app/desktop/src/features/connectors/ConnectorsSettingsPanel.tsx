@@ -27,6 +27,14 @@ function errorMessage(caught: unknown, fallback: string): string {
   return caught instanceof Error ? caught.message : fallback;
 }
 
+/** The provider a settings link may open: a known, available connector this client serves. */
+function linkedProviderId(providerId: string | null | undefined, servicesAvailable: boolean): ConnectorProviderId | null {
+  const definition = connectorCatalog.find((entry) => entry.providerId === providerId);
+  if (!definition || definition.availability !== 'available') return null;
+  if (definition.kind === 'service' && !servicesAvailable) return null;
+  return definition.providerId;
+}
+
 export function ConnectorsSettingsPanel({
   accountId,
   client,
@@ -34,6 +42,8 @@ export function ConnectorsSettingsPanel({
   isPreview = false,
   servicesStatus = 'ready',
   onRetryServices,
+  initialProviderId = null,
+  initialProviderRequest,
 }: {
   accountId: string;
   client: ConnectorsClient;
@@ -43,14 +53,28 @@ export function ConnectorsSettingsPanel({
   /** `checking` and `unreachable` replace the service rows with a status line. */
   servicesStatus?: ConnectorsServicesStatus;
   onRetryServices?: () => void;
+  /** Opens this provider's detail on mount and whenever it or `initialProviderRequest` changes. */
+  initialProviderId?: string | null;
+  /** Changing it opens `initialProviderId` again. */
+  initialProviderRequest?: number;
 }) {
+  const servicesAvailable = client.servicesAvailable !== false;
   const [states, setStates] = useState<Partial<Record<ConnectorProviderId, ConnectorState>>>({});
   const [agents, setAgents] = useState<ConnectorAgent[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
-  const [selectedId, setSelectedId] = useState<ConnectorProviderId | null>(null);
+  const [selectedId, setSelectedId] = useState<ConnectorProviderId | null>(() => linkedProviderId(initialProviderId, servicesAvailable));
+  const [seededLink, setSeededLink] = useState({ providerId: initialProviderId, request: initialProviderRequest });
+  if (seededLink.providerId !== initialProviderId || seededLink.request !== initialProviderRequest) {
+    setSeededLink({ providerId: initialProviderId, request: initialProviderRequest });
+    const linked = linkedProviderId(initialProviderId, servicesAvailable);
+    if (linked) {
+      setError(null);
+      setSelectedId(linked);
+    }
+  }
   const backButtonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const returnFocusIdRef = useRef<ConnectorProviderId | null>(null);
@@ -358,7 +382,6 @@ export function ConnectorsSettingsPanel({
   const services = connectorCatalog.filter((definition) => definition.kind === 'service');
   const macLocal = connectorCatalog.filter((definition) => definition.kind === 'mac_local');
   const selectedDefinition = selectedId ? connectorDefinition(selectedId) : null;
-  const servicesAvailable = client.servicesAvailable !== false;
 
   return (
     <div className="app-cloud-account-settings-section max-w-[760px]">

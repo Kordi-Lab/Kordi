@@ -1,5 +1,5 @@
 import { MessageLayoutSetting } from '@/kordi-app/components/MessageLayoutSetting';
-import { useEffect, useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -28,6 +28,7 @@ import { NotificationSettingsPanel } from '@/features/notifications/Notification
 import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSettingsPanel';
 import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
 import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
+import { useConnectorsLinkSelection } from '@/features/connectors/useConnectorsLinkSelection';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import {
   canonicalAvatarImageSource,
@@ -163,6 +164,13 @@ export function CloudAccountSettingsDialog({
   const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : connectorsSelection?.client ?? null;
   const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : connectorsSelection?.source === 'preview';
   const connectorsServicesStatus = hasConnectorsOverride ? undefined : connectorsSelection?.servicesStatus;
+  // A Connectors link opens the provider's detail, also when the dialog is already open.
+  const showConnectorsTab = useCallback(() => setActiveTab('connectors'), []);
+  const { selection: connectorsLinkSelection, clearSelection: clearConnectorsLinkSelection } = useConnectorsLinkSelection({
+    isOpen,
+    activeTab,
+    showConnectorsTab,
+  });
   const capabilitiesStatusRef = useRef(capabilitiesStatus);
   useEffect(() => { capabilitiesStatusRef.current = capabilitiesStatus; }, [capabilitiesStatus]);
   // Opening the Connectors tab retries a failed capabilities fetch once.
@@ -214,6 +222,7 @@ export function CloudAccountSettingsDialog({
   const visibleTab: CloudAccountSettingsTabId = activeTab === 'connectors' && !connectorsClient ? 'profile' : activeTab;
 
   const selectTab = (tabId: CloudAccountSettingsTabId) => {
+    if (tabId !== 'connectors') clearConnectorsLinkSelection();
     setActiveTab(tabId);
     if (tabId === 'auth' || tabId === 'notifications' || tabId === 'appearance') {
       setActiveSettingsSectionId(tabId);
@@ -426,6 +435,8 @@ export function CloudAccountSettingsDialog({
       isPreview={connectorsArePreview}
       servicesStatus={connectorsServicesStatus}
       onRetryServices={refetchCapabilities}
+      initialProviderId={connectorsLinkSelection?.providerId ?? null}
+      initialProviderRequest={connectorsLinkSelection?.request}
     />
   ) : null;
 

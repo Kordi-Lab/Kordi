@@ -67,6 +67,16 @@ export function connectorsSettingsLinkPrefix(value: string): ConnectorsLinkMatch
 }
 
 let pendingProviderId: ConnectorsLinkProviderId | null = null;
+const pendingProviderListeners = new Set<() => void>();
+
+/**
+ * Called after each applied link, so an open settings dialog can switch to
+ * the Connectors tab and read the provider. Returns the unsubscribe function.
+ */
+export function subscribeConnectorsSettingsLinks(listener: () => void): () => void {
+  pendingProviderListeners.add(listener);
+  return () => { pendingProviderListeners.delete(listener); };
+}
 
 /** The provider the last link asked for; cleared once read by the panel. */
 export function takePendingConnectorsProvider(): ConnectorsLinkProviderId | null {
@@ -109,4 +119,5 @@ export function applyConnectorsSettingsTarget(
 ) {
   pendingProviderId = target.providerId;
   openDialogTab(target.tab);
+  pendingProviderListeners.forEach((listener) => listener());
 }

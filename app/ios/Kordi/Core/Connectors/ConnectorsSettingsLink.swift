@@ -27,3 +27,18 @@ struct ConnectorsSettingsLink: Equatable, Identifiable {
         )
     }
 }
+
+/// One opening of a Connectors settings link: the account settings path to
+/// show and the connector whose detail to push on top of it. Each opening is
+/// a new request, so the same link opened twice navigates again.
+struct ConnectorsSettingsRequest: Equatable, Identifiable {
+    let id = UUID()
+    let path: [AccountSettingsRoute]
+    /// Nil opens the Connectors list.
+    let providerId: ConnectorProviderId?
+
+    init(link: ConnectorsSettingsLink) {
+        path = [.connectors]
+        providerId = link.providerID.flatMap(ConnectorProviderId.init(rawValue:))
+    }
+}

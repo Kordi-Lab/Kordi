@@ -82,7 +82,8 @@ struct KordiApp: App {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
-    @State private var connectorsSettingsLink: ConnectorsSettingsLink?
+    @State private var connectorsSettingsRequest: ConnectorsSettingsRequest?
+    @State private var showsConnectorsSettings = false
 
     init() {
 #if DEBUG
@@ -141,16 +142,16 @@ struct KordiApp: App {
                 // Agent-shared Connectors links open account settings in the app.
                 .environment(\.openURL, OpenURLAction { url in
                     guard let link = ConnectorsSettingsLink.parse(url) else { return .systemAction }
-                    connectorsSettingsLink = link
+                    openConnectorsSettings(link)
                     return .handled
                 })
                 .onOpenURL { url in
-                    if let link = ConnectorsSettingsLink.parse(url) { connectorsSettingsLink = link }
+                    if let link = ConnectorsSettingsLink.parse(url) { openConnectorsSettings(link) }
                 }
-                .sheet(item: $connectorsSettingsLink) { _ in
-                    // TODO(issue 1712): open the `.connectors` route and push the
-                    // link's provider once the Connectors screen lands on this branch.
-                    AccountSheet()
+                // Opens on Connectors and the link's provider; a new link while
+                // the sheet is up navigates within it.
+                .sheet(isPresented: $showsConnectorsSettings) {
+                    AccountSheet(connectorsRequest: connectorsSettingsRequest)
                         .environmentObject(model)
                 }
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
@@ -226,6 +227,11 @@ struct KordiApp: App {
                     }
                 }
         }
+    }
+
+    private func openConnectorsSettings(_ link: ConnectorsSettingsLink) {
+        connectorsSettingsRequest = ConnectorsSettingsRequest(link: link)
+        showsConnectorsSettings = true
     }
 
     private var preferredColorScheme: ColorScheme? {

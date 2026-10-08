@@ -625,13 +625,21 @@ Chat affordance:
   `kordi://settings/connectors?provider=<id>`. It performs no grant. The cloud
   runner offers it on `owner_private` leases; the Mac offers it on
   `owner_private` cloud leases and on the owner's own local turns.
+- The link opens the provider's detail on both platforms. A provider that is
+  not connected opens its detail too, which shows Connect. A link without a
+  known provider opens the Connectors list.
 - Desktop: message Markdown renders the link as an in-app link that opens
-  account settings on the `connectors` tab and stores the provider for the
-  detail view (`takePendingConnectorsProvider`). A link label from the model
-  is capped at 80 characters.
+  account settings on the `connectors` tab and stores the provider
+  (`takePendingConnectorsProvider`). The dialog reads it when the tab shows,
+  or through `subscribeConnectorsSettingsLinks` when a link arrives while the
+  dialog is already open on another tab, and passes it to
+  `ConnectorsSettingsPanel` as `initialProviderId`. A link label from the
+  model is capped at 80 characters.
 - iPhone: `ConnectorsSettingsLink.parse` handles the URL from `onOpenURL` and
-  in-app links, and opens the account sheet. Opening the `.connectors` route and
-  pushing the provider detail waits for the iPhone Connectors screen.
+  in-app links. `ConnectorsSettingsRequest` maps it to the `.connectors` route
+  and the provider; the account sheet opens on that route and pushes the
+  provider's detail. A link that arrives while the sheet is up navigates
+  within it.
 
 Still waiting:
 

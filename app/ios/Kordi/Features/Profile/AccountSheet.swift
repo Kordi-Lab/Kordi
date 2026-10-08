@@ -2,7 +2,7 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-private enum AccountSettingsRoute: String, Hashable {
+enum AccountSettingsRoute: String, Hashable {
     case profile
     case activeSessions = "active-sessions"
     case authentication
@@ -23,6 +23,7 @@ struct AccountSheet: View {
     // Sample connectors for the debug preview argument; nil otherwise.
     @State private var previewConnectorsClient: (any ConnectorsClient)? = ConnectorsAvailability.makeClient()
     private let embeddedInNavigationStack: Bool
+    private var connectorsRequest: ConnectorsSettingsRequest?
 
     init(embeddedInNavigationStack: Bool = false) {
         _path = State(initialValue: [])
@@ -32,6 +33,13 @@ struct AccountSheet: View {
     init(openingAuthentication: Bool) {
         _path = State(initialValue: openingAuthentication ? [.authentication] : [])
         embeddedInNavigationStack = false
+    }
+
+    /// Opens on Connectors for a settings link; a later request navigates within the open sheet.
+    init(connectorsRequest: ConnectorsSettingsRequest?) {
+        _path = State(initialValue: connectorsRequest?.path ?? [])
+        embeddedInNavigationStack = false
+        self.connectorsRequest = connectorsRequest
     }
 
     fileprivate init(previewing route: AccountSettingsRoute) {
@@ -64,6 +72,9 @@ struct AccountSheet: View {
             .presentationDragIndicator(.visible)
             // Start chat opens the conversation behind this sheet.
             .onChange(of: model.startedAgentChatRevision) { _, _ in dismiss() }
+            .onChange(of: connectorsRequest) { _, request in
+                if let request { path = request.path }
+            }
         }
     }
 
@@ -144,7 +155,11 @@ struct AccountSheet: View {
                 NotificationSettingsView()
             case .connectors:
                 if let connectorsClient {
-                    ConnectorsSettingsView(client: connectorsClient, isPreview: connectorsClient is PreviewConnectorsClient)
+                    ConnectorsSettingsView(
+                        client: connectorsClient,
+                        isPreview: connectorsClient is PreviewConnectorsClient,
+                        request: connectorsRequest
+                    )
                 }
             case .colorMode, .messageDisplay, .chatTheme:
                 CompactAppearanceSettingsView(route: route)
