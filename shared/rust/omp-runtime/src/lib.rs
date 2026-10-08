@@ -5,11 +5,13 @@
 mod error;
 mod protocol;
 mod supervisor_helpers;
+mod warm_pool;
 pub use error::RuntimeError;
 use supervisor_helpers::{
-    ChildGuard, ToolCancelGuard, acquire_computer_lock, check_frame, read_line_bounded,
-    validate_request, write_json_line,
+    ToolCancelGuard, acquire_computer_lock, check_frame, read_line_bounded, validate_request,
+    write_json_line,
 };
+use warm_pool::{AttachedWorker, WarmPool, spawn_worker};
 
 pub use protocol::{
     AuthConfig, AuthKind, Capabilities, Checkpoint, CompactionSettings, ImageInput, ModelConfig,
@@ -21,13 +23,14 @@ use std::collections::HashSet;
 use std::ffi::OsString;
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::{StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use protocol::{WorkerInput, WorkerOutput};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, ChildStdin, Command};
+use tokio::process::{Child, ChildStdin};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -111,11 +114,48 @@ where
 #[derive(Clone)]
 pub struct OmpRuntime {
     command: WorkerCommand,
+    warm: Option<Arc<WarmPool>>,
 }
 
 impl OmpRuntime {
     pub fn new(command: WorkerCommand) -> Self {
-        Self { command }
+        Self {
+            command,
+            warm: None,
+        }
+    }
+
+    /// Keeps up to `count` idle one-shot workers started ahead of their turn.
+    /// Zero (the default) spawns every worker on demand. Clones share the pool.
+    pub fn with_warm_workers(mut self, count: usize) -> Self {
+        self.warm = (count > 0).then(|| Arc::new(WarmPool::new(count)));
+        self
+    }
+
+    /// Starts the warm workers now. Needs a Tokio runtime context.
+    pub fn prewarm(&self) {
+        if let Some(pool) = &self.warm {
+            pool.fill(&self.command);
+        }
+    }
+
+    /// Kills idle warm workers and stops refilling. Turns still run on demand.
+    pub fn shutdown(&self) {
+        if let Some(pool) = &self.warm {
+            pool.shutdown();
+        }
+    }
+
+    fn take_worker(&self) -> Result<(AttachedWorker, bool), RuntimeError> {
+        let Some(pool) = &self.warm else {
+            return Ok((AttachedWorker::attach(spawn_worker(&self.command)?)?, false));
+        };
+        let taken = pool.take();
+        pool.refill_in_background(&self.command);
+        match taken {
+            Some(child) => Ok((AttachedWorker::attach(child)?, true)),
+            None => Ok((AttachedWorker::attach(spawn_worker(&self.command)?)?, false)),
+        }
     }
 
     pub async fn run_turn<H: HostTool, E: EventSink>(
@@ -136,50 +176,34 @@ impl OmpRuntime {
         } else {
             None
         };
-        let mut command = Command::new(&self.command.program);
-        command.args(&self.command.args);
-        command.env_clear();
-        if let Some(path) = std::env::var_os("PATH") {
-            command.env("PATH", path);
-        }
-        command.env("NODE_ENV", "production");
-        command.stdin(std::process::Stdio::piped());
-        command.stdout(std::process::Stdio::piped());
-        command.stderr(std::process::Stdio::piped());
-        command.kill_on_drop(true);
-        #[cfg(unix)]
-        command.process_group(0);
-        let mut child = ChildGuard::new(command.spawn().map_err(|_| RuntimeError::Spawn)?);
-        let mut stdin = child.0.stdin.take().ok_or(RuntimeError::Spawn)?;
-        let stdout = child.0.stdout.take().ok_or(RuntimeError::Spawn)?;
-        let stderr = child.0.stderr.take().ok_or(RuntimeError::Spawn)?;
-        let (stderr_overflow_tx, mut stderr_overflow_rx) = tokio::sync::oneshot::channel();
-        tokio::spawn(async move {
-            let mut reader = stderr;
-            let mut total = 0usize;
-            let mut chunk = [0u8; 4096];
-            while let Ok(size) = reader.read(&mut chunk).await {
-                if size == 0 {
-                    break;
-                }
-                total += size;
-                if total > MAX_STDERR_BYTES {
-                    let _ = stderr_overflow_tx.send(());
-                    break;
-                }
-            }
-        });
-
+        let (mut worker, mut warm) = self.take_worker()?;
         let deadline = Instant::now() + Duration::from_millis(request.limits.timeout_ms);
         let run_command = WorkerInput::Run {
             schema_version: SCHEMA_VERSION,
             request,
         };
-        tokio::select! {
-            _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
-            _ = tokio::time::sleep_until(deadline) => return Err(RuntimeError::Timeout),
-            result = write_json_line(&mut stdin, &run_command) => result?,
+        loop {
+            let written = tokio::select! {
+                _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
+                _ = tokio::time::sleep_until(deadline) => return Err(RuntimeError::Timeout),
+                result = write_json_line(&mut worker.stdin, &run_command) => result,
+            };
+            match written {
+                // A warm worker can die between its liveness check and the
+                // write. Fall back to a fresh worker once.
+                Err(RuntimeError::UnexpectedExit) if warm => {
+                    warm = false;
+                    worker = AttachedWorker::attach(spawn_worker(&self.command)?)?;
+                }
+                result => break result?,
+            }
         }
+        let AttachedWorker {
+            _child: _worker_guard,
+            mut stdin,
+            stdout,
+            stderr_overflow: mut stderr_overflow_rx,
+        } = worker;
 
         let mut stdout = BufReader::new(stdout);
         let mut seen_ready = false;

@@ -50,7 +50,7 @@ pub async fn run_omp_model_loop<C: CloudAgentRunClient + Sync>(
         OmpTurnConfig {
             snapshot_id: auth_material.snapshot_id,
             auth,
-            worker: OmpRuntime::new(WorkerCommand::sidecar(worker_path)),
+            worker: crate::omp_pool::shared_runtime(WorkerCommand::sidecar(worker_path)),
             prompt: context.prompt,
             messages,
         },
