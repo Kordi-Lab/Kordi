@@ -5,6 +5,7 @@ use chrono::Utc;
 use kordi_session::reflection_lessons::{
     NewReflectionLesson, ReflectionScope, ReflectionSource, save_reflection_lesson,
 };
+use kordi_tools::memory_guard::{MemoryGuardOptions, check_memory_text};
 use kordi_tools::{
     ReflectionLessonRequest, ReflectionLessonResponse, ReflectionRuntime, SaveReflectionLessonFn,
 };
@@ -22,16 +23,38 @@ pub(crate) fn reflection_lesson_artifact_path(
         .join(format!("{}.md", scope_id_slug(scope_id)))
 }
 
+/// Guards applied to every memory before anything is written.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct ReflectionGuards {
+    /// Run the sensitive keyword guard (`MemorySettings::exclude_sensitive`).
+    pub exclude_sensitive: bool,
+    /// Texts from members who turned off AI use. A memory quoting twelve or
+    /// more consecutive words from any of them is rejected. Filled by the AI
+    /// opt-out work (#1687); empty until then.
+    pub protected_texts: Vec<String>,
+}
+
 pub(crate) fn build_reflection_runtime(
     conn: Arc<Mutex<rusqlite::Connection>>,
     artifacts_dir: PathBuf,
+    guards: ReflectionGuards,
 ) -> ReflectionRuntime {
+    let guards = Arc::new(guards);
     let save_lesson: SaveReflectionLessonFn = Arc::new(move |request: ReflectionLessonRequest| {
         let conn = conn.clone();
         let artifacts_dir = artifacts_dir.clone();
+        let guards = guards.clone();
         Box::pin(async move {
             let scope = parse_scope(&request.scope)?;
             let source = parse_source(&request.source)?;
+            let lesson_text = check_memory_text(
+                &request.lesson,
+                &MemoryGuardOptions {
+                    exclude_sensitive: guards.exclude_sensitive,
+                    protected_texts: &guards.protected_texts,
+                },
+            )
+            .map_err(|err| kordi_core::error::KordiError::Tool(err.to_string()))?;
             let artifact_path =
                 reflection_lesson_artifact_path(&artifacts_dir, &request.scope, &request.scope_id);
             append_lesson_to_artifact(
@@ -39,7 +62,7 @@ pub(crate) fn build_reflection_runtime(
                 &request.scope,
                 &request.scope_id,
                 &request.source,
-                &request.lesson,
+                &lesson_text,
             )
             .map_err(|err| kordi_core::error::KordiError::Tool(err.to_string()))?;
 
@@ -102,13 +125,12 @@ fn append_lesson_to_artifact(
         writeln!(file, "## Lessons")?;
     }
 
-    let lesson_text = lesson.split_whitespace().collect::<Vec<_>>().join(" ");
     writeln!(
         file,
         "- {} [{}] {}",
         Utc::now().to_rfc3339(),
         source.trim(),
-        lesson_text
+        lesson
     )?;
     Ok(())
 }
@@ -182,7 +204,14 @@ mod tests {
         let conn = Arc::new(Mutex::new(
             kordi_session::store::open_memory().expect("memory db"),
         ));
-        let runtime = build_reflection_runtime(conn.clone(), artifacts_dir.path().to_path_buf());
+        let runtime = build_reflection_runtime(
+            conn.clone(),
+            artifacts_dir.path().to_path_buf(),
+            ReflectionGuards {
+                exclude_sensitive: true,
+                protected_texts: Vec::new(),
+            },
+        );
 
         let response = (runtime.save_lesson)(ReflectionLessonRequest {
             scope: "conversation".to_string(),
@@ -212,5 +241,109 @@ mod tests {
         .expect("list lessons");
         assert_eq!(lessons.len(), 1);
         assert_eq!(lessons[0].artifact_path, response.artifact_path);
+    }
+
+    const PROTECTED: &str = "I think we should move the launch to next Thursday because the vendor contract is still unsigned and legal wants more time.";
+
+    fn request(lesson: &str) -> ReflectionLessonRequest {
+        ReflectionLessonRequest {
+            scope: "conversation".to_string(),
+            scope_id: "session-guard".to_string(),
+            source: "user_correction".to_string(),
+            lesson: lesson.to_string(),
+        }
+    }
+
+    async fn saved_lesson_count(conn: &Arc<Mutex<rusqlite::Connection>>) -> usize {
+        let conn = conn.lock().await;
+        kordi_session::reflection_lessons::list_reflection_lessons(
+            &conn,
+            ReflectionScope::Conversation,
+            "session-guard",
+        )
+        .expect("list lessons")
+        .len()
+    }
+
+    fn guarded_runtime(
+        protected_texts: Vec<String>,
+    ) -> (
+        tempfile::TempDir,
+        Arc<Mutex<rusqlite::Connection>>,
+        ReflectionRuntime,
+    ) {
+        let artifacts_dir = tempfile::tempdir().expect("artifacts dir");
+        let conn = Arc::new(Mutex::new(
+            kordi_session::store::open_memory().expect("memory db"),
+        ));
+        let runtime = build_reflection_runtime(
+            conn.clone(),
+            artifacts_dir.path().to_path_buf(),
+            ReflectionGuards {
+                exclude_sensitive: true,
+                protected_texts,
+            },
+        );
+        (artifacts_dir, conn, runtime)
+    }
+
+    #[tokio::test]
+    async fn reflection_runtime_rejects_sensitive_memory_without_writing() {
+        let (artifacts_dir, conn, runtime) = guarded_runtime(Vec::new());
+
+        let err = match (runtime.save_lesson)(request("Priya was diagnosed with asthma")).await {
+            Ok(_) => panic!("sensitive memory must be rejected"),
+            Err(err) => err,
+        };
+        match err {
+            kordi_core::error::KordiError::Tool(message) => {
+                assert!(message.contains("health details"), "{message}");
+            }
+            other => panic!("unexpected error: {other:?}"),
+        }
+
+        let artifact_path =
+            reflection_lesson_artifact_path(artifacts_dir.path(), "conversation", "session-guard");
+        assert!(!artifact_path.exists());
+        assert!(!artifacts_dir.path().join("reflection-lessons").exists());
+        assert_eq!(saved_lesson_count(&conn).await, 0);
+    }
+
+    #[tokio::test]
+    async fn reflection_runtime_rejects_quote_of_protected_text() {
+        let (artifacts_dir, conn, runtime) = guarded_runtime(vec![PROTECTED.to_string()]);
+
+        let result = (runtime.save_lesson)(request(
+            "Move the launch to next Thursday because the vendor contract is still unsigned",
+        ))
+        .await;
+        match result {
+            Err(kordi_core::error::KordiError::Tool(message)) => {
+                assert!(message.contains("turned off AI use"), "{message}");
+            }
+            Err(other) => panic!("unexpected error: {other:?}"),
+            Ok(_) => panic!("quoted memory must be rejected"),
+        }
+        assert!(!artifacts_dir.path().join("reflection-lessons").exists());
+        assert_eq!(saved_lesson_count(&conn).await, 0);
+    }
+
+    #[tokio::test]
+    async fn reflection_runtime_saves_eleven_word_near_miss() {
+        let (_artifacts_dir, conn, runtime) = guarded_runtime(vec![PROTECTED.to_string()]);
+
+        let response = (runtime.save_lesson)(request(
+            "Move   the launch to next Thursday because the vendor contract is pending",
+        ))
+        .await
+        .expect("near miss is saved");
+        let artifact_text =
+            std::fs::read_to_string(&response.artifact_path).expect("lesson artifact");
+        assert!(
+            artifact_text.contains(
+                "Move the launch to next Thursday because the vendor contract is pending"
+            )
+        );
+        assert_eq!(saved_lesson_count(&conn).await, 1);
     }
 }
