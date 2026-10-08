@@ -111,8 +111,8 @@ async fn upgrade_from_114_labels_existing_runs_as_background() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_114_adds_provider_state_and_dedupes_events() {
-    let pool = fixture(114).await;
+async fn upgrade_from_115_adds_provider_state_and_dedupes_events() {
+    let pool = fixture(115).await;
     execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status,read_scopes) VALUES('conn_live','fixture-owner','slack','connected','{channels:history}')").await;
     execute(&pool, "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,external_id,occurred_at,expires_at) VALUES('evt_a','conn_live','slack','message','message:C1:1',now(),now()+interval '1 day'),('evt_b','conn_live','slack','message','message:C1:1',now(),now()+interval '1 day'),('evt_c','conn_live','slack','message',NULL,now(),now()+interval '1 day'),('evt_d','conn_live','slack','message',NULL,now(),now()+interval '1 day')").await;
     apply_migrations(&pool).await.unwrap();

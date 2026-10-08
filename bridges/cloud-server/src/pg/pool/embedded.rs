@@ -490,4 +490,9 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         "run trigger and connector tools",
         "0115_run_trigger_connector_tools.sql"
     ),
+    migration!(
+        116,
+        "connector provider state",
+        "0116_connector_provider_state.sql"
+    ),
 ];

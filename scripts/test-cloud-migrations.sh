@@ -51,8 +51,8 @@ tests=(
   email_verification_tests::upgrade_from_110_marks_only_provider_verified_primary_emails
   account_email_tests::upgrade_from_112_adds_account_email_codes
   connectors_tests::upgrade_from_113_adds_connectors_without_touching_accounts
-  connectors_tests::upgrade_from_114_adds_provider_state_and_dedupes_events
   connectors_tests::upgrade_from_114_labels_existing_runs_as_background
+  connectors_tests::upgrade_from_115_adds_provider_state_and_dedupes_events
 )
 index=0
 for test_name in "${tests[@]}"; do

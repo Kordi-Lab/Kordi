@@ -305,7 +305,7 @@ are a second wave.
     reviews, checks summary), `github_comment` (act).
   - Slack: `slack_read_channel` (read) and `slack_post` (act), both limited to
     the channels saved in the connector settings.
-- Migration 0115 adds `settings` (JSONB object), `provider_account_id`,
+- Migration 0116 adds `settings` (JSONB object), `provider_account_id`,
   `last_event_at`, `last_polled_at`, and `subscribed_at` to
   `cloud_connectors`, and a unique `(connector_id, external_id)` index on
   `cloud_connector_events` so every event is stored once.

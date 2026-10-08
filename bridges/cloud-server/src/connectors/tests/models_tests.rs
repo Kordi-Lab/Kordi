@@ -123,7 +123,7 @@ fn connector_summary_is_built_from_cloud_connectors_columns_only() {
         .nth(1)
         .and_then(|rest| rest.split(");").next())
         .unwrap();
-    let added = include_str!("../../../migrations/0115_connector_provider_state.sql");
+    let added = include_str!("../../../migrations/0116_connector_provider_state.sql");
     for column in columns {
         assert!(
             table.contains(&format!("    {column} "))
