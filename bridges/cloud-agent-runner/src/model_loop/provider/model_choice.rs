@@ -4,8 +4,9 @@ use serde_json::Value;
 
 pub(super) const MAX_MODEL_ID_CHARS: usize = 160;
 
-/// The model a snapshot stores. Anthropic, Google, and OpenAI snapshots keep
-/// only a model of their own family and otherwise use the provider default.
+/// The model a snapshot stores. Anthropic, Google, OpenAI, and ChatGPT
+/// (`openai-codex`) snapshots keep only a model of their own family and
+/// otherwise use the provider default.
 /// Every other provider, such as a custom endpoint or an OMP catalog provider
 /// like Groq or Mistral, keeps its stored model ID verbatim. A custom endpoint
 /// without one gets `None`: a default model belongs to another vendor.
@@ -19,7 +20,7 @@ pub(super) fn snapshot_model<'a>(payload: &'a Value, provider: &str) -> Option<&
                 && model.chars().count() <= MAX_MODEL_ID_CHARS
                 && !model.chars().any(char::is_control)
         });
-    if matches!(provider, "anthropic" | "google" | "openai") {
+    if matches!(provider, "anthropic" | "google" | "openai" | "openai-codex") {
         return Some(
             stored
                 .filter(|model| model_fits_provider(model, provider))
@@ -63,9 +64,15 @@ pub(super) fn model_fits_provider(model: &str, provider: &str) -> bool {
     }
 }
 
-fn default_model_for_provider(provider: &str) -> &'static str {
+/// The default model of the `openai-codex` provider in the OMP provider
+/// catalog. A ChatGPT account serves only Codex models, so an OpenAI API
+/// model such as `gpt-4.1-mini` fails there.
+pub(super) const OPENAI_CODEX_DEFAULT_MODEL: &str = "gpt-5.5";
+
+pub(super) fn default_model_for_provider(provider: &str) -> &'static str {
     match provider {
         "anthropic" => "claude-sonnet-5",
+        "openai-codex" => OPENAI_CODEX_DEFAULT_MODEL,
         "google" => "gemini-3.1-pro",
         "groq" => "llama-3.3-70b-versatile",
         "openrouter" => "openai/gpt-5",

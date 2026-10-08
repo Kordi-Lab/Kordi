@@ -11,6 +11,7 @@ pub(crate) mod identity;
 mod leases;
 pub(crate) mod omp_state;
 mod prompt_history;
+pub(crate) mod route_fill;
 pub(crate) mod subsession_lifecycle;
 pub(crate) mod subsessions;
 

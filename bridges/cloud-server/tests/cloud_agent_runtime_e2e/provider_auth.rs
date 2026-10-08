@@ -19,6 +19,8 @@ mod publish_limits;
 mod readiness;
 #[path = "provider_auth/real_worker.rs"]
 mod real_worker;
+#[path = "provider_auth/route_fill.rs"]
+mod route_fill;
 #[path = "provider_auth/route_safety.rs"]
 mod route_safety;
 #[path = "provider_auth/route_sync.rs"]

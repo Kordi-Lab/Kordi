@@ -192,7 +192,17 @@ async fn claim_run_with_executor(
     .await?;
     let run_id = format!("car_{}", Uuid::new_v4().simple());
     let prompt = fallback_prompt_for_claim(pool, input).await?;
-    let runtime_route = serde_json::to_value(runtime_route_for_claim(pool, input).await?)
+    let mut runtime_route = runtime_route_for_claim(pool, input).await?;
+    if desktop_executor.is_none() {
+        runtime_route = super::route_fill::fill_cloud_route(
+            pool,
+            &input.owner_account_id,
+            &input.session_id,
+            runtime_route,
+        )
+        .await?;
+    }
+    let runtime_route = serde_json::to_value(runtime_route)
         .map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
     let lease_expires_at =
         desktop_executor.map(|_| (Utc::now() + chrono::Duration::seconds(45)).to_rfc3339());
