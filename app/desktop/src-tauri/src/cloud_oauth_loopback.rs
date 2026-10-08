@@ -120,7 +120,8 @@ async fn run_loopback_listener(
     cancel_rx: oneshot::Receiver<()>,
 ) {
     let mut sender = Some(tx);
-    let deadline = tokio::time::sleep(Duration::from_secs(5 * 60));
+    // Matches the connector OAuth state lifetime on the server (ten minutes).
+    let deadline = tokio::time::sleep(Duration::from_secs(10 * 60));
     tokio::pin!(deadline);
     tokio::pin!(cancel_rx);
 

@@ -116,9 +116,9 @@ export function createDesktopMacLocalConnectorsClient(
         throw error;
       }
     },
-    async grantAct(providerId) {
+    async grantAct(providerId, options) {
       if (macLocalSourceFor(providerId)) throw new Error('Acting on this Mac is not available yet.');
-      return servicesClient().grantAct(providerId);
+      return servicesClient().grantAct(providerId, options);
     },
     async setActEnabled(providerId, enabled) {
       if (macLocalSourceFor(providerId)) {
