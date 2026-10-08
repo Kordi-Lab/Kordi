@@ -73,6 +73,9 @@ pub struct AuthCapabilitiesResponse {
     pub password: bool,
     #[serde(rename = "oauthProviders")]
     pub oauth_providers: Vec<&'static str>,
+    /// Present when the account memory routes exist (#1710).
+    #[serde(rename = "memoryVersion")]
+    pub memory_version: u32,
 }
 
 #[derive(Debug, Deserialize)]

@@ -138,6 +138,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
             "/v1/cloud/agent-runs/:run_id/artifacts",
             post(export_runner_artifact),
         )
+        .route(
+            "/v1/cloud/agent-runs/:run_id/memory",
+            get(runner_memory::list).post(runner_memory::save),
+        )
         .with_state(state.clone());
 
     let public_catalog = Router::new().route(
@@ -416,6 +420,7 @@ async fn lookup_cloud_agent_run_for_request(
 
 mod auth_snapshots;
 mod provider_auth_routes;
+mod runner_memory;
 mod test_route;
 
 #[derive(serde::Deserialize)]

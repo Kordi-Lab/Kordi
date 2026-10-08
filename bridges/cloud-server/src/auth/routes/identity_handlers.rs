@@ -28,6 +28,7 @@ pub(super) async fn auth_capabilities() -> Json<AuthCapabilitiesResponse> {
             .filter(|provider| oauth_provider_is_configured(*provider))
             .map(OAuthProvider::id)
             .collect(),
+        memory_version: 1,
     })
 }
 
