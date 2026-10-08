@@ -16,12 +16,24 @@ pub(super) struct Recorded {
     pub path: String,
     pub query: String,
     pub authorization: String,
+    pub if_match: String,
     pub body: String,
+}
+
+/// A response used only when the request matches: its query contains
+/// `query` and its bearer token is `token`, when given.
+struct Conditional {
+    route: String,
+    query: Option<String>,
+    token: Option<String>,
+    status: u16,
+    body: Value,
 }
 
 #[derive(Default)]
 struct StubState {
     responses: Mutex<HashMap<String, (u16, Value)>>,
+    conditional: Mutex<Vec<Conditional>>,
     rejected_tokens: Mutex<Vec<String>>,
     requests: Mutex<Vec<Recorded>>,
 }
@@ -62,6 +74,27 @@ impl HttpStub {
             .insert(format!("{method} {path}"), (status, body));
     }
 
+    /// Answers requests to `path` whose query contains `query` (when given)
+    /// and whose bearer token is `token` (when given). The latest matching
+    /// registration wins over plain [`Self::respond`] entries.
+    pub fn respond_when(
+        &self,
+        method: &str,
+        path: &str,
+        query: Option<&str>,
+        token: Option<&str>,
+        status: u16,
+        body: Value,
+    ) {
+        self.state.conditional.lock().unwrap().push(Conditional {
+            route: format!("{method} {path}"),
+            query: query.map(str::to_string),
+            token: token.map(str::to_string),
+            status,
+            body,
+        });
+    }
+
     pub fn reject_token(&self, token: &str) {
         self.state
             .rejected_tokens
@@ -99,6 +132,11 @@ async fn handle(
         path: uri.path().to_string(),
         query: uri.query().unwrap_or_default().to_string(),
         authorization: authorization.clone(),
+        if_match: headers
+            .get("if-match")
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_string(),
         body: String::from_utf8_lossy(&body).into_owned(),
     });
     let rejected = state
@@ -110,12 +148,27 @@ async fn handle(
     if rejected {
         return (StatusCode::UNAUTHORIZED, axum::Json(serde_json::json!({}))).into_response();
     }
-    let found = state
-        .responses
+    let route = format!("{method} {}", uri.path());
+    let query = uri.query().unwrap_or_default();
+    let conditional = state
+        .conditional
         .lock()
         .unwrap()
-        .get(&format!("{method} {}", uri.path()))
-        .cloned();
+        .iter()
+        .rev()
+        .find(|entry| {
+            entry.route == route
+                && entry
+                    .query
+                    .as_deref()
+                    .is_none_or(|part| query.contains(part))
+                && entry
+                    .token
+                    .as_deref()
+                    .is_none_or(|token| authorization == format!("Bearer {token}"))
+        })
+        .map(|entry| (entry.status, entry.body.clone()));
+    let found = conditional.or_else(|| state.responses.lock().unwrap().get(&route).cloned());
     match found {
         Some((status, body)) => (
             StatusCode::from_u16(status).unwrap_or(StatusCode::OK),

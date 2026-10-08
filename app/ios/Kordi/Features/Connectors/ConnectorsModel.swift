@@ -161,9 +161,8 @@ let connectorCatalog: [ConnectorDefinition] = [
         ],
         actScopes: [
             act("gmail.messages.send", "Send mail as you"),
-            act("gmail.messages.modify", "Archive and label"),
         ],
-        actDescription: "Your agent can send mail as you, archive, and label.",
+        actDescription: "Your agent can send mail as you.",
         availability: .available
     ),
     ConnectorDefinition(
@@ -179,7 +178,7 @@ let connectorCatalog: [ConnectorDefinition] = [
         actScopes: [
             act("github.comments.write", "Comment on issues and pull requests"),
         ],
-        actDescription: "Your agent can comment on issues and pull requests.",
+        actDescription: "Your agent can comment on issues and pull requests. GitHub grants this as write access to all your private repositories.",
         availability: .available
     ),
     ConnectorDefinition(

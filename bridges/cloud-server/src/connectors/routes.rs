@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post, put};
@@ -12,16 +12,12 @@ use axum::{Extension, Json, Router};
 use serde_json::json;
 
 use crate::auth::routes::{cloud_session_middleware, CloudSession};
-use crate::cloud_agent_runtime::routes::runner_authorized_for_connectors;
 use crate::server::ServerState;
 
-use super::broker::{self, codes};
-use super::delivery::LeaseHolder;
 use super::models::{
-    AuditQuery, BrokerCallRequest, BrokerCallResponse, ConnectorAuditResponse,
-    ConnectorListResponse, ConnectorResponse, ConnectorStatus, DisconnectResponse,
-    OAuthCallbackQuery, OAuthCompleteRequest, OAuthStartRequest, OAuthStartResponse, SetActRequest,
-    SetAgentsRequest,
+    AuditQuery, ConnectorAuditResponse, ConnectorListResponse, ConnectorResponse, ConnectorStatus,
+    DisconnectResponse, OAuthCallbackQuery, OAuthCompleteRequest, OAuthStartRequest,
+    OAuthStartResponse, SetActRequest, SetAgentsRequest,
 };
 use super::oauth::{self, StartError};
 use super::oauth_complete::{self, FinishError};
@@ -56,11 +52,11 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .merge(account_routes)
         .merge(super::webhooks::routes())
         .route("/v1/cloud/connectors/oauth/callback", get(oauth_callback))
-        .route(BROKER_CALL_PATH, post(broker_call))
+        .route(BROKER_CALL_PATH, post(super::broker_route::broker_call))
         .with_state(state)
 }
 
-fn error(code: &str, message: impl Into<String>, status: StatusCode) -> Response {
+pub(super) fn error(code: &str, message: impl Into<String>, status: StatusCode) -> Response {
     (
         status,
         Json(json!({ "errorCode": code, "message": message.into() })),
@@ -68,7 +64,7 @@ fn error(code: &str, message: impl Into<String>, status: StatusCode) -> Response
         .into_response()
 }
 
-fn server_error(context: &str, err: impl std::fmt::Display) -> Response {
+pub(super) fn server_error(context: &str, err: impl std::fmt::Display) -> Response {
     eprintln!("[connectors] {context}: {err}");
     error(
         "server_error",
@@ -420,86 +416,4 @@ async fn disconnect(
         Ok(deleted_events) => Json(DisconnectResponse { deleted_events }).into_response(),
         Err(err) => server_error("disconnect connector", err),
     }
-}
-
-/// HTTP status for a broker error code.
-pub fn broker_status(response: &BrokerCallResponse) -> StatusCode {
-    match response.error_code() {
-        None => StatusCode::OK,
-        Some(codes::INVALID_REQUEST) | Some(codes::UNKNOWN_TOOL) => StatusCode::BAD_REQUEST,
-        Some(code) if codes::FORBIDDEN.contains(&code) => StatusCode::FORBIDDEN,
-        Some(codes::NOT_FOUND) => StatusCode::NOT_FOUND,
-        Some(codes::NOT_CONNECTED) => StatusCode::CONFLICT,
-        Some(codes::UNAVAILABLE) => StatusCode::SERVICE_UNAVAILABLE,
-        Some(codes::PROVIDER_FAILED) => StatusCode::BAD_GATEWAY,
-        Some(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
-/// Who holds the lease named in a broker call: a cloud runner presenting the
-/// runner token, or the owner's desktop presenting its cloud session and the
-/// claim id of its execution lease.
-async fn lease_holder(
-    state: &ServerState,
-    headers: &HeaderMap,
-    input: &BrokerCallRequest,
-) -> Result<LeaseHolder, Box<Response>> {
-    let unauthorized = || {
-        Box::new(error(
-            "runner_unauthorized",
-            "Runner token or session is missing or invalid.",
-            StatusCode::UNAUTHORIZED,
-        ))
-    };
-    let missing = |name: &str| {
-        Box::new(error(
-            codes::INVALID_REQUEST,
-            format!("{name} is required."),
-            StatusCode::BAD_REQUEST,
-        ))
-    };
-    let nonblank = |value: &Option<String>| {
-        value
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty() && value.len() <= 256)
-            .map(str::to_string)
-    };
-    if runner_authorized_for_connectors(headers) {
-        let runner_id = nonblank(&input.runner_id).ok_or_else(|| missing("runnerId"))?;
-        return Ok(LeaseHolder::Runner { runner_id });
-    }
-    let token = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .map(str::trim)
-        .filter(|token| token.starts_with(crate::auth::session::SESSION_TOKEN_PREFIX))
-        .ok_or_else(unauthorized)?;
-    let session = match crate::auth::session::lookup_session(state.db_pool(), token).await {
-        Ok(Some(session)) => session,
-        Ok(None) => return Err(unauthorized()),
-        Err(err) => return Err(Box::new(server_error("broker session", err))),
-    };
-    let claim_id = nonblank(&input.claim_id)
-        .and_then(|claim| uuid::Uuid::parse_str(&claim).ok())
-        .ok_or_else(|| missing("claimId"))?;
-    Ok(LeaseHolder::Desktop {
-        executor: format!("desktop:{}:{claim_id}", session.device_id),
-        account_id: session.account_id,
-    })
-}
-
-async fn broker_call(
-    State(state): State<Arc<ServerState>>,
-    headers: HeaderMap,
-    Json(input): Json<BrokerCallRequest>,
-) -> Response {
-    let holder = match lease_holder(&state, &headers, &input).await {
-        Ok(holder) => holder,
-        Err(response) => return *response,
-    };
-    let response =
-        broker::call_connector_tool(state.db_pool(), state.connectors(), &holder, &input).await;
-    (broker_status(&response), Json(response)).into_response()
 }

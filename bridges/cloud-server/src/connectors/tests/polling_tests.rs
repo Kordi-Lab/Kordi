@@ -3,10 +3,10 @@
 use super::http_stub::HttpStub;
 use super::service_fixture::{connect_service, service_runtime, stored_events, unique_number};
 use super::*;
-use crate::connectors::{credentials, digest_input, polling, ConnectorHooks};
+use crate::connectors::{digest_input, polling, refresh, ConnectorHooks};
 
 /// Connects GitHub for a new account; the access token is `gh-<label>`.
-async fn connect_github(
+pub(super) async fn connect_github(
     pool: &PgPool,
     stub: &HttpStub,
     label: &str,
@@ -37,6 +37,7 @@ fn polls_with(stub: &HttpStub, token: &str) -> usize {
 #[tokio::test]
 async fn polling_records_each_event_once() {
     let Some(pool) = pool().await else { return };
+    let _turn = super::sweep_tests::POLL_LOCK.lock().await;
     let stub = HttpStub::start().await;
     let (runtime, owner, connector_id) = connect_github(&pool, &stub, "poll").await;
     // Only this connector is due; other tests' connectors wait.
@@ -92,7 +93,8 @@ async fn polling_records_each_event_once() {
         .unwrap();
     assert_eq!(polls_with(&stub, "gh-poll"), 2);
 
-    // A live subscription skips polling.
+    // A configured webhook does not stop polling: it only reaches the
+    // accounts its payload names.
     let hooks = ConnectorHooks {
         github_webhook_secret: Some("hook".into()),
         ..Default::default()
@@ -106,7 +108,28 @@ async fn polling_records_each_event_once() {
     polling::poll_due_connectors(&pool, &live, Utc::now())
         .await
         .unwrap();
-    assert_eq!(polls_with(&stub, "gh-poll"), 2);
+    assert_eq!(polls_with(&stub, "gh-poll"), 3);
+    // The cursor is the newest stored notification, and the next poll asks
+    // for changes since then.
+    let (cursor,): (Option<chrono::DateTime<Utc>>,) =
+        query_as("SELECT poll_cursor FROM cloud_connectors WHERE connector_id = $1")
+            .bind(&connector_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(cursor.unwrap().to_rfc3339(), "2026-10-07T11:00:00+00:00");
+    let last_poll = stub
+        .requests_to("GET", "/notifications")
+        .into_iter()
+        .rfind(|call| call.authorization == "Bearer gh-poll")
+        .unwrap();
+    assert!(
+        last_poll
+            .query
+            .contains("since=2026-10-07T11%3A00%3A00%2B00%3A00"),
+        "{}",
+        last_poll.query
+    );
 
     let summaries = store::connector_summaries(&pool, &owner).await.unwrap();
     assert!(summaries[0].last_event_at.is_some());
@@ -133,10 +156,10 @@ async fn a_401_refreshes_once_and_retries() {
         json!({ "access_token": "gh-access-2", "expires_in": 3600 }),
     );
     stub.respond("GET", "/notifications", json!([]));
-    let result = credentials::execute_with_retry(
+    let result = refresh::execute_with_retry(
         &pool,
         &TestCipher,
-        &provider,
+        provider.as_ref(),
         &record,
         "github_notifications",
         &json!({}),
@@ -159,10 +182,10 @@ async fn a_401_refreshes_once_and_retries() {
 
     // When the refreshed token is rejected too, the 401 stands.
     stub.reject_token("gh-access-2");
-    let again = credentials::execute_with_retry(
+    let again = refresh::execute_with_retry(
         &pool,
         &TestCipher,
-        &provider,
+        provider.as_ref(),
         &record,
         "github_notifications",
         &json!({}),
@@ -178,6 +201,9 @@ async fn digest_input_skips_revoked_connectors_and_caps_events() {
     let (runtime, _) = stub_runtime();
     let (owner, _) = signed_in_account(&pool, "digest_input").await;
     let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
+    store::replace_agent_grants(&pool, &connector_id, &[store::default_agent_id(&owner)])
+        .await
+        .unwrap();
     for index in 0..105 {
         events::record_event(
             &pool,
@@ -200,6 +226,26 @@ async fn digest_input_skips_revoked_connectors_and_caps_events() {
     assert_eq!(recent.len(), 100);
     assert_eq!(recent[0].summary, json!({ "title": "Item 0" }));
     assert_no_secret_keys("digest input", serde_json::to_value(&recent).unwrap());
+
+    // The digest is built for the default agent: a connector granted only to
+    // another agent contributes nothing.
+    store::replace_agent_grants(&pool, &connector_id, &["agent_other".to_string()])
+        .await
+        .unwrap();
+    assert!(digest_input::recent_events(&pool, &owner, since)
+        .await
+        .unwrap()
+        .is_empty());
+    store::replace_agent_grants(&pool, &connector_id, &[store::default_agent_id(&owner)])
+        .await
+        .unwrap();
+    assert_eq!(
+        digest_input::recent_events(&pool, &owner, since)
+            .await
+            .unwrap()
+            .len(),
+        100
+    );
 
     query(
         "UPDATE cloud_connectors SET status = 'revoked', revoked_at = now() \

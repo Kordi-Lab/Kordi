@@ -11,7 +11,7 @@ use super::http::{
 };
 use super::{
     ConnectorHooks, ConnectorSecret, ConnectorToolDescriptor, OAuth2ConnectorProvider, PolledEvent,
-    ProviderError, ServiceAdapter, ServiceProvider, GMAIL,
+    ProviderError, ServiceAdapter, ServiceProvider, GMAIL, MAX_POLL_EVENTS, POLL_PAGE_SIZE,
 };
 use crate::connectors::models::ConnectorToolGroup;
 
@@ -238,14 +238,34 @@ impl GmailAdapter {
         query: &str,
         max: u64,
     ) -> Result<Vec<String>, ProviderError> {
-        let params = [("q", query.to_string()), ("maxResults", max.to_string())];
+        Ok(self.search_page(token, query, max, None).await?.0)
+    }
+
+    /// One page of message ids and the next page token.
+    async fn search_page(
+        &self,
+        token: &str,
+        query: &str,
+        max: u64,
+        page_token: Option<String>,
+    ) -> Result<(Vec<String>, Option<String>), ProviderError> {
+        let mut params = vec![("q", query.to_string()), ("maxResults", max.to_string())];
+        if let Some(page_token) = page_token {
+            params.push(("pageToken", page_token));
+        }
         let body = self.api.get("/messages", token, &params).await?;
-        Ok(list_at(&body, "/messages")
+        let ids = list_at(&body, "/messages")
             .take(max as usize)
             .filter_map(|item| item.get("id").and_then(Value::as_str))
             .filter(|id| id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric()))
             .map(str::to_string)
-            .collect())
+            .collect();
+        let next = body
+            .get("nextPageToken")
+            .and_then(Value::as_str)
+            .filter(|token| !token.is_empty() && token.len() <= 512)
+            .map(str::to_string);
+        Ok((ids, next))
     }
 
     async fn metadata(&self, token: &str, id: &str) -> Result<Value, ProviderError> {
@@ -351,6 +371,9 @@ impl ServiceAdapter for GmailAdapter {
         Ok(())
     }
 
+    /// Inbox messages received since `since`, page by page, at most
+    /// [`MAX_POLL_EVENTS`]. Polling runs also with push configured: a push
+    /// only says the mailbox changed, and the messages come from here.
     async fn poll(
         &self,
         secret: &ConnectorSecret,
@@ -359,13 +382,26 @@ impl ServiceAdapter for GmailAdapter {
     ) -> Result<Vec<PolledEvent>, ProviderError> {
         let token = secret.access_token.as_str();
         let query = format!("in:inbox after:{}", since.timestamp());
+        let mut ids = Vec::new();
+        let mut page_token = None;
+        while ids.len() < MAX_POLL_EVENTS {
+            let (page, next) = self
+                .search_page(token, &query, POLL_PAGE_SIZE as u64, page_token)
+                .await?;
+            ids.extend(page);
+            page_token = next;
+            if page_token.is_none() {
+                break;
+            }
+        }
+        ids.truncate(MAX_POLL_EVENTS);
         let mut events = Vec::new();
-        for id in self.search_ids(token, &query, MAX_SEARCH_RESULTS).await? {
+        for id in ids {
             let message = self.metadata(token, &id).await?;
             events.push(PolledEvent {
                 kind: "message.received".into(),
                 external_id: format!("message:{id}"),
-                occurred_at: received_at(&message).unwrap_or_else(Utc::now),
+                occurred_at: received_at(&message).unwrap_or(since),
                 payload: metadata_summary(&message),
             });
         }

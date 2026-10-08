@@ -70,6 +70,20 @@ impl ProviderHttp {
         query: &[(&str, String)],
         body: Option<&Value>,
     ) -> Result<Value, ProviderError> {
+        self.send_with_headers(method, path, token, query, body, &[])
+            .await
+    }
+
+    /// [`Self::send`] with extra request headers, such as `If-Match`.
+    pub async fn send_with_headers(
+        &self,
+        method: Method,
+        path: &str,
+        token: &str,
+        query: &[(&str, String)],
+        body: Option<&Value>,
+        extra_headers: &[(&str, &str)],
+    ) -> Result<Value, ProviderError> {
         let mut request = self
             .client
             .request(method, self.url(path))
@@ -78,7 +92,7 @@ impl ProviderHttp {
         if !self.headers.iter().any(|(name, _)| *name == "accept") {
             request = request.header("accept", "application/json");
         }
-        for (name, value) in self.headers {
+        for (name, value) in self.headers.iter().chain(extra_headers) {
             request = request.header(*name, *value);
         }
         if !query.is_empty() {
@@ -98,6 +112,11 @@ impl ProviderHttp {
             StatusCode::NOT_FOUND => {
                 return Err(ProviderError::invalid(
                     "The provider could not find that item, or this connection cannot see it.",
+                ))
+            }
+            StatusCode::PRECONDITION_FAILED => {
+                return Err(ProviderError::invalid(
+                    "The item changed while this request ran. Try again.",
                 ))
             }
             StatusCode::UNPROCESSABLE_ENTITY | StatusCode::BAD_REQUEST => {

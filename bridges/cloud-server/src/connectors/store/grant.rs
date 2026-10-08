@@ -190,8 +190,16 @@ pub async fn apply_grant(
 /// Removes the credential, the agent grants, and the stored events, queues
 /// derived-copy removal, marks the connector revoked, and writes the audit
 /// row, in one transaction. Returns how many events were deleted.
+///
+/// The connector row is locked first, so an event being recorded meanwhile
+/// either commits before the deletion (and is deleted) or waits and then
+/// sees the connector revoked (and is not stored).
 pub async fn disconnect(pool: &PgPool, record: &ConnectorRecord) -> StoreResult<u64> {
     let mut tx = pool.begin().await?;
+    query("SELECT connector_id FROM cloud_connectors WHERE connector_id = $1 FOR UPDATE")
+        .bind(&record.connector_id)
+        .execute(&mut *tx)
+        .await?;
     query("DELETE FROM cloud_connector_secrets WHERE connector_id = $1")
         .bind(&record.connector_id)
         .execute(&mut *tx)

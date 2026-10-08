@@ -369,9 +369,21 @@ are a second wave.
     reviews, checks summary), `github_comment` (act).
   - Slack: `slack_read_channel` (read) and `slack_post` (act), both limited to
     the channels saved in the connector settings.
+- Scopes are only what the tools use. Gmail asks for `gmail.readonly` (which
+  also covers the `users.watch` push subscription) and `gmail.send`, not
+  `gmail.modify`. Slack asks for `channels:history` and `groups:history`
+  (plus `chat:write` to post); channels are chosen by id, so no list or user
+  scopes, and direct-message ids (`D...`) are refused because `im:history` is
+  not requested. GitHub's act grant is `repo`, which gives write access to
+  every private repository the person can reach; the consent text in the
+  desktop and iOS catalogs says so, and the broker only runs the commenting
+  tool with it.
 - Migration 0116 adds `settings` (JSONB object), `provider_account_id`,
-  `last_event_at`, `last_polled_at`, and `subscribed_at` to
-  `cloud_connectors`, and a unique `(connector_id, external_id)` index on
+  `last_event_at`, `last_polled_at` (the last poll attempt), `poll_cursor`
+  (the newest event time a successful poll stored), and `subscribed_at` to
+  `cloud_connectors`, `provider_account_id` to
+  `cloud_connector_pending_grants` (the callback learns it before the grant
+  is completed), and a unique `(connector_id, external_id)` index on
   `cloud_connector_events` so every event is stored once.
 - `PUT /v1/cloud/connectors/:id/settings` validates per provider. Slack takes
   `{ "channels": ["C0123ABCD"] }` (at most 50 channel ids); other providers
@@ -381,24 +393,68 @@ are a second wave.
   summary carries `grantedScopeIds` in the client catalog ids, `settings`, and
   `lastEventAt`.
 - The broker refreshes once and retries when a provider answers 401 to a live
-  token (`connectors/credentials.rs`).
+  token. The retry goes through the locked refresh in `connectors/refresh.rs`
+  (per-connector advisory lock, update-only persistence): when another call
+  already stored a new token it is used instead, and a refreshed token that
+  cannot be stored is an error. The polling job gets its credential through
+  the same step.
+- Events are stored only for a live connector: `record_event` inserts with
+  `INSERT ... SELECT ... WHERE status <> 'revoked' FOR SHARE`, and disconnect
+  locks the connector row `FOR UPDATE` before deleting events, so an event
+  arriving during a disconnect either is deleted with the others or is not
+  stored.
+- Per-account budget: every tool execution the broker is about to run is
+  charged to the account through the shared account-action limiter (Redis
+  when configured), at most `KORDI_CONNECTOR_CALLS_PER_HOUR` per hour
+  (default 600). Over budget, the call is refused with
+  `connector_budget_exceeded` (HTTP 429) and a denied audit row.
+- Provider details: Slack `slack_post` escapes `<!` so posted text cannot
+  broadcast (`<!channel>`, `<!here>`); `calendar_respond` sends the event's
+  `etag` as `If-Match`, so a concurrent change is not overwritten (412 is
+  reported as a retryable input error); `calendar_create_event` accepts a
+  `timeZone` of at most 64 IANA name characters.
 - Events: `POST /v1/cloud/connectors/webhooks/github` (HMAC
-  `X-Hub-Signature-256`; delivery id dedupes replays; recorded for the
-  reviewer, assignee, or author, never the sender),
+  `X-Hub-Signature-256` over the body; the unsigned headers are untrusted:
+  `X-GitHub-Event` must match the payload shape of a recorded event
+  (`pull_request`, `pull_request_review`, `pull_request_review_comment`,
+  `issues`, `issue_comment`), and an event is stored once per
+  `sha256(body)` and once per delivery id; repository, sender, and URL are
+  capped; recorded for the reviewer, assignee, or author, never the sender),
   `POST /v1/cloud/connectors/webhooks/slack` (signing secret, five minute
   timestamp window, URL verification; only chosen channels), and
   `POST /v1/cloud/connectors/webhooks/google` (Gmail Pub/Sub push; the OIDC
   bearer is checked through Google's token info endpoint for audience, issuer,
-  expiry, and the push service account; rejected when unconfigured).
+  expiry, and the push service account; a token Google rejects is refused
+  without another lookup for 60 seconds; rejected when unconfigured; a push
+  stores `mailbox.changed`, and the messages themselves come from polling).
   Connectors are found by the provider account stored at grant time (GitHub
   user id, Google email, Slack `team:user`).
-- Polling fallback (`connectors/polling.rs`, started from
-  `scheduled_tasks/worker.rs`): every connected connector without a live
-  subscription is polled every `KORDI_CONNECTOR_POLL_MINUTES`; connectors with
-  one only renew it daily (Gmail `users.watch`). Google Calendar push uses
-  plain channel callbacks rather than Pub/Sub, so Calendar always polls.
+- Polling (`connectors/polling.rs`, started from
+  `scheduled_tasks/worker.rs`): every connected connector is polled every
+  `KORDI_CONNECTOR_POLL_MINUTES`, also when webhooks or push are configured,
+  because a webhook only reaches the accounts its payload names (Slack names
+  one authorization per event) and a Gmail push only says the mailbox
+  changed. Webhook and poll use the same external id where the provider
+  allows it (Slack `message:<channel>:<ts>`), so nothing is stored twice.
+  Gmail's `users.watch` is renewed daily before the poll. Google Calendar push
+  uses plain channel callbacks rather than Pub/Sub, so Calendar only polls.
+  - The provider is asked for changes since `poll_cursor` (24 hours back on
+    the first poll). The cursor moves only after a successful poll, and only
+    to the newest event actually stored: events are stored oldest first and
+    a database error stops at the last stored one. `last_polled_at` only
+    records the attempt.
+  - Each poll pages through the provider (Slack `next_cursor`, GitHub
+    `page`, Gmail and Calendar `pageToken`; Calendar with `updatedMin` and
+    `singleEvents`) up to 500 items per connector. Calendar returns changes
+    oldest first, so the ceiling never skips one. Slack, GitHub, and Gmail
+    return newest first; past 500 items in one interval the oldest of that
+    interval are not read.
+  - One connector's provider or database error is logged and counted and
+    never stops the others. The "sweep running" flag is held by a guard that
+    resets it when dropped, also on a panic.
 - Digest input: `connectors::digest_input::recent_events` (last 7 days, at
-  most 100, live connectors only) feeds `connectorEvents` in the digest input
+  most 100, live connectors granted to the account's default agent
+  `cloud-agent:<account_id>` only) feeds `connectorEvents` in the digest input
   and its incremental changes; the system prompt treats them as read-only
   context that is never a source.
 
@@ -406,12 +462,13 @@ Environment variables introduced by PR 3:
 
 | Variable | Used for |
 |---|---|
-| `KORDI_CONNECTOR_GITHUB_WEBHOOK_SECRET` | GitHub webhook HMAC; when set, GitHub connectors stop polling |
-| `KORDI_CONNECTOR_SLACK_SIGNING_SECRET` | Slack request signatures; when set, Slack connectors stop polling |
+| `KORDI_CONNECTOR_GITHUB_WEBHOOK_SECRET` | GitHub webhook HMAC; polling continues |
+| `KORDI_CONNECTOR_SLACK_SIGNING_SECRET` | Slack request signatures; polling continues |
 | `KORDI_CONNECTOR_GOOGLE_PUSH_AUDIENCE` | Audience of the Pub/Sub push OIDC token |
 | `KORDI_CONNECTOR_GOOGLE_PUSH_SERVICE_ACCOUNT` | Service account the push subscription signs as; required with the audience |
-| `KORDI_CONNECTOR_GMAIL_PUBSUB_TOPIC` | `projects/<p>/topics/<t>` for Gmail `users.watch`; with the two above, Gmail stops polling |
+| `KORDI_CONNECTOR_GMAIL_PUBSUB_TOPIC` | `projects/<p>/topics/<t>` for Gmail `users.watch`; with the two above, Gmail push is on and polling continues |
 | `KORDI_CONNECTOR_POLL_MINUTES` | Polling interval, default 15, accepted range 1 to 1440 |
+| `KORDI_CONNECTOR_CALLS_PER_HOUR` | Connector tool executions per account per hour, default 600, accepted range 1 to 100000 |
 
 ## PR 4: Mac-local connectors
 

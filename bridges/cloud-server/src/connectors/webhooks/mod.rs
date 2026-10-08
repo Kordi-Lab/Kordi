@@ -4,7 +4,9 @@
 //!
 //! Each event is keyed to connectors by the provider account stored at
 //! grant time and recorded once per `external_id`, so retries and replays
-//! of a signed request store nothing new.
+//! of a signed request store nothing new. Webhooks add low latency; the
+//! polling job still runs for every connector, because a webhook only
+//! reaches the accounts its payload names.
 
 use std::sync::Arc;
 
@@ -26,6 +28,7 @@ use super::providers::slack::{chosen_channels, ts_time};
 use super::store;
 use crate::server::ServerState;
 
+mod github;
 pub mod verify;
 
 pub const GITHUB_PATH: &str = "/v1/cloud/connectors/webhooks/github";
@@ -36,31 +39,50 @@ pub const GOOGLE_PATH: &str = "/v1/cloud/connectors/webhooks/google";
 /// signature or token before reading the body.
 pub fn routes() -> Router<Arc<ServerState>> {
     Router::new()
-        .route(GITHUB_PATH, post(github_webhook))
+        .route(GITHUB_PATH, post(github::github_webhook))
         .route(SLACK_PATH, post(slack_webhook))
         .route(GOOGLE_PATH, post(google_push))
 }
 
-fn reply(status: StatusCode, code: &str) -> Response {
+pub(super) fn reply(status: StatusCode, code: &str) -> Response {
     (status, Json(json!({ "errorCode": code }))).into_response()
 }
 
-fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+pub(super) fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|value| value.to_str().ok())
 }
 
-struct Incoming<'a> {
-    provider: &'a str,
-    provider_account_id: &'a str,
-    kind: &'a str,
-    external_id: &'a str,
-    occurred_at: DateTime<Utc>,
-    payload: &'a Value,
+pub(super) struct Incoming<'a> {
+    pub provider: &'a str,
+    pub provider_account_id: &'a str,
+    pub kind: &'a str,
+    pub external_id: &'a str,
+    /// A second replay key, stored in the payload as `delivery`: a connector
+    /// that already has an event with it records nothing.
+    pub delivery: Option<&'a str>,
+    pub occurred_at: DateTime<Utc>,
+    pub payload: &'a Value,
+}
+
+async fn delivery_seen(
+    pool: &PgPool,
+    connector_id: &str,
+    delivery: &str,
+) -> Result<bool, sqlx_core::Error> {
+    let (seen,): (bool,) = sqlx_core::query_as::query_as(
+        "SELECT EXISTS (SELECT 1 FROM cloud_connector_events \
+         WHERE connector_id = $1 AND payload->>'delivery' = $2)",
+    )
+    .bind(connector_id)
+    .bind(delivery)
+    .fetch_one(pool)
+    .await?;
+    Ok(seen)
 }
 
 /// Records the event for every live connector of the provider account that
 /// `accept` allows. Returns how many new events were stored.
-async fn record_for_account(
+pub(super) async fn record_for_account(
     pool: &PgPool,
     event: Incoming<'_>,
     accept: impl Fn(&super::models::ConnectorRecord) -> bool,
@@ -70,6 +92,11 @@ async fn record_for_account(
             .await?;
     let mut recorded = 0;
     for connector in connectors.iter().filter(|connector| accept(connector)) {
+        if let Some(delivery) = event.delivery {
+            if delivery_seen(pool, &connector.connector_id, delivery).await? {
+                continue;
+            }
+        }
         let stored = record_event(
             pool,
             NewConnectorEvent {
@@ -87,7 +114,7 @@ async fn record_for_account(
     Ok(recorded)
 }
 
-fn stored(result: Result<usize, sqlx_core::Error>) -> Response {
+pub(super) fn stored(result: Result<usize, sqlx_core::Error>) -> Response {
     match result {
         Ok(recorded) => (StatusCode::OK, Json(json!({ "recorded": recorded }))).into_response(),
         Err(error) => {
@@ -95,90 +122,6 @@ fn stored(result: Result<usize, sqlx_core::Error>) -> Response {
             reply(StatusCode::INTERNAL_SERVER_ERROR, "server_error")
         }
     }
-}
-
-/// GitHub user ids the event is about (reviewer, assignee, author), not the
-/// person who caused it.
-fn github_recipients(payload: &Value) -> Vec<String> {
-    let sender = payload
-        .pointer("/sender/id")
-        .and_then(Value::as_u64)
-        .map(|id| id.to_string());
-    let mut ids = Vec::new();
-    for pointer in [
-        "/requested_reviewer/id",
-        "/assignee/id",
-        "/pull_request/user/id",
-        "/issue/user/id",
-    ] {
-        if let Some(id) = payload.pointer(pointer).and_then(Value::as_u64) {
-            let id = id.to_string();
-            if sender.as_ref() != Some(&id) && !ids.contains(&id) {
-                ids.push(id);
-            }
-        }
-    }
-    ids
-}
-
-async fn github_webhook(
-    State(state): State<Arc<ServerState>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
-    let Some(secret) = state.connectors().hooks.github_webhook_secret.as_deref() else {
-        return reply(StatusCode::SERVICE_UNAVAILABLE, "webhook_not_configured");
-    };
-    if !verify::github_signature_valid(secret, &body, header(&headers, "x-hub-signature-256")) {
-        return reply(StatusCode::UNAUTHORIZED, "invalid_signature");
-    }
-    let event = header(&headers, "x-github-event").unwrap_or("unknown");
-    let Some(delivery) = header(&headers, "x-github-delivery").filter(|id| id.len() <= 128) else {
-        return reply(StatusCode::BAD_REQUEST, "missing_delivery");
-    };
-    if event == "ping" {
-        return (StatusCode::OK, Json(json!({ "recorded": 0 }))).into_response();
-    }
-    let Ok(payload) = serde_json::from_slice::<Value>(&body) else {
-        return reply(StatusCode::BAD_REQUEST, "invalid_body");
-    };
-    let action = payload.get("action").and_then(Value::as_str);
-    let kind = match action {
-        Some(action) => format!("{}.{}", cap_text(event, 60), cap_text(action, 60)),
-        None => cap_text(event, 60),
-    };
-    let item = payload
-        .get("pull_request")
-        .or_else(|| payload.get("issue"))
-        .cloned()
-        .unwrap_or(Value::Null);
-    let summary = json!({
-        "event": event,
-        "action": action,
-        "repository": payload.pointer("/repository/full_name"),
-        "number": item.get("number"),
-        "title": text_at(&item, "/title", 300),
-        "url": item.get("html_url"),
-        "sender": payload.pointer("/sender/login"),
-    });
-    let external_id = format!("delivery:{delivery}");
-    let pool = state.db_pool();
-    let mut total = 0;
-    for account in github_recipients(&payload) {
-        let incoming = Incoming {
-            provider: "github",
-            provider_account_id: &account,
-            kind: &kind,
-            external_id: &external_id,
-            occurred_at: Utc::now(),
-            payload: &summary,
-        };
-        match record_for_account(pool, incoming, |_| true).await {
-            Ok(recorded) => total += recorded,
-            Err(error) => return stored(Err(error)),
-        }
-    }
-    stored(Ok(total))
 }
 
 async fn slack_webhook(
@@ -256,6 +199,7 @@ async fn slack_webhook(
             provider_account_id: &account,
             kind: &kind,
             external_id: &external_id,
+            delivery: None,
             occurred_at,
             payload: &summary,
         };
@@ -313,6 +257,7 @@ async fn google_push(
         provider_account_id: &account,
         kind: "mailbox.changed",
         external_id: &external_id,
+        delivery: None,
         occurred_at: Utc::now(),
         payload: &summary,
     };

@@ -9,8 +9,8 @@ use super::http::{
     cap_text, is_plain_identifier, list_at, required_str, text_at, ProviderHttp, MAX_TEXT_CHARS,
 };
 use super::{
-    ConnectorHooks, ConnectorSecret, ConnectorToolDescriptor, OAuth2ConnectorProvider, PolledEvent,
-    ProviderError, ServiceAdapter, ServiceProvider, GITHUB,
+    ConnectorSecret, ConnectorToolDescriptor, OAuth2ConnectorProvider, PolledEvent, ProviderError,
+    ServiceAdapter, ServiceProvider, GITHUB, MAX_POLL_EVENTS, POLL_PAGE_SIZE,
 };
 use crate::connectors::models::ConnectorToolGroup;
 
@@ -281,38 +281,46 @@ impl ServiceAdapter for GithubAdapter {
             .map(|id| id.to_string()))
     }
 
-    fn live_subscription(&self, hooks: &ConnectorHooks) -> bool {
-        // The webhook is registered on the GitHub App or organization, not
-        // per connector, so there is nothing to subscribe here.
-        hooks.github_webhook_secret.is_some()
-    }
-
+    /// Notifications updated since `since`, page by page, at most
+    /// [`MAX_POLL_EVENTS`]. Polling runs also with the webhook configured:
+    /// the webhook only reaches the accounts it names, and notifications
+    /// cover the rest.
     async fn poll(
         &self,
         secret: &ConnectorSecret,
         since: DateTime<Utc>,
         _settings: &Value,
     ) -> Result<Vec<PolledEvent>, ProviderError> {
-        let query = [
-            ("per_page", "50".to_string()),
-            ("since", since.to_rfc3339()),
-        ];
-        let body = self
-            .api
-            .get("/notifications", &secret.access_token, &query)
-            .await?;
-        Ok(list_at(&body, "")
-            .filter_map(|item| {
-                let id = item.get("id").and_then(Value::as_str)?;
-                let updated = item.get("updated_at").and_then(Value::as_str)?;
-                let occurred_at = DateTime::parse_from_rfc3339(updated).ok()?;
-                Some(PolledEvent {
-                    kind: "notification".into(),
-                    external_id: format!("notification:{id}:{updated}"),
-                    occurred_at: occurred_at.with_timezone(&Utc),
-                    payload: notification_summary(item),
-                })
-            })
-            .collect())
+        let mut events = Vec::new();
+        for page in 1..=MAX_POLL_EVENTS.div_ceil(POLL_PAGE_SIZE) {
+            let query = [
+                ("per_page", POLL_PAGE_SIZE.to_string()),
+                ("page", page.to_string()),
+                ("since", since.to_rfc3339()),
+            ];
+            let body = self
+                .api
+                .get("/notifications", &secret.access_token, &query)
+                .await?;
+            let items = body.as_array().map(Vec::len).unwrap_or(0);
+            events.extend(list_at(&body, "").filter_map(notification_event));
+            if items < POLL_PAGE_SIZE {
+                break;
+            }
+        }
+        events.truncate(MAX_POLL_EVENTS);
+        Ok(events)
     }
+}
+
+fn notification_event(item: &Value) -> Option<PolledEvent> {
+    let id = item.get("id").and_then(Value::as_str)?;
+    let updated = item.get("updated_at").and_then(Value::as_str)?;
+    let occurred_at = DateTime::parse_from_rfc3339(updated).ok()?;
+    Some(PolledEvent {
+        kind: "notification".into(),
+        external_id: format!("notification:{}:{updated}", cap_text(id, 64)),
+        occurred_at: occurred_at.with_timezone(&Utc),
+        payload: notification_summary(item),
+    })
 }

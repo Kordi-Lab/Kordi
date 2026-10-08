@@ -7,6 +7,9 @@
 //! second time. The refreshed secret is written with an update that only
 //! touches a live connector, so a disconnect that lands mid-refresh stays
 //! final.
+//!
+//! The same locked step serves the forced refresh after a provider answers
+//! 401 ([`execute_with_retry`]) and the polling job ([`usable_secret`]).
 
 use chrono::Utc;
 use sqlx_core::query::query;
@@ -14,9 +17,11 @@ use sqlx_postgres::PgPool;
 
 use crate::cloud_agent_runtime::provider_auth::ProviderAuthCipher;
 
-use super::broker::{open_secret, read_sealed_secret, seal_secret};
+use super::broker::{load_secret, open_secret, read_sealed_secret, seal_secret};
+use super::models::ConnectorRecord;
 use super::providers::{ConnectorProvider, ConnectorSecret, ProviderError};
 use super::store;
+use super::ConnectorRuntime;
 
 #[derive(Debug)]
 pub(crate) enum RefreshFailure {
@@ -55,6 +60,33 @@ pub(crate) async fn refresh_if_needed(
     if !secret.needs_refresh(Utc::now()) {
         return Ok(secret);
     }
+    let still_stale = |current: &ConnectorSecret| current.needs_refresh(Utc::now());
+    refresh_locked(pool, cipher, provider, connector_id, still_stale).await
+}
+
+/// Refreshes after the provider rejected `rejected` with a 401, unless
+/// another call already stored a different token while this one waited.
+pub(crate) async fn refresh_rejected(
+    pool: &PgPool,
+    cipher: &dyn ProviderAuthCipher,
+    provider: &dyn ConnectorProvider,
+    connector_id: &str,
+    rejected: &ConnectorSecret,
+) -> Result<ConnectorSecret, RefreshFailure> {
+    let still_rejected = |current: &ConnectorSecret| current.access_token == rejected.access_token;
+    refresh_locked(pool, cipher, provider, connector_id, still_rejected).await
+}
+
+/// Takes the per-connector lock, reloads the secret, and refreshes it when
+/// `still_needed` holds for the reloaded secret. A refreshed secret that
+/// cannot be stored is an error, never a token used once and lost.
+async fn refresh_locked(
+    pool: &PgPool,
+    cipher: &dyn ProviderAuthCipher,
+    provider: &dyn ConnectorProvider,
+    connector_id: &str,
+    still_needed: impl Fn(&ConnectorSecret) -> bool,
+) -> Result<ConnectorSecret, RefreshFailure> {
     let storage = |context: &str, error: &dyn std::fmt::Display| {
         eprintln!("[connectors] refresh {connector_id} {context}: {error}");
         RefreshFailure::Storage
@@ -73,7 +105,7 @@ pub(crate) async fn refresh_if_needed(
         .map_err(|error| storage("reload", &error))?
         .ok_or(RefreshFailure::Disconnected)?;
     let current = open_secret(cipher, &sealed).map_err(|error| storage("open", &error))?;
-    if !current.needs_refresh(Utc::now()) {
+    if !still_needed(&current) {
         // Another call refreshed while this one waited for the lock.
         return Ok(current);
     }
@@ -115,4 +147,55 @@ pub(crate) async fn refresh_if_needed(
         .await
         .map_err(|error| storage("commit", &error))?;
     Ok(refreshed)
+}
+
+/// A decrypted, current credential for the polling job and subscription
+/// renewal, refreshed through the locked step when it is about to expire.
+pub(crate) async fn usable_secret(
+    pool: &PgPool,
+    runtime: &ConnectorRuntime,
+    provider: &dyn ConnectorProvider,
+    connector_id: &str,
+) -> Result<ConnectorSecret, String> {
+    let cipher = runtime
+        .cipher
+        .as_deref()
+        .ok_or_else(|| "connector encryption is not configured".to_string())?;
+    let secret = load_secret(pool, cipher, connector_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    refresh_if_needed(pool, cipher, provider, connector_id, secret)
+        .await
+        .map_err(|failure| failure.audit_phrase().to_string())
+}
+
+/// Runs one tool with the connector's settings. When the provider answers
+/// 401 to a token that has a refresh token, refreshes once through the
+/// locked step and retries once: a token can be revoked or rotated before
+/// its stated expiry. A failed refresh keeps the original 401.
+pub(crate) async fn execute_with_retry(
+    pool: &PgPool,
+    cipher: &dyn ProviderAuthCipher,
+    provider: &dyn ConnectorProvider,
+    connector: &ConnectorRecord,
+    tool: &str,
+    args: &serde_json::Value,
+    secret: ConnectorSecret,
+) -> Result<serde_json::Value, ProviderError> {
+    let settings = &connector.settings;
+    let first = provider.execute(tool, args, &secret, settings).await;
+    if !matches!(first, Err(ProviderError::Unauthorized)) || secret.refresh_token.is_none() {
+        return first;
+    }
+    let connector_id = connector.connector_id.as_str();
+    match refresh_rejected(pool, cipher, provider, connector_id, &secret).await {
+        Ok(refreshed) => provider.execute(tool, args, &refreshed, settings).await,
+        Err(failure) => {
+            eprintln!(
+                "[connectors] retry {connector_id} after 401: {}",
+                failure.audit_phrase()
+            );
+            first
+        }
+    }
 }

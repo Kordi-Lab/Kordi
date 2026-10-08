@@ -19,11 +19,15 @@ fn post(path: &str, headers: &[(&str, String)], body: &str) -> Request<Body> {
 }
 
 fn github_request(delivery: &str, body: &str, key: &str) -> Request<Body> {
+    github_event_request("pull_request", delivery, body, key)
+}
+
+fn github_event_request(event: &str, delivery: &str, body: &str, key: &str) -> Request<Body> {
     let signature = format!("sha256={}", verify::sign_hex(key, &[body.as_bytes()]));
     post(
         webhooks::GITHUB_PATH,
         &[
-            ("x-github-event", "pull_request".into()),
+            ("x-github-event", event.into()),
             ("x-github-delivery", delivery.into()),
             ("x-hub-signature-256", signature),
         ],
@@ -87,6 +91,13 @@ fn signatures_reject_tampering_and_stale_slack_requests() {
         check(&old, &old_sig, body),
         Err(verify::SlackSignatureError::Stale)
     );
+    // Extreme timestamps are stale, not an overflow.
+    for extreme in [i64::MIN, i64::MAX] {
+        assert_eq!(
+            check(&extreme.to_string(), &sig, body),
+            Err(verify::SlackSignatureError::Stale)
+        );
+    }
 
     let claims = json!({ "iss": "https://accounts.google.com", "aud": "https://kordi.test/push",
                          "email": "push@project.iam.gserviceaccount.com", "email_verified": "true",
@@ -208,13 +219,49 @@ async fn github_webhook_records_once_per_delivery() {
         app.clone().oneshot(request).await.unwrap().status(),
         StatusCode::UNAUTHORIZED
     );
+    // The headers are not signed: a replayed body with a new delivery id,
+    // or a header that names another event, stores nothing.
+    let replay = |event: &'static str, delivery: String, body: String| {
+        let app = app.clone();
+        async move {
+            let request = github_event_request(event, &delivery, &body, GITHUB_SECRET);
+            body_json(app.oneshot(request).await.unwrap()).await["recorded"].clone()
+        }
+    };
+    let fresh = || format!("delivery-{}", Uuid::new_v4());
+    assert_eq!(replay("pull_request", fresh(), body.clone()).await, 0);
     assert_eq!(
-        stored_events(&pool, &connector_id, "delivery:").await,
+        replay("issues", fresh(), body.replace("Fix login", "Fix it")).await,
+        0
+    );
+    // A known delivery id with another signed body stores nothing either.
+    let renamed = body.replace("Fix login", "Fix logout");
+    assert_eq!(replay("pull_request", delivery.clone(), renamed).await, 0);
+    let digest = {
+        use sha2::{Digest, Sha256};
+        hex::encode(Sha256::digest(body.as_bytes()))
+    };
+    assert_eq!(
+        stored_events(&pool, &connector_id, "body:").await,
         [(
             "pull_request.review_requested".to_string(),
-            format!("delivery:{delivery}")
+            format!("body:{digest}")
         )]
     );
+    let long_login = "x".repeat(500);
+    let capped = body
+        .replace("\"alex\"", &format!("\"{long_login}\""))
+        .replace("Fix login", "Capped");
+    assert_eq!(replay("pull_request", fresh(), capped).await, 1);
+    let (sender,): (String,) = query_as(
+        "SELECT payload->>'sender' FROM cloud_connector_events \
+         WHERE connector_id = $1 AND payload->>'title' = 'Capped'",
+    )
+    .bind(&connector_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(sender.chars().count() <= 103, "{}", sender.len());
     let last: (Option<chrono::DateTime<Utc>>,) =
         query_as("SELECT last_event_at FROM cloud_connectors WHERE connector_id = $1")
             .bind(&connector_id)
@@ -239,7 +286,7 @@ async fn slack_settings_choose_channels_and_events_follow_them() {
         "/token",
         json!({ "ok": true, "team": { "id": team },
                 "authed_user": { "id": "U1", "access_token": "xoxp-1",
-                                 "scope": "channels:read,channels:history,groups:read,groups:history,users:read" } }),
+                                 "scope": "channels:history,groups:history" } }),
     );
     let (owner, token) = signed_in_account(&pool, "slack_hook").await;
     let connector_id =
@@ -376,30 +423,39 @@ async fn google_push_requires_a_verified_token() {
         app.clone().oneshot(push(None)).await.unwrap().status(),
         StatusCode::UNAUTHORIZED
     );
-    stub.respond(
-        "GET",
-        "/tokeninfo",
-        json!({ "iss": "accounts.google.com", "aud": "https://elsewhere.test",
-                "email": "push@project.iam.gserviceaccount.com", "email_verified": "true",
-                "exp": (Utc::now().timestamp() + 300).to_string() }),
+    let claims = |token: &str, aud: &str, email: &str| {
+        stub.respond_when(
+            "GET",
+            "/tokeninfo",
+            Some(&format!("id_token={token}")),
+            None,
+            200,
+            json!({ "iss": "accounts.google.com", "aud": aud, "email": email,
+                    "email_verified": "true",
+                    "exp": (Utc::now().timestamp() + 300).to_string() }),
+        );
+    };
+    let account = "push@project.iam.gserviceaccount.com";
+    claims("oidc-wrong-aud", "https://elsewhere.test", account);
+    claims(
+        "oidc-wrong-email",
+        "https://kordi.test/push",
+        "attacker@other.iam.gserviceaccount.com",
     );
-    assert_eq!(
-        app.clone()
-            .oneshot(push(Some("oidc")))
-            .await
-            .unwrap()
-            .status(),
-        StatusCode::UNAUTHORIZED
-    );
-    stub.respond(
-        "GET",
-        "/tokeninfo",
-        json!({ "iss": "accounts.google.com", "aud": "https://kordi.test/push",
-                "email": "push@project.iam.gserviceaccount.com", "email_verified": "true",
-                "exp": (Utc::now().timestamp() + 300).to_string() }),
-    );
+    for token in ["oidc-wrong-aud", "oidc-wrong-email"] {
+        let response = app.clone().oneshot(push(Some(token))).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{token}");
+    }
+    // A rejected token is refused for a minute without another lookup, even
+    // if it would now pass.
+    claims("oidc-wrong-email", "https://kordi.test/push", account);
+    let lookups = stub.requests_to("GET", "/tokeninfo").len();
+    let cached = app.clone().oneshot(push(Some("oidc-wrong-email"))).await;
+    assert_eq!(cached.unwrap().status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(stub.requests_to("GET", "/tokeninfo").len(), lookups);
+    claims("oidc-valid", "https://kordi.test/push", account);
     for expected in [1, 0] {
-        let response = app.clone().oneshot(push(Some("oidc"))).await.unwrap();
+        let response = app.clone().oneshot(push(Some("oidc-valid"))).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(body_json(response).await["recorded"], expected);
     }

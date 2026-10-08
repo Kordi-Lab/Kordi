@@ -9,8 +9,8 @@ use serde_json::{json, Value};
 
 use super::http::{cap_text, limit_arg, list_at, required_str, str_arg, ProviderHttp};
 use super::{
-    ConnectorHooks, ConnectorSecret, ConnectorToolDescriptor, OAuth2ConnectorProvider, PolledEvent,
-    ProviderError, ServiceAdapter, ServiceProvider, SLACK,
+    ConnectorSecret, ConnectorToolDescriptor, OAuth2ConnectorProvider, PolledEvent, ProviderError,
+    ServiceAdapter, ServiceProvider, MAX_POLL_EVENTS, POLL_PAGE_SIZE, SLACK,
 };
 use crate::connectors::models::ConnectorToolGroup;
 
@@ -75,10 +75,11 @@ pub fn provider(http: reqwest::Client, api_base: Option<String>) -> ServiceProvi
     )
 }
 
-/// A Slack conversation id: public (C), private (G), or direct (D).
+/// A Slack channel id: public (C) or private (G). Direct messages (D) are
+/// refused: the connector does not ask for `im:history`.
 pub fn is_channel_id(value: &str) -> bool {
     (3..=32).contains(&value.len())
-        && value.starts_with(['C', 'G', 'D'])
+        && value.starts_with(['C', 'G'])
         && value
             .chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
@@ -159,6 +160,12 @@ fn slack_ok(body: Value) -> Result<Value, ProviderError> {
     }
 }
 
+/// Escapes `<!`, so posted text cannot become a `<!channel>`, `<!here>`, or
+/// `<!everyone>` broadcast. Slack decodes `&lt;` back to `<` for display.
+pub fn escape_broadcasts(text: &str) -> String {
+    text.replace("<!", "&lt;!")
+}
+
 /// Slack `ts` ("1712345678.000200") as a time.
 pub fn ts_time(ts: &str) -> Option<DateTime<Utc>> {
     let (seconds, micros) = ts.split_once('.').unwrap_or((ts, "0"));
@@ -187,6 +194,7 @@ impl SlackAdapter {
         channel: &str,
         limit: u64,
         oldest: Option<String>,
+        cursor: Option<String>,
     ) -> Result<Value, ProviderError> {
         let mut query = vec![
             ("channel", channel.to_string()),
@@ -194,6 +202,9 @@ impl SlackAdapter {
         ];
         if let Some(oldest) = oldest {
             query.push(("oldest", oldest));
+        }
+        if let Some(cursor) = cursor {
+            query.push(("cursor", cursor));
         }
         slack_ok(
             self.api
@@ -221,7 +232,7 @@ impl ServiceAdapter for SlackAdapter {
             READ_CHANNEL => {
                 let channel = chosen_channel(args, settings)?;
                 let limit = limit_arg(args, "limit", 20, 50);
-                let body = self.history(token, channel, limit, None).await?;
+                let body = self.history(token, channel, limit, None, None).await?;
                 let messages = list_at(&body, "/messages")
                     .map(message_summary)
                     .collect::<Vec<_>>();
@@ -229,7 +240,7 @@ impl ServiceAdapter for SlackAdapter {
             }
             POST => {
                 let channel = chosen_channel(args, settings)?;
-                let text = required_str(args, "text", MAX_POST_CHARS)?;
+                let text = escape_broadcasts(required_str(args, "text", MAX_POST_CHARS)?);
                 let mut body = json!({ "channel": channel, "text": text });
                 if let Some(thread) = str_arg(args, "threadTs") {
                     if ts_time(thread).is_none() {
@@ -251,11 +262,11 @@ impl ServiceAdapter for SlackAdapter {
         Some(validate_slack_settings(settings))
     }
 
-    fn live_subscription(&self, hooks: &ConnectorHooks) -> bool {
-        // Event subscriptions are configured on the Slack app.
-        hooks.slack_signing_secret.is_some()
-    }
-
+    /// Messages since `since` in the chosen channels, page by page, at most
+    /// [`MAX_POLL_EVENTS`] in all. Polling runs also with the Events API
+    /// configured: Slack names one authorization per event, so other
+    /// people's connectors in the same workspace only see it here. Both
+    /// paths use the same external id, so nothing is stored twice.
     async fn poll(
         &self,
         secret: &ConnectorSecret,
@@ -269,26 +280,50 @@ impl ServiceAdapter for SlackAdapter {
         );
         let mut events = Vec::new();
         for channel in chosen_channels(settings).iter().take(MAX_POLLED_CHANNELS) {
-            let body = self
-                .history(&secret.access_token, channel, 50, Some(oldest.clone()))
-                .await?;
-            for message in list_at(&body, "/messages") {
-                let Some(ts) = message.get("ts").and_then(Value::as_str) else {
-                    continue;
-                };
-                let Some(occurred_at) = ts_time(ts) else {
-                    continue;
-                };
-                let mut payload = message_summary(message);
-                payload["channel"] = json!(channel);
-                events.push(PolledEvent {
-                    kind: "message".into(),
-                    external_id: format!("message:{channel}:{ts}"),
-                    occurred_at,
-                    payload,
-                });
+            let mut cursor = None;
+            loop {
+                if events.len() >= MAX_POLL_EVENTS {
+                    return Ok(events);
+                }
+                let body = self
+                    .history(
+                        &secret.access_token,
+                        channel,
+                        POLL_PAGE_SIZE as u64,
+                        Some(oldest.clone()),
+                        cursor.take(),
+                    )
+                    .await?;
+                for message in list_at(&body, "/messages") {
+                    if let Some(event) = message_event(channel, message) {
+                        events.push(event);
+                    }
+                }
+                cursor = body
+                    .pointer("/response_metadata/next_cursor")
+                    .and_then(Value::as_str)
+                    .filter(|next| !next.is_empty() && next.len() <= 512)
+                    .map(str::to_string);
+                let more = body.get("has_more").and_then(Value::as_bool) == Some(true);
+                if !more || cursor.is_none() {
+                    break;
+                }
             }
         }
+        events.truncate(MAX_POLL_EVENTS);
         Ok(events)
     }
+}
+
+fn message_event(channel: &str, message: &Value) -> Option<PolledEvent> {
+    let ts = message.get("ts").and_then(Value::as_str)?;
+    let occurred_at = ts_time(ts)?;
+    let mut payload = message_summary(message);
+    payload["channel"] = json!(channel);
+    Some(PolledEvent {
+        kind: "message".into(),
+        external_id: format!("message:{channel}:{ts}"),
+        occurred_at,
+        payload,
+    })
 }

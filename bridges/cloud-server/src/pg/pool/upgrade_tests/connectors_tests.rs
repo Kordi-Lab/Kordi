@@ -124,16 +124,27 @@ async fn upgrade_from_115_adds_provider_state_and_dedupes_events() {
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
 
-    let (settings, account, last_event): (Value, Option<String>, Option<String>) = query_as(
-        "SELECT settings, provider_account_id, last_event_at::text FROM cloud_connectors WHERE connector_id='conn_live'",
+    type ProviderState = (Value, Option<String>, Option<String>, Option<String>);
+    let state: ProviderState = query_as(
+        "SELECT settings, provider_account_id, last_event_at::text, poll_cursor::text FROM cloud_connectors WHERE connector_id='conn_live'",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
     assert_eq!(
-        (settings, account, last_event),
-        (json!({}), None, None),
-        "existing connectors keep working with empty settings"
+        state,
+        (json!({}), None, None, None),
+        "existing connectors keep working with empty settings and no poll cursor"
+    );
+    let (pending_account,): (i64,) = query_as(
+        "SELECT count(*) FROM information_schema.columns WHERE table_name='cloud_connector_pending_grants' AND column_name='provider_account_id'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        pending_account, 1,
+        "pending grants carry the provider account"
     );
     let events: Vec<(String,)> =
         query_as("SELECT event_id FROM cloud_connector_events ORDER BY event_id")

@@ -45,7 +45,9 @@ mod polling_tests;
 mod providers_tests;
 mod refresh_tests;
 mod routes_tests;
+mod safety_tests;
 mod service_fixture;
+mod sweep_tests;
 mod webhook_tests;
 
 // ---------------------------------------------------------------------------
