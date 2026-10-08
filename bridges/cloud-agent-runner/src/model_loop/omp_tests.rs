@@ -75,10 +75,10 @@ fn context_preserves_structured_replay_and_rejects_unknown_roles() {
 #[test]
 fn cloud_tools_remain_within_existing_subsession_policy() {
     let mut run = run();
-    let full = tools_for_run(&run).unwrap();
+    let full = tools_for_run(&run, &crate::memory::RunMemory::disabled()).unwrap();
     assert!(full.iter().any(|tool| tool.name == "bash"));
     run.subsession_id = Some("subsession".into());
-    let limited = tools_for_run(&run).unwrap();
+    let limited = tools_for_run(&run, &crate::memory::RunMemory::disabled()).unwrap();
     assert!(!limited.iter().any(|tool| matches!(
         tool.name.as_str(),
         "bash" | "task_operator" | "export_artifact" | "write" | "edit"

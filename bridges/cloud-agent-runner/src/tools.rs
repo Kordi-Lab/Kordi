@@ -1,13 +1,17 @@
 use std::path::PathBuf;
 
+use kordi_core::error::KordiError;
 use kordi_core::types::ContentBlock;
 use kordi_tools::{
-    web_fetch::WebFetchTool, web_search::WebSearchTool, ExecutionPolicy, Tool, ToolContext,
-    ToolExecutionMode, ToolResult,
+    reflection_tool::ReflectionTool, web_fetch::WebFetchTool, web_search::WebSearchTool,
+    ExecutionPolicy, ReflectionLessonRequest, ReflectionLessonResponse, ReflectionRuntime,
+    SaveReflectionLessonFn, Tool, ToolContext, ToolExecutionMode, ToolResult,
 };
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+use crate::client::CloudAgentRunClient;
+use crate::memory::{MemoryRequestError, NewRunnerMemory};
 use crate::sandbox_client::{BashOutput, SandboxBackendHandle, SandboxClientError};
 use crate::tool_policy::{decide_runner_tool, RunnerToolDecision, RunnerToolRequest};
 
@@ -29,11 +33,78 @@ pub enum CloudToolOutput {
 
 pub struct CloudToolExecutor {
     sandbox: SandboxBackendHandle,
+    memory_enabled: bool,
 }
+
+type LessonReply =
+    tokio::sync::oneshot::Sender<kordi_core::error::KordiResult<ReflectionLessonResponse>>;
 
 impl CloudToolExecutor {
     pub fn new(sandbox: SandboxBackendHandle) -> Self {
-        Self { sandbox }
+        Self {
+            sandbox,
+            memory_enabled: false,
+        }
+    }
+
+    /// Enables the `reflection` tool when the account has memory on.
+    pub fn with_memory(mut self, enabled: bool) -> Self {
+        self.memory_enabled = enabled;
+        self
+    }
+
+    /// Runs the `reflection` tool, saving the lesson as an account memory
+    /// through the run-scoped server route.
+    pub async fn execute_reflection<C: CloudAgentRunClient + Sync>(
+        &self,
+        client: &C,
+        run_id: &str,
+        request: RunnerToolRequest<'_>,
+        arguments: &Value,
+    ) -> Result<CloudToolOutput, CloudToolExecutionError> {
+        if let RunnerToolDecision::Block(reason) = decide_runner_tool(&request) {
+            return Err(CloudToolExecutionError::Blocked(
+                reason.explanation().to_string(),
+            ));
+        }
+        if !self.memory_enabled {
+            return Err(CloudToolExecutionError::Blocked(
+                "Memory is off for this account.".to_string(),
+            ));
+        }
+        // The tool runtime must be 'static, so it hands each save back to this
+        // task, which holds the borrowed client.
+        let (sender, mut receiver) =
+            tokio::sync::mpsc::unbounded_channel::<(ReflectionLessonRequest, LessonReply)>();
+        let save_lesson: SaveReflectionLessonFn = std::sync::Arc::new(move |request| {
+            let sender = sender.clone();
+            Box::pin(async move {
+                let (reply, response) = tokio::sync::oneshot::channel();
+                sender
+                    .send((request, reply))
+                    .map_err(|_| KordiError::Tool("Memory is unavailable.".to_string()))?;
+                response
+                    .await
+                    .map_err(|_| KordiError::Tool("Memory is unavailable.".to_string()))?
+            })
+        });
+        let mut ctx = cloud_tool_context(&self.sandbox);
+        ctx.reflection = Some(ReflectionRuntime { save_lesson });
+        let tool = ReflectionTool.execute(arguments.clone(), &ctx, CancellationToken::new());
+        tokio::pin!(tool);
+        let result = loop {
+            tokio::select! {
+                result = &mut tool => break result,
+                Some((request, reply)) = receiver.recv() => {
+                    let _ = reply.send(save_lesson_as_memory(client, run_id, request).await);
+                }
+            }
+        };
+        match result {
+            Ok(result) => Ok(format_kordi_tool_result(result)),
+            Err(KordiError::Tool(message)) => Err(CloudToolExecutionError::Blocked(message)),
+            Err(error) => Err(CloudToolExecutionError::Blocked(error.to_string())),
+        }
     }
 
     pub async fn execute(
@@ -120,6 +191,42 @@ fn cloud_tool_context(sandbox: &SandboxBackendHandle) -> ToolContext {
         schedule_task: None,
         execution_mode: ToolExecutionMode::NonInteractive,
         request_approval: None,
+    }
+}
+
+/// Stable pseudo path returned as the lesson artifact. It is reported to the
+/// model only; nothing in the runner opens it as a file.
+pub fn memory_artifact_path(scope: &str, scope_id: &str) -> String {
+    format!("kordi-memory://{scope}/{scope_id}")
+}
+
+async fn save_lesson_as_memory<C: CloudAgentRunClient + Sync>(
+    client: &C,
+    run_id: &str,
+    request: ReflectionLessonRequest,
+) -> kordi_core::error::KordiResult<ReflectionLessonResponse> {
+    let memory = NewRunnerMemory {
+        scope: request.scope.trim().to_string(),
+        scope_id: request.scope_id.trim().to_string(),
+        scope_label: None,
+        source: request.source.trim().to_string(),
+        text: request.lesson.trim().to_string(),
+        client_memory_id: Some(format!("mem_{}", uuid::Uuid::new_v4().simple())),
+    };
+    match client.save_memory(run_id, memory).await {
+        Ok(saved) => Ok(ReflectionLessonResponse {
+            artifact_path: memory_artifact_path(&saved.scope, &saved.scope_id),
+            lesson_id: saved.memory_id,
+            scope: saved.scope,
+            scope_id: saved.scope_id,
+        }),
+        Err(MemoryRequestError::Server { message, .. }) => Err(KordiError::Tool(message)),
+        Err(MemoryRequestError::Unavailable) => Err(KordiError::Tool(
+            "Memory is unavailable for this run.".to_string(),
+        )),
+        Err(MemoryRequestError::Request(_)) => Err(KordiError::Tool(
+            "Memory could not be saved. Try again later.".to_string(),
+        )),
     }
 }
 

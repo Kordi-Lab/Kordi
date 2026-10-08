@@ -2,6 +2,7 @@ pub mod artifacts;
 pub mod client;
 pub mod config;
 pub mod k8s_sandbox;
+pub mod memory;
 pub mod model_loop;
 mod omp_job;
 pub mod prompt;
