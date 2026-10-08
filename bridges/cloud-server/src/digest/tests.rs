@@ -30,6 +30,7 @@ pub(super) fn input() -> Input {
         as_of: "2026-09-07T09:01:00Z".into(),
         viewer_account_id: "viewer".into(),
         changes: None,
+        connector_events: vec![],
     }
 }
 mod avatar_tests;

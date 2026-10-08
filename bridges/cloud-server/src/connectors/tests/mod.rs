@@ -35,12 +35,20 @@ use crate::server::ServerState;
 mod broker_tests;
 mod completion_tests;
 mod delivery_tests;
+mod google_provider_tests;
+mod http_stub;
 mod isolation_tests;
 mod lifecycle_tests;
 mod models_tests;
 mod oauth_tests;
+mod polling_tests;
+mod providers_tests;
 mod refresh_tests;
 mod routes_tests;
+mod safety_tests;
+mod service_fixture;
+mod sweep_tests;
+mod webhook_tests;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -102,6 +110,9 @@ fn record(status: ConnectorStatus, act_enabled: bool) -> ConnectorRecord {
         created_at: now,
         updated_at: now,
         revoked_at: (status == ConnectorStatus::Revoked).then_some(now),
+        settings: json!({}),
+        provider_account_id: Some("provider-user".into()),
+        last_event_at: Some(now),
     }
 }
 

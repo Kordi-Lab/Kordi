@@ -17,6 +17,9 @@ pub struct Changes {
     pub removed_task_ids: Vec<String>,
     pub newly_due_reminder_ids: Vec<String>,
     pub preferences_changed: bool,
+    /// Connector events not in the saved input.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connector_events: Vec<crate::connectors::digest_input::ConnectorEventSummary>,
 }
 
 fn diff<T: Clone + PartialEq>(
@@ -134,6 +137,17 @@ impl Changes {
             preferences_changed: current.locale != saved.locale
                 || current.timezone != saved.timezone
                 || current.partial != saved.partial,
+            connector_events: current
+                .connector_events
+                .iter()
+                .filter(|event| {
+                    !saved
+                        .connector_events
+                        .iter()
+                        .any(|old| old.event_id == event.event_id)
+                })
+                .cloned()
+                .collect(),
         }
     }
 
@@ -146,6 +160,7 @@ impl Changes {
             && self.removed_task_ids.is_empty()
             && self.newly_due_reminder_ids.is_empty()
             && !self.preferences_changed
+            && self.connector_events.is_empty()
     }
 }
 

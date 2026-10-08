@@ -20,7 +20,7 @@ use super::models::{
     ConnectorStatus, ConnectorToolGroup, RunTrigger,
 };
 use super::providers::{ConnectorSecret, ProviderError};
-use super::refresh::{refresh_if_needed, RefreshFailure};
+use super::refresh::{execute_with_retry, refresh_if_needed, RefreshFailure};
 use super::store::{self, NewAuditEntry, SealedSecret};
 use super::ConnectorRuntime;
 
@@ -162,6 +162,7 @@ pub mod codes {
     pub const ACT_REQUIRES_DESKTOP: &str = "act_requires_desktop";
     pub const UNAVAILABLE: &str = "connector_unavailable";
     pub const PROVIDER_FAILED: &str = "provider_failed";
+    pub const BUDGET_EXCEEDED: &str = "connector_budget_exceeded";
     pub const SERVER_ERROR: &str = "server_error";
 
     /// Codes the HTTP route answers with 403.
@@ -376,6 +377,14 @@ async fn call_inner(
         ));
     }
 
+    if !runtime.budget.charge(account_id).await {
+        let message = "This account used its hourly connector call budget. Try again later.";
+        audit
+            .write(group, AuditOutcome::Denied, &format!("Denied: {message}"))
+            .await;
+        return Err(reject(codes::BUDGET_EXCEEDED, message));
+    }
+
     let Some(cipher) = runtime.cipher.as_deref() else {
         audit
             .write(
@@ -421,7 +430,9 @@ async fn call_inner(
             }
         };
 
-    match provider.execute(tool, &request.args, &secret).await {
+    let args = &request.args;
+    let called = execute_with_retry(pool, cipher, &*provider, &connector, tool, args, secret);
+    match called.await {
         Ok(result) => {
             audit
                 .write(group, AuditOutcome::Completed, "Completed.")
@@ -463,6 +474,7 @@ fn provider_failure_message(error: &ProviderError) -> String {
             "The provider rejected the connection. Reconnect it.".to_string()
         }
         ProviderError::UnknownTool => "This connector has no such tool.".to_string(),
+        ProviderError::InvalidInput(message) => message.clone(),
         _ => "The provider request failed.".to_string(),
     }
 }

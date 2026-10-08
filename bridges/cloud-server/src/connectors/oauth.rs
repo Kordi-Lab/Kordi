@@ -12,7 +12,7 @@ use crate::auth::oauth::{is_allowed_oauth_redirect, pkce_challenge, random_url_t
 
 use super::broker::{load_secret, seal_secret};
 use super::models::{ConnectorRecord, ConnectorToolGroup, OAuthPendingFragment};
-use super::oauth_complete::park_grant;
+use super::oauth_complete::{park_grant, GrantScopes};
 use super::providers::{
     ConnectorOAuthClient, ProviderError, ProviderSpec, ScopeParam, NOT_YET_AVAILABLE_PROVIDERS,
 };
@@ -320,7 +320,30 @@ pub async fn complete_grant(
             );
         }
     };
-    let result = park_grant(pool, &state, spec.id, read_scopes, act_scopes, sealed).await;
+    let provider_account_id = match token.provider_account_id.clone() {
+        Some(account) => Some(account),
+        // Best effort: without it, webhooks cannot reach this connector and
+        // the polling job covers it instead.
+        None => provider
+            .account_identity(&token.secret)
+            .await
+            .unwrap_or_else(|error| {
+                eprintln!("[connectors] {} account identity: {error}", spec.id);
+                None
+            }),
+    };
+    let result = park_grant(
+        pool,
+        &state,
+        spec.id,
+        GrantScopes {
+            read_scopes,
+            act_scopes,
+            provider_account_id,
+        },
+        sealed,
+    )
+    .await;
     CallbackOutcome {
         redirect_after,
         result,

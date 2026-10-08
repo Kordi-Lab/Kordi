@@ -22,6 +22,7 @@ pub struct PendingGrant {
     pub grant: ConnectorToolGroup,
     pub read_scopes: Vec<String>,
     pub act_scopes: Vec<String>,
+    pub provider_account_id: Option<String>,
     pub sealed: SealedSecret,
     pub expires_at: DateTime<Utc>,
 }
@@ -30,8 +31,9 @@ pub async fn insert_pending_grant(pool: &PgPool, pending: &PendingGrant) -> Stor
     query(
         "INSERT INTO cloud_connector_pending_grants \
          (completion_code, state_id, account_id, provider, grant_kind, read_scopes, act_scopes, \
-          ciphertext, nonce, key_version, refresh_ciphertext, token_expires_at, expires_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+          ciphertext, nonce, key_version, refresh_ciphertext, token_expires_at, expires_at, \
+          provider_account_id) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)",
     )
     .bind(&pending.completion_code)
     .bind(&pending.state_id)
@@ -46,6 +48,7 @@ pub async fn insert_pending_grant(pool: &PgPool, pending: &PendingGrant) -> Stor
     .bind(pending.sealed.refresh_ciphertext.as_deref())
     .bind(pending.sealed.expires_at)
     .bind(pending.expires_at)
+    .bind(pending.provider_account_id.as_deref())
     .execute(pool)
     .await?;
     Ok(())
@@ -65,6 +68,7 @@ type PendingRow = (
     Option<Vec<u8>>,
     Option<DateTime<Utc>>,
     DateTime<Utc>,
+    Option<String>,
 );
 
 /// Deletes and returns the pending grant in one statement, so a completion
@@ -77,7 +81,7 @@ pub async fn take_pending_grant(
         "DELETE FROM cloud_connector_pending_grants WHERE completion_code = $1 \
          RETURNING completion_code, state_id, account_id, provider, grant_kind, read_scopes, \
                    act_scopes, ciphertext, nonce, key_version, refresh_ciphertext, \
-                   token_expires_at, expires_at",
+                   token_expires_at, expires_at, provider_account_id",
     )
     .bind(completion_code)
     .fetch_optional(pool)
@@ -97,6 +101,7 @@ pub async fn take_pending_grant(
             refresh_ciphertext,
             token_expires_at,
             expires_at,
+            provider_account_id,
         )| {
             Some(PendingGrant {
                 completion_code,
@@ -106,6 +111,7 @@ pub async fn take_pending_grant(
                 grant: ConnectorToolGroup::parse(&grant)?,
                 read_scopes,
                 act_scopes,
+                provider_account_id,
                 sealed: SealedSecret {
                     ciphertext,
                     nonce,

@@ -205,6 +205,7 @@ async fn retention_sweep_removes_only_expired_events() {
         },
     )
     .await
+    .unwrap()
     .unwrap();
     let expired = events::record_event(
         &pool,
@@ -218,6 +219,7 @@ async fn retention_sweep_removes_only_expired_events() {
         },
     )
     .await
+    .unwrap()
     .unwrap();
     query("UPDATE cloud_connector_events SET expires_at = now() - interval '1 day' WHERE event_id = $1")
         .bind(&expired)

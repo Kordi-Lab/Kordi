@@ -100,6 +100,8 @@ pub struct GrantUpdate<'a> {
     pub read_scopes: &'a [String],
     pub act_scopes: &'a [String],
     pub enable_act: bool,
+    /// The provider account behind the credential, when known.
+    pub provider_account_id: Option<&'a str>,
     pub audit_tool_group: ConnectorToolGroup,
     pub audit_summary: &'a str,
 }
@@ -135,21 +137,24 @@ pub async fn apply_grant(
             let act_enabled = current.act_enabled || (grant.enable_act && !act.is_empty());
             query_as(&format!(
                 "UPDATE cloud_connectors SET status = 'connected', read_scopes = $2, \
-                 act_scopes = $3, act_enabled = $4, updated_at = now() \
+                 act_scopes = $3, act_enabled = $4, updated_at = now(), \
+                 provider_account_id = COALESCE($5, provider_account_id) \
                  WHERE connector_id = $1 RETURNING {CONNECTOR_COLUMNS}"
             ))
             .bind(&current.connector_id)
             .bind(&read)
             .bind(&act)
             .bind(act_enabled)
+            .bind(grant.provider_account_id)
             .fetch_one(&mut *tx)
             .await?
         }
         None => {
             query_as(&format!(
                 "INSERT INTO cloud_connectors \
-                 (connector_id, account_id, provider, status, read_scopes, act_scopes, act_enabled) \
-                 VALUES ($1, $2, $3, 'connected', $4, $5, $6) RETURNING {CONNECTOR_COLUMNS}"
+                 (connector_id, account_id, provider, status, read_scopes, act_scopes, act_enabled, \
+                  provider_account_id) \
+                 VALUES ($1, $2, $3, 'connected', $4, $5, $6, $7) RETURNING {CONNECTOR_COLUMNS}"
             ))
             .bind(new_id("conn"))
             .bind(grant.account_id)
@@ -157,6 +162,7 @@ pub async fn apply_grant(
             .bind(grant.read_scopes)
             .bind(grant.act_scopes)
             .bind(grant.enable_act && !grant.act_scopes.is_empty())
+            .bind(grant.provider_account_id)
             .fetch_one(&mut *tx)
             .await?
         }
@@ -184,8 +190,16 @@ pub async fn apply_grant(
 /// Removes the credential, the agent grants, and the stored events, queues
 /// derived-copy removal, marks the connector revoked, and writes the audit
 /// row, in one transaction. Returns how many events were deleted.
+///
+/// The connector row is locked first, so an event being recorded meanwhile
+/// either commits before the deletion (and is deleted) or waits and then
+/// sees the connector revoked (and is not stored).
 pub async fn disconnect(pool: &PgPool, record: &ConnectorRecord) -> StoreResult<u64> {
     let mut tx = pool.begin().await?;
+    query("SELECT connector_id FROM cloud_connectors WHERE connector_id = $1 FOR UPDATE")
+        .bind(&record.connector_id)
+        .execute(&mut *tx)
+        .await?;
     query("DELETE FROM cloud_connector_secrets WHERE connector_id = $1")
         .bind(&record.connector_id)
         .execute(&mut *tx)

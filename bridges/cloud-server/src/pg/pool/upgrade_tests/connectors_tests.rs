@@ -114,3 +114,64 @@ async fn upgrade_from_114_labels_existing_runs_as_background() {
         );
     }
 }
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_115_adds_provider_state_and_dedupes_events() {
+    let pool = fixture(115).await;
+    execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status,read_scopes) VALUES('conn_live','fixture-owner','slack','connected','{channels:history}')").await;
+    execute(&pool, "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,external_id,occurred_at,expires_at) VALUES('evt_a','conn_live','slack','message','message:C1:1',now(),now()+interval '1 day'),('evt_b','conn_live','slack','message','message:C1:1',now(),now()+interval '1 day'),('evt_c','conn_live','slack','message',NULL,now(),now()+interval '1 day'),('evt_d','conn_live','slack','message',NULL,now(),now()+interval '1 day')").await;
+    apply_migrations(&pool).await.unwrap();
+    latest_version(&pool).await;
+
+    type ProviderState = (Value, Option<String>, Option<String>, Option<String>);
+    let state: ProviderState = query_as(
+        "SELECT settings, provider_account_id, last_event_at::text, poll_cursor::text FROM cloud_connectors WHERE connector_id='conn_live'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        state,
+        (json!({}), None, None, None),
+        "existing connectors keep working with empty settings and no poll cursor"
+    );
+    let (pending_account,): (i64,) = query_as(
+        "SELECT count(*) FROM information_schema.columns WHERE table_name='cloud_connector_pending_grants' AND column_name='provider_account_id'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        pending_account, 1,
+        "pending grants carry the provider account"
+    );
+    let events: Vec<(String,)> =
+        query_as("SELECT event_id FROM cloud_connector_events ORDER BY event_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        events,
+        [
+            ("evt_a".to_string(),),
+            ("evt_c".to_string(),),
+            ("evt_d".to_string(),)
+        ],
+        "duplicate external ids collapse to the first; events without one stay"
+    );
+
+    execute(&pool, "UPDATE cloud_connectors SET settings='{\"channels\":[\"C1\"]}', provider_account_id='T1:U1' WHERE connector_id='conn_live'").await;
+    for invalid in [
+        "UPDATE cloud_connectors SET settings='[]' WHERE connector_id='conn_live'",
+        "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,external_id,occurred_at,expires_at) VALUES('evt_e','conn_live','slack','message','message:C1:1',now(),now())",
+    ] {
+        assert!(
+            sqlx_core::raw_sql::raw_sql(invalid)
+                .execute(&pool)
+                .await
+                .is_err(),
+            "{invalid}"
+        );
+    }
+}

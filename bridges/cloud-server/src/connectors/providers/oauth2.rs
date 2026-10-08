@@ -18,13 +18,20 @@ struct RawTokenResponse {
     scope: Option<String>,
     /// Slack returns user tokens here.
     authed_user: Option<RawSlackUser>,
+    team: Option<RawSlackTeam>,
     /// Slack signals failure with `ok: false` and HTTP 200.
     ok: Option<bool>,
     error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
+struct RawSlackTeam {
+    id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct RawSlackUser {
+    id: Option<String>,
     access_token: Option<String>,
     refresh_token: Option<String>,
     expires_in: Option<i64>,
@@ -52,15 +59,20 @@ pub(crate) fn token_grant_from_json(
     if raw.ok == Some(false) || raw.error.is_some() {
         return Err(token_error(raw.error.as_deref()));
     }
-    let (access, refresh, expires_in, scope) = match raw.access_token {
-        Some(access) => (access, raw.refresh_token, raw.expires_in, raw.scope),
+    let team_id = raw.team.and_then(|team| team.id);
+    let (access, refresh, expires_in, scope, account) = match raw.access_token {
+        Some(access) => (access, raw.refresh_token, raw.expires_in, raw.scope, None),
         None => {
             let user = raw.authed_user.ok_or(ProviderError::InvalidResponse)?;
+            let account = team_id
+                .zip(user.id)
+                .map(|(team, user)| format!("{team}:{user}"));
             (
                 user.access_token.ok_or(ProviderError::InvalidResponse)?,
                 user.refresh_token,
                 user.expires_in,
                 user.scope,
+                account,
             )
         }
     };
@@ -76,21 +88,41 @@ pub(crate) fn token_grant_from_json(
                 .map(|seconds| now + ChronoDuration::seconds(seconds)),
         },
         granted_scopes: scope.as_deref().map(parse_scope_list),
+        provider_account_id: account,
     })
 }
 
-/// Standard OAuth 2 code exchange, refresh, and revoke for any spec above.
-/// Exposes no tools until the PR 3 adapters add them.
+/// Standard OAuth 2 code exchange, refresh, and revoke for any spec. Exposes
+/// no tools by itself; [`super::ServiceProvider`] pairs it with a service.
 pub struct OAuth2ConnectorProvider {
     pub(super) spec: &'static ProviderSpec,
     pub(super) http: reqwest::Client,
+    token_url: String,
+    client: Option<ConnectorOAuthClient>,
 }
 
 impl OAuth2ConnectorProvider {
+    pub fn new(spec: &'static ProviderSpec, http: reqwest::Client) -> Self {
+        Self {
+            spec,
+            http,
+            token_url: spec.token_url.to_string(),
+            client: None,
+        }
+    }
+
+    /// Points token exchange and refresh at another endpoint and fixes the
+    /// OAuth client, for tests against a local stub.
+    pub fn with_test_endpoints(mut self, token_url: String, client: ConnectorOAuthClient) -> Self {
+        self.token_url = token_url;
+        self.client = Some(client);
+        self
+    }
+
     async fn token_request(&self, form: &[(&str, &str)]) -> Result<Value, ProviderError> {
         let response = self
             .http
-            .post(self.spec.token_url)
+            .post(&self.token_url)
             .header("accept", "application/json")
             .form(form)
             .send()
@@ -123,6 +155,13 @@ impl ConnectorProvider for OAuth2ConnectorProvider {
 
     fn tools(&self) -> &[ConnectorToolDescriptor] {
         &[]
+    }
+
+    fn oauth_client(&self) -> Result<ConnectorOAuthClient, ProviderError> {
+        match &self.client {
+            Some(client) => Ok(client.clone()),
+            None => super::oauth_client_from_env(self.spec),
+        }
     }
 
     async fn exchange_code(
@@ -208,6 +247,7 @@ impl ConnectorProvider for OAuth2ConnectorProvider {
         _tool: &str,
         _args: &Value,
         _secret: &ConnectorSecret,
+        _settings: &Value,
     ) -> Result<Value, ProviderError> {
         Err(ProviderError::UnknownTool)
     }

@@ -27,16 +27,28 @@ fn new_completion_code() -> String {
     )
 }
 
+/// What the callback learned about a grant besides the credential.
+pub(super) struct GrantScopes {
+    pub read_scopes: Vec<String>,
+    pub act_scopes: Vec<String>,
+    /// The provider account behind the grant, used to route webhooks.
+    pub provider_account_id: Option<String>,
+}
+
 /// Parks the sealed tokens from a callback and returns the fragment the app
 /// receives.
 pub(super) async fn park_grant(
     pool: &PgPool,
     state: &ConnectorOAuthState,
     provider: &str,
-    read_scopes: Vec<String>,
-    act_scopes: Vec<String>,
+    scopes: GrantScopes,
     sealed: SealedSecret,
 ) -> Result<OAuthPendingFragment, CallbackError> {
+    let GrantScopes {
+        read_scopes,
+        act_scopes,
+        provider_account_id,
+    } = scopes;
     let pending = PendingGrant {
         completion_code: new_completion_code(),
         state_id: state.state_id.clone(),
@@ -45,6 +57,7 @@ pub(super) async fn park_grant(
         grant: state.grant,
         read_scopes,
         act_scopes,
+        provider_account_id,
         sealed,
         expires_at: Utc::now() + ChronoDuration::minutes(PENDING_GRANT_TTL_MINUTES),
     };
@@ -123,6 +136,7 @@ pub async fn finish_grant(
             read_scopes: &pending.read_scopes,
             act_scopes: &pending.act_scopes,
             enable_act: pending.grant == super::models::ConnectorToolGroup::Act,
+            provider_account_id: pending.provider_account_id.as_deref(),
             audit_tool_group: pending.grant,
             audit_summary: &summary,
         },

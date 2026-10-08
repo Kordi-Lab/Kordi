@@ -187,6 +187,12 @@ pub async fn input(
         as_of: Utc::now().to_rfc3339(),
         viewer_account_id: account.into(),
         changes: None,
+        connector_events: crate::connectors::digest_input::recent_events(
+            pool,
+            account,
+            Utc::now() - chrono::Duration::days(7),
+        )
+        .await?,
     })
 }
 
@@ -219,7 +225,7 @@ pub(super) fn retain_previous_evidence(
 }
 
 fn input_hash(input: &Input) -> String {
-    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"dueReminders":super::incremental::due_reminders(input)});
+    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"connectorEvents":input.connector_events,"dueReminders":super::incremental::due_reminders(input)});
     hex::encode(Sha256::digest(value.to_string().as_bytes()))
 }
 
