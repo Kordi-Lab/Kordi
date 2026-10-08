@@ -20,6 +20,7 @@ pub(crate) mod attachments;
 pub(crate) mod background_tasks;
 pub(crate) mod canonical_sync;
 mod hosted_provider_auth;
+pub(crate) mod memory;
 mod message_execution;
 pub(crate) mod message_route;
 pub(crate) mod model_options;

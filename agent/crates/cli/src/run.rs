@@ -155,6 +155,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
             &settings.memory,
             sibling_conn.clone(),
             artifacts_dir.clone(),
+            crate::memory_remote::empty_memory_remote_slot(),
         ),
         session_observation: None,
         task_operator: Some(crate::task_operator::build_task_operator_runtime(

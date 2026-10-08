@@ -583,6 +583,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
     let system_prompt = format!(
         "{base_system_prompt}{project_system_section}{skill_section}{available_tools_section}{reflection_lesson_section}"
     );
+    let memory_remote = crate::memory_remote::empty_memory_remote_slot();
     let tool_ctx = ToolContext {
         cwd: effective_cwd.clone(),
         artifacts_dir: artifacts_dir.clone(),
@@ -603,6 +604,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             &settings.memory,
             sibling_conn.clone(),
             artifacts_dir.clone(),
+            memory_remote.clone(),
         ),
         session_observation: None,
         task_operator: Some(crate::task_operator::build_task_operator_runtime(
@@ -654,6 +656,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         tool_registry,
         tool_selection,
         tool_ctx,
+        memory_remote,
         system_prompt,
         base_system_prompt,
         thinking_level: thinking_str.to_string(),
@@ -725,5 +728,7 @@ fn resolve_startup_session_id(
     Ok((uuid::Uuid::new_v4().to_string(), false))
 }
 
+#[cfg(test)]
+mod memory_tests;
 #[cfg(test)]
 mod tests;

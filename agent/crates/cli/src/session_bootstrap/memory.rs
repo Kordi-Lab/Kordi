@@ -25,6 +25,7 @@ pub(crate) fn reflection_runtime_for_settings(
     memory: &MemorySettings,
     conn: Arc<tokio::sync::Mutex<rusqlite::Connection>>,
     artifacts_dir: std::path::PathBuf,
+    remote: crate::memory_remote::MemoryRemoteSlot,
 ) -> Option<kordi_tools::ReflectionRuntime> {
     if !memory.memory_enabled {
         return None;
@@ -36,6 +37,7 @@ pub(crate) fn reflection_runtime_for_settings(
             exclude_sensitive: memory.exclude_sensitive,
             protected_texts: Vec::new(),
         },
+        remote,
     ))
 }
 

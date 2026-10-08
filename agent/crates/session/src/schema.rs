@@ -2,7 +2,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use std::time::Duration;
 
-const CURRENT_VERSION: i32 = 10;
+const CURRENT_VERSION: i32 = 11;
 pub(crate) const SQLITE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 
 const SCHEMA_V1: &str = r#"
@@ -169,7 +169,7 @@ WHERE name IS NULL
        'test reply', 'ok', 'okay', 'thanks', 'thank you', 'got it',
        'hi how are you', 'hello how are you', 'how are you'
    )
-   OR TRIM(name) IN ('你好', '您好', '嗨', '测试', '收到', '好的', '谢谢')
+   OR TRIM(name) IN (char(20320, 22909), char(24744, 22909), char(21992), char(27979, 35797), char(25910, 21040), char(22909, 30340), char(35874, 35874))
    OR TRIM(name) = session_id
    OR LOWER(TRIM(name)) LIKE 'session:%'
    OR TRIM(name) = 'Session ' || SUBSTR(session_id, 1, 8)
@@ -187,6 +187,15 @@ WHERE name IS NULL
        AND SUBSTR(LOWER(REPLACE(TRIM(name), ' ', '')), 10) NOT GLOB '*[^0-9]*'
    )
    OR TRIM(name) NOT GLOB '*[^0-9]*';
+"#;
+
+const MIGRATION_V11: &str = r#"
+ALTER TABLE reflection_lessons ADD COLUMN lesson_text TEXT;
+ALTER TABLE reflection_lessons ADD COLUMN remote_memory_id TEXT;
+ALTER TABLE reflection_lessons ADD COLUMN pending_upload INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE reflection_lessons ADD COLUMN scope_label TEXT;
+CREATE INDEX IF NOT EXISTS idx_reflection_lessons_pending_upload
+    ON reflection_lessons(pending_upload, archived_at);
 "#;
 
 /// Initialize database schema, applying migrations as needed.
@@ -272,6 +281,11 @@ fn apply_pending_migrations(conn: &Connection) -> Result<()> {
         set_version(conn, 10)?;
     }
 
+    if current < 11 {
+        conn.execute_batch(MIGRATION_V11)?;
+        set_version(conn, 11)?;
+    }
+
     Ok(())
 }
 
@@ -343,121 +357,4 @@ fn set_version(conn: &Connection, version: i32) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_init_schema() {
-        let conn = Connection::open_in_memory().unwrap();
-        init_schema(&conn).unwrap();
-        assert_eq!(get_version(&conn), CURRENT_VERSION);
-
-        // Idempotent
-        init_schema(&conn).unwrap();
-        assert_eq!(get_version(&conn), CURRENT_VERSION);
-
-        let mut stmt = conn.prepare("PRAGMA table_info(sessions)").unwrap();
-        let columns: Vec<String> = stmt
-            .query_map([], |row| row.get::<_, String>(1))
-            .unwrap()
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .unwrap();
-        assert!(columns.contains(&"parent_session_id".to_string()));
-        assert!(columns.contains(&"parent_session_message_id".to_string()));
-        assert!(columns.contains(&"session_scope".to_string()));
-        assert!(columns.contains(&"project_root".to_string()));
-        assert!(columns.contains(&"title_source".to_string()));
-        assert!(columns.contains(&"title_revision".to_string()));
-        assert!(columns.contains(&"title_policy_version".to_string()));
-        assert!(columns.contains(&"title_generated_from_entry_id".to_string()));
-        assert!(columns.contains(&"title_updated_at".to_string()));
-
-        let project_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'projects'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(project_count, 1);
-
-        let reflection_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'reflection_lessons'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(reflection_count, 1);
-    }
-
-    #[test]
-    fn v10_migration_preserves_substantive_legacy_names_and_clears_weak_titles() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(SCHEMA_V1).unwrap();
-        set_version(&conn, 1).unwrap();
-        conn.execute_batch(MIGRATION_V2).unwrap();
-        set_version(&conn, 2).unwrap();
-        conn.execute_batch(MIGRATION_V3).unwrap();
-        set_version(&conn, 3).unwrap();
-        conn.execute_batch(MIGRATION_V4).unwrap();
-        set_version(&conn, 4).unwrap();
-        conn.execute_batch(MIGRATION_V5).unwrap();
-        set_version(&conn, 5).unwrap();
-        set_version(&conn, 6).unwrap();
-        conn.execute_batch(MIGRATION_V7).unwrap();
-        set_version(&conn, 7).unwrap();
-        conn.execute_batch(MIGRATION_V8).unwrap();
-        set_version(&conn, 8).unwrap();
-        conn.execute_batch(MIGRATION_V9).unwrap();
-        set_version(&conn, 9).unwrap();
-        conn.execute(
-            "INSERT INTO sessions(session_id, cwd, created_at, updated_at, name, entry_count, session_scope) VALUES(?1, '.', '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z', ?2, 0, 'chat')",
-            rusqlite::params!["meaningful", "Release validation plan"],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO sessions(session_id, cwd, created_at, updated_at, name, entry_count, session_scope) VALUES(?1, '.', '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z', ?2, 0, 'chat')",
-            rusqlite::params!["weak", "hello"],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO sessions(session_id, cwd, created_at, updated_at, name, entry_count, session_scope) VALUES(?1, '.', '2026-07-15T00:00:00Z', '2026-07-15T00:00:00Z', ?2, 0, 'chat')",
-            rusqlite::params!["raw-id", "e2b79cd7-70c0-4cee-ae1b-9bc8cb28da83"],
-        )
-        .unwrap();
-
-        init_schema(&conn).unwrap();
-
-        let meaningful: (Option<String>, String) = conn
-            .query_row(
-                "SELECT name, title_source FROM sessions WHERE session_id = 'meaningful'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        let weak: (Option<String>, String) = conn
-            .query_row(
-                "SELECT name, title_source FROM sessions WHERE session_id = 'weak'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        let raw_id: (Option<String>, String) = conn
-            .query_row(
-                "SELECT name, title_source FROM sessions WHERE session_id = 'raw-id'",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        assert_eq!(
-            meaningful,
-            (
-                Some("Release validation plan".to_string()),
-                "legacy".to_string()
-            )
-        );
-        assert_eq!(weak, (None, "placeholder".to_string()));
-        assert_eq!(raw_id, (None, "placeholder".to_string()));
-    }
-}
+mod tests;
