@@ -88,16 +88,18 @@ async fn upgrade_from_114_labels_existing_runs_as_background() {
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
     assert_eq!(historical_runs(&pool).await, before);
-    let rows: Vec<(String, Value)> = query_as(
-        "SELECT run_trigger, connector_tools_json FROM cloud_agent_fallback_runs ORDER BY run_id",
+    let rows: Vec<(String, Value, bool)> = query_as(
+        "SELECT run_trigger, connector_tools_json, connector_tools_delivered_at IS NULL \
+         FROM cloud_agent_fallback_runs ORDER BY run_id",
     )
     .fetch_all(&pool)
     .await
     .unwrap();
     assert_eq!(rows.len(), 2);
-    for (trigger, tools) in rows {
+    for (trigger, tools, undelivered) in rows {
         assert_eq!(trigger, "background", "existing runs never gain act tools");
         assert_eq!(tools, serde_json::json!([]));
+        assert!(undelivered, "existing runs have no delivered tool set yet");
     }
     for invalid in [
         "UPDATE cloud_agent_fallback_runs SET run_trigger='scheduled'",

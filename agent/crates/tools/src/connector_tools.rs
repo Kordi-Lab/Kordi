@@ -77,6 +77,54 @@ pub fn lease_tool<'a>(
         .find(|descriptor| descriptor.name == name)
 }
 
+/// Lease descriptors from the raw `connectorTools` value, entry by entry. An
+/// entry that does not parse is dropped with a warning (fail closed per
+/// entry), so one unknown shape never removes the whole lease or its other
+/// tools. Anything other than an array yields no tools.
+pub fn parse_lease_descriptors(value: Value) -> Vec<ConnectorToolDescriptor> {
+    let entries = match value {
+        Value::Array(entries) => entries,
+        Value::Null => return Vec::new(),
+        _ => {
+            tracing::warn!("connectorTools is not an array; ignoring it");
+            return Vec::new();
+        }
+    };
+    entries
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, entry)| match serde_json::from_value(entry) {
+            Ok(descriptor) => Some(descriptor),
+            Err(error) => {
+                tracing::warn!("dropping connectorTools[{index}]: {error}");
+                None
+            }
+        })
+        .collect()
+}
+
+/// `deserialize_with` helper for a `connectorTools` field.
+pub fn deserialize_lease_descriptors<'de, D>(
+    deserializer: D,
+) -> Result<Vec<ConnectorToolDescriptor>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Ok(parse_lease_descriptors(Value::deserialize(deserializer)?))
+}
+
+/// `deserialize_with` helper for an optional `connectorTools` field; pair it
+/// with `#[serde(default)]` so a missing field stays `None`.
+pub fn deserialize_optional_lease_descriptors<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<ConnectorToolDescriptor>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok((!value.is_null()).then(|| parse_lease_descriptors(value)))
+}
+
 pub type ConnectorCallFuture = Pin<Box<dyn Future<Output = KordiResult<Value>> + Send>>;
 pub type ConnectorCallFn =
     Arc<dyn Fn(ConnectorToolDescriptor, Value) -> ConnectorCallFuture + Send + Sync>;

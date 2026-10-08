@@ -170,7 +170,7 @@ fn background_runs_never_receive_act_tool_descriptors() {
     let stub = StubConnectorProvider::default();
     let connector = record(ConnectorStatus::Connected, true);
     let names = |trigger| {
-        broker::tools_for_trigger(&connector, &stub, trigger)
+        crate::connectors::delivery::tools_for_trigger(&connector, &stub, trigger)
             .into_iter()
             .map(|tool| tool.name)
             .collect::<Vec<_>>()

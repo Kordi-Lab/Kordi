@@ -240,6 +240,10 @@ check: see "What shipped in PR 2" below.
   server broker, Mac-local connectors call into the Tauri process. `act` tools on
   the "Ask me before" list use the existing `request_approval` hook in
   `ToolContext`.
+- Cloud act tools wait for the approval flow; Mac act tools go through the
+  approval card. Until a cloud approval flow exists, a lease issued to the
+  cloud runner carries no `act` tool and the broker refuses an `act` call from
+  the runner; a desktop claim keeps its `act` tools.
 - Tests: server test that a scheduled run lease contains no `act` tool; runner
   test that a connector tool not in the lease is refused; Mac harness test that
   an agent without a grant does not see the connector's tools; OMP runtime test
@@ -251,9 +255,10 @@ Server (`bridges/cloud-server`):
 
 - Migration `0115_run_trigger_connector_tools.sql` adds two columns to
   `cloud_agent_fallback_runs`: `run_trigger` (`person_started` or
-  `background`, default `background`) and `connector_tools_json` (the
-  descriptors delivered with the lease, default `[]`). Existing runs become
-  background runs.
+  `background`, default `background`), `connector_tools_json` (the
+  descriptors delivered with the lease, default `[]`), and
+  `connector_tools_delivered_at` (when that set was first delivered).
+  Existing runs become background runs.
 - Every run creation site names its trigger. A run is `person_started` only
   when the person who sent the message owns the agent: the claim route
   (`claim_run_for_person_message`), the desktop claim
@@ -265,8 +270,13 @@ Server (`bridges/cloud-server`):
 - `connectors::delivery::tools_for_run(pool, providers, account_id, agent_id,
   trigger)` returns `LeaseConnectorTool` descriptors from the owner's
   connected connectors, the agent grant set, and `allowed_tool_groups`.
-  `deliver_to_run` computes them when a run is leased, stores them on the
-  run, and returns them; errors deliver an empty set. Argument schemas live
+  `deliver_to_run` computes them on the first lease of a run, stores them on
+  the run, and sets `connector_tools_delivered_at`; later leases of the same
+  run reuse the stored set, so turning `act` on mid-run never widens it.
+  Errors deliver an empty set. A run requested by someone other than the
+  owner receives no connector tools. A lease issued to the cloud runner drops
+  `act` descriptors (cloud act tools wait for the approval flow); a desktop
+  claim keeps them for the Mac approval card. Argument schemas live
   in `connectors/tool_schemas.rs` until the PR 3 adapters add their own.
 - Lease fields on `RunnerRunResponse` (inside `RunnerLeaseResponse.run`) and
   on the desktop claim response: `trigger` and `connectorTools`, where each
@@ -279,19 +289,25 @@ Server (`bridges/cloud-server`):
   body are ignored and logged when they disagree. A tool that is not in the
   lease's stored descriptor set is refused with `tool_not_on_lease` and a
   `denied` audit row, even when the grants changed after the lease was issued;
-  a missing, expired, or foreign lease is refused with `lease_invalid`.
+  a missing, expired, or foreign lease is refused with `lease_invalid`; a
+  lease for a run requested by someone other than the owner is refused with
+  `requester_not_owner`; an `act` tool called by the cloud runner is refused
+  with `act_requires_desktop` and a `denied` audit row.
 
 Cloud runner (`bridges/cloud-agent-runner`):
 
 - `CloudAgentRun.connectors` reads `trigger` and `connectorTools` from the
-  lease. `connectors.rs` turns each descriptor into a model tool for both the
+  lease. Each `connectorTools` entry is parsed on its own; an entry with an
+  unknown shape is dropped with a warning and the rest are kept (the desktop
+  lease model does the same). `connectors.rs` turns each descriptor into a model tool for both the
   OMP and the legacy loop, lists them in the system prompt (with a sentence
   that background runs only have read tools), and executes calls through
   `CloudAgentRunClient::call_connector_tool`, which posts to the broker with
   the lease id and runner id and returns the `result` or a clear error.
 - `tool_policy::decide_runner_tool` has a connector arm: a namespaced name is
-  allowed only when it is on the lease, otherwise the existing "not
-  available" decision.
+  allowed only when it is on the lease and is not a built-in cloud tool,
+  otherwise the existing "not available" decision. The model tool list and
+  the prompt list the same tools, each name once.
 
 Mac harness and desktop:
 

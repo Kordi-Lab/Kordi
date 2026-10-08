@@ -178,3 +178,20 @@ fn runtime_builds_one_tool_per_distinct_descriptor() {
         .collect::<Vec<_>>();
     assert_eq!(names, ["gmail_search", "gmail_send"]);
 }
+
+#[test]
+fn connector_lease_parsing_drops_only_bad_entries() {
+    let parsed = parse_lease_descriptors(json!([
+        {"connectorId":"conn_1","provider":"gmail","name":"gmail_search","group":"read",
+         "description":"Search mail."},
+        {"connectorId":"conn_1","provider":"gmail","name":"gmail_watch","group":"stream",
+         "description":"A group this build does not know."},
+        "not an object",
+        {"connectorId":"conn_1","provider":"gmail","name":"gmail_send","group":"act",
+         "description":"Send mail.","inputSchema":{"type":"object"}}
+    ]));
+    let names = parsed.iter().map(|d| d.name.as_str()).collect::<Vec<_>>();
+    assert_eq!(names, ["gmail_search", "gmail_send"]);
+    assert!(parse_lease_descriptors(json!({"gmail_search": {}})).is_empty());
+    assert!(parse_lease_descriptors(Value::Null).is_empty());
+}

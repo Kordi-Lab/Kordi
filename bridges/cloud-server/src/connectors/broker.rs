@@ -12,12 +12,14 @@ use sqlx_postgres::{PgPool, Postgres};
 
 use crate::cloud_agent_runtime::provider_auth::ProviderAuthCipher;
 
-use super::delivery::{load_active_lease, warn_on_body_mismatch, ActiveLease, LeaseHolder};
+use super::delivery::{
+    holder_may_run, load_active_lease, warn_on_body_mismatch, ActiveLease, LeaseHolder,
+};
 use super::models::{
     allowed_tool_groups, AuditOutcome, BrokerCallRequest, BrokerCallResponse, ConnectorRecord,
     ConnectorStatus, ConnectorToolGroup, RunTrigger,
 };
-use super::providers::{ConnectorProvider, ConnectorSecret, ProviderError};
+use super::providers::{ConnectorSecret, ProviderError};
 use super::refresh::{refresh_if_needed, RefreshFailure};
 use super::store::{self, NewAuditEntry, SealedSecret};
 use super::ConnectorRuntime;
@@ -156,9 +158,22 @@ pub mod codes {
     pub const NOT_ON_LEASE: &str = "tool_not_on_lease";
     pub const ACT_DISABLED: &str = "act_disabled";
     pub const BLOCKED_BACKGROUND: &str = "blocked_background";
+    pub const REQUESTER_NOT_OWNER: &str = "requester_not_owner";
+    pub const ACT_REQUIRES_DESKTOP: &str = "act_requires_desktop";
     pub const UNAVAILABLE: &str = "connector_unavailable";
     pub const PROVIDER_FAILED: &str = "provider_failed";
     pub const SERVER_ERROR: &str = "server_error";
+
+    /// Codes the HTTP route answers with 403.
+    pub const FORBIDDEN: [&str; 7] = [
+        LEASE_INVALID,
+        NOT_ON_LEASE,
+        AGENT_NOT_GRANTED,
+        ACT_DISABLED,
+        BLOCKED_BACKGROUND,
+        REQUESTER_NOT_OWNER,
+        ACT_REQUIRES_DESKTOP,
+    ];
 }
 
 struct AuditContext<'a> {
@@ -248,6 +263,10 @@ async fn call_inner(
                 "This run has no active lease for connector tools.",
             )
         })?;
+    if !lease.requester_is_owner {
+        let message = "Only the owner's own runs can use connector tools.";
+        return Err(reject(codes::REQUESTER_NOT_OWNER, message));
+    }
     warn_on_body_mismatch(request, &lease);
     let account_id = lease.account_id.as_str();
     let agent_id = lease.agent_id.as_str();
@@ -330,6 +349,15 @@ async fn call_inner(
             )
             .await;
         return Err(reject(code, message));
+    }
+
+    // No cloud approval flow yet: act tools run only on a desktop claim.
+    if !holder_may_run(holder, group) {
+        let message = "Tools that act run only on your Mac for now.";
+        audit
+            .write(group, AuditOutcome::Denied, &format!("Denied: {message}"))
+            .await;
+        return Err(reject(codes::ACT_REQUIRES_DESKTOP, message));
     }
 
     // Only tools delivered on this lease may run, even when the grants
@@ -455,20 +483,4 @@ fn refresh_rejection(failure: &RefreshFailure) -> Box<BrokerCallResponse> {
             "The refreshed credential could not be saved.",
         ),
     }
-}
-
-/// Tool descriptors a run may receive for one connector.
-/// `delivery::tools_for_run` calls this when it builds the lease.
-pub fn tools_for_trigger(
-    connector: &ConnectorRecord,
-    provider: &dyn ConnectorProvider,
-    trigger: RunTrigger,
-) -> Vec<super::providers::ConnectorToolDescriptor> {
-    let allowed = allowed_tool_groups(connector, trigger);
-    provider
-        .tools()
-        .iter()
-        .filter(|descriptor| allowed.contains(&descriptor.group))
-        .copied()
-        .collect()
 }

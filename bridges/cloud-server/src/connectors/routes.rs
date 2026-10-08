@@ -417,11 +417,8 @@ pub fn broker_status(response: &BrokerCallResponse) -> StatusCode {
     match response.error_code() {
         None => StatusCode::OK,
         Some(codes::INVALID_REQUEST) | Some(codes::UNKNOWN_TOOL) => StatusCode::BAD_REQUEST,
-        Some(codes::LEASE_INVALID) | Some(codes::NOT_ON_LEASE) => StatusCode::FORBIDDEN,
+        Some(code) if codes::FORBIDDEN.contains(&code) => StatusCode::FORBIDDEN,
         Some(codes::NOT_FOUND) => StatusCode::NOT_FOUND,
-        Some(codes::AGENT_NOT_GRANTED)
-        | Some(codes::ACT_DISABLED)
-        | Some(codes::BLOCKED_BACKGROUND) => StatusCode::FORBIDDEN,
         Some(codes::NOT_CONNECTED) => StatusCode::CONFLICT,
         Some(codes::UNAVAILABLE) => StatusCode::SERVICE_UNAVAILABLE,
         Some(codes::PROVIDER_FAILED) => StatusCode::BAD_GATEWAY,
