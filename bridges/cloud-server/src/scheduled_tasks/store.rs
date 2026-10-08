@@ -403,6 +403,8 @@ async fn enqueue_cloud_agent_fallback_run_for_scheduled_run(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| format!("session:scheduled:{}", owner_account_id));
+    // A scheduled occurrence has no requesting person present: `claim_run`
+    // admits it as a background run, so connector tools are read only.
     claim_run(
         pool,
         &ClaimRunRequest {

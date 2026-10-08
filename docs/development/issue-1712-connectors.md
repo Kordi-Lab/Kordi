@@ -108,8 +108,9 @@ gated by `ownerLocal`). The plan keeps that split explicit:
 ## PR 1: Server connector framework
 
 Crate: `bridges/cloud-server` (cloud-specific code stays out of `bridges/cli`).
-New module `bridges/cloud-server/src/connectors/` with `models.rs`, `store.rs`,
-`routes.rs`, `oauth.rs`, `broker.rs`, `events.rs`, and tests.
+New module `bridges/cloud-server/src/connectors/` with `models.rs`, `store/`,
+`routes.rs`, `oauth.rs`, `oauth_complete.rs`, `broker.rs`, `refresh.rs`,
+`events.rs`, `providers/`, and tests.
 
 Schema (one migration, Postgres path in `pg/`):
 
@@ -122,18 +123,44 @@ Schema (one migration, Postgres path in `pg/`):
 - `cloud_connector_events(event_id, connector_id, provider, kind, external_id,
   occurred_at, payload, received_at, expires_at)` with a retention job.
 - `cloud_connector_audit(audit_id, connector_id, run_id, agent_id, tool,
-  tool_group, outcome, summary, created_at)`.
+  tool_group, outcome, summary, created_at)`. Summaries use fixed wording and
+  never carry provider error text.
+- `cloud_connector_oauth_states(state_id, account_id, provider, grant_kind,
+  redirect_after, code_verifier, created_at, expires_at)`: one-use OAuth
+  state, ten minutes.
+- `cloud_connector_pending_grants(completion_code, state_id, account_id,
+  provider, grant_kind, read_scopes, act_scopes, sealed credential columns,
+  expires_at, created_at)`: tokens the callback exchanged, sealed with the
+  same cipher, waiting for the authenticated completion step; ten minutes,
+  swept by the retention job.
 
 Routes under `/v1/cloud/connectors`:
 
 - `GET /` list for the signed-in account, never including secrets.
-- `POST /:provider/oauth/start` with `{ "grant": "read" | "act" }`, returning
-  the provider URL. Separate OAuth client registrations from the sign-in clients
-  in `auth/oauth.rs`; the callback handler stores the secret and the granted
-  scopes and marks `status`.
+- `POST /:provider/oauth/start` with `{ "grant": "read" | "act",
+  "redirectAfter"? }`, returning the provider URL. Separate OAuth client
+  registrations from the sign-in clients in `auth/oauth.rs`. Returns 503
+  `connectors_unavailable` when the encryption key is not configured.
+- `GET /oauth/callback` (unauthenticated, called by the provider) exchanges
+  the code but does not connect anything: it parks the sealed tokens as a
+  pending grant and redirects to `redirectAfter` with the fragment
+  `kordi_connector=<base64url JSON>`, where the JSON is
+  `{ "completionCode", "provider", "grant", "status": "pending" }`. Errors keep
+  the `kordi_connector_error` and `kordi_connector_error_code` fragment. Without
+  a redirect target the page says "Return to Kordi to finish connecting."
+- `POST /oauth/complete` with `{ "completionCode" }`, signed in. Takes the
+  pending grant out (one use), requires it to belong to the signed-in account,
+  then stores the secret and granted scopes, marks `status`, and returns
+  `{ "connector": ConnectorSummary }`. Errors: 404
+  `connector_grant_not_found` (unknown or used), 403 `connector_grant_mismatch`
+  (another account started it; the pending grant is discarded), 410
+  `connector_grant_expired`, 503 `connectors_unavailable`. This step binds the
+  grant to the account that started it, so a consent link sent to someone
+  else cannot attach their account to the sender's Kordi account.
 - `POST /:id/act` to toggle `act_enabled` (requires granted act scopes).
 - `PUT /:id/agents` to replace the grant set.
-- `GET /:id/audit` paged.
+- `GET /:id/audit` paged, newest first. `nextBefore` is an opaque cursor over
+  `(created_at, audit_id)`; pass it back as `before`.
 - `DELETE /:id` revokes at the provider where supported, deletes the secret row,
   deletes `cloud_connector_events` for it, enqueues derived-copy removal, and
   writes an audit row.
@@ -142,10 +169,56 @@ Routes under `/v1/cloud/connectors`:
   The server checks the lease, the account, the grant set, the tool group
   against the run trigger, and executes the provider call.
 
+Broker refresh: a refresh holds `pg_advisory_xact_lock(hashtext(connector_id))`
+in a transaction, re-reads the secret after the lock, and skips the provider
+call when another call already refreshed. The refreshed secret is written with
+an update that only matches a live connector, so a disconnect during a refresh
+stays final. Only `invalid_grant` marks the connector `needs_reauth`; other
+provider errors are retryable. A failed write after a successful refresh fails
+the call. Racing first grants for one account and provider are serialized by
+an advisory lock on (account, provider).
+
 Tests: response-shape scan that fails if any serialized connector type contains
-a key matching `token`, `secret`, `refresh`, or `ciphertext`; broker rejects an
-`act` tool for a background lease; disconnect removes the secret and events and
-enqueues removal (database-backed); `connectorsVersion` appears in capabilities.
+a key matching `token`, `secret`, `refresh`, or `ciphertext`, plus a value scan
+for the stub credentials across list, audit, broker, and completion responses;
+broker rejects an `act` tool for a background lease; disconnect removes the
+secret and events and enqueues removal; completion by the starting account
+connects, by another account is refused and leaves nothing, works once, and
+expires; concurrent calls refresh once; a disconnect during a refresh leaves no
+secret; other accounts get 404 from act, agents, audit, and delete;
+`connectorsVersion` appears in capabilities only with the encryption key. The
+database-backed tests run in `scripts/test-cloud-migrations.sh`; in CI they fail
+rather than skip when `DATABASE_URL` is missing, and the server job opts out
+with `KORDI_CONNECTOR_DB_TESTS=skip`.
+
+### Connectors
+
+Environment variables introduced by PR 1. Each provider pair is a separate
+OAuth client registration from the sign-in clients (`KORDI_OAUTH_*`); never
+reuse the sign-in apps. When a pair is missing,
+`POST /v1/cloud/connectors/:provider/oauth/start` returns 503
+`connector_not_configured` for that provider, and
+`/v1/cloud/auth/capabilities` still reports `connectorsVersion`.
+
+| Variable | Used for |
+|---|---|
+| `KORDI_CONNECTOR_GOOGLE_CLIENT_ID`, `KORDI_CONNECTOR_GOOGLE_CLIENT_SECRET` | `google_calendar` and `gmail` |
+| `KORDI_CONNECTOR_GITHUB_CLIENT_ID`, `KORDI_CONNECTOR_GITHUB_CLIENT_SECRET` | `github` |
+| `KORDI_CONNECTOR_SLACK_CLIENT_ID`, `KORDI_CONNECTOR_SLACK_CLIENT_SECRET` | `slack` (user-token scopes) |
+| `KORDI_CONNECTOR_EVENT_RETENTION_DAYS` | Event retention, default 30, accepted range 1 to 365 |
+
+Existing variables the connectors reuse: `KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY`
+and `KORDI_CLOUD_PROVIDER_AUTH_ENCRYPTION_KEY_ID` (secret encryption; without
+the key, `/v1/cloud/auth/capabilities` omits `connectorsVersion`, connecting
+returns 503 `connectors_unavailable`, and broker calls fail closed), `KORDI_CLOUD_RUNNER_TOKEN`
+(broker route), `KORDI_CLOUD_PUBLIC_BASE_URL` (callback URL), and
+`KORDI_CLOUD_OAUTH_REDIRECT_ALLOWLIST` (app redirect after the grant).
+
+Each provider app must register the callback
+`<KORDI_CLOUD_PUBLIC_BASE_URL>/v1/cloud/connectors/oauth/callback`.
+
+The broker route is `POST /internal/connectors/call`. PR 2 added the lease
+check: see "What shipped in PR 2" below.
 
 ## PR 2: Tool delivery to the runtimes
 
@@ -157,17 +230,108 @@ enqueues removal (database-backed); `connectorsVersion` appears in capabilities.
 - Cloud runner: `bridges/cloud-agent-runner` turns each descriptor into a host
   tool whose `execute` calls the broker route. `tool_policy.rs` gains a
   `connector.*` arm that only allows names present in the lease. Tool names are
-  namespaced: `gmail.search`, `calendar.list_events`, `calendar.respond`,
-  `github.notifications`, `github.comment`, `slack.read_channel`, `slack.post`.
+  namespaced with an underscore, because model providers reject dots in
+  function names (`^[A-Za-z0-9_-]+$`): `gmail_search`, `calendar_list_events`,
+  `calendar_respond`, `github_notifications`, `github_comment`,
+  `slack_read_channel`, `slack_post`. A runtime recognises a connector tool by
+  its presence on the lease, with a shape check of `^[A-Za-z0-9_-]{1,64}$`.
 - Mac harness: `agent/crates/cli/src/session_bootstrap.rs` registers connector
   tools from the desktop runtime's tool list; service connectors still call the
   server broker, Mac-local connectors call into the Tauri process. `act` tools on
   the "Ask me before" list use the existing `request_approval` hook in
   `ToolContext`.
+- Cloud act tools wait for the approval flow; Mac act tools go through the
+  approval card. Until a cloud approval flow exists, a lease issued to the
+  cloud runner carries no `act` tool and the broker refuses an `act` call from
+  the runner; a desktop claim keeps its `act` tools.
 - Tests: server test that a scheduled run lease contains no `act` tool; runner
   test that a connector tool not in the lease is refused; Mac harness test that
   an agent without a grant does not see the connector's tools; OMP runtime test
   that `enableMCP` and extension discovery stay off.
+
+### What shipped in PR 2
+
+Server (`bridges/cloud-server`):
+
+- Migration `0115_run_trigger_connector_tools.sql` adds two columns to
+  `cloud_agent_fallback_runs`: `run_trigger` (`person_started` or
+  `background`, default `background`), `connector_tools_json` (the
+  descriptors delivered with the lease, default `[]`), and
+  `connector_tools_delivered_at` (when that set was first delivered).
+  Existing runs become background runs.
+- Every run creation site names its trigger. A run is `person_started` only
+  when the person who sent the message owns the agent: the claim route
+  (`claim_run_for_person_message`), the desktop claim
+  (`claim_run_for_desktop`), and a subsession message from the owner.
+  Scheduled task occurrences (`claim_run`), PiP runs, digest runs, spawned
+  subsessions, and runs requested by a contact or a shared-agent member are
+  `background`. A test scans the run inserts so a new one must name its
+  trigger.
+- `connectors::delivery::tools_for_run(pool, providers, account_id, agent_id,
+  trigger)` returns `LeaseConnectorTool` descriptors from the owner's
+  connected connectors, the agent grant set, and `allowed_tool_groups`.
+  `deliver_to_run` computes them on the first lease of a run, stores them on
+  the run, and sets `connector_tools_delivered_at`; later leases of the same
+  run reuse the stored set, so turning `act` on mid-run never widens it.
+  Errors deliver an empty set. A run requested by someone other than the
+  owner receives no connector tools. A lease issued to the cloud runner drops
+  `act` descriptors (cloud act tools wait for the approval flow); a desktop
+  claim keeps them for the Mac approval card. Argument schemas live
+  in `connectors/tool_schemas.rs` until the PR 3 adapters add their own.
+- Lease fields on `RunnerRunResponse` (inside `RunnerLeaseResponse.run`) and
+  on the desktop claim response: `trigger` and `connectorTools`, where each
+  entry is `{ connectorId, provider, name, group, description, inputSchema }`.
+- Broker: `POST /internal/connectors/call` takes `{ leaseId, runnerId |
+  claimId, connectorId, tool, args }`. With the runner token, `runnerId` must
+  hold the active cloud lease; with a desktop session, `claimId` must hold the
+  active desktop lease of that device and account. The account, agent, and
+  trigger come from the lease; `accountId`, `agentId`, and `trigger` in the
+  body are ignored and logged when they disagree. A tool that is not in the
+  lease's stored descriptor set is refused with `tool_not_on_lease` and a
+  `denied` audit row, even when the grants changed after the lease was issued;
+  a missing, expired, or foreign lease is refused with `lease_invalid`; a
+  lease for a run requested by someone other than the owner is refused with
+  `requester_not_owner`; an `act` tool called by the cloud runner is refused
+  with `act_requires_desktop` and a `denied` audit row.
+
+Cloud runner (`bridges/cloud-agent-runner`):
+
+- `CloudAgentRun.connectors` reads `trigger` and `connectorTools` from the
+  lease. Each `connectorTools` entry is parsed on its own; an entry with an
+  unknown shape is dropped with a warning and the rest are kept (the desktop
+  lease model does the same). `connectors.rs` turns each descriptor into a model tool for both the
+  OMP and the legacy loop, lists them in the system prompt (with a sentence
+  that background runs only have read tools), and executes calls through
+  `CloudAgentRunClient::call_connector_tool`, which posts to the broker with
+  the lease id and runner id and returns the `result` or a clear error.
+- `tool_policy::decide_runner_tool` has a connector arm: a namespaced name is
+  allowed only when it is on the lease and is not a built-in cloud tool,
+  otherwise the existing "not available" decision. The model tool list and
+  the prompt list the same tools, each name once.
+
+Mac harness and desktop:
+
+- `kordi_tools::connector_tools` has `ConnectorToolDescriptor`,
+  `ConnectorToolsRuntime`, and `ConnectorTool`, which fails closed when
+  `ToolContext.connector_tools` is `None` or no longer lists the tool. Every
+  `act` tool calls `ToolContext.request_approval` first and is refused when
+  there is no approval hook or the run is non-interactive. Cloud act tools
+  wait for the approval flow; Mac act tools go through the approval card.
+  Until the desktop turn wires that card into `request_approval`, a Mac `act`
+  call finds no hook and is refused (fail closed), so nothing acts without
+  the person's approval.
+- `ToolRegistry::set_connector_tools` registers one tool per descriptor for
+  each turn (never replacing an existing tool) and removes them on the next
+  turn; shared requests from other people never get them.
+- Tauri: `chat/connector_tools_runtime.rs` builds the runtime from the cloud
+  lease's `connectorTools` on the cloud-lease path in
+  `session_preparation.rs` and posts calls to the broker with the signed-in
+  session, the run id, and the claim id. The desktop forwards
+  `connectorTools` from the claim response into `executionLease`.
+
+OMP runtime: no option changes; the capabilities test asserts that connector
+tool names in the host tool list keep `enableMCP` off and extension discovery
+disabled.
 
 ## PR 3: First service connectors
 
@@ -189,16 +353,65 @@ are a second wave.
 
 ## PR 4: Mac-local connectors
 
-- Tauri commands in `app/desktop/src-tauri/src/connectors/`: EventKit (Calendar
-  and Reminders), Contacts, and Automation-based Mail and Messages readers,
-  each behind the macOS permission prompt and exposed only on owner-local runs
-  through the `ownerLocal` gate in `capabilities.ts`.
-- Notification Center reader: off by default, requires Full Disk Access, returns
-  app name, title, body, and time for a bounded window, never writes the body to
-  lessons or OMP state (ties to the sensitive-content rule in #1710), and the
-  tool is absent when Full Disk Access is missing or the setting is off, with a
-  Tauri-side test.
-- iPhone offers EventKit and Contacts only.
+Shipped scope: read tools only, owner-local runs on macOS only.
+
+- Tools (`agent/crates/tools/src/mac_local.rs`): `mac_calendar_read_events`
+  (`from`, `to` at most 31 days apart, optional `calendarIds`; at most 200
+  events with title, start, end, allDay, location, calendar name, attendee
+  names), `mac_calendar_read_reminders` (`includeCompleted`; at most 200),
+  `mac_contacts_search` (`query` of at least 2 characters, `limit` up to 50;
+  no full listing), and `mac_notification_center_recent` (`hours` up to 24,
+  `limit` up to 100, body capped at 500 characters). Tool names use
+  underscores, not dots, because provider tool names must match
+  `^[a-zA-Z0-9_-]+$`. Each tool reads `ToolContext.mac_local` and fails closed
+  with a "not an empty result" message when the runtime is absent or the
+  source is off; none is allowed on shared requests.
+- Harness (`agent/crates/cli/src/tool_registry.rs`): the tools are not in
+  `builtin_tools()`. `ToolRegistry::sync_mac_local_tools` runs before every
+  desktop turn and registers only the sources the runtime has on; Notification
+  Center needs `notification_center_enabled`. Shared requests never get the
+  runtime (`desktop_runtime/turn_execution.rs`).
+- Desktop (`app/desktop/src-tauri/src/mac_local/`): EventKit readers shared
+  with the digest calendar sync (`eventkit.rs`), Contacts through `osascript`
+  with the query passed as a script argument (`contacts.rs`; error `-1743`
+  maps to `denied`, status without prompting uses
+  `AEDeterminePermissionToAutomateTarget`), and the Notification Center
+  reader over `~/Library/Group Containers/group.com.apple.usernoted/db2/db`
+  (`notification_center.rs`; read-only, a locked database is copied to a
+  private temporary directory that is removed before the call returns; rows
+  whose plist cannot be decoded are skipped and counted). Nothing read is
+  persisted.
+- Runtime (`chat/mac_local_runtime.rs`): built per turn in
+  `session_preparation.rs`, only when the turn is not on the cloud-lease path
+  and the requester is the owner; `None` when every source is off. Each call
+  re-reads the settings, so turning a source off applies immediately.
+- Settings: global only, all off by default, project settings cannot turn
+  them on:
+
+  ```json
+  { "connectors": { "mac_local": { "calendar": false, "contacts": false, "notification_center": false } } }
+  ```
+
+- Commands: `desktop_mac_local_connectors_state`,
+  `desktop_mac_local_connectors_set_enabled(source, enabled)` (calendar asks
+  for Calendars and Reminders access; contacts runs a count to raise the
+  Automation prompt; notification_center turns on only when the database is
+  readable), `desktop_mac_local_connectors_recheck`, and
+  `desktop_mac_local_connectors_preview(source)` (three events and reminders,
+  a contact count, or three notification titles without bodies). Each source
+  reports `{ enabled, permission }` with `granted`, `denied`,
+  `not_determined`, `full_disk_access_missing`, or `unavailable`. Tauri v2
+  allows app commands without a capability entry, so
+  `capabilities/default.json` is unchanged. `Info.plist` gains the Reminders
+  and Apple Events usage strings, and `Entitlements.plist` the reminders and
+  Apple Events entitlements.
+- Settings page: in the desktop shell `createDesktopMacLocalConnectorsClient`
+  backs the three Mac rows with these commands; service rows keep the preview
+  client behind `VITE_KORDI_CONNECTORS_PREVIEW=1`.
+- Deferred: the "Create reminders" act tool waits for the runtime PR that adds
+  act gating (person-started runs only, approval). Mail and Messages readers
+  through Automation are not in this PR. iPhone offers EventKit and Contacts
+  only, in PR 5.
 
 ## PR 5: Consent, deletion, audit, iPhone, chat
 

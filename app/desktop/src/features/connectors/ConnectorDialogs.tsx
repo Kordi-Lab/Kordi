@@ -102,7 +102,10 @@ export function ConnectorDialogs({
             <>
               <AppDialogTitle id={`${idPrefix}-connect-title`}>Allow access to {dialogDefinition.name}</AppDialogTitle>
               <AppDialogDescription id={`${idPrefix}-connect-description`}>
-                macOS will ask you to allow Kordi to read {dialogDefinition.name}. Your agent only sees results while it works on this Mac.
+                {dialogDefinition.requiresFullDiskAccess
+                  ? `${dialogDefinition.name} needs Full Disk Access, which you grant to Kordi in System Settings > Privacy & Security > Full Disk Access. macOS does not ask for it here.`
+                  : `macOS will ask you to allow Kordi to read ${dialogDefinition.name}.`}
+                {' '}Your agent only sees results while it works on this Mac.
               </AppDialogDescription>
             </>
           )}

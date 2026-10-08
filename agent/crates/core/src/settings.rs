@@ -7,6 +7,8 @@ use crate::settings_defaults::{
 };
 pub use crate::settings_packages::{PackageEntry, PackageFilter};
 
+#[cfg(test)]
+mod connectors_tests;
 mod io;
 mod merge;
 #[cfg(test)]
@@ -72,6 +74,34 @@ pub struct Settings {
     pub update_check: UpdateCheckSettings,
     #[serde(default)]
     pub storage: StorageSettings,
+    /// Per-source connector switches. Global only; project settings cannot
+    /// turn on a source that reads the owner's personal data.
+    #[serde(default, skip_serializing_if = "ConnectorsSettings::is_default")]
+    pub connectors: ConnectorsSettings,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ConnectorsSettings {
+    #[serde(default, alias = "macLocal")]
+    pub mac_local: MacLocalConnectorSettings,
+}
+
+impl ConnectorsSettings {
+    pub fn is_default(&self) -> bool {
+        self == &Self::default()
+    }
+}
+
+/// Mac-local connectors. All off until the person turns each on from the
+/// Connectors page.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MacLocalConnectorSettings {
+    #[serde(default)]
+    pub calendar: bool,
+    #[serde(default)]
+    pub contacts: bool,
+    #[serde(default, alias = "notificationCenter")]
+    pub notification_center: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -241,6 +271,7 @@ impl Default for Settings {
             compatibility_mode: false,
             update_check: UpdateCheckSettings::default(),
             storage: StorageSettings::default(),
+            connectors: ConnectorsSettings::default(),
         }
     }
 }

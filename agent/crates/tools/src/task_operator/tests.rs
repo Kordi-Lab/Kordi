@@ -26,7 +26,9 @@ fn make_ctx(runtime: Option<TaskOperatorRuntime>) -> ToolContext {
         session_observation: None,
         task_operator: runtime,
         schedule_task: None,
+        mac_local: None,
         execution_mode: crate::ToolExecutionMode::Interactive,
+        connector_tools: None,
         request_approval: None,
     }
 }
