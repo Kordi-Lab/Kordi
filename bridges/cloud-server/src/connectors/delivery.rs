@@ -19,8 +19,8 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::models::{
-    allowed_tool_groups, BrokerCallRequest, ConnectorAudience, ConnectorRecord,
-    ConnectorToolGroup, RunTrigger,
+    allowed_tool_groups, BrokerCallRequest, ConnectorAudience, ConnectorRecord, ConnectorToolGroup,
+    RunTrigger,
 };
 use super::providers::{ConnectorProvider, ConnectorToolDescriptor, ProviderRegistry};
 use super::store::{self, StoreResult};

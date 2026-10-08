@@ -8,7 +8,7 @@ mod routes;
 mod series_routes;
 mod source_identity;
 mod source_reader;
-mod store;
+pub(crate) mod store;
 mod sync_routes;
 mod worker;
 pub use routes::routes;

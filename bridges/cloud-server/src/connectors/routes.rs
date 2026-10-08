@@ -41,6 +41,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .route("/v1/cloud/connectors/:id/audit", get(list_audit))
         .route(
+            "/v1/cloud/connectors/:id/audit/declined",
+            post(super::declined::declined_route),
+        )
+        .route(
             "/v1/cloud/connectors/:id",
             axum::routing::delete(disconnect),
         )

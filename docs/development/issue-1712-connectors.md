@@ -557,7 +557,10 @@ Consent boundary (server, `bridges/cloud-server`):
 - Migration `0117_run_connector_audience.sql` adds `connector_audience`
   (`owner_private` or `shared`, default `shared`) to
   `cloud_agent_fallback_runs`. Existing runs become shared runs and get no
-  connector tools.
+  connector tools. Runs still `queued`, `leased`, or `running` also lose
+  `connector_tools_json` and `connector_tools_delivered_at`, so no run keeps
+  tools delivered before the audience existed; the next lease delivers the
+  set for its audience.
 - `connectors::audience::audience_for_message` decides the audience where the
   trigger is decided. A run is `owner_private` only when the owner sent the
   message and the session is a `kind = 'ai'` conversation the owner created
@@ -572,25 +575,48 @@ Consent boundary (server, `bridges/cloud-server`):
 - `delivery::tools_for_run` returns no tools at all for a `shared` audience,
   whatever the trigger. The lease (cloud runner and desktop claim) carries
   `connectorAudience`. The source-scan test now requires every run insert to
-  name both `run_trigger` and `connector_audience`.
-- Broker: `declinedByOwner: true` on `POST /internal/connectors/call` writes a
-  `denied` audit row for a tool on the lease and returns `declined_by_owner`
-  without reaching the provider.
+  name both `run_trigger` and `connector_audience`; it walks every source
+  file under `src/`. Database tests drive the real paths (person, scheduled,
+  and desktop claims, a member who left or was removed, spawned subsessions,
+  `digest::store::refresh`, and the PiP sweep).
+- Declines (`connectors::declined`): `declinedByOwner: true` on
+  `POST /internal/connectors/call` writes a `denied` audit row for a tool on
+  the active lease and returns `declined_by_owner` without reaching the
+  provider. When the lease lapsed during the five-minute wait, the desktop
+  falls back to `POST /v1/cloud/connectors/:id/audit/declined`
+  (`{ tool, summary, runId }`, account session), which needs no lease, accepts
+  only an `act` tool of that connector's provider, and records `runId` only
+  when the account owns the run. Neither path can run a tool.
 
 Mac approval for `act` tools:
 
 - `DesktopRuntimeSession::set_tool_approval_hook` wires
   `ToolContext.request_approval` from `chat/tool_approval.rs`. A connector
   `act` call emits `desktop_tool_approval_request` (`{ requestId, tool,
-  summary, connector, args }`), waits for
-  `desktop_tool_approval_respond(requestId, approved)`, and denies after five
-  minutes; `desktop_tool_approval_resolved` clears the card. The hook is
-  built per turn from the lease's `act` descriptors (`connector` is their
-  provider id); any other tool that asks for approval is refused, as before.
-- The webview shows an inline card above the composer ("Your agent wants to
-  <summary> in <connector>." with Allow and Not now).
-- When the person declines, `ConnectorToolsRuntime.report_declined` posts the
-  `declinedByOwner` call so the settings log shows the denial.
+  summary, connector, args, argsTruncated, sessionId, conversationTitle,
+  agentName }`), waits for `desktop_tool_approval_respond(requestId,
+  approved)`, and denies after five minutes; `desktop_tool_approval_resolved`
+  clears the card. `args` is the full call, bounded at 16 KB: past that, long
+  text values are shortened and `argsTruncated` is set. Open prompts stay in
+  the native runtime, and `desktop_tool_approval_pending` returns them; the
+  webview calls it on mount and on focus, so a prompt raised while no
+  conversation was open is still shown.
+- The hook is built per turn from the lease's `act` descriptors through
+  `kordi_tools::connector_tools::act_tool_providers`, which applies the same
+  name shape check and reserved-name exclusion (built-in, Mac-local, and
+  `connectors_request_connect` names) as `lease_tool`. A descriptor named like
+  a built-in can never turn a built-in's approval into a connector card; any
+  other tool that asks for approval is refused, as before.
+- The webview shows an inline card above the composer: "<agent> wants to
+  <summary> in <connector>.", the conversation it comes from, and the call
+  itself. `gmail_send` shows every `to`, `cc`, and `bcc` address and the
+  subject; `calendar_create_event` and `calendar_respond` the title, time, and
+  every attendee; `slack_post` the channel; `github_comment` the repository and
+  number. Message bodies and comments sit in a scrollable block, never cut to
+  one line. Any other argument, and every argument of an unknown tool, is
+  listed whole. A shortened request says so on the card.
+- When the person declines, `ConnectorToolsRuntime.report_declined` records
+  the denial as described above.
 
 Chat affordance:
 
@@ -601,9 +627,8 @@ Chat affordance:
   `owner_private` cloud leases and on the owner's own local turns.
 - Desktop: message Markdown renders the link as an in-app link that opens
   account settings on the `connectors` tab and stores the provider for the
-  detail view (`takePendingConnectorsProvider`). This branch does not contain
-  the Connectors panel from PR 0, so the tab shows Profile until that branch
-  merges; the panel should read the pending provider into `selectedId`.
+  detail view (`takePendingConnectorsProvider`). A link label from the model
+  is capped at 80 characters.
 - iPhone: `ConnectorsSettingsLink.parse` handles the URL from `onOpenURL` and
   in-app links, and opens the account sheet. Opening the `.connectors` route and
   pushing the provider detail waits for the iPhone Connectors screen.
@@ -617,6 +642,16 @@ Still waiting:
   `cloud_connector_removal_requests` on disconnect.
 - #1711: the capability-profile intersection and the "Ask me before" list UI.
   Every `act` tool asks today.
+
+Known gap, outbound network:
+
+- An `owner_private` run that holds connector `read` tools can still send what
+  it read out of Kordi through `web_fetch` or `browser_fetch`, for example by
+  putting it in a URL. The audience boundary keeps connector data away from
+  other accounts, not away from the network. Closing this is tracked under the
+  trust-layer issue #1711: "Ask me before" for outbound fetches whenever
+  connector data is in the run's context. Until then the cloud runner's
+  existing URL policy for those tools applies unchanged.
 
 ## Acceptance mapping
 

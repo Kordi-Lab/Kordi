@@ -8,7 +8,8 @@ use std::sync::Arc;
 use kordi_cli::desktop_runtime::DesktopCloudExecutionLease;
 use kordi_core::error::KordiError;
 use kordi_tools::connector_tools::{
-    is_connector_tool_name, ConnectorToolDescriptor, ConnectorToolsRuntime,
+    is_connector_tool_name, is_reserved_tool_name, ConnectorCallFuture, ConnectorToolDescriptor,
+    ConnectorToolsRuntime,
 };
 use serde_json::{json, Value};
 
@@ -60,7 +61,9 @@ fn lease_descriptors(lease: &DesktopCloudExecutionLease) -> Option<Vec<Connector
         .connector_tools
         .as_ref()?
         .iter()
-        .filter(|descriptor| is_connector_tool_name(&descriptor.name))
+        .filter(|descriptor| {
+            is_connector_tool_name(&descriptor.name) && !is_reserved_tool_name(&descriptor.name)
+        })
         .cloned()
         .collect::<Vec<_>>();
     (!descriptors.is_empty()).then_some(descriptors)
@@ -87,6 +90,48 @@ fn declined_body(lease: &DesktopCloudExecutionLease, tool: &ConnectorToolDescrip
     body
 }
 
+/// Account route that records a decline without a lease, for a lease that
+/// lapsed while the card was open. `None` for an id that is not path-safe.
+fn declined_audit_path(connector_id: &str) -> Option<String> {
+    let safe = !connector_id.is_empty()
+        && connector_id.len() <= 128
+        && connector_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-');
+    safe.then(|| format!("/v1/cloud/connectors/{connector_id}/audit/declined"))
+}
+
+fn declined_audit_body(
+    lease: &DesktopCloudExecutionLease,
+    tool: &ConnectorToolDescriptor,
+) -> Value {
+    json!({ "tool": tool.name, "summary": tool.description, "runId": lease.run_id })
+}
+
+type PostFn = Arc<dyn Fn(String, Value) -> ConnectorCallFuture + Send + Sync>;
+
+/// Records a decline: on the lease through the broker, which answers
+/// `declined_by_owner` once the row is written, or else through the account
+/// route, so a lease that lapsed during the wait still leaves the row.
+async fn report_declined(
+    post: PostFn,
+    lease: DesktopCloudExecutionLease,
+    tool: ConnectorToolDescriptor,
+) {
+    let on_lease = post(BROKER_CALL_PATH.to_string(), declined_body(&lease, &tool)).await;
+    if matches!(&on_lease, Err(error) if error.to_string().contains("(declined_by_owner)")) {
+        return;
+    }
+    if let Some(path) = declined_audit_path(&tool.connector_id) {
+        if let Err(error) = post(path, declined_audit_body(&lease, &tool)).await {
+            eprintln!(
+                "[connectors] could not record the decline of {}: {error}",
+                tool.name
+            );
+        }
+    }
+}
+
 fn broker_result(status: u16, bytes: &[u8]) -> Result<Value, KordiError> {
     let body: Value = serde_json::from_slice(bytes)
         .map_err(|_| KordiError::Tool(format!("The connector broker returned HTTP {status}.")))?;
@@ -108,28 +153,34 @@ fn http_runtime(
     api_base: String,
     token: String,
 ) -> ConnectorToolsRuntime {
-    let post = Arc::new(move |body: Value| {
+    let post: PostFn = Arc::new(move |path: String, body: Value| {
         let (api_base, token) = (api_base.clone(), token.clone());
-        Box::pin(async move { post_broker(&api_base, &token, &body).await })
-            as kordi_tools::connector_tools::ConnectorCallFuture
+        Box::pin(async move { post_broker(&api_base, &token, &path, &body).await })
+            as ConnectorCallFuture
     });
     let (call_lease, call_post) = (lease.clone(), post.clone());
     let declined_lease = lease.clone();
     ConnectorToolsRuntime {
         descriptors,
-        call: Arc::new(move |tool, args| call_post(broker_body(&call_lease, &tool, args))),
+        call: Arc::new(move |tool, args| {
+            call_post(
+                BROKER_CALL_PATH.to_string(),
+                broker_body(&call_lease, &tool, args),
+            )
+        }),
         report_declined: Some(Arc::new(move |tool| {
-            let pending = post(declined_body(&declined_lease, &tool));
-            Box::pin(async move {
-                // The broker answers `declined_by_owner`; only the audit row matters.
-                let _ = pending.await;
-            })
+            Box::pin(report_declined(post.clone(), declined_lease.clone(), tool))
         })),
         offer_request_connect: false,
     }
 }
 
-async fn post_broker(api_base: &str, token: &str, body: &Value) -> Result<Value, KordiError> {
+async fn post_broker(
+    api_base: &str,
+    token: &str,
+    path: &str,
+    body: &Value,
+) -> Result<Value, KordiError> {
     let unavailable = || KordiError::Tool("The connector broker could not be reached.".into());
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
@@ -137,10 +188,7 @@ async fn post_broker(api_base: &str, token: &str, body: &Value) -> Result<Value,
         .build()
         .map_err(|_| unavailable())?;
     let mut response = client
-        .post(format!(
-            "{}{BROKER_CALL_PATH}",
-            api_base.trim_end_matches('/')
-        ))
+        .post(format!("{}{path}", api_base.trim_end_matches('/')))
         .bearer_auth(token)
         .json(body)
         .send()
@@ -274,5 +322,53 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["connectors_request_connect"]
         );
+    }
+
+    #[tokio::test]
+    async fn a_decline_falls_back_to_the_account_route_when_the_lease_lapsed() {
+        let lease = lease(None);
+        let tool: ConnectorToolDescriptor = serde_json::from_value(json!(
+            {"connectorId":"conn_1","provider":"gmail","name":"gmail_send","group":"act",
+             "description":"Send an email."}
+        ))
+        .unwrap();
+        for (broker_code, expected) in [
+            ("declined_by_owner", vec![BROKER_CALL_PATH]),
+            (
+                "lease_invalid",
+                vec![
+                    BROKER_CALL_PATH,
+                    "/v1/cloud/connectors/conn_1/audit/declined",
+                ],
+            ),
+        ] {
+            let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+            let sink = seen.clone();
+            let post: PostFn = Arc::new(move |path: String, body: Value| {
+                sink.lock().unwrap().push((path.clone(), body));
+                Box::pin(async move {
+                    if path == BROKER_CALL_PATH {
+                        Err(KordiError::Tool(format!("Refused. ({broker_code})")))
+                    } else {
+                        Ok(json!({ "recorded": true }))
+                    }
+                }) as ConnectorCallFuture
+            });
+            report_declined(post, lease.clone(), tool.clone()).await;
+            let seen = seen.lock().unwrap().clone();
+            let paths = seen
+                .iter()
+                .map(|(path, _)| path.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(paths, expected, "{broker_code}");
+            assert_eq!(seen[0].1["declinedByOwner"], true);
+            if let Some((_, body)) = seen.get(1) {
+                assert_eq!(
+                    body,
+                    &json!({"tool":"gmail_send","summary":"Send an email.","runId":"car_1"})
+                );
+            }
+        }
+        assert!(declined_audit_path("conn/../x").is_none());
     }
 }

@@ -32,9 +32,11 @@ use crate::cloud_agent_runtime::provider_auth::{ProviderAuthCipher, ProviderAuth
 use crate::events::EventBus;
 use crate::server::ServerState;
 
+mod audience_paths_tests;
 mod audience_tests;
 mod broker_tests;
 mod completion_tests;
+mod declined_tests;
 mod delivery_tests;
 mod google_provider_tests;
 mod http_stub;

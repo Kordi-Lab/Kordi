@@ -4,13 +4,16 @@
 //! connector `act` call pauses the turn, the webview shows an inline card
 //! from the `desktop_tool_approval_request` event, and the person answers
 //! through `desktop_tool_approval_respond`. No answer within five minutes
-//! counts as "Not now". The hook is built per turn from the lease's `act`
-//! tools; any other tool that asks for approval is refused, exactly as
-//! before this hook existed.
+//! counts as "Not now". Open prompts stay here until answered, so a webview
+//! that mounts later reads them with `desktop_tool_approval_pending`. The
+//! hook is built per turn from the lease's `act` tools; any other tool that
+//! asks for approval is refused, exactly as before this hook existed.
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use kordi_cli::desktop_runtime::DesktopCloudExecutionLease;
 use kordi_tools::{
     RequestToolApprovalFn, ToolApprovalDecision, ToolApprovalOutcome, ToolApprovalRequest,
 };
@@ -22,6 +25,18 @@ use tokio::sync::oneshot;
 pub(crate) const REQUEST_EVENT: &str = "desktop_tool_approval_request";
 pub(crate) const RESOLVED_EVENT: &str = "desktop_tool_approval_resolved";
 pub(crate) const APPROVAL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+/// Upper bound for the arguments sent to the card; larger calls are cut
+/// string by string and marked `argsTruncated`.
+pub(crate) const MAX_ARGS_BYTES: usize = 16 * 1024;
+
+/// Which conversation and agent the turn belongs to.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ApprovalContext {
+    pub session_id: String,
+    pub conversation_title: Option<String>,
+    pub agent_name: Option<String>,
+}
 
 /// What the webview shows: never a credential, only the call itself.
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -33,29 +48,105 @@ pub(crate) struct ApprovalPrompt {
     pub summary: String,
     /// The connector's provider id, for example `gmail`.
     pub connector: String,
+    /// The call's arguments, at most [`MAX_ARGS_BYTES`] when serialized.
     pub args: Value,
+    /// True when `args` is shorter than what the agent sent.
+    pub args_truncated: bool,
+    #[serde(flatten)]
+    pub context: ApprovalContext,
 }
 
 impl ApprovalPrompt {
-    fn new(request_id: String, request: &ToolApprovalRequest, provider: &str) -> Self {
+    fn new(
+        request_id: String,
+        request: &ToolApprovalRequest,
+        provider: &str,
+        context: &ApprovalContext,
+    ) -> Self {
+        let (args, args_truncated) = bounded_args(&request.command);
         Self {
             request_id,
             tool: request.tool_name.clone(),
             summary: request.reason.clone(),
             connector: provider.to_string(),
-            args: serde_json::from_str(&request.command).unwrap_or(Value::Null),
+            args,
+            args_truncated,
+            context: context.clone(),
         }
     }
+}
+
+fn shorten_strings(value: &Value, max_chars: usize) -> Value {
+    match value {
+        Value::String(text) if text.chars().count() > max_chars => Value::String(format!(
+            "{}…",
+            text.chars().take(max_chars).collect::<String>()
+        )),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .map(|item| shorten_strings(item, max_chars))
+                .collect(),
+        ),
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(key, item)| (key.clone(), shorten_strings(item, max_chars)))
+                .collect(),
+        ),
+        other => other.clone(),
+    }
+}
+
+fn serialized_len(value: &Value) -> usize {
+    serde_json::to_vec(value).map_or(usize::MAX, |bytes| bytes.len())
+}
+
+/// The call's arguments for the card, within [`MAX_ARGS_BYTES`], and whether
+/// anything was cut. Every key stays; only long text values get shorter.
+pub(crate) fn bounded_args(command: &str) -> (Value, bool) {
+    let parsed = serde_json::from_str::<Value>(command)
+        .unwrap_or_else(|_| Value::String(command.to_string()));
+    if serialized_len(&parsed) <= MAX_ARGS_BYTES {
+        return (parsed, false);
+    }
+    for max_chars in [4096, 1024, 256, 64] {
+        let shortened = shorten_strings(&parsed, max_chars);
+        if serialized_len(&shortened) <= MAX_ARGS_BYTES {
+            return (shortened, true);
+        }
+    }
+    let mut end = MAX_ARGS_BYTES.min(command.len());
+    while !command.is_char_boundary(end) {
+        end -= 1;
+    }
+    (Value::String(format!("{}…", &command[..end])), true)
 }
 
 pub(crate) type Emit = Arc<dyn Fn(&str, Value) -> bool + Send + Sync>;
 /// `act` tool name to provider id, from this turn's lease.
 pub(crate) type ActTools = HashMap<String, String>;
 
-/// Pending prompts by request id.
+/// The lease's `act` tools that may ask the person, filtered like the
+/// connector tools themselves: a connector-shaped name that is never a
+/// built-in or other host tool.
+pub(crate) fn act_tools_for_lease(lease: Option<&DesktopCloudExecutionLease>) -> ActTools {
+    lease
+        .and_then(|lease| lease.connector_tools.as_deref())
+        .map(kordi_tools::connector_tools::act_tool_providers)
+        .unwrap_or_default()
+}
+
+struct Pending {
+    order: u64,
+    prompt: ApprovalPrompt,
+    sender: oneshot::Sender<bool>,
+}
+
+/// Open prompts by request id.
 #[derive(Default)]
 pub(crate) struct ApprovalBroker {
-    pending: Mutex<HashMap<String, oneshot::Sender<bool>>>,
+    pending: Mutex<HashMap<String, Pending>>,
+    next: AtomicU64,
 }
 
 fn decision(approved: bool) -> ToolApprovalOutcome {
@@ -74,6 +165,7 @@ impl ApprovalBroker {
         &self,
         emit: &Emit,
         act_tools: &ActTools,
+        context: &ApprovalContext,
         request: ToolApprovalRequest,
         timeout: Duration,
     ) -> ToolApprovalOutcome {
@@ -82,12 +174,18 @@ impl ApprovalBroker {
         };
         let request_id = uuid::Uuid::new_v4().to_string();
         let (sender, receiver) = oneshot::channel();
-        self.lock().insert(request_id.clone(), sender);
-        let prompt = ApprovalPrompt::new(request_id.clone(), &request, provider);
-        let shown = emit(
-            REQUEST_EVENT,
-            serde_json::to_value(&prompt).unwrap_or(Value::Null),
+        let prompt = ApprovalPrompt::new(request_id.clone(), &request, provider, context);
+        let payload = serde_json::to_value(&prompt).unwrap_or(Value::Null);
+        let order = self.next.fetch_add(1, Ordering::Relaxed);
+        self.lock().insert(
+            request_id.clone(),
+            Pending {
+                order,
+                prompt,
+                sender,
+            },
         );
+        let shown = emit(REQUEST_EVENT, payload);
         let approved =
             shown && matches!(tokio::time::timeout(timeout, receiver).await, Ok(Ok(true)));
         self.lock().remove(&request_id);
@@ -102,10 +200,20 @@ impl ApprovalBroker {
     pub(crate) fn respond(&self, request_id: &str, approved: bool) -> bool {
         self.lock()
             .remove(request_id)
-            .is_some_and(|sender| sender.send(approved).is_ok())
+            .is_some_and(|pending| pending.sender.send(approved).is_ok())
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, oneshot::Sender<bool>>> {
+    /// Prompts still waiting for an answer, oldest first.
+    pub(crate) fn pending(&self) -> Vec<ApprovalPrompt> {
+        let pending = self.lock();
+        let mut open = pending.values().collect::<Vec<_>>();
+        open.sort_by_key(|pending| pending.order);
+        open.into_iter()
+            .map(|pending| pending.prompt.clone())
+            .collect()
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Pending>> {
         self.pending
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -128,17 +236,18 @@ pub(crate) fn install(app: tauri::AppHandle) {
 
 /// The hook for `ToolContext.request_approval` on a turn whose lease lists
 /// `act_tools`; `None` when there are none or before `install`.
-pub(crate) fn hook(act_tools: ActTools) -> Option<RequestToolApprovalFn> {
+pub(crate) fn hook(act_tools: ActTools, context: ApprovalContext) -> Option<RequestToolApprovalFn> {
     if act_tools.is_empty() {
         return None;
     }
     let emit = EMIT.get()?.clone();
-    let act_tools = Arc::new(act_tools);
+    let shared = Arc::new((act_tools, context));
     Some(Arc::new(move |request| {
-        let (emit, act_tools) = (emit.clone(), act_tools.clone());
+        let (emit, shared) = (emit.clone(), shared.clone());
         Box::pin(async move {
+            let (act_tools, context) = &*shared;
             broker()
-                .request(&emit, &act_tools, request, APPROVAL_TIMEOUT)
+                .request(&emit, act_tools, context, request, APPROVAL_TIMEOUT)
                 .await
         })
     }))
@@ -149,123 +258,13 @@ pub(crate) fn desktop_tool_approval_respond(request_id: String, approved: bool) 
     broker().respond(request_id.trim(), approved)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn act_tools() -> ActTools {
-        HashMap::from([("gmail_send".to_string(), "gmail".to_string())])
-    }
-
-    fn request(tool: &str) -> ToolApprovalRequest {
-        ToolApprovalRequest {
-            tool_name: tool.into(),
-            title: format!("Allow {tool} to act in gmail"),
-            command: r#"{"to":"a@example.com"}"#.into(),
-            reason: "Send an email.".into(),
-        }
-    }
-
-    type Events = Arc<Mutex<Vec<(String, Value)>>>;
-
-    /// A fake webview: records events and answers each prompt with `answer`.
-    fn responder(broker: Arc<ApprovalBroker>, answer: Option<bool>) -> (Emit, Events) {
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let seen = events.clone();
-        let emit: Emit = Arc::new(move |event, payload: Value| {
-            seen.lock()
-                .unwrap()
-                .push((event.to_string(), payload.clone()));
-            if let (REQUEST_EVENT, Some(approved)) = (event, answer) {
-                let broker = broker.clone();
-                let id = payload["requestId"].as_str().unwrap().to_string();
-                tokio::spawn(async move {
-                    assert!(broker.respond(&id, approved));
-                });
-            }
-            true
-        });
-        (emit, events)
-    }
-
-    #[tokio::test]
-    async fn the_person_answers_through_the_respond_command() {
-        let broker = Arc::new(ApprovalBroker::default());
-        let (emit, events) = responder(broker.clone(), Some(true));
-        let outcome = broker
-            .request(
-                &emit,
-                &act_tools(),
-                request("gmail_send"),
-                Duration::from_secs(5),
-            )
-            .await;
-        assert!(outcome.approved());
-        let events = events.lock().unwrap().clone();
-        assert_eq!(events[0].0, REQUEST_EVENT);
-        assert_eq!(events[0].1["tool"], "gmail_send");
-        assert_eq!(events[0].1["summary"], "Send an email.");
-        assert_eq!(events[0].1["connector"], "gmail");
-        assert_eq!(events[0].1["args"]["to"], "a@example.com");
-        assert_eq!(events[1].0, RESOLVED_EVENT);
-        assert_eq!(events[1].1["approved"], true);
-
-        let (emit, _) = responder(broker.clone(), Some(false));
-        let outcome = broker
-            .request(
-                &emit,
-                &act_tools(),
-                request("gmail_send"),
-                Duration::from_secs(5),
-            )
-            .await;
-        assert!(!outcome.approved());
-        assert!(broker.lock().is_empty());
-    }
-
-    #[tokio::test]
-    async fn no_answer_in_time_denies_and_late_answers_are_ignored() {
-        let broker = Arc::new(ApprovalBroker::default());
-        let (emit, events) = responder(broker.clone(), None);
-        let outcome = broker
-            .request(
-                &emit,
-                &act_tools(),
-                request("gmail_send"),
-                Duration::from_millis(20),
-            )
-            .await;
-        assert!(!outcome.approved());
-        let id = events.lock().unwrap()[0].1["requestId"]
-            .as_str()
-            .unwrap()
-            .to_string();
-        assert!(!broker.respond(&id, true), "the prompt expired");
-        assert_eq!(events.lock().unwrap()[1].1["approved"], false);
-    }
-
-    #[tokio::test]
-    async fn only_act_tools_on_the_lease_are_prompted() {
-        let broker = Arc::new(ApprovalBroker::default());
-        let (emit, events) = responder(broker.clone(), Some(true));
-        for tool in ["bash", "gmail_search"] {
-            let outcome = broker
-                .request(&emit, &act_tools(), request(tool), Duration::from_secs(5))
-                .await;
-            assert!(!outcome.approved(), "{tool}");
-        }
-        assert!(hook(ActTools::new()).is_none());
-        assert!(events.lock().unwrap().is_empty());
-        // A webview that cannot be reached denies at once.
-        let unreachable: Emit = Arc::new(|_, _| false);
-        let outcome = broker
-            .request(
-                &unreachable,
-                &act_tools(),
-                request("gmail_send"),
-                Duration::from_secs(5),
-            )
-            .await;
-        assert!(!outcome.approved());
-    }
+/// Open prompts, for a webview that mounts or regains focus after a
+/// `desktop_tool_approval_request` event was sent.
+#[tauri::command]
+pub(crate) fn desktop_tool_approval_pending() -> Vec<ApprovalPrompt> {
+    broker().pending()
 }
+
+#[cfg(test)]
+#[path = "tool_approval_tests.rs"]
+mod tests;

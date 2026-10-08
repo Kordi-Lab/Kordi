@@ -333,6 +333,7 @@ pub fn run() {
             chat::artifacts::desktop_chat_artifact_preview,
             chat::artifacts::desktop_chat_artifact_directory,
             chat::tool_approval::desktop_tool_approval_respond,
+            chat::tool_approval::desktop_tool_approval_pending,
             chat::desktop_chat_state,
             chat::desktop_chat_session_detail,
             chat::agent_identity::desktop_chat_rename_agent,

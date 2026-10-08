@@ -63,18 +63,45 @@ pub fn is_connector_tool_name(name: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
 }
 
-/// The lease descriptor for `name`, when the lease lists it and the name
-/// passes the shape check. The lease is the source of truth.
+/// Whether `name` belongs to a tool the host registers itself: a built-in,
+/// a Mac-local source, or `connectors_request_connect`. A lease descriptor
+/// with such a name is never a connector tool.
+pub fn is_reserved_tool_name(name: &str) -> bool {
+    name == crate::connector_request_connect::REQUEST_CONNECT_TOOL_NAME
+        || crate::mac_local::MAC_LOCAL_TOOL_NAMES.contains(&name)
+        || crate::registry::builtin_tools()
+            .iter()
+            .any(|tool| tool.name() == name)
+}
+
+/// The lease descriptor for `name`, when the lease lists it, the name passes
+/// the shape check, and it is not a reserved host tool name. The lease is the
+/// source of truth; the first descriptor with the name wins.
 pub fn lease_tool<'a>(
     descriptors: &'a [ConnectorToolDescriptor],
     name: &str,
 ) -> Option<&'a ConnectorToolDescriptor> {
-    if !is_connector_tool_name(name) {
+    if !is_connector_tool_name(name) || is_reserved_tool_name(name) {
         return None;
     }
     descriptors
         .iter()
         .find(|descriptor| descriptor.name == name)
+}
+
+/// `act` tool name to provider id for the lease's tools that may ask the
+/// person for approval. Only names [`lease_tool`] accepts, so a descriptor
+/// named like a built-in can never route a built-in's approval to a
+/// connector card.
+pub fn act_tool_providers(
+    descriptors: &[ConnectorToolDescriptor],
+) -> std::collections::HashMap<String, String> {
+    descriptors
+        .iter()
+        .filter_map(|descriptor| lease_tool(descriptors, &descriptor.name))
+        .filter(|descriptor| descriptor.is_act())
+        .map(|descriptor| (descriptor.name.clone(), descriptor.provider.clone()))
+        .collect()
 }
 
 /// Lease descriptors from the raw `connectorTools` value, entry by entry. An

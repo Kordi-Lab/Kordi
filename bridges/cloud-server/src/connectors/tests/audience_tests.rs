@@ -1,7 +1,9 @@
 //! Consent boundary on connector delivery (issue 1712, PR 5), against
 //! `$DATABASE_URL`: only runs whose output the owner alone can read receive
 //! connector tools, and the trigger still limits them to `read` when nobody
-//! started the run.
+//! started the run. The digest and PiP runs, the desktop claim, and spawned
+//! subsessions are covered through their real paths in
+//! `audience_paths_tests`.
 
 use super::broker_tests::{runner, TEST_RUNNER};
 use super::*;
@@ -12,7 +14,12 @@ use crate::connectors::audience::audience_for_message;
 use crate::connectors::delivery;
 
 /// Creates a conversation and returns its session id.
-async fn conversation(pool: &PgPool, kind: &str, creator: &str, others: &[&str]) -> String {
+pub(super) async fn conversation(
+    pool: &PgPool,
+    kind: &str,
+    creator: &str,
+    others: &[&str],
+) -> String {
     let conversation_id = Uuid::new_v4();
     let session_id = format!("session:connectors-{kind}:{}", conversation_id.simple());
     query(
@@ -39,33 +46,6 @@ async fn conversation(pool: &PgPool, kind: &str, creator: &str, others: &[&str])
         .unwrap();
     }
     session_id
-}
-
-/// Inserts a queued background run with the column list `digest::store` or
-/// `pip::store` uses.
-async fn background_run(
-    pool: &PgPool,
-    prefix: &str,
-    session: &str,
-    owner: &str,
-    audience: &str,
-) -> String {
-    let run_id = format!("{prefix}{}", Uuid::new_v4().simple());
-    query(
-        "INSERT INTO cloud_agent_fallback_runs (run_id,idempotency_key,request_message_id,\
-         session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,\
-         runtime_route_json,created_at,updated_at,run_trigger,connector_audience) \
-         VALUES($1,$1,$1,$2,$3,$3,'queued','{}','System','{}',$4,$4,'background',$5)",
-    )
-    .bind(&run_id)
-    .bind(session)
-    .bind(owner)
-    .bind(Utc::now().to_rfc3339())
-    .bind(audience)
-    .execute(pool)
-    .await
-    .unwrap();
-    run_id
 }
 
 #[tokio::test]
@@ -130,22 +110,6 @@ async fn connector_tools_reach_only_runs_the_owner_alone_can_read() {
     let scheduled = claim_run(&pool, &claim(&private_scheduled, &owner, "scheduled"))
         .await
         .unwrap();
-    let digest = background_run(
-        &pool,
-        crate::digest::RUN_PREFIX,
-        &format!("digest:{owner}"),
-        &owner,
-        "owner_private",
-    )
-    .await;
-    let pip = background_run(
-        &pool,
-        crate::pip::store::RUN_PREFIX,
-        &group,
-        &owner,
-        "shared",
-    )
-    .await;
 
     let mut groups_by_label = Vec::new();
     for (label, run_id) in [
@@ -153,8 +117,6 @@ async fn connector_tools_reach_only_runs_the_owner_alone_can_read() {
         ("group", in_group.run_id.as_str()),
         ("contact", from_contact.run_id.as_str()),
         ("scheduled", scheduled.run_id.as_str()),
-        ("digest", digest.as_str()),
-        ("pip", pip.as_str()),
     ] {
         let mut run = lease_canary_run(&pool, TEST_RUNNER, run_id)
             .await
@@ -181,9 +143,7 @@ async fn connector_tools_reach_only_runs_the_owner_alone_can_read() {
             ("person", json!("owner_private"), read.clone()),
             ("group", json!("shared"), Vec::new()),
             ("contact", json!("shared"), Vec::new()),
-            ("scheduled", json!("owner_private"), read.clone()),
-            ("digest", json!("owner_private"), read),
-            ("pip", json!("shared"), Vec::new()),
+            ("scheduled", json!("owner_private"), read),
         ]
     );
 

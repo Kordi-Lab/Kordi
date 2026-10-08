@@ -253,3 +253,25 @@ fn connector_lease_parsing_drops_only_bad_entries() {
     assert!(parse_lease_descriptors(json!({"gmail_search": {}})).is_empty());
     assert!(parse_lease_descriptors(Value::Null).is_empty());
 }
+
+#[test]
+fn approval_map_skips_built_in_names_bad_shapes_and_read_tools() {
+    let mut shadow = descriptor("gmail_send", ConnectorToolGroup::Read);
+    shadow.provider = "slack".into();
+    let descriptors = vec![
+        descriptor("bash", ConnectorToolGroup::Act),
+        descriptor("web_fetch", ConnectorToolGroup::Act),
+        descriptor("connectors_request_connect", ConnectorToolGroup::Act),
+        descriptor("gmail.send", ConnectorToolGroup::Act),
+        descriptor("gmail_search", ConnectorToolGroup::Read),
+        descriptor("gmail_send", ConnectorToolGroup::Act),
+        shadow,
+    ];
+    let map = act_tool_providers(&descriptors);
+    assert_eq!(map.len(), 1, "{map:?}");
+    assert_eq!(map["gmail_send"], "gmail");
+    assert!(is_reserved_tool_name("bash") && is_reserved_tool_name("read"));
+    assert!(!is_reserved_tool_name("gmail_send"));
+    assert!(lease_tool(&descriptors, "bash").is_none());
+    assert!(lease_tool(&descriptors, "gmail_send").is_some());
+}

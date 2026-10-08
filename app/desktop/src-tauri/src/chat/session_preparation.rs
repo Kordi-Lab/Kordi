@@ -203,17 +203,22 @@ pub(super) async fn prepare_desktop_session_for_send(
         Some(lease) => owner_request
             .then(|| connector_tools_runtime::build(lease))
             .flatten(),
-        None => (owner_local && context_session_id.is_none())
-            .then(connector_tools_runtime::owner_local),
+        None => {
+            (owner_local && context_session_id.is_none()).then(connector_tools_runtime::owner_local)
+        }
     });
     // Only the lease's `act` tools may ask the person; the rest stay refused.
-    let act_tools = cloud_lease
-        .iter()
-        .flat_map(|lease| lease.connector_tools.iter().flatten())
-        .filter(|descriptor| descriptor.is_act())
-        .map(|descriptor| (descriptor.name.clone(), descriptor.provider.clone()))
-        .collect();
-    runtime.set_tool_approval_hook(super::tool_approval::hook(act_tools));
+    // The card names the conversation and agent of this turn.
+    let act_tools = super::tool_approval::act_tools_for_lease(cloud_lease.as_ref());
+    let approval_hook = (!act_tools.is_empty())
+        .then(|| super::tool_approval::ApprovalContext {
+            session_id: prompt_session_id.clone(),
+            conversation_title: crate::canonical_sessions::session_title(&prompt_session_id),
+            agent_name: Some(runtime.agent_profile().label)
+                .filter(|label| !label.trim().is_empty()),
+        })
+        .and_then(|context| super::tool_approval::hook(act_tools, context));
+    runtime.set_tool_approval_hook(approval_hook);
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

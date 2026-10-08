@@ -181,10 +181,42 @@ async fn upgrade_from_115_adds_provider_state_and_dedupes_events() {
 async fn upgrade_from_116_labels_existing_runs_as_shared() {
     let pool = fixture(116).await;
     seed_runs(&pool).await;
+    // Unfinished runs whose tools were delivered before the audience existed.
+    let tools = r#"[{"connectorId":"conn_1","provider":"gmail","name":"gmail_search","group":"read","description":"Search mail.","inputSchema":{}}]"#;
+    for (id, status) in [
+        ("queued-run", "queued"),
+        ("leased-run", "leased"),
+        ("done-run", "completed"),
+    ] {
+        query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at,connector_tools_json,connector_tools_delivered_at) VALUES($1,$1,$1,'session:direct-person:fixture-owner:fixture-peer','fixture-owner','fixture-owner',$2,'Request','2026-01-03T00:00:00Z','2026-01-03T00:00:00Z',$3::jsonb,now())")
+            .bind(id)
+            .bind(status)
+            .bind(tools)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
     let before = historical_runs(&pool).await;
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
     assert_eq!(historical_runs(&pool).await, before);
+    let delivered: Vec<(String, i32, bool)> = query_as(
+        "SELECT run_id, jsonb_array_length(connector_tools_json), \
+         connector_tools_delivered_at IS NOT NULL FROM cloud_agent_fallback_runs \
+         WHERE run_id IN ('queued-run','leased-run','done-run') ORDER BY run_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        delivered,
+        [
+            ("done-run".to_string(), 1, true),
+            ("leased-run".to_string(), 0, false),
+            ("queued-run".to_string(), 0, false),
+        ],
+        "unfinished runs give up tools delivered before the audience existed"
+    );
     let rows: Vec<(String,)> =
         query_as("SELECT connector_audience FROM cloud_agent_fallback_runs ORDER BY run_id")
             .fetch_all(&pool)

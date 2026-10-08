@@ -40,11 +40,24 @@ export function parseConnectorsSettingsLink(href: string): ConnectorsSettingsTar
 
 export type ConnectorsLinkMatch = { href: string; label: string; matchedLength: number };
 
-/** `[label](kordi://settings/connectors?...)` or a bare link at the start of `value`. */
+/** Longest link label from the model that is shown; longer ones are cut. */
+export const CONNECTORS_LINK_LABEL_MAX = 80;
+
+function boundedLabel(label: string) {
+  const characters = Array.from(label.trim());
+  if (characters.length <= CONNECTORS_LINK_LABEL_MAX) return characters.join('');
+  return `${characters.slice(0, CONNECTORS_LINK_LABEL_MAX - 1).join('')}…`;
+}
+
+/**
+ * `[label](kordi://settings/connectors?...)` or a bare link at the start of
+ * `value`. A label from the model is capped at
+ * `CONNECTORS_LINK_LABEL_MAX` characters.
+ */
 export function connectorsSettingsLinkPrefix(value: string): ConnectorsLinkMatch | null {
   const markdown = value.match(/^\[([^\]\n]{1,200})\]\((kordi:\/\/settings\/connectors[^\s)]*)\)/i);
   if (markdown && parseConnectorsSettingsLink(markdown[2])) {
-    return { href: markdown[2], label: markdown[1], matchedLength: markdown[0].length };
+    return { href: markdown[2], label: boundedLabel(markdown[1]), matchedLength: markdown[0].length };
   }
   const bare = value.match(bareConnectorsLinkPattern)?.[0]?.replace(/[.,!?;:]+$/, '');
   if (bare && parseConnectorsSettingsLink(bare)) {
