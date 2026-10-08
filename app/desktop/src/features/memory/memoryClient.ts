@@ -1,3 +1,4 @@
+import { createAccountMemoryClient } from './accountMemoryClient';
 import {
   validateLessonText,
   type MemoryLesson,
@@ -141,17 +142,36 @@ export function createPreviewMemoryClient(options: PreviewMemoryClientOptions = 
   };
 }
 
+function isPreviewFlag(flag: string | undefined): boolean {
+  return flag === '1' || flag === 'true';
+}
+
 export function memoryClientForFlag(flag: string | undefined): MemoryClient | null {
-  return flag === '1' || flag === 'true' ? createPreviewMemoryClient() : null;
+  return isPreviewFlag(flag) ? createPreviewMemoryClient() : null;
+}
+
+function memoryPreviewFlag(): string | undefined {
+  // `import.meta.env` is undefined outside Vite (for example under tsx tests).
+  const flag: unknown = import.meta.env?.VITE_KORDI_MEMORY_PREVIEW;
+  return typeof flag === 'string' ? flag : undefined;
+}
+
+let environmentMemoryClient: MemoryClient | null = null;
+
+/**
+ * Returns the memory client for this build: the preview client when the
+ * preview flag is set, otherwise the client backed by the account memory routes.
+ * It is created once per app load so its state survives closing the dialog.
+ */
+export function memoryClientForEnvironment(): MemoryClient {
+  environmentMemoryClient ??= memoryClientForFlag(memoryPreviewFlag()) ?? createAccountMemoryClient();
+  return environmentMemoryClient;
 }
 
 /**
- * Returns the memory client for this build, or null to hide the section.
- * A client backed by the account memory routes replaces the preview once the
- * desktop exposes memory commands.
+ * The Memory section shows when the server advertises memory routes through
+ * `memoryVersion`, or always when the preview flag is set.
  */
-export function memoryClientForEnvironment(): MemoryClient | null {
-  // `import.meta.env` is undefined outside Vite (for example under tsx tests).
-  const flag: unknown = import.meta.env?.VITE_KORDI_MEMORY_PREVIEW;
-  return memoryClientForFlag(typeof flag === 'string' ? flag : undefined);
+export function memorySectionAvailable(memoryVersion: number | null | undefined): boolean {
+  return Boolean(memoryVersion) || isPreviewFlag(memoryPreviewFlag());
 }

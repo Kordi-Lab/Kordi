@@ -28,7 +28,7 @@ import {
   useCloudAccountEmailVerification,
   type CloudAccountEmailVerificationActions,
 } from './useCloudAccountEmailVerification';
-import { cloudAuthCapabilityDiscoveryEnabled, defaultCloudOAuthProviders } from './cloudAuthReleasePolicy';
+import { useCloudCapabilities } from './useCloudCapabilities';
 import { publishPresenceOffline, useCloudPresencePublisher } from './useCloudPresencePublisher';
 import {
   CLOUD_SESSION_SIGNED_OUT_EVENT,
@@ -48,6 +48,8 @@ export type UseCloudSessionResult = CloudAccountEmailVerificationActions & {
   account: CloudAccount | null;
   error: CloudAuthError | null;
   oauthProviders: CloudOAuthProvider[];
+  /** Memory route version the server advertises; null when it offers none. */
+  memoryVersion?: number | null;
   signIn(email: string, password: string): Promise<void>;
   requestSignupCode(this: void, email: string): Promise<CloudSignupCodeChallenge>;
   signUp(input: CloudSignupInput): Promise<void>;
@@ -118,7 +120,7 @@ export function useCloudSession({
   const [status, setStatus] = useState<CloudSessionStatus>(enabled ? 'loading' : 'signed-out');
   const [account, setAccount] = useState<CloudAccount | null>(null);
   const [error, setError] = useState<CloudAuthError | null>(null);
-  const [oauthProviders, setOAuthProviders] = useState<CloudOAuthProvider[]>(defaultCloudOAuthProviders);
+  const { oauthProviders, memoryVersion } = useCloudCapabilities(authClient, enabled);
   const mountedRef = useRef(true);
   const accountIdRef = useRef<string | null>(null);
   const accountRef = useRef<CloudAccount | null>(null);
@@ -153,26 +155,6 @@ export function useCloudSession({
       window.location.reload();
     }
   }, []);
-
-  useEffect(() => {
-    if (!enabled || !cloudAuthCapabilityDiscoveryEnabled()) return;
-    let cancelled = false;
-
-    void authClient.capabilities()
-      .then((capabilities) => {
-        if (cancelled) return;
-        setOAuthProviders(capabilities.oauthProviders.filter(
-          (provider): provider is CloudOAuthProvider => provider === 'google' || provider === 'github',
-        ));
-      })
-      .catch(() => {
-        if (!cancelled) setOAuthProviders(defaultCloudOAuthProviders());
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authClient, enabled]);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
@@ -479,6 +461,7 @@ export function useCloudSession({
     account,
     error,
     oauthProviders,
+    memoryVersion,
     signIn,
     signUp,
     requestSignupCode,

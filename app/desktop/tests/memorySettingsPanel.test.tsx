@@ -9,6 +9,7 @@ import {
   createPreviewMemoryClient,
   memoryClientForEnvironment,
   memoryClientForFlag,
+  memorySectionAvailable,
   type MemoryClient,
 } from '../src/features/memory/memoryClient';
 import {
@@ -116,12 +117,27 @@ test('preview memories are short, varied, and free of em-dashes', async () => {
   }
 });
 
-test('memory stays hidden unless the preview flag is set', () => {
+test('the preview client only comes from the preview flag', () => {
   assert.equal(memoryClientForFlag(undefined), null);
   assert.equal(memoryClientForFlag('0'), null);
   assert.notEqual(memoryClientForFlag('1'), null);
   assert.notEqual(memoryClientForFlag('true'), null);
-  assert.equal(memoryClientForEnvironment(), null);
+});
+
+test('without the preview flag the environment uses the account memory client', async () => {
+  const client = memoryClientForEnvironment();
+  assert.notEqual(client, null);
+  assert.equal(memoryClientForEnvironment(), client);
+  // The account client reads no sample data: signed out outside the native shell it lists nothing.
+  assert.deepEqual(await client.listLessons(), []);
+  assert.deepEqual(await client.syncState(), { accountLabel: '', lastSyncedAt: null });
+});
+
+test('the Memory section needs the server memory version', () => {
+  assert.equal(memorySectionAvailable(undefined), false);
+  assert.equal(memorySectionAvailable(null), false);
+  assert.equal(memorySectionAvailable(0), false);
+  assert.equal(memorySectionAvailable(1), true);
 });
 
 async function flush() {

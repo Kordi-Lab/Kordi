@@ -116,8 +116,8 @@ export type CloudOAuthProvider = 'google' | 'github';
 export type CloudAuthCapabilities = {
   password: boolean;
   oauthProviders: CloudOAuthProvider[];
+  memoryVersion?: number;
 };
-
 
 export type CloudOAuthStartResponse = {
   authUrl: string;
