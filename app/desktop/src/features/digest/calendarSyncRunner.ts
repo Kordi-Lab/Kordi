@@ -37,6 +37,22 @@ export const CALENDAR_SYNC_INTERVAL_MS = 15 * 60_000;
 export const CALENDAR_SYNC_DEBOUNCE_MS = 1_500;
 export const CALENDAR_SYNC_FOREGROUND_MIN_MS = 30_000;
 const MAX_CALENDARS = 50;
+const MAX_SYNC_ITEMS = 500;
+const MAX_SYNC_BYTES = 512 * 1024;
+
+/** Leave room for the request envelope below the API body limit. */
+function syncBatches<T>(items: T[]): T[][] {
+  const batches: T[][] = [];
+  let batch: T[] = [], bytes = 0;
+  const encoder = new TextEncoder();
+  for (const item of items) {
+    const size = encoder.encode(JSON.stringify(item)).length + 1;
+    if (batch.length && (batch.length === MAX_SYNC_ITEMS || bytes + size > MAX_SYNC_BYTES)) { batches.push(batch); batch = []; bytes = 0; }
+    batch.push(item); bytes += size;
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
+}
 
 export const defaultCalendarSyncDeps: CalendarSyncDeps = {
   isNative: isNativeDesktopShell,
@@ -76,22 +92,26 @@ export function calendarSyncStoreFor(accountId: string) {
   return store;
 }
 
-/** One full reconciliation. Device writes happen first so their identities can be recorded server-side in the same batch. */
-export async function syncDeviceCalendarOnce(accountId: string, deps: CalendarSyncDeps): Promise<{ calendars: CalendarConnection[]; permission: DeviceCalendarAccess; syncedCount: number; changed: boolean }> {
+/** One full reconciliation. Device writes happen first so their identities can be recorded server-side during reconciliation. */
+export async function syncDeviceCalendarOnce(accountId: string, deps: CalendarSyncDeps, onCalendars?: (calendars: CalendarConnection[], permission: DeviceCalendarAccess) => void): Promise<{ calendars: CalendarConnection[]; permission: DeviceCalendarAccess; syncedCount: number; changed: boolean }> {
   let permission = await deps.access(false);
   if (permission === 'notDetermined') permission = await deps.access(true);
   if (permission !== 'granted') throw new CalendarPermissionError(permission);
   const calendars = (await deps.calendars()).slice(0, MAX_CALENDARS);
+  onCalendars?.(calendars, permission);
   const preferences = deps.preferences(accountId);
   const now = new Date(deps.now());
   const { from, to } = syncWindow(now);
-  const device = calendars.length ? await deps.readEvents(calendars.map(calendar => calendar.id), from, to) : [];
+  const included = calendars.filter(calendar => !preferences.excludedCalendarIds.includes(calendar.id));
+  const device = included.length ? await deps.readEvents(included.map(calendar => calendar.id), from, to) : [];
   const server = await deps.serverEvents(accountId);
   const baseline = deps.readBaseline(accountId);
   const installationId = deps.installationId(accountId);
   const plan = planCalendarSync({ device, server, baseline, installationId, excludedCalendarIds: preferences.excludedCalendarIds, readOnlyCalendarIds: calendars.filter(calendar => calendar.allowsModifications === false).map(calendar => calendar.id), outbound: { enabled: preferences.outbound, calendarId: preferences.targetCalendarId }, now });
   const deviceByUid = new Map(device.map(item => [item.externalUid, item]));
-  const next: SyncBaseline = { ...plan.baseline };
+  // Keep unsettled revisions across partial failures, especially pending deletions.
+  const pendingIds = new Set([...plan.upserts, ...plan.deletes, ...plan.deviceWrites.map(write => write.event)].map(event => event.id));
+  const next: SyncBaseline = { ...Object.fromEntries(Object.entries(baseline).filter(([, entry]) => pendingIds.has(entry.serverId))), ...plan.baseline };
   const settle = (event: CalendarEvent, calendarId?: string, uid = plan.deviceUidByServerId[event.id] ?? event.externalUid) => {
     if (!uid?.startsWith('device:')) return;
     next[uid] = { serverId: event.id, fingerprint: contentFingerprint(event), revision: event.revision, calendarId: calendarId ?? deviceByUid.get(uid)?.calendarId ?? next[uid]?.calendarId };
@@ -102,11 +122,11 @@ export async function syncDeviceCalendarOnce(accountId: string, deps: CalendarSy
   }
   let changed = false;
   const writes: DeviceWrite[] = [...plan.deviceWrites];
-  if (plan.claims.length) {
+  for (const claims of syncBatches(plan.claims)) {
     // Only the device whose claim lands (the revision check) copies the event, so two devices never both write it.
-    const claimed = await deps.serverSync(accountId, { upserts: plan.claims.map(event => ({ ...event, externalUid: CLAIM_UID_PREFIX + installationId })), deletes: [] });
+    const claimed = await deps.serverSync(accountId, { upserts: claims.map(event => ({ ...event, externalUid: CLAIM_UID_PREFIX + installationId })), deletes: [] });
     for (const won of claimed.saved) writes.push({ event: won, calendarId: preferences.targetCalendarId ?? null });
-    changed = claimed.saved.length > 0;
+    changed = changed || claimed.saved.length > 0;
   }
   const upserts = [...plan.upserts];
   for (const write of writes) {
@@ -126,17 +146,27 @@ export async function syncDeviceCalendarOnce(accountId: string, deps: CalendarSy
   // One row per id per batch: a later upsert for the same id wins, and an id that is being written is never also deleted.
   const uniqueUpserts = [...new Map(upserts.map(event => [event.id, event])).values()];
   const upsertIds = new Set(uniqueUpserts.map(event => event.id));
-  const deletes = plan.deletes.filter((event, index, all) => !upsertIds.has(event.id) && all.findIndex(other => other.id === event.id) === index);
-  if (uniqueUpserts.length || deletes.length) {
-    const result = await deps.serverSync(accountId, { upserts: uniqueUpserts, deletes: deletes.map(event => ({ id: event.id, revision: event.revision })) });
-    for (const saved of result.saved) settle(saved);
-    for (const event of deletes) if (result.deleted.includes(event.id) && event.externalUid) delete next[plan.deviceUidByServerId[event.id] ?? event.externalUid];
-    for (const event of deletes) if (!event.externalUid) for (const [uid, entry] of Object.entries(next)) if (entry.serverId === event.id) delete next[uid];
-    changed = changed || result.saved.length > 0 || result.deleted.length > 0;
-    if (result.skipped.length) problems.push('Your Kordi calendar is full. Older events were not synced.');
+  const deleteIds = new Set<string>();
+  const deletes = plan.deletes.filter(event => !upsertIds.has(event.id) && !deleteIds.has(event.id) && deleteIds.add(event.id));
+  // Release capacity first. Persist every acknowledged batch before starting the next.
+  const batches = [
+    ...syncBatches(deletes).map(deletes => ({ upserts: [] as CalendarEvent[], deletes })),
+    ...syncBatches(uniqueUpserts).map(upserts => ({ upserts, deletes: [] as CalendarEvent[] })),
+  ];
+  try {
+    for (const batch of batches) {
+      const result = await deps.serverSync(accountId, { upserts: batch.upserts, deletes: batch.deletes.map(event => ({ id: event.id, revision: event.revision })) });
+      for (const saved of result.saved) settle(saved);
+      const removed = new Set(result.deleted);
+      for (const [uid, entry] of Object.entries(next)) if (removed.has(entry.serverId)) delete next[uid];
+      changed = changed || result.saved.length > 0 || result.deleted.length > 0;
+      if (result.skipped.length) problems.push('Your Kordi calendar is full. Some events were not synced. Turn off a calendar in Calendar settings to free space.');
+      deps.writeBaseline(accountId, { ...next });
+    }
+  } finally {
+    if (changed) { try { await deps.afterServerChange(accountId); } catch { /* The digest route re-reads on its own poll. */ } }
   }
   deps.writeBaseline(accountId, next);
-  if (changed) { try { await deps.afterServerChange(accountId); } catch { /* The digest route re-reads on its own poll. */ } }
   if (problems.length) throw new Error(problems[0]);
   return { calendars, permission, syncedCount: Object.keys(next).length, changed };
 }
@@ -152,7 +182,9 @@ export function scheduleCalendarSync(accountId: string, deps: CalendarSyncDeps =
     running = true;
     store.publish({ phase: 'syncing', error: null });
     try {
-      const result = await syncDeviceCalendarOnce(accountId, deps);
+      const result = await syncDeviceCalendarOnce(accountId, deps, (calendars, permission) => {
+        if (!stopped) store.publish({ calendars, permission });
+      });
       if (!stopped) store.publish({ phase: 'synced', permission: result.permission, calendars: result.calendars, lastSyncedAt: new Date(deps.now()).toISOString(), syncedCount: result.syncedCount, error: null });
     } catch (error) {
       if (stopped) return;

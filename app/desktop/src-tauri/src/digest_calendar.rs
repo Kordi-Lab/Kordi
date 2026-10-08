@@ -325,8 +325,8 @@ pub(crate) mod native {
             )
         };
         let events = unsafe { store.eventsMatchingPredicate(&predicate) };
-        if events.len() > 1000 {
-            return Err("More than 1,000 events. Choose fewer calendars.".into());
+        if events.len() > 10_000 {
+            return Err("More than 10,000 events in the sync window. Turn off a calendar in Calendar settings.".into());
         }
         events.iter().map(|e| map_event(&e)).collect()
     }
