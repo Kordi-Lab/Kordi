@@ -127,9 +127,11 @@ export function AppDialog({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (dismissDisabledRef.current) return;
+        // Consume Escape even while dismissal is blocked so it cannot close
+        // an outer surface (or exit fullscreen) behind a busy dialog.
         event.preventDefault();
         event.stopPropagation();
+        if (dismissDisabledRef.current) return;
         onDismissRef.current();
         return;
       }

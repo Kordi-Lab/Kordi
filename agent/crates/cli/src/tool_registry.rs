@@ -2,6 +2,8 @@ use kordi_tools::connector_tools::ConnectorToolsRuntime;
 use kordi_tools::{Tool, ToolMetadata, builtin_tools};
 use std::collections::{HashMap, HashSet};
 
+mod mac_local;
+
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub(crate) enum ToolSelectionPreference {
     #[default]

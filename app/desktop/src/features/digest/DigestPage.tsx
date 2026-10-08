@@ -235,7 +235,7 @@ function CalendarSettingsSheet({accountId,calendars,onClose}:{accountId:string;c
   const writable=calendars.filter(calendar=>calendar.allowsModifications!==false);
   return <Sheet title="Calendar settings" onClose={onClose}>
     <p>Every calendar on this Mac stays in sync with your private Kordi calendar automatically. Turn a calendar off to keep it out of Kordi.</p>
-    {calendars.length===0&&<p className="digest-meta">No device calendars were found yet. They appear here after the first sync.</p>}
+    {calendars.length===0&&<p className="digest-meta">No device calendars were found yet. They appear here when calendar access is available.</p>}
     {calendars.map(calendar=><label className="digest-choice" key={calendar.id}><input type="checkbox" checked={!excluded.has(calendar.id)} onChange={e=>update({...preferences,excludedCalendarIds:e.target.checked?preferences.excludedCalendarIds.filter(id=>id!==calendar.id):[...preferences.excludedCalendarIds,calendar.id]})}/>{calendar.title}</label>)}
     <label className="digest-choice"><input type="checkbox" checked={preferences.outbound} onChange={e=>update({...preferences,outbound:e.target.checked})}/>Add events created in Kordi to my device calendar</label>
     {preferences.outbound&&<label>Add them to<select value={preferences.targetCalendarId??''} onChange={e=>update({...preferences,targetCalendarId:e.target.value||null})}><option value="">System default calendar</option>{writable.map(calendar=><option key={calendar.id} value={calendar.id}>{calendar.title}</option>)}</select></label>}

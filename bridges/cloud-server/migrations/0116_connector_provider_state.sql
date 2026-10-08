@@ -30,3 +30,7 @@ WHERE e.connector_id = keep.connector_id
 CREATE UNIQUE INDEX idx_cloud_connector_events_connector_external
     ON cloud_connector_events (connector_id, external_id)
     WHERE external_id IS NOT NULL;
+
+-- The callback learns the provider account before the grant is completed.
+ALTER TABLE cloud_connector_pending_grants
+    ADD COLUMN provider_account_id TEXT;

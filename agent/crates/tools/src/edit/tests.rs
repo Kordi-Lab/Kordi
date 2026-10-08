@@ -16,6 +16,7 @@ fn make_ctx(dir: &Path, execution_policy: crate::ExecutionPolicy) -> ToolContext
         session_observation: None,
         task_operator: None,
         schedule_task: None,
+        mac_local: None,
         execution_mode: crate::ToolExecutionMode::Interactive,
         connector_tools: None,
         request_approval: None,

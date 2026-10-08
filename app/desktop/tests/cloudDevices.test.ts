@@ -16,7 +16,7 @@ function readSource(relativePath: string): string {
 
 test('device settings keep session details concise while covering review and revocation', () => {
   const panel = readSource('features/cloud/CloudDevicesPanel.tsx');
-  const settings = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const settings = readSource('pages/cloudAccountSettingsNav.ts');
 
   assert.match(settings, /id: 'devices', label: 'Active sessions'/);
   assert.match(panel, /This device/);

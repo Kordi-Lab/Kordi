@@ -20,9 +20,11 @@ use super::delivery::LeaseHolder;
 use super::models::{
     AuditQuery, BrokerCallRequest, BrokerCallResponse, ConnectorAuditResponse,
     ConnectorListResponse, ConnectorResponse, ConnectorStatus, DisconnectResponse,
-    OAuthCallbackQuery, OAuthStartRequest, OAuthStartResponse, SetActRequest, SetAgentsRequest,
+    OAuthCallbackQuery, OAuthCompleteRequest, OAuthStartRequest, OAuthStartResponse, SetActRequest,
+    SetAgentsRequest,
 };
 use super::oauth::{self, StartError};
+use super::oauth_complete::{self, FinishError};
 use super::store;
 
 pub const BROKER_CALL_PATH: &str = "/internal/connectors/call";
@@ -33,6 +35,7 @@ const MAX_AUDIT_LIMIT: i64 = 200;
 pub fn routes(state: Arc<ServerState>) -> Router {
     let account_routes = Router::new()
         .route("/v1/cloud/connectors", get(list_connectors))
+        .route("/v1/cloud/connectors/oauth/complete", post(complete_oauth))
         .route("/v1/cloud/connectors/:id/oauth/start", post(start_oauth))
         .route("/v1/cloud/connectors/:id/act", post(set_act))
         .route("/v1/cloud/connectors/:id/agents", put(set_agents))
@@ -114,6 +117,7 @@ async fn start_oauth(
     .await
     {
         Ok(auth_url) => Json(OAuthStartResponse { auth_url }).into_response(),
+        Err(StartError::Unavailable) => connectors_unavailable(),
         Err(StartError::UnknownProvider) => error(
             "unknown_provider",
             "Unknown connector provider.",
@@ -135,6 +139,61 @@ async fn start_oauth(
             StatusCode::BAD_REQUEST,
         ),
         Err(StartError::Database(err)) => server_error("start connector OAuth", err),
+    }
+}
+
+fn connectors_unavailable() -> Response {
+    error(
+        "connectors_unavailable",
+        "Connectors are not available on this server.",
+        StatusCode::SERVICE_UNAVAILABLE,
+    )
+}
+
+/// Applies a grant parked by the OAuth callback, for the signed-in account
+/// that started it.
+async fn complete_oauth(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Json(input): Json<OAuthCompleteRequest>,
+) -> Response {
+    let pool = state.db_pool();
+    let finished = oauth_complete::finish_grant(
+        pool,
+        state.connectors(),
+        &session.account_id,
+        &input.completion_code,
+    )
+    .await;
+    let record = match finished {
+        Ok(record) => record,
+        Err(FinishError::Unavailable) => return connectors_unavailable(),
+        Err(FinishError::NotFound) => {
+            return error(
+                "connector_grant_not_found",
+                "This connection request is unknown or was already used.",
+                StatusCode::NOT_FOUND,
+            )
+        }
+        Err(FinishError::Mismatch) => {
+            return error(
+                "connector_grant_mismatch",
+                "This connection was started by another account.",
+                StatusCode::FORBIDDEN,
+            )
+        }
+        Err(FinishError::Expired) => {
+            return error(
+                "connector_grant_expired",
+                "This connection request expired. Connect again.",
+                StatusCode::GONE,
+            )
+        }
+        Err(FinishError::Database(err)) => return server_error("complete connector grant", err),
+    };
+    match store::summary_for(pool, record).await {
+        Ok(connector) => Json(ConnectorResponse { connector }).into_response(),
+        Err(err) => server_error("load connector summary", err),
     }
 }
 
@@ -165,7 +224,7 @@ async fn oauth_callback(
     let (status, message) = match &outcome.result {
         Ok(_) => (
             StatusCode::OK,
-            "Connected. You can close this window and return to Kordi.".to_string(),
+            "Return to Kordi to finish connecting.".to_string(),
         ),
         Err(err) => (StatusCode::BAD_REQUEST, err.message.clone()),
     };
@@ -321,12 +380,12 @@ async fn list_audit(
         .clamp(1, MAX_AUDIT_LIMIT);
     let before = match params.before.as_deref().map(str::trim) {
         None | Some("") => None,
-        Some(raw) => match chrono::DateTime::parse_from_rfc3339(raw) {
-            Ok(value) => Some(value.with_timezone(&chrono::Utc)),
-            Err(_) => {
+        Some(raw) => match store::decode_audit_cursor(raw) {
+            Some(cursor) => Some(cursor),
+            None => {
                 return error(
                     "invalid_cursor",
-                    "before must be an RFC 3339 timestamp.",
+                    "before must be a nextBefore value from an earlier page.",
                     StatusCode::BAD_REQUEST,
                 )
             }
@@ -335,8 +394,9 @@ async fn list_audit(
     match store::list_audit(pool, &connector_id, limit, before).await {
         Ok(entries) => {
             let next_before = (entries.len() as i64 == limit)
-                .then(|| entries.last().map(|entry| entry.created_at.clone()))
-                .flatten();
+                .then(|| entries.last())
+                .flatten()
+                .map(|entry| store::encode_audit_cursor(&entry.created_at, &entry.audit_id));
             Json(ConnectorAuditResponse {
                 entries,
                 next_before,
@@ -367,11 +427,8 @@ pub fn broker_status(response: &BrokerCallResponse) -> StatusCode {
     match response.error_code() {
         None => StatusCode::OK,
         Some(codes::INVALID_REQUEST) | Some(codes::UNKNOWN_TOOL) => StatusCode::BAD_REQUEST,
-        Some(codes::LEASE_INVALID) | Some(codes::NOT_ON_LEASE) => StatusCode::FORBIDDEN,
+        Some(code) if codes::FORBIDDEN.contains(&code) => StatusCode::FORBIDDEN,
         Some(codes::NOT_FOUND) => StatusCode::NOT_FOUND,
-        Some(codes::AGENT_NOT_GRANTED)
-        | Some(codes::ACT_DISABLED)
-        | Some(codes::BLOCKED_BACKGROUND) => StatusCode::FORBIDDEN,
         Some(codes::NOT_CONNECTED) => StatusCode::CONFLICT,
         Some(codes::UNAVAILABLE) => StatusCode::SERVICE_UNAVAILABLE,
         Some(codes::PROVIDER_FAILED) => StatusCode::BAD_GATEWAY,

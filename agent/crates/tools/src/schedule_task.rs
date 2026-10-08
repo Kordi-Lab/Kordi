@@ -199,6 +199,7 @@ mod tests {
             session_observation: None,
             task_operator: None,
             schedule_task: runtime,
+            mac_local: None,
             execution_mode: ToolExecutionMode::Interactive,
             connector_tools: None,
             request_approval: None,

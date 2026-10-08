@@ -62,7 +62,11 @@ pub(super) async fn connect_service(
         None,
     )
     .await;
-    outcome.result.unwrap().connector_id
+    let code = outcome.result.unwrap().completion_code;
+    oauth_complete::finish_grant(pool, runtime, account_id, &code)
+        .await
+        .unwrap()
+        .connector_id
 }
 
 pub(super) fn unique_number() -> u64 {

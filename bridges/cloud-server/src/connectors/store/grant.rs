@@ -52,6 +52,37 @@ where
     Ok(())
 }
 
+/// Stores a refreshed credential for a live connector. Update-only: a
+/// connector disconnected while the refresh was in flight has no secret row
+/// and is revoked, so nothing is written. Returns whether a row changed.
+pub async fn update_refreshed_secret<'e, E>(
+    executor: E,
+    connector_id: &str,
+    sealed: &SealedSecret,
+) -> StoreResult<bool>
+where
+    E: Executor<'e, Database = Postgres>,
+{
+    let updated = query(
+        "UPDATE cloud_connector_secrets SET \
+           ciphertext = $2, nonce = $3, key_version = $4, \
+           refresh_ciphertext = COALESCE($5, refresh_ciphertext), \
+           expires_at = $6, updated_at = now() \
+         WHERE connector_id = $1 AND EXISTS ( \
+           SELECT 1 FROM cloud_connectors WHERE connector_id = $1 AND status <> 'revoked')",
+    )
+    .bind(connector_id)
+    .bind(&sealed.ciphertext)
+    .bind(&sealed.nonce)
+    .bind(sealed.key_version)
+    .bind(sealed.refresh_ciphertext.as_deref())
+    .bind(sealed.expires_at)
+    .execute(executor)
+    .await?
+    .rows_affected();
+    Ok(updated > 0)
+}
+
 /// Appends `added` to `existing`, keeping order and dropping duplicates.
 pub fn merge_scopes(existing: &[String], added: &[String]) -> Vec<String> {
     let mut merged = existing.to_vec();
@@ -77,13 +108,20 @@ pub struct GrantUpdate<'a> {
 
 /// Records a completed OAuth grant: creates or updates the live connector,
 /// stores the sealed secret, and writes the `oauth.grant` audit row, all in
-/// one transaction.
+/// one transaction. An advisory lock on (account, provider) serializes
+/// racing completions, so the second one updates the connector the first
+/// created instead of hitting the one-live-connector index.
 pub async fn apply_grant(
     pool: &PgPool,
     grant: GrantUpdate<'_>,
     sealed: &SealedSecret,
 ) -> StoreResult<ConnectorRecord> {
     let mut tx = pool.begin().await?;
+    query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))")
+        .bind(grant.account_id)
+        .bind(grant.provider)
+        .execute(&mut *tx)
+        .await?;
     let existing: Option<ConnectorRow> = query_as(&format!(
         "SELECT {CONNECTOR_COLUMNS} FROM cloud_connectors \
          WHERE account_id = $1 AND provider = $2 AND status <> 'revoked' FOR UPDATE"

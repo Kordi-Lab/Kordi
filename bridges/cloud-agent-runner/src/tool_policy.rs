@@ -66,9 +66,10 @@ pub fn decide_runner_tool(request: &RunnerToolRequest<'_>) -> RunnerToolDecision
             RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
         }
         // Connector tools (`gmail_search`, ...): only names the lease lists
-        // that also pass the name shape check.
-        name if kordi_tools::connector_tools::lease_tool(request.connector_tools, name)
-            .is_some() =>
+        // that pass the name shape check and are not a built-in cloud tool.
+        name if !crate::connectors::is_builtin_tool(name)
+            && kordi_tools::connector_tools::lease_tool(request.connector_tools, name)
+                .is_some() =>
         {
             RunnerToolDecision::AllowConnector
         }

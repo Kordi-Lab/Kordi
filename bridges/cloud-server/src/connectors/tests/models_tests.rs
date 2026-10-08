@@ -52,12 +52,12 @@ fn no_connector_response_type_has_a_secret_shaped_key() {
             .unwrap(),
         ),
         (
-            "OAuthCompletedFragment",
-            serde_json::to_value(OAuthCompletedFragment {
-                connector_id: "conn_sample".into(),
+            "OAuthPendingFragment",
+            serde_json::to_value(OAuthPendingFragment {
+                completion_code: "connector_completion_x".into(),
                 provider: "github".into(),
                 grant: ConnectorToolGroup::Act,
-                status: ConnectorStatus::Connected,
+                status: PENDING_GRANT_STATUS,
             })
             .unwrap(),
         ),
@@ -180,7 +180,7 @@ fn background_runs_never_receive_act_tool_descriptors() {
     let stub = StubConnectorProvider::default();
     let connector = record(ConnectorStatus::Connected, true);
     let names = |trigger| {
-        broker::tools_for_trigger(&connector, &stub, trigger)
+        crate::connectors::delivery::tools_for_trigger(&connector, &stub, trigger)
             .into_iter()
             .map(|tool| tool.name)
             .collect::<Vec<_>>()

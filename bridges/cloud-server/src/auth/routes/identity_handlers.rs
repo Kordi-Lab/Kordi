@@ -20,7 +20,9 @@ type OAuthStateRow = (
     Option<String>,
 );
 
-pub(super) async fn auth_capabilities() -> Json<AuthCapabilitiesResponse> {
+pub(super) async fn auth_capabilities(
+    State(state): State<Arc<ServerState>>,
+) -> Json<AuthCapabilitiesResponse> {
     Json(AuthCapabilitiesResponse {
         password: true,
         oauth_providers: OAuthProvider::ALL
@@ -28,7 +30,13 @@ pub(super) async fn auth_capabilities() -> Json<AuthCapabilitiesResponse> {
             .filter(|provider| oauth_provider_is_configured(*provider))
             .map(OAuthProvider::id)
             .collect(),
-        connectors_version: Some(crate::connectors::CONNECTORS_VERSION),
+        // Without the provider-auth cipher nothing can be connected, so the
+        // section stays hidden.
+        connectors_version: state
+            .connectors()
+            .cipher
+            .is_some()
+            .then_some(crate::connectors::CONNECTORS_VERSION),
     })
 }
 

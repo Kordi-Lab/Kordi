@@ -102,3 +102,26 @@ CREATE TABLE cloud_connector_oauth_states (
 
 CREATE INDEX idx_cloud_connector_oauth_states_expires
     ON cloud_connector_oauth_states (expires_at);
+
+-- Tokens exchanged by the OAuth callback, parked until the account that
+-- started the grant completes it with a signed-in request. One-use; the
+-- credential columns use the cloud_connector_secrets layout and cipher.
+CREATE TABLE cloud_connector_pending_grants (
+    completion_code TEXT PRIMARY KEY,
+    state_id TEXT NOT NULL,
+    account_id TEXT NOT NULL REFERENCES cloud_accounts(account_id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    grant_kind TEXT NOT NULL CHECK (grant_kind IN ('read', 'act')),
+    read_scopes TEXT[] NOT NULL DEFAULT '{}',
+    act_scopes TEXT[] NOT NULL DEFAULT '{}',
+    ciphertext BYTEA NOT NULL,
+    nonce BYTEA NOT NULL,
+    key_version INTEGER NOT NULL,
+    refresh_ciphertext BYTEA,
+    token_expires_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_cloud_connector_pending_grants_expires
+    ON cloud_connector_pending_grants (expires_at);

@@ -24,7 +24,7 @@ fn lease_types_have_no_secret_shaped_key() {
 fn sample_lease_tools() -> Vec<LeaseConnectorTool> {
     let stub = StubConnectorProvider::default();
     let connector = record(ConnectorStatus::Connected, true);
-    broker::tools_for_trigger(&connector, &stub, RunTrigger::PersonStarted)
+    delivery::tools_for_trigger(&connector, &stub, RunTrigger::PersonStarted)
         .into_iter()
         .map(|descriptor| LeaseConnectorTool {
             connector_id: connector.connector_id.clone(),
@@ -114,47 +114,58 @@ fn run_triggers_fail_closed() {
     );
 }
 
+/// Non-test source files under `dir`, recursively, with paths relative to
+/// `root`. Test code inserts historical rows on purpose and is skipped.
+fn rust_sources(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy();
+        if name == "tests" || name.ends_with("tests.rs") || name.ends_with("_tests") {
+            continue;
+        }
+        if path.is_dir() {
+            rust_sources(root, &path, out);
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            let label = path.strip_prefix(root).unwrap().display().to_string();
+            out.push((label, std::fs::read_to_string(&path).unwrap()));
+        }
+    }
+}
+
 /// Every place that creates a run names its trigger explicitly. The column
-/// default is background, but a new insert must decide on purpose.
+/// default is background, but a new insert must decide on purpose. Walks the
+/// whole crate so a new insert site cannot be missed.
 #[test]
 fn every_run_insert_sets_its_trigger() {
-    let sources = [
-        (
-            "runs/claims.rs",
-            include_str!("../../cloud_agent_runtime/runs/claims.rs"),
-        ),
-        (
-            "runs/subsessions.rs",
-            include_str!("../../cloud_agent_runtime/runs/subsessions.rs"),
-        ),
-        (
-            "auth/subsessions/conversation.rs",
-            include_str!("../../auth/subsessions/conversation.rs"),
-        ),
-        ("digest/store.rs", include_str!("../../digest/store.rs")),
-        ("pip/store.rs", include_str!("../../pip/store.rs")),
-    ];
-    for (label, source) in sources {
-        let inserts = source
-            .matches("INSERT INTO cloud_agent_fallback_runs")
-            .count();
-        assert!(
-            inserts > 0,
-            "{label} no longer creates runs; update this test"
-        );
-        for (index, _) in source.match_indices("INSERT INTO cloud_agent_fallback_runs") {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut sources = Vec::new();
+    rust_sources(&root, &root, &mut sources);
+    let marker = "INSERT INTO cloud_agent_fallback_runs";
+    let mut sites = Vec::new();
+    for (label, source) in &sources {
+        for (index, _) in source.match_indices(marker) {
             let statement = &source[index..(index + 700).min(source.len())];
             let end = statement.find("VALUES").unwrap_or(statement.len());
             assert!(
                 statement[..end].contains("run_trigger"),
                 "{label} creates a run without naming run_trigger"
             );
+            sites.push(label.as_str());
         }
     }
-    let pip = include_str!("../../pip/store.rs");
-    let digest = include_str!("../../digest/store.rs");
-    assert!(pip.contains("$7, $7, 'background')"));
-    assert!(digest.contains("$6,$6,'background')"));
+    for expected in [
+        "cloud_agent_runtime/runs/claims.rs",
+        "pip/store.rs",
+        "digest/store.rs",
+    ] {
+        assert!(
+            sites.contains(&expected),
+            "{expected} no longer creates runs; update this test"
+        );
+    }
+    let read = |name: &str| std::fs::read_to_string(root.join(name)).unwrap();
+    assert!(read("pip/store.rs").contains("$7, $7, 'background')"));
+    assert!(read("digest/store.rs").contains("$6,$6,'background')"));
 }
 
 /// Leases of scheduled-task occurrences and PiP runs carry no `act` tool even
@@ -244,7 +255,9 @@ async fn lease_connector_tools_follow_the_run_trigger() {
             .collect::<Vec<_>>();
         if *label == "person" {
             assert_eq!(lease["run"]["trigger"], "person_started");
-            assert_eq!(groups, ["read", "act"], "{label}");
+            assert_eq!(groups, ["read"], "cloud leases wait for an approval flow");
+        } else if *label == "contact" {
+            assert!(groups.is_empty(), "a contact's run gets no connector tools");
         } else {
             assert_eq!(lease["run"]["trigger"], "background", "{label}");
             assert_eq!(groups, ["read"], "{label} must not receive act tools");
@@ -259,4 +272,57 @@ async fn lease_connector_tools_follow_the_run_trigger() {
     assert_eq!(stored.trigger, RunTrigger::Background);
     assert!(stored.has_tool(&connector_id, STUB_READ_TOOL));
     assert!(!stored.has_tool(&connector_id, STUB_ACT_TOOL));
+
+    // The broker refuses the contact's lease outright.
+    let refused = broker::call_connector_tool(
+        &pool,
+        &runtime,
+        &runner(),
+        &super::broker_tests::call(&from_contact.run_id, &connector_id, STUB_READ_TOOL),
+    )
+    .await;
+    assert_eq!(refused.error_code(), Some(codes::REQUESTER_NOT_OWNER));
+}
+
+/// The delivered set is fixed at the first lease: turning act on afterwards
+/// does not add act tools when the same run is leased again.
+#[tokio::test]
+async fn delivered_tools_are_fixed_at_first_lease() {
+    let Some(pool) = pool().await else { return };
+    let (runtime, _) = stub_runtime();
+    let (owner, _) = signed_in_account(&pool, "fixed_set").await;
+    let connector_id = connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Read).await;
+    store::replace_agent_grants(&pool, &connector_id, &[store::default_agent_id(&owner)])
+        .await
+        .unwrap();
+    let mac = super::broker_tests::desktop(&owner);
+    let (run_id, first) = super::broker_tests::lease_run_for(
+        &pool,
+        &runtime,
+        &owner,
+        &owner,
+        RunTrigger::PersonStarted,
+        &mac,
+    )
+    .await;
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].group, ConnectorToolGroup::Read);
+
+    connect_stub(&pool, &runtime, &owner, ConnectorToolGroup::Act).await;
+    let again = delivery::deliver_to_run(&pool, &runtime.providers, &run_id).await;
+    assert_eq!(again, first, "re-lease reuses the first delivered set");
+    let lease = delivery::load_active_lease(&pool, &run_id, &mac)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!lease.has_tool(&connector_id, STUB_ACT_TOOL));
+    let (delivered,): (bool,) = query_as(
+        "SELECT connector_tools_delivered_at IS NOT NULL FROM cloud_agent_fallback_runs \
+         WHERE run_id = $1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(delivered);
 }

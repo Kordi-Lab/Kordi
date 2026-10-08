@@ -6,18 +6,22 @@
 //! audits it, and returns only the result.
 
 use chrono::{DateTime, Utc};
+use sqlx_core::executor::Executor;
 use sqlx_core::query_as::query_as;
-use sqlx_postgres::PgPool;
+use sqlx_postgres::{PgPool, Postgres};
 
 use crate::cloud_agent_runtime::provider_auth::ProviderAuthCipher;
 
 use super::credentials::execute_with_retry;
-use super::delivery::{load_active_lease, warn_on_body_mismatch, ActiveLease, LeaseHolder};
+use super::delivery::{
+    holder_may_run, load_active_lease, warn_on_body_mismatch, ActiveLease, LeaseHolder,
+};
 use super::models::{
     allowed_tool_groups, AuditOutcome, BrokerCallRequest, BrokerCallResponse, ConnectorRecord,
     ConnectorStatus, ConnectorToolGroup, RunTrigger,
 };
-use super::providers::{ConnectorProvider, ConnectorSecret, ProviderError};
+use super::providers::{ConnectorSecret, ProviderError};
+use super::refresh::{refresh_if_needed, RefreshFailure};
 use super::store::{self, NewAuditEntry, SealedSecret};
 use super::ConnectorRuntime;
 
@@ -103,19 +107,23 @@ type SecretRow = (
 
 /// The only function that reads `cloud_connector_secrets`.
 ///
-/// Callers are limited to this broker and to `connectors::oauth` (provider
-/// revoke on disconnect). Do not add other readers: every other module must
-/// go through the broker so tokens never leave the server.
-pub(super) async fn read_sealed_secret(
-    pool: &PgPool,
+/// Callers are limited to this broker, its refresh step
+/// (`connectors::refresh`), and `connectors::oauth` (provider revoke on
+/// disconnect). Do not add other readers: every other module must go through
+/// the broker so tokens never leave the server.
+pub(super) async fn read_sealed_secret<'e, E>(
+    executor: E,
     connector_id: &str,
-) -> Result<Option<SealedSecret>, sqlx_core::Error> {
+) -> Result<Option<SealedSecret>, sqlx_core::Error>
+where
+    E: Executor<'e, Database = Postgres>,
+{
     let row: Option<SecretRow> = query_as(
         "SELECT ciphertext, nonce, key_version, refresh_ciphertext, expires_at \
          FROM cloud_connector_secrets WHERE connector_id = $1",
     )
     .bind(connector_id)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await?;
     Ok(row.map(
         |(ciphertext, nonce, key_version, refresh_ciphertext, expires_at)| SealedSecret {
@@ -151,9 +159,22 @@ pub mod codes {
     pub const NOT_ON_LEASE: &str = "tool_not_on_lease";
     pub const ACT_DISABLED: &str = "act_disabled";
     pub const BLOCKED_BACKGROUND: &str = "blocked_background";
+    pub const REQUESTER_NOT_OWNER: &str = "requester_not_owner";
+    pub const ACT_REQUIRES_DESKTOP: &str = "act_requires_desktop";
     pub const UNAVAILABLE: &str = "connector_unavailable";
     pub const PROVIDER_FAILED: &str = "provider_failed";
     pub const SERVER_ERROR: &str = "server_error";
+
+    /// Codes the HTTP route answers with 403.
+    pub const FORBIDDEN: [&str; 7] = [
+        LEASE_INVALID,
+        NOT_ON_LEASE,
+        AGENT_NOT_GRANTED,
+        ACT_DISABLED,
+        BLOCKED_BACKGROUND,
+        REQUESTER_NOT_OWNER,
+        ACT_REQUIRES_DESKTOP,
+    ];
 }
 
 struct AuditContext<'a> {
@@ -243,6 +264,10 @@ async fn call_inner(
                 "This run has no active lease for connector tools.",
             )
         })?;
+    if !lease.requester_is_owner {
+        let message = "Only the owner's own runs can use connector tools.";
+        return Err(reject(codes::REQUESTER_NOT_OWNER, message));
+    }
     warn_on_body_mismatch(request, &lease);
     let account_id = lease.account_id.as_str();
     let agent_id = lease.agent_id.as_str();
@@ -327,6 +352,15 @@ async fn call_inner(
         return Err(reject(code, message));
     }
 
+    // No cloud approval flow yet: act tools run only on a desktop claim.
+    if !holder_may_run(holder, group) {
+        let message = "Tools that act run only on your Mac for now.";
+        audit
+            .write(group, AuditOutcome::Denied, &format!("Denied: {message}"))
+            .await;
+        return Err(reject(codes::ACT_REQUIRES_DESKTOP, message));
+    }
+
     // Only tools delivered on this lease may run, even when the grants
     // changed after the lease was issued.
     if !lease.has_tool(connector_id, tool) {
@@ -373,22 +407,20 @@ async fn call_inner(
             ));
         }
     };
-    let secret = refresh_if_needed(pool, cipher, provider.as_ref(), &connector, secret)
-        .await
-        .map_err(|message| reject(codes::NOT_CONNECTED, message));
-    let secret = match secret {
-        Ok(secret) => secret,
-        Err(response) => {
-            audit
-                .write(
-                    group,
-                    AuditOutcome::Failed,
-                    "Failed: the credential could not be refreshed.",
-                )
-                .await;
-            return Err(response);
-        }
-    };
+    let secret =
+        match refresh_if_needed(pool, cipher, provider.as_ref(), connector_id, secret).await {
+            Ok(secret) => secret,
+            Err(failure) => {
+                audit
+                    .write(
+                        group,
+                        AuditOutcome::Failed,
+                        &format!("Failed: {}", failure.audit_phrase()),
+                    )
+                    .await;
+                return Err(refresh_rejection(&failure));
+            }
+        };
 
     let args = &request.args;
     let called = execute_with_retry(pool, cipher, &provider, &connector, tool, args, secret);
@@ -404,7 +436,11 @@ async fn call_inner(
                 let _ = store::mark_needs_reauth(pool, connector_id).await;
             }
             audit
-                .write(group, AuditOutcome::Failed, &format!("Failed: {error}."))
+                .write(
+                    group,
+                    AuditOutcome::Failed,
+                    &format!("Failed: {}", error.audit_phrase()),
+                )
                 .await;
             Err(reject(
                 codes::PROVIDER_FAILED,
@@ -435,54 +471,20 @@ fn provider_failure_message(error: &ProviderError) -> String {
     }
 }
 
-async fn refresh_if_needed(
-    pool: &PgPool,
-    cipher: &dyn ProviderAuthCipher,
-    provider: &dyn ConnectorProvider,
-    connector: &ConnectorRecord,
-    secret: ConnectorSecret,
-) -> Result<ConnectorSecret, &'static str> {
-    if !secret.needs_refresh(Utc::now()) {
-        return Ok(secret);
+fn refresh_rejection(failure: &RefreshFailure) -> Box<BrokerCallResponse> {
+    match failure {
+        RefreshFailure::NeedsReauth => reject(
+            codes::NOT_CONNECTED,
+            "The connector credential expired. Reconnect it.",
+        ),
+        RefreshFailure::Disconnected => reject(codes::NOT_FOUND, "Connector not found."),
+        RefreshFailure::Provider(_) => reject(
+            codes::PROVIDER_FAILED,
+            "The provider could not refresh the connection. Try again.",
+        ),
+        RefreshFailure::Storage => reject(
+            codes::SERVER_ERROR,
+            "The refreshed credential could not be saved.",
+        ),
     }
-    let reconnect = "The connector credential expired. Reconnect it.";
-    if secret.refresh_token.is_none() {
-        let _ = store::mark_needs_reauth(pool, &connector.connector_id).await;
-        return Err(reconnect);
-    }
-    let client = provider.oauth_client().map_err(|_| reconnect)?;
-    let refreshed = match provider.refresh(&client, &secret).await {
-        Ok(refreshed) => refreshed,
-        Err(error) => {
-            eprintln!("[connectors] refresh {}: {error}", connector.connector_id);
-            if matches!(error, ProviderError::Unauthorized) {
-                let _ = store::mark_needs_reauth(pool, &connector.connector_id).await;
-            }
-            return Err(reconnect);
-        }
-    };
-    let sealed = seal_secret(cipher, &refreshed).map_err(|_| reconnect)?;
-    if let Err(error) = store::write_secret(pool, &connector.connector_id, &sealed).await {
-        eprintln!(
-            "[connectors] store refreshed secret {}: {error}",
-            connector.connector_id
-        );
-    }
-    Ok(refreshed)
-}
-
-/// Tool descriptors a run may receive for one connector.
-/// `delivery::tools_for_run` calls this when it builds the lease.
-pub fn tools_for_trigger(
-    connector: &ConnectorRecord,
-    provider: &dyn ConnectorProvider,
-    trigger: RunTrigger,
-) -> Vec<super::providers::ConnectorToolDescriptor> {
-    let allowed = allowed_tool_groups(connector, trigger);
-    provider
-        .tools()
-        .iter()
-        .filter(|descriptor| allowed.contains(&descriptor.group))
-        .copied()
-        .collect()
 }

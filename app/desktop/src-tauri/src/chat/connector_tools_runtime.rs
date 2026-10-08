@@ -148,6 +148,25 @@ mod tests {
     }
 
     #[test]
+    fn a_bad_lease_entry_drops_only_itself() {
+        let lease = lease(Some(json!([
+            {"connectorId":"conn_1","provider":"gmail","name":"gmail_search","group":"read",
+             "description":"Search mail."},
+            {"connectorId":"conn_1","provider":"gmail","name":"gmail_watch","group":"stream",
+             "description":"Unknown group."},
+            42,
+            {"connectorId":"conn_1","provider":"gmail","name":"gmail_send","group":"act",
+             "description":"Send mail."}
+        ])));
+        let names = lease_descriptors(&lease)
+            .unwrap()
+            .into_iter()
+            .map(|descriptor| descriptor.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["gmail_search", "gmail_send"]);
+    }
+
+    #[test]
     fn lease_descriptors_and_broker_calls_carry_only_ids() {
         let lease = lease(Some(json!([
             {"connectorId":"conn_1","provider":"gmail","name":"gmail_search","group":"read",

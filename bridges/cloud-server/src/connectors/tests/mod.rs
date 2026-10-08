@@ -1,6 +1,10 @@
-//! Connector tests. Pure tests always run; database tests follow the crate
-//! convention and run against `$DATABASE_URL`, returning early when it is
-//! unset. Every database test uses uuid-suffixed data.
+//! Connector tests. Pure tests always run; database tests run against
+//! `$DATABASE_URL`. Outside CI they return early when it is unset; in CI
+//! (`CI` set) a missing `DATABASE_URL` fails them, so they cannot pass by
+//! skipping. A CI job without a database opts out explicitly with
+//! `KORDI_CONNECTOR_DB_TESTS=skip`; `scripts/test-cloud-migrations.sh` runs
+//! them against its own database. Every database test uses uuid-suffixed
+//! data.
 
 use std::sync::Arc;
 
@@ -19,6 +23,7 @@ use super::broker::{self, codes};
 use super::events::{self, NewConnectorEvent};
 use super::models::*;
 use super::oauth::{self, StateError};
+use super::oauth_complete;
 use super::providers::stub::{StubConnectorProvider, STUB, STUB_ACT_TOOL, STUB_READ_TOOL};
 use super::providers::{self, ConnectorSecret, ProviderRegistry, ScopeParam};
 use super::store::{self, ConnectorOAuthState};
@@ -28,14 +33,17 @@ use crate::events::EventBus;
 use crate::server::ServerState;
 
 mod broker_tests;
+mod completion_tests;
 mod delivery_tests;
 mod google_provider_tests;
 mod http_stub;
+mod isolation_tests;
 mod lifecycle_tests;
 mod models_tests;
 mod oauth_tests;
 mod polling_tests;
 mod providers_tests;
+mod refresh_tests;
 mod routes_tests;
 mod service_fixture;
 mod webhook_tests;
@@ -156,7 +164,17 @@ fn assert_no_secret_keys(label: &str, value: Value) {
 // Database tests
 
 async fn pool() -> Option<PgPool> {
-    let url = std::env::var("DATABASE_URL").ok()?;
+    let skip_requested = std::env::var("KORDI_CONNECTOR_DB_TESTS").as_deref() == Ok("skip");
+    let url = match std::env::var("DATABASE_URL") {
+        Ok(url) if !url.trim().is_empty() => url,
+        _ if skip_requested => return None,
+        _ if std::env::var_os("CI").is_some() => panic!(
+            "connector database tests need DATABASE_URL in CI. Run them through \
+             scripts/test-cloud-migrations.sh, or set KORDI_CONNECTOR_DB_TESTS=skip \
+             in a job that has no database."
+        ),
+        _ => return None,
+    };
     Some(crate::pg::init_pool(&url).await.expect("init test pool"))
 }
 
@@ -206,12 +224,14 @@ fn state_from_auth_url(auth_url: &str) -> String {
         .to_string()
 }
 
-/// Connects the stub provider for `account_id` through the real OAuth flow.
-async fn connect_stub(
+/// Runs the start and callback steps for `account_id` and returns the
+/// completion code the callback parked.
+async fn pending_stub_grant(
     pool: &PgPool,
     runtime: &ConnectorRuntime,
     account_id: &str,
     grant: ConnectorToolGroup,
+    code: &str,
 ) -> String {
     let auth_url = oauth::start_grant(pool, runtime, account_id, STUB.id, grant, None)
         .await
@@ -220,11 +240,41 @@ async fn connect_stub(
         pool,
         runtime,
         Some(&state_from_auth_url(&auth_url)),
-        Some("code-1"),
+        Some(code),
         None,
     )
     .await;
-    outcome.result.unwrap().connector_id
+    let fragment = outcome.result.unwrap();
+    assert_eq!(fragment.status, "pending");
+    fragment.completion_code
+}
+
+/// Connects the stub provider for `account_id` through the real OAuth flow,
+/// including the authenticated completion step.
+async fn connect_stub(
+    pool: &PgPool,
+    runtime: &ConnectorRuntime,
+    account_id: &str,
+    grant: ConnectorToolGroup,
+) -> String {
+    let code = pending_stub_grant(pool, runtime, account_id, grant, "code-1").await;
+    oauth_complete::finish_grant(pool, runtime, account_id, &code)
+        .await
+        .unwrap()
+        .connector_id
+}
+
+async fn count_rows(pool: &PgPool, sql: &str, bind: &str) -> i64 {
+    let (n,): (i64,) = query_as(sql).bind(bind).fetch_one(pool).await.unwrap();
+    n
+}
+
+/// Fails if `value` contains any stub credential string.
+fn assert_no_stub_credentials(label: &str, value: &Value) {
+    let text = value.to_string();
+    for needle in ["stub-access", "stub-refresh"] {
+        assert!(!text.contains(needle), "{label} leaks {needle}: {text}");
+    }
 }
 
 async fn audit_outcomes(pool: &PgPool, connector_id: &str) -> Vec<(String, String)> {

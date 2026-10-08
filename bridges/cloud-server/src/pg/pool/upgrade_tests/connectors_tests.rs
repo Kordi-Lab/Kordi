@@ -26,6 +26,7 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
     execute(&pool, "INSERT INTO cloud_connector_audit(audit_id,connector_id,account_id,tool,tool_group,outcome,summary) VALUES('aud','conn_live','fixture-owner','oauth.grant','read','completed','Granted.')").await;
     execute(&pool, "INSERT INTO cloud_connector_removal_requests(request_id,account_id,connector_id) VALUES('req','fixture-owner','conn_old')").await;
     execute(&pool, "INSERT INTO cloud_connector_oauth_states(state_id,account_id,provider,grant_kind,code_verifier,expires_at) VALUES('st','fixture-owner','github','act','v',now())").await;
+    execute(&pool, "INSERT INTO cloud_connector_pending_grants(completion_code,state_id,account_id,provider,grant_kind,ciphertext,nonce,key_version,expires_at) VALUES('cc','st','fixture-owner','github','read','\\x01','\\x02',1,now())").await;
     for invalid in [
         // A second live connector for the same account and provider.
         "INSERT INTO cloud_connectors(connector_id,account_id,provider,status) VALUES('conn_dup','fixture-owner','github','needs_reauth')",
@@ -35,6 +36,8 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
         "INSERT INTO cloud_connector_audit(audit_id,connector_id,account_id,tool,tool_group,outcome,summary) VALUES('aud2','conn_live','fixture-owner','t','write','completed','s')",
         "INSERT INTO cloud_connector_audit(audit_id,connector_id,account_id,tool,tool_group,outcome,summary) VALUES('aud3','conn_live','fixture-owner','t','act','skipped','s')",
         "INSERT INTO cloud_connector_oauth_states(state_id,account_id,provider,grant_kind,code_verifier,expires_at) VALUES('st2','fixture-owner','github','admin','v',now())",
+        "INSERT INTO cloud_connector_pending_grants(completion_code,state_id,account_id,provider,grant_kind,ciphertext,nonce,key_version,expires_at) VALUES('cc2','st','fixture-owner','github','write','\\x01','\\x02',1,now())",
+        "INSERT INTO cloud_connector_pending_grants(completion_code,state_id,account_id,provider,grant_kind,ciphertext,nonce,key_version,expires_at) VALUES('cc','st','fixture-owner','github','read','\\x01','\\x02',1,now())",
     ] {
         assert!(sqlx_core::raw_sql::raw_sql(invalid).execute(&pool).await.is_err(), "{invalid}");
     }
@@ -51,6 +54,7 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
         "cloud_connector_events",
         "cloud_connector_audit",
         "cloud_connector_oauth_states",
+        "cloud_connector_pending_grants",
     ] {
         let (rows,): (i64,) = query_as(&format!("SELECT COUNT(*)::BIGINT FROM {table}"))
             .fetch_one(&pool)
@@ -84,16 +88,18 @@ async fn upgrade_from_114_labels_existing_runs_as_background() {
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
     assert_eq!(historical_runs(&pool).await, before);
-    let rows: Vec<(String, Value)> = query_as(
-        "SELECT run_trigger, connector_tools_json FROM cloud_agent_fallback_runs ORDER BY run_id",
+    let rows: Vec<(String, Value, bool)> = query_as(
+        "SELECT run_trigger, connector_tools_json, connector_tools_delivered_at IS NULL \
+         FROM cloud_agent_fallback_runs ORDER BY run_id",
     )
     .fetch_all(&pool)
     .await
     .unwrap();
     assert_eq!(rows.len(), 2);
-    for (trigger, tools) in rows {
+    for (trigger, tools, undelivered) in rows {
         assert_eq!(trigger, "background", "existing runs never gain act tools");
         assert_eq!(tools, serde_json::json!([]));
+        assert!(undelivered, "existing runs have no delivered tool set yet");
     }
     for invalid in [
         "UPDATE cloud_agent_fallback_runs SET run_trigger='scheduled'",
