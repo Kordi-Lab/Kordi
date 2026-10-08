@@ -8,7 +8,7 @@ import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { relatedAgentSessionsFromTools,type RelatedAgentSessionRunStatus } from '@/features/chat/relatedAgentSessions';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
-import { selfDisplayName } from '@/lib/identityLabels';
+import { generatedAvatarSeedForLabel,selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import {
   ArrowRightLeft,
@@ -695,7 +695,7 @@ function MessageBubbleView({
     ? currentLocalProfileAvatarSeed
     : msg.role === 'owned-agent'
       ? currentLocalAgentAvatarSeed
-      : msg.senderAvatarSeed?.trim() || `${avatarKind}:${avatarName}`;
+      : msg.senderAvatarSeed?.trim() || generatedAvatarSeedForLabel(avatarKind, avatarName);
   const showInlineHumanSender = Boolean(!threadLayout && !hideHumanSenderForCompactDensity && !isAgentMessage && msg.showSenderMeta && msg.sender && !isGroupedWithPrevious);
   const showContactRequestAction = Boolean(
     isOwnHumanMessage

@@ -113,6 +113,12 @@ export type MessageMention = {
 export type MessageSourceReference = {
   messageId: string;
   senderLabel?: string | null;
+  /** Avatar of the quoted sender, copied from the quoted message when it is known. */
+  senderKind?: 'human' | 'agent' | null;
+  senderAvatarSeed?: string | null;
+  senderProfileImageUrl?: string | null;
+  /** The quoted message came from the viewer or the viewer's own agent. */
+  senderIsSelf?: boolean;
   text: string;
   mentions?: MessageMention[];
   attachmentCount?: number;
