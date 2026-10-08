@@ -1,6 +1,7 @@
 //! Contacts reader through AppleScript (`osascript`), so the Automation
 //! permission prompt covers it and no Contacts framework binding is needed.
-//! The query is passed as a script argument, never spliced into the script.
+//! The query is passed as a script argument after `--`, never spliced into
+//! the script, so osascript cannot read it as an option.
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -158,12 +159,18 @@ async fn osascript(args: &[&str], timeout: Duration) -> Result<(bool, String, St
     ))
 }
 
+/// Arguments for the search run. `--` ends osascript's option parsing, so
+/// the query is always a script argument even if it looks like an option.
+fn search_args<'a>(query: &'a str, limit_text: &'a str) -> [&'a str; 5] {
+    ["-e", SEARCH_SCRIPT, "--", query, limit_text]
+}
+
 pub(crate) async fn search(request: MacContactsSearchRequest) -> Result<Value, String> {
     request.validate().map_err(|error| error.to_string())?;
     let limit = request.limit.min(MAX_CONTACTS);
     let limit_text = limit.to_string();
     let (success, stdout, stderr) = osascript(
-        &["-e", SEARCH_SCRIPT, request.query.trim(), &limit_text],
+        &search_args(request.query.trim(), &limit_text),
         Duration::from_secs(30),
     )
     .await?;
@@ -353,5 +360,29 @@ mod tests {
             parse_contacts_output(false, "", "execution error: boom (-2700)", 10),
             Err(ContactsError::Failed(detail)) if detail.contains("boom")
         ));
+    }
+
+    #[test]
+    fn contacts_search_ends_options_before_the_query() {
+        let args = search_args("-e do shell script \"id\"", "10");
+        assert_eq!(args[..3], ["-e", SEARCH_SCRIPT, "--"]);
+        assert_eq!(args[3], "-e do shell script \"id\"");
+        assert_eq!(args[4], "10");
+        let separator = args.iter().position(|arg| *arg == "--").unwrap();
+        let query = args
+            .iter()
+            .rposition(|arg| arg.starts_with("-e do"))
+            .unwrap();
+        assert!(separator < query);
+    }
+
+    #[tokio::test]
+    async fn contacts_search_rejects_option_like_queries_before_running() {
+        let request = MacContactsSearchRequest {
+            query: "-e do shell script \"touch /tmp/kordi-pwned\"".into(),
+            limit: 5,
+        };
+        let error = search(request).await.unwrap_err();
+        assert!(error.contains("must not start with '-'"), "{error}");
     }
 }

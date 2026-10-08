@@ -59,6 +59,9 @@ export function ConnectorDetailView({
 }) {
   const Icon = connectorIcons[definition.providerId];
   const connected = state?.status === 'connected';
+  const macLocal = definition.kind === 'mac_local';
+  // A Mac source that is on can always be turned off, even without permission.
+  const canDisconnect = connected || (macLocal && state?.enabled === true);
   const grantedRead = state ? definition.readScopes.filter((scope) => state.grantedScopeIds.includes(scope.id)) : [];
   const grantedAct = state ? definition.actScopes.filter((scope) => state.grantedScopeIds.includes(scope.id)) : [];
   return (
@@ -105,7 +108,7 @@ export function ConnectorDetailView({
                 </span>
               )}
             />
-            {definition.actScopes.length > 0 ? (
+            {definition.actScopes.length > 0 && !macLocal ? (
               <SettingsRow
                 title="Let my agent act here"
                 description={state.actEnabled
@@ -128,7 +131,7 @@ export function ConnectorDetailView({
           </SettingsSection>
 
           <SettingsSection title="Agents">
-            {agents.map((agent) => (
+            {macLocal ? <SettingsRow title="All agents on this Mac" /> : agents.map((agent) => (
               <SettingsRow
                 key={agent.agentId}
                 title={agent.name}
@@ -145,35 +148,41 @@ export function ConnectorDetailView({
             ))}
           </SettingsSection>
 
-          <SettingsSection title="Activity" className={denseNavRowsClass}>
-            <SettingsRow
-              title="Activity log"
-              description="Every read and act call is recorded."
-              chevron
-              ariaLabel={`${definition.name} activity log`}
-              onClick={onOpenAudit}
-            />
-          </SettingsSection>
-
-          <SettingsSection title="Remove">
-            <SettingsRow
-              title="Disconnect"
-              description={`Removes the sign-in and stored events from ${definition.name}.`}
-              control={(
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className={destructiveButtonClass}
-                  aria-label={`Disconnect ${definition.name}`}
-                  disabled={busy}
-                  onClick={onDisconnect}
-                >
-                  Disconnect
-                </Button>
-              )}
-            />
-          </SettingsSection>
+          {macLocal ? null : (
+            <SettingsSection title="Activity" className={denseNavRowsClass}>
+              <SettingsRow
+                title="Activity log"
+                description="Every read and act call is recorded."
+                chevron
+                ariaLabel={`${definition.name} activity log`}
+                onClick={onOpenAudit}
+              />
+            </SettingsSection>
+          )}
         </>
+      ) : null}
+
+      {canDisconnect ? (
+        <SettingsSection title="Remove">
+          <SettingsRow
+            title="Disconnect"
+            description={macLocal
+              ? `Stops reading ${definition.name} on this Mac.`
+              : `Removes the sign-in and stored events from ${definition.name}.`}
+            control={(
+              <Button
+                type="button"
+                variant="secondary"
+                className={destructiveButtonClass}
+                aria-label={`Disconnect ${definition.name}`}
+                disabled={busy}
+                onClick={onDisconnect}
+              >
+                Disconnect
+              </Button>
+            )}
+          />
+        </SettingsSection>
       ) : null}
     </div>
   );

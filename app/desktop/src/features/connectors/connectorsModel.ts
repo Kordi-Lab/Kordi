@@ -44,6 +44,11 @@ export type ConnectorState = {
   actEnabled: boolean;
   agentIds: string[];
   lastEventAt: string | null;
+  /**
+   * Mac-local sources only: turned on in Settings, even while macOS
+   * permission is missing. Omitted (false) for service connectors.
+   */
+  enabled?: boolean;
 };
 
 export type ConnectorAgent = { agentId: string; name: string; isDefault: boolean };
@@ -217,11 +222,25 @@ export function hasGrantedActScopes(definition: ConnectorDefinition, state: Conn
 }
 
 export function disconnectConsequences(definition: ConnectorDefinition): string[] {
+  if (definition.kind === 'mac_local') {
+    return [`Kordi stops reading ${definition.name} on this Mac. Nothing was stored.`];
+  }
   return [
     `Kordi removes the sign-in token for ${definition.name}.`,
     `Stored events from ${definition.name} are deleted.`,
     'Copies your agent made from them are queued for removal. Lessons your agent already saved are managed under Memory.',
   ];
+}
+
+/** A Mac-local source that is on but still waits for its macOS permission. */
+export function isMacLocalOnWithoutPermission(definition: ConnectorDefinition, state: ConnectorState | undefined): boolean {
+  return definition.kind === 'mac_local' && state?.enabled === true && state.status === 'permission_missing';
+}
+
+function permissionMissingLabel(definition: ConnectorDefinition, state: ConnectorState | undefined): string {
+  const needs = definition.requiresFullDiskAccess ? 'Full Disk Access' : 'permission';
+  if (isMacLocalOnWithoutPermission(definition, state)) return `On · needs ${needs}`;
+  return definition.requiresFullDiskAccess ? 'Needs Full Disk Access' : 'Needs permission';
 }
 
 function agentCountLabel(state: ConnectorState, agents: ConnectorAgent[]): string {
@@ -239,12 +258,12 @@ export function connectorStatusLabel(
   if (definition.availability === 'coming_later') return 'Not yet available';
   const status = state?.status ?? 'not_connected';
   if (status === 'needs_reauth') return 'Sign in again';
-  if (status === 'permission_missing') {
-    return definition.requiresFullDiskAccess ? 'Needs Full Disk Access' : 'Needs permission';
-  }
+  if (status === 'permission_missing') return permissionMissingLabel(definition, state);
   if (status !== 'connected' || !state) return 'Not connected';
   const access = state.actEnabled ? 'Can act' : 'Read only';
-  return ['Connected', access, agentCountLabel(state, agents)].join(' · ');
+  // Mac-local sources apply to every agent that runs on this Mac.
+  const agentsLabel = definition.kind === 'mac_local' ? 'All agents' : agentCountLabel(state, agents);
+  return ['Connected', access, agentsLabel].join(' · ');
 }
 
 /** Short status value for the connector list; the detail view adds agent grants. */
@@ -255,9 +274,7 @@ export function connectorListValue(
   if (definition.availability === 'coming_later') return 'Coming later';
   const status = state?.status ?? 'not_connected';
   if (status === 'needs_reauth') return 'Sign in again';
-  if (status === 'permission_missing') {
-    return definition.requiresFullDiskAccess ? 'Needs Full Disk Access' : 'Needs permission';
-  }
+  if (status === 'permission_missing') return permissionMissingLabel(definition, state);
   if (status !== 'connected' || !state) return 'Not connected';
   return state.actEnabled ? 'Connected · Can act' : 'Connected · Read only';
 }

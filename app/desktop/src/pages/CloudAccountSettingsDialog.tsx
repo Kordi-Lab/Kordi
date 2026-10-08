@@ -22,7 +22,7 @@ import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
 import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSettingsPanel';
-import { connectorsClientForEnvironment, type ConnectorsClient } from '@/features/connectors/connectorsClient';
+import { connectorsSelectionForEnvironment, type ConnectorsClient } from '@/features/connectors/connectorsClient';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import {
   canonicalAvatarImageSource,
@@ -34,7 +34,7 @@ import {
 export type { CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 
 // Created once per app load so preview state survives closing the dialog.
-const environmentConnectorsClient = connectorsClientForEnvironment();
+const environmentConnectors = connectorsSelectionForEnvironment();
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -68,6 +68,8 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   onSignOut?: () => Promise<void> | void;
   /** Connectors client; null hides the Connectors section. Defaults to the build environment. */
   connectorsClient?: ConnectorsClient | null;
+  /** Marks an overriding `connectorsClient` as sample data. */
+  connectorsIsPreview?: boolean;
 };
 
 function profileDisplayName(account: CloudAccount | null) {
@@ -104,7 +106,8 @@ export function CloudAccountSettingsDialog({
   onVerifyEmail,
   onEmailAlreadyVerified,
   onSignOut,
-  connectorsClient = environmentConnectorsClient,
+  connectorsClient: connectorsClientOverride,
+  connectorsIsPreview = false,
   settingsSections,
   setActiveSettingsSectionId,
   authSettingsLayoutWidth,
@@ -132,6 +135,9 @@ export function CloudAccountSettingsDialog({
   const profileErrorId = useId();
   const openedAccountIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
+  const hasConnectorsOverride = connectorsClientOverride !== undefined;
+  const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : environmentConnectors?.client ?? null;
+  const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : environmentConnectors?.isPreview ?? false;
 
   useEffect(() => {
     if (!isOpen) {
@@ -381,7 +387,13 @@ export function CloudAccountSettingsDialog({
   const devicesPanel = <CloudDevicesPanel key={account.accountId} accountId={account.accountId} />;
 
   const connectorsPanel = connectorsClient ? (
-    <ConnectorsSettingsPanel key={account.accountId} accountId={account.accountId} client={connectorsClient} isNativeShell={isNativeShell} />
+    <ConnectorsSettingsPanel
+      key={account.accountId}
+      accountId={account.accountId}
+      client={connectorsClient}
+      isNativeShell={isNativeShell}
+      isPreview={connectorsArePreview}
+    />
   ) : null;
 
   return createPortal(

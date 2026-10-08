@@ -58,15 +58,40 @@ pub(crate) fn load_settings() -> MacLocalConnectorSettings {
     Settings::load_global().connectors.mac_local
 }
 
-fn save_enabled(source: MacLocalSource, enabled: bool) -> Result<(), String> {
-    let mut settings = Settings::load_global();
+fn set_source(settings: &mut Settings, source: MacLocalSource, enabled: bool) {
     let mac_local = &mut settings.connectors.mac_local;
     match source {
         MacLocalSource::Calendar => mac_local.calendar = enabled,
         MacLocalSource::Contacts => mac_local.contacts = enabled,
         MacLocalSource::NotificationCenter => mac_local.notification_center = enabled,
     }
-    settings.save_global().map_err(|error| error.to_string())
+}
+
+/// Updates one source in an existing settings file. A file that cannot be
+/// read or parsed is an error; it is never replaced with defaults.
+fn update_enabled(
+    load: impl FnOnce() -> std::io::Result<Settings>,
+    save: impl FnOnce(&Settings) -> std::io::Result<()>,
+    source: MacLocalSource,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut settings = load().map_err(|error| {
+        format!("Could not read Kordi settings, so the change was not saved: {error}")
+    })?;
+    set_source(&mut settings, source, enabled);
+    save(&settings).map_err(|error| error.to_string())
+}
+
+fn save_enabled(source: MacLocalSource, enabled: bool) -> Result<(), String> {
+    update_enabled(
+        || {
+            let _ = kordi_core::config::migrate_legacy_global_config();
+            Settings::load_from_file_result(&kordi_core::config::global_settings_path())
+        },
+        Settings::save_global,
+        source,
+        enabled,
+    )
 }
 
 pub(crate) fn calendar_permission() -> MacLocalPermission {
@@ -141,16 +166,19 @@ pub async fn desktop_mac_local_connectors_set_enabled(
 ) -> Result<MacLocalConnectorsState, String> {
     let source = MacLocalSource::parse(&source)?;
     if enabled {
-        match source {
+        let permission = match source {
             MacLocalSource::Calendar => {
                 #[cfg(target_os = "macos")]
-                blocking(|| {
-                    use objc2_event_kit::EKEntityType;
-                    let store = eventkit::store();
-                    let _ = eventkit::request_full_access(&store, EKEntityType::Event);
-                    let _ = eventkit::request_full_access(&store, EKEntityType::Reminder);
-                })
-                .await?;
+                {
+                    blocking(|| {
+                        use objc2_event_kit::EKEntityType;
+                        let store = eventkit::store();
+                        let _ = eventkit::request_full_access(&store, EKEntityType::Event);
+                        let _ = eventkit::request_full_access(&store, EKEntityType::Reminder);
+                    })
+                    .await?;
+                    calendar_permission()
+                }
                 #[cfg(not(target_os = "macos"))]
                 return Err("Calendar connectors are available on macOS.".into());
             }
@@ -158,7 +186,7 @@ pub async fn desktop_mac_local_connectors_set_enabled(
                 if !cfg!(target_os = "macos") {
                     return Err("Contacts connectors are available on macOS.".into());
                 }
-                contacts::probe().await;
+                contacts::probe().await.0
             }
             MacLocalSource::NotificationCenter => {
                 let db_path = notification_center::default_db_path();
@@ -166,11 +194,22 @@ pub async fn desktop_mac_local_connectors_set_enabled(
                 if permission != MacLocalPermission::Granted {
                     return Err("Notification Center needs Full Disk Access. Allow Kordi in System Settings > Privacy & Security > Full Disk Access, then check again.".into());
                 }
+                permission
             }
+        };
+        if !should_persist_enable(permission) {
+            // Refused or unanswered: keep the source off and report the
+            // missing permission instead of leaving it on with no access.
+            return blocking(current_state).await;
         }
     }
     blocking(move || save_enabled(source, enabled)).await??;
     blocking(current_state).await
+}
+
+/// A source is saved as on only after macOS granted its permission.
+fn should_persist_enable(permission: MacLocalPermission) -> bool {
+    permission == MacLocalPermission::Granted
 }
 
 #[tauri::command]
@@ -280,5 +319,48 @@ mod tests {
             serde_json::to_value(state).unwrap(),
             json!({ "enabled": true, "permission": "full_disk_access_missing" })
         );
+    }
+
+    #[test]
+    fn mac_local_enable_is_saved_only_when_permission_is_granted() {
+        assert!(should_persist_enable(MacLocalPermission::Granted));
+        for permission in [
+            MacLocalPermission::Denied,
+            MacLocalPermission::NotDetermined,
+            MacLocalPermission::FullDiskAccessMissing,
+            MacLocalPermission::Unavailable,
+        ] {
+            assert!(!should_persist_enable(permission), "{permission:?}");
+        }
+    }
+
+    #[test]
+    fn mac_local_save_never_replaces_unreadable_settings_with_defaults() {
+        let dir = std::env::temp_dir().join(format!("kordi-mac-local-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, "{ not json").unwrap();
+        let error = update_enabled(
+            || Settings::load_from_file_result(&path),
+            |settings| settings.save_to_file(&path),
+            MacLocalSource::Contacts,
+            true,
+        )
+        .unwrap_err();
+        assert!(error.contains("not saved"), "{error}");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{ not json");
+
+        std::fs::write(&path, "{}").unwrap();
+        update_enabled(
+            || Settings::load_from_file_result(&path),
+            |settings| settings.save_to_file(&path),
+            MacLocalSource::Contacts,
+            true,
+        )
+        .unwrap();
+        let saved = Settings::load_from_file_result(&path).unwrap();
+        assert!(saved.connectors.mac_local.contacts);
+        assert!(!saved.connectors.mac_local.calendar);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

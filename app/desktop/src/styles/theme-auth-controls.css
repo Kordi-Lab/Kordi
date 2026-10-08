@@ -178,7 +178,9 @@
 }
 
 .kordi-app.theme-light .text-rose-50,
-.kordi-app.theme-light .text-rose-100 {
+.kordi-app.theme-light .text-rose-100,
+.kordi-app.theme-light .text-rose-200,
+.kordi-app.theme-light .hover\:text-rose-100:hover {
   color: rgb(159 18 57) !important;
 }
 

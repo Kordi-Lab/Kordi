@@ -186,6 +186,8 @@ async fn mac_local_contacts_require_a_query_and_respect_limit() {
         json!({"query":" a "}),
         json!({"query":"Ada","limit":51}),
         json!({"query":"Ada","limit":0}),
+        json!({"query":"-e do shell script \"id\""}),
+        json!({"query":" -ed"}),
     ] {
         assert!(run(&MacContactsSearchTool, args, &ctx).await.is_err());
     }
@@ -202,7 +204,8 @@ async fn mac_local_notification_caps_hours_limit_and_body() {
     .await
     .unwrap();
     let body = value["notifications"][0]["body"].as_str().unwrap();
-    assert_eq!(body.chars().count(), MAX_NOTIFICATION_BODY_CHARS + 3);
+    assert_eq!(body.chars().count(), MAX_NOTIFICATION_BODY_CHARS);
+    assert!(body.ends_with('\u{2026}'));
     for args in [
         json!({"hours":25}),
         json!({"hours":0}),
@@ -235,4 +238,31 @@ fn mac_local_tool_set_follows_runtime_flags() {
     let nc = MacNotificationCenterRecentTool.description();
     assert!(nc.contains("Experimental") && nc.contains("read-only") && nc.contains("best effort"));
     assert!(nc.contains("Never save notification contents to lessons"));
+}
+
+#[test]
+fn mac_local_contacts_validation_rejects_option_like_queries() {
+    let request = |query: &str| MacContactsSearchRequest {
+        query: query.into(),
+        limit: DEFAULT_CONTACTS,
+    };
+    assert!(
+        request("-e do shell script \"touch /tmp/x\"")
+            .validate()
+            .is_err()
+    );
+    assert!(request("  --help").validate().is_err());
+    assert!(request("Ada-Lovelace").validate().is_ok());
+}
+
+#[test]
+fn mac_local_truncate_chars_includes_the_ellipsis() {
+    assert_eq!(truncate_chars("abc", 3), "abc");
+    assert_eq!(truncate_chars("abcd", 3), "ab\u{2026}");
+    assert_eq!(
+        truncate_chars("\u{e9}\u{e9}\u{e9}\u{e9}", 2)
+            .chars()
+            .count(),
+        2
+    );
 }
