@@ -217,9 +217,8 @@ returns 503 `connectors_unavailable`, and broker calls fail closed), `KORDI_CLOU
 Each provider app must register the callback
 `<KORDI_CLOUD_PUBLIC_BASE_URL>/v1/cloud/connectors/oauth/callback`.
 
-The broker route is `POST /internal/connectors/call`. In PR 1 it accepts the
-lease id without looking it up; PR 2 adds the lease check (see the TODO in
-`connectors/broker.rs`) and takes the trigger from the lease.
+The broker route is `POST /internal/connectors/call`. PR 2 added the lease
+check: see "What shipped in PR 2" below.
 
 ## PR 2: Tool delivery to the runtimes
 
@@ -231,17 +230,108 @@ lease id without looking it up; PR 2 adds the lease check (see the TODO in
 - Cloud runner: `bridges/cloud-agent-runner` turns each descriptor into a host
   tool whose `execute` calls the broker route. `tool_policy.rs` gains a
   `connector.*` arm that only allows names present in the lease. Tool names are
-  namespaced: `gmail.search`, `calendar.list_events`, `calendar.respond`,
-  `github.notifications`, `github.comment`, `slack.read_channel`, `slack.post`.
+  namespaced with an underscore, because model providers reject dots in
+  function names (`^[A-Za-z0-9_-]+$`): `gmail_search`, `calendar_list_events`,
+  `calendar_respond`, `github_notifications`, `github_comment`,
+  `slack_read_channel`, `slack_post`. A runtime recognises a connector tool by
+  its presence on the lease, with a shape check of `^[A-Za-z0-9_-]{1,64}$`.
 - Mac harness: `agent/crates/cli/src/session_bootstrap.rs` registers connector
   tools from the desktop runtime's tool list; service connectors still call the
   server broker, Mac-local connectors call into the Tauri process. `act` tools on
   the "Ask me before" list use the existing `request_approval` hook in
   `ToolContext`.
+- Cloud act tools wait for the approval flow; Mac act tools go through the
+  approval card. Until a cloud approval flow exists, a lease issued to the
+  cloud runner carries no `act` tool and the broker refuses an `act` call from
+  the runner; a desktop claim keeps its `act` tools.
 - Tests: server test that a scheduled run lease contains no `act` tool; runner
   test that a connector tool not in the lease is refused; Mac harness test that
   an agent without a grant does not see the connector's tools; OMP runtime test
   that `enableMCP` and extension discovery stay off.
+
+### What shipped in PR 2
+
+Server (`bridges/cloud-server`):
+
+- Migration `0115_run_trigger_connector_tools.sql` adds two columns to
+  `cloud_agent_fallback_runs`: `run_trigger` (`person_started` or
+  `background`, default `background`), `connector_tools_json` (the
+  descriptors delivered with the lease, default `[]`), and
+  `connector_tools_delivered_at` (when that set was first delivered).
+  Existing runs become background runs.
+- Every run creation site names its trigger. A run is `person_started` only
+  when the person who sent the message owns the agent: the claim route
+  (`claim_run_for_person_message`), the desktop claim
+  (`claim_run_for_desktop`), and a subsession message from the owner.
+  Scheduled task occurrences (`claim_run`), PiP runs, digest runs, spawned
+  subsessions, and runs requested by a contact or a shared-agent member are
+  `background`. A test scans the run inserts so a new one must name its
+  trigger.
+- `connectors::delivery::tools_for_run(pool, providers, account_id, agent_id,
+  trigger)` returns `LeaseConnectorTool` descriptors from the owner's
+  connected connectors, the agent grant set, and `allowed_tool_groups`.
+  `deliver_to_run` computes them on the first lease of a run, stores them on
+  the run, and sets `connector_tools_delivered_at`; later leases of the same
+  run reuse the stored set, so turning `act` on mid-run never widens it.
+  Errors deliver an empty set. A run requested by someone other than the
+  owner receives no connector tools. A lease issued to the cloud runner drops
+  `act` descriptors (cloud act tools wait for the approval flow); a desktop
+  claim keeps them for the Mac approval card. Argument schemas live
+  in `connectors/tool_schemas.rs` until the PR 3 adapters add their own.
+- Lease fields on `RunnerRunResponse` (inside `RunnerLeaseResponse.run`) and
+  on the desktop claim response: `trigger` and `connectorTools`, where each
+  entry is `{ connectorId, provider, name, group, description, inputSchema }`.
+- Broker: `POST /internal/connectors/call` takes `{ leaseId, runnerId |
+  claimId, connectorId, tool, args }`. With the runner token, `runnerId` must
+  hold the active cloud lease; with a desktop session, `claimId` must hold the
+  active desktop lease of that device and account. The account, agent, and
+  trigger come from the lease; `accountId`, `agentId`, and `trigger` in the
+  body are ignored and logged when they disagree. A tool that is not in the
+  lease's stored descriptor set is refused with `tool_not_on_lease` and a
+  `denied` audit row, even when the grants changed after the lease was issued;
+  a missing, expired, or foreign lease is refused with `lease_invalid`; a
+  lease for a run requested by someone other than the owner is refused with
+  `requester_not_owner`; an `act` tool called by the cloud runner is refused
+  with `act_requires_desktop` and a `denied` audit row.
+
+Cloud runner (`bridges/cloud-agent-runner`):
+
+- `CloudAgentRun.connectors` reads `trigger` and `connectorTools` from the
+  lease. Each `connectorTools` entry is parsed on its own; an entry with an
+  unknown shape is dropped with a warning and the rest are kept (the desktop
+  lease model does the same). `connectors.rs` turns each descriptor into a model tool for both the
+  OMP and the legacy loop, lists them in the system prompt (with a sentence
+  that background runs only have read tools), and executes calls through
+  `CloudAgentRunClient::call_connector_tool`, which posts to the broker with
+  the lease id and runner id and returns the `result` or a clear error.
+- `tool_policy::decide_runner_tool` has a connector arm: a namespaced name is
+  allowed only when it is on the lease and is not a built-in cloud tool,
+  otherwise the existing "not available" decision. The model tool list and
+  the prompt list the same tools, each name once.
+
+Mac harness and desktop:
+
+- `kordi_tools::connector_tools` has `ConnectorToolDescriptor`,
+  `ConnectorToolsRuntime`, and `ConnectorTool`, which fails closed when
+  `ToolContext.connector_tools` is `None` or no longer lists the tool. Every
+  `act` tool calls `ToolContext.request_approval` first and is refused when
+  there is no approval hook or the run is non-interactive. Cloud act tools
+  wait for the approval flow; Mac act tools go through the approval card.
+  Until the desktop turn wires that card into `request_approval`, a Mac `act`
+  call finds no hook and is refused (fail closed), so nothing acts without
+  the person's approval.
+- `ToolRegistry::set_connector_tools` registers one tool per descriptor for
+  each turn (never replacing an existing tool) and removes them on the next
+  turn; shared requests from other people never get them.
+- Tauri: `chat/connector_tools_runtime.rs` builds the runtime from the cloud
+  lease's `connectorTools` on the cloud-lease path in
+  `session_preparation.rs` and posts calls to the broker with the signed-in
+  session, the run id, and the claim id. The desktop forwards
+  `connectorTools` from the claim response into `executionLease`.
+
+OMP runtime: no option changes; the capabilities test asserts that connector
+tool names in the host tool list keep `enableMCP` off and extension discovery
+disabled.
 
 ## PR 3: First service connectors
 

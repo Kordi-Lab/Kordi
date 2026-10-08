@@ -6,6 +6,9 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::{AgentRuntimeRoute, RunError, RunResult};
+use crate::connectors;
+use crate::connectors::delivery::LeaseConnectorTool;
+use crate::connectors::models::RunTrigger;
 
 #[derive(Debug, Deserialize)]
 pub struct RunnerRunRequest {
@@ -79,6 +82,13 @@ pub struct RunnerRunResponse {
     pub error_code: Option<String>,
     #[serde(rename = "errorMessage")]
     pub error_message: Option<String>,
+    /// `person_started` or `background`; background runs get `read`
+    /// connector tools only.
+    pub trigger: RunTrigger,
+    /// Connector tools delivered with this lease. Descriptors only: the
+    /// broker holds every credential.
+    #[serde(rename = "connectorTools")]
+    pub connector_tools: Vec<LeaseConnectorTool>,
 }
 
 pub(super) type RunnerRunRow = (
@@ -201,7 +211,12 @@ pub(super) async fn runner_response_from_row(
     pool: &PgPool,
     mut row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
-    let (subsession_id, scope): (Option<uuid::Uuid>, serde_json::Value) = query_as("SELECT subsession_id,subsession_write_scope FROM cloud_agent_fallback_runs WHERE run_id=$1")
+    let (subsession_id, scope, trigger, connector_tools): (
+        Option<uuid::Uuid>,
+        serde_json::Value,
+        String,
+        serde_json::Value,
+    ) = query_as("SELECT subsession_id,subsession_write_scope,run_trigger,connector_tools_json FROM cloud_agent_fallback_runs WHERE run_id=$1")
         .bind(&row.0).fetch_one(pool).await?;
     if row.0.starts_with(crate::digest::RUN_PREFIX)
         && matches!(row.1.as_str(), "leased" | "running")
@@ -237,5 +252,7 @@ pub(super) async fn runner_response_from_row(
         response_message_id: row.8,
         error_code: row.9,
         error_message: row.10,
+        trigger: RunTrigger::parse(&trigger),
+        connector_tools: connectors::delivery::tools_from_json(connector_tools),
     })
 }

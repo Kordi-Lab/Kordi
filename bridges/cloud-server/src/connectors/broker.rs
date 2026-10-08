@@ -12,11 +12,14 @@ use sqlx_postgres::{PgPool, Postgres};
 
 use crate::cloud_agent_runtime::provider_auth::ProviderAuthCipher;
 
+use super::delivery::{
+    holder_may_run, load_active_lease, warn_on_body_mismatch, ActiveLease, LeaseHolder,
+};
 use super::models::{
     allowed_tool_groups, AuditOutcome, BrokerCallRequest, BrokerCallResponse, ConnectorRecord,
     ConnectorStatus, ConnectorToolGroup, RunTrigger,
 };
-use super::providers::{ConnectorProvider, ConnectorSecret, ProviderError};
+use super::providers::{ConnectorSecret, ProviderError};
 use super::refresh::{refresh_if_needed, RefreshFailure};
 use super::store::{self, NewAuditEntry, SealedSecret};
 use super::ConnectorRuntime;
@@ -147,21 +150,37 @@ pub(super) async fn load_secret(
 /// Error codes the broker returns. The HTTP route maps them to statuses.
 pub mod codes {
     pub const INVALID_REQUEST: &str = "invalid_request";
+    pub const LEASE_INVALID: &str = "lease_invalid";
     pub const NOT_FOUND: &str = "connector_not_found";
     pub const NOT_CONNECTED: &str = "connector_not_connected";
     pub const AGENT_NOT_GRANTED: &str = "agent_not_granted";
     pub const UNKNOWN_TOOL: &str = "unknown_tool";
+    pub const NOT_ON_LEASE: &str = "tool_not_on_lease";
     pub const ACT_DISABLED: &str = "act_disabled";
     pub const BLOCKED_BACKGROUND: &str = "blocked_background";
+    pub const REQUESTER_NOT_OWNER: &str = "requester_not_owner";
+    pub const ACT_REQUIRES_DESKTOP: &str = "act_requires_desktop";
     pub const UNAVAILABLE: &str = "connector_unavailable";
     pub const PROVIDER_FAILED: &str = "provider_failed";
     pub const SERVER_ERROR: &str = "server_error";
+
+    /// Codes the HTTP route answers with 403.
+    pub const FORBIDDEN: [&str; 7] = [
+        LEASE_INVALID,
+        NOT_ON_LEASE,
+        AGENT_NOT_GRANTED,
+        ACT_DISABLED,
+        BLOCKED_BACKGROUND,
+        REQUESTER_NOT_OWNER,
+        ACT_REQUIRES_DESKTOP,
+    ];
 }
 
 struct AuditContext<'a> {
     pool: &'a PgPool,
     connector: &'a ConnectorRecord,
-    request: &'a BrokerCallRequest,
+    lease: &'a ActiveLease,
+    tool: &'a str,
 }
 
 impl AuditContext<'_> {
@@ -171,9 +190,9 @@ impl AuditContext<'_> {
             NewAuditEntry {
                 connector_id: &self.connector.connector_id,
                 account_id: &self.connector.account_id,
-                run_id: Some(self.request.lease_id.trim()),
-                agent_id: Some(self.request.agent_id.trim()),
-                tool: self.request.tool.trim(),
+                run_id: Some(&self.lease.run_id),
+                agent_id: Some(&self.lease.agent_id),
+                tool: self.tool,
                 tool_group: group,
                 outcome,
                 summary,
@@ -206,12 +225,17 @@ fn require_field<'a>(value: &'a str, name: &str) -> Result<&'a str, Box<BrokerCa
 }
 
 /// Executes one connector tool call for a run. Never returns the secret.
+///
+/// `holder` is who authenticated the request: a cloud runner (runner token)
+/// or the owner's desktop (cloud session). The lease must be active and held
+/// by them; the account, agent, and trigger come from the lease.
 pub async fn call_connector_tool(
     pool: &PgPool,
     runtime: &ConnectorRuntime,
+    holder: &LeaseHolder,
     request: &BrokerCallRequest,
 ) -> BrokerCallResponse {
-    match call_inner(pool, runtime, request).await {
+    match call_inner(pool, runtime, holder, request).await {
         Ok(response) => response,
         Err(response) => *response,
     }
@@ -220,23 +244,33 @@ pub async fn call_connector_tool(
 async fn call_inner(
     pool: &PgPool,
     runtime: &ConnectorRuntime,
+    holder: &LeaseHolder,
     request: &BrokerCallRequest,
 ) -> Result<BrokerCallResponse, Box<BrokerCallResponse>> {
-    // TODO(issue 1712, PR 2): validate `lease_id` against an active lease in
-    // `cloud_agent_fallback_runs` (status leased or running, unexpired,
-    // owner_account_id and execution_agent_id matching), the way
-    // `cloud_agent_runtime/runs/leases.rs` and `runs/context_read.rs` check
-    // runner leases, and take the trigger from the lease instead of the body.
-    // Until then the runner token gates this route and the account and agent
-    // relationship is checked below.
-    require_field(&request.lease_id, "leaseId")?;
-    let account_id = require_field(&request.account_id, "accountId")?;
-    let agent_id = require_field(&request.agent_id, "agentId")?;
+    let lease_id = require_field(&request.lease_id, "leaseId")?;
     let connector_id = require_field(&request.connector_id, "connectorId")?;
     let tool = require_field(&request.tool, "tool")?;
 
     let server_error = |_| reject(codes::SERVER_ERROR, "Could not reach connector storage.");
     let not_found = || reject(codes::NOT_FOUND, "Connector not found.");
+
+    let lease = load_active_lease(pool, lease_id, holder)
+        .await
+        .map_err(server_error)?
+        .ok_or_else(|| {
+            reject(
+                codes::LEASE_INVALID,
+                "This run has no active lease for connector tools.",
+            )
+        })?;
+    if !lease.requester_is_owner {
+        let message = "Only the owner's own runs can use connector tools.";
+        return Err(reject(codes::REQUESTER_NOT_OWNER, message));
+    }
+    warn_on_body_mismatch(request, &lease);
+    let account_id = lease.account_id.as_str();
+    let agent_id = lease.agent_id.as_str();
+    let trigger = lease.trigger;
 
     let connector = store::load_account_connector(pool, account_id, connector_id)
         .await
@@ -255,7 +289,8 @@ async fn call_inner(
     let audit = AuditContext {
         pool,
         connector: &connector,
-        request,
+        lease: &lease,
+        tool,
     };
     let provider = runtime.providers.get(&connector.provider);
     let group = provider
@@ -285,7 +320,7 @@ async fn call_inner(
         ));
     }
 
-    let allowed = allowed_tool_groups(&connector, request.trigger);
+    let allowed = allowed_tool_groups(&connector, trigger);
     if !allowed.contains(&group) {
         let (outcome, code, message) = if connector.status != ConnectorStatus::Connected {
             (
@@ -293,7 +328,7 @@ async fn call_inner(
                 codes::NOT_CONNECTED,
                 "The connector needs to be reconnected.",
             )
-        } else if group == ConnectorToolGroup::Act && request.trigger == RunTrigger::Background {
+        } else if group == ConnectorToolGroup::Act && trigger == RunTrigger::Background {
             (
                 AuditOutcome::BlockedBackground,
                 codes::BLOCKED_BACKGROUND,
@@ -314,6 +349,31 @@ async fn call_inner(
             )
             .await;
         return Err(reject(code, message));
+    }
+
+    // No cloud approval flow yet: act tools run only on a desktop claim.
+    if !holder_may_run(holder, group) {
+        let message = "Tools that act run only on your Mac for now.";
+        audit
+            .write(group, AuditOutcome::Denied, &format!("Denied: {message}"))
+            .await;
+        return Err(reject(codes::ACT_REQUIRES_DESKTOP, message));
+    }
+
+    // Only tools delivered on this lease may run, even when the grants
+    // changed after the lease was issued.
+    if !lease.has_tool(connector_id, tool) {
+        audit
+            .write(
+                group,
+                AuditOutcome::Denied,
+                "Denied: this tool was not delivered to the run.",
+            )
+            .await;
+        return Err(reject(
+            codes::NOT_ON_LEASE,
+            "This tool is not available to this run.",
+        ));
     }
 
     let Some(cipher) = runtime.cipher.as_deref() else {
@@ -423,20 +483,4 @@ fn refresh_rejection(failure: &RefreshFailure) -> Box<BrokerCallResponse> {
             "The refreshed credential could not be saved.",
         ),
     }
-}
-
-/// Tool descriptors a run may receive for one connector. PR 2 calls this
-/// when it builds the lease.
-pub fn tools_for_trigger(
-    connector: &ConnectorRecord,
-    provider: &dyn ConnectorProvider,
-    trigger: RunTrigger,
-) -> Vec<super::providers::ConnectorToolDescriptor> {
-    let allowed = allowed_tool_groups(connector, trigger);
-    provider
-        .tools()
-        .iter()
-        .filter(|descriptor| allowed.contains(&descriptor.group))
-        .copied()
-        .collect()
 }

@@ -21,6 +21,15 @@ pub(super) fn build(owner_local: bool) -> Option<MacLocalRuntime> {
     )
 }
 
+/// Whether a runtime identity names a request the owner made themselves.
+/// Unparseable text is not the owner (fail closed).
+pub(super) fn is_owner_identity(text: &str) -> bool {
+    serde_json::from_str::<kordi_core::types::RuntimeIdentity>(text).is_ok_and(|identity| {
+        let owner = identity.owner_account_id.trim();
+        !owner.is_empty() && identity.requester_account_id.trim() == owner
+    })
+}
+
 /// True when the turn may read this Mac: no cloud lease, and the requester is
 /// the non-empty owner. This turn's identity message decides; without one,
 /// the stored session identity (if any) must also be the owner's.
@@ -32,17 +41,11 @@ pub(super) fn is_owner_local_turn(
     if has_cloud_lease {
         return false;
     }
-    let is_owner = |text: &str| {
-        serde_json::from_str::<kordi_core::types::RuntimeIdentity>(text).is_ok_and(|identity| {
-            let owner = identity.owner_account_id.trim();
-            !owner.is_empty() && identity.requester_account_id.trim() == owner
-        })
-    };
     match turn_identity {
-        Some(text) => is_owner(text),
+        Some(text) => is_owner_identity(text),
         None => match stored_identity() {
             Ok(None) => true,
-            Ok(Some(text)) => is_owner(&text),
+            Ok(Some(text)) => is_owner_identity(&text),
             Err(()) => false,
         },
     }

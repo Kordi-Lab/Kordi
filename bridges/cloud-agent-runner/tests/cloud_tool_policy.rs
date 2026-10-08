@@ -12,6 +12,7 @@ fn ctx_request(tool_name: &str) -> RunnerToolRequest<'_> {
         requester_account_id: "acct_requester",
         owner_account_id: "acct_owner",
         data_owner_account_id: None,
+        connector_tools: &[],
     }
 }
 
@@ -101,6 +102,7 @@ fn web_fetch_private_url_is_blocked_in_cloud_runner() {
         requester_account_id: "acct_requester",
         owner_account_id: "acct_owner",
         data_owner_account_id: None,
+        connector_tools: &[],
     };
 
     assert_eq!(

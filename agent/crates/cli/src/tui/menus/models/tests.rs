@@ -84,6 +84,7 @@ fn build_test_controller(
         schedule_task: None,
         mac_local: None,
         execution_mode: ToolExecutionMode::Interactive,
+        connector_tools: None,
         request_approval: None,
     };
     let runtime_host = AgentSessionRuntimeHost::from_bootstrap(AgentSessionRuntimeBootstrap {

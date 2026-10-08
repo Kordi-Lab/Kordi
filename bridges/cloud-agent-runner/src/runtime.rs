@@ -385,5 +385,8 @@ where
 }
 
 #[cfg(test)]
+#[path = "runtime_connector_tests.rs"]
+mod connector_tests;
+#[cfg(test)]
 #[path = "runtime_tests.rs"]
 mod tests;

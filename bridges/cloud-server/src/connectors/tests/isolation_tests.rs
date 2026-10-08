@@ -1,6 +1,7 @@
 //! Cross-account isolation, credential value scans, audit wording, and
 //! audit paging.
 
+use super::broker_tests::{call, leased_run, runner};
 use super::*;
 
 async fn app_for(pool: &PgPool, runtime: ConnectorRuntime) -> axum::Router {
@@ -71,31 +72,26 @@ async fn responses_never_contain_credential_values() {
         .unwrap();
 
     // Broker: success, a provider failure, and a denial.
+    let (person, _) = leased_run(&pool, &runtime, &owner, RunTrigger::PersonStarted).await;
+    let (background, _) = leased_run(&pool, &runtime, &owner, RunTrigger::Background).await;
+    let holder = runner();
     let ok = broker::call_connector_tool(
         &pool,
         &runtime,
-        &call(
-            &owner,
-            &connector_id,
-            RunTrigger::PersonStarted,
-            STUB_READ_TOOL,
-        ),
+        &holder,
+        &call(&person, &connector_id, STUB_READ_TOOL),
     )
     .await;
     assert!(ok.ok, "{ok:?}");
-    let mut failing = call(
-        &owner,
-        &connector_id,
-        RunTrigger::PersonStarted,
-        STUB_READ_TOOL,
-    );
+    let mut failing = call(&person, &connector_id, STUB_READ_TOOL);
     failing.args = json!({ "fail": true });
-    let failed = broker::call_connector_tool(&pool, &runtime, &failing).await;
+    let failed = broker::call_connector_tool(&pool, &runtime, &holder, &failing).await;
     assert_eq!(failed.error_code(), Some(codes::PROVIDER_FAILED));
     let blocked = broker::call_connector_tool(
         &pool,
         &runtime,
-        &call(&owner, &connector_id, RunTrigger::Background, STUB_ACT_TOOL),
+        &holder,
+        &call(&background, &connector_id, STUB_ACT_TOOL),
     )
     .await;
     assert_eq!(blocked.error_code(), Some(codes::BLOCKED_BACKGROUND));

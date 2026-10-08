@@ -30,6 +30,7 @@ fn run_fixture() -> CloudAgentRun {
         sandbox_id: None,
         runtime_route: AgentRuntimeRoute::default(),
         provider_auth_available: true,
+        connectors: Default::default(),
     }
 }
 

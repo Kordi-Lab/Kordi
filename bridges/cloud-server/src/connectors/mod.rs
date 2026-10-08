@@ -4,6 +4,7 @@
 //! calls through the broker. Runs receive tool results only, never a token.
 
 pub mod broker;
+pub mod delivery;
 pub mod events;
 pub mod models;
 pub mod oauth;
@@ -12,6 +13,7 @@ pub mod providers;
 mod refresh;
 pub mod routes;
 pub mod store;
+pub mod tool_schemas;
 
 #[cfg(test)]
 mod tests;

@@ -210,8 +210,8 @@ async fn store_message(
             .await
             .map_err(db_error)?;
             let now = chrono::Utc::now().to_rfc3339();
-            query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,sandbox_id,runtime_route_json,created_at,updated_at,execution_backend,execution_agent_id,subsession_id,subsession_write_scope) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,$11,'cloud',$12,$13,$14)")
-                .bind(&run_id).bind(format!("subsession:{id}:{}",input.client_message_id)).bind(input.client_message_id.to_string()).bind(&visible.parent_session_id).bind(&visible.owner_account_id).bind(&session.account_id).bind(&input.text).bind(system).bind(sandbox.sandbox_id).bind(route).bind(now).bind(&visible.agent_id).bind(id).bind(json!(scope)).execute(&mut *tx).await.map_err(db_error)?;
+            query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,system_prompt,sandbox_id,runtime_route_json,created_at,updated_at,execution_backend,execution_agent_id,subsession_id,subsession_write_scope,run_trigger) VALUES($1,$2,$3,$4,$5,$6,'queued',$7,$8,$9,$10,$11,$11,'cloud',$12,$13,$14,$15)")
+                .bind(&run_id).bind(format!("subsession:{id}:{}",input.client_message_id)).bind(input.client_message_id.to_string()).bind(&visible.parent_session_id).bind(&visible.owner_account_id).bind(&session.account_id).bind(&input.text).bind(system).bind(sandbox.sandbox_id).bind(route).bind(now).bind(&visible.agent_id).bind(id).bind(json!(scope)).bind(crate::connectors::models::RunTrigger::for_person_message(&visible.owner_account_id, &session.account_id).as_str()).execute(&mut *tx).await.map_err(db_error)?;
             Some(run_id)
         } else {
             None
