@@ -3,7 +3,7 @@ import QuickLook
 import SwiftUI
 import UIKit
 
-private enum SessionDetailTab: String, Identifiable {
+enum SessionDetailTab: String, Identifiable {
     case members = "Members"
     case memory = "Memory"
     case media = "Media"
@@ -12,6 +12,16 @@ private enum SessionDetailTab: String, Identifiable {
     case groups = "Groups"
 
     var id: Self { self }
+
+    /// Tabs on a group info page. Memory sits between Members and Media when the
+    /// server advertises memory support.
+    static func groupTabs(memoryAvailable: Bool) -> [SessionDetailTab] {
+        memoryAvailable ? [.members, .memory, .media, .files, .todo] : [.members, .media, .files, .todo]
+    }
+
+    static func groupTabs(capabilities: CloudAuthCapabilities?) -> [SessionDetailTab] {
+        groupTabs(memoryAvailable: MemoryPresentation.isAvailable(capabilities))
+    }
 }
 
 private struct SessionFeatureNotice {
@@ -180,7 +190,8 @@ struct SessionDetailView: View {
     private var availableTabs: [SessionDetailTab] {
         switch currentConversation.kind {
         case .group:
-            model.isMemoryAvailable ? [.members, .memory, .media, .files, .todo] : [.members, .media, .files, .todo]
+            // Reads the published capabilities so the picker re-renders when they load.
+            SessionDetailTab.groupTabs(capabilities: model.memoryCapabilities)
         case .person:
             [.media, .files, .todo, .groups]
         case .agent:

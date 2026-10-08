@@ -416,6 +416,11 @@ final class AppModel: ObservableObject {
         self.previewHistoryLoadDelay = previewHistoryLoadDelay
             ?? (ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") ? .seconds(2) : .zero)
         UserDefaults.standard.removeObject(forKey: "kordi.session-title-overrides")
+        if previewMode {
+            // Preview data always advertises memory, so every group info page and
+            // Settings show the Memory entry without an extra launch argument.
+            memoryCapabilities = Self.previewMemoryCapabilities
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
             // Keep the initial phase so the network-free launch surface remains visible.
         } else if ProcessInfo.processInfo.arguments.contains("--preview-login")
@@ -485,6 +490,7 @@ final class AppModel: ObservableObject {
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
             phase = .signedIn
+            scheduleMemoryCapabilitiesRefresh()
             scheduleDigestWarmup()
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -1069,10 +1075,18 @@ final class AppModel: ObservableObject {
 
     var isMemoryAvailable: Bool { MemoryPresentation.isAvailable(memoryCapabilities) }
 
-    /// Loads the capability flag that shows the Memory settings entry.
+    private static let previewMemoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+
+    /// Fetches the memory capability in the background right after sign-in or a
+    /// restored session, so it is cached before any detail view appears.
+    private func scheduleMemoryCapabilitiesRefresh() {
+        Task { [weak self] in await self?.refreshMemoryCapabilities() }
+    }
+
+    /// Loads the capability flag that shows the Memory settings entry and group tab.
     func refreshMemoryCapabilities() async {
         if previewMode {
-            memoryCapabilities = CloudAuthCapabilities(password: true, memoryVersion: 1)
+            memoryCapabilities = Self.previewMemoryCapabilities
             return
         }
         do {
@@ -7892,6 +7906,7 @@ final class AppModel: ObservableObject {
                 && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }
         phase = .signedIn
+        scheduleMemoryCapabilitiesRefresh()
         presencePublisher.start(token: response.session.token)
         scheduleDigestWarmup()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(

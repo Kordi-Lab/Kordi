@@ -265,3 +265,17 @@ private extension MemoryPresentation.Validation {
         return false
     }
 }
+
+extension MemoryPresentationTests {
+    func testGroupTabsIncludeMemoryBetweenMembersAndMediaWhenAvailable() {
+        let tabs = SessionDetailTab.groupTabs(capabilities: CloudAuthCapabilities(password: true, memoryVersion: 1))
+        XCTAssertEqual(tabs, [.members, .memory, .media, .files, .todo])
+    }
+
+    func testGroupTabsKeepOriginalFourWithoutMemoryCapability() {
+        let original: [SessionDetailTab] = [.members, .media, .files, .todo]
+        XCTAssertEqual(SessionDetailTab.groupTabs(capabilities: nil), original)
+        XCTAssertEqual(SessionDetailTab.groupTabs(capabilities: CloudAuthCapabilities(password: true, memoryVersion: nil)), original)
+        XCTAssertEqual(SessionDetailTab.groupTabs(memoryAvailable: false), original)
+    }
+}
