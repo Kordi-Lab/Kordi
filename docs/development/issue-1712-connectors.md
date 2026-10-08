@@ -315,9 +315,11 @@ Mac harness and desktop:
   `ConnectorToolsRuntime`, and `ConnectorTool`, which fails closed when
   `ToolContext.connector_tools` is `None` or no longer lists the tool. Every
   `act` tool calls `ToolContext.request_approval` first and is refused when
-  there is no approval hook or the run is non-interactive; the desktop does
-  not wire an approval hook yet, so `act` tools on the Mac stay refused until
-  the "Ask me before" UI lands.
+  there is no approval hook or the run is non-interactive. Cloud act tools
+  wait for the approval flow; Mac act tools go through the approval card.
+  Until the desktop turn wires that card into `request_approval`, a Mac `act`
+  call finds no hook and is refused (fail closed), so nothing acts without
+  the person's approval.
 - `ToolRegistry::set_connector_tools` registers one tool per descriptor for
   each turn (never replacing an existing tool) and removes them on the next
   turn; shared requests from other people never get them.
@@ -351,16 +353,65 @@ are a second wave.
 
 ## PR 4: Mac-local connectors
 
-- Tauri commands in `app/desktop/src-tauri/src/connectors/`: EventKit (Calendar
-  and Reminders), Contacts, and Automation-based Mail and Messages readers,
-  each behind the macOS permission prompt and exposed only on owner-local runs
-  through the `ownerLocal` gate in `capabilities.ts`.
-- Notification Center reader: off by default, requires Full Disk Access, returns
-  app name, title, body, and time for a bounded window, never writes the body to
-  lessons or OMP state (ties to the sensitive-content rule in #1710), and the
-  tool is absent when Full Disk Access is missing or the setting is off, with a
-  Tauri-side test.
-- iPhone offers EventKit and Contacts only.
+Shipped scope: read tools only, owner-local runs on macOS only.
+
+- Tools (`agent/crates/tools/src/mac_local.rs`): `mac_calendar_read_events`
+  (`from`, `to` at most 31 days apart, optional `calendarIds`; at most 200
+  events with title, start, end, allDay, location, calendar name, attendee
+  names), `mac_calendar_read_reminders` (`includeCompleted`; at most 200),
+  `mac_contacts_search` (`query` of at least 2 characters, `limit` up to 50;
+  no full listing), and `mac_notification_center_recent` (`hours` up to 24,
+  `limit` up to 100, body capped at 500 characters). Tool names use
+  underscores, not dots, because provider tool names must match
+  `^[a-zA-Z0-9_-]+$`. Each tool reads `ToolContext.mac_local` and fails closed
+  with a "not an empty result" message when the runtime is absent or the
+  source is off; none is allowed on shared requests.
+- Harness (`agent/crates/cli/src/tool_registry.rs`): the tools are not in
+  `builtin_tools()`. `ToolRegistry::sync_mac_local_tools` runs before every
+  desktop turn and registers only the sources the runtime has on; Notification
+  Center needs `notification_center_enabled`. Shared requests never get the
+  runtime (`desktop_runtime/turn_execution.rs`).
+- Desktop (`app/desktop/src-tauri/src/mac_local/`): EventKit readers shared
+  with the digest calendar sync (`eventkit.rs`), Contacts through `osascript`
+  with the query passed as a script argument (`contacts.rs`; error `-1743`
+  maps to `denied`, status without prompting uses
+  `AEDeterminePermissionToAutomateTarget`), and the Notification Center
+  reader over `~/Library/Group Containers/group.com.apple.usernoted/db2/db`
+  (`notification_center.rs`; read-only, a locked database is copied to a
+  private temporary directory that is removed before the call returns; rows
+  whose plist cannot be decoded are skipped and counted). Nothing read is
+  persisted.
+- Runtime (`chat/mac_local_runtime.rs`): built per turn in
+  `session_preparation.rs`, only when the turn is not on the cloud-lease path
+  and the requester is the owner; `None` when every source is off. Each call
+  re-reads the settings, so turning a source off applies immediately.
+- Settings: global only, all off by default, project settings cannot turn
+  them on:
+
+  ```json
+  { "connectors": { "mac_local": { "calendar": false, "contacts": false, "notification_center": false } } }
+  ```
+
+- Commands: `desktop_mac_local_connectors_state`,
+  `desktop_mac_local_connectors_set_enabled(source, enabled)` (calendar asks
+  for Calendars and Reminders access; contacts runs a count to raise the
+  Automation prompt; notification_center turns on only when the database is
+  readable), `desktop_mac_local_connectors_recheck`, and
+  `desktop_mac_local_connectors_preview(source)` (three events and reminders,
+  a contact count, or three notification titles without bodies). Each source
+  reports `{ enabled, permission }` with `granted`, `denied`,
+  `not_determined`, `full_disk_access_missing`, or `unavailable`. Tauri v2
+  allows app commands without a capability entry, so
+  `capabilities/default.json` is unchanged. `Info.plist` gains the Reminders
+  and Apple Events usage strings, and `Entitlements.plist` the reminders and
+  Apple Events entitlements.
+- Settings page: in the desktop shell `createDesktopMacLocalConnectorsClient`
+  backs the three Mac rows with these commands; service rows keep the preview
+  client behind `VITE_KORDI_CONNECTORS_PREVIEW=1`.
+- Deferred: the "Create reminders" act tool waits for the runtime PR that adds
+  act gating (person-started runs only, approval). Mail and Messages readers
+  through Automation are not in this PR. iPhone offers EventKit and Contacts
+  only, in PR 5.
 
 ## PR 5: Consent, deletion, audit, iPhone, chat
 
