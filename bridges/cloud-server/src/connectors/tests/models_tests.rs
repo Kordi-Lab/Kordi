@@ -29,6 +29,11 @@ fn no_connector_response_type_has_a_secret_shaped_key() {
             "ConnectorListResponse",
             serde_json::to_value(ConnectorListResponse {
                 connectors: vec![summary.clone()],
+                agents: vec![ConnectorAgent {
+                    agent_id: "cloud-agent:acct_sample".into(),
+                    name: "Kordi".into(),
+                    is_default: true,
+                }],
             })
             .unwrap(),
         ),
@@ -105,7 +110,10 @@ fn connector_summary_is_built_from_cloud_connectors_columns_only() {
             "act_enabled",
             "created_at",
             "updated_at",
-            "revoked_at"
+            "revoked_at",
+            "settings",
+            "provider_account_id",
+            "last_event_at"
         ]
     );
     assert!(columns.iter().all(|column| !is_secret_key(column)));
@@ -115,9 +123,11 @@ fn connector_summary_is_built_from_cloud_connectors_columns_only() {
         .nth(1)
         .and_then(|rest| rest.split(");").next())
         .unwrap();
+    let added = include_str!("../../../migrations/0115_connector_provider_state.sql");
     for column in columns {
         assert!(
-            table.contains(&format!("    {column} ")),
+            table.contains(&format!("    {column} "))
+                || added.contains(&format!("ADD COLUMN {column} ")),
             "{column} is not a cloud_connectors column"
         );
     }

@@ -312,6 +312,18 @@ pub async fn complete_grant(
             );
         }
     };
+    let provider_account_id = match token.provider_account_id.clone() {
+        Some(account) => Some(account),
+        // Best effort: without it, webhooks cannot reach this connector and
+        // the polling job covers it instead.
+        None => provider
+            .account_identity(&token.secret)
+            .await
+            .unwrap_or_else(|error| {
+                eprintln!("[connectors] {} account identity: {error}", spec.id);
+                None
+            }),
+    };
     let summary = format!(
         "Granted {} access to {}.",
         state.grant.as_str(),
@@ -325,6 +337,7 @@ pub async fn complete_grant(
             read_scopes: &read_scopes,
             act_scopes: &act_scopes,
             enable_act: state.grant == ConnectorToolGroup::Act,
+            provider_account_id: provider_account_id.as_deref(),
             audit_tool_group: state.grant,
             audit_summary: &summary,
         },

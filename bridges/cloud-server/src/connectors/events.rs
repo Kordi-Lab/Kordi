@@ -1,11 +1,12 @@
-//! Connector events (webhooks and polling land here in PR 3) and their
-//! retention sweep.
+//! Connector events from webhooks, push, and polling, and their retention
+//! sweep.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde_json::Value;
 use sqlx_core::query::query;
+use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 
 use super::store::new_id;
@@ -42,18 +43,28 @@ pub struct NewConnectorEvent<'a> {
     pub payload: &'a Value,
 }
 
-/// Stores one event and returns its id. Events expire after the retention
-/// window and are deleted with their connector.
+/// Stores one event and returns its id, or `None` when an event with the
+/// same `external_id` is already stored for the connector (webhook retries,
+/// replays, and overlapping polls). A new event moves the connector's
+/// `last_event_at`. Events expire after the retention window and are deleted
+/// with their connector.
 pub async fn record_event(
     pool: &PgPool,
     event: NewConnectorEvent<'_>,
-) -> Result<String, sqlx_core::Error> {
+) -> Result<Option<String>, sqlx_core::Error> {
     let event_id = new_id("cnevt");
     let expires_at = Utc::now() + ChronoDuration::days(event_retention_days());
-    query(
-        "INSERT INTO cloud_connector_events \
-         (event_id, connector_id, provider, kind, external_id, occurred_at, payload, expires_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    let row: Option<(String,)> = query_as(
+        "WITH inserted AS ( \
+           INSERT INTO cloud_connector_events \
+           (event_id, connector_id, provider, kind, external_id, occurred_at, payload, expires_at) \
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
+           ON CONFLICT (connector_id, external_id) WHERE external_id IS NOT NULL DO NOTHING \
+           RETURNING event_id, connector_id), \
+         touched AS ( \
+           UPDATE cloud_connectors c SET last_event_at = now() \
+           FROM inserted WHERE c.connector_id = inserted.connector_id) \
+         SELECT event_id FROM inserted",
     )
     .bind(&event_id)
     .bind(event.connector_id)
@@ -63,9 +74,9 @@ pub async fn record_event(
     .bind(event.occurred_at)
     .bind(event.payload)
     .bind(expires_at)
-    .execute(pool)
+    .fetch_optional(pool)
     .await?;
-    Ok(event_id)
+    Ok(row.map(|(event_id,)| event_id))
 }
 
 /// Deletes events past `expires_at`, in batches. Returns rows deleted.

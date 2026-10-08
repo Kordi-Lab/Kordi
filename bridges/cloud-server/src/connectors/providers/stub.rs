@@ -20,10 +20,14 @@ pub(crate) static STUB: ProviderSpec = ProviderSpec {
     scope_param: ScopeParam::SpaceSeparated,
     supports_pkce: true,
     extra_auth_params: &[],
+    catalog_scopes: &[
+        ("stub.read", &["stub.items.read"]),
+        ("stub.act", &["stub.items.write"]),
+    ],
 };
 
-pub(crate) const STUB_READ_TOOL: &str = "stub.list_items";
-pub(crate) const STUB_ACT_TOOL: &str = "stub.post_item";
+pub(crate) const STUB_READ_TOOL: &str = "stub_list_items";
+pub(crate) const STUB_ACT_TOOL: &str = "stub_post_item";
 
 static STUB_TOOLS: [ConnectorToolDescriptor; 2] = [
     ConnectorToolDescriptor {
@@ -85,6 +89,7 @@ impl ConnectorProvider for StubConnectorProvider {
                 expires_at: Some(Utc::now() + ChronoDuration::hours(1)),
             },
             granted_scopes: None,
+            provider_account_id: Some(format!("stub-user-{code}")),
         })
     }
 
@@ -115,6 +120,7 @@ impl ConnectorProvider for StubConnectorProvider {
         tool: &str,
         args: &Value,
         secret: &ConnectorSecret,
+        _settings: &Value,
     ) -> Result<Value, ProviderError> {
         if self.tool_group(tool).is_none() {
             return Err(ProviderError::UnknownTool);

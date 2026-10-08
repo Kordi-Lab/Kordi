@@ -93,7 +93,8 @@ impl AuditOutcome {
 /// Columns of `cloud_connectors` that [`ConnectorRecord`] is loaded from.
 /// The secrets table is never joined here.
 pub(crate) const CONNECTOR_COLUMNS: &str = "connector_id, account_id, provider, status, \
-     read_scopes, act_scopes, act_enabled, created_at, updated_at, revoked_at";
+     read_scopes, act_scopes, act_enabled, created_at, updated_at, revoked_at, settings, \
+     provider_account_id, last_event_at";
 
 /// One row of `cloud_connectors`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,6 +109,12 @@ pub struct ConnectorRecord {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub revoked_at: Option<DateTime<Utc>>,
+    /// Validated provider settings, such as `{ "channels": [...] }` for Slack.
+    pub settings: Value,
+    /// The account at the provider (GitHub user id, Google email, Slack
+    /// `team:user`). Routes webhooks; never sent to clients.
+    pub provider_account_id: Option<String>,
+    pub last_event_at: Option<DateTime<Utc>>,
 }
 
 /// Tool groups a run may receive from `connector` for `trigger`.
@@ -147,6 +154,11 @@ pub struct ConnectorSummary {
     pub updated_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revoked_at: Option<String>,
+    /// The granted scopes as the catalog ids the clients use
+    /// (`<provider>.<thing>.<access>`), alongside the native scopes above.
+    pub granted_scope_ids: Vec<String>,
+    pub settings: Value,
+    pub last_event_at: Option<String>,
 }
 
 impl ConnectorSummary {
@@ -164,7 +176,16 @@ impl ConnectorSummary {
             created_at,
             updated_at,
             revoked_at,
+            settings,
+            provider_account_id: _,
+            last_event_at,
         } = record;
+        let granted_scope_ids = super::providers::provider_spec(&provider)
+            .map(|spec| {
+                let granted = read_scopes.iter().chain(&act_scopes).cloned();
+                spec.catalog_scope_ids(&granted.collect::<Vec<_>>())
+            })
+            .unwrap_or_default();
         Self {
             connector_id,
             provider,
@@ -176,6 +197,9 @@ impl ConnectorSummary {
             created_at: created_at.to_rfc3339(),
             updated_at: updated_at.to_rfc3339(),
             revoked_at: revoked_at.map(|value| value.to_rfc3339()),
+            granted_scope_ids,
+            settings,
+            last_event_at: last_event_at.map(|value| value.to_rfc3339()),
         }
     }
 }
@@ -184,6 +208,17 @@ impl ConnectorSummary {
 #[serde(rename_all = "camelCase")]
 pub struct ConnectorListResponse {
     pub connectors: Vec<ConnectorSummary>,
+    /// Agents the person can grant connectors to: the built-in agent first,
+    /// then active agents from `cloud_agent_definitions`.
+    pub agents: Vec<ConnectorAgent>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectorAgent {
+    pub agent_id: String,
+    pub name: String,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Serialize)]

@@ -35,6 +35,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route("/v1/cloud/connectors/:id/oauth/start", post(start_oauth))
         .route("/v1/cloud/connectors/:id/act", post(set_act))
         .route("/v1/cloud/connectors/:id/agents", put(set_agents))
+        .route(
+            "/v1/cloud/connectors/:id/settings",
+            put(super::settings::set_settings),
+        )
         .route("/v1/cloud/connectors/:id/audit", get(list_audit))
         .route(
             "/v1/cloud/connectors/:id",
@@ -46,6 +50,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         ));
     Router::new()
         .merge(account_routes)
+        .merge(super::webhooks::routes())
         .route("/v1/cloud/connectors/oauth/callback", get(oauth_callback))
         .route(BROKER_CALL_PATH, post(broker_call))
         .with_state(state)
@@ -80,9 +85,14 @@ async fn list_connectors(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
-    match store::connector_summaries(state.db_pool(), &session.account_id).await {
-        Ok(connectors) => Json(ConnectorListResponse { connectors }).into_response(),
-        Err(err) => server_error("list connectors", err),
+    let pool = state.db_pool();
+    let connectors = match store::connector_summaries(pool, &session.account_id).await {
+        Ok(connectors) => connectors,
+        Err(err) => return server_error("list connectors", err),
+    };
+    match store::account_agents(pool, &session.account_id).await {
+        Ok(agents) => Json(ConnectorListResponse { connectors, agents }).into_response(),
+        Err(err) => server_error("list connector agents", err),
     }
 }
 

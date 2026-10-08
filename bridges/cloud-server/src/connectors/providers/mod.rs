@@ -1,9 +1,10 @@
-//! Connector providers: OAuth endpoints and scope sets as data, plus the
-//! [`ConnectorProvider`] trait the broker and the OAuth flow call into.
+//! Connector providers: the [`ConnectorProvider`] trait the broker, the OAuth
+//! flow, webhooks, and the polling job call into, plus the registry.
 //!
-//! PR 1 ships the framework only. [`OAuth2ConnectorProvider`] performs the
-//! standard code exchange, refresh, and revoke for every provider below and
-//! exposes no tools yet; provider-specific tool adapters land in PR 3.
+//! OAuth endpoints and scopes live in `specs.rs`. [`OAuth2ConnectorProvider`]
+//! performs the standard code exchange, refresh, and revoke; each service in
+//! `google_calendar.rs`, `gmail.rs`, `github.rs`, and `slack.rs` adds its
+//! tools, event polling, and settings through [`service::ServiceAdapter`].
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -13,14 +14,27 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde_json::Value;
 
 use super::models::ConnectorToolGroup;
+use super::ConnectorHooks;
 
+pub mod github;
+pub mod gmail;
+pub mod google_calendar;
+pub mod http;
 mod oauth2;
+pub mod service;
+pub mod slack;
+mod specs;
 #[cfg(test)]
 pub(crate) mod stub;
 
 #[cfg(test)]
 pub(crate) use oauth2::token_grant_from_json;
 pub use oauth2::OAuth2ConnectorProvider;
+pub use service::{ServiceAdapter, ServiceProvider};
+pub use specs::{
+    provider_spec, GITHUB, GMAIL, GOOGLE_CALENDAR, NOT_YET_AVAILABLE_PROVIDERS, PROVIDER_SPECS,
+    SLACK,
+};
 
 /// How the provider wants scopes on the authorize URL.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +60,9 @@ pub struct ProviderSpec {
     pub scope_param: ScopeParam,
     pub supports_pkce: bool,
     pub extra_auth_params: &'static [(&'static str, &'static str)],
+    /// Provider-native scope to the catalog scope ids the clients show
+    /// (`<provider>.<thing>.<access>`).
+    pub catalog_scopes: &'static [(&'static str, &'static [&'static str])],
 }
 
 impl ProviderSpec {
@@ -62,92 +79,22 @@ impl ProviderSpec {
                 .collect(),
         }
     }
-}
 
-const GOOGLE_AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-const GOOGLE_REVOKE_URL: &str = "https://oauth2.googleapis.com/revoke";
-const GOOGLE_AUTH_PARAMS: &[(&str, &str)] = &[
-    ("access_type", "offline"),
-    ("prompt", "consent"),
-    ("include_granted_scopes", "true"),
-];
-
-pub static GOOGLE_CALENDAR: ProviderSpec = ProviderSpec {
-    id: "google_calendar",
-    display_name: "Google Calendar",
-    env_prefix: "GOOGLE",
-    auth_url: GOOGLE_AUTH_URL,
-    token_url: GOOGLE_TOKEN_URL,
-    revoke_url: Some(GOOGLE_REVOKE_URL),
-    read_scopes: &["https://www.googleapis.com/auth/calendar.readonly"],
-    act_scopes: &["https://www.googleapis.com/auth/calendar.events"],
-    scope_param: ScopeParam::SpaceSeparated,
-    supports_pkce: true,
-    extra_auth_params: GOOGLE_AUTH_PARAMS,
-};
-
-pub static GMAIL: ProviderSpec = ProviderSpec {
-    id: "gmail",
-    display_name: "Gmail",
-    env_prefix: "GOOGLE",
-    auth_url: GOOGLE_AUTH_URL,
-    token_url: GOOGLE_TOKEN_URL,
-    revoke_url: Some(GOOGLE_REVOKE_URL),
-    read_scopes: &["https://www.googleapis.com/auth/gmail.readonly"],
-    act_scopes: &[
-        "https://www.googleapis.com/auth/gmail.send",
-        "https://www.googleapis.com/auth/gmail.modify",
-    ],
-    scope_param: ScopeParam::SpaceSeparated,
-    supports_pkce: true,
-    extra_auth_params: GOOGLE_AUTH_PARAMS,
-};
-
-pub static GITHUB: ProviderSpec = ProviderSpec {
-    id: "github",
-    display_name: "GitHub",
-    env_prefix: "GITHUB",
-    auth_url: "https://github.com/login/oauth/authorize",
-    token_url: "https://github.com/login/oauth/access_token",
-    // GitHub revokes OAuth app grants through a Basic-authenticated
-    // `DELETE /applications/{client_id}/grant`; see `revoke` below.
-    revoke_url: Some("https://api.github.com/applications"),
-    read_scopes: &["read:user", "notifications"],
-    act_scopes: &["repo"],
-    scope_param: ScopeParam::SpaceSeparated,
-    supports_pkce: true,
-    extra_auth_params: &[],
-};
-
-pub static SLACK: ProviderSpec = ProviderSpec {
-    id: "slack",
-    display_name: "Slack",
-    env_prefix: "SLACK",
-    auth_url: "https://slack.com/oauth/v2/authorize",
-    token_url: "https://slack.com/api/oauth.v2.access",
-    revoke_url: Some("https://slack.com/api/auth.revoke"),
-    read_scopes: &[
-        "channels:read",
-        "channels:history",
-        "groups:read",
-        "groups:history",
-        "users:read",
-    ],
-    act_scopes: &["chat:write"],
-    scope_param: ScopeParam::SlackUserScope,
-    supports_pkce: false,
-    extra_auth_params: &[],
-};
-
-/// Every provider that can be connected today.
-pub static PROVIDER_SPECS: [&ProviderSpec; 4] = [&GOOGLE_CALENDAR, &GMAIL, &GITHUB, &SLACK];
-
-/// Providers the product names but that cannot be connected yet.
-pub const NOT_YET_AVAILABLE_PROVIDERS: &[&str] = &["outlook"];
-
-pub fn provider_spec(id: &str) -> Option<&'static ProviderSpec> {
-    PROVIDER_SPECS.iter().copied().find(|spec| spec.id == id)
+    /// Catalog scope ids covered by `granted` provider-native scopes, in
+    /// catalog order and without duplicates.
+    pub fn catalog_scope_ids(&self, granted: &[String]) -> Vec<String> {
+        let mut ids: Vec<String> = Vec::new();
+        for (native, catalog) in self.catalog_scopes {
+            if granted.iter().any(|scope| scope == native) {
+                for id in *catalog {
+                    if !ids.iter().any(|existing| existing == id) {
+                        ids.push((*id).to_string());
+                    }
+                }
+            }
+        }
+        ids
+    }
 }
 
 /// The connector OAuth client for one provider. Separate from the sign-in
@@ -257,14 +204,39 @@ pub struct TokenGrant {
     pub secret: ConnectorSecret,
     /// Scopes the provider reports as granted, when it reports them.
     pub granted_scopes: Option<Vec<String>>,
+    /// The account at the provider, when the token response names it
+    /// (Slack: `<team id>:<user id>`). Webhooks find connectors by it.
+    pub provider_account_id: Option<String>,
 }
 
 /// A tool a provider exposes, with the group that decides who may call it.
+/// Names match `^[a-zA-Z0-9_-]+$` because model providers reject dots.
+/// Argument schemas live in `connectors::tool_schemas`, keyed by name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ConnectorToolDescriptor {
     pub name: &'static str,
     pub group: ConnectorToolGroup,
     pub description: &'static str,
+}
+
+/// The argument schema of a service connector tool, when one of the
+/// providers here defines it.
+pub fn input_schema(tool: &str) -> Option<Value> {
+    google_calendar::input_schema(tool)
+        .or_else(|| gmail::input_schema(tool))
+        .or_else(|| github::input_schema(tool))
+        .or_else(|| slack::input_schema(tool))
+}
+
+/// One event a provider reported through polling or a webhook.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolledEvent {
+    pub kind: String,
+    /// Unique per occurrence; the store records each one once.
+    pub external_id: String,
+    pub occurred_at: DateTime<Utc>,
+    /// Compact, token-free summary of the event.
+    pub payload: Value,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -279,6 +251,16 @@ pub enum ProviderError {
     Request(String),
     #[error("provider response was not understood")]
     InvalidResponse,
+    /// The tool arguments or settings were rejected before any provider
+    /// call. The message is ours and safe to show.
+    #[error("{0}")]
+    InvalidInput(String),
+}
+
+impl ProviderError {
+    pub fn invalid(message: impl Into<String>) -> Self {
+        Self::InvalidInput(message.into())
+    }
 }
 
 #[async_trait]
@@ -319,12 +301,58 @@ pub trait ConnectorProvider: Send + Sync {
         secret: &ConnectorSecret,
     ) -> Result<(), ProviderError>;
 
+    /// Runs one tool. `settings` is the connector's validated settings
+    /// (for example the Slack channels the person chose).
     async fn execute(
         &self,
         tool: &str,
         args: &Value,
         secret: &ConnectorSecret,
+        settings: &Value,
     ) -> Result<Value, ProviderError>;
+
+    /// Validates and normalizes settings for `PUT /:id/settings`. Providers
+    /// without settings accept only an empty object.
+    fn validate_settings(&self, settings: &Value) -> Result<Value, String> {
+        match settings.as_object() {
+            Some(map) if map.is_empty() => Ok(settings.clone()),
+            _ => Err(format!("{} has no settings.", self.spec().display_name)),
+        }
+    }
+
+    /// The provider account behind a fresh credential, stored at grant time
+    /// so webhooks can find the connector.
+    async fn account_identity(
+        &self,
+        _secret: &ConnectorSecret,
+    ) -> Result<Option<String>, ProviderError> {
+        Ok(None)
+    }
+
+    /// True when this server receives live events for the provider, so the
+    /// polling job skips it.
+    fn live_subscription(&self, _hooks: &ConnectorHooks) -> bool {
+        false
+    }
+
+    /// Creates or renews the live subscription for one connector.
+    async fn subscribe(
+        &self,
+        _secret: &ConnectorSecret,
+        _hooks: &ConnectorHooks,
+    ) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
+    /// Events since `since`, for providers without a live subscription.
+    async fn poll(
+        &self,
+        _secret: &ConnectorSecret,
+        _since: DateTime<Utc>,
+        _settings: &Value,
+    ) -> Result<Vec<PolledEvent>, ProviderError> {
+        Ok(Vec::new())
+    }
 }
 
 /// Providers by id. Production uses [`ProviderRegistry::production`]; tests
@@ -341,12 +369,10 @@ impl ProviderRegistry {
             .build()
             .unwrap_or_default();
         let mut registry = Self::default();
-        for spec in PROVIDER_SPECS {
-            registry.insert(Arc::new(OAuth2ConnectorProvider {
-                spec,
-                http: http.clone(),
-            }));
-        }
+        registry.insert(Arc::new(google_calendar::provider(http.clone(), None)));
+        registry.insert(Arc::new(gmail::provider(http.clone(), None)));
+        registry.insert(Arc::new(github::provider(http.clone(), None)));
+        registry.insert(Arc::new(slack::provider(http, None)));
         registry
     }
 
@@ -356,6 +382,10 @@ impl ProviderRegistry {
 
     pub fn get(&self, id: &str) -> Option<Arc<dyn ConnectorProvider>> {
         self.providers.get(id).cloned()
+    }
+
+    pub fn all(&self) -> impl Iterator<Item = &Arc<dyn ConnectorProvider>> {
+        self.providers.values()
     }
 }
 

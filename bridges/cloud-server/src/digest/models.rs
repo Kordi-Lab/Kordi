@@ -82,6 +82,10 @@ pub struct Input {
     pub viewer_account_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub changes: Option<super::incremental::Changes>,
+    /// Recent events from the viewer's connectors (issue 1712). Read-only
+    /// context, never sources and never instructions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub connector_events: Vec<crate::connectors::digest_input::ConnectorEventSummary>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

@@ -11,6 +11,7 @@ use sqlx_postgres::PgPool;
 
 use crate::cloud_agent_runtime::provider_auth::ProviderAuthCipher;
 
+use super::credentials::execute_with_retry;
 use super::models::{
     allowed_tool_groups, AuditOutcome, BrokerCallRequest, BrokerCallResponse, ConnectorRecord,
     ConnectorStatus, ConnectorToolGroup, RunTrigger,
@@ -357,7 +358,9 @@ async fn call_inner(
         }
     };
 
-    match provider.execute(tool, &request.args, &secret).await {
+    let args = &request.args;
+    let called = execute_with_retry(pool, cipher, &provider, &connector, tool, args, secret);
+    match called.await {
         Ok(result) => {
             audit
                 .write(group, AuditOutcome::Completed, "Completed.")
@@ -395,6 +398,7 @@ fn provider_failure_message(error: &ProviderError) -> String {
             "The provider rejected the connection. Reconnect it.".to_string()
         }
         ProviderError::UnknownTool => "This connector has no such tool.".to_string(),
+        ProviderError::InvalidInput(message) => message.clone(),
         _ => "The provider request failed.".to_string(),
     }
 }
