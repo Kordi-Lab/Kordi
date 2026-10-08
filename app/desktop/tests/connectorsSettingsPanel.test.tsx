@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -24,36 +23,7 @@ import {
   type ConnectorState,
 } from '../src/features/connectors/connectorsModel';
 import { cloudAccountSettingsNavGroups } from '../src/pages/cloudAccountSettingsNav';
-
-function installDom() {
-  const dom = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true });
-  const target = globalThis as typeof globalThis & Record<string, unknown>;
-  const replacements: Record<string, unknown> = {
-    window: dom.window,
-    document: dom.window.document,
-    navigator: dom.window.navigator,
-    HTMLElement: dom.window.HTMLElement,
-    Element: dom.window.Element,
-    Node: dom.window.Node,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  };
-  const previous = new Map(
-    Object.keys(replacements).map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]),
-  );
-  Object.entries(replacements).forEach(([key, value]) => {
-    Object.defineProperty(target, key, { configurable: true, writable: true, value });
-  });
-  return {
-    dom,
-    restore() {
-      previous.forEach((descriptor, key) => {
-        if (descriptor) Object.defineProperty(target, key, descriptor);
-        else delete target[key];
-      });
-      dom.window.close();
-    },
-  };
-}
+import { buttonByText, click, flush, installDom } from './helpers/connectorsPanelDom';
 
 const connectedState: ConnectorState = {
   providerId: 'google_calendar',
@@ -265,20 +235,6 @@ test('account settings show Connectors only when a client is available', () => {
     .find((item) => item.id === 'connectors');
   assert.equal(connectors?.label, 'Connectors');
 });
-
-async function flush() {
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
-}
-
-async function click(element: Element | null | undefined, window: JSDOM['window']) {
-  assert.ok(element, 'expected an element to click');
-  await act(async () => { element.dispatchEvent(new window.MouseEvent('click', { bubbles: true })); });
-  await flush();
-}
-
-function buttonByText(root: ParentNode, text: string): HTMLButtonElement | undefined {
-  return Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent?.trim() === text);
-}
 
 test('panel lists each connector as a navigation row with a status value', async () => {
   const installed = installDom();

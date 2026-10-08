@@ -72,7 +72,7 @@ private struct ConnectorAuditRow: View {
                     .truncationMode(.middle)
                 Text(entry.outcome.label)
                     .font(.caption)
-                    .foregroundStyle(entry.outcome == .denied || entry.outcome == .blockedBackground ? Color.red : Color.secondary)
+                    .foregroundStyle(entry.outcome == .denied || entry.outcome == .blockedBackground || entry.outcome == .failed ? Color.red : Color.secondary)
             }
             Text(entry.summary)
                 .font(.subheadline)

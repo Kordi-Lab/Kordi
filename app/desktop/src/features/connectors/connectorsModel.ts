@@ -53,7 +53,7 @@ export type ConnectorState = {
 
 export type ConnectorAgent = { agentId: string; name: string; isDefault: boolean };
 
-export type ConnectorAuditOutcome = 'completed' | 'approved' | 'denied' | 'blocked_background';
+export type ConnectorAuditOutcome = 'completed' | 'approved' | 'denied' | 'blocked_background' | 'failed';
 
 export type ConnectorAuditEntry = {
   id: string;

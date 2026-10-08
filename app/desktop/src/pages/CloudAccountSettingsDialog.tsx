@@ -1,5 +1,5 @@
 import { MessageLayoutSetting } from '@/kordi-app/components/MessageLayoutSetting';
-import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -10,19 +10,24 @@ import { SettingsNav, SettingsRow, SettingsSection, SettingsValueControl } from 
 import { EditableIdentityAvatar } from '@/kordi-app/components/EditableIdentityAvatar';
 import type { SettingsSection as SettingsSectionData, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { DesktopAuthProvider, DesktopAuthState, ThemeMode } from '@/kordi-app/types';
-import type {
-  CloudAccount,
-  CloudAccountEmailVerificationInput,
-  CloudProfileUpdateInput,
-  CloudSignupCodeChallenge,
+import {
+  cloudApiBaseUrl,
+  defaultCloudAuthClient,
+  type CloudAccount,
+  type CloudAccountEmailVerificationInput,
+  type CloudProfileUpdateInput,
+  type CloudSignupCodeChallenge,
 } from '@/features/cloud/authClient';
+import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
+import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
 import { CloudAccountEmailRow } from '@/kordi-app/cloud/CloudAccountEmailRow';
 import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
 import { formatKordiHandle } from '@/features/cloud/kordiId';
 import { cn } from '@/lib/utils';
 import { NotificationSettingsPanel } from '@/features/notifications/NotificationSettingsPanel';
 import { ConnectorsSettingsPanel } from '@/features/connectors/ConnectorsSettingsPanel';
-import { connectorsSelectionForEnvironment, type ConnectorsClient } from '@/features/connectors/connectorsClient';
+import type { ConnectorsClient } from '@/features/connectors/connectorsClient';
+import { connectorsClientForAccount } from '@/features/connectors/connectorsClientSelection';
 import { cloudAccountSettingsNavGroups, type CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
 import {
   canonicalAvatarImageSource,
@@ -32,9 +37,6 @@ import {
 } from '@/features/cloud/canonicalAvatar';
 
 export type { CloudAccountSettingsTabId } from './cloudAccountSettingsNav';
-
-// Created once per app load so preview state survives closing the dialog.
-const environmentConnectors = connectorsSelectionForEnvironment();
 
 export type CloudAccountSettingsConfig = {
   settingsSections: SettingsSectionData[];
@@ -66,7 +68,10 @@ type CloudAccountSettingsDialogProps = CloudAccountSettingsConfig & {
   onVerifyEmail?: (input: CloudAccountEmailVerificationInput) => Promise<void>;
   onEmailAlreadyVerified?: () => Promise<void>;
   onSignOut?: () => Promise<void> | void;
-  /** Connectors client; null hides the Connectors section. Defaults to the build environment. */
+  /**
+   * Connectors client override for previews; null hides the section. When
+   * omitted, the client follows the server's `connectorsVersion` capability.
+   */
   connectorsClient?: ConnectorsClient | null;
   /** Marks an overriding `connectorsClient` as sample data. */
   connectorsIsPreview?: boolean;
@@ -136,8 +141,34 @@ export function CloudAccountSettingsDialog({
   const openedAccountIdRef = useRef<string | null>(null);
   const wasOpenRef = useRef(false);
   const hasConnectorsOverride = connectorsClientOverride !== undefined;
-  const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : environmentConnectors?.client ?? null;
-  const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : environmentConnectors?.isPreview ?? false;
+  const connectorsClients = useMemo(
+    () => (hasConnectorsOverride ? null : { auth: defaultCloudAuthClient(), http: new CloudConnectorsHttpClient() }),
+    [hasConnectorsOverride],
+  );
+  const capabilitiesState = useCloudAuthCapabilitiesState(account && connectorsClients ? connectorsClients.auth : null, cloudApiBaseUrl());
+  const { capabilities, status: capabilitiesStatus, refetch: refetchCapabilities } = capabilitiesState;
+  const connectorsAccountId = account?.accountId ?? null;
+  const defaultAgentName = account?.defaultAgent?.displayName ?? undefined;
+  // Kept per account so the preview client's sample state survives closing the dialog.
+  const connectorsSelection = useMemo(() => {
+    if (!connectorsAccountId || !connectorsClients) return null;
+    return connectorsClientForAccount({
+      accountId: connectorsAccountId,
+      http: connectorsClients.http,
+      capabilities,
+      capabilitiesStatus,
+      defaultAgentName,
+    });
+  }, [capabilities, capabilitiesStatus, connectorsAccountId, connectorsClients, defaultAgentName]);
+  const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : connectorsSelection?.client ?? null;
+  const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : connectorsSelection?.source === 'preview';
+  const connectorsServicesStatus = hasConnectorsOverride ? undefined : connectorsSelection?.servicesStatus;
+  const capabilitiesStatusRef = useRef(capabilitiesStatus);
+  useEffect(() => { capabilitiesStatusRef.current = capabilitiesStatus; }, [capabilitiesStatus]);
+  // Opening the Connectors tab retries a failed capabilities fetch once.
+  useEffect(() => {
+    if (isOpen && activeTab === 'connectors' && capabilitiesStatusRef.current === 'failed') refetchCapabilities();
+  }, [activeTab, isOpen, refetchCapabilities]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -393,6 +424,8 @@ export function CloudAccountSettingsDialog({
       client={connectorsClient}
       isNativeShell={isNativeShell}
       isPreview={connectorsArePreview}
+      servicesStatus={connectorsServicesStatus}
+      onRetryServices={refetchCapabilities}
     />
   ) : null;
 
