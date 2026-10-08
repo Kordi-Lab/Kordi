@@ -21,13 +21,16 @@ export type CloudConnectorSummary = {
   createdAt: string;
   updatedAt: string;
   revokedAt?: string;
+  /** Granted scopes as catalog ids; absent on servers before connectorsVersion 2. */
+  grantedScopeIds?: string[];
+  lastEventAt?: string | null;
 };
 
 export type CloudConnectorAgent = { agentId: string; name: string; isDefault?: boolean };
 
 export type CloudConnectorListResponse = {
   connectors: CloudConnectorSummary[];
-  /** Not sent by connectorsVersion 1; read when a later server adds it. */
+  /** The built-in agent first, then active agents. Absent on older servers. */
   agents?: CloudConnectorAgent[];
 };
 
@@ -61,7 +64,7 @@ export type CloudConnectorAuditQuery = { limit?: number; before?: string };
 
 export type CloudConnectorDisconnectResponse = { deletedEvents: number };
 
-/** Payload the OAuth callback puts in `#kordi_connector=` after a grant. */
+/** Payload an older server's OAuth callback puts in `#kordi_connector=` after a grant. */
 export type CloudConnectorOAuthCompleted = {
   connectorId: string;
   provider: string;
@@ -69,9 +72,43 @@ export type CloudConnectorOAuthCompleted = {
   status: CloudConnectorStatus;
 };
 
+/**
+ * Payload the OAuth callback puts in `#kordi_connector=` when the client must
+ * finish the grant with `POST /v1/cloud/connectors/oauth/complete`.
+ */
+export type CloudConnectorOAuthPending = {
+  completionCode: string;
+  provider: string;
+  grant: CloudConnectorToolGroup;
+};
+
 export type CloudConnectorCallbackResult =
   | { kind: 'completed'; result: CloudConnectorOAuthCompleted }
+  | { kind: 'pending'; result: CloudConnectorOAuthPending }
   | { kind: 'error'; message: string; code: string | null };
+
+/** A connectors request error that keeps the server's own error code. */
+export class CloudConnectorsError extends CloudAuthError {
+  readonly serverCode: string | null;
+
+  constructor(base: CloudAuthError, serverCode: string | null) {
+    super(base.code, base.message, base.status, base.retryAfterSeconds);
+    this.serverCode = serverCode;
+    this.name = 'CloudConnectorsError';
+  }
+}
+
+/** The server's error code for a failed connectors request, such as `connector_not_found`. */
+export function cloudConnectorErrorCode(error: unknown): string | null {
+  return error instanceof CloudConnectorsError ? error.serverCode : null;
+}
+
+function serverErrorCode(body: unknown): string | null {
+  if (!body || typeof body !== 'object') return null;
+  const record = body as { errorCode?: unknown; error?: { code?: unknown } };
+  const code = record.errorCode ?? record.error?.code;
+  return typeof code === 'string' && code ? code : null;
+}
 
 export type CloudConnectorsHttpClientOptions = {
   baseUrl?: string;
@@ -129,7 +166,8 @@ export class CloudConnectorsHttpClient {
     }
     const parsed = response.status === 204 ? null : await readJsonSafe(response);
     if (!response.ok) {
-      throw buildCloudAuthError(response.status, parsed, fallbackMessage, response.headers.get('retry-after'));
+      const base = buildCloudAuthError(response.status, parsed, fallbackMessage, response.headers.get('retry-after'));
+      throw new CloudConnectorsError(base, serverErrorCode(parsed));
     }
     return parsed as TResponse;
   }
@@ -146,6 +184,15 @@ export class CloudConnectorsHttpClient {
   startOAuth(token: string, provider: string, input: CloudConnectorOAuthStartInput): Promise<CloudConnectorOAuthStartResponse> {
     const body = input.redirectAfter ? { grant: input.grant, redirectAfter: input.redirectAfter } : { grant: input.grant };
     return this.send(connectorPath(provider, '/oauth/start'), token, 'POST', body, 'Could not start connecting.');
+  }
+
+  /** Finishes a grant from the callback's completion code; returns the connector. */
+  async completeOAuth(token: string, completionCode: string): Promise<CloudConnectorResponse> {
+    const body = await this.send<unknown>(`${CONNECTORS_PATH}/oauth/complete`, token, 'POST', { completionCode }, 'Could not finish connecting.');
+    const record = (body && typeof body === 'object' ? body : {}) as Partial<CloudConnectorResponse> & Partial<CloudConnectorSummary>;
+    if (record.connector && typeof record.connector === 'object') return { connector: record.connector };
+    if (typeof record.connectorId === 'string') return { connector: record as CloudConnectorSummary };
+    throw new CloudAuthError('unknown', 'The server did not return the connector. Try again.', 200);
   }
 
   setAct(token: string, connectorId: string, enabled: boolean): Promise<CloudConnectorResponse> {
@@ -180,15 +227,18 @@ function decodeBase64UrlJson(value: string): unknown {
   }
 }
 
-function completedFragment(value: unknown): CloudConnectorOAuthCompleted | null {
+function completedFragment(value: unknown): CloudConnectorCallbackResult | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
-  const { connectorId, provider, grant, status } = record;
-  if (typeof connectorId !== 'string' || !connectorId) return null;
+  const { completionCode, connectorId, provider, grant, status } = record;
   if (typeof provider !== 'string' || !provider) return null;
   if (grant !== 'read' && grant !== 'act') return null;
+  if (typeof completionCode === 'string' && completionCode) {
+    return { kind: 'pending', result: { completionCode, provider, grant } };
+  }
+  if (typeof connectorId !== 'string' || !connectorId) return null;
   if (status !== 'connected' && status !== 'needs_reauth' && status !== 'revoked') return null;
-  return { connectorId, provider, grant, status };
+  return { kind: 'completed', result: { connectorId, provider, grant, status } };
 }
 
 /**
@@ -206,7 +256,6 @@ export function parseConnectorCallbackFragment(value: string | null | undefined)
   }
   const encoded = params.get('kordi_connector')?.trim();
   if (!encoded) return null;
-  const result = completedFragment(decodeBase64UrlJson(encoded));
-  if (!result) return { kind: 'error', message: 'The connection did not return a valid result.', code: null };
-  return { kind: 'completed', result };
+  return completedFragment(decodeBase64UrlJson(encoded))
+    ?? { kind: 'error', message: 'The connection did not return a valid result.', code: null };
 }

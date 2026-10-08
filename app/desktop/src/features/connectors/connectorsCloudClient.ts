@@ -4,6 +4,7 @@
 
 import { normalizeCloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import {
+  cloudConnectorErrorCode,
   parseConnectorCallbackFragment,
   type CloudConnectorAuditEntry,
   type CloudConnectorSummary,
@@ -13,9 +14,11 @@ import {
 import { loadSession } from '@/features/cloud/session';
 
 import type { ConnectorsClient } from './connectorsClient';
+import { ConnectorGoneError } from './connectorsErrors';
 import {
   connectorCatalog,
   connectorDefinition,
+  hasGrantedActScopes,
   type ConnectorAgent,
   type ConnectorAuditEntry,
   type ConnectorAuditOutcome,
@@ -23,8 +26,15 @@ import {
   type ConnectorState,
   type ConnectorStatus,
 } from './connectorsModel';
-
-const MINUTE = 60_000;
+import {
+  abortable,
+  abortableDelay,
+  CONNECTOR_OAUTH_TIMEOUT_MS,
+  connectorCanceledError,
+  desktopConnectorOAuthHandoff,
+  withTimeout,
+  type ConnectorOAuthHandoff,
+} from './connectorsOAuthHandoff';
 
 function readScopeIds(providerId: ConnectorProviderId): string[] {
   return connectorDefinition(providerId).readScopes.map((scope) => scope.id);
@@ -46,52 +56,20 @@ function emptyState(providerId: ConnectorProviderId): ConnectorState {
   };
 }
 
-
 export type CloudConnectorsApi = Pick<
   CloudConnectorsHttpClient,
-  'list' | 'listAgents' | 'startOAuth' | 'setAct' | 'setAgents' | 'audit' | 'delete'
+  'list' | 'listAgents' | 'startOAuth' | 'completeOAuth' | 'setAct' | 'setAgents' | 'audit' | 'delete'
 >;
 
-/** A local callback target the server redirects to after the provider grant. */
-export type ConnectorOAuthCallback = {
-  redirectUrl: string;
-  /** Resolves with the callback fragment, for example `#kordi_connector=...`. */
-  wait(timeoutMs: number): Promise<string>;
-  cancel(): Promise<void>;
-};
+export {
+  CONNECTOR_OAUTH_TIMEOUT_MS,
+  desktopConnectorOAuthHandoff,
+  type ConnectorOAuthCallback,
+  type ConnectorOAuthHandoff,
+} from './connectorsOAuthHandoff';
 
-export type ConnectorOAuthHandoff = {
-  /** Null when this shell cannot receive the callback; the client then polls. */
-  prepare(): Promise<ConnectorOAuthCallback | null>;
-  open(url: string): Promise<unknown>;
-};
-
-/**
- * Same handoff as cloud sign-in: a one-use loopback listener in the desktop
- * shell receives the redirect, and the provider page opens in the system
- * browser.
- */
-export const desktopConnectorOAuthHandoff: ConnectorOAuthHandoff = {
-  async prepare() {
-    const desktop = await import('@/lib/desktop');
-    const loopback = await desktop.prepareDesktopCloudOAuthLoopback();
-    if (!loopback) return null;
-    return {
-      redirectUrl: loopback.redirectUrl,
-      wait: (timeoutMs) => desktop.waitForDesktopCloudOAuthLoopback(loopback.requestId, timeoutMs),
-      cancel: async () => {
-        await desktop.invokeDesktop<void>('cloud_oauth_loopback_cancel', { requestId: loopback.requestId })
-          .catch(() => undefined);
-      },
-    };
-  },
-  async open(url) {
-    const desktop = await import('@/lib/desktop');
-    return desktop.openDesktopExternalUrl(url);
-  },
-};
-
-export const CONNECTOR_OAUTH_TIMEOUT_MS = 10 * MINUTE;
+/** Consecutive failed polls tolerated before the polling path gives up. */
+const POLL_RETRIES = 3;
 
 export type CloudConnectorsClientOptions = {
   accountId: string;
@@ -117,28 +95,34 @@ export function defaultConnectorAgentId(accountId: string): string {
 }
 
 /**
- * Maps a server summary to the panel state. Server scopes are provider scope
- * strings, so granted scopes are shown as the catalog's read and act groups.
+ * Coarse fallback for servers that do not send `grantedScopeIds`: any granted
+ * provider scope in a group counts as the catalog's whole read or act group.
  */
+function coarseGrantedScopeIds(providerId: ConnectorProviderId, summary: CloudConnectorSummary): string[] {
+  return [
+    ...(summary.readScopes.length > 0 ? readScopeIds(providerId) : []),
+    ...(summary.actScopes.length > 0 ? actScopeIds(providerId) : []),
+  ];
+}
+
+/** Maps a server summary to the panel state. */
 export function connectorStateFromSummary(
   providerId: ConnectorProviderId,
   summary: CloudConnectorSummary | undefined,
 ): ConnectorState {
   if (!summary || summary.status === 'revoked') return emptyState(providerId);
   const status: ConnectorStatus = summary.status === 'needs_reauth' ? 'needs_reauth' : 'connected';
-  const hasRead = summary.readScopes.length > 0;
-  const hasAct = summary.actScopes.length > 0;
+  const grantedScopeIds = Array.isArray(summary.grantedScopeIds)
+    ? summary.grantedScopeIds.filter((id): id is string => typeof id === 'string')
+    : coarseGrantedScopeIds(providerId, summary);
   return {
     providerId,
     status,
     connectedAt: summary.createdAt || null,
-    grantedScopeIds: [
-      ...(hasRead ? readScopeIds(providerId) : []),
-      ...(hasAct ? actScopeIds(providerId) : []),
-    ],
+    grantedScopeIds,
     actEnabled: summary.actEnabled,
     agentIds: [...summary.agentIds],
-    lastEventAt: null,
+    lastEventAt: typeof summary.lastEventAt === 'string' && summary.lastEventAt ? summary.lastEventAt : null,
   };
 }
 
@@ -150,7 +134,7 @@ export function connectorAuditEntryFromCloud(
   agents: ConnectorAgent[],
 ): ConnectorAuditEntry {
   const agentName = entry.agentId
-    ? agents.find((agent) => agent.agentId === entry.agentId)?.name ?? 'Agent'
+    ? agents.find((agent) => agent.agentId === entry.agentId)?.name ?? entry.agentId
     : 'You';
   const outcome = auditOutcomes.has(entry.outcome as ConnectorAuditOutcome)
     ? entry.outcome as ConnectorAuditOutcome
@@ -171,16 +155,6 @@ function connectorOAuthTimeoutMessage(providerId: ConnectorProviderId): string {
   return `Connecting ${connectorDefinition(providerId).name} timed out after 10 minutes. Try again.`;
 }
 
-function withTimeout<T>(operation: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
-    operation.then(
-      (value) => { clearTimeout(timer); resolve(value); },
-      (error: unknown) => { clearTimeout(timer); reject(error instanceof Error ? error : new Error(String(error))); },
-    );
-  });
-}
-
 export function createCloudConnectorsClient(options: CloudConnectorsClientOptions): ConnectorsClient {
   const { accountId, http } = options;
   const oauth = options.oauth ?? desktopConnectorOAuthHandoff;
@@ -192,6 +166,8 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
     isDefault: true,
   };
   let agents: ConnectorAgent[] = [defaultAgent];
+  // True when `agents` is the server's full list, so stale grant ids can be dropped.
+  let agentsComplete = false;
   let summaries = new Map<ConnectorProviderId, CloudConnectorSummary>();
 
   const loadToken = options.loadToken ?? (async () => {
@@ -202,9 +178,9 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
     return session.token;
   });
 
-  const loadAgents = async (token: string, listed?: ConnectorAgent[]): Promise<ConnectorAgent[]> => {
+  const loadAgents = async (token: string, listed?: ConnectorAgent[]): Promise<{ agents: ConnectorAgent[]; complete: boolean }> => {
     if (listed && listed.length > 0) {
-      return listed.map((agent) => ({ agentId: agent.agentId, name: agent.name, isDefault: Boolean(agent.isDefault) }));
+      return { agents: listed.map((agent) => ({ agentId: agent.agentId, name: agent.name, isDefault: Boolean(agent.isDefault) })), complete: true };
     }
     try {
       const body = await http.listAgents(token);
@@ -213,10 +189,10 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
           const agent = normalizeCloudAgentDefinition(value);
           return agent && agent.status === 'active' ? [{ agentId: agent.agentId, name: agent.name, isDefault: false }] : [];
         });
-      return [defaultAgent, ...defined];
+      return { agents: [defaultAgent, ...defined], complete: true };
     } catch {
       // Agent grants still work for the built-in agent when the list fails.
-      return [defaultAgent];
+      return { agents: [defaultAgent], complete: false };
     }
   };
 
@@ -233,7 +209,9 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
       name: agent.name,
       isDefault: Boolean(agent.isDefault),
     }));
-    agents = await loadAgents(token, listedAgents);
+    const loaded = await loadAgents(token, listedAgents);
+    agents = loaded.agents;
+    agentsComplete = loaded.complete;
     return next;
   };
 
@@ -251,45 +229,93 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
     return known;
   };
 
+  /**
+   * Runs a call against the provider's connector. When the server no longer
+   * has it, the cached summary is dropped, the list is reloaded, and the error
+   * says so instead of showing a bare 404.
+   */
+  const withConnector = async <T,>(
+    providerId: ConnectorProviderId,
+    run: (token: string, connector: CloudConnectorSummary) => Promise<T>,
+  ): Promise<T> => {
+    const token = await loadToken();
+    const connector = await connectorFor(token, providerId);
+    try {
+      return await run(token, connector);
+    } catch (caught) {
+      if (cloudConnectorErrorCode(caught) !== 'connector_not_found') throw caught;
+      summaries.delete(providerId);
+      await refresh(token).catch(() => undefined);
+      throw new ConnectorGoneError(`${connectorDefinition(providerId).name} is no longer connected.`);
+    }
+  };
+
+  const grantSucceeded = (providerId: ConnectorProviderId, grant: CloudConnectorToolGroup, state: ConnectorState) => (
+    state.status === 'connected'
+    && (grant === 'read' || hasGrantedActScopes(connectorDefinition(providerId), state))
+  );
+
   const waitForPolledGrant = async (
     token: string,
     providerId: ConnectorProviderId,
     grant: CloudConnectorToolGroup,
     previousUpdatedAt: string | null,
+    signal: AbortSignal | undefined,
   ) => {
+    const name = connectorDefinition(providerId).name;
     const deadline = Date.now() + oauthTimeoutMs;
+    let failures = 0;
     while (Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
-      const summary = (await refresh(token)).get(providerId);
+      await abortableDelay(pollIntervalMs, signal, name);
+      let listed: Map<ConnectorProviderId, CloudConnectorSummary>;
+      try {
+        listed = await abortable(refresh(token), signal, name);
+        failures = 0;
+      } catch (caught) {
+        if (signal?.aborted) throw connectorCanceledError(name);
+        failures += 1;
+        if (failures > POLL_RETRIES) throw caught;
+        continue;
+      }
+      const summary = listed.get(providerId);
       if (
         summary
-        && summary.status === 'connected'
         && summary.updatedAt !== previousUpdatedAt
-        && (grant === 'read' || summary.actScopes.length > 0)
+        && grantSucceeded(providerId, grant, connectorStateFromSummary(providerId, summary))
       ) return;
     }
     throw new Error(connectorOAuthTimeoutMessage(providerId));
   };
 
-  const runOAuth = async (providerId: ConnectorProviderId, grant: CloudConnectorToolGroup): Promise<ConnectorState> => {
+  const runOAuth = async (
+    providerId: ConnectorProviderId,
+    grant: CloudConnectorToolGroup,
+    signal: AbortSignal | undefined,
+  ): Promise<ConnectorState> => {
     const definition = connectorDefinition(providerId);
     if (definition.kind !== 'service') throw new Error('This connector is not a service connector.');
     if (definition.availability !== 'available') throw new Error(`${definition.name} is not yet available.`);
-    const token = await loadToken();
+    if (signal?.aborted) throw connectorCanceledError(definition.name);
+    const token = await abortable(loadToken(), signal, definition.name);
     const previousUpdatedAt = summaries.get(providerId)?.updatedAt ?? null;
     const callback = await oauth.prepare();
+    const onAbort = () => { void callback?.cancel(); };
+    signal?.addEventListener('abort', onAbort, { once: true });
     const timeoutMessage = connectorOAuthTimeoutMessage(providerId);
     try {
-      const { authUrl } = await http.startOAuth(token, providerId, {
+      const { authUrl } = await abortable(http.startOAuth(token, providerId, {
         grant,
         ...(callback ? { redirectAfter: callback.redirectUrl } : {}),
-      });
-      await oauth.open(authUrl);
+      }), signal, definition.name);
+      if (await oauth.open(authUrl) === false) {
+        throw new Error(`Allow pop-ups for Kordi to connect ${definition.name}.`);
+      }
       if (callback) {
         let fragment: string;
         try {
-          fragment = await withTimeout(callback.wait(oauthTimeoutMs), oauthTimeoutMs, timeoutMessage);
+          fragment = await abortable(withTimeout(callback.wait(oauthTimeoutMs), oauthTimeoutMs, timeoutMessage, signal), signal, definition.name);
         } catch (caught) {
+          if (signal?.aborted) throw connectorCanceledError(definition.name);
           const message = caught instanceof Error ? caught.message : String(caught);
           throw new Error(/timed out/i.test(message) ? timeoutMessage : message);
         }
@@ -299,12 +325,24 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
         if (parsed.result.provider !== providerId) {
           throw new Error(`The connection finished for a different service. Try ${definition.name} again.`);
         }
+        if (parsed.kind === 'pending') {
+          // The connector is only connected once the client finishes the grant.
+          const completed = await abortable(http.completeOAuth(token, parsed.result.completionCode), signal, definition.name);
+          remember(completed.connector);
+        }
       } else {
-        await waitForPolledGrant(token, providerId, grant, previousUpdatedAt);
+        await waitForPolledGrant(token, providerId, grant, previousUpdatedAt, signal);
       }
-      await refresh(token);
-      return stateFor(providerId);
+      await abortable(refresh(token), signal, definition.name);
+      const state = stateFor(providerId);
+      if (!grantSucceeded(providerId, grant, state)) {
+        throw new Error(grant === 'act'
+          ? `${definition.name} did not grant act access.`
+          : `${definition.name} did not finish connecting. Try again.`);
+      }
+      return state;
     } finally {
+      signal?.removeEventListener('abort', onAbort);
       if (callback) await callback.cancel();
     }
   };
@@ -318,39 +356,41 @@ export function createCloudConnectorsClient(options: CloudConnectorsClientOption
         agents: agents.map((agent) => ({ ...agent })),
       };
     },
-    connect(providerId) {
-      return runOAuth(providerId, 'read');
+    connect(providerId, input) {
+      return runOAuth(providerId, 'read', input.signal);
     },
-    grantAct(providerId) {
-      return runOAuth(providerId, 'act');
+    grantAct(providerId, grantOptions) {
+      return runOAuth(providerId, 'act', grantOptions?.signal);
     },
-    async setActEnabled(providerId, enabled) {
-      const token = await loadToken();
-      const connector = await connectorFor(token, providerId);
-      const response = await http.setAct(token, connector.connectorId, enabled);
-      return remember(response.connector) ?? stateFor(providerId);
+    setActEnabled(providerId, enabled) {
+      return withConnector(providerId, async (token, connector) => {
+        const response = await http.setAct(token, connector.connectorId, enabled);
+        return remember(response.connector) ?? stateFor(providerId);
+      });
     },
-    async setAgentGrant(providerId, agentId, granted) {
-      const token = await loadToken();
-      const connector = await connectorFor(token, providerId);
-      const ids = new Set(connector.agentIds);
-      if (granted) ids.add(agentId);
-      else ids.delete(agentId);
-      const response = await http.setAgents(token, connector.connectorId, [...ids]);
-      return remember(response.connector) ?? stateFor(providerId);
+    setAgentGrant(providerId, agentId, granted) {
+      return withConnector(providerId, async (token, connector) => {
+        // Drop grants to agents that no longer exist (archived or deleted) so
+        // one stale id does not make the server reject every change.
+        const known = new Set(agents.map((agent) => agent.agentId));
+        const ids = new Set(agentsComplete ? connector.agentIds.filter((id) => known.has(id)) : connector.agentIds);
+        if (granted) ids.add(agentId);
+        else ids.delete(agentId);
+        const response = await http.setAgents(token, connector.connectorId, [...ids]);
+        return remember(response.connector) ?? stateFor(providerId);
+      });
     },
     async disconnect(providerId) {
-      const token = await loadToken();
-      const connector = await connectorFor(token, providerId);
-      await http.delete(token, connector.connectorId);
+      await withConnector(providerId, (token, connector) => http.delete(token, connector.connectorId));
       summaries.delete(providerId);
     },
     async auditLog(providerId) {
       const token = await loadToken();
-      const connector = summaries.get(providerId) ?? (await refresh(token)).get(providerId);
-      if (!connector) return [];
-      const response = await http.audit(token, connector.connectorId, { limit: 50 });
-      return (response.entries ?? []).map((entry) => connectorAuditEntryFromCloud(providerId, entry, agents));
+      if (!summaries.has(providerId) && !(await refresh(token)).has(providerId)) return [];
+      return withConnector(providerId, async (innerToken, connector) => {
+        const response = await http.audit(innerToken, connector.connectorId, { limit: 50 });
+        return (response.entries ?? []).map((entry) => connectorAuditEntryFromCloud(providerId, entry, agents));
+      });
     },
     async recheckPermission(providerId) {
       const token = await loadToken();

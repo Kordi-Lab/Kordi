@@ -22,8 +22,9 @@ export {
 
 export type ConnectorsClient = {
   list(): Promise<{ states: ConnectorState[]; agents: ConnectorAgent[] }>;
-  connect(providerId: ConnectorProviderId, input: { scopeIds: string[] }): Promise<ConnectorState>;
-  grantAct(providerId: ConnectorProviderId): Promise<ConnectorState>;
+  /** Aborting `signal` cancels a pending sign-in and rejects with a canceled error. */
+  connect(providerId: ConnectorProviderId, input: { scopeIds: string[]; signal?: AbortSignal }): Promise<ConnectorState>;
+  grantAct(providerId: ConnectorProviderId, options?: { signal?: AbortSignal }): Promise<ConnectorState>;
   setActEnabled(providerId: ConnectorProviderId, enabled: boolean): Promise<ConnectorState>;
   setAgentGrant(providerId: ConnectorProviderId, agentId: string, granted: boolean): Promise<ConnectorState>;
   disconnect(providerId: ConnectorProviderId): Promise<void>;

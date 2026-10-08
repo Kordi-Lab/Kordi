@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { CloudAuthCapabilities, CloudAuthClient } from './authClient';
 
@@ -31,16 +31,49 @@ export function clearCloudAuthCapabilitiesCacheForTests(): void {
   capabilitiesByKey.clear();
 }
 
-/** Capabilities from the shared fetch; null until loaded or when the fetch fails. */
-export function useCloudAuthCapabilities(client: CapabilitiesSource | null, key?: string): CloudAuthCapabilities | null {
-  const [capabilities, setCapabilities] = useState<CloudAuthCapabilities | null>(null);
+export type CloudAuthCapabilitiesStatus = 'loading' | 'loaded' | 'failed';
+
+export type CloudAuthCapabilitiesState = {
+  status: CloudAuthCapabilitiesStatus;
+  /** Null unless `status` is `loaded`. */
+  capabilities: CloudAuthCapabilities | null;
+  /** Fetches again; a failed fetch is never cached, so this reaches the server. */
+  refetch: () => void;
+};
+
+type SettledCapabilities = {
+  client: CapabilitiesSource;
+  key: string | undefined;
+  attempt: number;
+  status: 'loaded' | 'failed';
+  capabilities: CloudAuthCapabilities | null;
+};
+
+/** Capabilities from the shared fetch, with loading and failed states kept apart. */
+export function useCloudAuthCapabilitiesState(client: CapabilitiesSource | null, key?: string): CloudAuthCapabilitiesState {
+  const [attempt, setAttempt] = useState(0);
+  const [settled, setSettled] = useState<SettledCapabilities | null>(null);
   useEffect(() => {
     if (!client) return;
     let cancelled = false;
-    loadCloudAuthCapabilities(client, key)
-      .then((value) => { if (!cancelled) setCapabilities(value); })
-      .catch(() => { if (!cancelled) setCapabilities(null); });
+    loadCloudAuthCapabilities(client, key).then(
+      (value) => { if (!cancelled) setSettled({ client, key, attempt, status: 'loaded', capabilities: value }); },
+      () => { if (!cancelled) setSettled({ client, key, attempt, status: 'failed', capabilities: null }); },
+    );
     return () => { cancelled = true; };
-  }, [client, key]);
-  return client ? capabilities : null;
+  }, [attempt, client, key]);
+  const refetch = useCallback(() => setAttempt((value) => value + 1), []);
+  const current = client && settled && settled.client === client && settled.key === key && settled.attempt === attempt
+    ? settled
+    : null;
+  return {
+    status: current?.status ?? 'loading',
+    capabilities: current?.capabilities ?? null,
+    refetch,
+  };
+}
+
+/** Capabilities from the shared fetch; null until loaded or when the fetch fails. */
+export function useCloudAuthCapabilities(client: CapabilitiesSource | null, key?: string): CloudAuthCapabilities | null {
+  return useCloudAuthCapabilitiesState(client, key).capabilities;
 }

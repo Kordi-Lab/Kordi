@@ -85,7 +85,6 @@ export function ConnectorDialogs({
           titleId={`${idPrefix}-connect-title`}
           descriptionId={`${idPrefix}-connect-description`}
           onDismiss={closeDialog}
-          dismissDisabled={dialogBusy}
           busy={dialogBusy}
           className="max-w-md rounded-[20px]"
           backdropClassName="!z-[100000]"
@@ -114,7 +113,8 @@ export function ConnectorDialogs({
             </p>
           ) : null}
           <AppDialogActions>
-            <Button variant="quiet" className="rounded-full px-4" autoFocus disabled={dialogBusy} onClick={closeDialog}>Cancel</Button>
+            {/* Stays enabled while busy: canceling stops the pending sign-in. */}
+            <Button variant="quiet" className="rounded-full px-4" autoFocus onClick={closeDialog}>Cancel</Button>
             <Button className="rounded-full px-4" disabled={dialogBusy} onClick={() => { onConfirmConnect(dialog.providerId); }}>
               {dialogDefinition.kind === 'service' ? `Continue to ${dialogDefinition.providerName}` : 'Allow access'}
             </Button>
@@ -127,7 +127,6 @@ export function ConnectorDialogs({
           titleId={`${idPrefix}-grant-title`}
           descriptionId={`${idPrefix}-grant-description`}
           onDismiss={closeDialog}
-          dismissDisabled={dialogBusy}
           busy={dialogBusy}
           className="max-w-md rounded-[20px]"
           backdropClassName="!z-[100000]"
@@ -146,7 +145,7 @@ export function ConnectorDialogs({
             </p>
           ) : null}
           <AppDialogActions>
-            <Button variant="quiet" className="rounded-full px-4" autoFocus disabled={dialogBusy} onClick={closeDialog}>Not now</Button>
+            <Button variant="quiet" className="rounded-full px-4" autoFocus onClick={closeDialog}>{dialogBusy ? 'Cancel' : 'Not now'}</Button>
             <Button className="rounded-full px-4" disabled={dialogBusy} onClick={() => { onConfirmGrant(dialog.providerId); }}>
               {dialogDefinition.kind === 'service' ? `Continue to ${dialogDefinition.providerName}` : 'Allow'}
             </Button>

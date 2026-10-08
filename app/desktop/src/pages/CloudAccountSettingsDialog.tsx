@@ -18,7 +18,7 @@ import {
   type CloudProfileUpdateInput,
   type CloudSignupCodeChallenge,
 } from '@/features/cloud/authClient';
-import { useCloudAuthCapabilities } from '@/features/cloud/cloudAuthCapabilities';
+import { useCloudAuthCapabilitiesState } from '@/features/cloud/cloudAuthCapabilities';
 import { CloudConnectorsHttpClient } from '@/features/cloud/cloudConnectorsClient';
 import { CloudAccountEmailRow } from '@/kordi-app/cloud/CloudAccountEmailRow';
 import { CloudDevicesPanel } from '@/features/cloud/CloudDevicesPanel';
@@ -145,7 +145,8 @@ export function CloudAccountSettingsDialog({
     () => (hasConnectorsOverride ? null : { auth: defaultCloudAuthClient(), http: new CloudConnectorsHttpClient() }),
     [hasConnectorsOverride],
   );
-  const capabilities = useCloudAuthCapabilities(account && connectorsClients ? connectorsClients.auth : null, cloudApiBaseUrl());
+  const capabilitiesState = useCloudAuthCapabilitiesState(account && connectorsClients ? connectorsClients.auth : null, cloudApiBaseUrl());
+  const { capabilities, status: capabilitiesStatus, refetch: refetchCapabilities } = capabilitiesState;
   const connectorsAccountId = account?.accountId ?? null;
   const defaultAgentName = account?.defaultAgent?.displayName ?? undefined;
   // Kept per account so the preview client's sample state survives closing the dialog.
@@ -155,11 +156,19 @@ export function CloudAccountSettingsDialog({
       accountId: connectorsAccountId,
       http: connectorsClients.http,
       capabilities,
+      capabilitiesStatus,
       defaultAgentName,
     });
-  }, [capabilities, connectorsAccountId, connectorsClients, defaultAgentName]);
+  }, [capabilities, capabilitiesStatus, connectorsAccountId, connectorsClients, defaultAgentName]);
   const connectorsClient = hasConnectorsOverride ? connectorsClientOverride : connectorsSelection?.client ?? null;
   const connectorsArePreview = hasConnectorsOverride ? connectorsIsPreview : connectorsSelection?.source === 'preview';
+  const connectorsServicesStatus = hasConnectorsOverride ? undefined : connectorsSelection?.servicesStatus;
+  const capabilitiesStatusRef = useRef(capabilitiesStatus);
+  useEffect(() => { capabilitiesStatusRef.current = capabilitiesStatus; }, [capabilitiesStatus]);
+  // Opening the Connectors tab retries a failed capabilities fetch once.
+  useEffect(() => {
+    if (isOpen && activeTab === 'connectors' && capabilitiesStatusRef.current === 'failed') refetchCapabilities();
+  }, [activeTab, isOpen, refetchCapabilities]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -415,6 +424,8 @@ export function CloudAccountSettingsDialog({
       client={connectorsClient}
       isNativeShell={isNativeShell}
       isPreview={connectorsArePreview}
+      servicesStatus={connectorsServicesStatus}
+      onRetryServices={refetchCapabilities}
     />
   ) : null;
 

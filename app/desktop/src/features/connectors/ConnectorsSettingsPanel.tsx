@@ -7,6 +7,8 @@ import { SettingsRow, SettingsSection } from '@/kordi-app/components/settingsLay
 import { ConnectorDetailView } from './ConnectorDetailView';
 import { ConnectorDialogs } from './ConnectorDialogs';
 import type { ConnectorsClient } from './connectorsClient';
+import type { ConnectorsServicesStatus } from './connectorsClientSelection';
+import { isConnectorFlowCanceled, isConnectorGone } from './connectorsErrors';
 import { ConnectorsPreviewNotice } from './ConnectorsPreviewNotice';
 import {
   connectorCatalog,
@@ -32,12 +34,17 @@ export function ConnectorsSettingsPanel({
   client,
   isNativeShell,
   isPreview = false,
+  servicesStatus = 'ready',
+  onRetryServices,
 }: {
   accountId: string;
   client: ConnectorsClient;
   isNativeShell: boolean;
   /** True when `client` serves sample data rather than the account's connectors. */
   isPreview?: boolean;
+  /** `checking` and `unreachable` replace the service rows with a status line. */
+  servicesStatus?: ConnectorsServicesStatus;
+  onRetryServices?: () => void;
 }) {
   const [states, setStates] = useState<Partial<Record<ConnectorProviderId, ConnectorState>>>({});
   const [agents, setAgents] = useState<ConnectorAgent[]>([]);
@@ -53,21 +60,29 @@ export function ConnectorsSettingsPanel({
   const [dialog, setDialog] = useState<ConnectorDialog | null>(null);
   const [dialogBusy, setDialogBusy] = useState(false);
   const idPrefix = useId();
+  // Only the latest `list()` may update the panel, so a superseded client cannot.
+  const listRequestRef = useRef(0);
+  // The pending connect or act grant, aborted when the dialog closes.
+  const flowRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    const request = ++listRequestRef.current;
     if (!quiet) setIsLoading(true);
     try {
       const result = await client.list();
+      if (request !== listRequestRef.current) return;
       setStates(Object.fromEntries(result.states.map((state) => [state.providerId, state])));
       setAgents(result.agents);
       setHasLoaded(true);
       setError(null);
     } catch (caught) {
-      setError(errorMessage(caught, 'Could not load connectors.'));
+      if (request === listRequestRef.current) setError(errorMessage(caught, 'Could not load connectors.'));
     } finally {
-      setIsLoading(false);
+      if (request === listRequestRef.current) setIsLoading(false);
     }
   }, [client]);
+
+  useEffect(() => () => { flowRef.current?.abort(); }, []);
 
   useEffect(() => {
     let active = true;
@@ -115,13 +130,54 @@ export function ConnectorsSettingsPanel({
       setStatusMessage(success(state));
     } catch (caught) {
       setError(errorMessage(caught, 'Could not update this connector. Try again.'));
+      if (isConnectorGone(caught)) void refresh({ quiet: true });
     } finally {
       setBusyProviderId(null);
     }
   };
 
   const closeDialog = () => {
-    if (!dialogBusy) setDialog(null);
+    if (dialogBusy && !flowRef.current) return;
+    flowRef.current?.abort();
+    flowRef.current = null;
+    setDialogBusy(false);
+    setDialog(null);
+  };
+
+  /** Runs a connect or act grant that closing the dialog cancels. */
+  const runFlow = async (
+    definition: ConnectorDefinition,
+    start: (signal: AbortSignal) => Promise<ConnectorState>,
+    success: (state: ConnectorState) => string,
+    failure: string,
+  ) => {
+    flowRef.current?.abort();
+    const controller = new AbortController();
+    flowRef.current = controller;
+    setDialogBusy(true);
+    setError(null);
+    try {
+      const state = await start(controller.signal);
+      if (controller.signal.aborted) return;
+      applyState(state);
+      setStatusMessage(success(state));
+      setDialog(null);
+      void refresh({ quiet: true });
+    } catch (caught) {
+      if (controller.signal.aborted || isConnectorFlowCanceled(caught)) {
+        setStatusMessage(`Connecting ${definition.name} was canceled.`);
+        void refresh({ quiet: true });
+        return;
+      }
+      setError(errorMessage(caught, failure));
+      setDialog(null);
+      if (isConnectorGone(caught)) void refresh({ quiet: true });
+    } finally {
+      if (flowRef.current === controller) {
+        flowRef.current = null;
+        setDialogBusy(false);
+      }
+    }
   };
 
   const openAudit = async (providerId: ConnectorProviderId) => {
@@ -135,43 +191,32 @@ export function ConnectorsSettingsPanel({
       setDialog((current) => (current?.kind === 'audit' && current.providerId === providerId
         ? { ...current, entries: [], error: errorMessage(caught, 'Could not load activity.') }
         : current));
+      if (isConnectorGone(caught)) void refresh({ quiet: true });
     }
   };
 
-  const confirmConnect = async (providerId: ConnectorProviderId) => {
+  const confirmConnect = (providerId: ConnectorProviderId) => {
     const definition = connectorDefinition(providerId);
-    setDialogBusy(true);
-    setError(null);
-    try {
-      const state = await client.connect(providerId, { scopeIds: definition.readScopes.map((scope) => scope.id) });
-      applyState(state);
-      setStatusMessage(state.status === 'connected'
+    return runFlow(
+      definition,
+      (signal) => client.connect(providerId, { scopeIds: definition.readScopes.map((scope) => scope.id), signal }),
+      (state) => (state.status === 'connected'
         ? `${definition.name} connected with read access.`
-        : `${definition.name} needs one more permission.`);
-      setDialog(null);
-      void refresh({ quiet: true });
-    } catch (caught) {
-      setError(errorMessage(caught, `Could not connect ${definition.name}.`));
-      setDialog(null);
-    } finally {
-      setDialogBusy(false);
-    }
+        : `${definition.name} needs one more permission.`),
+      `Could not connect ${definition.name}.`,
+    );
   };
 
-  const confirmGrant = async (providerId: ConnectorProviderId) => {
+  const confirmGrant = (providerId: ConnectorProviderId) => {
     const definition = connectorDefinition(providerId);
-    setDialogBusy(true);
-    setError(null);
-    try {
-      applyState(await client.grantAct(providerId));
-      setStatusMessage(`Your agent can now act in ${definition.name}.`);
-      setDialog(null);
-    } catch (caught) {
-      setError(errorMessage(caught, `Could not grant act access to ${definition.name}.`));
-      setDialog(null);
-    } finally {
-      setDialogBusy(false);
-    }
+    return runFlow(
+      definition,
+      (signal) => client.grantAct(providerId, { signal }),
+      (state) => (state.actEnabled && hasGrantedActScopes(definition, state)
+        ? `Your agent can now act in ${definition.name}.`
+        : `${definition.name} granted act access. Turn on acting to use it.`),
+      `Could not grant act access to ${definition.name}.`,
+    );
   };
 
   const confirmDisconnect = async (providerId: ConnectorProviderId) => {
@@ -187,6 +232,10 @@ export function ConnectorsSettingsPanel({
     } catch (caught) {
       setError(errorMessage(caught, `Could not disconnect ${definition.name}.`));
       setDialog(null);
+      if (isConnectorGone(caught)) {
+        setSelectedId((current) => (current === providerId ? null : current));
+        void refresh({ quiet: true });
+      }
     } finally {
       setDialogBusy(false);
     }
@@ -358,7 +407,18 @@ export function ConnectorsSettingsPanel({
       ) : (
         <div ref={listRef} className={denseNavRowsClass}>
           <SettingsSection title="Services" size="compact">
-            {services.map(renderListRow)}
+            {servicesStatus === 'checking' ? (
+              <p className="m-0 py-2 text-[12px] text-slate-400" role="status">Checking Kordi Cloud…</p>
+            ) : servicesStatus === 'unreachable' ? (
+              <div className="flex items-center justify-between gap-3 py-2 text-[12px] text-slate-400" role="status">
+                <span>Could not reach Kordi Cloud.</span>
+                {onRetryServices ? (
+                  <Button type="button" variant="quiet" className="h-7 shrink-0 rounded-lg px-3 text-[12px]" onClick={onRetryServices}>
+                    Try again
+                  </Button>
+                ) : null}
+              </div>
+            ) : services.map(renderListRow)}
           </SettingsSection>
           {isNativeShell ? (
             <SettingsSection
