@@ -631,9 +631,9 @@ export function useCloudCollaborationState({
     turnIdsByRequestIdRef: cloudAgentTurnIdsByRequestIdRef,
     setCollaborationOverride: setCloudCollaborationOverride,
   });
-  const cloudAgentRuntimeRouteMessages = useMemo(() => (
-    cloudAgentRuntimeRouteSourceMessages(cloudMessageIndex.allMessages, account?.accountId)
-  ), [account?.accountId, cloudMessageIndex.allMessages]);
+  const cloudAgentRuntimeRouteMessages = useMemo(() => cloudAgentRuntimeRouteSourceMessages( // An opened history page records routes the bootstrap's latest messages lack.
+    directHistory.page ? [...cloudMessageIndex.allMessages, ...Object.values(directHistory.page.messagesByPeer).flat()] : cloudMessageIndex.allMessages, account?.accountId,
+  ), [account?.accountId, cloudMessageIndex.allMessages, directHistory.page]);
   const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => projectCloudGroupLiveTurns(patchCanonicalCloudMessages(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), localAgentTurnsByRequestId, account?.accountId), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById, localAgentTurnsByRequestId, account?.accountId]);
   return {
     cloudAgentRuntimeRouteMessages, directHistory,

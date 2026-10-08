@@ -1,4 +1,5 @@
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import type { CanonicalSessionRequestRoute } from '@/lib/desktopCanonicalSessionRoutes';
 import type { CanonicalSessionMessage } from '@/kordi-app/types';
 
 import type { CloudMessage } from './cloudMessageTypes';
@@ -42,14 +43,8 @@ export function cloudAgentRequestRuntimeRoute(
   return route;
 }
 
-/** The route a request sent from this desktop stored with its delivered message, if any. */
-export function canonicalAgentRequestRuntimeRoute(
-  message: CanonicalSessionMessage,
-): DesktopChatMessageRoute | null {
-  if (message.senderRole !== 'user' || message.sourceTransport !== 'desktop-chat-ui') return null;
-  const content = message.content;
-  if (!content || typeof content !== 'object' || Array.isArray(content)) return null;
-  const route = (content as { agentRuntimeRoute?: unknown }).agentRuntimeRoute;
+/** A route object stored with a request sent from this desktop, if it names a model. */
+export function storedAgentRequestRuntimeRoute(route: unknown): DesktopChatMessageRoute | null {
   if (!route || typeof route !== 'object' || Array.isArray(route)) return null;
   const record = route as Record<string, unknown>;
   const text = (key: string) => (typeof record[key] === 'string' ? record[key].trim() : '');
@@ -59,4 +54,39 @@ export function canonicalAgentRequestRuntimeRoute(
     ...(text('authChoice') ? { authChoice: text('authChoice') } : {}),
     ...(text('thinking') ? { thinking: text('thinking') } : {}),
   });
+}
+
+/** The route a request sent from this desktop stored with its delivered message, if any. */
+export function canonicalAgentRequestRuntimeRoute(
+  message: CanonicalSessionMessage,
+): DesktopChatMessageRoute | null {
+  if (message.senderRole !== 'user' || message.sourceTransport !== 'desktop-chat-ui') return null;
+  const content = message.content;
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return null;
+  return storedAgentRequestRuntimeRoute((content as { agentRuntimeRoute?: unknown }).agentRuntimeRoute);
+}
+
+/** A route a session recorded at one point of its history. */
+export type SessionRuntimeRouteRecord = {
+  sessionId: string;
+  sequenceNum: number;
+  updatedAtMs: number;
+  route: DesktopChatMessageRoute;
+};
+
+/**
+ * The local mirror's latest routed request per session, independent of which
+ * transcript pages are loaded, so a restart restores every session's route.
+ */
+export function mirroredSessionRequestRouteRecords(
+  rows: readonly CanonicalSessionRequestRoute[] | null | undefined,
+): SessionRuntimeRouteRecord[] {
+  const records: SessionRuntimeRouteRecord[] = [];
+  for (const row of rows ?? []) {
+    const sessionId = row.sessionId?.trim();
+    const route = storedAgentRequestRuntimeRoute(row.route);
+    if (!sessionId || !route?.model) continue;
+    records.push({ sessionId, sequenceNum: row.sequenceNum, updatedAtMs: row.updatedAtMs, route });
+  }
+  return records;
 }

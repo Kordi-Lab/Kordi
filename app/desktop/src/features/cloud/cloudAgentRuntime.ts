@@ -17,6 +17,7 @@ import {
 import {
   canonicalAgentRequestRuntimeRoute,
   cloudAgentRequestRuntimeRoute,
+  type SessionRuntimeRouteRecord,
 } from './cloudAgentRuntimeRequestRoutes';
 import {
   agentRuntimeRouteChangeNotice,
@@ -220,36 +221,40 @@ export function applyCloudAgentModelChangeMessages(
   accountId: string | null | undefined,
   messages: CanonicalSessionMessage[] | null | undefined,
   localExecutionRoute?: DesktopChatMessageRoute | null,
+  mirroredRoutes: readonly SessionRuntimeRouteRecord[] = [],
 ): Record<string, DesktopChatMessageRoute> {
-  if (!cleanText(accountId) || !messages?.length) return current;
+  if (!cleanText(accountId) || (!messages?.length && !mirroredRoutes.length)) return current;
 
-  // A person's own request records the route it ran on; a later model change wins.
-  const latestBySessionId = new Map<string, { message: CanonicalSessionMessage; route: DesktopChatMessageRoute }>();
-  for (const message of messages) {
+  // A person's own request records the route it ran on; a later model change
+  // wins. Records apply in session order, so a model-only change keeps the
+  // account an earlier request recorded for the same provider.
+  const records = [...mirroredRoutes];
+  for (const message of messages ?? []) {
     const route = message.messageKind === CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND
       ? runtimeRouteFromUnknown(message.content) ?? cloudAgentRuntimeRouteChangeFromBody(message.contentText)
       : canonicalAgentRequestRuntimeRoute(message);
     if (!route?.model) continue;
-    const existing = latestBySessionId.get(message.sessionId)?.message;
-    if (!existing
-      || message.sequenceNum > existing.sequenceNum
-      || (message.sequenceNum === existing.sequenceNum && message.updatedAtMs > existing.updatedAtMs)) {
-      latestBySessionId.set(message.sessionId, { message, route });
-    }
+    records.push({ sessionId: message.sessionId, sequenceNum: message.sequenceNum, updatedAtMs: message.updatedAtMs, route });
   }
+  records.sort((left, right) => left.sequenceNum - right.sequenceNum || left.updatedAtMs - right.updatedAtMs);
 
-  let next = current;
-  for (const [sessionId, { route: changeRoute }] of latestBySessionId) {
+  // Fold each session's records, then compare only the final route, so a
+  // replay of the same history keeps the current object.
+  const folded = new Map<string, DesktopChatMessageRoute>();
+  for (const { sessionId, route: changeRoute } of records) {
     const runtimeSessionId = cloudAgentRuntimeSessionId(accountId, sessionId);
-    if (!changeRoute?.model || !runtimeSessionId) continue;
-
-    const existing = current[runtimeSessionId] ?? {};
+    if (!runtimeSessionId) continue;
     const synchronized = cloudAgentRuntimeRouteAfterModelChange(
-      existing,
+      folded.get(runtimeSessionId) ?? current[runtimeSessionId] ?? {},
       changeRoute,
       localExecutionRoute,
     );
-    if (!synchronized) continue;
+    if (synchronized) folded.set(runtimeSessionId, synchronized);
+  }
+
+  let next = current;
+  for (const [runtimeSessionId, synchronized] of folded) {
+    const existing = current[runtimeSessionId] ?? {};
     if (
       cleanText(existing.model) === cleanText(synchronized.model)
       && routeProvider(existing) === routeProvider(synchronized)
@@ -331,6 +336,7 @@ export function applySynchronizedCloudAgentRuntimeRoutes(
   canonicalMessages: CanonicalSessionMessage[] | null | undefined,
   cloudMessages: readonly CloudMessage[] | null | undefined,
   localExecutionRoute?: DesktopChatMessageRoute | null,
+  mirroredRoutes?: readonly SessionRuntimeRouteRecord[],
 ): Record<string, DesktopChatMessageRoute> {
   // Canonical history can lag the reliable Cloud stream while its mirror is
   // being hydrated. Apply it first as a recovery source, then let the ordered
@@ -342,6 +348,7 @@ export function applySynchronizedCloudAgentRuntimeRoutes(
     accountId,
     canonicalMessages,
     localExecutionRoute,
+    mirroredRoutes,
   );
   const synchronized = applyCloudAgentRuntimeRouteChangeCloudMessages(
     recovered,

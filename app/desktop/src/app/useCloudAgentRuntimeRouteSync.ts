@@ -9,6 +9,7 @@ import {
 
 import { cloudAgentRuntimeRouteMessageTarget } from '@/app/cloudAgentRuntimeRouteMessageTarget';
 import { resolveDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
+import { useMirroredSessionRequestRoutes } from '@/app/useMirroredSessionRequestRoutes';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import {
   completeKordiCloudChatRequest,
@@ -78,6 +79,7 @@ export function useCloudAgentRuntimeRouteSync({
   sendCloudCollaborationMessage,
   setRoutesBySessionId,
   updateCloudCollaborationSessionTitle,
+  fetchMirroredRequestRoutes,
 }: {
   accountId?: string | null;
   activeConversationId: string;
@@ -102,13 +104,22 @@ export function useCloudAgentRuntimeRouteSync({
   >;
   updateCloudCollaborationSessionTitle:
     CloudCollaborationViewModel['updateCloudCollaborationSessionTitle'];
+  fetchMirroredRequestRoutes?: Parameters<typeof useMirroredSessionRequestRoutes>[2];
 }) {
+  // Loaded pages and the Cloud bootstrap hold only part of each session, so
+  // the mirror's latest routed request per session is a recovery source too.
+  const mirroredRequestRoutes = useMirroredSessionRequestRoutes(
+    accountId,
+    canonicalSessionState?.messages,
+    fetchMirroredRequestRoutes,
+  );
   useEffect(() => {
     if (
       !accountId
       || (
         cloudAgentRuntimeRouteMessages.length === 0
         && !canonicalSessionState?.messages.length
+        && mirroredRequestRoutes.length === 0
       )
     ) return;
     const animationFrame = window.requestAnimationFrame(() => {
@@ -119,6 +130,7 @@ export function useCloudAgentRuntimeRouteSync({
           canonicalSessionState?.messages,
           cloudAgentRuntimeRouteMessages,
           defaultCloudAgentRuntimeRoute,
+          mirroredRequestRoutes,
         )
       ));
     });
@@ -128,6 +140,7 @@ export function useCloudAgentRuntimeRouteSync({
     canonicalSessionState?.messages,
     cloudAgentRuntimeRouteMessages,
     defaultCloudAgentRuntimeRoute,
+    mirroredRequestRoutes,
     setRoutesBySessionId,
   ]);
 
@@ -142,9 +155,16 @@ export function useCloudAgentRuntimeRouteSync({
         canonicalSessionState?.messages,
         cloudAgentRuntimeRouteMessages,
         defaultCloudAgentRuntimeRoute,
+        mirroredRequestRoutes,
       )
       : {}
-  ), [accountId, canonicalSessionState?.messages, cloudAgentRuntimeRouteMessages, defaultCloudAgentRuntimeRoute]);
+  ), [
+    accountId,
+    canonicalSessionState?.messages,
+    cloudAgentRuntimeRouteMessages,
+    defaultCloudAgentRuntimeRoute,
+    mirroredRequestRoutes,
+  ]);
   const storedSessionRoute = useCallback((runtimeSessionId: string | null) => (
     runtimeSessionId
       ? compactCloudAgentRuntimeRoute(routesBySessionId[runtimeSessionId])
