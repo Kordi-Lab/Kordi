@@ -1,3 +1,4 @@
+use kordi_tools::connector_tools::ConnectorToolsRuntime;
 use kordi_tools::{Tool, ToolMetadata, builtin_tools};
 use std::collections::{HashMap, HashSet};
 
@@ -58,6 +59,9 @@ pub(crate) struct ToolRegistry {
     tool_defs: Vec<serde_json::Value>,
     #[allow(dead_code)]
     metadata_by_name: HashMap<String, ToolMetadata>,
+    /// Names of the connector tools registered for the current turn.
+    #[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
+    connector_tool_names: HashSet<String>,
     #[cfg(test)]
     active_names: Vec<String>,
     #[cfg(test)]
@@ -109,6 +113,7 @@ impl ToolRegistry {
             active_tools,
             tool_defs,
             metadata_by_name,
+            connector_tool_names: HashSet::new(),
             #[cfg(test)]
             active_names,
             #[cfg(test)]
@@ -121,6 +126,41 @@ impl ToolRegistry {
         selection: ToolSelection,
     ) -> Self {
         Self::from_sources(builtin_tools(), extensions, selection)
+    }
+
+    /// Replaces the connector tools with one `ConnectorTool` per descriptor
+    /// in `runtime`, or removes them when `runtime` is `None` or `enabled`
+    /// is false. A connector tool never replaces a tool already registered.
+    #[allow(dead_code)] // Used by the desktop runtime, not the `kordi` binary.
+    pub(crate) fn set_connector_tools(
+        &mut self,
+        runtime: Option<&ConnectorToolsRuntime>,
+        enabled: bool,
+    ) {
+        let previous = std::mem::take(&mut self.connector_tool_names);
+        if !previous.is_empty() {
+            self.active_tools
+                .retain(|tool| !previous.contains(tool.name()));
+            self.metadata_by_name
+                .retain(|name, _| !previous.contains(name));
+            #[cfg(test)]
+            self.active_names.retain(|name| !previous.contains(name));
+        }
+        for tool in runtime
+            .filter(|_| enabled)
+            .map_or_else(Vec::new, |runtime| runtime.tools())
+        {
+            let name = tool.name().to_string();
+            if self.metadata_by_name.contains_key(&name) {
+                continue;
+            }
+            self.metadata_by_name.insert(name.clone(), tool.metadata());
+            #[cfg(test)]
+            self.active_names.push(name.clone());
+            self.connector_tool_names.insert(name);
+            self.active_tools.push(tool);
+        }
+        self.tool_defs = build_tool_defs(&self.active_tools);
     }
 
     pub(crate) fn active_tools(&self) -> &[Box<dyn Tool>] {
@@ -426,3 +466,7 @@ mod tests {
         assert_eq!(registry.len(), 2);
     }
 }
+
+#[cfg(test)]
+#[path = "tool_registry_connector_tests.rs"]
+mod connector_tests;

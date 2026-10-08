@@ -341,6 +341,7 @@ pub struct TaskOperatorRuntime {
 }
 
 /// Context available to tools during execution.
+#[derive(Default)]
 pub struct ToolContext {
     pub cwd: PathBuf,
     pub artifacts_dir: PathBuf,
@@ -360,6 +361,7 @@ pub struct ToolContext {
     pub mac_local: Option<crate::mac_local::MacLocalRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
+    pub connector_tools: Option<crate::connector_tools::ConnectorToolsRuntime>,
 }
 
 /// Trait for built-in and custom tools.

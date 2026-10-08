@@ -64,6 +64,7 @@ fn context(mac_local: Option<MacLocalRuntime>) -> ToolContext {
         mac_local,
         execution_mode: crate::ToolExecutionMode::Interactive,
         request_approval: None,
+        connector_tools: None,
     }
 }
 

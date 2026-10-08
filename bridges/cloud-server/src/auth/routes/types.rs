@@ -73,6 +73,11 @@ pub struct AuthCapabilitiesResponse {
     pub password: bool,
     #[serde(rename = "oauthProviders")]
     pub oauth_providers: Vec<&'static str>,
+    /// Present when this server serves `/v1/cloud/connectors` and has the
+    /// provider-auth encryption key to store credentials. Clients hide the
+    /// Connectors section when it is absent.
+    #[serde(rename = "connectorsVersion", skip_serializing_if = "Option::is_none")]
+    pub connectors_version: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,5 +1,7 @@
 #[path = "calendar_runtime.rs"]
 mod calendar_runtime;
+#[path = "connector_tools_runtime.rs"]
+mod connector_tools_runtime;
 #[path = "mac_local_runtime.rs"]
 mod mac_local_runtime;
 
@@ -177,13 +179,14 @@ pub(super) async fn prepare_desktop_session_for_send(
         kordi_tools::session_observation::CHAT_HISTORY_GUIDANCE
     )));
     let calendar = calendar_runtime::build(runtime, context_session_id);
-    // Mac-local sources are the owner's: never on a cloud-lease turn or for
-    // a request that another account made through the owner's agent. This
-    // turn's identity decides; the stored one is only a fallback.
+    // Owner-only tools follow this turn's identity; the stored one is only a
+    // fallback for Mac-local sources.
     let turn_identity = system_context
         .iter()
         .find(|message| message.context_role.as_deref() == Some("runtimeIdentity"))
         .map(|message| message.text.as_str());
+    // Mac-local sources are the owner's: never on a cloud-lease turn or for
+    // a request that another account made through the owner's agent.
     let owner_local =
         mac_local_runtime::is_owner_local_turn(cloud_lease.is_some(), turn_identity, || {
             runtime
@@ -192,6 +195,15 @@ pub(super) async fn prepare_desktop_session_for_send(
                 .map_err(|_| ())
         });
     runtime.set_mac_local_runtime(mac_local_runtime::build(owner_local));
+    // Only a cloud lease carries connector tools, and only for the owner's
+    // own request; local turns get none.
+    let owner_request = turn_identity.is_none_or(mac_local_runtime::is_owner_identity);
+    runtime.set_connector_tools_runtime(
+        cloud_lease
+            .as_ref()
+            .filter(|_| owner_request)
+            .and_then(connector_tools_runtime::build),
+    );
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

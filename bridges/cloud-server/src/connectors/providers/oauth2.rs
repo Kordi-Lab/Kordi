@@ -1,0 +1,214 @@
+//! Standard OAuth 2 token exchange shared by every connector provider.
+
+use async_trait::async_trait;
+use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use serde::Deserialize;
+use serde_json::Value;
+
+use super::{
+    parse_scope_list, ConnectorOAuthClient, ConnectorProvider, ConnectorSecret,
+    ConnectorToolDescriptor, ProviderError, ProviderSpec, TokenGrant,
+};
+
+#[derive(Debug, Deserialize)]
+struct RawTokenResponse {
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+    expires_in: Option<i64>,
+    scope: Option<String>,
+    /// Slack returns user tokens here.
+    authed_user: Option<RawSlackUser>,
+    /// Slack signals failure with `ok: false` and HTTP 200.
+    ok: Option<bool>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawSlackUser {
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+    expires_in: Option<i64>,
+    scope: Option<String>,
+}
+
+/// Maps a token endpoint error code. Only `invalid_grant` means the grant
+/// is gone; anything else is a retryable provider error.
+fn token_error(code: Option<&str>) -> ProviderError {
+    match code {
+        Some("invalid_grant") => ProviderError::Unauthorized,
+        Some(code) => ProviderError::Rejected(code.chars().take(80).collect()),
+        None => ProviderError::Rejected("provider error".to_string()),
+    }
+}
+
+/// Normalizes a token endpoint body into a [`TokenGrant`].
+pub(crate) fn token_grant_from_json(
+    body: &Value,
+    previous_refresh: Option<&str>,
+    now: DateTime<Utc>,
+) -> Result<TokenGrant, ProviderError> {
+    let raw: RawTokenResponse =
+        serde_json::from_value(body.clone()).map_err(|_| ProviderError::InvalidResponse)?;
+    if raw.ok == Some(false) || raw.error.is_some() {
+        return Err(token_error(raw.error.as_deref()));
+    }
+    let (access, refresh, expires_in, scope) = match raw.access_token {
+        Some(access) => (access, raw.refresh_token, raw.expires_in, raw.scope),
+        None => {
+            let user = raw.authed_user.ok_or(ProviderError::InvalidResponse)?;
+            (
+                user.access_token.ok_or(ProviderError::InvalidResponse)?,
+                user.refresh_token,
+                user.expires_in,
+                user.scope,
+            )
+        }
+    };
+    if access.trim().is_empty() {
+        return Err(ProviderError::InvalidResponse);
+    }
+    Ok(TokenGrant {
+        secret: ConnectorSecret {
+            access_token: access,
+            refresh_token: refresh.or_else(|| previous_refresh.map(str::to_string)),
+            expires_at: expires_in
+                .filter(|seconds| *seconds > 0)
+                .map(|seconds| now + ChronoDuration::seconds(seconds)),
+        },
+        granted_scopes: scope.as_deref().map(parse_scope_list),
+    })
+}
+
+/// Standard OAuth 2 code exchange, refresh, and revoke for any spec above.
+/// Exposes no tools until the PR 3 adapters add them.
+pub struct OAuth2ConnectorProvider {
+    pub(super) spec: &'static ProviderSpec,
+    pub(super) http: reqwest::Client,
+}
+
+impl OAuth2ConnectorProvider {
+    async fn token_request(&self, form: &[(&str, &str)]) -> Result<Value, ProviderError> {
+        let response = self
+            .http
+            .post(self.spec.token_url)
+            .header("accept", "application/json")
+            .form(form)
+            .send()
+            .await
+            .map_err(|error| ProviderError::Request(error.without_url().to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.json::<Value>().await.ok();
+            let code = body
+                .as_ref()
+                .and_then(|body| body.get("error"))
+                .and_then(Value::as_str);
+            return Err(match token_error(code) {
+                ProviderError::Unauthorized => ProviderError::Unauthorized,
+                _ => ProviderError::Rejected(format!("HTTP {}", status.as_u16())),
+            });
+        }
+        response
+            .json::<Value>()
+            .await
+            .map_err(|_| ProviderError::InvalidResponse)
+    }
+}
+
+#[async_trait]
+impl ConnectorProvider for OAuth2ConnectorProvider {
+    fn spec(&self) -> &'static ProviderSpec {
+        self.spec
+    }
+
+    fn tools(&self) -> &[ConnectorToolDescriptor] {
+        &[]
+    }
+
+    async fn exchange_code(
+        &self,
+        client: &ConnectorOAuthClient,
+        code: &str,
+        code_verifier: Option<&str>,
+    ) -> Result<TokenGrant, ProviderError> {
+        let mut form = vec![
+            ("client_id", client.client_id.as_str()),
+            ("client_secret", client.client_secret.as_str()),
+            ("code", code),
+            ("redirect_uri", client.redirect_uri.as_str()),
+            ("grant_type", "authorization_code"),
+        ];
+        if let Some(verifier) = code_verifier.filter(|_| self.spec.supports_pkce) {
+            form.push(("code_verifier", verifier));
+        }
+        let body = self.token_request(&form).await?;
+        token_grant_from_json(&body, None, Utc::now())
+    }
+
+    async fn refresh(
+        &self,
+        client: &ConnectorOAuthClient,
+        secret: &ConnectorSecret,
+    ) -> Result<ConnectorSecret, ProviderError> {
+        let refresh = secret
+            .refresh_token
+            .as_deref()
+            .ok_or(ProviderError::Unauthorized)?;
+        let form = [
+            ("client_id", client.client_id.as_str()),
+            ("client_secret", client.client_secret.as_str()),
+            ("refresh_token", refresh),
+            ("grant_type", "refresh_token"),
+        ];
+        let body = self.token_request(&form).await?;
+        token_grant_from_json(&body, Some(refresh), Utc::now()).map(|grant| grant.secret)
+    }
+
+    async fn revoke(
+        &self,
+        client: &ConnectorOAuthClient,
+        secret: &ConnectorSecret,
+    ) -> Result<(), ProviderError> {
+        let Some(revoke_url) = self.spec.revoke_url else {
+            return Ok(());
+        };
+        let request = match self.spec.id {
+            "github" => self
+                .http
+                .delete(format!("{revoke_url}/{}/grant", client.client_id))
+                .basic_auth(&client.client_id, Some(&client.client_secret))
+                .header("accept", "application/vnd.github+json")
+                .header("user-agent", "kordi-cloud-server")
+                .json(&serde_json::json!({ "access_token": secret.access_token })),
+            "slack" => self.http.post(revoke_url).bearer_auth(&secret.access_token),
+            _ => self.http.post(revoke_url).form(&[(
+                "token",
+                secret
+                    .refresh_token
+                    .as_deref()
+                    .unwrap_or(&secret.access_token),
+            )]),
+        };
+        let response = request
+            .send()
+            .await
+            .map_err(|error| ProviderError::Request(error.without_url().to_string()))?;
+        if response.status().is_success() {
+            Ok(())
+        } else {
+            Err(ProviderError::Rejected(format!(
+                "HTTP {}",
+                response.status().as_u16()
+            )))
+        }
+    }
+
+    async fn execute(
+        &self,
+        _tool: &str,
+        _args: &Value,
+        _secret: &ConnectorSecret,
+    ) -> Result<Value, ProviderError> {
+        Err(ProviderError::UnknownTool)
+    }
+}

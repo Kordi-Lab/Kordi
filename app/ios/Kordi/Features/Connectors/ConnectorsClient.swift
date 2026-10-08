@@ -2,6 +2,9 @@ import Foundation
 
 struct ConnectorsClientError: LocalizedError, Equatable {
     let message: String
+    /// A stable server error code, such as `kordi_connector_error_code` from
+    /// the grant callback or `connector_not_found`, when one is known.
+    var code: String? = nil
     var errorDescription: String? { message }
 }
 

@@ -15,21 +15,7 @@ struct FakeClient {
     last_lease: Arc<Mutex<Option<tokio::time::Instant>>>,
 }
 
-struct FakeModelProvider {
-    response: ModelProviderResponse,
-}
-
-#[async_trait]
-impl CloudModelProvider for FakeModelProvider {
-    async fn next_response(
-        &self,
-        _auth: &OpenAiProviderConfig,
-        _messages: &[Value],
-        _tools: &[Value],
-    ) -> Result<ModelProviderResponse, ModelLoopError> {
-        Ok(self.response.clone())
-    }
-}
+use super::connector_tests::FakeModelProvider;
 
 impl FakeClient {
     fn with_run(run: CloudAgentRun) -> Self {
@@ -161,6 +147,7 @@ fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
         sandbox_id: Some("cas_test".to_string()),
         runtime_route: Default::default(),
         provider_auth_available,
+        connectors: Default::default(),
     }
 }
 

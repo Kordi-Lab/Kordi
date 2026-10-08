@@ -21,6 +21,7 @@ fn context(cwd: &Path, id: &str, chunks: Arc<AtomicUsize>) -> ToolContext {
         schedule_task: None,
         mac_local: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
+        connector_tools: None,
         request_approval: None,
     }
 }

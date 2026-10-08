@@ -66,6 +66,7 @@ async fn read(executor: &CloudToolExecutor, path: &str) -> Result<CloudToolOutpu
                 owner_account_id: "owner",
                 requester_account_id: "requester",
                 data_owner_account_id: None,
+                connector_tools: &[],
             },
             Some(path),
             None,

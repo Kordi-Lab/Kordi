@@ -144,6 +144,7 @@ mod tests {
             schedule_task: None,
             mac_local: None,
             execution_mode: crate::ToolExecutionMode::Interactive,
+            connector_tools: None,
             request_approval: None,
         }
     }
