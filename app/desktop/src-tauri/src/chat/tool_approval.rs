@@ -4,13 +4,13 @@
 //! connector `act` call pauses the turn, the webview shows an inline card
 //! from the `desktop_tool_approval_request` event, and the person answers
 //! through `desktop_tool_approval_respond`. No answer within five minutes
-//! counts as "Not now". Every other tool that asks for approval is refused,
-//! exactly as before this hook existed.
+//! counts as "Not now". The hook is built per turn from the lease's `act`
+//! tools; any other tool that asks for approval is refused, exactly as
+//! before this hook existed.
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use kordi_tools::connector_tools::is_connector_tool_name;
 use kordi_tools::{
     RequestToolApprovalFn, ToolApprovalDecision, ToolApprovalOutcome, ToolApprovalRequest,
 };
@@ -31,29 +31,26 @@ pub(crate) struct ApprovalPrompt {
     pub tool: String,
     /// The tool's description, for example "Send an email."
     pub summary: String,
-    /// The tool's namespace, for example `gmail` for `gmail.send`.
+    /// The connector's provider id, for example `gmail`.
     pub connector: String,
     pub args: Value,
 }
 
 impl ApprovalPrompt {
-    fn new(request_id: String, request: &ToolApprovalRequest) -> Self {
-        let connector = request
-            .tool_name
-            .split_once('.')
-            .map(|(prefix, _)| prefix.to_string())
-            .unwrap_or_default();
+    fn new(request_id: String, request: &ToolApprovalRequest, provider: &str) -> Self {
         Self {
             request_id,
             tool: request.tool_name.clone(),
             summary: request.reason.clone(),
-            connector,
+            connector: provider.to_string(),
             args: serde_json::from_str(&request.command).unwrap_or(Value::Null),
         }
     }
 }
 
 pub(crate) type Emit = Arc<dyn Fn(&str, Value) -> bool + Send + Sync>;
+/// `act` tool name to provider id, from this turn's lease.
+pub(crate) type ActTools = HashMap<String, String>;
 
 /// Pending prompts by request id.
 #[derive(Default)]
@@ -76,16 +73,17 @@ impl ApprovalBroker {
     pub(crate) async fn request(
         &self,
         emit: &Emit,
+        act_tools: &ActTools,
         request: ToolApprovalRequest,
         timeout: Duration,
     ) -> ToolApprovalOutcome {
-        if !is_connector_tool_name(&request.tool_name) {
+        let Some(provider) = act_tools.get(&request.tool_name) else {
             return decision(false);
-        }
+        };
         let request_id = uuid::Uuid::new_v4().to_string();
         let (sender, receiver) = oneshot::channel();
         self.lock().insert(request_id.clone(), sender);
-        let prompt = ApprovalPrompt::new(request_id.clone(), &request);
+        let prompt = ApprovalPrompt::new(request_id.clone(), &request, provider);
         let shown = emit(
             REQUEST_EVENT,
             serde_json::to_value(&prompt).unwrap_or(Value::Null),
@@ -128,12 +126,21 @@ pub(crate) fn install(app: tauri::AppHandle) {
     }));
 }
 
-/// The hook for `ToolContext.request_approval`; `None` before `install`.
-pub(crate) fn hook() -> Option<RequestToolApprovalFn> {
+/// The hook for `ToolContext.request_approval` on a turn whose lease lists
+/// `act_tools`; `None` when there are none or before `install`.
+pub(crate) fn hook(act_tools: ActTools) -> Option<RequestToolApprovalFn> {
+    if act_tools.is_empty() {
+        return None;
+    }
     let emit = EMIT.get()?.clone();
+    let act_tools = Arc::new(act_tools);
     Some(Arc::new(move |request| {
-        let emit = emit.clone();
-        Box::pin(async move { broker().request(&emit, request, APPROVAL_TIMEOUT).await })
+        let (emit, act_tools) = (emit.clone(), act_tools.clone());
+        Box::pin(async move {
+            broker()
+                .request(&emit, &act_tools, request, APPROVAL_TIMEOUT)
+                .await
+        })
     }))
 }
 
@@ -145,6 +152,10 @@ pub(crate) fn desktop_tool_approval_respond(request_id: String, approved: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn act_tools() -> ActTools {
+        HashMap::from([("gmail_send".to_string(), "gmail".to_string())])
+    }
 
     fn request(tool: &str) -> ToolApprovalRequest {
         ToolApprovalRequest {
@@ -182,12 +193,17 @@ mod tests {
         let broker = Arc::new(ApprovalBroker::default());
         let (emit, events) = responder(broker.clone(), Some(true));
         let outcome = broker
-            .request(&emit, request("gmail.send"), Duration::from_secs(5))
+            .request(
+                &emit,
+                &act_tools(),
+                request("gmail_send"),
+                Duration::from_secs(5),
+            )
             .await;
         assert!(outcome.approved());
         let events = events.lock().unwrap().clone();
         assert_eq!(events[0].0, REQUEST_EVENT);
-        assert_eq!(events[0].1["tool"], "gmail.send");
+        assert_eq!(events[0].1["tool"], "gmail_send");
         assert_eq!(events[0].1["summary"], "Send an email.");
         assert_eq!(events[0].1["connector"], "gmail");
         assert_eq!(events[0].1["args"]["to"], "a@example.com");
@@ -196,7 +212,12 @@ mod tests {
 
         let (emit, _) = responder(broker.clone(), Some(false));
         let outcome = broker
-            .request(&emit, request("gmail.send"), Duration::from_secs(5))
+            .request(
+                &emit,
+                &act_tools(),
+                request("gmail_send"),
+                Duration::from_secs(5),
+            )
             .await;
         assert!(!outcome.approved());
         assert!(broker.lock().is_empty());
@@ -207,7 +228,12 @@ mod tests {
         let broker = Arc::new(ApprovalBroker::default());
         let (emit, events) = responder(broker.clone(), None);
         let outcome = broker
-            .request(&emit, request("gmail.send"), Duration::from_millis(20))
+            .request(
+                &emit,
+                &act_tools(),
+                request("gmail_send"),
+                Duration::from_millis(20),
+            )
             .await;
         assert!(!outcome.approved());
         let id = events.lock().unwrap()[0].1["requestId"]
@@ -219,18 +245,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn only_connector_tools_are_prompted() {
+    async fn only_act_tools_on_the_lease_are_prompted() {
         let broker = Arc::new(ApprovalBroker::default());
         let (emit, events) = responder(broker.clone(), Some(true));
-        let outcome = broker
-            .request(&emit, request("bash"), Duration::from_secs(5))
-            .await;
-        assert!(!outcome.approved());
+        for tool in ["bash", "gmail_search"] {
+            let outcome = broker
+                .request(&emit, &act_tools(), request(tool), Duration::from_secs(5))
+                .await;
+            assert!(!outcome.approved(), "{tool}");
+        }
+        assert!(hook(ActTools::new()).is_none());
         assert!(events.lock().unwrap().is_empty());
         // A webview that cannot be reached denies at once.
         let unreachable: Emit = Arc::new(|_, _| false);
         let outcome = broker
-            .request(&unreachable, request("gmail.send"), Duration::from_secs(5))
+            .request(
+                &unreachable,
+                &act_tools(),
+                request("gmail_send"),
+                Duration::from_secs(5),
+            )
             .await;
         assert!(!outcome.approved());
     }

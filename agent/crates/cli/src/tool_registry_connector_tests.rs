@@ -25,8 +25,8 @@ fn descriptor(name: &str, group: ConnectorToolGroup) -> ConnectorToolDescriptor 
 fn runtime() -> ConnectorToolsRuntime {
     ConnectorToolsRuntime {
         descriptors: vec![
-            descriptor("gmail.search", ConnectorToolGroup::Read),
-            descriptor("gmail.send", ConnectorToolGroup::Act),
+            descriptor("gmail_search", ConnectorToolGroup::Read),
+            descriptor("gmail_send", ConnectorToolGroup::Act),
         ],
         call: Arc::new(|descriptor, _| {
             Box::pin(async move { Ok(json!({ "tool": descriptor.name })) })
@@ -40,7 +40,7 @@ fn connector_names(registry: &ToolRegistry) -> Vec<String> {
     registry
         .active_names()
         .iter()
-        .filter(|name| name.contains('.'))
+        .filter(|name| name.starts_with("gmail_"))
         .cloned()
         .collect()
 }
@@ -52,12 +52,12 @@ fn no_connector_tools_without_a_runtime() {
     registry.set_connector_tools(None, true);
     assert_eq!(registry.len(), before);
     assert!(connector_names(&registry).is_empty());
-    assert!(
-        registry
-            .tool_defs()
-            .iter()
-            .all(|def| !def["function"]["name"].as_str().unwrap().contains('.'))
-    );
+    assert!(registry.tool_defs().iter().all(|def| {
+        !def["function"]["name"]
+            .as_str()
+            .unwrap()
+            .starts_with("gmail_")
+    }));
 }
 
 #[test]
@@ -65,17 +65,17 @@ fn lease_descriptors_register_and_are_replaced_each_turn() {
     let mut registry = ToolRegistry::from_builtin_and_extensions(vec![], ToolSelection::All);
     let before = registry.len();
     registry.set_connector_tools(Some(&runtime()), true);
-    assert_eq!(connector_names(&registry), ["gmail.search", "gmail.send"]);
+    assert_eq!(connector_names(&registry), ["gmail_search", "gmail_send"]);
     assert_eq!(registry.len(), before + 2);
     assert_eq!(
-        registry.metadata_for("gmail.send").unwrap().risk,
+        registry.metadata_for("gmail_send").unwrap().risk,
         ToolRiskLevel::High
     );
     assert!(
         registry
             .tool_defs()
             .iter()
-            .any(|def| def["function"]["name"] == "gmail.search")
+            .any(|def| def["function"]["name"] == "gmail_search")
     );
 
     // The next turn without a lease drops them; disabled tools never appear.
@@ -91,7 +91,7 @@ fn connector_tools_never_replace_existing_tools() {
     #[async_trait::async_trait]
     impl Tool for Existing {
         fn name(&self) -> &str {
-            "gmail.search"
+            "gmail_search"
         }
         fn description(&self) -> &str {
             "existing"
@@ -110,11 +110,11 @@ fn connector_tools_never_replace_existing_tools() {
     }
     let mut registry = ToolRegistry::from_tools(vec![Box::new(Existing)]);
     registry.set_connector_tools(Some(&runtime()), true);
-    assert_eq!(registry.active_names(), ["gmail.search", "gmail.send"]);
+    assert_eq!(registry.active_names(), ["gmail_search", "gmail_send"]);
     assert_eq!(registry.active_tools()[0].description(), "existing");
     // Removing connector tools keeps the existing tool.
     registry.set_connector_tools(None, true);
-    assert_eq!(registry.active_names(), ["gmail.search"]);
+    assert_eq!(registry.active_names(), ["gmail_search"]);
 }
 
 #[tokio::test]
@@ -141,7 +141,7 @@ async fn act_tools_registered_from_a_lease_invoke_the_approval_hook() {
             .await
             .unwrap();
     }
-    assert_eq!(*asked.lock().unwrap(), ["gmail.send"], "only act tools ask");
+    assert_eq!(*asked.lock().unwrap(), ["gmail_send"], "only act tools ask");
 }
 
 #[tokio::test]
@@ -157,7 +157,7 @@ async fn act_tools_without_an_approval_responder_are_denied() {
     let send = registry
         .active_tools()
         .iter()
-        .find(|tool| tool.name() == "gmail.send")
+        .find(|tool| tool.name() == "gmail_send")
         .unwrap();
     let error = send
         .execute(json!({}), &ctx, CancellationToken::new())
@@ -176,7 +176,7 @@ fn request_connect_registers_only_for_runtimes_that_offer_it() {
     registry.set_connector_tools(Some(&offered), true);
     assert_eq!(registry.active_names(), ["connectors_request_connect"]);
     registry.set_connector_tools(Some(&runtime()), true);
-    assert_eq!(registry.active_names(), ["gmail.search", "gmail.send"]);
+    assert_eq!(registry.active_names(), ["gmail_search", "gmail_send"]);
     registry.set_connector_tools(None, true);
     assert!(registry.active_names().is_empty());
 }

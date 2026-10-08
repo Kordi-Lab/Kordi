@@ -492,7 +492,8 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     ),
     migration!(
         116,
-        "run connector audience",
-        "0116_run_connector_audience.sql"
+        "connector provider state",
+        "0116_connector_provider_state.sql"
     ),
+    migration!(116, "connector audience", "0116_run_connector_audience.sql"),
 ];

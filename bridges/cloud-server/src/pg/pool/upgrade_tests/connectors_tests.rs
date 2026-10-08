@@ -70,7 +70,16 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
 async fn upgrade_from_114_labels_existing_runs_as_background() {
     let pool = fixture(114).await;
-    seed_runs(&pool).await;
+    // Runs only: `seed_history` builds a pre-0089 direct conversation whose
+    // session id the 0089 trigger rejects at this schema version.
+    for (run_id, status) in [("old-run", "completed"), ("live-run", "queued")] {
+        query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at) VALUES($1,$1,$1,'session:direct-person:fixture-owner:fixture-peer','fixture-owner','fixture-owner',$2,'Historical request','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')")
+            .bind(run_id)
+            .bind(status)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
     let before = historical_runs(&pool).await;
     apply_migrations(&pool).await.unwrap();
     latest_version(&pool).await;
@@ -81,7 +90,7 @@ async fn upgrade_from_114_labels_existing_runs_as_background() {
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert!(!rows.is_empty());
+    assert_eq!(rows.len(), 2);
     for (trigger, tools) in rows {
         assert_eq!(trigger, "background", "existing runs never gain act tools");
         assert_eq!(tools, serde_json::json!([]));
@@ -89,6 +98,56 @@ async fn upgrade_from_114_labels_existing_runs_as_background() {
     for invalid in [
         "UPDATE cloud_agent_fallback_runs SET run_trigger='scheduled'",
         "UPDATE cloud_agent_fallback_runs SET connector_tools_json='{}'::jsonb",
+    ] {
+        assert!(
+            sqlx_core::raw_sql::raw_sql(invalid)
+                .execute(&pool)
+                .await
+                .is_err(),
+            "{invalid}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_115_adds_provider_state_and_dedupes_events() {
+    let pool = fixture(115).await;
+    execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status,read_scopes) VALUES('conn_live','fixture-owner','slack','connected','{channels:history}')").await;
+    execute(&pool, "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,external_id,occurred_at,expires_at) VALUES('evt_a','conn_live','slack','message','message:C1:1',now(),now()+interval '1 day'),('evt_b','conn_live','slack','message','message:C1:1',now(),now()+interval '1 day'),('evt_c','conn_live','slack','message',NULL,now(),now()+interval '1 day'),('evt_d','conn_live','slack','message',NULL,now(),now()+interval '1 day')").await;
+    apply_migrations(&pool).await.unwrap();
+    latest_version(&pool).await;
+
+    let (settings, account, last_event): (Value, Option<String>, Option<String>) = query_as(
+        "SELECT settings, provider_account_id, last_event_at::text FROM cloud_connectors WHERE connector_id='conn_live'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        (settings, account, last_event),
+        (json!({}), None, None),
+        "existing connectors keep working with empty settings"
+    );
+    let events: Vec<(String,)> =
+        query_as("SELECT event_id FROM cloud_connector_events ORDER BY event_id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        events,
+        [
+            ("evt_a".to_string(),),
+            ("evt_c".to_string(),),
+            ("evt_d".to_string(),)
+        ],
+        "duplicate external ids collapse to the first; events without one stay"
+    );
+
+    execute(&pool, "UPDATE cloud_connectors SET settings='{\"channels\":[\"C1\"]}', provider_account_id='T1:U1' WHERE connector_id='conn_live'").await;
+    for invalid in [
+        "UPDATE cloud_connectors SET settings='[]' WHERE connector_id='conn_live'",
+        "INSERT INTO cloud_connector_events(event_id,connector_id,provider,kind,external_id,occurred_at,expires_at) VALUES('evt_e','conn_live','slack','message','message:C1:1',now(),now())",
     ] {
         assert!(
             sqlx_core::raw_sql::raw_sql(invalid)
@@ -129,15 +188,15 @@ async fn upgrade_from_115_labels_existing_runs_as_shared() {
     .is_err());
 }
 
-/// Historical runs for fixtures at 80 and later, where `seed_history`'s
-/// direct conversation no longer satisfies the direct session identity rule.
-/// Runs carry no foreign key to the conversation, so none is needed here.
+/// Historical runs only: `seed_history` builds a pre-0089 direct conversation
+/// whose session id the 0089 trigger rejects at later schema versions. Run
+/// session ids use the `session:direct-person:<a>:<b>` form.
 async fn seed_runs(pool: &PgPool) {
     for (id, created) in [
         ("old-run", "2026-01-01T00:00:00Z"),
         ("new-run", "2026-01-02T00:00:00Z"),
     ] {
-        query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,response_message_id,created_at,updated_at) VALUES($1,$1,$1,'old-direct-fixture','fixture-owner','fixture-peer','completed','Historical request',$1,$2,$2)")
+        query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,response_message_id,created_at,updated_at) VALUES($1,$1,$1,'session:direct-person:fixture-owner:fixture-peer','fixture-owner','fixture-owner','completed','Historical request',$1,$2,$2)")
             .bind(id)
             .bind(created)
             .execute(pool)

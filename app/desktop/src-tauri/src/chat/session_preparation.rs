@@ -185,7 +185,14 @@ pub(super) async fn prepare_desktop_session_for_send(
             .is_none()
             .then(connector_tools_runtime::owner_local),
     });
-    runtime.set_tool_approval_hook(super::tool_approval::hook());
+    // Only the lease's `act` tools may ask the person; the rest stay refused.
+    let act_tools = cloud_lease
+        .iter()
+        .flat_map(|lease| lease.connector_tools.iter().flatten())
+        .filter(|descriptor| descriptor.is_act())
+        .map(|descriptor| (descriptor.name.clone(), descriptor.provider.clone()))
+        .collect();
+    runtime.set_tool_approval_hook(super::tool_approval::hook(act_tools));
     let observation = if let Some(lease) = cloud_lease {
         let observation =
             super::session_observation::cloud::build(lease, prompt_session_id.clone(), calendar);

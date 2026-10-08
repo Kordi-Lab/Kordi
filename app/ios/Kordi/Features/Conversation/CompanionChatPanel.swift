@@ -174,9 +174,10 @@ enum CompanionPanelCatalog {
 }
 
 struct CompanionChatPanel: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var model: AppModel
-    @Environment(\.dismiss) private var dismiss
     @Binding var selectedConversation: ConversationSummary?
+    @State private var navigationContentWidth: CGFloat = 0
 
     let sourceConversation: ConversationSummary
 
@@ -200,15 +201,6 @@ struct CompanionChatPanel: View {
         VStack(spacing: 0) {
             if let selectedConversation,
                CompanionPanelCatalog.isPrivateOwnedSession(selectedConversation, ownAccountID: model.account?.accountId ?? "") {
-                CompanionPanelHeader(
-                    conversation: selectedConversation,
-                    sessions: existingSessions,
-                    onNewSession: { createSession(from: selectedConversation) },
-                    onSelectSession: { self.selectedConversation = $0 },
-                    onClose: dismiss.callAsFunction
-                )
-
-
                 ConversationView(
                     conversation: selectedConversation,
                     companionContext: sourceContext,
@@ -226,8 +218,28 @@ struct CompanionChatPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemBackground))
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
+        .onGeometryChange(for: CGFloat.self) { geometry in
+            geometry.size.width
+        } action: { width in
+            navigationContentWidth = width
+        }
+        .navigationTitle("Ask Agent")
+        .navigationBarTitleDisplayMode(.inline)
+        .tint(chatTheme.accent)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            if let selectedConversation,
+               CompanionPanelCatalog.isPrivateOwnedSession(selectedConversation, ownAccountID: model.account?.accountId ?? "") {
+                CompanionPanelToolbar(
+                    conversation: selectedConversation,
+                    sessions: existingSessions,
+                    contentWidth: navigationContentWidth,
+                    onNewSession: { createSession(from: selectedConversation) },
+                    onSelectSession: { self.selectedConversation = $0 }
+                )
+            }
+        }
     }
 
     private func createSession(from conversation: ConversationSummary) {
@@ -235,87 +247,95 @@ struct CompanionChatPanel: View {
     }
 }
 
-private struct CompanionPanelHeader: View {
+private struct CompanionPanelToolbar: ToolbarContent {
     let conversation: ConversationSummary
     let sessions: [ConversationSummary]
+    let contentWidth: CGFloat
     let onNewSession: () -> Void
     let onSelectSession: (ConversationSummary) -> Void
-    let onClose: () -> Void
 
-    var body: some View {
-        HStack(spacing: 10) {
-            Button(action: onClose) {
-                Image(systemName: "chevron.left")
-                    .font(.title3.weight(.semibold))
+    var body: some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            ToolbarItem(placement: .principal) { title }
+                .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .principal) { title }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            sessionMenu {
+                Image(systemName: "ellipsis")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Color.primary)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Back to conversation")
+            .accessibilityIdentifier("companion-session-menu")
+        }
+    }
 
-            IdentityAvatar(
-                name: conversation.agentDisplayName?.nonEmpty ?? conversation.displayName,
-                imageSource: conversation.avatarSource,
-                kind: .agent,
-                size: 32,
-                seed: conversation.agentId?.nonEmpty ?? conversation.sessionId
-            )
+    private var title: some View {
+        VStack(spacing: 1) {
+            Text("Ask Agent · \(conversation.displayName)")
+                .font(.headline)
+                .foregroundStyle(Color.primary)
+                .lineLimit(1)
+            Text("Only you · Agent session")
+                .font(.caption2)
+                .foregroundStyle(KordiTheme.agentViolet)
+                .lineLimit(1)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 15)
+        .padding(.vertical, 7)
+        .frame(width: titleWidth)
+        .frame(minHeight: 44)
+        .modifier(ConversationTitleSurface(isInteractive: false))
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel("Ask Agent, \(conversation.displayName), Only you · Agent session")
+        .accessibilityIdentifier("companion-title")
+    }
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Ask Agent · \(conversation.displayName)")
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text("Only you · Agent session")
-                    .font(.caption)
-                    .foregroundStyle(KordiTheme.agentViolet)
-                    .lineLimit(1)
+    private var titleWidth: CGFloat {
+        // Match the conversation title's symmetric space for one native control per side.
+        let controlWidth: CGFloat = 44 + 36
+        return min(220, max(44, (contentWidth > 0 ? contentWidth : 402) - controlWidth * 2))
+    }
+
+    private func sessionMenu<MenuLabel: View>(@ViewBuilder label: () -> MenuLabel) -> some View {
+        Menu {
+            Button(action: onNewSession) {
+                Label("New session", systemImage: "square.and.pencil")
             }
-
-            Spacer(minLength: 6)
 
             Menu {
-                Button(action: onNewSession) {
-                    Label("New session", systemImage: "square.and.pencil")
-                }
-
-                Menu {
-                    if sessions.isEmpty {
-                        Text("No existing sessions")
-                    } else {
-                        ForEach(sessions) { session in
-                            Button {
-                                onSelectSession(session)
-                            } label: {
-                                Label(
-                                    session.displayName,
-                                    systemImage: session.id == conversation.id
-                                        ? "checkmark"
-                                        : "bubble.left"
-                                )
-                            }
-                            .disabled(session.id == conversation.id)
+                if sessions.isEmpty {
+                    Text("No existing sessions")
+                } else {
+                    ForEach(sessions) { session in
+                        Button {
+                            onSelectSession(session)
+                        } label: {
+                            Label(
+                                session.displayName,
+                                systemImage: session.id == conversation.id
+                                    ? "checkmark"
+                                    : "bubble.left"
+                            )
                         }
+                        .disabled(session.id == conversation.id)
                     }
-                } label: {
-                    Label("Switch session", systemImage: "bubble.left.and.bubble.right")
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
+                Label("Switch session", systemImage: "bubble.left.and.bubble.right")
             }
-            .contentShape(Rectangle())
-            .accessibilityLabel("Switch Ask Agent session")
-            .accessibilityValue(conversation.displayName)
-
+        } label: {
+            label()
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 6)
-        .padding(.vertical, 5)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
+        .accessibilityLabel("Switch Ask Agent session")
+        .accessibilityValue(conversation.displayName)
     }
 }
 

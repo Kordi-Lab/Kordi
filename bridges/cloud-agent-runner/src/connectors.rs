@@ -10,7 +10,7 @@ use kordi_tools::connector_request_connect::{
     request_connect_result, request_connect_schema, REQUEST_CONNECT_DESCRIPTION,
     REQUEST_CONNECT_TOOL_NAME,
 };
-use kordi_tools::connector_tools::{is_connector_tool_name, ConnectorToolDescriptor};
+use kordi_tools::connector_tools::{is_connector_tool_name, lease_tool, ConnectorToolDescriptor};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -46,9 +46,21 @@ impl LeaseConnectors {
         self.audience.as_deref() == Some("owner_private")
     }
 
+    /// The descriptor for `name` when the lease lists it, the name passes
+    /// the shape check, and it does not shadow a built-in cloud tool.
     pub fn descriptor(&self, name: &str) -> Option<&ConnectorToolDescriptor> {
-        self.tools.iter().find(|tool| tool.name == name)
+        lease_tool(&self.tools, name).filter(|_| !is_builtin_tool(name))
     }
+}
+
+/// Built-in cloud tool names. A lease descriptor never replaces one.
+pub fn is_builtin_tool(name: &str) -> bool {
+    matches!(
+        name,
+        "browser_fetch" | "reach_out" | "reflection" | "update_plan"
+    ) || crate::model_loop::tool_catalog()
+        .iter()
+        .any(|tool| tool["function"]["name"] == name)
 }
 
 /// Model tool definitions for the lease's connector tools, in the same
@@ -65,7 +77,7 @@ pub fn tool_definitions(run: &CloudAgentRun) -> Vec<Value> {
         .connectors
         .tools
         .iter()
-        .filter(|tool| is_connector_tool_name(&tool.name))
+        .filter(|tool| is_connector_tool_name(&tool.name) && !is_builtin_tool(&tool.name))
         .map(|tool| function(&tool.name, &tool.description, &tool.input_schema))
         .collect::<Vec<_>>();
     if run.connectors.is_owner_private() {
@@ -94,9 +106,9 @@ pub fn prompt_section(run: &CloudAgentRun) -> Option<String> {
     Some(section)
 }
 
-/// Runs a connector tool call, or returns `None` when `call` does not name a
-/// connector tool. Names that look like connector tools but are not on the
-/// lease are refused by the runner tool policy.
+/// Runs a connector tool call, or returns `None` when the lease does not list
+/// `call.name`; such calls continue to the built-in tools, where an unknown
+/// name is refused by the runner tool policy.
 pub async fn execute_connector_call<C: CloudAgentRunClient + Sync>(
     client: &C,
     run: &CloudAgentRun,
@@ -112,9 +124,7 @@ pub async fn execute_connector_call<C: CloudAgentRunClient + Sync>(
             Err(message) => message.into(),
         });
     }
-    if !is_connector_tool_name(&call.name) {
-        return None;
-    }
+    run.connectors.descriptor(&call.name)?;
     let request = RunnerToolRequest {
         tool_name: &call.name,
         path_args: Vec::new(),

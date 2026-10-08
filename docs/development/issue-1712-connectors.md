@@ -184,8 +184,11 @@ check: see "What shipped in PR 2" below.
 - Cloud runner: `bridges/cloud-agent-runner` turns each descriptor into a host
   tool whose `execute` calls the broker route. `tool_policy.rs` gains a
   `connector.*` arm that only allows names present in the lease. Tool names are
-  namespaced: `gmail.search`, `calendar.list_events`, `calendar.respond`,
-  `github.notifications`, `github.comment`, `slack.read_channel`, `slack.post`.
+  namespaced with an underscore, because model providers reject dots in
+  function names (`^[A-Za-z0-9_-]+$`): `gmail_search`, `calendar_list_events`,
+  `calendar_respond`, `github_notifications`, `github_comment`,
+  `slack_read_channel`, `slack_post`. A runtime recognises a connector tool by
+  its presence on the lease, with a shape check of `^[A-Za-z0-9_-]{1,64}$`.
 - Mac harness: `agent/crates/cli/src/session_bootstrap.rs` registers connector
   tools from the desktop runtime's tool list; service connectors still call the
   server broker, Mac-local connectors call into the Tauri process. `act` tools on
@@ -283,6 +286,68 @@ are a second wave.
   worker, read-only.
 - Rate and cost: per-account budget on broker calls, reusing the action budget
   pattern from #1672.
+
+### What PR 3 ships
+
+- Providers in `connectors/providers/{google_calendar,gmail,github,slack}.rs`,
+  each a `ServiceAdapter` paired with the shared OAuth 2 client
+  (`providers/service.rs`, `providers/oauth2.rs`). Provider HTTP goes through
+  `providers/http.rs`: bearer auth, a 20 second timeout, a 2 MiB response
+  bound, lists capped at 50 items and free text at 4,000 characters. Results
+  are built field by field, so no header, token, or page cursor reaches a run.
+- Tools (underscored names; argument schemas in `connectors/tool_schemas.rs`
+  through each provider's `input_schema`):
+  - Google Calendar: `calendar_list_events` (read, window up to 31 days),
+    `calendar_respond` (act), `calendar_create_event` (act).
+  - Gmail: `gmail_search` (read, up to 25), `gmail_read_message` (read),
+    `gmail_send` (act, plain text, header injection rejected).
+  - GitHub: `github_notifications` (read), `github_pull_request` (read: state,
+    reviews, checks summary), `github_comment` (act).
+  - Slack: `slack_read_channel` (read) and `slack_post` (act), both limited to
+    the channels saved in the connector settings.
+- Migration 0116 adds `settings` (JSONB object), `provider_account_id`,
+  `last_event_at`, `last_polled_at`, and `subscribed_at` to
+  `cloud_connectors`, and a unique `(connector_id, external_id)` index on
+  `cloud_connector_events` so every event is stored once.
+- `PUT /v1/cloud/connectors/:id/settings` validates per provider. Slack takes
+  `{ "channels": ["C0123ABCD"] }` (at most 50 channel ids); other providers
+  accept only `{}`.
+- `GET /v1/cloud/connectors` also returns `agents` (the built-in agent named
+  from the account's agent profile, then active defined agents), and each
+  summary carries `grantedScopeIds` in the client catalog ids, `settings`, and
+  `lastEventAt`.
+- The broker refreshes once and retries when a provider answers 401 to a live
+  token (`connectors/credentials.rs`).
+- Events: `POST /v1/cloud/connectors/webhooks/github` (HMAC
+  `X-Hub-Signature-256`; delivery id dedupes replays; recorded for the
+  reviewer, assignee, or author, never the sender),
+  `POST /v1/cloud/connectors/webhooks/slack` (signing secret, five minute
+  timestamp window, URL verification; only chosen channels), and
+  `POST /v1/cloud/connectors/webhooks/google` (Gmail Pub/Sub push; the OIDC
+  bearer is checked through Google's token info endpoint for audience, issuer,
+  expiry, and the push service account; rejected when unconfigured).
+  Connectors are found by the provider account stored at grant time (GitHub
+  user id, Google email, Slack `team:user`).
+- Polling fallback (`connectors/polling.rs`, started from
+  `scheduled_tasks/worker.rs`): every connected connector without a live
+  subscription is polled every `KORDI_CONNECTOR_POLL_MINUTES`; connectors with
+  one only renew it daily (Gmail `users.watch`). Google Calendar push uses
+  plain channel callbacks rather than Pub/Sub, so Calendar always polls.
+- Digest input: `connectors::digest_input::recent_events` (last 7 days, at
+  most 100, live connectors only) feeds `connectorEvents` in the digest input
+  and its incremental changes; the system prompt treats them as read-only
+  context that is never a source.
+
+Environment variables introduced by PR 3:
+
+| Variable | Used for |
+|---|---|
+| `KORDI_CONNECTOR_GITHUB_WEBHOOK_SECRET` | GitHub webhook HMAC; when set, GitHub connectors stop polling |
+| `KORDI_CONNECTOR_SLACK_SIGNING_SECRET` | Slack request signatures; when set, Slack connectors stop polling |
+| `KORDI_CONNECTOR_GOOGLE_PUSH_AUDIENCE` | Audience of the Pub/Sub push OIDC token |
+| `KORDI_CONNECTOR_GOOGLE_PUSH_SERVICE_ACCOUNT` | Service account the push subscription signs as; required with the audience |
+| `KORDI_CONNECTOR_GMAIL_PUBSUB_TOPIC` | `projects/<p>/topics/<t>` for Gmail `users.watch`; with the two above, Gmail stops polling |
+| `KORDI_CONNECTOR_POLL_MINUTES` | Polling interval, default 15, accepted range 1 to 1440 |
 
 ## PR 4: Mac-local connectors
 

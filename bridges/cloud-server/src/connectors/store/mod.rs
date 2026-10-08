@@ -16,10 +16,12 @@ use super::models::{ConnectorRecord, ConnectorStatus, ConnectorSummary, CONNECTO
 mod audit;
 mod grant;
 mod oauth_state;
+mod provider_state;
 
 pub use audit::{insert_audit, list_audit, NewAuditEntry};
 pub use grant::{apply_grant, disconnect, merge_scopes, write_secret, GrantUpdate, SealedSecret};
 pub use oauth_state::{consume_oauth_state, insert_oauth_state, ConnectorOAuthState};
+pub use provider_state::{account_agents, live_connectors_for_account_id, set_settings};
 
 pub type StoreResult<T> = Result<T, sqlx_core::Error>;
 
@@ -27,7 +29,7 @@ pub(crate) fn new_id(prefix: &str) -> String {
     format!("{prefix}_{}", uuid::Uuid::new_v4().simple())
 }
 
-type ConnectorRow = (
+pub(crate) type ConnectorRow = (
     String,
     String,
     String,
@@ -38,9 +40,12 @@ type ConnectorRow = (
     DateTime<Utc>,
     DateTime<Utc>,
     Option<DateTime<Utc>>,
+    serde_json::Value,
+    Option<String>,
+    Option<DateTime<Utc>>,
 );
 
-fn record_from_row(row: ConnectorRow) -> StoreResult<ConnectorRecord> {
+pub(crate) fn record_from_row(row: ConnectorRow) -> StoreResult<ConnectorRecord> {
     let (
         connector_id,
         account_id,
@@ -52,6 +57,9 @@ fn record_from_row(row: ConnectorRow) -> StoreResult<ConnectorRecord> {
         created_at,
         updated_at,
         revoked_at,
+        settings,
+        provider_account_id,
+        last_event_at,
     ) = row;
     let status = ConnectorStatus::parse(&status).ok_or_else(|| {
         sqlx_core::Error::Protocol(format!("unknown connector status {status:?}"))
@@ -67,6 +75,9 @@ fn record_from_row(row: ConnectorRow) -> StoreResult<ConnectorRecord> {
         created_at,
         updated_at,
         revoked_at,
+        settings,
+        provider_account_id,
+        last_event_at,
     })
 }
 

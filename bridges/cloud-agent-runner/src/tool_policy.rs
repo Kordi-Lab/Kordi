@@ -65,13 +65,12 @@ pub fn decide_runner_tool(request: &RunnerToolRequest<'_>) -> RunnerToolDecision
         "reach_out" | "reflection" | "update_plan" | "task_operator" => {
             RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
         }
-        // Connector tools (`gmail.search`, ...): only names on the lease.
-        name if kordi_tools::connector_tools::is_connector_tool_name(name) => {
-            if request.connector_tools.iter().any(|tool| tool.name == name) {
-                RunnerToolDecision::AllowConnector
-            } else {
-                RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
-            }
+        // Connector tools (`gmail_search`, ...): only names the lease lists
+        // that also pass the name shape check.
+        name if kordi_tools::connector_tools::lease_tool(request.connector_tools, name)
+            .is_some() =>
+        {
+            RunnerToolDecision::AllowConnector
         }
         _ => RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool),
     }

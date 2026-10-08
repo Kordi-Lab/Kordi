@@ -182,9 +182,11 @@ mod tests {
         assert!(build(&lease(None)).is_none());
         assert!(lease_descriptors(&lease(None)).is_none());
         assert!(lease_descriptors(&lease(Some(json!([])))).is_none());
-        // Names that are not namespaced connector tools never register.
+        // Names that fail the provider function-name shape never register.
+        // (A name that collides with a built-in tool is skipped by the tool
+        // registry, which never replaces an existing tool.)
         let odd = lease(Some(
-            json!([{"connectorId":"c","provider":"p","name":"bash",
+            json!([{"connectorId":"c","provider":"p","name":"gmail.search",
             "group":"read","description":"d"}]),
         ));
         assert!(lease_descriptors(&odd).is_none());
@@ -193,9 +195,9 @@ mod tests {
     #[test]
     fn lease_descriptors_and_broker_calls_carry_only_ids() {
         let lease = lease(Some(json!([
-            {"connectorId":"conn_1","provider":"gmail","name":"gmail.search","group":"read",
+            {"connectorId":"conn_1","provider":"gmail","name":"gmail_search","group":"read",
              "description":"Search mail.","inputSchema":{"type":"object"}},
-            {"connectorId":"conn_1","provider":"gmail","name":"gmail.send","group":"act",
+            {"connectorId":"conn_1","provider":"gmail","name":"gmail_send","group":"act",
              "description":"Send mail."}
         ])));
         let descriptors = lease_descriptors(&lease).unwrap();
@@ -211,7 +213,7 @@ mod tests {
         assert_eq!(
             body,
             json!({"leaseId":"car_1","claimId":"8f8e6a52-41e4-4c42-9d1e-4c9a3a1f1a10",
-                   "connectorId":"conn_1","tool":"gmail.send","args":{"to":"a"}})
+                   "connectorId":"conn_1","tool":"gmail_send","args":{"to":"a"}})
         );
         assert_eq!(
             broker_result(200, br#"{"ok":true,"result":{"n":1}}"#).unwrap(),

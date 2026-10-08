@@ -6,6 +6,9 @@ use serde_json::{json, Value};
 
 /// JSON Schema for the arguments of `tool`.
 pub fn input_schema(tool: &str) -> Value {
+    if let Some(schema) = super::providers::input_schema(tool) {
+        return schema;
+    }
     match tool {
         #[cfg(test)]
         super::providers::stub::STUB_READ_TOOL => json!({

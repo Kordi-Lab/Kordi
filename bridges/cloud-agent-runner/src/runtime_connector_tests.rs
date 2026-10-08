@@ -144,7 +144,7 @@ impl CloudModelProvider for ScriptedProvider {
         }
         Ok(ModelProviderResponse::ToolCalls(vec![ModelToolCall {
             id: "call_1".into(),
-            name: "gmail.search".into(),
+            name: "gmail_search".into(),
             arguments: json!({"q": "invoice"}),
         }]))
     }
@@ -164,12 +164,12 @@ fn request<'a>(name: &'a str, tools: &'a [ConnectorToolDescriptor]) -> RunnerToo
 
 #[test]
 fn policy_admits_only_connector_tools_on_the_lease() {
-    let tools = [descriptor("gmail.search", ConnectorToolGroup::Read)];
+    let tools = [descriptor("gmail_search", ConnectorToolGroup::Read)];
     assert_eq!(
-        decide_runner_tool(&request("gmail.search", &tools)),
+        decide_runner_tool(&request("gmail_search", &tools)),
         RunnerToolDecision::AllowConnector
     );
-    for name in ["gmail.send", "slack.post", "github.comment"] {
+    for name in ["gmail_send", "slack_post", "github_comment"] {
         assert_eq!(
             decide_runner_tool(&request(name, &tools)),
             RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool),
@@ -177,9 +177,49 @@ fn policy_admits_only_connector_tools_on_the_lease() {
         );
     }
     assert_eq!(
-        decide_runner_tool(&request("gmail.search", &[])),
+        decide_runner_tool(&request("gmail_search", &[])),
         RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
     );
+}
+
+#[test]
+fn lease_membership_and_name_shape_decide_connector_tools() {
+    let tools = [
+        descriptor("gmail.search", ConnectorToolGroup::Read),
+        descriptor("gmail_search", ConnectorToolGroup::Read),
+        descriptor("read", ConnectorToolGroup::Read),
+    ];
+    // A dotted name on the lease fails the shape check.
+    assert_eq!(
+        decide_runner_tool(&request("gmail.search", &tools)),
+        RunnerToolDecision::Block(RunnerToolBlockReason::UnsupportedTool)
+    );
+    // An underscore name on the lease is accepted.
+    assert_eq!(
+        decide_runner_tool(&request("gmail_search", &tools)),
+        RunnerToolDecision::AllowConnector
+    );
+    // A lease descriptor never shadows a built-in tool.
+    assert_eq!(
+        decide_runner_tool(&request("read", &tools)),
+        RunnerToolDecision::AllowSandbox
+    );
+    let run = run("person_started", tools.to_vec());
+    let names = connectors::tool_definitions(&run)
+        .iter()
+        .map(|tool| tool["function"]["name"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+    // The owner-private test run also offers the connect link.
+    assert_eq!(names, ["gmail_search", "connectors_request_connect"]);
+    assert!(run.connectors.descriptor("gmail.search").is_none());
+    assert!(run.connectors.descriptor("read").is_none());
+    assert!(kordi_tools::connector_tools::is_connector_tool_name(
+        "calendar_list-events"
+    ));
+    assert!(!kordi_tools::connector_tools::is_connector_tool_name(
+        &"a".repeat(65)
+    ));
+    assert!(!kordi_tools::connector_tools::is_connector_tool_name(""));
 }
 
 #[tokio::test]
@@ -187,18 +227,32 @@ async fn a_tool_not_on_the_lease_is_refused_without_calling_the_broker() {
     let client = BrokerClient::default();
     let run = run(
         "background",
-        vec![descriptor("gmail.search", ConnectorToolGroup::Read)],
+        vec![descriptor("gmail_search", ConnectorToolGroup::Read)],
     );
     let call = ModelToolCall {
         id: "call_1".into(),
-        name: "gmail.send".into(),
+        name: "gmail_send".into(),
         arguments: json!({}),
     };
-    let output = connectors::execute_connector_call(&client, &run, &call)
+    // Not on the lease: not a connector call, so it reaches the built-in
+    // tools, where the runner policy refuses the unknown name.
+    assert!(connectors::execute_connector_call(&client, &run, &call)
         .await
-        .expect("connector-shaped names are handled");
+        .is_none());
+    let root = std::env::temp_dir().join(format!(
+        "kordi-connector-refusal-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let sandbox: crate::sandbox_client::SandboxBackendHandle = Arc::new(
+        crate::sandbox_client::LocalSandboxBackend::new(root.clone()),
+    );
+    let executor = crate::tools::CloudToolExecutor::new(sandbox.clone());
+    let output =
+        crate::model_loop::execute_model_tool(&client, &executor, &sandbox, &run, &call).await;
     assert!(output.as_str().unwrap().contains("not available"));
     assert!(client.calls.lock().unwrap().is_empty());
+    let _ = std::fs::remove_dir_all(root);
     let builtin = ModelToolCall {
         name: "read".into(),
         ..call
@@ -212,7 +266,7 @@ async fn a_tool_not_on_the_lease_is_refused_without_calling_the_broker() {
 fn descriptors_become_model_tools_and_the_prompt_lists_them() {
     let background = run(
         "background",
-        vec![descriptor("gmail.search", ConnectorToolGroup::Read)],
+        vec![descriptor("gmail_search", ConnectorToolGroup::Read)],
     );
     let definitions = connectors::tool_definitions(&background);
     assert_eq!(definitions.len(), 2);
@@ -220,24 +274,24 @@ fn descriptors_become_model_tools_and_the_prompt_lists_them() {
         definitions[1]["function"]["name"],
         "connectors_request_connect"
     );
-    assert_eq!(definitions[0]["function"]["name"], "gmail.search");
+    assert_eq!(definitions[0]["function"]["name"], "gmail_search");
     assert_eq!(
         definitions[0]["function"]["parameters"]["properties"]["q"]["type"],
         "string"
     );
     let prompt = connectors::prompt_section(&background).unwrap();
-    assert!(prompt.contains("- gmail.search: gmail.search description"));
+    assert!(prompt.contains("- gmail_search: gmail_search description"));
     assert!(prompt.contains("only read tools are available"));
 
     let person = run(
         "person_started",
         vec![
-            descriptor("gmail.search", ConnectorToolGroup::Read),
-            descriptor("gmail.send", ConnectorToolGroup::Act),
+            descriptor("gmail_search", ConnectorToolGroup::Read),
+            descriptor("gmail_send", ConnectorToolGroup::Act),
         ],
     );
     let prompt = connectors::prompt_section(&person).unwrap();
-    assert!(prompt.contains("gmail.send") && !prompt.contains("background run"));
+    assert!(prompt.contains("gmail_send") && !prompt.contains("background run"));
     assert!(connectors::prompt_section(&run("person_started", Vec::new())).is_none());
 }
 
@@ -255,7 +309,7 @@ async fn model_loop_returns_the_broker_result_to_the_model() {
     let provider = ScriptedProvider::default();
     let run = run(
         "person_started",
-        vec![descriptor("gmail.search", ConnectorToolGroup::Read)],
+        vec![descriptor("gmail_search", ConnectorToolGroup::Read)],
     );
     let material = ProviderAuthMaterial {
         snapshot_id: "snap_fake".into(),
@@ -271,12 +325,12 @@ async fn model_loop_returns_the_broker_result_to_the_model() {
         .seen_tools
         .lock()
         .unwrap()
-        .contains(&"gmail.search".to_string()));
+        .contains(&"gmail_search".to_string()));
     assert_eq!(
         *client.calls.lock().unwrap(),
         [(
             "car_connectors".to_string(),
-            "gmail.search".to_string(),
+            "gmail_search".to_string(),
             json!({"q": "invoice"})
         )]
     );
@@ -305,7 +359,7 @@ fn no_token_shaped_field_is_read_from_the_lease() {
         "accessToken": "leaked-access", "refreshToken": "leaked-refresh",
         "trigger": "background",
         "connectorTools": [{
-            "connectorId": "conn_1", "provider": "gmail", "name": "gmail.search",
+            "connectorId": "conn_1", "provider": "gmail", "name": "gmail_search",
             "group": "read", "description": "Search mail.",
             "inputSchema": {"type": "object"},
             "accessToken": "leaked-access", "secret": "leaked-secret"
@@ -329,7 +383,7 @@ fn broker_answers_become_results_or_clear_errors() {
     let body = connectors::broker_call_body(
         "runner-1",
         "car_1",
-        &descriptor("gmail.search", ConnectorToolGroup::Read),
+        &descriptor("gmail_search", ConnectorToolGroup::Read),
         json!({"q": "x"}),
     );
     assert_eq!(body["leaseId"], "car_1");

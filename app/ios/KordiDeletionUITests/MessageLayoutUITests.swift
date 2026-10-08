@@ -2,6 +2,42 @@ import XCTest
 
 @MainActor
 final class MessageLayoutUITests: ProviderUITestCase {
+    func testAskAgentUsesNativeHeaderAndPreservesSessionActions() {
+        let app = launch("--preview-contact-chat", "-kordi.appearance", "light")
+        let parentTitle = app.buttons["conversation-title"]
+        XCTAssertTrue(parentTitle.waitForExistence(timeout: 15))
+        let parentTitleFrame = parentTitle.frame
+        capture("Conversation native header", app: app)
+        app.buttons["Ask Agent"].tap()
+
+        let title = element("companion-title", in: app)
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        let navigationBar = app.navigationBars.firstMatch
+        XCTAssertTrue(navigationBar.descendants(matching: .any)["companion-title"].exists)
+        XCTAssertEqual(title.frame.midX, app.frame.midX, accuracy: 2)
+        XCTAssertEqual(title.frame.midY, parentTitleFrame.midY, accuracy: 2)
+        XCTAssertEqual(title.frame.height, parentTitleFrame.height, accuracy: 2)
+        capture("Ask Agent aligned native header", app: app)
+
+        let sessionMenu = app.buttons["companion-session-menu"]
+        XCTAssertTrue(sessionMenu.exists)
+        let previousSession = sessionMenu.value as? String
+        sessionMenu.tap()
+        XCTAssertTrue(app.buttons["Switch session"].waitForExistence(timeout: 5))
+        app.buttons["New session"].tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertNotEqual(sessionMenu.value as? String, previousSession)
+        XCTAssertTrue(navigationBar.descendants(matching: .any)["companion-title"].exists)
+
+        // Native navigation retains the interactive edge-swipe back gesture.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.001, dy: 0.45))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.45))
+        start.press(forDuration: 0.1, thenDragTo: end)
+        XCTAssertTrue(parentTitle.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Ask Agent"].exists)
+        app.terminate()
+    }
+
     func testThreadsSeparatesDatesAndKeepsMessageTimesCompact() {
         let app = launch("--preview-contact-chat", "--preview-thread-dates", "-kordi.messageLayout.v1", "threads", "-kordi.appearance", "light")
         XCTAssertTrue(app.buttons["Add photo, video, or file"].waitForExistence(timeout: 15))
