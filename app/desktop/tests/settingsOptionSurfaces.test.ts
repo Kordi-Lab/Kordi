@@ -11,7 +11,6 @@ function readSource(relativePath: string): string {
 test('settings pages render titled sections of divided rows without card shells', () => {
   const settingsPage = readSource('pages/SettingsPage.tsx');
   const cloudSettings = readSource('pages/CloudAccountSettingsDialog.tsx');
-  const cloudSettingsNav = readSource('pages/cloudAccountSettingsNav.ts');
   const layout = readSource('kordi-app/components/settingsLayout.tsx');
   const shellCss = readDesktopShellCss();
 
@@ -36,6 +35,7 @@ test('settings pages render titled sections of divided rows without card shells'
 test('settings navigation is one shared searchable rail with grouped items and a filled active pill', () => {
   const settingsPage = readSource('pages/SettingsPage.tsx');
   const cloudSettings = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const cloudSettingsNav = readSource('pages/cloudAccountSettingsNav.ts');
   const layout = readSource('kordi-app/components/settingsLayout.tsx');
   const shellCss = readDesktopShellCss();
 
