@@ -30,7 +30,7 @@ test('cloud avatar opens a small account menu before the centered settings modal
 });
 
 test('cloud settings modal contains profile authentication and theme sections', () => {
-  const modal = readSource('pages/CloudAccountSettingsDialog.tsx');
+  const modal = readSource('pages/CloudAccountSettingsDialog.tsx') + readSource('pages/cloudAccountSettingsNav.ts');
   const avatarEditor = readSource('kordi-app/components/EditableIdentityAvatar.tsx');
 
   assert.match(modal, /Profile/);
