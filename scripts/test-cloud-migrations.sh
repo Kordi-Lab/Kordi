@@ -66,3 +66,7 @@ migration_create_database kordi_migration_test_runtime
 # shared fixture. Serialize them so one test cannot sweep another test's rows.
 DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
   cargo test -p kordi-cloud-server --test cloud_agent_runtime_e2e --test chat_sync_e2e -- --test-threads=1
+# Connector acceptance tests need a database; their fixture fails in CI when
+# DATABASE_URL is missing, so they cannot pass by skipping.
+DATABASE_URL="$(migration_database_url kordi_migration_test_runtime)" \
+  cargo test -p kordi-cloud-server --lib connectors:: -- --test-threads=1

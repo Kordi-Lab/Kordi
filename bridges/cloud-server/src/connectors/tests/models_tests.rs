@@ -47,12 +47,12 @@ fn no_connector_response_type_has_a_secret_shaped_key() {
             .unwrap(),
         ),
         (
-            "OAuthCompletedFragment",
-            serde_json::to_value(OAuthCompletedFragment {
-                connector_id: "conn_sample".into(),
+            "OAuthPendingFragment",
+            serde_json::to_value(OAuthPendingFragment {
+                completion_code: "connector_completion_x".into(),
                 provider: "github".into(),
                 grant: ConnectorToolGroup::Act,
-                status: ConnectorStatus::Connected,
+                status: PENDING_GRANT_STATUS,
             })
             .unwrap(),
         ),

@@ -246,14 +246,25 @@ pub struct OAuthCallbackQuery {
     pub error: Option<String>,
 }
 
-/// Fragment payload handed back to the desktop or iOS app after a grant.
+/// `status` in [`OAuthPendingFragment`]: the grant waits for completion.
+pub const PENDING_GRANT_STATUS: &str = "pending";
+
+/// Fragment payload handed back to the desktop or iOS app after consent.
+/// The app finishes the grant with `POST /v1/cloud/connectors/oauth/complete`
+/// and `completionCode`, signed in as the account that started it.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct OAuthCompletedFragment {
-    pub connector_id: String,
+pub struct OAuthPendingFragment {
+    pub completion_code: String,
     pub provider: String,
     pub grant: ConnectorToolGroup,
-    pub status: ConnectorStatus,
+    pub status: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthCompleteRequest {
+    pub completion_code: String,
 }
 
 #[derive(Debug, Deserialize)]

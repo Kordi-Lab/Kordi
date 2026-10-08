@@ -25,7 +25,13 @@ pub async fn initialize_preferences(
 }
 
 pub async fn calendar(pool: &PgPool, account: &str) -> Result<Vec<CalendarEvent>> {
-    let rows:Vec<(Value,i64,chrono::DateTime<Utc>)>=query_as("SELECT payload,revision,updated_at FROM cloud_calendar_events WHERE account_id=$1 ORDER BY (payload->>'startAt')::timestamptz,event_id LIMIT 1000").bind(account).fetch_all(pool).await?;
+    let rows:Vec<(Value,i64,chrono::DateTime<Utc>)>=query_as("SELECT payload,revision,updated_at FROM cloud_calendar_events WHERE account_id=$1 ORDER BY (payload->>'startAt')::timestamptz,event_id LIMIT $2").bind(account).bind(super::sync_routes::CALENDAR_CAPACITY + 1).fetch_all(pool).await?;
+    // Never expose a truncated snapshot: clients interpret missing rows as deletions.
+    if rows.len() as i64 > super::sync_routes::CALENDAR_CAPACITY {
+        return Err(sqlx_core::Error::Protocol(
+            "Calendar snapshot exceeds the supported capacity".into(),
+        ));
+    }
     let mut events = Vec::new();
     for (value, revision, updated_at) in rows {
         if let Ok(mut event) = serde_json::from_value::<CalendarEvent>(value) {

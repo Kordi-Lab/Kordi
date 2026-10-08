@@ -93,8 +93,8 @@ pub async fn sweep_expired_events(
 
 static LAST_SWEEP_EPOCH: AtomicI64 = AtomicI64::new(0);
 
-/// Periodic entry point for the scheduled-task worker: runs the retention
-/// sweep at most once an hour and logs failures.
+/// Periodic entry point for the scheduled-task worker: at most once an hour,
+/// deletes expired events and expired pending grants, and logs failures.
 pub async fn run_retention_sweep(pool: &PgPool) {
     let now = Utc::now();
     let last = LAST_SWEEP_EPOCH.load(Ordering::Relaxed);
@@ -106,5 +106,10 @@ pub async fn run_retention_sweep(pool: &PgPool) {
         Ok(0) => {}
         Ok(deleted) => println!("[connectors] retention removed {deleted} expired events"),
         Err(error) => eprintln!("[connectors] retention sweep: {error}"),
+    }
+    match super::store::sweep_expired_pending_grants(pool, now).await {
+        Ok(0) => {}
+        Ok(deleted) => println!("[connectors] retention removed {deleted} expired pending grants"),
+        Err(error) => eprintln!("[connectors] pending grant sweep: {error}"),
     }
 }

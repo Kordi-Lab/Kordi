@@ -16,7 +16,7 @@ pub(super) fn runner() -> LeaseHolder {
 
 /// Inserts a cloud run leased by [`TEST_RUNNER`] for the account's built-in
 /// agent and delivers its connector tools, as the lease route does.
-async fn leased_run(
+pub(super) async fn leased_run(
     pool: &PgPool,
     runtime: &ConnectorRuntime,
     account_id: &str,
@@ -48,7 +48,7 @@ fn tool_names(tools: &[LeaseConnectorTool]) -> Vec<&str> {
     tools.iter().map(|tool| tool.name.as_str()).collect()
 }
 
-fn call(lease_id: &str, connector_id: &str, tool: &str) -> BrokerCallRequest {
+pub(super) fn call(lease_id: &str, connector_id: &str, tool: &str) -> BrokerCallRequest {
     BrokerCallRequest {
         lease_id: lease_id.to_string(),
         runner_id: Some(TEST_RUNNER.to_string()),

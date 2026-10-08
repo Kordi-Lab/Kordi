@@ -26,6 +26,8 @@ Preserve explicit source timezones. Do not interpret another participant's local
 When changes is present, process only those change events against previous. The sources, calendarEvents and existingTasks inside changes are additions or updates, not complete lists. Removed IDs identify records no longer in the current scope. Return only new or changed items in the four arrays, and add an optional removedItemIds array for obsolete items present in previous. Omitted previous items are retained automatically. Do not rediscover unchanged sessions; use observation tools only for specific missing context. Keep the merged report within 100 items. Removal affects the report only, never saved tasks or calendar events."#;
 
 #[cfg(test)]
+mod calendar_capacity_tests;
+#[cfg(test)]
 mod calendar_tests;
 #[cfg(test)]
 mod tests;
