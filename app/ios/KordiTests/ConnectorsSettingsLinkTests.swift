@@ -23,4 +23,24 @@ final class ConnectorsSettingsLinkTests: XCTestCase {
             XCTAssertNil(ConnectorsSettingsLink.parse(url), value)
         }
     }
+
+    func testALinkOpensConnectorsAndTheProviderDetail() throws {
+        let gmail = try XCTUnwrap(ConnectorsSettingsLink.parse(XCTUnwrap(URL(string: "kordi://settings/connectors?provider=gmail"))))
+        let request = ConnectorsSettingsRequest(link: gmail)
+        XCTAssertEqual(request.path, [.connectors])
+        XCTAssertEqual(request.providerId, .gmail)
+
+        let calendar = ConnectorsSettingsRequest(link: ConnectorsSettingsLink(providerID: "google_calendar"))
+        XCTAssertEqual(calendar.path, [.connectors])
+        XCTAssertEqual(calendar.providerId, .googleCalendar)
+
+        let list = try XCTUnwrap(ConnectorsSettingsLink.parse(XCTUnwrap(URL(string: "kordi://settings/connectors?provider=outlook"))))
+        XCTAssertEqual(ConnectorsSettingsRequest(link: list).path, [.connectors])
+        XCTAssertNil(ConnectorsSettingsRequest(link: list).providerId)
+    }
+
+    func testEachOpeningIsANewRequest() {
+        let link = ConnectorsSettingsLink(providerID: "slack")
+        XCTAssertNotEqual(ConnectorsSettingsRequest(link: link), ConnectorsSettingsRequest(link: link))
+    }
 }

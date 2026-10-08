@@ -100,11 +100,20 @@ final class ConnectorsStore: ObservableObject {
 
 struct ConnectorsSettingsView: View {
     @StateObject private var store: ConnectorsStore
-    // Debug previews can open one connector's detail directly.
-    @State private var openedProviderId: ConnectorProviderId? = ConnectorsAvailability.previewDetailProviderId()
+    // A settings link, or a debug preview, can open one connector's detail directly.
+    @State private var openedProviderId: ConnectorProviderId?
+    private let request: ConnectorsSettingsRequest?
 
-    init(client: any ConnectorsClient, isPreview: Bool) {
+    init(client: any ConnectorsClient, isPreview: Bool, request: ConnectorsSettingsRequest? = nil) {
         _store = StateObject(wrappedValue: ConnectorsStore(client: client, isPreview: isPreview))
+        self.request = request
+        _openedProviderId = State(initialValue: Self.openableProviderId(request?.providerId)
+            ?? ConnectorsAvailability.previewDetailProviderId())
+    }
+
+    /// Only a connector this screen lists with a detail can be opened by a link.
+    private static func openableProviderId(_ providerId: ConnectorProviderId?) -> ConnectorProviderId? {
+        ConnectorsModel.iPhoneCatalog.first { $0.providerId == providerId && $0.availability == .available }?.providerId
     }
 
     private var catalog: [ConnectorDefinition] { ConnectorsModel.iPhoneCatalog }
@@ -185,6 +194,9 @@ struct ConnectorsSettingsView: View {
             if let definition = catalog.first(where: { $0.providerId == providerId }) {
                 ConnectorDetailView(definition: definition, store: store)
             }
+        }
+        .onChange(of: request) { _, request in
+            if let request { openedProviderId = Self.openableProviderId(request.providerId) }
         }
         .refreshable { await store.refresh(quiet: true) }
         .task {

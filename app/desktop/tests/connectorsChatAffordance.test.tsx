@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { MarkdownContent } from '../src/kordi-app/components';
@@ -13,6 +14,12 @@ import {
   type ConnectorsSettingsTarget,
 } from '../src/features/connectors/connectorsSettingsLink';
 import { ToolApprovalCard } from '../src/features/connectors/ToolApprovalPrompts';
+import { ConnectorsSettingsPanel } from '../src/features/connectors/ConnectorsSettingsPanel';
+import { createPreviewConnectorsClient } from '../src/features/connectors/connectorsClient';
+import type { CloudAccount } from '../src/features/cloud/cloudIdentityTypes';
+import { CloudAccountSettingsDialog, type CloudAccountSettingsTabId } from '../src/pages/CloudAccountSettingsDialog';
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
+import { flush, installDom } from './helpers/connectorsPanelDom';
 import {
   applyToolApprovalEvent,
   parsePendingToolApprovals,
@@ -60,6 +67,82 @@ test('clicking a connectors link opens the dialog tab with the provider selected
 
   assert.equal(openConnectorsSettingsLink({ preventDefault: () => {}, button: 1 }, 'kordi://settings/connectors', () => assert.fail()), false);
   assert.equal(openConnectorsSettingsLink({ preventDefault: () => {} }, 'https://example.com', () => assert.fail()), false);
+});
+
+function detailHeading(host: ParentNode) {
+  return host.querySelector('h1')?.textContent ?? null;
+}
+
+test('the panel opens the linked provider detail, even when it is not connected', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    const client = createPreviewConnectorsClient({ latencyMs: 0 });
+    const render = (initialProviderId: string | null, initialProviderRequest?: number) => createElement(ConnectorsSettingsPanel, {
+      accountId: 'account-1', client, isNativeShell: false, initialProviderId, initialProviderRequest,
+    });
+    await act(async () => root.render(render('gmail')));
+    await flush();
+    assert.equal(detailHeading(host), 'Gmail');
+    assert.ok(Array.from(host.querySelectorAll('button')).some((button) => button.textContent?.trim() === 'Connect'));
+    await act(async () => root.render(render('slack', 1)));
+    await flush();
+    assert.equal(detailHeading(host), 'Slack');
+    await act(async () => root.render(render('outlook', 2)));
+    await flush();
+    assert.equal(detailHeading(host), 'Slack', 'a provider a link cannot open keeps the current view');
+  } finally {
+    await act(async () => root.unmount());
+    installed.restore();
+  }
+});
+
+const account: CloudAccount = {
+  accountId: 'acct_1', displayName: 'Ada', primaryEmail: 'ada@example.com', primaryEmailVerified: true,
+  avatarUrl: null, avatar: cloudAccountAvatarFixture, nodeId: null, passwordSet: true,
+};
+
+test('the settings dialog opens the Connectors tab on the provider from the link', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  const noop = () => {};
+  const asyncNoop = async () => {};
+  const client = createPreviewConnectorsClient({ latencyMs: 0 });
+  const render = (tab: CloudAccountSettingsTabId | null) => createElement(CloudAccountSettingsDialog, {
+    isOpen: tab !== null, initialTab: tab ?? 'profile', account, onClose: noop, onUpdateProfile: asyncNoop,
+    settingsSections: [], activeSettingsSectionId: 'appearance', setActiveSettingsSectionId: noop,
+    authSettingsLayoutWidth: 600, isNativeShell: false, desktopAuthState: null, isDesktopAuthLoading: false,
+    desktopAuthError: null, activeLoginProviderId: null, selectAuthProvider: noop, openLoginFlow: noop,
+    refreshDesktopAuth: asyncNoop, handleSelectAuthChoice: asyncNoop, handleRemoveAuthProfile: asyncNoop,
+    handleLogoutProvider: asyncNoop, themeMode: 'dark', setThemeMode: noop, connectorsClient: client,
+  });
+  let tab: CloudAccountSettingsTabId | null = null;
+  const openDialogTab = (next: CloudAccountSettingsTabId) => { tab = next; };
+  try {
+    // A link opens the closed dialog on the Connectors tab with the provider.
+    applyConnectorsSettingsTarget({ tab: 'connectors', providerId: 'gmail' }, openDialogTab);
+    await act(async () => root.render(render(tab)));
+    await flush();
+    assert.equal(detailHeading(document), 'Gmail');
+    assert.equal(takePendingConnectorsProvider(), null, 'the dialog read the provider');
+
+    // A link that arrives while the dialog shows another tab switches to the provider.
+    await act(async () => root.render(render(null)));
+    await act(async () => root.render(render('profile')));
+    await flush();
+    assert.equal(detailHeading(document), null);
+    await act(async () => { applyConnectorsSettingsTarget({ tab: 'connectors', providerId: 'github' }, openDialogTab); });
+    await act(async () => root.render(render(tab)));
+    await flush();
+    assert.equal(detailHeading(document), 'GitHub');
+  } finally {
+    await act(async () => root.unmount());
+    installed.restore();
+  }
 });
 
 test('agent messages render the connect link as an in-app settings link', () => {
