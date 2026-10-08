@@ -1,6 +1,7 @@
-// Login-free synthetic preview of the real group info popover with its Memory
-// section. The group's id matches the preview memory client's group memory, so
-// the section lists that memory. It makes no network calls and needs no session.
+// Login-free synthetic preview of the real group info popover on its Memory
+// view (`?view=members` opens the member grid instead). The group's id matches
+// the preview memory client's group memory, so the view lists that memory. It
+// makes no network calls and needs no session.
 import { createRoot } from 'react-dom/client';
 
 import { buildParticipantSpaces } from '../../src/features/chat/participantSpaces';
@@ -8,7 +9,9 @@ import { PREVIEW_GROUP_MEMORY_SCOPE_ID, createPreviewMemoryClient } from '../../
 import { GroupDetailsDialog } from '../../src/pages/GroupDetailsDialog';
 import { conversation } from '../helpers/workspaceSidebarParticipantSpacesFixtures';
 
-const requestedTheme = new URLSearchParams(window.location.search).get('theme');
+const params = new URLSearchParams(window.location.search);
+const requestedTheme = params.get('theme');
+const initialView = params.get('view') === 'members' ? 'members' : 'memory';
 const prefersLight = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-color-scheme: light)').matches;
 const theme: 'light' | 'dark' = requestedTheme === 'light' || requestedTheme === 'dark'
   ? requestedTheme
@@ -58,6 +61,7 @@ createRoot(document.getElementById('root')!).render(
       onSetAdmin={noop}
       anchorRect={{ left: 220, top: 96, width: 260, height: 56 }}
       memoryClient={memoryClient}
+      initialView={initialView}
     />
   </main>,
 );

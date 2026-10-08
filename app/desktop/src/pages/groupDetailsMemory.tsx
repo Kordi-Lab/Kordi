@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { groupMemoryScopeIds, isMemoryForGroup } from '@/features/memory/groupMemory';
 import { MemoryList } from '@/features/memory/MemoryList';
@@ -8,9 +8,8 @@ import type { ParticipantSpaceViewModel } from '@/kordi-app/types';
 
 const mutedText = 'text-[color:var(--app-transient-muted-text)]';
 
-/** The group info page's Memory section: this account's memories saved in this group. */
+/** The group dialog's Memory view: this account's memories saved in this group. */
 export function GroupDetailsMemory({ client, space }: { client: MemoryClient; space: ParticipantSpaceViewModel }) {
-  const headingId = useId();
   const scopeIds = useMemo(() => groupMemoryScopeIds(space), [space]);
   const [lessons, setLessons] = useState<MemoryLesson[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +32,8 @@ export function GroupDetailsMemory({ client, space }: { client: MemoryClient; sp
   const groupLessons = (lessons ?? []).filter((lesson) => isMemoryForGroup(lesson, scopeIds));
 
   return (
-    <section aria-labelledby={headingId} data-group-memory className="app-group-management-settings mt-3 border-t px-1.5 pt-2.5">
-      <h3 id={headingId} className="m-0 text-[11px] font-medium">Memory</h3>
-      <p className={`m-0 mt-0.5 text-[10px] leading-4 ${mutedText}`}>
+    <section aria-label="Group memory" data-group-memory className="px-1.5">
+      <p className={`m-0 text-[10px] leading-4 ${mutedText}`}>
         What Kordi remembers in this group. Only you can see your own memories.
       </p>
       <div className="mt-2">

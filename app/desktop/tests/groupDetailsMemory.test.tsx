@@ -21,6 +21,7 @@ function installDom() {
   Object.defineProperties(dom.window.HTMLElement.prototype, {
     attachEvent: { configurable: true, value: () => undefined },
     detachEvent: { configurable: true, value: () => undefined },
+    scrollIntoView: { configurable: true, value: () => undefined },
   });
   const target = globalThis as typeof globalThis & Record<string, unknown>;
   const replacements: Record<string, unknown> = {
@@ -113,35 +114,62 @@ async function withGroupDialog(
   document.body.append(host);
   const root = createRoot(host);
   const noop = () => undefined;
+  const render = (isOpen: boolean) => root.render(
+    <GroupDetailsDialog
+      isOpen={isOpen}
+      space={groupSpace(groupUuid)}
+      contacts={[]}
+      onClose={noop}
+      onRename={noop}
+      onAddMembers={noop}
+      onRemoveMember={noop}
+      onSetAdmin={noop}
+      memoryClient={memoryClient}
+    />,
+  );
   try {
-    await act(async () => {
-      root.render(
-        <GroupDetailsDialog
-          isOpen
-          space={groupSpace(groupUuid)}
-          contacts={[]}
-          onClose={noop}
-          onRename={noop}
-          onAddMembers={noop}
-          onRemoveMember={noop}
-          onSetAdmin={noop}
-          memoryClient={memoryClient}
-        />,
-      );
-    });
+    await act(async () => { render(true); });
     await flush();
     await run(host, installed.dom.window);
+    // Closing and reopening always starts on the members view.
+    await act(async () => { render(false); });
+    await act(async () => { render(true); });
+    await flush();
+    assert.ok(host.querySelector('[data-group-member-grid]'));
+    assert.equal(host.querySelector('[data-group-memory]'), null);
   } finally {
     await act(async () => root.unmount());
     installed.restore();
   }
 }
 
-test('the group info page lists this group\'s memory after the members', async () => {
-  await withGroupDialog(createPreviewMemoryClient({ latencyMs: 0 }), async (host) => {
-    const section = host.querySelector('[data-group-memory]');
-    assert.ok(section);
-    assert.equal(section.querySelector('h3')?.textContent, 'Memory');
+function headerAction(host: ParentNode, label: string) {
+  return host.querySelector('.app-group-profile-actions')
+    ?.querySelectorAll<HTMLButtonElement>('button')
+    .values()
+    .find((button) => button.textContent?.trim() === label);
+}
+
+async function openMemoryView(host: HTMLElement, window: JSDOM['window']) {
+  await click(headerAction(host, 'Memory'), window);
+  const section = host.querySelector('[data-group-memory]');
+  assert.ok(section, 'expected the memory view');
+  return section;
+}
+
+test('the Memory action switches the group dialog to the memory view and Members switches back', async () => {
+  await withGroupDialog(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
+    const labels = Array.from(host.querySelectorAll('.app-group-profile-actions button')).map((button) => button.textContent?.trim());
+    assert.deepEqual(labels.slice(0, 2), ['Members', 'Memory']);
+    assert.equal(headerAction(host, 'Members')?.getAttribute('aria-pressed'), 'true');
+    assert.equal(headerAction(host, 'Memory')?.getAttribute('aria-pressed'), 'false');
+    assert.ok(host.querySelector('[data-group-member-grid]'));
+    assert.equal(host.querySelector('[data-group-memory]'), null);
+
+    const section = await openMemoryView(host, window);
+    assert.equal(headerAction(host, 'Memory')?.getAttribute('aria-pressed'), 'true');
+    assert.equal(headerAction(host, 'Members')?.getAttribute('aria-pressed'), 'false');
+    assert.equal(section.querySelector('h3'), null);
     assert.match(section.textContent ?? '', /What Kordi remembers in this group\. Only you can see your own memories\./);
     assert.deepEqual(
       Array.from(section.querySelectorAll('[data-memory-lesson]')).map((row) => row.getAttribute('data-memory-lesson')),
@@ -149,15 +177,36 @@ test('the group info page lists this group\'s memory after the members', async (
     );
     assert.match(section.textContent ?? '', /Share screenshots as attachments instead of links\./);
     assert.doesNotMatch(section.textContent ?? '', /Forget everything|Replay state|Let Kordi save memories/);
-    const order = Array.from(host.querySelectorAll('section[aria-label="Group members"], [data-group-memory], section[aria-label="Group settings"]'));
-    assert.deepEqual(order.map((node) => node.getAttribute('aria-label') ?? 'memory'), ['Group members', 'memory', 'Group settings']);
+    assert.equal(host.querySelector('[data-group-member-grid]'), null);
+    assert.equal(host.querySelector('input[type="search"]'), null);
+    assert.equal(host.querySelector('section[aria-label="Group settings"]'), null);
+
+    await click(headerAction(host, 'Members'), window);
+    assert.ok(host.querySelector('[data-group-member-grid]'));
+    assert.ok(host.querySelector('section[aria-label="Group settings"]'));
+    assert.equal(host.querySelector('[data-group-memory]'), null);
+    assert.equal(document.activeElement, host.querySelector('input[type="search"]'));
+  });
+});
+
+test('Add people and Manage leave the memory view for the members view', async () => {
+  await withGroupDialog(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
+    await openMemoryView(host, window);
+    await click(headerAction(host, 'Add people'), window);
+    assert.equal(host.querySelector('[data-group-memory]'), null);
+    assert.ok(host.querySelector('[data-group-member-grid]'));
+    assert.match(host.textContent ?? '', /Existing contacts/);
+
+    await openMemoryView(host, window);
+    await click(headerAction(host, 'Manage'), window);
+    assert.equal(host.querySelector('[data-group-memory]'), null);
+    assert.ok(host.querySelector('form.app-group-management-name-form input'));
   });
 });
 
 test('a group without memories shows the empty state', async () => {
-  await withGroupDialog(createPreviewMemoryClient({ latencyMs: 0 }), async (host) => {
-    const section = host.querySelector('[data-group-memory]');
-    assert.ok(section);
+  await withGroupDialog(createPreviewMemoryClient({ latencyMs: 0 }), async (host, window) => {
+    const section = await openMemoryView(host, window);
     assert.equal(section.querySelectorAll('[data-memory-lesson]').length, 0);
     assert.match(section.textContent ?? '', /No memories for this group yet\./);
   }, 'another-group-uuid');
@@ -172,6 +221,7 @@ test('editing a group memory saves through the client', async () => {
     return updateLesson(lessonId, text);
   };
   await withGroupDialog(client, async (host, window) => {
+    await openMemoryView(host, window);
     await click(host.querySelector('[data-memory-lesson="lesson-7"] button[aria-label^="Edit memory"]'), window);
     const textarea = host.querySelector<HTMLTextAreaElement>('[data-memory-lesson="lesson-7"] textarea');
     assert.ok(textarea);
@@ -199,6 +249,7 @@ test('deleting a group memory asks first, then archives it through the client', 
     return archiveLesson(lessonId);
   };
   await withGroupDialog(client, async (host, window) => {
+    await openMemoryView(host, window);
     await click(host.querySelector('[data-memory-lesson="lesson-7"] button[aria-label^="Delete memory"]'), window);
     assert.match(document.body.textContent ?? '', /Delete this memory\?/);
     assert.deepEqual(archived, []);
@@ -213,9 +264,11 @@ test('deleting a group memory asks first, then archives it through the client', 
   });
 });
 
-test('the Memory section is hidden without a memory client', async () => {
+test('the Memory action and view are hidden without a memory client', async () => {
   await withGroupDialog(null, async (host) => {
     assert.ok(host.querySelector('section[aria-label="Group members"]'));
+    assert.equal(headerAction(host, 'Memory'), undefined);
+    assert.equal(headerAction(host, 'Members')?.hasAttribute('aria-pressed'), false);
     assert.equal(host.querySelector('[data-group-memory]'), null);
     assert.doesNotMatch(host.textContent ?? '', /What Kordi remembers in this group/);
   });
