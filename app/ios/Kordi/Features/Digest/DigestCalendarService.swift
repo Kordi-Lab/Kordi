@@ -65,14 +65,23 @@ enum DigestCalendarService {
         let mapped = DigestCalendarEvent(id: "calendar-" + hash(uid), title: title.isEmpty ? "Event" : title, startAt: start, endAt: end, allDay: event.isAllDay, description: String((event.notes ?? "").prefix(5000)), externalUid: uid)
         return DigestDeviceEvent(event: mapped, deviceId: event.eventIdentifier ?? "", calendarId: event.calendar?.calendarIdentifier ?? "", modifiedAt: event.lastModifiedDate)
     }
-    /// Every calendar on the device with the events inside the sync window. Exclusions are applied by the planner.
-    static func readDevice(from: Date, to: Date) throws -> (calendars: [DigestDeviceCalendar], events: [DigestDeviceEvent]) {
+    /// Discover settings choices independently of reading or uploading events.
+    static func deviceCalendars() throws -> [DigestDeviceCalendar] {
         guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw DigestCalendarPermissionError(status: EKEventStore.authorizationStatus(for: .event)) }
+        return EKEventStore().calendars(for: .event).prefix(DigestCalendarSyncEngine.maximumCalendars).map {
+            DigestDeviceCalendar(id: $0.calendarIdentifier, title: $0.title, allowsModifications: $0.allowsContentModifications)
+        }
+    }
+    static func readDevice(from: Date, to: Date, calendarIds: [String]) throws -> [DigestDeviceEvent] {
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { throw DigestCalendarPermissionError(status: EKEventStore.authorizationStatus(for: .event)) }
+        guard !calendarIds.isEmpty else { return [] }
         let store = EKEventStore()
-        let calendars = Array(store.calendars(for: .event).prefix(DigestCalendarSyncEngine.maximumCalendars))
-        guard !calendars.isEmpty else { return ([], []) }
-        let events = store.events(matching: store.predicateForEvents(withStart: from, end: to, calendars: calendars)).map { deviceEvent($0) }.filter { !$0.deviceId.isEmpty }
-        return (calendars.map { DigestDeviceCalendar(id: $0.calendarIdentifier, title: $0.title, allowsModifications: $0.allowsContentModifications) }, events)
+        let selected = Set(calendarIds)
+        let calendars = store.calendars(for: .event).filter { selected.contains($0.calendarIdentifier) }
+        guard calendars.count == selected.count else { throw DigestCalendarError(message: "One of the selected calendars is no longer available.") }
+        let events = store.events(matching: store.predicateForEvents(withStart: from, end: to, calendars: calendars))
+        guard events.count <= 10_000 else { throw DigestCalendarError(message: "More than 10,000 events in the sync window. Turn off a calendar in Calendar settings.") }
+        return events.map { deviceEvent($0) }.filter { !$0.deviceId.isEmpty }
     }
     /// The occurrence timestamp encoded in a device identity, when the event repeats.
     nonisolated static func occurrenceTimestamp(_ uid: String?) -> Int? {

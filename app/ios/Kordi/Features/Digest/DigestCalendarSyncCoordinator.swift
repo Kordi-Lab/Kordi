@@ -3,7 +3,8 @@ import Foundation
 
 struct DigestCalendarSyncDependencies {
     var accessStatus: (_ request: Bool) async -> EKAuthorizationStatus
-    var readDevice: (_ from: Date, _ to: Date) throws -> (calendars: [DigestDeviceCalendar], events: [DigestDeviceEvent])
+    var calendars: () throws -> [DigestDeviceCalendar]
+    var readDevice: (_ from: Date, _ to: Date, _ calendarIds: [String]) throws -> [DigestDeviceEvent]
     var writeDevice: (_ write: DigestDeviceWrite) throws -> (deviceId: String, externalUid: String)
     var deleteDevice: (_ target: DigestDeviceDelete) throws -> Void
     var serverEvents: () async throws -> [DigestCalendarEvent]
@@ -29,24 +30,45 @@ struct DigestCalendarPermissionError: LocalizedError, Equatable {
 enum DigestCalendarSyncEngine {
     static let maximumCalendars = 50
 
-    /// One full reconciliation. Device writes happen first so their identities can be recorded server-side in the same batch.
-    static func syncOnce(_ deps: DigestCalendarSyncDependencies) async throws -> DigestCalendarSyncOutcome {
+    /// Bound both item count and encoded bytes below the API request limits.
+    private static func batches<T: Encodable>(_ items: [T]) throws -> [[T]] {
+        var result: [[T]] = [], batch: [T] = []
+        var bytes = 0
+        let encoder = JSONEncoder()
+        for item in items {
+            let size = try encoder.encode(item).count + 1
+            if !batch.isEmpty && (batch.count == 500 || bytes + size > 512 * 1024) {
+                result.append(batch); batch = []; bytes = 0
+            }
+            batch.append(item); bytes += size
+        }
+        if !batch.isEmpty { result.append(batch) }
+        return result
+    }
+
+    /// One full reconciliation. Device writes happen first so their identities can be recorded server-side during reconciliation.
+    // EventKit service callbacks and observable sync progress are owned by the UI actor.
+    @MainActor static func syncOnce(_ deps: DigestCalendarSyncDependencies, onCalendars: ([DigestDeviceCalendar], EKAuthorizationStatus) -> Void = { _, _ in }) async throws -> DigestCalendarSyncOutcome {
         var permission = await deps.accessStatus(false)
         if permission == .notDetermined { permission = await deps.accessStatus(true) }
         guard permission == .fullAccess else { throw DigestCalendarPermissionError(status: permission) }
         let preferences = deps.preferences()
         let now = deps.now()
         let range = DigestCalendarSync.window(now: now)
-        let device = try deps.readDevice(range.from, range.to)
-        let calendars = Array(device.calendars.prefix(maximumCalendars))
-        let allowed = Set(calendars.map(\.id))
-        let events = device.events.filter { allowed.contains($0.calendarId) }
+        let calendars = Array(try deps.calendars().prefix(maximumCalendars))
+        onCalendars(calendars, permission)
+        let excluded = Set(preferences.excludedCalendarIds)
+        let included = calendars.filter { !excluded.contains($0.id) }.map(\.id)
+        let events = included.isEmpty ? [] : try deps.readDevice(range.from, range.to, included)
         let server = try await deps.serverEvents()
         let baseline = deps.readBaseline()
         let installationId = deps.installationId()
         let plan = DigestCalendarSync.plan(device: events, server: server, baseline: baseline, excludedCalendarIds: Set(preferences.excludedCalendarIds), readOnlyCalendarIds: Set(calendars.filter { !$0.allowsModifications }.map(\.id)), outboundEnabled: preferences.outbound, outboundCalendarId: preferences.targetCalendarId, installationId: installationId, now: now)
         let deviceByUid = Dictionary(events.map { ($0.externalUid, $0) }, uniquingKeysWith: { first, _ in first })
-        var next = plan.baseline
+        // Keep unsettled revisions until each server batch is acknowledged.
+        let pendingIds = Set((plan.upserts + plan.deletes + plan.deviceWrites.map(\.event)).map(\.id))
+        var next = baseline.filter { pendingIds.contains($0.value.serverId) }
+        next.merge(plan.baseline) { _, planned in planned }
         var deviceUidByServerId = plan.deviceUidByServerId
         func settle(_ event: DigestCalendarEvent, calendarId: String? = nil) {
             guard let uid = deviceUidByServerId[event.id] ?? event.externalUid, uid.hasPrefix(DigestCalendarSync.devicePrefix) else { return }
@@ -58,12 +80,12 @@ enum DigestCalendarSyncEngine {
         }
         var changed = false
         var writes = plan.deviceWrites
-        if !plan.claims.isEmpty {
+        for batch in try batches(plan.claims) {
             // Only the device whose claim lands (the revision check) copies the event, so two devices never both write it.
-            let claims = plan.claims.map { event -> DigestCalendarEvent in var claimed = event; claimed.externalUid = DigestCalendarSync.claimPrefix + installationId; claimed.updatedAt = nil; return claimed }
+            let claims = batch.map { event -> DigestCalendarEvent in var claimed = event; claimed.externalUid = DigestCalendarSync.claimPrefix + installationId; claimed.updatedAt = nil; return claimed }
             let claimed = try await deps.serverSync(claims, [])
             writes += claimed.saved.map { DigestDeviceWrite(event: $0, deviceId: nil, calendarId: preferences.targetCalendarId) }
-            changed = !claimed.saved.isEmpty
+            changed = changed || !claimed.saved.isEmpty
         }
         var upserts = plan.upserts
         for write in writes {
@@ -83,18 +105,25 @@ enum DigestCalendarSyncEngine {
         deps.writeBaseline(next)
         // One row per id per batch: a later upsert for the same id wins, and an id being written is never also deleted.
         var seenIds = Set<String>()
-        let uniqueUpserts = upserts.reversed().filter { seenIds.insert($0.id).inserted }.reversed()
+        let uniqueUpserts = Array(upserts.reversed().filter { seenIds.insert($0.id).inserted }.reversed())
         var seenDeletes = Set<String>()
         let deletes = plan.deletes.filter { !seenIds.contains($0.id) && seenDeletes.insert($0.id).inserted }
-        if !uniqueUpserts.isEmpty || !deletes.isEmpty {
-            let result = try await deps.serverSync(Array(uniqueUpserts), deletes)
-            for saved in result.saved { settle(saved) }
-            for event in deletes where result.deleted.contains(event.id) {
-                if let uid = deviceUidByServerId[event.id] ?? event.externalUid { next[uid] = nil }
-                else { for (uid, entry) in next where entry.serverId == event.id { next[uid] = nil } }
+        let changes = try batches(deletes).map { (upserts: [DigestCalendarEvent](), deletes: $0) }
+            + batches(uniqueUpserts).map { (upserts: $0, deletes: [DigestCalendarEvent]()) }
+        do {
+            for batch in changes {
+                try Task.checkCancellation()
+                let result = try await deps.serverSync(batch.upserts, batch.deletes)
+                for saved in result.saved { settle(saved) }
+                let removed = Set(result.deleted)
+                next = next.filter { !removed.contains($0.value.serverId) }
+                changed = changed || !result.saved.isEmpty || !result.deleted.isEmpty
+                if !result.skipped.isEmpty { problems.append("Your Kordi calendar is full. Some events were not synced. Turn off a calendar in Calendar settings to free space.") }
+                deps.writeBaseline(next)
             }
-            changed = changed || !result.saved.isEmpty || !result.deleted.isEmpty
-            if !result.skipped.isEmpty { problems.append("Your Kordi calendar is full. Older events were not synced.") }
+        } catch {
+            if changed { await deps.afterServerChange() }
+            throw error
         }
         deps.writeBaseline(next)
         if changed { await deps.afterServerChange() }
@@ -173,7 +202,9 @@ final class DigestCalendarSyncCoordinator: ObservableObject {
         running = true
         status.phase = .syncing; status.error = nil
         do {
-            let outcome = try await DigestCalendarSyncEngine.syncOnce(deps)
+            let outcome = try await DigestCalendarSyncEngine.syncOnce(deps) { calendars, permission in
+                if self.scope == scope { self.status.calendars = calendars; self.status.permission = permission }
+            }
             if self.scope == scope {
                 status = Status(phase: .synced, permission: outcome.permission, calendars: outcome.calendars, lastSyncedAt: deps.now(), error: nil, syncedCount: outcome.syncedCount)
             }
@@ -193,7 +224,8 @@ extension AppModel {
         guard phase == .signedIn, !isPreviewMode, let (api, token, accountId) = try? digestContext() else { return }
         let dependencies = DigestCalendarSyncDependencies(
             accessStatus: { request in await DigestCalendarService.accessStatus(request: request) },
-            readDevice: { from, to in try DigestCalendarService.readDevice(from: from, to: to) },
+            calendars: { try DigestCalendarService.deviceCalendars() },
+            readDevice: { from, to, ids in try DigestCalendarService.readDevice(from: from, to: to, calendarIds: ids) },
             writeDevice: { write in try DigestCalendarService.write(write.event, deviceId: write.deviceId, calendarId: write.calendarId, deviceStartAt: write.deviceStartAt) },
             deleteDevice: { target in try DigestCalendarService.delete(deviceId: target.deviceId, externalUid: target.externalUid, startAt: target.startAt) },
             serverEvents: { try await api.digestCalendar(token: token).events },
