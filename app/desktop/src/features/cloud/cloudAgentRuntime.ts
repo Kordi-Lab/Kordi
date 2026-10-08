@@ -37,6 +37,8 @@ export type CloudAgentRuntimeRouteChangeInput = {
   authProvider?: string | null;
   authChoice?: string | null;
   initialSessionTitle?: string | null;
+  /** Records the route without a visible notice, for a change the person did not make. */
+  synchronizationOnly?: boolean;
 };
 
 function runtimeRouteFromUnknown(value: unknown): DesktopChatMessageRoute | null {

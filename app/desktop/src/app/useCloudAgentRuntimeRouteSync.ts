@@ -257,7 +257,7 @@ export function useCloudAgentRuntimeRouteSync({
           'agent',
           sessionId,
         ),
-        encodeCloudAgentRuntimeRouteChange(nextRoute, previousRoute, initializingSession),
+        encodeCloudAgentRuntimeRouteChange(nextRoute, previousRoute, initializingSession || Boolean(input.synchronizationOnly)),
         [],
         {
           clientMessageId:

@@ -293,10 +293,12 @@ export function useKordiAppRuntimeActions({
   useKordiProviderAutoSwitch({
     activeLoginProviderId,
     activeProjectSessionId,
+    activeConversationSessionId: activeConv.canonicalSessionId ?? activeConvId,
     desktopAuthState,
     desktopChatState,
     isNativeShell,
     preferredModelValueForProvider,
+    resolveSessionRoute: resolveChatRuntimeRoute,
     selectComposerValue,
   });
 

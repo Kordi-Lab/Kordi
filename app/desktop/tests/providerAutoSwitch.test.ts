@@ -60,3 +60,32 @@ test('an available current provider does not auto-switch', () => {
     desktopAuthState: authState(['openai', 'anthropic'], 'anthropic'),
   }), null);
 });
+
+test('a session on a hosted account keeps its route although this Mac lacks the provider', () => {
+  for (const authChoice of ['cloud-login:synthetic', 'cloud-api-key:synthetic', 'ios-codex:synthetic', 'ios-api-key:synthetic']) {
+    assert.equal(providerAutoSwitchTarget({
+      activeLoginProviderId: 'anthropic',
+      currentProviderId: 'openai-codex',
+      desktopAuthState: authState(['anthropic'], 'anthropic'),
+      sessionRoutes: [{ model: 'openai-codex/gpt-5.6-sol', authProvider: 'openai-codex', authChoice }],
+    }), null, authChoice);
+  }
+});
+
+test('a session route on an equivalent configured provider does not auto-switch', () => {
+  assert.equal(providerAutoSwitchTarget({
+    activeLoginProviderId: 'anthropic',
+    currentProviderId: 'stale-provider',
+    desktopAuthState: authState(['openai', 'anthropic'], 'anthropic'),
+    sessionRoutes: [null, { model: 'openai-codex/gpt-5.6-sol', authChoice: 'profile:openai' }],
+  }), null);
+});
+
+test('a local session route on an unavailable provider still switches', () => {
+  assert.equal(providerAutoSwitchTarget({
+    activeLoginProviderId: 'anthropic',
+    currentProviderId: 'openai-codex',
+    desktopAuthState: authState(['anthropic'], 'anthropic'),
+    sessionRoutes: [{ model: 'openai-codex/gpt-5.6-sol', authProvider: 'openai-codex', authChoice: 'profile:openai' }],
+  }), 'anthropic');
+});
