@@ -384,7 +384,7 @@ Environment variables introduced by PR 3:
 
 Consent boundary (server, `bridges/cloud-server`):
 
-- Migration `0116_run_connector_audience.sql` adds `connector_audience`
+- Migration `0117_run_connector_audience.sql` adds `connector_audience`
   (`owner_private` or `shared`, default `shared`) to
   `cloud_agent_fallback_runs`. Existing runs become shared runs and get no
   connector tools.
@@ -414,8 +414,9 @@ Mac approval for `act` tools:
   `act` call emits `desktop_tool_approval_request` (`{ requestId, tool,
   summary, connector, args }`), waits for
   `desktop_tool_approval_respond(requestId, approved)`, and denies after five
-  minutes; `desktop_tool_approval_resolved` clears the card. Other tools that
-  ask for approval are refused, as before.
+  minutes; `desktop_tool_approval_resolved` clears the card. The hook is
+  built per turn from the lease's `act` descriptors (`connector` is their
+  provider id); any other tool that asks for approval is refused, as before.
 - The webview shows an inline card above the composer ("Your agent wants to
   <summary> in <connector>." with Allow and Not now).
 - When the person declines, `ConnectorToolsRuntime.report_declined` posts the

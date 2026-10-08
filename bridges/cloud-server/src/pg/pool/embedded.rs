@@ -1,7 +1,6 @@
 //! Every embedded Postgres migration, in version order.
 
-use super::migration_entry::migration;
-use super::EmbeddedMigration;
+use super::{migration_entry::migration, EmbeddedMigration};
 
 pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     migration!(1, "initial cloud schema", "0001_initial.sql"),
@@ -495,5 +494,5 @@ pub(super) const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         "connector provider state",
         "0116_connector_provider_state.sql"
     ),
-    migration!(116, "connector audience", "0116_run_connector_audience.sql"),
+    migration!(117, "connector audience", "0117_run_connector_audience.sql"),
 ];

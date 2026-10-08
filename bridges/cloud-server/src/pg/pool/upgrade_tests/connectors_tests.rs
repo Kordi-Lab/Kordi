@@ -161,8 +161,8 @@ async fn upgrade_from_115_adds_provider_state_and_dedupes_events() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
-async fn upgrade_from_115_labels_existing_runs_as_shared() {
-    let pool = fixture(115).await;
+async fn upgrade_from_116_labels_existing_runs_as_shared() {
+    let pool = fixture(116).await;
     seed_runs(&pool).await;
     let before = historical_runs(&pool).await;
     apply_migrations(&pool).await.unwrap();

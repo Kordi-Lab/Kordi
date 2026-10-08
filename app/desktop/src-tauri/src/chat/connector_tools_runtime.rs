@@ -231,7 +231,7 @@ mod tests {
         assert_eq!(
             declined_body(&lease, &descriptors[1]),
             json!({"leaseId":"car_1","claimId":"8f8e6a52-41e4-4c42-9d1e-4c9a3a1f1a10",
-                   "connectorId":"conn_1","tool":"gmail.send","args":{},"declinedByOwner":true})
+                   "connectorId":"conn_1","tool":"gmail_send","args":{},"declinedByOwner":true})
         );
     }
 
