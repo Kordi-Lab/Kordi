@@ -162,6 +162,7 @@ pub async fn run_print_mode(cli: Cli) -> Result<()> {
         )),
         schedule_task: None,
         execution_mode: kordi_tools::ToolExecutionMode::NonInteractive,
+        connector_tools: None,
         request_approval: None,
     };
 

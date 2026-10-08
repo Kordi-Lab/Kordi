@@ -68,6 +68,49 @@ async fn upgrade_from_113_adds_connectors_without_touching_accounts() {
 
 #[tokio::test]
 #[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
+async fn upgrade_from_114_labels_existing_runs_as_background() {
+    let pool = fixture(114).await;
+    // Runs only: `seed_history` builds a pre-0089 direct conversation whose
+    // session id the 0089 trigger rejects at this schema version.
+    for (run_id, status) in [("old-run", "completed"), ("live-run", "queued")] {
+        query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,created_at,updated_at) VALUES($1,$1,$1,'session:direct-person:fixture-owner:fixture-peer','fixture-owner','fixture-owner',$2,'Historical request','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')")
+            .bind(run_id)
+            .bind(status)
+            .execute(&pool)
+            .await
+            .unwrap();
+    }
+    let before = historical_runs(&pool).await;
+    apply_migrations(&pool).await.unwrap();
+    latest_version(&pool).await;
+    assert_eq!(historical_runs(&pool).await, before);
+    let rows: Vec<(String, Value)> = query_as(
+        "SELECT run_trigger, connector_tools_json FROM cloud_agent_fallback_runs ORDER BY run_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 2);
+    for (trigger, tools) in rows {
+        assert_eq!(trigger, "background", "existing runs never gain act tools");
+        assert_eq!(tools, serde_json::json!([]));
+    }
+    for invalid in [
+        "UPDATE cloud_agent_fallback_runs SET run_trigger='scheduled'",
+        "UPDATE cloud_agent_fallback_runs SET connector_tools_json='{}'::jsonb",
+    ] {
+        assert!(
+            sqlx_core::raw_sql::raw_sql(invalid)
+                .execute(&pool)
+                .await
+                .is_err(),
+            "{invalid}"
+        );
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires a dedicated PostgreSQL fixture; run scripts/test-cloud-migrations.sh"]
 async fn upgrade_from_114_adds_provider_state_and_dedupes_events() {
     let pool = fixture(114).await;
     execute(&pool, "INSERT INTO cloud_connectors(connector_id,account_id,provider,status,read_scopes) VALUES('conn_live','fixture-owner','slack','connected','{channels:history}')").await;

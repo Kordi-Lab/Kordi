@@ -85,7 +85,7 @@ async fn latest_version(pool: &PgPool) {
 }
 
 async fn historical_runs(pool: &PgPool) -> Vec<(String, Value)> {
-    query_as("SELECT run_id,to_jsonb(r)-ARRAY['execution_backend','execution_agent_id','legacy_duplicate','parent_run_id','subsession_id','subsession_write_scope','turn_identity','omp_input_json'] FROM cloud_agent_fallback_runs r ORDER BY run_id")
+    query_as("SELECT run_id,to_jsonb(r)-ARRAY['execution_backend','execution_agent_id','legacy_duplicate','parent_run_id','subsession_id','subsession_write_scope','turn_identity','omp_input_json','run_trigger','connector_tools_json'] FROM cloud_agent_fallback_runs r ORDER BY run_id")
         .fetch_all(pool).await.unwrap()
 }
 

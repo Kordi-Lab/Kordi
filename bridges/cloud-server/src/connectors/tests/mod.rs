@@ -28,6 +28,7 @@ use crate::events::EventBus;
 use crate::server::ServerState;
 
 mod broker_tests;
+mod delivery_tests;
 mod google_provider_tests;
 mod http_stub;
 mod lifecycle_tests;
@@ -235,23 +236,6 @@ async fn audit_outcomes(pool: &PgPool, connector_id: &str) -> Vec<(String, Strin
     .fetch_all(pool)
     .await
     .unwrap()
-}
-
-fn call(
-    account_id: &str,
-    connector_id: &str,
-    trigger: RunTrigger,
-    tool: &str,
-) -> BrokerCallRequest {
-    BrokerCallRequest {
-        lease_id: format!("run_{}", Uuid::new_v4().simple()),
-        account_id: account_id.to_string(),
-        agent_id: store::default_agent_id(account_id),
-        trigger,
-        connector_id: connector_id.to_string(),
-        tool: tool.to_string(),
-        args: json!({ "q": "today" }),
-    }
 }
 
 fn authed(method: &str, uri: &str, token: &str, body: Option<Value>) -> Request<Body> {

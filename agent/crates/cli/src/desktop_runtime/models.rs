@@ -60,6 +60,9 @@ pub struct DesktopCloudExecutionLease {
     pub run_id: String,
     pub claim_id: String,
     pub owner_account_id: String,
+    /// Connector tool descriptors the server delivered with this lease.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connector_tools: Option<Vec<kordi_tools::connector_tools::ConnectorToolDescriptor>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

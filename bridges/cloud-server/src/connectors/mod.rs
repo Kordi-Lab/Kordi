@@ -5,6 +5,7 @@
 
 pub mod broker;
 mod credentials;
+pub mod delivery;
 pub mod digest_input;
 pub mod events;
 pub mod hooks;

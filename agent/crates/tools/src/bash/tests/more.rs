@@ -51,6 +51,7 @@ async fn bash_requests_approval_for_non_read_only_commands() {
             }),
             &ToolContext {
                 execution_policy: crate::ExecutionPolicy::Safety,
+                connector_tools: None,
                 request_approval: Some(Arc::new(move |request| {
                     let callback_calls = callback_calls.clone();
                     Box::pin(async move {

@@ -651,7 +651,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         )),
         schedule_task: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
-        request_approval: None,
+        ..Default::default()
     };
     let model_ref = ModelRef {
         provider: provider_name.clone(),

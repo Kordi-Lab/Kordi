@@ -341,6 +341,7 @@ pub struct TaskOperatorRuntime {
 }
 
 /// Context available to tools during execution.
+#[derive(Default)]
 pub struct ToolContext {
     pub cwd: PathBuf,
     pub artifacts_dir: PathBuf,
@@ -357,6 +358,7 @@ pub struct ToolContext {
     pub schedule_task: Option<ScheduleTaskRuntime>,
     pub execution_mode: ToolExecutionMode,
     pub request_approval: Option<RequestToolApprovalFn>,
+    pub connector_tools: Option<crate::connector_tools::ConnectorToolsRuntime>,
 }
 
 /// Trait for built-in and custom tools.

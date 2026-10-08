@@ -38,7 +38,7 @@ pub(in crate::cloud_agent_runtime) async fn claim(
     )
     .await
     {
-        Ok(Some(value)) => return context_scope_response(state.db_pool(), value).await,
+        Ok(Some(value)) => return context_scope_response(&state, value).await,
         Ok(None) => {}
         Err(error) => {
             return run_error_response(
@@ -63,7 +63,7 @@ pub(in crate::cloud_agent_runtime) async fn claim(
         Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity})))
     }.await;
     match result {
-        Ok(Some(value)) => context_scope_response(state.db_pool(), value).await,
+        Ok(Some(value)) => context_scope_response(&state, value).await,
         Ok(None) => denied(),
         Err(e) => run_error_response("desktop claim", "Could not claim agent execution.", e),
     }
