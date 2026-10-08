@@ -190,7 +190,7 @@ test('an act grant without the act scopes is rejected', async () => {
   const client = createCloudConnectorsClient({ accountId: ACCOUNT_ID, http: fixture.http, loadToken: async () => TOKEN, oauth: fakeHandoff(fragment).handoff });
   await assert.rejects(client.grantAct('gmail'), /^Error: Gmail did not grant act access\.$/);
 
-  const full = { ...partial, grantedScopeIds: [...readIds('gmail'), ...actIds('gmail')] };
+  const full = { ...partial, actScopes: ['https://www.googleapis.com/auth/gmail.send'], grantedScopeIds: [...readIds('gmail'), ...actIds('gmail')], actEnabled: true };
   const ok = cloudFixture((call) => (call.url === 'http://srv/v1/cloud/connectors' ? jsonResponse(200, { connectors: [full], agents: agents1726 }) : undefined));
   const granted = createCloudConnectorsClient({ accountId: ACCOUNT_ID, http: ok.http, loadToken: async () => TOKEN, oauth: fakeHandoff(fragment).handoff });
   const state = await granted.grantAct('gmail');
