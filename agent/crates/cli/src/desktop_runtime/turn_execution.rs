@@ -250,7 +250,12 @@ pub(super) fn build_turn_config(
         setup.sibling_conn = Some(conn.clone());
         conn
     };
-    let tool_registry = std::mem::take(&mut setup.tool_registry);
+    // Mac-local sources belong to the owner: never on a shared request.
+    let mac_local = (execution_policy != kordi_tools::ExecutionPolicy::Shared)
+        .then(|| setup.tool_ctx.mac_local.clone())
+        .flatten();
+    let mut tool_registry = std::mem::take(&mut setup.tool_registry);
+    tool_registry.sync_mac_local_tools(mac_local.as_ref(), &setup.tool_selection);
 
     let request_thinking = request_thinking_for_model_with_auth(
         &setup.thinking_level,
@@ -298,6 +303,7 @@ pub(super) fn build_turn_config(
                 .then(|| setup.tool_ctx.task_operator.clone())
                 .flatten(),
             schedule_task: setup.tool_ctx.schedule_task.clone(),
+            mac_local,
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
         },

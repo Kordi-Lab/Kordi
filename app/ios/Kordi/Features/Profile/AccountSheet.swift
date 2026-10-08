@@ -7,6 +7,7 @@ private enum AccountSettingsRoute: String, Hashable {
     case activeSessions = "active-sessions"
     case authentication
     case notifications
+    case connectors
     case colorMode = "color-mode"
     case messageDisplay = "message-display"
     case chatTheme = "chat-theme"
@@ -19,6 +20,10 @@ struct AccountSheet: View {
     @AppStorage(MessageLayout.storageKey) private var messageLayoutRawValue = MessageLayout.chat.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @State private var path: [AccountSettingsRoute]
+    // Present only when the server reports connectors or the preview argument is set.
+    @State private var connectorsClient: (any ConnectorsClient)? = ConnectorsAvailability.isAvailable()
+        ? ConnectorsAvailability.makeClient()
+        : nil
     private let embeddedInNavigationStack: Bool
 
     init(embeddedInNavigationStack: Bool = false) {
@@ -64,6 +69,14 @@ struct AccountSheet: View {
                     CompactSettingsLabel(title: "Notifications", subtitle: "Messages, sounds, and previews", systemImage: "bell")
                 }
                 settingsDivider
+
+                if connectorsClient != nil {
+                    settingsSectionTitle("Connectors")
+                    settingsLink(.connectors) {
+                        CompactSettingsLabel(title: "Connectors", subtitle: "Services and sources your agent can use", systemImage: "app.connected.to.app.below.fill")
+                    }
+                    settingsDivider
+                }
 
                 settingsSectionTitle("Appearance")
                 settingsLink(.colorMode) {
@@ -120,6 +133,10 @@ struct AccountSheet: View {
                 ProviderAuthenticationView()
             case .notifications:
                 NotificationSettingsView()
+            case .connectors:
+                if let connectorsClient {
+                    ConnectorsSettingsView(client: connectorsClient, isPreview: connectorsClient is PreviewConnectorsClient)
+                }
             case .colorMode, .messageDisplay, .chatTheme:
                 CompactAppearanceSettingsView(route: route)
             }
@@ -199,7 +216,7 @@ struct AccountSheet: View {
     }
 }
 
-private struct CompactSettingsLabel: View {
+struct CompactSettingsLabel: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     var subtitle: String? = nil
@@ -213,7 +230,10 @@ private struct CompactSettingsLabel: View {
                 .frame(width: 22)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline)
+                Text(title)
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 if let subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
@@ -224,7 +244,12 @@ private struct CompactSettingsLabel: View {
             .fixedSize(horizontal: false, vertical: true)
             if !dynamicTypeSize.isAccessibilitySize, let value {
                 Spacer(minLength: 8)
-                Text(value).font(.caption).foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
             }
         }
         .foregroundStyle(.primary)
@@ -369,6 +394,13 @@ private struct NotificationSettingsView: View {
 struct ActiveSessionsPreview: View {
     var body: some View {
         AccountSheet(previewing: .activeSessions)
+    }
+}
+
+/// Settings opened on Connectors, for `--preview-connectors`.
+struct ConnectorsSettingsPreview: View {
+    var body: some View {
+        AccountSheet(previewing: .connectors)
     }
 }
 

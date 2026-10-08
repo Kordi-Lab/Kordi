@@ -226,28 +226,8 @@ fn format_tool_subtool(tool: &dyn Tool) -> String {
     format!("  - `{}`: {}", tool.name(), description)
 }
 
-fn compact_tool_description(description: &str) -> String {
-    let normalized = description.split_whitespace().collect::<Vec<_>>().join(" ");
-    let first_sentence = normalized
-        .split_once(". ")
-        .map(|(sentence, _)| sentence)
-        .unwrap_or(normalized.as_str())
-        .trim();
-    truncate_chars(first_sentence, 160)
-}
-
-fn truncate_chars(value: &str, max_chars: usize) -> String {
-    if value.chars().count() <= max_chars {
-        return value.to_string();
-    }
-
-    let mut truncated = value
-        .chars()
-        .take(max_chars.saturating_sub(1))
-        .collect::<String>();
-    truncated.push('…');
-    truncated
-}
+mod tool_descriptions;
+use tool_descriptions::compact_tool_description;
 
 pub(crate) fn build_reflection_lesson_artifacts_system_prompt_section(
     tools: &[Box<dyn Tool>],
@@ -650,6 +630,7 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
             sibling_conn.clone(),
         )),
         schedule_task: None,
+        mac_local: None,
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     };
