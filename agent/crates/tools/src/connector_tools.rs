@@ -38,7 +38,7 @@ fn open_object_schema() -> Value {
 pub struct ConnectorToolDescriptor {
     pub connector_id: String,
     pub provider: String,
-    /// Namespaced, for example `gmail.search`.
+    /// Namespaced, for example `gmail_search`.
     pub name: String,
     pub group: ConnectorToolGroup,
     pub description: String,
@@ -52,20 +52,29 @@ impl ConnectorToolDescriptor {
     }
 }
 
-/// True for a namespaced connector tool name such as `gmail.search`: a
-/// lowercase provider prefix, a dot, and a tool name. Built-in tool names
-/// never contain a dot.
+/// Shape check for a connector tool name: `^[A-Za-z0-9_-]{1,64}$`, the
+/// function-name rule model providers enforce (no dots). This is a secondary
+/// check only: a name is a connector tool because the lease lists it, see
+/// [`lease_tool`].
 pub fn is_connector_tool_name(name: &str) -> bool {
-    let Some((provider, tool)) = name.split_once('.') else {
-        return false;
-    };
-    let part = |value: &str| {
-        !value.is_empty()
-            && value
-                .chars()
-                .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
-    };
-    part(provider) && part(tool)
+    (1..=64).contains(&name.len())
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+}
+
+/// The lease descriptor for `name`, when the lease lists it and the name
+/// passes the shape check. The lease is the source of truth.
+pub fn lease_tool<'a>(
+    descriptors: &'a [ConnectorToolDescriptor],
+    name: &str,
+) -> Option<&'a ConnectorToolDescriptor> {
+    if !is_connector_tool_name(name) {
+        return None;
+    }
+    descriptors
+        .iter()
+        .find(|descriptor| descriptor.name == name)
 }
 
 pub type ConnectorCallFuture = Pin<Box<dyn Future<Output = KordiResult<Value>> + Send>>;

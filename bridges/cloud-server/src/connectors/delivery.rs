@@ -24,7 +24,7 @@ use super::store::{self, StoreResult};
 pub struct LeaseConnectorTool {
     pub connector_id: String,
     pub provider: String,
-    /// Namespaced tool name, for example `gmail.search`.
+    /// Namespaced tool name, for example `gmail_search`.
     pub name: String,
     pub group: ConnectorToolGroup,
     pub description: String,

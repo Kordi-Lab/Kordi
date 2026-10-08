@@ -184,8 +184,11 @@ check: see "What shipped in PR 2" below.
 - Cloud runner: `bridges/cloud-agent-runner` turns each descriptor into a host
   tool whose `execute` calls the broker route. `tool_policy.rs` gains a
   `connector.*` arm that only allows names present in the lease. Tool names are
-  namespaced: `gmail.search`, `calendar.list_events`, `calendar.respond`,
-  `github.notifications`, `github.comment`, `slack.read_channel`, `slack.post`.
+  namespaced with an underscore, because model providers reject dots in
+  function names (`^[A-Za-z0-9_-]+$`): `gmail_search`, `calendar_list_events`,
+  `calendar_respond`, `github_notifications`, `github_comment`,
+  `slack_read_channel`, `slack_post`. A runtime recognises a connector tool by
+  its presence on the lease, with a shape check of `^[A-Za-z0-9_-]{1,64}$`.
 - Mac harness: `agent/crates/cli/src/session_bootstrap.rs` registers connector
   tools from the desktop runtime's tool list; service connectors still call the
   server broker, Mac-local connectors call into the Tauri process. `act` tools on

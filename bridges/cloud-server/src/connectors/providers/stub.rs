@@ -22,8 +22,8 @@ pub(crate) static STUB: ProviderSpec = ProviderSpec {
     extra_auth_params: &[],
 };
 
-pub(crate) const STUB_READ_TOOL: &str = "stub.list_items";
-pub(crate) const STUB_ACT_TOOL: &str = "stub.post_item";
+pub(crate) const STUB_READ_TOOL: &str = "stub_list_items";
+pub(crate) const STUB_ACT_TOOL: &str = "stub_post_item";
 
 static STUB_TOOLS: [ConnectorToolDescriptor; 2] = [
     ConnectorToolDescriptor {

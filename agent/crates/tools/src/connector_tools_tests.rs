@@ -17,8 +17,8 @@ fn descriptor(name: &str, group: ConnectorToolGroup) -> ConnectorToolDescriptor 
 fn runtime(calls: Arc<Mutex<Vec<String>>>) -> ConnectorToolsRuntime {
     ConnectorToolsRuntime {
         descriptors: vec![
-            descriptor("gmail.search", ConnectorToolGroup::Read),
-            descriptor("gmail.send", ConnectorToolGroup::Act),
+            descriptor("gmail_search", ConnectorToolGroup::Read),
+            descriptor("gmail_send", ConnectorToolGroup::Act),
         ],
         call: Arc::new(move |descriptor, args| {
             calls
@@ -52,14 +52,14 @@ fn context(
 #[test]
 fn descriptors_parse_from_the_lease_shape() {
     let parsed: ConnectorToolDescriptor = serde_json::from_value(json!({
-        "connectorId": "conn_1", "provider": "github", "name": "github.notifications",
+        "connectorId": "conn_1", "provider": "github", "name": "github_notifications",
         "group": "read", "description": "List notifications."
     }))
     .unwrap();
     assert_eq!(parsed.group, ConnectorToolGroup::Read);
     assert_eq!(parsed.input_schema, json!({"type":"object"}));
     let tool = ConnectorTool::new(parsed);
-    assert_eq!(tool.name(), "github.notifications");
+    assert_eq!(tool.name(), "github_notifications");
     assert_eq!(tool.metadata().risk, ToolRiskLevel::ReadOnly);
     assert!(!tool.allows_shared_requests());
 }
@@ -67,14 +67,14 @@ fn descriptors_parse_from_the_lease_shape() {
 #[tokio::test]
 async fn connector_tool_fails_closed_without_a_runtime_or_descriptor() {
     let calls = Arc::new(Mutex::new(Vec::new()));
-    let tool = ConnectorTool::new(descriptor("gmail.search", ConnectorToolGroup::Read));
+    let tool = ConnectorTool::new(descriptor("gmail_search", ConnectorToolGroup::Read));
     let error = tool
         .execute(json!({}), &context(None, None), CancellationToken::new())
         .await
         .unwrap_err();
     assert!(error.to_string().contains("not available"));
 
-    let missing = ConnectorTool::new(descriptor("gmail.delete", ConnectorToolGroup::Read));
+    let missing = ConnectorTool::new(descriptor("gmail_delete", ConnectorToolGroup::Read));
     let ctx = context(Some(runtime(calls.clone())), None);
     assert!(
         missing
@@ -89,22 +89,22 @@ async fn connector_tool_fails_closed_without_a_runtime_or_descriptor() {
 async fn read_tools_call_the_broker_and_return_its_result() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let ctx = context(Some(runtime(calls.clone())), None);
-    let tool = ConnectorTool::new(descriptor("gmail.search", ConnectorToolGroup::Read));
+    let tool = ConnectorTool::new(descriptor("gmail_search", ConnectorToolGroup::Read));
     let result = tool
         .execute(json!({"q":"invoices"}), &ctx, CancellationToken::new())
         .await
         .unwrap();
     assert_eq!(
         result.details,
-        Some(json!({"ok": true, "tool": "gmail.search"}))
+        Some(json!({"ok": true, "tool": "gmail_search"}))
     );
-    assert_eq!(*calls.lock().unwrap(), [r#"gmail.search:{"q":"invoices"}"#]);
+    assert_eq!(*calls.lock().unwrap(), [r#"gmail_search:{"q":"invoices"}"#]);
 }
 
 #[tokio::test]
 async fn act_tools_always_ask_first_and_refuse_without_approval() {
     let calls = Arc::new(Mutex::new(Vec::new()));
-    let act = ConnectorTool::new(descriptor("gmail.send", ConnectorToolGroup::Act));
+    let act = ConnectorTool::new(descriptor("gmail_send", ConnectorToolGroup::Act));
 
     // No approval hook: refused, nothing sent.
     let ctx = context(Some(runtime(calls.clone())), None);
@@ -135,7 +135,7 @@ async fn act_tools_always_ask_first_and_refuse_without_approval() {
     act.execute(json!({"to":"a"}), &ctx, CancellationToken::new())
         .await
         .unwrap();
-    assert_eq!(*seen.lock().unwrap(), ["gmail.send", "gmail.send"]);
+    assert_eq!(*seen.lock().unwrap(), ["gmail_send", "gmail_send"]);
     assert_eq!(calls.lock().unwrap().len(), 1);
 
     // Non-interactive runs never act.
@@ -156,7 +156,7 @@ async fn shared_requests_cannot_use_connector_tools() {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = context(Some(runtime(calls.clone())), None);
     ctx.execution_policy = ExecutionPolicy::Shared;
-    let tool = ConnectorTool::new(descriptor("gmail.search", ConnectorToolGroup::Read));
+    let tool = ConnectorTool::new(descriptor("gmail_search", ConnectorToolGroup::Read));
     assert!(
         tool.execute(json!({}), &ctx, CancellationToken::new())
             .await
@@ -170,11 +170,11 @@ fn runtime_builds_one_tool_per_distinct_descriptor() {
     let mut runtime = runtime(Arc::new(Mutex::new(Vec::new())));
     runtime
         .descriptors
-        .push(descriptor("gmail.search", ConnectorToolGroup::Act));
+        .push(descriptor("gmail_search", ConnectorToolGroup::Act));
     let names = runtime
         .tools()
         .iter()
         .map(|tool| tool.name().to_string())
         .collect::<Vec<_>>();
-    assert_eq!(names, ["gmail.search", "gmail.send"]);
+    assert_eq!(names, ["gmail_search", "gmail_send"]);
 }
