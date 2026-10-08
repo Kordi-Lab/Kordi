@@ -350,7 +350,7 @@ test('account settings shows exactly one email row with and without verification
     authSettingsLayoutWidth: 600, isNativeShell: false, desktopAuthState: null, isDesktopAuthLoading: false,
     desktopAuthError: null, activeLoginProviderId: null, selectAuthProvider: noop, openLoginFlow: noop,
     refreshDesktopAuth: asyncNoop, handleSelectAuthChoice: asyncNoop, handleRemoveAuthProfile: asyncNoop,
-    handleLogoutProvider: asyncNoop, themeMode: 'dark', setThemeMode: noop,
+    handleLogoutProvider: asyncNoop, themeMode: 'dark', setThemeMode: noop, connectorsClient: null,
   });
   const emailRows = () => Array.from(document.querySelectorAll('.app-settings-row'))
     .filter((row) => row.textContent?.startsWith('Email'));

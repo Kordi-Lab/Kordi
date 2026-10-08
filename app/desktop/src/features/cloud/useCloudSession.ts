@@ -8,6 +8,7 @@ import {
 import {
   CloudAuthClient,
   CloudAuthError,
+  cloudApiBaseUrl,
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   defaultCloudAuthClient,
@@ -24,6 +25,7 @@ import {
   isCloudOAuthCancelled,
 } from './cloudOAuthCancellation';
 import { startCloudOAuthSignIn } from './cloudOAuthSignIn';
+import { loadCloudAuthCapabilities } from './cloudAuthCapabilities';
 import {
   useCloudAccountEmailVerification,
   type CloudAccountEmailVerificationActions,
@@ -158,7 +160,7 @@ export function useCloudSession({
     if (!enabled || !cloudAuthCapabilityDiscoveryEnabled()) return;
     let cancelled = false;
 
-    void authClient.capabilities()
+    void loadCloudAuthCapabilities(authClient, client ? undefined : cloudApiBaseUrl())
       .then((capabilities) => {
         if (cancelled) return;
         setOAuthProviders(capabilities.oauthProviders.filter(
@@ -172,7 +174,7 @@ export function useCloudSession({
     return () => {
       cancelled = true;
     };
-  }, [authClient, enabled]);
+  }, [authClient, client, enabled]);
 
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
