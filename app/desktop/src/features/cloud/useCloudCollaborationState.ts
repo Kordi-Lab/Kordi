@@ -12,6 +12,7 @@ import {
 } from './authClient';
 import { cloudGroupSessionTitlesForReadModel, patchCanonicalCloudGroupSessionTitles, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from './cloudAgentMessages';
+import { cloudAgentRuntimeRouteSourceMessages } from './cloudAgentRuntime';
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
@@ -631,11 +632,7 @@ export function useCloudCollaborationState({
     setCollaborationOverride: setCloudCollaborationOverride,
   });
   const cloudAgentRuntimeRouteMessages = useMemo(() => (
-    cloudMessageIndex.allMessages.filter((message) => (
-      message.messageKind === 'agent-model-change'
-      && message.fromAccountId === account?.accountId
-      && message.toAccountId === account?.accountId
-    ))
+    cloudAgentRuntimeRouteSourceMessages(cloudMessageIndex.allMessages, account?.accountId)
   ), [account?.accountId, cloudMessageIndex.allMessages]);
   const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => projectCloudGroupLiveTurns(patchCanonicalCloudMessages(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), localAgentTurnsByRequestId, account?.accountId), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById, localAgentTurnsByRequestId, account?.accountId]);
   return {

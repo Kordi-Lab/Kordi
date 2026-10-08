@@ -169,7 +169,10 @@ export function useKordiAppRuntimeActions({
       activeConv.canonicalSessionId || activeConvId,
       'draft:local-chat',
     ),
-    onForkCreated: syncCloudAgentFork,
+    onForkCreated: (result) => {
+      inheritCloudAgentRuntimeRoute(result.sourceSessionId, result.forkedSessionId);
+      return syncCloudAgentFork(result);
+    },
   });
 
   const {
