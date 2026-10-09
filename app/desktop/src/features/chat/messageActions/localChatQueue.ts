@@ -37,12 +37,13 @@ export function hostedRequestIsSettled(
   requestMessageId: string,
 ) {
   return Boolean(state?.messages.some((message) => {
-    if (message.id === requestMessageId) {
-      return ['failed', 'cancelled'].includes(message.status.trim().toLowerCase());
-    }
     const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content)
       ? message.content as Record<string, unknown>
       : {};
+    if (message.id === requestMessageId) {
+      const deliveryState = typeof content.deliveryState === 'string' ? content.deliveryState : '';
+      return [message.status, deliveryState].some((state) => ['failed', 'cancelled'].includes(state.trim().toLowerCase()));
+    }
     return (message.parentMessageId === requestMessageId || content.requestId === requestMessageId)
       && isTerminalCloudAgentTurn(message);
   }));

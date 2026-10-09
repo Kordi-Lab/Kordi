@@ -4,6 +4,7 @@ import { CloudAuthError } from './cloudAuthError';
 import { closeCloudAgentRunFromDesktop } from './cloudInterruptedTurnRelease';
 import { cloudSelfAgentHasTerminalResponse } from './cloudSelfAgentExecutionState';
 import type { CloudSelfAgentActiveRequest } from './cloudSelfAgentRequestExecution';
+import { cloudSelfAgentLocalRequestToStop, cloudSelfAgentStopOrder, type LocalTurnRequestIds } from './cloudSelfAgentStopOrder';
 import { cloudSelfAgentStoppedReply } from './cloudSelfAgentTerminalReply';
 import { loadSession } from './session';
 import type { CloudSelfAgentExecutionInput } from './useDesktopAgentReadiness';
@@ -32,12 +33,15 @@ function latestCloudSelfAgentProcessingText(
 export async function stopCloudSelfAgentRequest({
   sessionId,
   activeRequests,
+  localTurnRequestIds,
   supersededRequestIds,
   streamedTextByRequestId,
   latest,
 }: {
   sessionId: string;
   activeRequests: ReadonlyMap<string, CloudSelfAgentActiveRequest>;
+  /** Requests with a live local turn on this Mac; a stop prefers them. */
+  localTurnRequestIds: LocalTurnRequestIds;
   supersededRequestIds: Set<string>;
   streamedTextByRequestId: ReadonlyMap<string, string>;
   latest: {
@@ -49,8 +53,8 @@ export async function stopCloudSelfAgentRequest({
     reportWarning: (message: string, error: unknown) => void;
   };
 }): Promise<boolean> {
-  for (const active of activeRequests.values()) {
-    if (active.sessionId !== sessionId) continue;
+  const active = cloudSelfAgentLocalRequestToStop(activeRequests, sessionId, localTurnRequestIds);
+  if (active) {
     active.stop();
     return true;
   }
@@ -64,15 +68,14 @@ export async function stopCloudSelfAgentRequest({
   } = latest;
   if (!currentAccount) return false;
   const selfMessages = currentIndex.byPeerId.get(currentAccount.accountId) ?? [];
-  // Oldest first: the running request precedes the ones queued behind it.
-  // The server reports requests that already ended, so try the next one.
-  const pending = selfMessages
+  // The newest request is the one running; a stale older one is tried only if
+  // closing it fails. The server reports requests that already ended.
+  const pending = cloudSelfAgentStopOrder(selfMessages
     .filter((message) => (
       message.sessionId === sessionId
       && cloudMessageIsSelfAgentRequest(message, currentAccount)
       && !cloudSelfAgentHasTerminalResponse(message.messageId, selfMessages)
-    ))
-    .sort((left, right) => Date.parse(left.createdAt) - Date.parse(right.createdAt));
+    )), localTurnRequestIds);
   if (pending.length === 0) return false;
   const session = await loadSession();
   if (!session?.token) throw new Error('Not signed in.');

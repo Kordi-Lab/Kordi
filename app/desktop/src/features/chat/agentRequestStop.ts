@@ -5,6 +5,9 @@ export type AgentRequestStopTarget =
   | { kind: 'turn'; turnId: string }
   | { kind: 'collaboration'; turnId: string; request: CollaborationAgentRequestControl };
 
+/** Resolves true when something was stopped; false or nothing lets the control offer Stop again. */
+export type AgentRequestStopHandler = () => Promise<boolean | void> | boolean | void;
+
 const TERMINAL_TURN_STATUSES = new Set(['complete', 'completed', 'cancelled', 'failed']);
 
 function messageIsViewersAgent(message: Pick<Message, 'role' | 'senderOwnerName'>) {
@@ -56,9 +59,9 @@ export function composerAgentRequestStop({
   messages: readonly Message[];
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnIsRunning?: boolean;
-  onStopActiveTurn?: () => Promise<void> | void;
+  onStopActiveTurn?: AgentRequestStopHandler;
   onStopCollaborationAgentRequest?: (request: CollaborationAgentRequestControl) => Promise<void> | void;
-}): { requestKey: string; onStop: () => Promise<void> | void } | null {
+}): { requestKey: string; onStop: AgentRequestStopHandler } | null {
   const target = latestAgentRequestStopTarget(messages, liveTurn)
     ?? (liveTurnIsRunning ? { kind: 'turn' as const, turnId: 'active-live-turn' } : null);
   if (target?.kind === 'collaboration' && onStopCollaborationAgentRequest) {

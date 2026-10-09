@@ -410,18 +410,6 @@ export function collaborationThinkingDisplayName(value?: string | null) {
   return value[0]?.toUpperCase() + value.slice(1);
 }
 
-export function chatComposerSubmitMode(input?: {
-  isDesktopChatSending?: boolean;
-  activeLiveTurnIsRunning?: boolean;
-  hasDraft?: boolean;
-  canSendWhileBusy?: boolean;
-}) {
-  // While a request the viewer sent runs, the composer button stops it, even
-  // with a draft typed; the draft stays and can be sent after stopping. The
-  // reply row header keeps its own stop for the whole run.
-  return input?.activeLiveTurnIsRunning ? 'stop' as const : 'send' as const;
-}
-
 export function normalizeRoutingProviderId(providerId: string) {
   const normalized = providerId.trim().toLowerCase();
   return normalized === 'openai-codex' ? 'openai' : normalized;

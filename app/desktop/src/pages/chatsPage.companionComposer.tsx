@@ -351,6 +351,7 @@ export function CompanionComposer({
             {stop ? (
               <ComposerStopButton
                 key={stop.requestKey}
+                requestKey={stop.requestKey}
                 className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
                 onStop={stop.onStop}
               />

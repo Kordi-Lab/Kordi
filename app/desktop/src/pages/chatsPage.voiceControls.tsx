@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { LoaderCircle, Send, Square } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import type { AgentRequestStopHandler } from '@/features/chat/agentRequestStop';
 import { VoiceRecordingRail } from '@/kordi-app/components/voiceMessage';
 import type { VoiceComposerController } from './chatsPage.voiceComposer';
 
@@ -21,22 +22,30 @@ function VoiceMessageIcon({ className }: { className?: string }) {
 export type ComposerStopControl = {
   /** Identifies the request, so a new one starts with a fresh button. */
   requestKey: string;
-  onStop: () => Promise<void> | void;
+  onStop: AgentRequestStopHandler;
 };
 
-/** Square stop in the send button's size and position; spins while stopping. */
-export function ComposerStopButton({ onStop, className }: { onStop: () => Promise<void> | void; className: string }) {
-  const [stopping, setStopping] = useState(false);
+/**
+ * Square stop in the send button's size and position; spins while stopping.
+ * It spins until the request ends once the handler reports a stop, and offers
+ * Stop again when the handler stopped nothing or failed.
+ */
+export function ComposerStopButton({ onStop, className, requestKey }: { onStop: AgentRequestStopHandler; className: string; requestKey?: string }) {
+  // The request being stopped; a new request key starts with a fresh button.
+  const [stoppingKey, setStoppingKey] = useState<string | null>(null);
+  const stopping = stoppingKey !== null && stoppingKey === (requestKey ?? '');
   return (
     <Button
       type="button"
       className={className}
       onClick={() => {
         if (stopping) return;
-        setStopping(true);
+        const key = requestKey ?? '';
+        const retry = () => setStoppingKey((current) => (current === key ? null : current));
+        setStoppingKey(key);
         void Promise.resolve()
           .then(onStop)
-          .catch(() => setStopping(false));
+          .then((stopped) => { if (stopped !== true) retry(); }, retry);
       }}
       aria-busy={stopping || undefined}
       data-composer-stop="true"
@@ -91,6 +100,7 @@ export function VoiceComposerControls({
       {stop ? (
         <ComposerStopButton
           key={stop.requestKey}
+          requestKey={stop.requestKey}
           className="app-composer-send app-composer-send-compact h-8 w-8 shrink-0 rounded-full p-0"
           onStop={stop.onStop}
         />

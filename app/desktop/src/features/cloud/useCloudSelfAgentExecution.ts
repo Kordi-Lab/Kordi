@@ -220,10 +220,11 @@ export function useCloudSelfAgentExecution({
   const stopActiveRequest = useCallback((sessionId: string): Promise<boolean> => stopCloudSelfAgentRequest({
     sessionId,
     activeRequests: activeRequestsRef.current,
+    localTurnRequestIds: turnIdsByRequestIdRef.current,
     supersededRequestIds: supersededRequestIdsRef.current,
     streamedTextByRequestId: streamedTextByRequestIdRef.current,
     latest: latestRef.current,
-  }), []);
+  }), [turnIdsByRequestIdRef]);
 
   return { stopActiveRequest };
 }

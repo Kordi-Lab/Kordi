@@ -71,6 +71,38 @@ test('composer shows Stop instead of Send while the viewer request runs, and cal
   });
 });
 
+test('composer Stop offers a retry when the stop handler stopped nothing or failed', async () => {
+  const results: Array<boolean | undefined | Error> = [false, undefined, new Error('Unable to stop request'), true];
+  let stops = 0;
+  const onStop = async () => {
+    const result = results[stops];
+    stops += 1;
+    if (result instanceof Error) throw result;
+    return result;
+  };
+  await withJsdomRoot(async (mount) => {
+    const host = await mount(
+      <VoiceComposerControls voice={idleVoice} hasSendableDraft activeLiveTurnIsRunning onSend={() => {}} stop={{ requestKey: 'request-a', onStop }} />,
+    );
+    const stopButton = () => host.querySelector<HTMLButtonElement>('button[aria-label="Stop"]')!;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await act(async () => { stopButton().click(); });
+      await settle();
+      assert.equal(stops, attempt);
+      assert.equal(stopButton().getAttribute('aria-busy'), null, `attempt ${attempt} leaves Stop ready to retry`);
+    }
+    await act(async () => { stopButton().click(); });
+    await settle();
+    assert.equal(stops, 4);
+    assert.equal(stopButton().getAttribute('aria-busy'), 'true', 'a reported stop spins until the request ends');
+
+    await mount(
+      <VoiceComposerControls voice={idleVoice} hasSendableDraft activeLiveTurnIsRunning onSend={() => {}} stop={{ requestKey: 'request-b', onStop }} />,
+    );
+    assert.equal(stopButton().getAttribute('aria-busy'), null, 'a new request starts with a fresh Stop');
+  });
+});
+
 test('composer stop targets only running requests the viewer sent', () => {
   const onStopActiveTurn = () => {};
   const onStopCollaborationAgentRequest = () => {};

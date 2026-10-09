@@ -48,6 +48,8 @@ type Scenario = {
   initialLocalTurns?: Record<string, DesktopChatTurnSnapshot>;
   /** What the run-closing route reports. */
   closeResult?: Record<string, unknown>;
+  /** An older request in the session that never got an answer. */
+  staleOlderRequest?: boolean;
 };
 
 type Reply = { deliveryState?: string; text: string; ending?: string };
@@ -124,6 +126,9 @@ async function withHarness(scenario: Scenario, run: (env: {
     delegatedExchanges: [], presence: [], contextSnapshots: [],
   } as unknown as CanonicalSessionState;
   const messageIndex = buildCloudMessageIndex('me', { me: [
+    ...(scenario.staleOlderRequest
+      ? [{ ...cloudMessage('request-0', 'Are you there?'), createdAt: new Date(Date.now() - 60_000).toISOString() }]
+      : []),
     cloudMessage('request-1', 'Check disk usage'),
     ...(scenario.earlierReplies ?? []).map((body, index) => cloudMessage(`earlier-${index}`, body)),
   ] });
@@ -259,5 +264,16 @@ test('stop on a request with no streamed text still ends it with the short notic
   await withHarness({ runtimeReady: false, closeResult: { released: true, closed: true, published: true } }, async ({ stop, closures }) => {
     assert.equal(await stop(), true);
     assert.deepEqual(closures, [{ sessionId, requestMessageId: 'request-1', state: 'cancelled', text: 'Request stopped.' }]);
+  });
+});
+
+test('stop targets the newest unfinished request before a stale older one', async () => {
+  await withHarness({
+    runtimeReady: false,
+    staleOlderRequest: true,
+    closeResult: { released: false, closed: false, published: false },
+  }, async ({ stop, stopRequests }) => {
+    assert.equal(await stop(), true);
+    assert.deepEqual(stopRequests, ['request-1']);
   });
 });

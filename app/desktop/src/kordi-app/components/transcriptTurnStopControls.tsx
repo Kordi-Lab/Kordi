@@ -1,10 +1,10 @@
-import { agentRequestStopTarget } from '@/features/chat/agentRequestStop';
+import { agentRequestStopTarget, type AgentRequestStopHandler } from '@/features/chat/agentRequestStop';
 import { Square } from 'lucide-react';
 import { useState } from 'react';
 import type { CollaborationAgentRequestControl, DesktopChatTurnSnapshot, Message } from '../types';
 
 export type StopCollaborationAgentRequestHandler = (request: CollaborationAgentRequestControl) => Promise<void> | void;
-export type StopActiveTurnHandler = () => Promise<void> | void;
+export type StopActiveTurnHandler = AgentRequestStopHandler;
 
 export function TurnStopButton({
   onStop,

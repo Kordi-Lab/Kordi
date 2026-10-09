@@ -5,6 +5,7 @@ import React, { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { useChatMessageActions } from '../src/features/chat/messageActions/chatMessages';
+import { HOSTED_REQUEST_IDLE_RELEASE_MS, releaseHostedRequestWait } from '../src/features/chat/messageActions/hostedRequestWait';
 import type { UseChatMessageActionsArgs } from '../src/features/chat/messageActions/types';
 import type { CanonicalSessionState, DesktopChatState, QueuedDesktopChatMessage } from '../src/kordi-app/types';
 
@@ -38,7 +39,12 @@ async function settle() {
   }
 }
 
-for (const terminal of ['complete', 'failed', 'cancelled'] as const) test(`queued hosted messages wait for the previous run to be ${terminal}`, async () => {
+async function withHostedQueue(run: (harness: {
+  dispatched: string[];
+  errors: string[];
+  respond: (requestId: string, status: 'processing' | 'complete' | 'failed' | 'cancelled') => Promise<void>;
+  setCanonical: React.Dispatch<React.SetStateAction<CanonicalSessionState | null>>;
+}) => Promise<void>) {
   const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost', pretendToBeVisual: true });
   const globals = { window: dom.window, document: dom.window.document, HTMLElement: dom.window.HTMLElement,
     requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), IS_REACT_ACT_ENVIRONMENT: true, __TAURI_INTERNALS__: {} };
@@ -106,7 +112,19 @@ for (const terminal of ['complete', 'failed', 'cancelled'] as const) test(`queue
     assert.deepEqual(dispatched, ['queued-first']);
     await settle();
     assert.deepEqual(dispatched, ['queued-first'], 'the second queued message waits while the first hosted run is active');
+    await run({ dispatched, errors, respond, setCanonical });
+  } finally {
+    await act(async () => root.unmount());
+    clearMocks(); dom.window.close();
+    for (const [key, descriptor] of previous) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else Reflect.deleteProperty(globalThis, key);
+    }
+  }
+}
 
+for (const terminal of ['complete', 'failed', 'cancelled'] as const) test(`queued hosted messages wait for the previous run to be ${terminal}`, async () => {
+  await withHostedQueue(async ({ dispatched, errors, respond }) => {
     await respond('queued-first', 'processing');
     await settle();
     assert.deepEqual(dispatched, ['queued-first'], 'a streaming response is not a terminal state');
@@ -115,12 +133,62 @@ for (const terminal of ['complete', 'failed', 'cancelled'] as const) test(`queue
     await waitFor(() => dispatched.length > 1);
     assert.deepEqual(dispatched, ['queued-first', 'queued-second']);
     assert.deepEqual(errors, []);
+  });
+});
+
+test('a hosted request that fails locally releases its session queue', async () => {
+  await withHostedQueue(async ({ dispatched, setCanonical }) => {
+    await act(async () => {
+      setCanonical((current) => current && ({
+        ...current,
+        messages: [...current.messages.filter(message => message.id !== 'queued-first'), {
+          id: 'queued-first', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text',
+          contentText: 'dhqidhqio', status: 'failed', content: { deliveryState: 'failed' },
+          createdAtMs: Date.now(), updatedAtMs: Date.now(), sequenceNum: 1,
+        }],
+      }));
+    });
+    await waitFor(() => dispatched.length > 1);
+    assert.deepEqual(dispatched, ['queued-first', 'queued-second']);
+  });
+});
+
+test('a stop that finds nothing to stop releases the session queue', async () => {
+  await withHostedQueue(async ({ dispatched }) => {
+    await act(async () => { releaseHostedRequestWait(sessionId); });
+    await waitFor(() => dispatched.length > 1);
+    assert.deepEqual(dispatched, ['queued-first', 'queued-second']);
+  });
+});
+
+test('a hosted request with no reply activity for 120 s releases its session queue', async () => {
+  const realNow = Date.now;
+  const realSetTimeout = globalThis.setTimeout;
+  let offsetMs = 0;
+  const idleTimers: Array<() => void> = [];
+  Date.now = () => realNow() + offsetMs;
+  globalThis.setTimeout = ((callback: () => void, delay?: number, ...args: unknown[]) => {
+    if ((delay ?? 0) < HOSTED_REQUEST_IDLE_RELEASE_MS / 2) return realSetTimeout(callback, delay, ...args);
+    idleTimers.push(callback);
+    return realSetTimeout(() => undefined, 0);
+  }) as typeof setTimeout;
+  try {
+    await withHostedQueue(async ({ dispatched, respond }) => {
+      offsetMs += HOSTED_REQUEST_IDLE_RELEASE_MS / 2;
+      await respond('queued-first', 'processing');
+      await settle();
+      offsetMs += HOSTED_REQUEST_IDLE_RELEASE_MS - 1_000;
+      await act(async () => { idleTimers.at(-1)?.(); });
+      await settle();
+      assert.deepEqual(dispatched, ['queued-first'], 'progress restarts the idle limit');
+
+      offsetMs += 1_000;
+      await act(async () => { idleTimers.at(-1)?.(); });
+      await waitFor(() => dispatched.length > 1);
+      assert.deepEqual(dispatched, ['queued-first', 'queued-second']);
+    });
   } finally {
-    await act(async () => root.unmount());
-    clearMocks(); dom.window.close();
-    for (const [key, descriptor] of previous) {
-      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-      else Reflect.deleteProperty(globalThis, key);
-    }
+    Date.now = realNow;
+    globalThis.setTimeout = realSetTimeout;
   }
 });

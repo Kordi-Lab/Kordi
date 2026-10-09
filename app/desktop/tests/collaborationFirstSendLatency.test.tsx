@@ -18,7 +18,6 @@ import {
   queuedDesktopChatMessageFromDraft,
   waitForCompletedDesktopTurn,
 } from '../src/features/chat/messageActions/chatMessages';
-import { chatComposerSubmitMode } from '../src/pages/ChatsPage';
 
 test('new canonical person chat does not block optimistic send on Bridge conversation materialization', () => {
   const plan = collaborationConversationSendPlan({
@@ -136,22 +135,6 @@ test('new agent sessions receive a stable first-message title across devices', (
   );
   assert.equal(initialCloudAgentSessionTitle('', 1), 'File attachment');
   assert.equal(initialCloudAgentSessionTitle('', 3), '3 attachments');
-});
-
-test('chat composer stops a running request and sends otherwise', () => {
-  // Stop replaces Send while a request runs, whether or not a draft is typed;
-  // sending in flight alone does not turn the button into Stop.
-  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: false, hasDraft: false }), 'send');
-  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: false }), 'stop');
-  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: false, activeLiveTurnIsRunning: true, hasDraft: true }), 'stop');
-  assert.equal(chatComposerSubmitMode({ isDesktopChatSending: true, activeLiveTurnIsRunning: false, hasDraft: true }), 'send');
-  assert.equal(chatComposerSubmitMode({
-    isDesktopChatSending: true,
-    activeLiveTurnIsRunning: true,
-    hasDraft: false,
-    canSendWhileBusy: true,
-  }), 'stop');
-  assert.equal(chatComposerSubmitMode(), 'send');
 });
 
 test('active local turns only delay sends that need the local runtime route', () => {

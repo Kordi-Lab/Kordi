@@ -596,7 +596,7 @@
   },
   "src/pages/ChatsPage.tsx": {
     "react-refresh/only-export-components": {
-      "count": 19
+      "count": 18
     }
   },
   "src/pages/CloudAccountSettingsDialog.tsx": {
