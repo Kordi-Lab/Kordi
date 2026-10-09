@@ -1,6 +1,11 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+mod envelopes;
+use envelopes::{
+    ArtifactExportEnvelope, HeartbeatEnvelope, LeaseResponse, ProviderAuthEnvelope, RunEnvelope,
+};
+
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerClientError {
     #[error("cloud runner client request failed: {0}")]
@@ -47,27 +52,6 @@ pub struct AgentRuntimeRoute {
     pub thinking: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct LeaseResponse {
-    run: Option<CloudAgentRun>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RunEnvelope {
-    run: CloudAgentRun,
-}
-
-#[derive(Debug, Deserialize)]
-struct HeartbeatEnvelope {
-    run: HeartbeatRun,
-}
-
-#[derive(Debug, Deserialize)]
-struct HeartbeatRun {
-    #[serde(rename = "cancelRequested", default)]
-    cancel_requested: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProviderAuthMaterial {
     #[serde(rename = "snapshotId")]
@@ -97,12 +81,6 @@ pub struct OmpState {
     pub replayable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ProviderAuthEnvelope {
-    #[serde(rename = "providerAuth")]
-    provider_auth: ProviderAuthMaterial,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,11 +119,6 @@ pub struct ArtifactExportResponse {
     pub sha256_hex: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ArtifactExportEnvelope {
-    artifact: ArtifactExportResponse,
 }
 
 #[async_trait]
