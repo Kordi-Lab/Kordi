@@ -37,6 +37,13 @@ use tokio_util::sync::CancellationToken;
 const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 const MAX_STDERR_BYTES: usize = 64 * 1024;
+/// How long a taken warm worker may take to produce its first stdout line
+/// after the Run request. A worker that stays silent is treated like one that
+/// exited and replaced by a fresh worker, so it never costs the whole turn.
+#[cfg(not(test))]
+const WARM_READY_TIMEOUT: Duration = Duration::from_secs(10);
+#[cfg(test)]
+const WARM_READY_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Clone)]
 pub struct WorkerCommand {
@@ -146,15 +153,19 @@ impl OmpRuntime {
         }
     }
 
+    fn fresh_worker(&self) -> Result<AttachedWorker, RuntimeError> {
+        AttachedWorker::attach(spawn_worker(&self.command)?)
+    }
+
     fn take_worker(&self) -> Result<(AttachedWorker, bool), RuntimeError> {
         let Some(pool) = &self.warm else {
-            return Ok((AttachedWorker::attach(spawn_worker(&self.command)?)?, false));
+            return Ok((self.fresh_worker()?, false));
         };
         let taken = pool.take();
         pool.refill_in_background(&self.command);
         match taken {
-            Some(child) => Ok((AttachedWorker::attach(child)?, true)),
-            None => Ok((AttachedWorker::attach(spawn_worker(&self.command)?)?, false)),
+            Some(worker) => Ok((worker.attach()?, true)),
+            None => Ok((self.fresh_worker()?, false)),
         }
     }
 
@@ -182,7 +193,8 @@ impl OmpRuntime {
             schema_version: SCHEMA_VERSION,
             request,
         };
-        loop {
+        let mut output_bytes = 0usize;
+        let (_worker_guard, mut stdin, mut stdout, mut stderr_overflow_rx, mut first_line) = loop {
             let written = tokio::select! {
                 _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
                 _ = tokio::time::sleep_until(deadline) => return Err(RuntimeError::Timeout),
@@ -193,22 +205,46 @@ impl OmpRuntime {
                 // write. Fall back to a fresh worker once.
                 Err(RuntimeError::UnexpectedExit) if warm => {
                     warm = false;
-                    worker = AttachedWorker::attach(spawn_worker(&self.command)?)?;
+                    worker = self.fresh_worker()?;
+                    continue;
                 }
-                result => break result?,
+                result => result?,
             }
-        }
-        let AttachedWorker {
-            _child: _worker_guard,
-            mut stdin,
-            stdout,
-            stderr_overflow: mut stderr_overflow_rx,
-        } = worker;
+            let AttachedWorker {
+                _child: child,
+                stdin,
+                stdout,
+                stderr_overflow,
+            } = worker;
+            let mut stdout = BufReader::new(stdout);
+            if !warm {
+                break (child, stdin, stdout, stderr_overflow, None);
+            }
+            // A warm worker that is alive but silent is as unusable as one
+            // that exited: replace it once instead of waiting out the turn.
+            let wait = WARM_READY_TIMEOUT.min(deadline.saturating_duration_since(Instant::now()));
+            let first = tokio::select! {
+                _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
+                result = tokio::time::timeout(
+                    wait,
+                    read_line_bounded(&mut stdout, &mut output_bytes, request.limits.max_output_bytes),
+                ) => result,
+            };
+            match first {
+                Ok(Ok(Some(line))) => break (child, stdin, stdout, stderr_overflow, Some(line)),
+                Ok(Err(error)) if error != RuntimeError::UnexpectedExit => return Err(error),
+                Err(_) if Instant::now() >= deadline => return Err(RuntimeError::Timeout),
+                Ok(_) | Err(_) => {
+                    drop(child);
+                    warm = false;
+                    output_bytes = 0;
+                    worker = self.fresh_worker()?;
+                }
+            }
+        };
 
-        let mut stdout = BufReader::new(stdout);
         let mut seen_ready = false;
         let mut last_sequence = None;
-        let mut output_bytes = 0usize;
         let mut tool_calls = HashSet::new();
         let mut hook_calls = HashSet::new();
         let tool_cancel = cancel.child_token();
@@ -225,7 +261,10 @@ impl OmpRuntime {
                 Tool(String, ToolResult),
                 Hook(String, Result<serde_json::Value, String>),
             }
-            let next = tokio::select! {
+            let next = if let Some(line) = first_line.take() {
+                Next::Line(Some(line))
+            } else {
+                tokio::select! {
                 _ = cancel.cancelled() => {
                     let _ = tokio::time::timeout(Duration::from_millis(100), write_json_line(
                         &mut stdin,
@@ -246,6 +285,7 @@ impl OmpRuntime {
                 result = read_line_bounded(&mut stdout, &mut output_bytes, request.limits.max_output_bytes) => Next::Line(result?),
                 Some((call_id, result)) = pending_tools.next(), if !pending_tools.is_empty() => Next::Tool(call_id, result),
                 Some((call_id, result)) = pending_hooks.next(), if !pending_hooks.is_empty() => Next::Hook(call_id, result),
+                }
             };
             if let Next::Tool(call_id, result) = next {
                 let reply = WorkerInput::ToolResult {

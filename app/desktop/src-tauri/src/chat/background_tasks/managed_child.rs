@@ -15,7 +15,7 @@ use kordi_cli::task_operator::{
 use tokio::sync::Mutex;
 
 use super::super::{
-    cancel_turn_by_id, hosted_provider_auth::HostedTurnAuth, message_execution,
+    cancel_turn_by_id, hosted_provider_auth::InheritedHostedAuth, message_execution,
     turn_snapshot_by_id, DesktopBackgroundFollowUp, DesktopChatManager, DesktopChatMessageRoute,
     DesktopChatTurnSnapshot,
 };
@@ -41,7 +41,7 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     scoped_observation: bool,
     runtime_identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
     parent_route: Option<DesktopChatMessageRoute>,
-    parent_hosted_auth: Option<HostedTurnAuth>,
+    parent_hosted_auth: Option<InheritedHostedAuth>,
     jobs: Arc<Mutex<BTreeMap<String, ManagedTask>>>,
 }
 
@@ -80,12 +80,13 @@ impl ManagedChildAgentRunner {
     }
 
     /// Children run on the parent turn's route. A hosted route's credential is
-    /// resolved once against the parent's execution lease and reused here,
-    /// because a background subsession has no lease of its own.
+    /// resolved against the parent's execution lease and reused here, because
+    /// a background subsession has no lease of its own. Each turn resolves it
+    /// again against that lease once it is near expiry.
     pub(in crate::chat) fn with_parent_route(
         mut self,
         route: Option<DesktopChatMessageRoute>,
-        hosted_auth: Option<HostedTurnAuth>,
+        hosted_auth: Option<InheritedHostedAuth>,
     ) -> Self {
         self.parent_route = route;
         self.parent_hosted_auth = hosted_auth;
@@ -448,7 +449,7 @@ mod tests {
             auth_choice: Some("cloud-login:account".to_string()),
             thinking: Some("high".to_string()),
         };
-        let hosted_auth = HostedTurnAuth {
+        let hosted_auth = crate::chat::hosted_provider_auth::HostedTurnAuth {
             provider: "openai-codex".to_string(),
             auth: kordi_cli::login::ResolvedProviderAuth {
                 source: kordi_cli::login::AuthSource::KordiAuth,
@@ -461,6 +462,13 @@ mod tests {
             },
             base_url: None,
             api: None,
+            expires_at_ms: Some(i64::MAX),
+        };
+        let lease = kordi_cli::desktop_runtime::DesktopCloudExecutionLease {
+            session_id: "session:group:parent".to_string(),
+            run_id: "run-parent".to_string(),
+            claim_id: "claim-parent".to_string(),
+            owner_account_id: "owner".to_string(),
         };
         let runner = ManagedChildAgentRunner::new(
             DesktopChatManager::default(),
@@ -468,7 +476,10 @@ mod tests {
             Some("request".to_string()),
             DesktopRuntimeProfile::default(),
         )
-        .with_parent_route(Some(route), Some(hosted_auth));
+        .with_parent_route(
+            Some(route),
+            Some(InheritedHostedAuth::new(hosted_auth, Some(lease))),
+        );
 
         let input = runner.start_input("child".to_string(), "Count lines.".to_string(), Vec::new());
 
@@ -478,7 +489,27 @@ mod tests {
         assert_eq!(route.model.as_deref(), Some("openai-codex/gpt-5.6-sol"));
         assert_eq!(route.thinking.as_deref(), Some("high"));
         let inherited = input.inherited_hosted_auth.expect("inherited hosted auth");
-        assert_eq!(inherited.auth.credential, "access-token");
-        assert_eq!(inherited.provider, "openai-codex");
+        assert_eq!(inherited.current().auth.credential, "access-token");
+        assert_eq!(inherited.current().provider, "openai-codex");
+        // The child carries the parent lease so a stale token can be resolved
+        // again; no lease reaches the child's own context.
+        assert_eq!(
+            inherited.lease().map(|lease| lease.claim_id.as_str()),
+            Some("claim-parent")
+        );
+        assert!(input
+            .context_messages
+            .unwrap_or_default()
+            .iter()
+            .all(|message| message.execution_lease.is_none()));
+
+        // Child follow-up messages and the parent follow-up turn reuse the
+        // same start input, so they share the refreshable credential.
+        let follow_up = runner.start_input(
+            "session:group:parent".to_string(),
+            "Background task finished.".to_string(),
+            Vec::new(),
+        );
+        assert!(follow_up.inherited_hosted_auth.is_some());
     }
 }

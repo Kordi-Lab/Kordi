@@ -29,8 +29,9 @@ pub(super) struct StartMessageInput {
     pub request_message_id: Option<String>,
     pub execution_lease_deadline_ms: Option<i64>,
     /// Hosted credential already resolved for the parent turn. Background
-    /// subsessions inherit it because they hold no execution lease of their own.
-    pub inherited_hosted_auth: Option<super::hosted_provider_auth::HostedTurnAuth>,
+    /// subsessions inherit it because they hold no execution lease of their
+    /// own; it is resolved again against the parent lease near expiry.
+    pub inherited_hosted_auth: Option<super::hosted_provider_auth::InheritedHostedAuth>,
 }
 
 async fn reserve_shared_request(
@@ -148,8 +149,8 @@ pub(super) async fn start_message(
         if !admission::begin_preparation(&snapshot_for_task, &cancel, previous_turn).await {
             return;
         }
-        let hosted_auth = if inherited_hosted_auth.is_some() {
-            inherited_hosted_auth
+        let hosted_auth = if let Some(inherited) = inherited_hosted_auth {
+            Some(inherited.for_turn(route.as_ref()).await)
         } else if super::hosted_provider_auth::route_uses_hosted_auth(route.as_ref()) {
             let Some(hosted_route) = route.as_ref() else {
                 fail_turn(

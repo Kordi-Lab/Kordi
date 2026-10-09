@@ -183,3 +183,49 @@ async fn cancelled_turn_kills_taken_warm_worker_and_drop_kills_idle_one() {
     wait_until("idle worker killed on drop", || gone(idle)).await;
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[tokio::test]
+async fn warm_worker_with_noisy_boot_stderr_stays_usable() {
+    let dir = temp_dir();
+    // 192 KiB of boot logging is three times a pipe buffer. Without a reader
+    // the worker would block in this write and never mark itself booted.
+    let noisy = "if [ ! -e \"$DIR/noisy\" ]; then echo $$ > \"$DIR/noisy\"; \
+                 head -c 196608 /dev/zero >&2; echo $$ > \"$DIR/booted\"; fi\n";
+    let runtime = OmpRuntime::new(command(&dir, noisy)).with_warm_workers(1);
+    runtime.prewarm();
+    wait_until("noisy warm worker finished booting", || {
+        !pids(&dir, "booted").is_empty()
+    })
+    .await;
+
+    assert_eq!(turn(&runtime).await.unwrap(), "done");
+    let noisy = pids(&dir, "noisy")[0];
+    assert_eq!(pids(&dir, "ran"), vec![noisy]);
+    runtime.shutdown();
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[tokio::test]
+async fn silent_warm_worker_falls_back_to_fresh_spawn() {
+    let dir = temp_dir();
+    // Alive and reading stdin, but never answers the Run request.
+    let stuck =
+        "if [ ! -e \"$DIR/stuck\" ]; then echo $$ > \"$DIR/stuck\"; read request; sleep 30; fi\n";
+    let runtime = OmpRuntime::new(command(&dir, stuck)).with_warm_workers(1);
+    runtime.prewarm();
+    wait_until("stuck warm worker", || !pids(&dir, "stuck").is_empty()).await;
+
+    let started = std::time::Instant::now();
+    assert_eq!(turn(&runtime).await.unwrap(), "done");
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "a silent warm worker cost the turn {:?}",
+        started.elapsed()
+    );
+    let stuck = pids(&dir, "stuck")[0];
+    assert!(!pids(&dir, "ran").contains(&stuck));
+    assert_eq!(pids(&dir, "ran").len(), 1);
+    wait_until("stuck worker killed", || gone(stuck)).await;
+    runtime.shutdown();
+    std::fs::remove_dir_all(&dir).unwrap();
+}
