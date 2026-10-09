@@ -5572,6 +5572,7 @@ final class AppModel: ObservableObject {
                 runtimeRoute: runtimeRoute
             )
                 recordConfirmedAgentRun(run, conversationId: conversation.id, requestMessageId: requestMessageId)
+                if errorMessage != nil { errorMessage = nil }
                 agentExecutionLocation[conversation.id] = run.executionBackend == "desktop"
                     ? .mac(label: ownerAccountId == account.accountId ? "your Mac" : "the owner’s Mac")
                     : .cloud
