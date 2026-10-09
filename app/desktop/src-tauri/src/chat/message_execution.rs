@@ -254,7 +254,7 @@ pub(super) async fn start_message(
                     .map(str::trim)
                     .filter(|value| !value.is_empty() && *value != "default")
                 {
-                    if let Err(error) = session.set_thinking(thinking) {
+                    if let Err(error) = session.apply_turn_thinking(thinking) {
                         fail_turn(&snapshot_for_task, error.to_string());
                         return;
                     }

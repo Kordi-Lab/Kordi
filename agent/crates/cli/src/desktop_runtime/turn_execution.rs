@@ -85,6 +85,21 @@ impl DesktopRuntimeSession {
         cancel: tokio_util::sync::CancellationToken,
         request_message_id: Option<String>,
     ) -> Result<DesktopRuntimeTurn> {
+        let turn = self
+            .begin_turn(prompt, attachment_paths, cancel, request_message_id)
+            .await;
+        // The turn owns its copy of a request route; the session keeps its own.
+        self.restore_configured_route();
+        turn
+    }
+
+    async fn begin_turn(
+        &mut self,
+        prompt: String,
+        attachment_paths: Vec<String>,
+        cancel: tokio_util::sync::CancellationToken,
+        request_message_id: Option<String>,
+    ) -> Result<DesktopRuntimeTurn> {
         self.refresh_saved_agent_persona();
         self.freeze_identity_prompt()?;
         let execution_policy = self.turn_execution_policy()?;

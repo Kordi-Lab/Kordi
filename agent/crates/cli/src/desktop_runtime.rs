@@ -34,6 +34,7 @@ pub use project_membership::{
 mod session_detail;
 mod transcript;
 mod turn_execution;
+mod turn_route;
 mod workspace;
 
 #[cfg(test)]
@@ -91,6 +92,7 @@ fn visible_task_record_status_for_store(status: &str) -> String {
 pub struct DesktopRuntimeSession {
     setup: SessionRuntimeSetup,
     owner_persona_enabled: bool,
+    configured_route: Option<turn_route::ConfiguredRoute>,
 }
 
 /// A constrained runtime profile for purpose-built desktop sessions.
@@ -117,6 +119,7 @@ impl DesktopRuntimeSession {
         let mut session = Self {
             setup,
             owner_persona_enabled,
+            configured_route: None,
         };
         session.refresh_saved_agent_persona();
         session
@@ -373,6 +376,7 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_model(&mut self, requested_model: &str) -> Result<()> {
+        self.restore_configured_route();
         let previous_provider = self.setup.model.provider.clone();
         let previous_model = self.setup.model.id.clone();
         let previous_thinking = self.setup.thinking_level.clone();
@@ -380,11 +384,8 @@ impl DesktopRuntimeSession {
         let changed =
             previous_provider != self.setup.model.provider || previous_model != self.setup.model.id;
         let thinking_changed = previous_thinking != self.setup.thinking_level;
-        // Only record a model/thinking-level change as a transcript
-        // entry once the session actually has visible content. Forks
-        // resolve their default model at first activation; recording
-        // that as a "Switched model to ..." chip on every fork creates
-        // noise when nothing the user did caused the switch.
+        // Record a change only once the session has visible content: a
+        // fork resolving its default model is not a switch the user made.
         let session_has_visible_history = self.setup.session_created
             && session_has_visible_message_entries(&self.setup.conn, &self.setup.session_id);
         if changed && session_has_visible_history {
@@ -405,6 +406,7 @@ impl DesktopRuntimeSession {
         requested_model: Option<&str>,
         requested_thinking: Option<&str>,
     ) -> Result<()> {
+        self.restore_configured_route();
         let previous_provider = self.setup.model.provider.clone();
         let previous_model = self.setup.model.id.clone();
         let previous_thinking = self.setup.thinking_level.clone();
@@ -477,6 +479,7 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_thinking(&mut self, requested_thinking: &str) -> Result<()> {
+        self.restore_configured_route();
         let previous_thinking = self.setup.thinking_level.clone();
         let thinking = self.apply_thinking(requested_thinking)?;
         let changed = previous_thinking != self.setup.thinking_level;
@@ -724,10 +727,7 @@ fn ensure_session_row_created(setup: &mut SessionRuntimeSetup) -> Result<()> {
 }
 
 fn session_has_visible_message_entries(conn: &rusqlite::Connection, session_id: &str) -> bool {
-    // A "visible" entry is a User or Assistant message — the things a
-    // person reads as transcript content. ModelChange / ThinkingLevel
-    // / ContextSnapshot etc. are runtime metadata that shouldn't gate
-    // whether the *next* model switch is worth recording.
+    // Only user and assistant messages count; model or thinking changes do not.
     let result: rusqlite::Result<i64> = conn.query_row(
         "SELECT COUNT(*) FROM entries
          WHERE session_id = ?1 AND type = 'message'",
