@@ -19,10 +19,12 @@ use sqlx_core::query_as::query_as;
 use sqlx_postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 
 mod embedded;
+mod embedded_recent;
 mod migrate;
 mod migration_entry;
 use embedded::EMBEDDED_MIGRATIONS;
 
+#[derive(Clone, Copy)]
 pub(super) struct EmbeddedMigration {
     pub(super) version: i64,
     pub(super) description: &'static str,
